@@ -642,6 +642,12 @@ export interface components {
         FieldValuesQuery: {
             version_id: string;
             project_id: string;
+            /**
+             * @description Target environment of the draft. Sources such as `vsphere.clusters`,
+             *     `vsphere.networks` and `naming.preview` depend on it. A field whose
+             *     `depends_on` lists `$environment` must be re-resolved when it changes.
+             */
+            environment?: components["schemas"]["EnvironmentKey"];
             /** @description Input name. */
             field: string;
             /** @description Current form values. */

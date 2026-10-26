@@ -2,9 +2,34 @@
 
 Milestones are ordered so that each one ends in something usable end to end.
 
+## Status
+
+Slice 1 (most of M0 and M1, plus the AWX post-config steps from M2) is built.
+See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices work.
+
+Verified so far: Go unit tests, vCenter driver tests against vcsim, workflow
+tests, and an end-to-end API test against PostgreSQL 16 and vcsim. Frontend:
+typecheck, lint, 43 unit tests, build, and Playwright smoke tests on mock
+data. The web app was also run against the real Go API for catalog, form,
+dynamic values, preview, requests and deployments.
+
+Not verified yet: a real Temporal server, the Docker Compose stack, Keycloak
+sign-in, real EfficientIP and AWX, and a full submit from the browser to the
+real API (it needs Temporal).
+
+### Open items found in slice 1
+- AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin.
+- EfficientIP client: confirm the endpoints against the current SOLIDserver API.
+- Inventory sync polls; switch to property collector updates.
+- Value sources `awx.*`, REST and CEL are not implemented yet.
+- API additions for slice 2: approvals (today `rvav approve` on the command
+  line), retry and rollback of a failed request, deployment history, per-field
+  rule results in the preview, a description on checklist options.
+- CI pipeline, accessibility checks (axe), Storybook.
+
 ## M0 – Foundations
 - API contract for slice 1 in `api/openapi.yaml` (done), conventions in
-  `api/README.md`. See [ADR-0006](adr/0006-contract-first-vertical-slices.md).
+  `api/README.md`.
 - Monorepo layout: `cmd/rvav`, `internal/...`, `api/openapi.yaml`, `web/`, `deploy/`.
 - docker-compose for development: PostgreSQL, Temporal, Keycloak, vcsim, a
   mock AWX and a mock EfficientIP for local work.

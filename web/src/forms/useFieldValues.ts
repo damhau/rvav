@@ -24,14 +24,13 @@ export function useFieldValues(name: string, ui: UiField, values: Record<string,
   return useQuery({
     queryKey: keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
     queryFn: ({ signal }) => {
-      // FieldValuesQuery has no `environment` yet (spec gap); the mock server reads it.
-      const body = {
+      const body: FieldValuesQuery = {
         version_id: ctx.versionId,
         project_id: ctx.projectId,
+        environment: ctx.environment,
         field: name,
         inputs: latest.current,
-        environment: ctx.environment,
-      } satisfies FieldValuesQuery & { environment: string };
+      };
       return call(api.POST("/forms/values", { body, signal }));
     },
     enabled: Boolean(ui.value_source),

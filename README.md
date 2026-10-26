@@ -13,7 +13,18 @@ vRealize / Aria Automation (vRA).
 - **Modern UX**: command palette, live request timelines, inline day-2 actions,
   dark mode, keyboard-first.
 
-> Status: design phase. See [`docs/`](docs/).
+> Status: slice 1 built. The catalog, the request form, provisioning a VM and
+> following it live, and deployments work end to end against vcsim (the vCenter
+> simulator) with fake AWX and EfficientIP. See the [roadmap](docs/roadmap.md).
+
+## Run it locally
+
+| Part | How | Details |
+|---|---|---|
+| Whole stack | `docker compose -f deploy/docker-compose.yml up --build` | [deploy/README.md](deploy/README.md) |
+| Backend only | `make vcsim`, `rvav migrate -seed`, `rvav dev` | [deploy/README.md](deploy/README.md), [internal/README.md](internal/README.md) |
+| Frontend on mock data | `cd web && pnpm install && pnpm dev` | [web/README.md](web/README.md) |
+| Frontend on the local API | `cd web && pnpm dev:real` (API on `:8080` with `RVAV_AUTH_MODE=dev`) | [web/README.md](web/README.md) |
 
 ## Documentation
 

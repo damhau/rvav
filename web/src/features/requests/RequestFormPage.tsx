@@ -34,6 +34,23 @@ const quotaLabel: Record<QuotaResource, [string, string]> = {
   vm_count: ["VMs", ""],
 };
 
+type ApprovalPreview = RequestPreview["approval"];
+
+/** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */
+function approvalTitle(approval: ApprovalPreview) {
+  const groups = [...new Set(approval.policies.flatMap((p) => p.levels.map((l) => l.name ?? "an approver")))];
+  return `Needs approval from ${groups.join(", then ")}`;
+}
+
+/** The policy reasons as written by admins, plus the usual wait. */
+function approvalBody(approval: ApprovalPreview) {
+  const reasons = approval.policies.map((p) => p.reason.replace(/\.$/, "")).join(". ");
+  const wait = approval.typical_wait_seconds;
+  if (!wait) return `${reasons}.`;
+  const usual = wait < 5400 ? `${Math.max(1, Math.round(wait / 60))} minutes` : `${Math.round(wait / 3600)} hours`;
+  return `${reasons}. Usually decided within ${usual}.`;
+}
+
 function EnvironmentPicker({
   environments,
   allowed,
@@ -184,11 +201,9 @@ function Summary({
                 approval?.required ? "bg-warn-soft text-warn" : "bg-ok-soft text-ok",
               )}
             >
-              <span className="font-medium">{approval?.required ? "Needs approval" : "No approval needed"}</span>
+              <span className="font-medium">{approval?.required ? approvalTitle(approval) : "No approval needed"}</span>
               <span className="text-xs">
-                {approval?.required
-                  ? `${approval.policies.map((p) => p.levels.map((l) => l.name).join(", ")).join(", ")}, because: ${approval.policies.map((p) => p.reason.toLowerCase()).join("; ")}.${approval.typical_wait_seconds ? ` Usually within ${Math.round(approval.typical_wait_seconds / 3600)} hours.` : ""}`
-                  : "Provisioning starts as soon as you submit."}
+                {approval?.required ? approvalBody(approval) : "Provisioning starts as soon as you submit."}
               </span>
             </div>
           </>

@@ -204,7 +204,7 @@ func seedPolicies(exec func(string, ...any) error) error {
 		levels                                []byte
 		priority                              int
 	}{
-		{"pol_prd_vm", "Production VMs", "Production VMs need approval from the Infrastructure leads", `environment == "prd"`, "vm_blueprint", leads, 100},
+		{"pol_prd_vm", "Production VMs", "Production VMs need sign-off", `environment == "prd"`, "vm_blueprint", leads, 100},
 		{"pol_prd_big_vm", "Large production VMs", "Production VM above 32 GB RAM", `environment == "prd" && vm.memory_gb > 32`, "vm_blueprint", leads, 50},
 		{"pol_prd_db", "Production databases", "Production database clusters always need approval", `item.category == "databases" && environment == "prd"`, "composite", leads, 100},
 		{"pol_fw", "Firewall flows", "Firewall changes are reviewed by network security", `true`, "awx_workflow", network, 100},

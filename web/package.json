@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:real": "VITE_API_MODE=real vite",
+    "dev:real": "VITE_API_MODE=real VITE_AUTH_MODE=none vite",
     "build": "tsc --noEmit && vite build",
     "build:mockup": "tsc --noEmit && vite build --mode mockup && node scripts/artifact.mjs",
     "preview": "vite preview",

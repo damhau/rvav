@@ -30,7 +30,8 @@ describe("request form against the mock API", () => {
     const user = userEvent.setup();
     await openForm();
     await user.click(screen.getByRole("radio", { name: "prd" }));
-    expect(await screen.findByText("Needs approval")).toBeInTheDocument();
+    expect(await screen.findByText("Needs approval from Infrastructure leads")).toBeInTheDocument();
+    expect(screen.getByText(/^Production VMs need sign-off\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit for approval" })).toBeInTheDocument();
   });
 

@@ -31,7 +31,7 @@ export function Select({
   className?: string;
 }) {
   return (
-    <S.Root value={value || undefined} onValueChange={onChange} disabled={disabled || loading}>
+    <S.Root value={value} onValueChange={onChange} disabled={disabled || loading}>
       <S.Trigger
         id={id}
         {...aria}
