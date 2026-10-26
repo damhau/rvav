@@ -1,9 +1,15 @@
 # Serves the built web app and proxies the API on the same origin.
-# ${RVAV_API_UPSTREAM} is filled in by the nginx image at start-up.
+# ${RVAV_API_UPSTREAM} and ${RVAV_DNS_RESOLVER} are filled in by the nginx
+# image at start-up.
 server {
     listen 8080;
     server_name _;
     root /usr/share/nginx/html;
+
+    # The API's address is looked up at request time, not once at start-up,
+    # so a recreated or rescheduled API container is found again.
+    resolver ${RVAV_DNS_RESOLVER} valid=10s ipv6=off;
+    set $api_upstream ${RVAV_API_UPSTREAM};
 
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
@@ -13,7 +19,7 @@ server {
 
     # Live events (SSE): pass each event through as soon as it is written.
     location /api/v1/events {
-        proxy_pass ${RVAV_API_UPSTREAM};
+        proxy_pass $api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
@@ -26,7 +32,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass ${RVAV_API_UPSTREAM};
+        proxy_pass $api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

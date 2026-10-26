@@ -23,6 +23,7 @@ test("a RHEL 9 server requested in the browser reaches Ready", async ({ page }) 
   await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible({ timeout: 90_000 });
 
   await page.getByRole("link", { name: "Open deployment" }).click();
-  await expect(page.getByText(`web-dev-${role}001`, { exact: true })).toBeVisible();
+  // The VM name shows in its resource row and again once its details load.
+  await expect(page.getByText(`web-dev-${role}001`, { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });

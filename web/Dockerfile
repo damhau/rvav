@@ -17,8 +17,10 @@ ENV VITE_API_MODE=real \
 RUN pnpm build
 
 FROM nginx:1.27-alpine
-# The image renders templates with envsubst at start-up (RVAV_API_UPSTREAM).
+# The image renders templates with envsubst at start-up (RVAV_API_UPSTREAM,
+# RVAV_DNS_RESOLVER: Docker's DNS by default; the cluster DNS on Kubernetes).
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-ENV RVAV_API_UPSTREAM=http://api:8080
+ENV RVAV_API_UPSTREAM=http://api:8080 \
+    RVAV_DNS_RESOLVER=127.0.0.11
 EXPOSE 8080
