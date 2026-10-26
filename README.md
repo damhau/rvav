@@ -37,5 +37,6 @@ vRealize / Aria Automation (vRA).
 | [UX](docs/ux.md) | UX principles and key screens |
 | [Frontend](docs/frontend.md) | React/TS/Vite, TanStack Router + Query, Tailwind + shadcn/ui architecture |
 | [API](api/README.md) | OpenAPI contract (`api/openapi.yaml`) and API conventions |
-| [Roadmap](docs/roadmap.md) | MVP and later milestones |
+| [Implementation plan](docs/implementation-plan.md) | Path to 80% of vRA: parity table, slices, effort, calendar, risks |
+| [Roadmap](docs/roadmap.md) | Status, releases and decisions |
 | [ADRs](docs/adr/) | Architecture decision records |

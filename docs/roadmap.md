@@ -4,7 +4,7 @@ Milestones are ordered so that each one ends in something usable end to end.
 
 ## Status
 
-Slice 1 (most of M0 and M1, plus the AWX post-config steps from M2) is built.
+Slice 1 is built: catalog to running VM, including the AWX post-configuration steps.
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices work.
 
 Verified so far: Go unit tests, vCenter driver tests against vcsim, workflow
@@ -18,85 +18,27 @@ sign-in, real EfficientIP and AWX, and a full submit from the browser to the
 real API (it needs Temporal).
 
 ### Open items found in slice 1
-- AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin.
-- EfficientIP client: confirm the endpoints against the current SOLIDserver API.
-- Inventory sync polls; switch to property collector updates.
-- Value sources `awx.*`, REST and CEL are not implemented yet.
-- API additions for slice 2: approvals (today `rvav approve` on the command
-  line), retry and rollback of a failed request, deployment history, per-field
-  rule results in the preview, a description on checklist options.
-- CI pipeline, accessibility checks (axe), Storybook.
+- AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin (S6).
+- EfficientIP client: confirm the endpoints against the current SOLIDserver API (S7).
+- Inventory sync polls; switch to property collector updates (S13).
+- Value sources `awx.*` (S6), REST and CEL (S8) are not implemented yet.
+- Approvals API, replacing `rvav approve` on the command line (S3).
+- Retry and rollback of a failed request, deployment history (S4).
+- Per-field rule results in the preview, descriptions on checklist options (S8).
+- CI pipeline (S2), accessibility audit (S14), Storybook.
 
-## M0 – Foundations
-- API contract for slice 1 in `api/openapi.yaml` (done), conventions in
-  `api/README.md`.
-- Monorepo layout: `cmd/rvav`, `internal/...`, `api/openapi.yaml`, `web/`, `deploy/`.
-- docker-compose for development: PostgreSQL, Temporal, Keycloak, vcsim, a
-  mock AWX and a mock EfficientIP for local work.
-- OIDC login, users, global roles, projects and members.
-- OpenAPI spec-first pipeline (Go server stubs + TypeScript client).
-- CI: lint, unit tests, integration tests against vcsim.
-- UI shell: layout, navigation, ⌘K, theming.
+## Plan
 
-## M1 – First VM end to end (MVP core)
-- vCenter connection, inventory sync (`rvav-sync`), inventory cache.
-- Placement rules per project (cluster, folder, datastore, network).
-- EfficientIP: subnet mapping, reserve and release IP, create and delete DNS records.
-- A `vm_blueprint` catalog item with a static form: template, size, network.
-- Provision workflow in Temporal: IP → DNS → clone → customize → power on → wait for IP.
-- Live request timeline over SSE.
-- Deployments list and detail; native day-2: power, delete.
-- Audit log.
+The detailed plan is in [implementation-plan.md](implementation-plan.md): what
+"80% of vRA" means feature by feature, the slices with scope and acceptance
+criteria, effort, calendar, risks and decisions.
 
-## M2 – AWX integration
-- AWX connection and content source; template import with survey → form.
-- `awx_job_template` and `awx_workflow` catalog items.
-- rvav inventory endpoint and the `rvav.platform` inventory plugin collection.
-- AWX post-config steps in blueprints, with inventory refresh and `limit`.
-- AWX job events in the timeline.
-- AWX-backed custom day-2 actions.
-
-## M3 – Full forms and catalog
-- Form designer (visual and YAML views).
-- Dynamic value sources (vSphere, EfficientIP, AWX, REST, CEL), dependencies,
-  conditional rules, async validation, wizard layouts.
-- Catalog UX: categories, tags, icons, search, favourites, featured.
-- Entitlements; item versioning (draft, published, deprecated).
-- Naming policy.
-
-## M4 – Governance
-- Approval policies (multi-level, conditional, delegation, timeouts) and the
-  approvals inbox.
-- Lease policies, reminders, expiry actions, extensions.
-- Quotas, with preview in the request form.
-- Day-2 entitlement policies.
-- Full native day-2 set: reconfigure, disks, NICs, snapshots, console, rename,
-  change owner, ISO.
-
-## M5 – Extensibility and notifications
-- Event subscriptions (AWX or webhook, blocking or non-blocking).
-- Email, Slack and Teams notifications, including interactive approvals.
-- Scheduled requests, on-behalf-of requests, count, re-request.
-- Composite catalog items.
-
-## M6 – Operations and reporting
-- Reports and dashboards (usage, success rate, provisioning time, leases, approvals).
-- Drift detection and onboarding of existing VMs.
-- Catalog import and export (YAML) and Git sync.
-- Helm chart, HA guidance, backup and restore, upgrade guide.
-
-## Phase 2 – vRA importer
-Planned after the first production release (M0–M6). Scope to be defined; likely:
-- Read vRA (8.x / Aria Automation) through its API: projects, cloud templates,
-  custom forms, catalog items and sharing, policies, deployments.
-- Map cloud templates to `vm_blueprint` versions and custom forms to
-  JSON Schema + UI schema; report anything that can't be mapped (for example
-  vRO-specific actions) instead of guessing.
-- Adopt existing vRA deployments: link their VMs (by instance UUID) to new
-  deployments with owner, project and lease.
-- Dry-run mode with a diff report, then an idempotent import.
-- vRO workflows aren't converted automatically; the report lists them so they
-  can be rewritten as AWX job templates.
+| Release | Contents | Target (reference team) |
+|---|---|---|
+| R0 Lab | Running for real, approvals, day-2 actions, leases and quotas (S2–S5) | Month 3 |
+| R1 Pilot | Real AWX and EfficientIP, catalog and admin UI (S6–S9) | Month 6 |
+| R2 1.0 | Extensibility, notifications, advanced provisioning, inventory, production readiness (S10–S14); 83% of vRA | Month 10 |
+| R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2) | Month 13 |
 
 ## Decided
 
