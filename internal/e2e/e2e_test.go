@@ -104,6 +104,7 @@ type harness struct {
 	store *store.Store
 	srv   *httptest.Server
 	acts  *provision.Activities
+	svc   *core.Service
 	vc    *vsphere.Client
 	wf    *recorder
 	awx   *awx.Fake
@@ -214,7 +215,7 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
 		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second}
-	return &harness{t: t, ctx: ctx, store: st, srv: srv, acts: acts, vc: vc, wf: wf, awx: fakeAWX}
+	return &harness{t: t, ctx: ctx, store: st, srv: srv, acts: acts, svc: svc, vc: vc, wf: wf, awx: fakeAWX}
 }
 
 func TestSlice1EndToEnd(t *testing.T) {

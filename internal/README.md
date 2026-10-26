@@ -12,7 +12,7 @@ vCenter simulator with the GVA layout for local work.
 | `blueprint` | Catalog item blueprints and their CEL bindings |
 | `config` | `RVAV_*` environment variables |
 | `core` | Business rules: draft evaluation (schema, placement, naming, approval, quota, lease), form value sources, submit, cancel |
-| `e2e` | End-to-end tests (`make test-e2e`); start their own PostgreSQL, skipped with `-short` |
+| `e2e` | End-to-end tests (`make test-e2e`): slice 1 in Temporal's test environment, and requests through a real Temporal dev server; they start their own PostgreSQL and are skipped with `-short` |
 | `events` | Event outbox publisher and the SSE hub (Postgres LISTEN/NOTIFY) |
 | `httpapi` | HTTP handlers on the generated `ServerInterface`, problems, middleware |
 | `ids` | Prefixed ULIDs |
