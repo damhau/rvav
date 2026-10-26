@@ -152,6 +152,13 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, err := s.Auth.Authenticate(r)
 		if err != nil {
+			if errors.Is(err, auth.ErrProviderUnavailable) {
+				s.Log.Warn("authenticate", "err", err, "request_id", requestID(r.Context()))
+				w.Header().Set("Retry-After", "5")
+				s.problem(w, r, http.StatusServiceUnavailable, "unavailable", "Sign-in is unavailable",
+					"The identity provider can't be reached. Try again in a moment.", nil)
+				return
+			}
 			if !errors.Is(err, auth.ErrUnauthenticated) {
 				s.Log.Error("authenticate", "err", err, "request_id", requestID(r.Context()))
 				s.problem(w, r, http.StatusInternalServerError, "internal", "Could not check your sign-in", "Try again in a moment.", nil)

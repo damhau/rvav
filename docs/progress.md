@@ -29,10 +29,10 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S2.1 Compose stack runs for real: project name `rvav`, configurable host ports, start order and health checks (Temporal namespace, `rvav healthcheck`, nginx); `deploy/smoke.sh` submits a request and it succeeds through real Temporal in about 10 s
 - [x] S2.2 End-to-end tests start their own PostgreSQL (`internal/pgtest`, embedded-postgres, TCP only) when `RVAV_TEST_DATABASE_URL` is not set; `make test` runs `-short` and skips them. The Temporal dev server belongs to S2.5
 - [x] S2.3 `make check` runs the whole gate locally (about 1 minute); `PNPM` can be overridden; Playwright no longer needs a global pnpm; screenshots go to `test-results/` unless `UPDATE_SCREENSHOTS=1`
-- [x] S2.4 CI (GitHub Actions, `.github/workflows/ci.yml`): Go vet, tests and end-to-end; web lint, typecheck, tests, build and Playwright; spec lint; generated-code check; the compose stack built from the Dockerfiles with `deploy/smoke.sh`. Green on the first run. It runs on every push to `main`; "required on pull requests" does not apply while commits go straight to `main`
-- [x] S2.5 Real Temporal: the worker connects once Temporal is healthy (S2.1); retries of transient errors and giving up after four attempts are tested; `e2e-stack/request.spec.ts` submits in the browser and reaches Ready through the compose stack (27 s, also in CI); workflows and their history are in the Temporal UI; `TestThroughTemporal` runs start, approval signal and cancel on a real Temporal dev server
+- [x] S2.4 CI (GitHub Actions, `.github/workflows/ci.yml`): Go vet, tests and end-to-end; web lint, typecheck, tests, build and Playwright; spec lint; generated-code check. Green on the first run. It runs on every push to `main`; "required on pull requests" does not apply while commits go straight to `main`. The compose stack job (images, `deploy/smoke.sh`, `pnpm e2e:stack`) was taken out of CI at the user's request; those checks run locally
+- [x] S2.5 Real Temporal: the worker connects once Temporal is healthy (S2.1); retries of transient errors and giving up after four attempts are tested; `e2e-stack/request.spec.ts` submits in the browser and reaches Ready through the compose stack (27 s); workflows and their history are in the Temporal UI; `TestThroughTemporal` runs start, approval signal and cancel on a real Temporal dev server
 - [x] S2.6 Dev auth mode refuses to start without `RVAV_ALLOW_DEV_AUTH=1` (checked where the authenticator is built, so `api` and `dev` only); the compose stack and `.env.example` set it
-- [ ] S2.7 OIDC sign-in end to end with Keycloak: PKCE in the web app, token checks in the API, group-to-role mapping; Playwright test against the stack
+- [x] S2.7 OIDC sign-in end to end with Keycloak: PKCE sign-in, return to the page asked for, sign-out (`e2e-stack/sign-in.spec.ts` with `RVAV_STACK_AUTH=oidc`); the request test passes with real tokens too. Fixed on the way: the `offline_access` scope Keycloak refused (now `VITE_OIDC_SCOPE`, default without it), the API exiting when Keycloak isn't up yet (provider discovered on first use, `503` with `Retry-After` until then), nginx keeping a stale API address. `TestOIDCTokens` covers signature, issuer, audience, expiry and groups to roles. Keycloak has a health check
 - [ ] S2.8 ADRs for the decisions S2 needs: where Temporal runs, hosting, identity provider
 - [ ] S2.9 Slice review, docs and roadmap status
 - [-] S2.x First run against the lab vCenter with a real template, customisation spec and network
@@ -88,5 +88,5 @@ Items marked `[-]` above, plus anything found while building:
 | Item | Needs |
 |---|---|
 | S2 acceptance on the lab vCenter | Lab vCenter, RHEL 9 template, customisation spec, network |
-| Corporate sign-in | OIDC client in the corporate identity provider and its group names |
+| Corporate sign-in | OIDC client in the corporate identity provider and its group names; `VITE_OIDC_SCOPE` with `offline_access` if it is Entra ID |
 | Console through firewalls | Network path from browsers to the ESXi hosts, or to rvav |

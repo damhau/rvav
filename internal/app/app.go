@@ -126,7 +126,12 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 			"default_user", a.Cfg.Auth.DevUser, "switch_with_header", auth.DevUserHeader)
 		return &auth.Dev{Store: a.Store, DefaultUser: a.Cfg.Auth.DevUser}, nil
 	}
-	return auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCDiscoveryURL, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
+	o, err := auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCDiscoveryURL, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
+	if err != nil {
+		// Requests answer 503 until the provider is reachable.
+		a.Log.Warn("identity provider not reachable yet; will retry on each request", "err", err)
+	}
+	return o, nil
 }
 
 // Core builds the business service with the given workflow engine.

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
@@ -18,6 +20,10 @@ import (
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
+
+// ErrProviderUnavailable means the identity provider could not be reached to
+// check a token, for example while it is still starting.
+var ErrProviderUnavailable = errors.New("identity provider unavailable")
 
 // Principal is who is calling and what they may do.
 type Principal struct {
@@ -130,28 +136,50 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 // OIDC validates access tokens issued by the organisation's identity provider.
 type OIDC struct {
 	Store       *store.Store
-	Verifier    *oidc.IDTokenVerifier
 	GroupsClaim string
+
+	issuer, discoveryURL, clientID string
+
+	mu       sync.Mutex
+	verifier *oidc.IDTokenVerifier
 }
 
-// NewOIDC discovers the provider. discoveryURL, when set, is where the API
-// reaches the provider when that differs from the issuer in tokens (for
-// example http://keycloak:8080 inside docker compose versus
+// NewOIDC prepares token checks against the provider. discoveryURL, when set,
+// is where the API reaches the provider when that differs from the issuer in
+// tokens (for example http://keycloak:8080 inside docker compose versus
 // http://localhost:8081 in the browser).
+//
+// The provider is discovered on first use and again after a failure, so the
+// API starts, and recovers, while the provider is down. The error says
+// whether it was reachable now; the API runs either way.
 func NewOIDC(ctx context.Context, s *store.Store, issuer, discoveryURL, clientID, groupsClaim string) (*OIDC, error) {
-	if discoveryURL != "" && discoveryURL != issuer {
-		ctx = oidc.InsecureIssuerURLContext(ctx, issuer)
-	} else {
+	if discoveryURL == "" {
 		discoveryURL = issuer
 	}
-	provider, err := oidc.NewProvider(ctx, discoveryURL)
+	o := &OIDC{Store: s, GroupsClaim: groupsClaim, issuer: issuer, discoveryURL: discoveryURL, clientID: clientID}
+	_, err := o.verifierFor(ctx)
+	return o, err
+}
+
+func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.verifier != nil {
+		return o.verifier, nil
+	}
+	if o.discoveryURL != o.issuer {
+		ctx = oidc.InsecureIssuerURLContext(ctx, o.issuer)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	provider, err := oidc.NewProvider(ctx, o.discoveryURL)
 	if err != nil {
-		return nil, fmt.Errorf("oidc discovery for %s: %w", issuer, err)
+		return nil, fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
 	}
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
-	v := provider.Verifier(&oidc.Config{ClientID: clientID})
-	return &OIDC{Store: s, Verifier: v, GroupsClaim: groupsClaim}, nil
+	o.verifier = provider.Verifier(&oidc.Config{ClientID: o.clientID})
+	return o.verifier, nil
 }
 
 func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
@@ -163,7 +191,11 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if strings.HasPrefix(token, TokenPrefix) {
 		return apiToken(ctx, o.Store, token)
 	}
-	idt, err := o.Verifier.Verify(ctx, token)
+	v, err := o.verifierFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idt, err := v.Verify(ctx, token)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}

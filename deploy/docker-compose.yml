@@ -81,8 +81,15 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HOSTNAME: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
     ports: ["${RVAV_KEYCLOAK_PORT:-8081}:8080"]
     volumes: ["./keycloak:/opt/keycloak/data/import:ro"]
+    healthcheck:
+      # No curl in the image: ask the management port with bash.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 3s
+      start_period: 20s
+      retries: 40
 
   vcsim:
     image: vmware/vcsim:v0.52.0

@@ -22,7 +22,7 @@ async function createManager() {
     redirect_uri: origin + CALLBACK_PATH,
     post_logout_redirect_uri: origin + "/",
     response_type: "code",
-    scope: "openid profile email offline_access",
+    scope: env.oidcScope,
     automaticSilentRenew: true,
     userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
   });

@@ -14,6 +14,12 @@ export const env = {
   authMode: e.VITE_AUTH_MODE === "dev" ? "none" : (e.VITE_AUTH_MODE ?? "oidc"),
   oidcAuthority: e.VITE_OIDC_AUTHORITY ?? "",
   oidcClientId: e.VITE_OIDC_CLIENT_ID ?? "rvav",
+  /**
+   * No `offline_access` by default: tokens stay in memory and renew with the
+   * normal refresh token. Add it for providers that only issue refresh tokens
+   * with it (Entra ID).
+   */
+  oidcScope: e.VITE_OIDC_SCOPE ?? "openid profile email",
   mockTickMs: Number(e.VITE_MOCK_TICK_MS ?? 900),
   mockLatencyMs: Number(e.VITE_MOCK_LATENCY_MS ?? 180),
 } as const;

@@ -25,12 +25,15 @@ When a port is already taken, change it with `RVAV_API_PORT`,
 `RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the
 shell or in `deploy/.env` (not committed). For example `RVAV_API_PORT=18080`.
 
-To check that the stack works, `deploy/smoke.sh` (needs curl and jq)
-submits a RHEL 9 server in dev and waits until the request succeeds:
+To check that the stack works (CI doesn't run these for now):
 
 ```sh
-RVAV_API_PORT=18080 deploy/smoke.sh
+deploy/smoke.sh                 # API only, dev authentication; needs curl and jq
+cd web && pnpm e2e:stack        # the browser: request a RHEL 9 server and follow it to Ready
 ```
+
+`smoke.sh` reads `RVAV_API_PORT`; `pnpm e2e:stack` reads `RVAV_WEB_URL`
+(default `http://localhost:3000`).
 
 The stack uses the fake EfficientIP and the fake AWX. Set
 `RVAV_FAKE_AWX_FAIL_TASK="idm : join realm"` to see how a failed AWX task
@@ -41,7 +44,9 @@ To use Keycloak sign-in instead of dev authentication, start with
 and the API discovers Keycloak at `http://keycloak:8080` inside the network.
 The web app reads the same variable, but at build time, so rebuild it when you
 switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --build`.
-This combination has not been tested yet.
+The API starts even while Keycloak is still booting, and answers `503` until
+it can reach it. `RVAV_STACK_AUTH=oidc pnpm e2e:stack` signs in as `lea` and
+`thomas` and checks that their Keycloak groups give them their project roles.
 
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
 as you edit and uses the same API on `:8080`.

@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { signIn } from "./auth";
 
 // The whole path for real: the browser, nginx, the API, Temporal, the
-// worker, vcsim and the fakes for EfficientIP and AWX.
+// worker, vcsim and the fakes for EfficientIP and AWX. Works with dev
+// authentication and with Keycloak.
 test("a RHEL 9 server requested in the browser reaches Ready", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -10,6 +12,7 @@ test("a RHEL 9 server requested in the browser reaches Ready", async ({ page }) 
     "pw" + Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
 
   await page.goto("/catalog");
+  await signIn(page);
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await expect(page.getByText("No approval needed")).toBeVisible();
