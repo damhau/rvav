@@ -141,6 +141,9 @@ func NewFromVim(name string, c *vim25.Client) *Client {
 
 func (cl *Client) Name() string { return cl.name }
 
+// Vim returns the logged-in vim25 client, for helpers such as Bootstrap.
+func (cl *Client) Vim(ctx context.Context) (*vim25.Client, error) { return cl.client(ctx) }
+
 // client returns a logged-in session, logging in again if it expired.
 func (cl *Client) client(ctx context.Context) (*vim25.Client, error) {
 	cl.mu.Lock()
@@ -402,8 +405,9 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err != nil {
 		return nil, err
 	}
+	pc := property.DefaultCollector(c)
 	var cluster mo.ClusterComputeResource
-	if err := property.DefaultCollector(c).RetrieveOne(ctx, clusterRef, []string{"resourcePool"}, &cluster); err != nil {
+	if err := pc.RetrieveOne(ctx, clusterRef, []string{"resourcePool", "host"}, &cluster); err != nil {
 		return nil, err
 	}
 	if cluster.ResourcePool == nil {
@@ -412,6 +416,28 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	dsRef, err := findRef(ctx, c, "Datastore", spec.Datastore)
 	if err != nil {
 		return nil, err
+	}
+	// Place the VM on a connected host of the cluster that mounts the
+	// datastore, so the clone never lands outside the target cluster.
+	var ds mo.Datastore
+	if err := pc.RetrieveOne(ctx, dsRef, []string{"host"}, &ds); err != nil {
+		return nil, err
+	}
+	var host *types.ManagedObjectReference
+	for _, h := range cluster.Host {
+		for _, m := range ds.Host {
+			if m.Key == h && host == nil {
+				var hm mo.HostSystem
+				if err := pc.RetrieveOne(ctx, h, []string{"runtime.connectionState", "runtime.inMaintenanceMode"}, &hm); err == nil &&
+					hm.Runtime.ConnectionState == types.HostSystemConnectionStateConnected && !hm.Runtime.InMaintenanceMode {
+					hh := h
+					host = &hh
+				}
+			}
+		}
+	}
+	if host == nil {
+		return nil, fmt.Errorf("no connected host in %s mounts datastore %s: %w", spec.Cluster, spec.Datastore, ErrNotFound)
 	}
 	folder, err := ensureFolder(ctx, c, spec.Folder)
 	if err != nil {
@@ -448,6 +474,7 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	cs := types.VirtualMachineCloneSpec{
 		Location: types.VirtualMachineRelocateSpec{
 			Pool:         &pool,
+			Host:         host,
 			Datastore:    &dsRef,
 			DeviceChange: changes,
 		},
