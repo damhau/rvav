@@ -30,9 +30,17 @@ provisioning workflow with live updates. Mock data lives in the browser tab and 
 ## Configuration
 
 Copy `.env.example` to `.env.local`. `VITE_API_MODE` picks `mock` or `real`. Real mode signs in with
-`VITE_OIDC_AUTHORITY` and `VITE_OIDC_CLIENT_ID`, unless `VITE_AUTH_MODE=none`, which sends
+`VITE_OIDC_AUTHORITY` and `VITE_OIDC_CLIENT_ID`, unless `VITE_AUTH_MODE=none` (or `dev`), which sends
 no token and is meant for a local API started with `RVAV_AUTH_MODE=dev`. In mock mode, `VITE_MOCK_TICK_MS` sets how fast
 provisioning steps advance.
+
+## Docker image
+
+`Dockerfile` builds the app for the real API and serves it with nginx on port 8080. nginx proxies `/api` to `RVAV_API_UPSTREAM` (default `http://api:8080`),
+with buffering off for `/api/v1/events`, so the browser uses a single origin
+and needs no CORS. Sign-in is fixed at build time with the `VITE_AUTH_MODE`,
+`VITE_OIDC_AUTHORITY` and `VITE_OIDC_CLIENT_ID` build arguments. Docker
+Compose builds it as the `web` service (see `deploy/README.md`).
 
 ## Layout
 

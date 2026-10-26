@@ -111,6 +111,19 @@ func (s *Store) SetRequestStatus(ctx context.Context, db DB, id, status string) 
 	return err
 }
 
+// DeleteUnstartedRequest removes a request whose workflow never started,
+// with its steps and the deployments it created, so a failed submit leaves
+// nothing behind.
+func (s *Store) DeleteUnstartedRequest(ctx context.Context, id string) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `delete from deployments where created_by_request_id = $1`, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `delete from requests where id = $1`, id)
+		return err
+	})
+}
+
 func (s *Store) SetRequestError(ctx context.Context, db DB, id, stepID, message string) error {
 	_, err := db.Exec(ctx, `update requests set error_step_id = nullif($2, ''), error_message = nullif($3, '') where id = $1`,
 		id, stepID, message)

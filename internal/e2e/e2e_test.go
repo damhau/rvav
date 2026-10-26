@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -50,11 +51,15 @@ type recorder struct {
 	mu        sync.Mutex
 	started   []string
 	cancelled []string
+	startErr  error // returned by Start, to act as an unreachable Temporal
 }
 
 func (r *recorder) Start(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.startErr != nil {
+		return r.startErr
+	}
 	r.started = append(r.started, id)
 	return nil
 }
@@ -489,6 +494,36 @@ func TestSlice1EndToEnd(t *testing.T) {
 		h.json("GET", "/api/v1/requests?project_id="+web+"&status=succeeded", "lmartin", nil, 200, &reqs)
 		if len(reqs.Items) != 2 {
 			t.Fatalf("succeeded requests = %d, want 2", len(reqs.Items))
+		}
+
+		// Temporal unreachable: 502, nothing is kept, and the same key works on retry.
+		count := func(table string) int {
+			var n int
+			if err := h.store.Pool.QueryRow(h.ctx, "select count(*) from "+table).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		beforeReqs, beforeDeps := count("requests"), count("deployments")
+		h.wf.mu.Lock()
+		h.wf.startErr = errors.New("connection refused")
+		h.wf.mu.Unlock()
+		retryKey := uuid.NewString()
+		var upstream api.Problem
+		h.json("POST", "/api/v1/requests", "lmartin", draft, 502, &upstream, "Idempotency-Key", retryKey)
+		if upstream.Type != "https://rvav.dev/problems/upstream" {
+			t.Fatalf("unreachable Temporal problem = %+v", upstream)
+		}
+		if r, d := count("requests"), count("deployments"); r != beforeReqs || d != beforeDeps {
+			t.Fatalf("failed start kept rows: requests %d→%d, deployments %d→%d", beforeReqs, r, beforeDeps, d)
+		}
+		h.wf.mu.Lock()
+		h.wf.startErr = nil
+		h.wf.mu.Unlock()
+		var retried api.Request
+		h.json("POST", "/api/v1/requests", "lmartin", draft, 202, &retried, "Idempotency-Key", retryKey)
+		if count("requests") != beforeReqs+1 {
+			t.Fatalf("retry after a failed start did not create the request")
 		}
 	})
 }

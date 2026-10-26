@@ -153,12 +153,12 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	}
 
 	if err := s.Workflows.Start(ctx, req.ID); err != nil {
+		// Nothing has run yet: remove what was stored so the 502 ("try again")
+		// is true and a retry doesn't leave failed requests behind.
 		s.Log.Error("start workflow", "request", req.Number, "err", err)
-		_ = s.Store.SetRequestStatus(ctx, s.Store.Pool, req.ID, "failed")
-		_ = s.Store.SetRequestError(ctx, s.Store.Pool, req.ID, "", "The workflow engine did not accept the request. Try again in a few minutes.")
-		_ = s.Store.MarkRemainingSteps(ctx, s.Store.Pool, req.ID, "cancelled")
-		_ = s.Store.SetDeploymentsStatusForRequest(ctx, s.Store.Pool, req.ID, "failed")
-		s.publishRequest(ctx, req.ID)
+		if derr := s.Store.DeleteUnstartedRequest(ctx, req.ID); derr != nil {
+			s.Log.Error("remove unstarted request", "request", req.Number, "err", derr)
+		}
 		return store.RequestRow{}, &UpstreamError{System: "Temporal", Err: err}
 	}
 	s.publishRequest(ctx, req.ID)

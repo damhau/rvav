@@ -8,6 +8,7 @@ docker compose -f deploy/docker-compose.yml up --build
 
 | Service | URL | Notes |
 |---|---|---|
+| Web app | http://localhost:3000 | nginx serving the built app and proxying `/api` to the API |
 | API | http://localhost:8080/api/v1 | Dev authentication by default |
 | Temporal UI | http://localhost:8233 | Workflow history of every request |
 | Keycloak | http://localhost:8081 | `admin` / `admin`; realm `rvav`, users `lea`, `marc`, `thomas` (password `rvav`) |
@@ -21,7 +22,12 @@ looks in the timeline.
 To use Keycloak sign-in instead of dev authentication, start with
 `RVAV_AUTH_MODE=oidc`. Tokens are issued for `http://localhost:8081/realms/rvav`
 and the API discovers Keycloak at `http://keycloak:8080` inside the network.
+The web app reads the same variable, but at build time, so rebuild it when you
+switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --build`.
 This combination has not been tested yet.
+
+For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
+as you edit and uses the same API on `:8080`.
 
 ## Without Docker
 

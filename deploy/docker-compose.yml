@@ -1,5 +1,6 @@
 # Local development stack: docker compose -f deploy/docker-compose.yml up --build
 #
+#   Web app        http://localhost:3000          (dev auth by default)
 #   API            http://localhost:8080/api/v1   (dev auth by default)
 #   Temporal UI    http://localhost:8233
 #   Keycloak       http://localhost:8081          (admin / admin, realm "rvav")
@@ -117,6 +118,21 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       vcsim-bootstrap: { condition: service_completed_successfully }
+
+  # The web app, served by nginx, which proxies /api to the api service.
+  # Sign-in follows RVAV_AUTH_MODE; it is baked in at build time, so after
+  # changing it run: docker compose -f deploy/docker-compose.yml up --build web
+  web:
+    build:
+      context: ../web
+      args:
+        VITE_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
+        VITE_OIDC_AUTHORITY: http://localhost:8081/realms/rvav
+        VITE_OIDC_CLIENT_ID: rvav
+    environment:
+      RVAV_API_UPSTREAM: http://api:8080
+    ports: ["3000:8080"]
+    depends_on: [api]
 
 volumes:
   pgdata:
