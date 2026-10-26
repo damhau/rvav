@@ -218,10 +218,10 @@ func catalogItems() []item {
 
 	s, u, in, bp = awxItem("ddi-dns-record", false, "DNS record",
 		map[string]any{
-			"name":   map[string]any{"type": "string", "pattern": "^[a-z0-9-]{1,63}$"},
-			"type":   map[string]any{"type": "string", "enum": []string{"A", "CNAME", "TXT"}},
-			"value":  map[string]any{"type": "string", "minLength": 1},
-			"zone":   map[string]any{"type": "string", "enum": []string{"corp.example"}},
+			"name":  map[string]any{"type": "string", "pattern": "^[a-z0-9-]{1,63}$"},
+			"type":  map[string]any{"type": "string", "enum": []string{"A", "CNAME", "TXT"}},
+			"value": map[string]any{"type": "string", "minLength": 1},
+			"zone":  map[string]any{"type": "string", "enum": []string{"corp.example"}},
 		}, []string{"name", "type", "value", "zone"},
 		map[string]any{
 			"name":  map[string]any{"widget": "text", "label": "Name"},

@@ -99,10 +99,11 @@ func (a *App) VCenter(ctx context.Context) (vsphere.Driver, error) {
 	return a.vc, a.vcErr
 }
 
-// Temporal connects to the Temporal frontend once.
+// Temporal returns a Temporal client. It connects on first use, so the API
+// serves reads while Temporal is down and submitting answers 502.
 func (a *App) Temporal() (client.Client, error) {
 	a.tcOnce.Do(func() {
-		a.tc, a.tcErr = client.Dial(client.Options{
+		a.tc, a.tcErr = client.NewLazyClient(client.Options{
 			HostPort:  a.Cfg.Temporal.Address,
 			Namespace: a.Cfg.Temporal.Namespace,
 			Logger:    tlog.NewStructuredLogger(a.Log.With("component", "temporal")),
@@ -121,7 +122,7 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 			"default_user", a.Cfg.Auth.DevUser, "switch_with_header", auth.DevUserHeader)
 		return &auth.Dev{Store: a.Store, DefaultUser: a.Cfg.Auth.DevUser}, nil
 	}
-	return auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
+	return auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCDiscoveryURL, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
 }
 
 // Core builds the business service with the given workflow engine.

@@ -56,7 +56,7 @@ func (s *Store) ProjectsByID(ctx context.Context, idList []string) (map[string]P
 	return out, nil
 }
 
-// QuotaLimits returns the limits for one environment ('' for project-wide).
+// QuotaLimits returns the limits for one environment (” for project-wide).
 func (s *Store) QuotaLimits(ctx context.Context, projectID, environment string) ([]QuotaLimit, error) {
 	rows, _ := s.Pool.Query(ctx, `select environment, resource, limit_value, enforcement
 		from quotas where project_id = $1 and environment = $2 order by resource`, projectID, environment)

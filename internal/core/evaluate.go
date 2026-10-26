@@ -278,9 +278,9 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 	vars := PolicyVars(ev, p)
 	ev.Approval = api.ApprovalPreview{Policies: []struct {
 		Levels []struct {
-			Approvers []api.UserRef                      `json:"approvers"`
+			Approvers []api.UserRef                          `json:"approvers"`
 			Mode      *api.ApprovalPreviewPoliciesLevelsMode `json:"mode,omitempty"`
-			Name      *string                            `json:"name,omitempty"`
+			Name      *string                                `json:"name,omitempty"`
 		} `json:"levels"`
 		Name     string `json:"name"`
 		PolicyId string `json:"policy_id"`
@@ -310,9 +310,9 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		}
 		entry := struct {
 			Levels []struct {
-				Approvers []api.UserRef                      `json:"approvers"`
+				Approvers []api.UserRef                          `json:"approvers"`
 				Mode      *api.ApprovalPreviewPoliciesLevelsMode `json:"mode,omitempty"`
-				Name      *string                            `json:"name,omitempty"`
+				Name      *string                                `json:"name,omitempty"`
 			} `json:"levels"`
 			Name     string `json:"name"`
 			PolicyId string `json:"policy_id"`
@@ -320,9 +320,9 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		}{Name: pol.Name, PolicyId: pol.ID, Reason: pol.Reason}
 		for _, l := range levels {
 			lv := struct {
-				Approvers []api.UserRef                      `json:"approvers"`
+				Approvers []api.UserRef                          `json:"approvers"`
 				Mode      *api.ApprovalPreviewPoliciesLevelsMode `json:"mode,omitempty"`
-				Name      *string                            `json:"name,omitempty"`
+				Name      *string                                `json:"name,omitempty"`
 			}{Approvers: []api.UserRef{}, Name: present.Ptr(l.Name)}
 			if l.Mode != "" {
 				lv.Mode = present.Ptr(api.ApprovalPreviewPoliciesLevelsMode(l.Mode))

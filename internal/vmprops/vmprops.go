@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/vsphere"

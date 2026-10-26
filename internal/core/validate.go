@@ -68,6 +68,12 @@ func validateInputs(versionID string, schema json.RawMessage, inputs map[string]
 	var out []api.FieldError
 	var walk func(e *jsonschema.ValidationError)
 	walk = func(e *jsonschema.ValidationError) {
+		// "contains" explains itself through each item's mismatch; report it
+		// once on the list instead.
+		if _, ok := e.ErrorKind.(*kind.Contains); ok {
+			out = append(out, fieldErr("/inputs"+pointer(e.InstanceLocation), "contains", "A required option is missing from this list."))
+			return
+		}
 		if len(e.Causes) > 0 {
 			for _, c := range e.Causes {
 				walk(c)

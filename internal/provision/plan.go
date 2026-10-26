@@ -13,16 +13,16 @@ import (
 // Plan is everything the workflow needs, computed when the request is
 // submitted and stored on the request.
 type Plan struct {
-	Kind             string           `json:"kind"`
-	ApprovalRequired bool             `json:"approval_required"`
-	Quota            map[string]int   `json:"quota"`
-	VMs              []VMUnit         `json:"vms,omitempty"`
-	PostConfig       []Job            `json:"post_config,omitempty"`
-	AWX              *Job             `json:"awx,omitempty"`
-	Guest            blueprint.Guest  `json:"guest"`
-	Rollback         bool             `json:"rollback_on_failure"`
-	ExtraVars        map[string]any   `json:"extra_vars,omitempty"`
-	Context          map[string]any   `json:"context,omitempty"`
+	Kind             string          `json:"kind"`
+	ApprovalRequired bool            `json:"approval_required"`
+	Quota            map[string]int  `json:"quota"`
+	VMs              []VMUnit        `json:"vms,omitempty"`
+	PostConfig       []Job           `json:"post_config,omitempty"`
+	AWX              *Job            `json:"awx,omitempty"`
+	Guest            blueprint.Guest `json:"guest"`
+	Rollback         bool            `json:"rollback_on_failure"`
+	ExtraVars        map[string]any  `json:"extra_vars,omitempty"`
+	Context          map[string]any  `json:"context,omitempty"`
 }
 
 // VMUnit is one VM and the deployment it belongs to.

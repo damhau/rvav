@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -31,6 +32,7 @@ func main() {
 		log.Fatalf("create model: %v", err)
 	}
 	model.Service.Listen = &url.URL{Host: *addr}
+	model.Service.TLS = new(tls.Config) // self-signed, like a fresh vCenter
 	srv := model.Service.NewServer()
 	defer srv.Close()
 
@@ -43,7 +45,7 @@ func main() {
 	}
 	u := *srv.URL
 	pass, _ := u.User.Password()
-	fmt.Printf("vcsim ready with the GVA layout\n  RVAV_VCENTER_URL=https://%s/sdk\n  RVAV_VCENTER_USERNAME=%s\n  RVAV_VCENTER_PASSWORD=%s\n  RVAV_VCENTER_INSECURE=1\n",
-		u.Host, u.User.Username(), pass)
+	fmt.Printf("vcsim ready with the GVA layout\n  RVAV_VCENTER_URL=%s://%s/sdk\n  RVAV_VCENTER_USERNAME=%s\n  RVAV_VCENTER_PASSWORD=%s\n  RVAV_VCENTER_INSECURE=1\n",
+		u.Scheme, u.Host, u.User.Username(), pass)
 	<-ctx.Done()
 }

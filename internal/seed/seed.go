@@ -172,10 +172,10 @@ func Run(ctx context.Context, s *store.Store) error {
 			}
 		}
 		for _, l := range []struct {
-			env                 string
-			def, max            *int
-			extensions          int
-			action              string
+			env        string
+			def, max   *int
+			extensions int
+			action     string
 		}{{"dev", ptr(30), ptr(90), 2, "power_off_then_delete"}, {"tst", ptr(30), ptr(90), 2, "power_off_then_delete"}, {"prd", nil, nil, 0, "notify_only"}} {
 			if err := exec(`insert into lease_policies (environment, default_days, max_days, max_extensions, expiry_action)
 				values ($1,$2,$3,$4,$5) on conflict (environment) do update set default_days = excluded.default_days,

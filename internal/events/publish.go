@@ -17,7 +17,7 @@ import (
 // Failures are logged, not returned: a missed event costs a client refetch,
 // never a failed request.
 type Publisher struct {
-	Store *store.Store
+	Store  *store.Store
 	Logger *slog.Logger
 
 	secrets sync.Map // version ID -> map[string]bool
