@@ -118,6 +118,10 @@ func (a *App) Temporal() (client.Client, error) {
 // Authenticator builds the configured authentication mode.
 func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 	if a.Cfg.Auth.Mode == "dev" {
+		if !a.Cfg.Auth.AllowDev {
+			return nil, errors.New("RVAV_AUTH_MODE=dev trusts every request without signing in; " +
+				"it only starts with RVAV_ALLOW_DEV_AUTH=1, which is for developer machines and tests")
+		}
 		a.Log.Warn("AUTH MODE IS DEV: every request is trusted as a seeded user. Never use this outside a developer machine.",
 			"default_user", a.Cfg.Auth.DevUser, "switch_with_header", auth.DevUserHeader)
 		return &auth.Dev{Store: a.Store, DefaultUser: a.Cfg.Auth.DevUser}, nil

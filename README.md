@@ -24,7 +24,7 @@ vRealize / Aria Automation (vRA).
 | Whole stack | `docker compose -f deploy/docker-compose.yml up --build`, then http://localhost:3000 | [deploy/README.md](deploy/README.md) |
 | Backend only | `make vcsim`, `rvav migrate -seed`, `rvav dev` | [deploy/README.md](deploy/README.md), [internal/README.md](internal/README.md) |
 | Frontend on mock data | `cd web && pnpm install && pnpm dev` | [web/README.md](web/README.md) |
-| Frontend on the local API | `cd web && pnpm dev:real` (API on `:8080` with `RVAV_AUTH_MODE=dev`) | [web/README.md](web/README.md) |
+| Frontend on the local API | `cd web && pnpm dev:real` (API on `:8080` with `RVAV_AUTH_MODE=dev` and `RVAV_ALLOW_DEV_AUTH=1`) | [web/README.md](web/README.md) |
 | All checks | `make check`: spec lint, generated code, Go vet and tests, end-to-end tests, web app checks and Playwright (what CI runs) | [Makefile](Makefile) |
 
 ## Documentation

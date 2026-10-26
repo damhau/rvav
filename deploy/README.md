@@ -69,6 +69,10 @@ With `RVAV_AUTH_MODE=dev` every request is trusted as a seeded user:
 as someone else. The API logs a warning at startup and answers with
 `X-Rvav-Auth-Mode: dev`.
 
+The API refuses to start in this mode unless `RVAV_ALLOW_DEV_AUTH=1` is also
+set (the compose stack and `.env.example` set it), so a stray
+`RVAV_AUTH_MODE=dev` can't open a real installation.
+
 ## Approvals
 
 Slice 1 has no approvals API. Production requests wait for approval; decide

@@ -37,6 +37,9 @@ type AuthConfig struct {
 	OIDCClientID     string
 	GroupsClaim      string
 	DevUser          string
+	// AllowDev must be set (RVAV_ALLOW_DEV_AUTH=1) for dev mode to start, so
+	// that a stray RVAV_AUTH_MODE=dev can't open a real installation.
+	AllowDev bool
 }
 
 type TemporalConfig struct {
@@ -86,6 +89,7 @@ func Load() (Config, error) {
 			OIDCClientID:     env("RVAV_OIDC_CLIENT_ID", "rvav"),
 			GroupsClaim:      env("RVAV_OIDC_GROUPS_CLAIM", "groups"),
 			DevUser:          env("RVAV_DEV_USER", "lmartin"),
+			AllowDev:         boolean("RVAV_ALLOW_DEV_AUTH"),
 		},
 		Temporal: TemporalConfig{
 			Address:   env("RVAV_TEMPORAL_ADDRESS", "localhost:7233"),

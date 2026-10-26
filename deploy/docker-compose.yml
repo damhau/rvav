@@ -15,6 +15,8 @@ name: rvav
 x-rvav-env: &rvav-env
   RVAV_DATABASE_URL: postgres://rvav:rvav@postgres:5432/rvav?sslmode=disable
   RVAV_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
+  # A development stack: dev authentication is allowed here, never in production.
+  RVAV_ALLOW_DEV_AUTH: "1"
   # Tokens carry the issuer the browser sees; the API discovers Keycloak
   # inside the compose network.
   RVAV_OIDC_ISSUER: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}/realms/rvav

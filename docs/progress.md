@@ -31,7 +31,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S2.3 `make check` runs the whole gate locally (about 1 minute); `PNPM` can be overridden; Playwright no longer needs a global pnpm; screenshots go to `test-results/` unless `UPDATE_SCREENSHOTS=1`
 - [x] S2.4 CI (GitHub Actions, `.github/workflows/ci.yml`): Go vet, tests and end-to-end; web lint, typecheck, tests, build and Playwright; spec lint; generated-code check; the compose stack built from the Dockerfiles with `deploy/smoke.sh`. Green on the first run. It runs on every push to `main`; "required on pull requests" does not apply while commits go straight to `main`
 - [x] S2.5 Real Temporal: the worker connects once Temporal is healthy (S2.1); retries of transient errors and giving up after four attempts are tested; `e2e-stack/request.spec.ts` submits in the browser and reaches Ready through the compose stack (27 s, also in CI); workflows and their history are in the Temporal UI; `TestThroughTemporal` runs start, approval signal and cancel on a real Temporal dev server
-- [ ] S2.6 Refuse to start in dev auth mode unless an explicit development flag is set
+- [x] S2.6 Dev auth mode refuses to start without `RVAV_ALLOW_DEV_AUTH=1` (checked where the authenticator is built, so `api` and `dev` only); the compose stack and `.env.example` set it
 - [ ] S2.7 OIDC sign-in end to end with Keycloak: PKCE in the web app, token checks in the API, group-to-role mapping; Playwright test against the stack
 - [ ] S2.8 ADRs for the decisions S2 needs: where Temporal runs, hosting, identity provider
 - [ ] S2.9 Slice review, docs and roadmap status
