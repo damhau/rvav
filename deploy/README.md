@@ -15,6 +15,23 @@ docker compose -f deploy/docker-compose.yml up --build
 | vcsim | https://localhost:8989/sdk | `user` / `pass`; the GVA layout is created by `vcsim-bootstrap` |
 | PostgreSQL | localhost:5432 | `rvav` / `rvav` |
 
+Services start in order: the API and the worker wait until Temporal has
+created its `default` namespace, and the web app waits until the API is
+ready. `docker compose -f deploy/docker-compose.yml up --build -d --wait`
+returns once everything is healthy.
+
+When a port is already taken, change it with `RVAV_API_PORT`,
+`RVAV_WEB_PORT`, `RVAV_KEYCLOAK_PORT`, `RVAV_TEMPORAL_PORT`,
+`RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the
+shell or in `deploy/.env` (not committed). For example `RVAV_API_PORT=18080`.
+
+To check that the stack works, `deploy/smoke.sh` (needs curl and jq)
+submits a RHEL 9 server in dev and waits until the request succeeds:
+
+```sh
+RVAV_API_PORT=18080 deploy/smoke.sh
+```
+
 The stack uses the fake EfficientIP and the fake AWX. Set
 `RVAV_FAKE_AWX_FAIL_TASK="idm : join realm"` to see how a failed AWX task
 looks in the timeline.

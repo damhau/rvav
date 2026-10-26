@@ -7,13 +7,17 @@
 #   vcsim          https://localhost:8989/sdk     (user / pass)
 #
 # Image tags are pinned; check them against the registries when upgrading.
+# Host ports can be changed with RVAV_*_PORT variables, in the shell or in
+# deploy/.env (for example RVAV_API_PORT=18080 when 8080 is taken).
+
+name: rvav
 
 x-rvav-env: &rvav-env
   RVAV_DATABASE_URL: postgres://rvav:rvav@postgres:5432/rvav?sslmode=disable
   RVAV_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
   # Tokens carry the issuer the browser sees; the API discovers Keycloak
   # inside the compose network.
-  RVAV_OIDC_ISSUER: http://localhost:8081/realms/rvav
+  RVAV_OIDC_ISSUER: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}/realms/rvav
   RVAV_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/rvav
   RVAV_OIDC_CLIENT_ID: rvav
   RVAV_CORS_ORIGINS: ${RVAV_CORS_ORIGINS:-http://localhost:5173}
@@ -33,7 +37,7 @@ services:
       POSTGRES_USER: rvav
       POSTGRES_PASSWORD: rvav
       POSTGRES_DB: rvav
-    ports: ["5432:5432"]
+    ports: ["${RVAV_POSTGRES_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rvav -d rvav"]
@@ -49,16 +53,23 @@ services:
       POSTGRES_USER: rvav
       POSTGRES_PWD: rvav
       POSTGRES_SEEDS: postgres
-    ports: ["7233:7233"]
+    ports: ["${RVAV_TEMPORAL_PORT:-7233}:7233"]
     depends_on:
       postgres: { condition: service_healthy }
+    healthcheck:
+      # Ready once auto-setup has created the default namespace.
+      test: ["CMD", "temporal", "operator", "namespace", "describe", "-n", "default", "--address", "temporal:7233"]
+      interval: 2s
+      start_period: 10s
+      retries: 60
 
   temporal-ui:
     image: temporalio/ui:2.31.2
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-    ports: ["8233:8080"]
-    depends_on: [temporal]
+    ports: ["${RVAV_TEMPORAL_UI_PORT:-8233}:8080"]
+    depends_on:
+      temporal: { condition: service_healthy }
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0.6
@@ -66,15 +77,15 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
-    ports: ["8081:8080"]
+    ports: ["${RVAV_KEYCLOAK_PORT:-8081}:8080"]
     volumes: ["./keycloak:/opt/keycloak/data/import:ro"]
 
   vcsim:
     image: vmware/vcsim:v0.52.0
     command: ["-l", "0.0.0.0:8989"]
-    ports: ["8989:8989"]
+    ports: ["${RVAV_VCSIM_PORT:-8989}:8989"]
 
   # One-shot jobs: schema and seed data, then the GVA inventory in vcsim.
   migrate:
@@ -95,10 +106,14 @@ services:
     build: { context: .., dockerfile: Dockerfile }
     command: ["api"]
     environment: *rvav-env
-    ports: ["8080:8080"]
+    ports: ["${RVAV_API_PORT:-8080}:8080"]
     depends_on:
       migrate: { condition: service_completed_successfully }
-      temporal: { condition: service_started }
+      temporal: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "rvav", "healthcheck"]
+      interval: 2s
+      retries: 30
 
   worker:
     build: { context: .., dockerfile: Dockerfile }
@@ -108,7 +123,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       vcsim-bootstrap: { condition: service_completed_successfully }
-      temporal: { condition: service_started }
+      temporal: { condition: service_healthy }
 
   sync:
     build: { context: .., dockerfile: Dockerfile }
@@ -127,12 +142,17 @@ services:
       context: ../web
       args:
         VITE_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
-        VITE_OIDC_AUTHORITY: http://localhost:8081/realms/rvav
+        VITE_OIDC_AUTHORITY: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}/realms/rvav
         VITE_OIDC_CLIENT_ID: rvav
     environment:
       RVAV_API_UPSTREAM: http://api:8080
-    ports: ["3000:8080"]
-    depends_on: [api]
+    ports: ["${RVAV_WEB_PORT:-3000}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      retries: 30
 
 volumes:
   pgdata:

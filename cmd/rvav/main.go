@@ -8,10 +8,13 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/damhau/rvav/internal/app"
 	"github.com/damhau/rvav/internal/config"
@@ -33,6 +36,7 @@ Usage:
   rvav vcsim-bootstrap     create the GVA inventory in vcsim (development)
   rvav approve <request> [-reject] [-by <user>] [-comment <text>]
                            approve or reject a request waiting for approval
+  rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
 `
@@ -58,6 +62,10 @@ func logger(level string) *slog.Logger {
 }
 
 func run(ctx context.Context, cmd string, args []string) error {
+	// The images have no shell or curl, so the container probe is built in.
+	if cmd == "healthcheck" {
+		return healthcheck(ctx)
+	}
 	// migrate, seed and vcsim-bootstrap work without auth settings.
 	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "approve" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
@@ -131,6 +139,37 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	fmt.Fprint(os.Stderr, usage)
 	return fmt.Errorf("unknown command %q", cmd)
+}
+
+// healthcheck asks the API on this host for /readyz, which also checks the
+// database.
+func healthcheck(ctx context.Context) error {
+	addr := os.Getenv("RVAV_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+net.JoinHostPort(host, port)+"/readyz", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("readyz answered %s", resp.Status)
+	}
+	return nil
 }
 
 func runSeed(ctx context.Context, cfg config.Config, log *slog.Logger) error {
