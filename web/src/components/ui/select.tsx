@@ -17,7 +17,10 @@ export function Select({
   loading,
   disabled,
   className,
+  ...aria
 }: {
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
   id?: string;
   value: string;
   onChange: (v: string) => void;
@@ -31,15 +34,20 @@ export function Select({
     <S.Root value={value || undefined} onValueChange={onChange} disabled={disabled || loading}>
       <S.Trigger
         id={id}
+        {...aria}
         className={cn(
-          "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-[13px] text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:opacity-60 data-[placeholder]:text-faint",
+          "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-[13px] text-fg focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none disabled:opacity-60 data-[placeholder]:text-faint",
           className,
         )}
       >
         <span className="truncate">
           {loading ? <span className="text-faint">Loading…</span> : <S.Value placeholder={placeholder} />}
         </span>
-        {loading ? <LoaderCircle className="size-3.5 animate-spin text-faint" /> : <ChevronDown className="size-3.5 text-faint" />}
+        {loading ? (
+          <LoaderCircle className="size-3.5 animate-spin text-faint" />
+        ) : (
+          <ChevronDown className="size-3.5 text-faint" />
+        )}
       </S.Trigger>
       <S.Portal>
         <S.Content
@@ -52,7 +60,7 @@ export function Select({
               <S.Item
                 key={o.value}
                 value={o.value}
-                className="relative flex cursor-default select-none items-center gap-3 rounded-sm py-1.5 pl-6 pr-2 text-[13px] outline-none data-[highlighted]:bg-sunken"
+                className="relative flex cursor-default items-center gap-3 rounded-sm py-1.5 pr-2 pl-6 text-[13px] outline-none select-none data-[highlighted]:bg-sunken"
               >
                 <S.ItemIndicator className="absolute left-1.5">
                   <Check className="size-3.5 text-accent" />

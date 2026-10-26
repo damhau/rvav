@@ -13,14 +13,14 @@
   --line: #d5dbdf;
   --line-strong: #b9c2c8;
   --fg: #14191c;
-  --fg-muted: #56616a;
-  --fg-faint: #85909a;
+  --fg-muted: #4f5a63;
+  --fg-faint: #66717b;
   --accent: #0e6488;
   --accent-fg: #ffffff;
   --accent-soft: #dcedf4;
   --ok: #1d7a45;
   --ok-soft: #dff1e6;
-  --warn: #9a6207;
+  --warn: #8a5600;
   --warn-soft: #f8ecd3;
   --bad: #b3332b;
   --bad-soft: #f8e0de;
@@ -28,6 +28,12 @@
   --run-soft: #e1e8f8;
   --focus: #0e6488;
   --shadow: 0 1px 2px rgb(20 25 28 / 0.06), 0 4px 16px rgb(20 25 28 / 0.08);
+  --log-bg: #14191c;
+  --log-fg: #d8dee2;
+  --log-dim: #8b969e;
+  --log-ok: #6cc893;
+  --log-changed: #e5b558;
+  --log-bad: #f08a80;
 
   --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-code: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -42,8 +48,8 @@
     --line: #273036;
     --line-strong: #3a454c;
     --fg: #e4e9ec;
-    --fg-muted: #9aa6ae;
-    --fg-faint: #6b7780;
+    --fg-muted: #a3aeb6;
+    --fg-faint: #8a959e;
     --accent: #4fb0d8;
     --accent-fg: #06222e;
     --accent-soft: #123344;
@@ -57,6 +63,7 @@
     --run-soft: #1b2640;
     --focus: #4fb0d8;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+    --log-bg: #0b0e10;
     color-scheme: dark;
   }
 }
@@ -69,8 +76,8 @@
   --line: #273036;
   --line-strong: #3a454c;
   --fg: #e4e9ec;
-  --fg-muted: #9aa6ae;
-  --fg-faint: #6b7780;
+  --fg-muted: #a3aeb6;
+  --fg-faint: #8a959e;
   --accent: #4fb0d8;
   --accent-fg: #06222e;
   --accent-soft: #123344;
@@ -84,6 +91,7 @@
   --run-soft: #1b2640;
   --focus: #4fb0d8;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+  --log-bg: #0b0e10;
   color-scheme: dark;
 }
 
@@ -110,6 +118,12 @@
   --color-run-soft: var(--run-soft);
   --font-sans: var(--font-body);
   --font-mono: var(--font-code);
+  --color-log-bg: var(--log-bg);
+  --color-log-fg: var(--log-fg);
+  --color-log-dim: var(--log-dim);
+  --color-log-ok: var(--log-ok);
+  --color-log-changed: var(--log-changed);
+  --color-log-bad: var(--log-bad);
   --shadow-pop: var(--shadow);
   --radius-sm: 3px;
   --radius-md: 4px;

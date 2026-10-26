@@ -19,7 +19,7 @@ export function DialogContent({
       <D.Overlay className="fixed inset-0 z-40 bg-black/40" />
       <D.Content
         className={cn(
-          "fixed left-1/2 top-[12vh] z-50 w-[min(480px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-line bg-surface shadow-pop",
+          "fixed top-[12vh] left-1/2 z-50 w-[min(480px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-line bg-surface shadow-pop",
           className,
         )}
         {...props}

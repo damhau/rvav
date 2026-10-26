@@ -1,18 +1,7 @@
-import {
-  Database,
-  Globe,
-  KeyRound,
-  Lock,
-  Monitor,
-  Server,
-  Shield,
-  Users,
-  Check,
-  Copy,
-} from "lucide-react";
+import { Database, Globe, KeyRound, Lock, Monitor, Server, Shield, Users, Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { Tip } from "@/components/ui/tooltip";
-import type { ItemType } from "@/lib/types";
+import type { CatalogItemType } from "@/lib/api/types";
 import { cn, fullDate, relative } from "@/lib/utils";
 
 const icons: Record<string, React.ElementType> = {
@@ -29,13 +18,18 @@ const icons: Record<string, React.ElementType> = {
 export function ItemIcon({ name, className }: { name: string; className?: string }) {
   const I = icons[name] ?? Server;
   return (
-    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken text-muted", className)}>
+    <span
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken text-muted",
+        className,
+      )}
+    >
       <I className="size-4" strokeWidth={1.75} />
     </span>
   );
 }
 
-export const itemTypeLabel: Record<ItemType, string> = {
+export const itemTypeLabel: Record<CatalogItemType, string> = {
   vm_blueprint: "VM blueprint",
   awx_job_template: "AWX job template",
   awx_workflow: "AWX workflow",
@@ -64,7 +58,7 @@ export function CopyText({ value, className }: { value: string; className?: stri
       <button
         type="button"
         aria-label={`Copy ${value}`}
-        className="rounded-sm p-0.5 text-faint opacity-0 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        className="rounded-sm p-0.5 text-faint opacity-0 group-hover:opacity-100 hover:text-fg focus-visible:opacity-100"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();

@@ -13,7 +13,7 @@ export function TabsTrigger({ className, ...props }: React.ComponentProps<typeof
   return (
     <T.Trigger
       className={cn(
-        "-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent pb-2 pt-1 text-[13px] text-muted hover:text-fg data-[state=active]:border-accent data-[state=active]:font-medium data-[state=active]:text-fg",
+        "-mb-px flex items-center gap-1.5 border-b-2 border-transparent pt-1 pb-2 text-[13px] whitespace-nowrap text-muted hover:text-fg data-[state=active]:border-accent data-[state=active]:font-medium data-[state=active]:text-fg",
         className,
       )}
       {...props}
