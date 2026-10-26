@@ -2,6 +2,8 @@ dist
 dist-mockup
 node_modules
 pnpm-lock.yaml
+# Written by pnpm itself (allowBuilds, minimumReleaseAgeExclude).
+pnpm-workspace.yaml
 public/mockServiceWorker.js
 src/routeTree.gen.ts
 src/lib/api/schema.d.ts
