@@ -1,0 +1,87 @@
+{
+  "realm": "rvav",
+  "enabled": true,
+  "displayName": "rvav (development)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 900,
+  "groups": [
+    { "name": "rvav-admins" },
+    { "name": "rvav-auditors" },
+    { "name": "rvav-catalog-admins" },
+    { "name": "rvav-infra-leads" },
+    { "name": "rvav-web-admins" },
+    { "name": "rvav-web" },
+    { "name": "rvav-data" },
+    { "name": "rvav-fin" },
+    { "name": "rvav-core" }
+  ],
+  "clients": [
+    {
+      "clientId": "rvav",
+      "name": "rvav web app",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:5173/*", "http://localhost:8080/*"],
+      "webOrigins": ["http://localhost:5173", "http://localhost:8080"],
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "http://localhost:5173/*" },
+      "protocolMappers": [
+        {
+          "name": "audience rvav",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": { "included.client.audience": "rvav", "access.token.claim": "true", "id.token.claim": "false" }
+        },
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": { "claim.name": "groups", "full.path": "false", "access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true" }
+        },
+        {
+          "name": "title",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": { "user.attribute": "title", "claim.name": "title", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true" }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "lea",
+      "email": "lea.martin@corp.example",
+      "firstName": "Léa",
+      "lastName": "Martin",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": { "title": ["Platform engineer"] },
+      "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
+      "groups": ["/rvav-web-admins"]
+    },
+    {
+      "username": "marc",
+      "email": "marc.keller@corp.example",
+      "firstName": "Marc",
+      "lastName": "Keller",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": { "title": ["Infrastructure lead"] },
+      "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
+      "groups": ["/rvav-admins", "/rvav-infra-leads"]
+    },
+    {
+      "username": "thomas",
+      "email": "thomas.nguyen@corp.example",
+      "firstName": "Thomas",
+      "lastName": "Nguyen",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": { "title": ["Developer"] },
+      "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
+      "groups": ["/rvav-web"]
+    }
+  ]
+}

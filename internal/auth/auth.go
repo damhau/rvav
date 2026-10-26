@@ -134,8 +134,17 @@ type OIDC struct {
 	GroupsClaim string
 }
 
-func NewOIDC(ctx context.Context, s *store.Store, issuer, clientID, groupsClaim string) (*OIDC, error) {
-	provider, err := oidc.NewProvider(ctx, issuer)
+// NewOIDC discovers the provider. discoveryURL, when set, is where the API
+// reaches the provider when that differs from the issuer in tokens (for
+// example http://keycloak:8080 inside docker compose versus
+// http://localhost:8081 in the browser).
+func NewOIDC(ctx context.Context, s *store.Store, issuer, discoveryURL, clientID, groupsClaim string) (*OIDC, error) {
+	if discoveryURL != "" && discoveryURL != issuer {
+		ctx = oidc.InsecureIssuerURLContext(ctx, issuer)
+	} else {
+		discoveryURL = issuer
+	}
+	provider, err := oidc.NewProvider(ctx, discoveryURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery for %s: %w", issuer, err)
 	}

@@ -29,11 +29,14 @@ type Config struct {
 type AuthConfig struct {
 	// Mode is "oidc" (default) or "dev". Dev mode trusts a fixed user and
 	// must never be used outside a developer machine or tests.
-	Mode         string
-	OIDCIssuer   string
-	OIDCClientID string
-	GroupsClaim  string
-	DevUser      string
+	Mode       string
+	OIDCIssuer string
+	// OIDCDiscoveryURL is where the API reaches the provider, when that
+	// differs from the issuer in tokens. Empty means the issuer.
+	OIDCDiscoveryURL string
+	OIDCClientID     string
+	GroupsClaim      string
+	DevUser          string
 }
 
 type TemporalConfig struct {
@@ -77,11 +80,12 @@ func Load() (Config, error) {
 		LogLevel:    env("RVAV_LOG_LEVEL", "info"),
 		CORSOrigins: list("RVAV_CORS_ORIGINS"),
 		Auth: AuthConfig{
-			Mode:         env("RVAV_AUTH_MODE", "oidc"),
-			OIDCIssuer:   env("RVAV_OIDC_ISSUER", ""),
-			OIDCClientID: env("RVAV_OIDC_CLIENT_ID", "rvav"),
-			GroupsClaim:  env("RVAV_OIDC_GROUPS_CLAIM", "groups"),
-			DevUser:      env("RVAV_DEV_USER", "lmartin"),
+			Mode:             env("RVAV_AUTH_MODE", "oidc"),
+			OIDCIssuer:       env("RVAV_OIDC_ISSUER", ""),
+			OIDCDiscoveryURL: env("RVAV_OIDC_DISCOVERY_URL", ""),
+			OIDCClientID:     env("RVAV_OIDC_CLIENT_ID", "rvav"),
+			GroupsClaim:      env("RVAV_OIDC_GROUPS_CLAIM", "groups"),
+			DevUser:          env("RVAV_DEV_USER", "lmartin"),
 		},
 		Temporal: TemporalConfig{
 			Address:   env("RVAV_TEMPORAL_ADDRESS", "localhost:7233"),
