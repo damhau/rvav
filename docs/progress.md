@@ -27,7 +27,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 ## S2 Make it real
 
 - [x] S2.1 Compose stack runs for real: project name `rvav`, configurable host ports, start order and health checks (Temporal namespace, `rvav healthcheck`, nginx); `deploy/smoke.sh` submits a request and it succeeds through real Temporal in about 10 s
-- [ ] S2.2 End-to-end tests start their own PostgreSQL (`embedded-postgres`) and Temporal dev server when `RVAV_TEST_DATABASE_URL` is not set, so `make test-e2e` needs nothing installed
+- [x] S2.2 End-to-end tests start their own PostgreSQL (`internal/pgtest`, embedded-postgres, TCP only) when `RVAV_TEST_DATABASE_URL` is not set; `make test` runs `-short` and skips them. The Temporal dev server belongs to S2.5
 - [ ] S2.3 `make check` runs the whole gate locally
 - [ ] S2.4 CI (GitHub Actions): Go vet, tests and end-to-end; web lint, typecheck, tests, build and Playwright; spec lint; generated-code check; image builds
 - [ ] S2.5 Real Temporal: worker connection, retries, a browser submit reaches Ready through Temporal, history visible in the Temporal UI; end-to-end test through Temporal

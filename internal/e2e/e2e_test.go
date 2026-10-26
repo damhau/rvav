@@ -2,9 +2,11 @@
 // vcsim with the GVA layout, the fake EfficientIP and AWX, and the real
 // Provision workflow and activities in Temporal's test environment.
 //
-// It needs a database it may wipe:
+// It starts its own PostgreSQL (see pgtest), or uses a database it may wipe:
 //
 //	RVAV_TEST_DATABASE_URL=postgres://rvav:rvav@127.0.0.1:5432/rvav_test?sslmode=disable go test ./internal/e2e/
+//
+// It is skipped with -short.
 package e2e
 
 import (
@@ -13,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -41,10 +44,32 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/pgtest"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 )
+
+// databaseURL is set by TestMain.
+var databaseURL string
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		os.Exit(m.Run())
+	}
+	url, stop, err := pgtest.Start()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "e2e:", err)
+		os.Exit(1)
+	}
+	databaseURL = url
+	code := m.Run()
+	if err := stop(); err != nil {
+		fmt.Fprintln(os.Stderr, "e2e: stop PostgreSQL:", err)
+	}
+	os.Exit(code)
+}
 
 // recorder stands in for Temporal: the test runs each started workflow itself.
 type recorder struct {
@@ -144,7 +169,7 @@ func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWo
 }
 
 func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
-	url := os.Getenv("RVAV_TEST_DATABASE_URL")
+	url := databaseURL
 	st, err := store.Open(ctx, url)
 	if err != nil {
 		t.Fatal(err)
@@ -193,8 +218,8 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 }
 
 func TestSlice1EndToEnd(t *testing.T) {
-	if os.Getenv("RVAV_TEST_DATABASE_URL") == "" {
-		t.Skip("set RVAV_TEST_DATABASE_URL to a database the test may wipe")
+	if testing.Short() {
+		t.Skip("end-to-end test")
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)

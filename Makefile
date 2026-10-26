@@ -9,10 +9,9 @@ build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav-vcsim ./cmd/rvav-vcsim
 
 test: ## Unit tests, plus vcsim and workflow tests (no database needed)
-	$(GO) test ./...
+	$(GO) test -short ./...
 
-test-e2e: ## End-to-end test; needs RVAV_TEST_DATABASE_URL (the database is wiped)
-	@test -n "$$RVAV_TEST_DATABASE_URL" || (echo "set RVAV_TEST_DATABASE_URL" && exit 1)
+test-e2e: ## End-to-end tests on their own PostgreSQL, or on RVAV_TEST_DATABASE_URL (wiped)
 	$(GO) test ./internal/e2e/ -count=1 -v
 
 vet:

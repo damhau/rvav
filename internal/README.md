@@ -12,7 +12,7 @@ vCenter simulator with the GVA layout for local work.
 | `blueprint` | Catalog item blueprints and their CEL bindings |
 | `config` | `RVAV_*` environment variables |
 | `core` | Business rules: draft evaluation (schema, placement, naming, approval, quota, lease), form value sources, submit, cancel |
-| `e2e` | End-to-end test (needs `RVAV_TEST_DATABASE_URL`) |
+| `e2e` | End-to-end tests (`make test-e2e`); start their own PostgreSQL, skipped with `-short` |
 | `events` | Event outbox publisher and the SSE hub (Postgres LISTEN/NOTIFY) |
 | `httpapi` | HTTP handlers on the generated `ServerInterface`, problems, middleware |
 | `ids` | Prefixed ULIDs |
@@ -20,6 +20,7 @@ vCenter simulator with the GVA layout for local work.
 | `integrations/efficientip` | IPAM and DNS client and in-memory fake |
 | `integrations/awx` | AWX `/api/v2` client and a fake that plays jobs |
 | `inventory` | vCenter inventory sync into the cache tables and VM resource state |
+| `pgtest` | A PostgreSQL for tests: `RVAV_TEST_DATABASE_URL`, or embedded-postgres |
 | `naming` | Naming templates such as `{project}-{environment}-{inputs.role}{seq:03}` |
 | `policy` | CEL evaluation |
 | `present` | Store rows to API types, shared by handlers and events |
