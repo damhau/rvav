@@ -3,6 +3,8 @@
 Milestones are ordered so that each one ends in something usable end to end.
 
 ## M0 – Foundations
+- API contract for slice 1 in `api/openapi.yaml` (done), conventions in
+  `api/README.md`. See [ADR-0006](adr/0006-contract-first-vertical-slices.md).
 - Monorepo layout: `cmd/rvav`, `internal/...`, `api/openapi.yaml`, `web/`, `deploy/`.
 - docker-compose for development: PostgreSQL, Temporal, Keycloak, vcsim, a
   mock AWX and a mock EfficientIP for local work.

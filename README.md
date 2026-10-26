@@ -25,5 +25,6 @@ vRealize / Aria Automation (vRA).
 | [Integrations](docs/integrations.md) | vSphere, AWX, EfficientIP, identity, notifications |
 | [UX](docs/ux.md) | UX principles and key screens |
 | [Frontend](docs/frontend.md) | React/TS/Vite, TanStack Router + Query, Tailwind + shadcn/ui architecture |
+| [API](api/README.md) | OpenAPI contract (`api/openapi.yaml`) and API conventions |
 | [Roadmap](docs/roadmap.md) | MVP and later milestones |
 | [ADRs](docs/adr/) | Architecture decision records |

@@ -1,0 +1,1587 @@
+openapi: 3.1.0
+info:
+  title: rvav API
+  version: 0.1.0
+  summary: Self-service portal for VMware vSphere, with AWX for automation.
+  description: |
+    Slice 1 of the rvav API: identity, projects and quota, the service catalog,
+    request forms with dynamic values, submitting and following requests, and
+    deployments with their resources. Live updates arrive on `/events`.
+
+    Conventions (IDs, units, pagination, errors, idempotency, live events) are
+    described in `api/README.md`.
+
+    Not in this slice yet: approvals, day-2 actions, leases and policies admin,
+    catalog administration, AWX content sources.
+servers:
+  - url: /api/v1
+security:
+  - bearer: []
+tags:
+  - name: identity
+    description: Who is calling and what they may do.
+  - name: projects
+    description: Projects, environments and quota.
+  - name: catalog
+    description: Items users can request.
+  - name: forms
+    description: Request forms and their dynamic values.
+  - name: requests
+    description: Submitting requests and following their progress.
+  - name: deployments
+    description: What requests created, with live state from vCenter.
+  - name: events
+    description: Live updates over Server-Sent Events.
+
+paths:
+  /me:
+    get:
+      tags: [identity]
+      operationId: getMe
+      summary: The signed-in user, their global roles and project memberships
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /environments:
+    get:
+      tags: [projects]
+      operationId: listEnvironments
+      summary: Environments defined by administrators (for example dev, tst, prd)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Environment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: Projects the caller is a member of (all projects for administrators)
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /projects/{projectId}:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: One project
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /projects/{projectId}/quota:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [projects]
+      operationId: getProjectQuota
+      summary: Quota limits and usage, for the whole project or one environment
+      parameters:
+        - name: environment
+          in: query
+          description: Environment key. Omit for the project-wide quota.
+          schema: { $ref: "#/components/schemas/EnvironmentKey" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaUsage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/categories:
+    get:
+      tags: [catalog]
+      operationId: listCatalogCategories
+      summary: Categories with the number of items the caller can request in a project
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CatalogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /catalog/items:
+    get:
+      tags: [catalog]
+      operationId: listCatalogItems
+      summary: Catalog items shared with a project, in their published version
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { $ref: "#/components/schemas/CatalogItemType" }
+        - name: favourite
+          in: query
+          description: Only the caller's favourites.
+          schema: { type: boolean }
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItemPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /catalog/items/{itemId}:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog]
+      operationId: getCatalogItem
+      summary: One catalog item
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/items/{itemId}/favourite:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    put:
+      tags: [catalog]
+      operationId: addFavourite
+      summary: Add an item to the caller's favourites
+      responses:
+        "204": { description: Added (or already a favourite) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [catalog]
+      operationId: removeFavourite
+      summary: Remove an item from the caller's favourites
+      responses:
+        "204": { description: Removed (or was not a favourite) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/items/{itemId}/form:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [forms]
+      operationId: getRequestForm
+      summary: The request form for an item version, ready to render
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+        - name: version_id
+          in: query
+          description: A specific version. Defaults to the published version.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestForm" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /forms/values:
+    post:
+      tags: [forms]
+      operationId: resolveFieldValues
+      summary: Resolve a field's dynamic options or computed value
+      description: |
+        Called by the form renderer for fields with a `value_source`, again
+        whenever a field listed in `depends_on` changes. The server resolves
+        the source (vCenter inventory cache, EfficientIP, AWX, naming policy,
+        REST, CEL) and applies the project's placement rules, so the browser
+        never talks to those systems and never sees their credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FieldValuesQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldValues" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /requests/preview:
+    post:
+      tags: [requests]
+      operationId: previewRequest
+      summary: Validate a draft and show what it would do, without creating anything
+      description: |
+        Drives the summary panel of the request form: validation errors,
+        generated names, quota impact, the approval path, placement and lease.
+        Nothing is reserved; the real request may still differ (for example a
+        name taken in the meantime).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestDraft" }
+      responses:
+        "200":
+          description: The preview. Check `valid` and `errors`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /requests:
+    get:
+      tags: [requests]
+      operationId: listRequests
+      summary: Requests visible to the caller
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - name: status
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/RequestStatus" }
+        - name: requester
+          in: query
+          description: "`me`, or a user ID."
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [requests]
+      operationId: createRequest
+      summary: Submit a request
+      description: |
+        Validates the draft again on the server, checks entitlement and quota,
+        then starts the workflow. The response is sent before any external
+        system is called; follow progress with `/requests/{requestId}/steps`
+        and the `request.*` events.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestDraft" }
+      responses:
+        "202":
+          description: Accepted
+          headers:
+            Location:
+              description: URL of the new request
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /requests/{requestId}:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    get:
+      tags: [requests]
+      operationId: getRequest
+      summary: One request
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /requests/{requestId}/steps:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    get:
+      tags: [requests]
+      operationId: listRequestSteps
+      summary: The request timeline, as a tree of steps
+      responses:
+        "200":
+          description: Top-level steps in execution order, each with its children
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Step" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /requests/{requestId}/steps/{stepId}/log:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+      - name: stepId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [requests]
+      operationId: getStepLog
+      summary: Output of a step, such as an AWX job's stdout, read incrementally
+      parameters:
+        - name: offset
+          in: query
+          description: The `next_offset` from the previous chunk. Start at 0.
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          description: Maximum number of lines.
+          schema: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogChunk" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /requests/{requestId}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    post:
+      tags: [requests]
+      operationId: cancelRequest
+      summary: Cancel a request that is waiting or running
+      description: |
+        A pending or scheduled request is cancelled at once. A running request
+        stops after its current step and rolls back what it created, following
+        the catalog item's rollback policy.
+      responses:
+        "202":
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /deployments:
+    get:
+      tags: [deployments]
+      operationId: listDeployments
+      summary: Deployments visible to the caller
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - name: status
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/DeploymentStatus" }
+        - name: environment
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/EnvironmentKey" }
+        - name: owner
+          in: query
+          description: "`me`, or a user ID."
+          schema: { type: string }
+        - name: lease_expires_before
+          in: query
+          schema: { type: string, format: date-time }
+        - { $ref: "#/components/parameters/Search" }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, -name, created_at, -created_at, lease_expires_at, -lease_expires_at]
+            default: name
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /deployments/{deploymentId}:
+    parameters:
+      - name: deploymentId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [deployments]
+      operationId: getDeployment
+      summary: One deployment with its resources
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /events:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      summary: Live updates as Server-Sent Events
+      description: |
+        One stream per browser tab. Each SSE message has `id`, `event` (the
+        event type) and `data` (the JSON `Event` below). The server sends a
+        `heartbeat` event every 15 seconds. On reconnect, send
+        `Last-Event-ID` to receive what was missed; if that is too old, the
+        server sends `resync` and the client should refetch its queries.
+
+        Only events the caller is allowed to see are sent.
+      parameters:
+        - name: topics
+          in: query
+          required: true
+          description: |
+            Comma-separated topics: `requests`, `deployments`, `notifications`,
+            or a single object such as `request:<id>` or `deployment:<id>`.
+            `requests` and `deployments` are limited to `project_id`.
+          schema: { type: string, examples: ["requests,deployments,notifications"] }
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - name: Last-Event-ID
+          in: header
+          schema: { type: string }
+      responses:
+        "200":
+          description: An open event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        An OIDC access token (JWT) from the organisation's identity provider,
+        or an rvav API token (prefix `rvav_pat_`) for automation.
+
+  parameters:
+    ProjectIdPath:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string }
+    ProjectIdQuery:
+      name: project_id
+      in: query
+      schema: { type: string }
+    ProjectIdQueryRequired:
+      name: project_id
+      in: query
+      required: true
+      schema: { type: string }
+    ItemIdPath:
+      name: itemId
+      in: path
+      required: true
+      description: Catalog item ID or slug.
+      schema: { type: string }
+    RequestIdPath:
+      name: requestId
+      in: path
+      required: true
+      description: Request ID or number (for example `REQ-10491`).
+      schema: { type: string }
+    Search:
+      name: q
+      in: query
+      description: Free-text search.
+      schema: { type: string, maxLength: 200 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Cursor:
+      name: cursor
+      in: query
+      description: The `next_cursor` from the previous page.
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        A client-generated UUID. Retrying with the same key and body returns
+        the original response; the same key with a different body returns 409.
+        Keys are kept for 24 hours.
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: The request is malformed
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: The caller is not allowed to do this
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Not found, or not visible to the caller
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: The current state does not allow this, or an idempotency key was reused with a different body
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ValidationFailed:
+      description: One or more inputs are invalid. See `errors`.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UpstreamError:
+      description: vCenter, EfficientIP or AWX did not answer or returned an error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    # ── Common ────────────────────────────────────────────────────────────
+    Problem:
+      description: RFC 9457 problem details.
+      type: object
+      required: [type, title, status, request_id]
+      properties:
+        type:
+          type: string
+          description: A URI identifying the problem type, for example `https://rvav.dev/problems/quota-exceeded`.
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        request_id:
+          type: string
+          description: Correlation ID, also in the `X-Request-Id` response header. Quote it to support.
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: JSON pointer into the submitted inputs, for example `/inputs/memory_gb`. Empty for form-level errors.
+        code:
+          type: string
+          description: Stable machine code, for example `required`, `maximum`, `name_taken`, `quota_exceeded`.
+        message: { type: string }
+
+    PageInfo:
+      type: object
+      properties:
+        next_cursor:
+          type: [string, "null"]
+          description: Null on the last page.
+
+    UserRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+
+    # ── Identity and projects ─────────────────────────────────────────────
+    Me:
+      type: object
+      required: [user, global_roles, projects]
+      properties:
+        user: { $ref: "#/components/schemas/UserRef" }
+        title: { type: string, description: Job title from the identity provider. }
+        global_roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, catalog-admin, auditor, user]
+        projects:
+          type: array
+          items:
+            type: object
+            required: [project, role]
+            properties:
+              project: { $ref: "#/components/schemas/ProjectRef" }
+              role: { $ref: "#/components/schemas/ProjectRole" }
+
+    ProjectRole:
+      type: string
+      enum: [project-admin, member, viewer]
+
+    EnvironmentKey:
+      type: string
+      pattern: "^[a-z][a-z0-9]{1,9}$"
+      examples: [dev, tst, prd]
+
+    Environment:
+      type: object
+      required: [key, name, production, order]
+      properties:
+        key: { $ref: "#/components/schemas/EnvironmentKey" }
+        name: { type: string, examples: [Production] }
+        production:
+          type: boolean
+          description: Production environments are highlighted in the UI and usually carry stricter policies.
+        order: { type: integer, description: Display order. }
+
+    ProjectRef:
+      type: object
+      required: [id, code, name]
+      properties:
+        id: { type: string }
+        code:
+          type: string
+          description: Short code used in names, for example `web` in `web-prd-front001`.
+          pattern: "^[a-z][a-z0-9]{1,7}$"
+        name: { type: string }
+
+    Project:
+      allOf:
+        - $ref: "#/components/schemas/ProjectRef"
+        - type: object
+          required: [environments]
+          properties:
+            description: { type: string }
+            cost_center: { type: string }
+            environments:
+              type: array
+              description: Environments this project may deploy to.
+              items: { $ref: "#/components/schemas/EnvironmentKey" }
+            my_role:
+              oneOf:
+                - $ref: "#/components/schemas/ProjectRole"
+                - type: "null"
+
+    ProjectPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Project" }
+
+    QuotaResource:
+      type: string
+      enum: [vcpu, memory_gb, storage_gb, vm_count]
+
+    QuotaUsage:
+      type: object
+      required: [project_id, lines]
+      properties:
+        project_id: { type: string }
+        environment:
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+        lines:
+          type: array
+          items:
+            type: object
+            required: [resource, used, reserved]
+            properties:
+              resource: { $ref: "#/components/schemas/QuotaResource" }
+              limit:
+                type: [integer, "null"]
+                description: Null when unlimited.
+              used: { type: integer, description: Allocated by existing deployments. }
+              reserved: { type: integer, description: Held by requests that are approved or running but not finished. }
+              enforcement: { type: string, enum: [hard, soft] }
+
+    # ── Catalog ───────────────────────────────────────────────────────────
+    CatalogItemType:
+      type: string
+      enum: [vm_blueprint, awx_job_template, awx_workflow, composite]
+
+    CatalogCategory:
+      type: object
+      required: [key, name, item_count]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        item_count: { type: integer }
+
+    ApprovalHint:
+      type: string
+      description: |
+        Shown on catalog cards. `conditional` means some inputs (for example a
+        production environment) trigger an approval policy. The exact path is
+        returned by `/requests/preview`.
+      enum: [never, conditional, always]
+
+    CatalogItem:
+      type: object
+      required: [id, slug, name, summary, category, type, icon, version, approval, favourite, source]
+      properties:
+        id: { type: string }
+        slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,62}$" }
+        name: { type: string }
+        summary: { type: string, maxLength: 200 }
+        description_md: { type: string, description: Markdown. }
+        category: { type: string, description: Category key. }
+        type: { $ref: "#/components/schemas/CatalogItemType" }
+        icon: { type: string, description: "Icon name from the UI icon set, or `upload:<id>` for a custom SVG." }
+        tags:
+          type: array
+          items: { type: string }
+        version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        typical_duration_seconds:
+          type: [integer, "null"]
+          description: Median duration of the last 30 successful requests.
+        approval: { $ref: "#/components/schemas/ApprovalHint" }
+        favourite: { type: boolean }
+        featured: { type: boolean }
+        requests_last_30_days: { type: integer }
+        source:
+          type: object
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [native, awx] }
+            awx_template_id: { type: integer }
+            awx_template_name: { type: string }
+
+    CatalogItemVersionRef:
+      type: object
+      required: [id, number]
+      properties:
+        id: { type: string }
+        number:
+          type: string
+          description: Display version, for example `3.2`, or `AWX #47` for an imported template.
+        published_at: { type: string, format: date-time }
+
+    CatalogItemPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/CatalogItem" }
+
+    # ── Forms ─────────────────────────────────────────────────────────────
+    RequestForm:
+      type: object
+      required: [item_id, version_id, schema, ui_schema, initial_values]
+      properties:
+        item_id: { type: string }
+        version_id: { type: string }
+        schema:
+          type: object
+          description: JSON Schema (draft 2020-12) of `inputs`. The server validates against it on preview and submit.
+          additionalProperties: true
+        ui_schema: { $ref: "#/components/schemas/UiSchema" }
+        initial_values:
+          type: object
+          description: Defaults, including values computed for this user and project.
+          additionalProperties: true
+
+    UiSchema:
+      type: object
+      required: [layout, fields]
+      properties:
+        layout:
+          type: object
+          required: [kind, sections]
+          properties:
+            kind: { type: string, enum: [page, wizard] }
+            sections:
+              type: array
+              items: { $ref: "#/components/schemas/UiSection" }
+        fields:
+          type: object
+          description: Presentation and behaviour per input, keyed by the input's name in `schema`.
+          additionalProperties: { $ref: "#/components/schemas/UiField" }
+
+    UiSection:
+      type: object
+      required: [key, title, fields]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        description: { type: string }
+        columns: { type: integer, minimum: 1, maximum: 4, default: 2 }
+        fields:
+          type: array
+          description: Input names, in display order.
+          items: { type: string }
+
+    UiWidget:
+      type: string
+      enum:
+        - text
+        - textarea
+        - number
+        - slider
+        - toggle
+        - select
+        - multiselect
+        - segmented
+        - radio_cards
+        - checklist
+        - date
+        - datetime
+        - tags
+        - key_value
+        - datagrid
+        - secret
+        - info
+        - computed
+        - vsphere_cluster
+        - vsphere_datastore
+        - vsphere_network
+        - vsphere_template
+        - vsphere_folder
+        - vsphere_vm
+        - ipam_subnet
+        - ipam_address
+        - dns_zone
+        - awx_inventory
+        - awx_credential
+        - project
+        - user
+        - deployment
+
+    UiField:
+      type: object
+      required: [widget, label]
+      properties:
+        widget: { $ref: "#/components/schemas/UiWidget" }
+        label: { type: string }
+        help: { type: string }
+        placeholder: { type: string }
+        options:
+          type: array
+          description: Static options. Ignored when `value_source` is set.
+          items: { $ref: "#/components/schemas/Option" }
+        value_source: { $ref: "#/components/schemas/ValueSource" }
+        depends_on:
+          type: array
+          description: Inputs whose change re-resolves this field's value source and rules.
+          items: { type: string }
+        rules: { $ref: "#/components/schemas/UiRules" }
+        secret:
+          type: boolean
+          description: Stored encrypted, never returned by the API, passed to AWX only at launch.
+        expose_to_inventory:
+          type: boolean
+          description: Published as a host variable in the AWX dynamic inventory.
+
+    UiRules:
+      type: object
+      description: |
+        CEL expressions over `inputs`, `project`, `user` and `environment`.
+        The server evaluates them on preview and submit; the UI may evaluate
+        them too for instant feedback.
+      properties:
+        visible: { type: string, examples: ['inputs.environment != "prd"'] }
+        required: { type: string }
+        read_only: { type: string }
+        value:
+          type: string
+          description: Computed value. The field becomes read-only.
+
+    ValueSource:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [builtin, rest, cel]
+        name:
+          type: string
+          description: |
+            For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
+            `vsphere.networks`, `vsphere.templates`, `vsphere.folders`,
+            `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
+            `awx.inventories`, `awx.credentials`, `naming.preview`.
+          examples: [vsphere.datastores]
+        params:
+          type: object
+          description: Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
+          additionalProperties: true
+
+    Option:
+      type: object
+      required: [value, label]
+      properties:
+        value: { type: string }
+        label: { type: string }
+        meta:
+          type: string
+          description: Secondary text, for example `18.4 TB free`.
+        disabled: { type: boolean }
+        disabled_reason: { type: string }
+
+    FieldValuesQuery:
+      type: object
+      required: [version_id, project_id, field, inputs]
+      properties:
+        version_id: { type: string }
+        project_id: { type: string }
+        field: { type: string, description: Input name. }
+        inputs:
+          type: object
+          description: Current form values.
+          additionalProperties: true
+        search:
+          type: string
+          description: Text typed in a searchable select.
+
+    FieldValues:
+      type: object
+      required: [field]
+      properties:
+        field: { type: string }
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/Option" }
+        value:
+          description: For computed fields and sources such as `naming.preview` or `ipam.next_free_address`.
+        default:
+          type: string
+          description: Suggested option value when the current value is empty or no longer valid.
+        cache_seconds:
+          type: integer
+          description: How long the client may reuse this answer for the same inputs.
+
+    # ── Requests ──────────────────────────────────────────────────────────
+    RequestDraft:
+      type: object
+      required: [catalog_item_id, version_id, project_id, environment, inputs]
+      properties:
+        catalog_item_id: { type: string }
+        version_id: { type: string }
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        inputs:
+          type: object
+          additionalProperties: true
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 1
+          description: Number of identical deployments to create.
+        on_behalf_of:
+          type: string
+          description: User ID of the future owner. Needs the project-admin role.
+        justification:
+          type: string
+          maxLength: 2000
+          description: Shown to approvers.
+        lease_days:
+          type: [integer, "null"]
+          minimum: 1
+          description: Null for the policy default, or no lease where the policy allows it.
+        scheduled_at:
+          type: string
+          format: date-time
+          description: Start later instead of now. Approval, if needed, still happens first.
+
+    RequestPreview:
+      type: object
+      required: [valid, errors, quota, approval]
+      properties:
+        valid: { type: boolean }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+        names:
+          type: array
+          description: VM names the naming policy would give, one per VM.
+          items: { type: string }
+        addresses:
+          type: array
+          description: Next free IP addresses, as a hint only. Reserved when the request starts.
+          items: { type: string }
+        placement:
+          type: object
+          properties:
+            cluster: { type: string }
+            datastore: { type: string }
+            folder: { type: string }
+            network: { type: string }
+            subnet: { type: string }
+        quota:
+          type: array
+          items: { $ref: "#/components/schemas/QuotaImpact" }
+        approval: { $ref: "#/components/schemas/ApprovalPreview" }
+        lease:
+          type: object
+          properties:
+            default_days: { type: [integer, "null"] }
+            max_days: { type: [integer, "null"] }
+            expires_at: { type: [string, "null"], format: date-time }
+
+    QuotaImpact:
+      type: object
+      required: [resource, used, adding, exceeds]
+      properties:
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        limit: { type: [integer, "null"] }
+        used: { type: integer, description: Used plus reserved. }
+        adding: { type: integer }
+        exceeds: { type: boolean }
+        enforcement: { type: string, enum: [hard, soft] }
+
+    ApprovalPreview:
+      type: object
+      required: [required, policies]
+      properties:
+        required: { type: boolean }
+        policies:
+          type: array
+          description: Matching approval policies, in the order their levels run.
+          items:
+            type: object
+            required: [policy_id, name, reason, levels]
+            properties:
+              policy_id: { type: string }
+              name: { type: string }
+              reason:
+                type: string
+                description: Plain-language reason, for example `Production VM above 32 GB RAM`.
+              levels:
+                type: array
+                items:
+                  type: object
+                  required: [approvers]
+                  properties:
+                    name: { type: string, examples: [Infrastructure leads] }
+                    approvers:
+                      type: array
+                      items: { $ref: "#/components/schemas/UserRef" }
+                    mode: { type: string, enum: [any, all], default: any }
+        typical_wait_seconds:
+          type: [integer, "null"]
+          description: Median approval time for these policies over the last 30 days.
+
+    RequestStatus:
+      type: string
+      enum: [pending_approval, scheduled, queued, running, succeeded, failed, rejected, cancelling, cancelled]
+
+    Request:
+      type: object
+      required: [id, number, title, status, catalog_item, version, project, environment, requester, submitted_at, progress]
+      properties:
+        id: { type: string }
+        number: { type: string, examples: [REQ-10491] }
+        title:
+          type: string
+          description: For example `RHEL 9 server · web-dev-app007`.
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        catalog_item:
+          type: object
+          required: [id, slug, name, type]
+          properties:
+            id: { type: string }
+            slug: { type: string }
+            name: { type: string }
+            type: { $ref: "#/components/schemas/CatalogItemType" }
+        version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        requester: { $ref: "#/components/schemas/UserRef" }
+        on_behalf_of: { $ref: "#/components/schemas/UserRef" }
+        inputs:
+          type: object
+          description: Submitted inputs. Secret fields are replaced by `"••••"`.
+          additionalProperties: true
+        count: { type: integer }
+        justification: { type: string }
+        submitted_at: { type: string, format: date-time }
+        scheduled_at: { type: [string, "null"], format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+        deployment_ids:
+          type: array
+          items: { type: string }
+        current_step:
+          oneOf:
+            - type: object
+              required: [id, title]
+              properties:
+                id: { type: string }
+                title: { type: string }
+            - type: "null"
+        progress:
+          type: object
+          required: [done, total]
+          properties:
+            done: { type: integer }
+            total: { type: integer }
+        error:
+          oneOf:
+            - type: object
+              required: [step_id, message]
+              properties:
+                step_id: { type: string }
+                message: { type: string }
+            - type: "null"
+
+    RequestPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Request" }
+
+    StepStatus:
+      type: string
+      enum: [pending, running, done, failed, skipped, cancelled]
+
+    Step:
+      type: object
+      required: [id, key, title, status, children, has_log]
+      properties:
+        id: { type: string }
+        key:
+          type: string
+          description: Stable step type, for example `ipam.reserve`, `vsphere.clone`, `awx.job`, `awx.task`.
+        title: { type: string }
+        detail: { type: string }
+        system:
+          type: string
+          enum: [rvav, policy, vcenter, efficientip, awx]
+        status: { $ref: "#/components/schemas/StepStatus" }
+        started_at: { type: [string, "null"], format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+        error: { type: string, description: Present when `status` is `failed`. }
+        external_ref:
+          type: object
+          description: The object in the external system, for linking out.
+          required: [kind, id]
+          properties:
+            kind:
+              type: string
+              enum: [awx_job, awx_workflow_job, awx_inventory_update, vcenter_task, vcenter_vm, ipam_address, dns_record]
+            id: { type: string }
+            url: { type: string, format: uri }
+        has_log: { type: boolean }
+        children:
+          type: array
+          description: For AWX jobs, one child per task.
+          items: { $ref: "#/components/schemas/Step" }
+
+    LogChunk:
+      type: object
+      required: [step_id, offset, next_offset, complete, lines]
+      properties:
+        step_id: { type: string }
+        offset: { type: integer }
+        next_offset: { type: integer }
+        complete:
+          type: boolean
+          description: True when the step has finished and no more lines will come.
+        lines:
+          type: array
+          items:
+            type: object
+            required: [n, text]
+            properties:
+              n: { type: integer, description: "Line number, from 0." }
+              text: { type: string, description: "Plain text, ANSI codes removed." }
+              kind:
+                type: string
+                description: Hint for colouring Ansible output.
+                enum: [plain, header, ok, changed, failed, skipped, unreachable, recap]
+
+    # ── Deployments ───────────────────────────────────────────────────────
+    DeploymentStatus:
+      type: string
+      enum: [provisioning, ready, updating, failed, deleting, deleted]
+
+    Deployment:
+      type: object
+      required: [id, name, status, project, environment, catalog_item, version, owner, created_at, lease, vm_count, vms_powered_on, sync_state]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { $ref: "#/components/schemas/DeploymentStatus" }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        catalog_item:
+          type: object
+          required: [id, slug, name]
+          properties:
+            id: { type: string }
+            slug: { type: string }
+            name: { type: string }
+        version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        owner: { $ref: "#/components/schemas/UserRef" }
+        created_at: { type: string, format: date-time }
+        created_by_request_id: { type: string }
+        lease: { $ref: "#/components/schemas/Lease" }
+        vm_count: { type: integer }
+        vms_powered_on: { type: integer }
+        primary_address:
+          oneOf:
+            - type: object
+              required: [ip]
+              properties:
+                ip: { type: string }
+                fqdn: { type: string }
+            - type: "null"
+        sync_state: { $ref: "#/components/schemas/SyncState" }
+
+    Lease:
+      type: object
+      required: [expires_at]
+      properties:
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Null when the deployment does not expire.
+        extensions_used: { type: integer }
+        extensions_max: { type: [integer, "null"] }
+        expiry_action:
+          type: string
+          enum: [power_off_then_delete, delete, notify_only]
+
+    SyncState:
+      type: string
+      description: |
+        `drifted`: changed in vCenter outside rvav. `missing`: no longer found
+        in vCenter.
+      enum: [in_sync, drifted, missing]
+
+    DeploymentDetail:
+      allOf:
+        - $ref: "#/components/schemas/Deployment"
+        - type: object
+          required: [inputs, resources]
+          properties:
+            inputs:
+              type: object
+              description: Inputs of the creating request. Secret fields are replaced by `"••••"`.
+              additionalProperties: true
+            resources:
+              type: array
+              items: { $ref: "#/components/schemas/Resource" }
+
+    DeploymentPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Deployment" }
+
+    Resource:
+      oneOf:
+        - $ref: "#/components/schemas/VmResource"
+        - $ref: "#/components/schemas/IpAddressResource"
+        - $ref: "#/components/schemas/DnsRecordResource"
+      discriminator:
+        propertyName: type
+        mapping:
+          vsphere.vm: "#/components/schemas/VmResource"
+          ipam.address: "#/components/schemas/IpAddressResource"
+          dns.record: "#/components/schemas/DnsRecordResource"
+
+    ResourceBase:
+      type: object
+      required: [id, type, name, sync_state]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        name: { type: string }
+        sync_state: { $ref: "#/components/schemas/SyncState" }
+
+    VmResource:
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, vm]
+          properties:
+            type: { const: vsphere.vm }
+            vm: { $ref: "#/components/schemas/VmProperties" }
+
+    VmProperties:
+      type: object
+      required: [moref, instance_uuid, vcenter, power_state, guest_state, cpu_count, memory_mb, disks, nics]
+      properties:
+        moref: { type: string, examples: [vm-48217] }
+        instance_uuid: { type: string, format: uuid }
+        vcenter: { type: string, examples: [vc01.corp.example] }
+        power_state: { type: string, enum: [on, off, suspended] }
+        guest_state: { type: string, enum: [running, not_running, unknown] }
+        guest_os: { type: string }
+        cpu_count: { type: integer }
+        memory_mb: { type: integer }
+        disks:
+          type: array
+          items:
+            type: object
+            required: [label, capacity_gb]
+            properties:
+              label: { type: string, examples: [Hard disk 1] }
+              capacity_gb: { type: integer }
+              datastore: { type: string }
+        nics:
+          type: array
+          items:
+            type: object
+            required: [network]
+            properties:
+              network: { type: string }
+              mac: { type: string }
+              ip_addresses:
+                type: array
+                items: { type: string }
+        fqdn: { type: string }
+        cluster: { type: string }
+        host: { type: string }
+        folder: { type: string }
+        template: { type: string }
+        snapshot_count: { type: integer }
+        usage:
+          type: object
+          description: Quick stats from vCenter, refreshed about every 20 seconds.
+          properties:
+            cpu_pct: { type: number }
+            memory_pct: { type: number }
+            sampled_at: { type: string, format: date-time }
+
+    IpAddressResource:
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, address, subnet]
+          properties:
+            type: { const: ipam.address }
+            address: { type: string }
+            subnet: { type: string, examples: [10.21.10.0/24] }
+            efficientip_id: { type: string }
+
+    DnsRecordResource:
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, fqdn, record_type, value]
+          properties:
+            type: { const: dns.record }
+            fqdn: { type: string }
+            record_type: { type: string, enum: [A, AAAA, PTR, CNAME] }
+            value: { type: string }
+            zone: { type: string }
+
+    # ── Events ────────────────────────────────────────────────────────────
+    Event:
+      oneOf:
+        - $ref: "#/components/schemas/RequestUpdatedEvent"
+        - $ref: "#/components/schemas/RequestStepEvent"
+        - $ref: "#/components/schemas/RequestLogEvent"
+        - $ref: "#/components/schemas/DeploymentUpdatedEvent"
+        - $ref: "#/components/schemas/ResourceUpdatedEvent"
+        - $ref: "#/components/schemas/NotificationEvent"
+        - $ref: "#/components/schemas/ControlEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          request.updated: "#/components/schemas/RequestUpdatedEvent"
+          request.step: "#/components/schemas/RequestStepEvent"
+          request.log: "#/components/schemas/RequestLogEvent"
+          deployment.updated: "#/components/schemas/DeploymentUpdatedEvent"
+          resource.updated: "#/components/schemas/ResourceUpdatedEvent"
+          notification: "#/components/schemas/NotificationEvent"
+          heartbeat: "#/components/schemas/ControlEvent"
+          resync: "#/components/schemas/ControlEvent"
+
+    EventBase:
+      type: object
+      required: [id, type, at]
+      properties:
+        id: { type: string, description: Same as the SSE `id`. }
+        type: { type: string }
+        at: { type: string, format: date-time }
+
+    RequestUpdatedEvent:
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: request.updated }
+            data: { $ref: "#/components/schemas/Request" }
+
+    RequestStepEvent:
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: request.step }
+            data:
+              type: object
+              required: [request_id, step]
+              properties:
+                request_id: { type: string }
+                parent_step_id: { type: [string, "null"] }
+                step: { $ref: "#/components/schemas/Step" }
+
+    RequestLogEvent:
+      description: New log lines are available. Fetch them with `getStepLog` from your last offset.
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: request.log }
+            data:
+              type: object
+              required: [request_id, step_id, next_offset]
+              properties:
+                request_id: { type: string }
+                step_id: { type: string }
+                next_offset: { type: integer }
+
+    DeploymentUpdatedEvent:
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: deployment.updated }
+            data: { $ref: "#/components/schemas/Deployment" }
+
+    ResourceUpdatedEvent:
+      description: A resource changed, for example a power state or IP reported by vCenter.
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: resource.updated }
+            data:
+              type: object
+              required: [deployment_id, resource]
+              properties:
+                deployment_id: { type: string }
+                resource: { $ref: "#/components/schemas/Resource" }
+
+    NotificationEvent:
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: notification }
+            data:
+              type: object
+              required: [id, title, level]
+              properties:
+                id: { type: string }
+                title: { type: string }
+                body: { type: string }
+                level: { type: string, enum: [info, success, warning, error] }
+                link:
+                  type: string
+                  description: App path to open, for example `/requests/REQ-10491`.
+
+    ControlEvent:
+      description: "`heartbeat` keeps the connection open. `resync` means missed events were dropped: refetch."
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [heartbeat, resync] }

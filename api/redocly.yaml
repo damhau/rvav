@@ -1,0 +1,5 @@
+extends:
+  - recommended
+rules:
+  # Internal API, no public licence to declare.
+  info-license: off

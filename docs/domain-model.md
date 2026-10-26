@@ -31,8 +31,13 @@ Subscription (event → awx template | webhook)
 - **Project roles**: `project-admin`, `member`, `viewer`.
 - **ApiToken**: user-owned, scoped to roles, with expiry, stored hashed.
 
+### Environment
+- `key` (`dev`, `tst`, `prd`, …), `name`, `production` flag, display order.
+- Defined by administrators. Requests and deployments always target one
+  environment; placement rules, quotas and policies can depend on it.
+
 ### Project
-- `name`, `description`, `cost_center` (metadata only, passed to AWX and webhooks), `tags`.
+- `code` (short, used in names), `name`, `description`, `cost_center` (metadata only, passed to AWX and webhooks), `tags`, allowed environments.
 - **PlacementRule**: allowed vCenter, datacenter, cluster or resource pool, VM
   folder, datastores or datastore cluster, networks and their linked EfficientIP
   subnets. Supports tag-based selection and priority.
