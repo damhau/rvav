@@ -23,9 +23,12 @@ provisioning workflow with live updates. Mock data lives in the browser tab and 
 | `pnpm typecheck`    | Strict TypeScript check                                                        |
 | `pnpm lint`         | ESLint (typescript-eslint, react-hooks, jsx-a11y, tanstack-query) and Prettier |
 | `pnpm test`         | Vitest and Testing Library, against the mock API through `msw/node`            |
-| `pnpm e2e`          | Playwright smoke tests and screenshots, against `vite` in mock mode            |
+| `pnpm e2e`          | Playwright smoke tests and screenshots, against `vite` in mock mode (1)        |
 | `pnpm build`        | Production build (real API)                                                    |
 | `pnpm build:mockup` | One self-contained HTML page with the mock API running in-process              |
+
+(1) Screenshots go to `test-results/screenshots`. `UPDATE_SCREENSHOTS=1 pnpm e2e`
+refreshes the committed ones in `e2e/__screenshots__`.
 
 ## Configuration
 

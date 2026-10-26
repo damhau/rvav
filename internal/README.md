@@ -20,8 +20,8 @@ vCenter simulator with the GVA layout for local work.
 | `integrations/efficientip` | IPAM and DNS client and in-memory fake |
 | `integrations/awx` | AWX `/api/v2` client and a fake that plays jobs |
 | `inventory` | vCenter inventory sync into the cache tables and VM resource state |
-| `pgtest` | A PostgreSQL for tests: `RVAV_TEST_DATABASE_URL`, or embedded-postgres |
 | `naming` | Naming templates such as `{project}-{environment}-{inputs.role}{seq:03}` |
+| `pgtest` | A PostgreSQL for tests: `RVAV_TEST_DATABASE_URL`, or embedded-postgres |
 | `policy` | CEL evaluation |
 | `present` | Store rows to API types, shared by handlers and events |
 | `provision` | Temporal workflow `Provision`, its activities, the plan and step keys |

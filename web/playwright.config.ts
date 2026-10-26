@@ -17,7 +17,8 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
-    command: `pnpm exec vite --port ${PORT} --strictPort`,
+    // `pnpm e2e` puts node_modules/.bin on the PATH; no global pnpm needed.
+    command: `vite --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     env: { VITE_API_MODE: "mock", VITE_MOCK_TICK_MS: "150", VITE_MOCK_LATENCY_MS: "40" },

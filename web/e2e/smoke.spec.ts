@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const shots = "e2e/__screenshots__";
+// Screenshots go to test-results; UPDATE_SCREENSHOTS=1 refreshes the
+// committed ones in e2e/__screenshots__.
+const shots = process.env.UPDATE_SCREENSHOTS ? "e2e/__screenshots__" : "test-results/screenshots";
 
 async function setTheme(page: Page, theme: "light" | "dark") {
   await page.evaluate((t) => {

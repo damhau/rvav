@@ -1,8 +1,11 @@
 GO      ?= go
+PNPM    ?= pnpm
 BIN     := bin
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: build test test-e2e vet gen gen-check lint-spec up down vcsim
+.PHONY: check build test test-e2e vet gen gen-check lint-spec web-check up down vcsim
+
+check: gen-check lint-spec vet test test-e2e web-check ## Everything CI checks; must pass before every push
 
 build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
@@ -24,7 +27,16 @@ gen-check: gen ## Fail if the generated code is out of date
 	git diff --exit-code -- internal/api/api.gen.go
 
 lint-spec:
-	npx @redocly/cli@1 lint --config api/redocly.yaml api/openapi.yaml
+	npx --yes @redocly/cli@1 lint --config api/redocly.yaml api/openapi.yaml
+
+web-check: ## Web app: generated types current, typecheck, lint, unit tests, build, Playwright
+	cd web && $(PNPM) gen:api
+	git diff --exit-code -- web/src/lib/api/schema.d.ts
+	cd web && $(PNPM) typecheck
+	cd web && $(PNPM) lint
+	cd web && $(PNPM) test
+	cd web && $(PNPM) build
+	cd web && $(PNPM) e2e
 
 up: ## Start the local stack (PostgreSQL, Temporal, Keycloak, vcsim, rvav)
 	$(COMPOSE) up --build -d
