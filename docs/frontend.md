@@ -203,7 +203,7 @@ the designer preview.
 - Validation: ajv on the client for instant feedback; the server is the final
   authority, and its errors map back onto the fields.
 - Layout: sections, columns, tabs and wizard steps; a review step shows the
-  summary panel (name preview, quota, cost, approval path).
+  summary panel (name preview, quota, approval path).
 - Draft auto-save (debounced) for long forms.
 
 ## Performance budget

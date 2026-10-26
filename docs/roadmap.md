@@ -53,15 +53,34 @@ Milestones are ordered so that each one ends in something usable end to end.
 - Composite catalog items.
 
 ## M6 – Operations and reporting
-- Reports and dashboards, showback costs.
+- Reports and dashboards (usage, success rate, provisioning time, leases, approvals).
 - Drift detection and onboarding of existing VMs.
 - Catalog import and export (YAML) and Git sync.
 - Helm chart, HA guidance, backup and restore, upgrade guide.
-- Migration helpers from vRA: export catalog items and deployments.
 
-## Open points
-- Cost model: flat rates per vCPU, GB of RAM and GB of storage, or an external source?
-- vRA migration scope: which existing blueprints, forms and deployments must be
-  imported?
-- The SOLIDserver version and API flavour (legacy `/rest/` or `/api/v2.0/`).
-- AWX version, and whether AAP (the Red Hat product) also needs support.
+## Phase 2 – vRA importer
+Planned after the first production release (M0–M6). Scope to be defined; likely:
+- Read vRA (8.x / Aria Automation) through its API: projects, cloud templates,
+  custom forms, catalog items and sharing, policies, deployments.
+- Map cloud templates to `vm_blueprint` versions and custom forms to
+  JSON Schema + UI schema; report anything that can't be mapped (for example
+  vRO-specific actions) instead of guessing.
+- Adopt existing vRA deployments: link their VMs (by instance UUID) to new
+  deployments with owner, project and lease.
+- Dry-run mode with a diff report, then an idempotent import.
+- vRO workflows aren't converted automatically; the report lists them so they
+  can be rewritten as AWX job templates.
+
+## Decided
+
+- Cost estimation and showback: **out of scope for now**.
+- vRA importer: **Phase 2**, after the first release.
+- EfficientIP: target the **latest SOLIDserver** release and its current REST API.
+- AWX: target the **latest AWX** release. Red Hat AAP is not a target for now.
+
+## Out of scope for now
+
+- Cost estimation, showback and chargeback.
+- Multi-tenancy (see [ADR-0002](adr/0002-single-organisation.md)).
+- Hypervisors other than vSphere.
+- Red Hat AAP as the automation backend.

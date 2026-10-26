@@ -32,7 +32,7 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 - Home page with featured items, favourites, recently requested and categories.
 - Full-text search with filters (category, tag, type) plus ⌘K.
 - Item cards: icon, name, short description, typical duration, "needs approval"
-  badge, estimated cost.
+  badge.
 - Item detail page: Markdown description, what will be created, approval and lease
   summary, a request button, and version history.
 - **Entitlements**: items or categories shared with projects, groups or users. Users
@@ -67,14 +67,13 @@ Markdown or info block, and resource pickers:
 - **Validation**: JSON Schema constraints, regex, CEL cross-field rules, async
   server-side validation (for example "hostname free in DNS").
 - **Layout**: sections, columns, tabs, multi-step wizard with a review step.
-- **Computed fields**: for example the VM name preview from the naming policy, or
-  the cost estimate.
+- **Computed fields**: for example the VM name preview from the naming policy.
 - Every form is validated again on the server. The client is only for UX.
 
 ## 4. Requesting
 
 - Live validation, quota usage preview ("this uses 8 of your 40 remaining vCPU"),
-  approval preview ("needs approval from the Infra leads") and cost estimate.
+  and approval preview ("needs approval from the Infra leads").
 - Request for yourself or **on behalf** of another user.
 - **Count**: request N identical deployments.
 - **Scheduled** requests ("deploy on Monday 08:00").
@@ -126,7 +125,7 @@ All policies have a scope (global, project or item), a CEL condition, and a prio
   bulk actions.
 - Detail page: summary, resources (VMs with live power state, IPs, DNS names),
   topology diagram, inputs, **timeline** of all requests and day-2 runs, lease,
-  cost, audit.
+  audit.
 - Change owner or project (with quota checks).
 - Onboarding: adopt existing vCenter VMs into a deployment.
 
@@ -176,4 +175,7 @@ channels in preferences.
 
 Dashboards for requests over time, success rate, mean provisioning time, top
 items, resource usage per project versus quota, upcoming lease expiries,
-approval lead time, and showback cost per project.
+and approval lead time.
+
+> Cost estimation and showback are out of scope for now (see the
+> [roadmap](roadmap.md#out-of-scope-for-now)).

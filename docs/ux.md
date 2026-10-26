@@ -8,7 +8,7 @@
    place over SSE.
 3. **Keyboard-first**: ⌘K command palette for navigation and actions; shortcuts
    on lists (`j`/`k`, `/` to search, `?` for help).
-4. **Explain before acting**: show quota, cost, approval path and what will
+4. **Explain before acting**: show quota, approval path and what will
    change before the user submits.
 5. **Context over menus**: actions live on the object (row menu, detail header),
    not in a separate "actions" area.
@@ -37,7 +37,7 @@ side panel with the description and a "Request" button, without leaving the page
 
 ### Request form
 - Wizard or single page, depending on the form layout.
-- A sticky right-hand summary: name preview, placement, quota impact, cost,
+- A sticky right-hand summary: name preview, placement, quota impact,
   approval path, lease.
 - Inline validation; dynamic fields show loading states rather than freezing the
   page.

@@ -66,6 +66,10 @@ AWX runs all Ansible automation. The app never runs Ansible itself.
 | Cancel | `POST /jobs/{id}/cancel/` |
 | Refresh inventory | `POST /inventory_sources/{id}/update/`, then poll `/inventory_updates/{id}/` |
 
+Targets the **latest AWX release** (API `/api/v2`). Red Hat AAP is not a
+target for now: its controller API is close to AWX's but sits behind the AAP
+gateway with different paths and auth, so it would need its own small adapter.
+
 Authentication uses an AWX OAuth2 token for a dedicated service user, with
 **Execute** permission on the templates exposed in the catalog.
 
@@ -147,10 +151,10 @@ type DNS interface {
 ```
 
 ### Notes
-- Uses the SOLIDserver REST API (IPAM: free address lookup, address add/delete;
-  DNS: resource record add/delete). The exact endpoints and the API version
-  (legacy `/rest/` or `/api/v2.0/`) must be confirmed against the SOLIDserver
-  version you run.
+- Targets the **latest SOLIDserver release** and its current REST API (IPAM:
+  free address lookup, address add/delete; DNS: resource record add/delete).
+  Older releases and the legacy `/rest/` API are not supported. Exact endpoints
+  are confirmed against the API reference when the connector is built.
 - Race safety: reserve immediately after the lookup and retry on conflict. The
   reservation is keyed by request ID so activity retries are idempotent.
 - The mapping between vSphere networks and EfficientIP subnets is configured in

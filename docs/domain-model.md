@@ -1,7 +1,7 @@
 # Domain model
 
 Single organisation (see [ADR-0002](adr/0002-single-organisation.md)). **Projects**
-are the isolation boundary for access, quotas, placement and cost.
+are the isolation boundary for access, quotas and placement.
 
 ## Entity overview
 
@@ -32,7 +32,7 @@ Subscription (event → awx template | webhook)
 - **ApiToken**: user-owned, scoped to roles, with expiry, stored hashed.
 
 ### Project
-- `name`, `description`, `cost_center`, `tags`.
+- `name`, `description`, `cost_center` (metadata only, passed to AWX and webhooks), `tags`.
 - **PlacementRule**: allowed vCenter, datacenter, cluster or resource pool, VM
   folder, datastores or datastore cluster, networks and their linked EfficientIP
   subnets. Supports tag-based selection and priority.
@@ -75,7 +75,7 @@ Subscription (event → awx template | webhook)
 
 ### Deployment and resources
 - **Deployment**: logical group of resources created by one request. Has owner,
-  project, catalog item version, inputs, lease expiry, status, and cost estimate.
+  project, catalog item version, inputs, lease expiry, and status.
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
   `awx.job`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`).
