@@ -1,4 +1,6 @@
 node_modules
 dist
 dist-mockup
+test-results
+playwright-report
 *.local

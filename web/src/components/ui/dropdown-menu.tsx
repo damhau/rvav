@@ -28,7 +28,7 @@ export function MenuItem({
   return (
     <D.Item
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-sunken [&_svg]:size-3.5 [&_svg]:text-faint",
+        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] outline-none select-none data-[disabled]:opacity-40 data-[highlighted]:bg-sunken [&_svg]:size-3.5 [&_svg]:text-faint",
         danger && "text-bad [&_svg]:text-bad",
         className,
       )}
@@ -41,7 +41,7 @@ export function MenuItem({
 }
 
 export function MenuLabel({ className, ...props }: React.ComponentProps<typeof D.Label>) {
-  return <D.Label className={cn("label px-2 pb-1 pt-2", className)} {...props} />;
+  return <D.Label className={cn("label px-2 pt-2 pb-1", className)} {...props} />;
 }
 
 export function MenuSeparator() {

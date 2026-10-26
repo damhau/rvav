@@ -1,0 +1,54 @@
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { api, call } from "@/lib/api/client";
+import type { FieldValuesQuery, UiField } from "@/lib/api/types";
+import { keys } from "@/lib/query";
+
+export interface FormContext {
+  versionId: string;
+  projectId: string;
+  environment: string;
+}
+
+/**
+ * Resolve a field's value source on the server. The query key holds the values
+ * of the fields it depends on, so a change there fetches fresh options.
+ */
+export function useFieldValues(name: string, ui: UiField, values: Record<string, unknown>, ctx: FormContext) {
+  const deps = (ui.depends_on ?? []).map((d) => values[d] ?? null);
+  // Keep the latest inputs for the request body without putting them in the key.
+  const latest = useRef(values);
+  latest.current = values;
+  // Deliberately keyed on the dependencies only: other inputs are sent but don't trigger a refetch.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  return useQuery({
+    queryKey: keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
+    queryFn: ({ signal }) => {
+      // FieldValuesQuery has no `environment` yet (spec gap); the mock server reads it.
+      const body = {
+        version_id: ctx.versionId,
+        project_id: ctx.projectId,
+        field: name,
+        inputs: latest.current,
+        environment: ctx.environment,
+      } satisfies FieldValuesQuery & { environment: string };
+      return call(api.POST("/forms/values", { body, signal }));
+    },
+    enabled: Boolean(ui.value_source),
+    staleTime: (query) => (query.state.data?.cache_seconds ?? 30) * 1000,
+  });
+}
+
+/** Apply a server suggestion (default option or computed value) when the current value doesn't fit. */
+export function useApplySuggestion(
+  value: unknown,
+  suggestion: string | undefined,
+  valid: boolean,
+  onChange: (v: unknown) => void,
+) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => {
+    if (suggestion !== undefined && !valid && suggestion !== value) onChangeRef.current(suggestion);
+  }, [suggestion, valid, value]);
+}

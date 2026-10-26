@@ -1,7 +1,12 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 export function Page({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 py-5 md:px-6", className)}>{children}</div>;
+  return (
+    <div className={cn("mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 py-5 md:px-6", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({
@@ -40,11 +45,17 @@ export function Panel({
   className?: string;
   flush?: boolean;
 }) {
+  const id = useId();
   return (
-    <section className={cn("min-w-0 rounded-lg border border-line bg-surface", className)}>
+    <section
+      className={cn("min-w-0 rounded-lg border border-line bg-surface", className)}
+      aria-labelledby={title ? id : undefined}
+    >
       {title && (
         <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 className="text-[13px] font-semibold">{title}</h2>
+          <h2 id={id} className="text-[13px] font-semibold">
+            {title}
+          </h2>
           {actions}
         </div>
       )}
@@ -63,7 +74,13 @@ export function EmptyState({ title, body, action }: { title: string; body: strin
   );
 }
 
-export function KeyValues({ items, className }: { items: { label: string; value: React.ReactNode }[]; className?: string }) {
+export function KeyValues({
+  items,
+  className,
+}: {
+  items: { label: string; value: React.ReactNode }[];
+  className?: string;
+}) {
   return (
     <dl className={cn("grid grid-cols-[minmax(96px,auto)_1fr] gap-x-4 gap-y-1.5 text-[13px]", className)}>
       {items.map((i) => (

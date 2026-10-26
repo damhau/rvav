@@ -6,7 +6,10 @@ import { join } from "node:path";
 const dir = "dist-mockup/assets";
 const files = readdirSync(dir);
 const read = (ext) =>
-  files.filter((f) => f.endsWith(ext)).map((f) => readFileSync(join(dir, f), "utf8")).join("\n");
+  files
+    .filter((f) => f.endsWith(ext))
+    .map((f) => readFileSync(join(dir, f), "utf8"))
+    .join("\n");
 
 const css = read(".css");
 const js = read(".js").replaceAll("</script", "<\\/script");
