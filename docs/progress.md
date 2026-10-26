@@ -12,14 +12,22 @@ infrastructure (see the last section).
 ## Gate for every item
 
 - `make check` passes: spec lint, generated code current, `go vet`, Go tests,
-  end-to-end tests in containers, web typecheck, lint, unit tests, build and
-  Playwright.
+  end-to-end tests, web typecheck, lint, unit tests, build and Playwright.
 - CI is green on the pushed commit.
+
+## How tests run here
+
+Every sandboxed command has its own network, so services started by one
+command can't be reached from the next. Tests therefore start what they need
+inside their own process: vcsim and the Temporal test environment in Go,
+`embedded-postgres` and the Temporal dev server for end-to-end tests, Vite
+with MSW for Playwright. Docker Compose is used to prove the real stack
+(images, nginx, Keycloak), and in CI.
 
 ## S2 Make it real
 
 - [ ] S2.1 Compose stack runs for real: project name `rvav`, configurable host ports, image tags, start order and health checks fixed
-- [ ] S2.2 End-to-end tests run in containers on the compose network (`make test-e2e` without local PostgreSQL)
+- [ ] S2.2 End-to-end tests start their own PostgreSQL (`embedded-postgres`) and Temporal dev server when `RVAV_TEST_DATABASE_URL` is not set, so `make test-e2e` needs nothing installed
 - [ ] S2.3 `make check` runs the whole gate locally
 - [ ] S2.4 CI (GitHub Actions): Go vet, tests and end-to-end; web lint, typecheck, tests, build and Playwright; spec lint; generated-code check; image builds
 - [ ] S2.5 Real Temporal: worker connection, retries, a browser submit reaches Ready through Temporal, history visible in the Temporal UI; end-to-end test through Temporal
