@@ -1,0 +1,85 @@
+# The same gate as `make check`, split into jobs that run in parallel, plus
+# the compose stack built from the Dockerfiles with a smoke test.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make vet
+      - run: make gen-check
+      - run: make test
+      - name: End-to-end tests (embedded PostgreSQL, vcsim)
+        run: make test-e2e
+
+  spec:
+    name: API spec
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: make lint-spec
+
+  web:
+    name: Web app
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Generated API types are current
+        run: pnpm gen:api && git diff --exit-code -- src/lib/api/schema.d.ts
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright
+          path: web/test-results
+          if-no-files-found: ignore
+
+  stack:
+    name: Compose stack
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and start
+        run: docker compose -f deploy/docker-compose.yml up --build -d --wait
+      - name: Smoke test
+        run: deploy/smoke.sh
+      - name: Logs
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --no-color
