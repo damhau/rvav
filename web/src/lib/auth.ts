@@ -1,6 +1,6 @@
 // OIDC sign-in (authorization code + PKCE) with tokens kept in memory only.
 // In mock mode there is no identity provider: a fixed development token is used.
-import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
+import type { UserManager } from "oidc-client-ts";
 import { env, isMock } from "./env";
 
 const MOCK_TOKEN = "mock-dev-token";
@@ -9,7 +9,9 @@ const CALLBACK_PATH = "/auth/callback";
 let manager: UserManager | null = null;
 let renewing: Promise<void> | null = null;
 
-function createManager() {
+async function createManager() {
+  // Loaded on demand, so mock and test builds don't carry the OIDC client.
+  const { InMemoryWebStorage, UserManager, WebStorageStateStore } = await import("oidc-client-ts");
   const origin = globalThis.location.origin;
   return new UserManager({
     authority: env.oidcAuthority,
@@ -29,7 +31,7 @@ function createManager() {
  */
 export async function initAuth(): Promise<"ready" | "redirecting"> {
   if (isMock) return "ready";
-  manager = createManager();
+  manager = await createManager();
   if (globalThis.location.pathname === CALLBACK_PATH) {
     const user = await manager.signinRedirectCallback();
     const target = typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";

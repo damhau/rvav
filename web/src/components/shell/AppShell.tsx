@@ -1,12 +1,16 @@
 import { Dialog } from "radix-ui";
-import { useEffect, useState, type ReactNode } from "react";
-import { CommandPalette } from "./CommandPalette";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+
+// The palette (and cmdk) loads the first time someone opens it.
+const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteLoaded, setPaletteLoaded] = useState(false);
+  if (paletteOpen && !paletteLoaded) setPaletteLoaded(true);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,7 +55,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      {paletteLoaded && (
+        <Suspense fallback={null}>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+        </Suspense>
+      )}
     </div>
   );
 }

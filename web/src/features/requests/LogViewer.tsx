@@ -21,6 +21,11 @@ const kindClass: Record<NonNullable<LogLine["kind"]>, string> = {
  * in the query cache; this component then fetches from its last offset.
  */
 export function LogViewer({ requestId, step }: { requestId: string; step: Step }) {
+  // A fresh stream per step, so offsets and lines never mix between jobs.
+  return <LogStream key={`${requestId}:${step.id}`} requestId={requestId} step={step} />;
+}
+
+function LogStream({ requestId, step }: { requestId: string; step: Step }) {
   const head = useQuery({
     queryKey: keys.requests.logHead(requestId, step.id),
     queryFn: () => 0,
@@ -31,53 +36,40 @@ export function LogViewer({ requestId, step }: { requestId: string; step: Step }
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState(false);
   const offset = useRef(0);
-  const busy = useRef(false);
-  const again = useRef(false);
+  // Pulls run one after another, each from the offset the previous one reached.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const alive = useRef(true);
   const box = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
 
   useEffect(() => {
-    offset.current = 0;
-    setLines([]);
-    setComplete(false);
-    setError(false);
-  }, [requestId, step.id]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const pull = async () => {
-      if (busy.current) {
-        again.current = true;
-        return;
-      }
-      busy.current = true;
-      try {
-        do {
-          again.current = false;
-          for (;;) {
-            const chunk = await call(
-              api.GET("/requests/{requestId}/steps/{stepId}/log", {
-                params: { path: { requestId, stepId: step.id }, query: { offset: offset.current } },
-              }),
-            );
-            if (cancelled) return;
-            if (chunk.offset !== offset.current) break;
-            offset.current = chunk.next_offset;
-            if (chunk.lines.length) setLines((l) => [...l, ...chunk.lines]);
-            setComplete(chunk.complete);
-            if (chunk.lines.length === 0 || chunk.complete) break;
-          }
-        } while (again.current && !cancelled);
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        busy.current = false;
-      }
-    };
-    void pull();
-    return () => {
-      cancelled = true;
-    };
+    queue.current = queue.current
+      .then(async () => {
+        for (;;) {
+          if (!alive.current) return;
+          const chunk = await call(
+            api.GET("/requests/{requestId}/steps/{stepId}/log", {
+              params: { path: { requestId, stepId: step.id }, query: { offset: offset.current } },
+            }),
+          );
+          if (!alive.current) return;
+          offset.current = chunk.next_offset;
+          if (chunk.lines.length) setLines((l) => [...l, ...chunk.lines]);
+          setComplete(chunk.complete);
+          setError(false);
+          if (chunk.lines.length === 0 || chunk.complete) return;
+        }
+      })
+      .catch(() => {
+        if (alive.current) setError(true);
+      });
   }, [requestId, step.id, step.status, head.data]);
 
   useEffect(() => {

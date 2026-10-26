@@ -15,6 +15,29 @@ type ListData<T> = Page<T> | InfiniteData<Page<T>>;
 
 const isInfinite = <T>(d: ListData<T>): d is InfiniteData<Page<T>> => "pages" in d;
 
+const fetching = (qc: QueryClient, key: QueryKey) =>
+  qc
+    .getQueryCache()
+    .findAll({ queryKey: key })
+    .some((q) => q.state.fetchStatus === "fetching");
+
+/**
+ * Patch a cached query. While its fetch is in flight the response would
+ * overwrite the patch with an older snapshot, so refetch instead.
+ */
+function patch<T>(qc: QueryClient, key: QueryKey, fn: (old: T) => T) {
+  if (fetching(qc, key)) {
+    void qc.invalidateQueries({ queryKey: key, exact: true });
+    return;
+  }
+  qc.setQueryData<T>(key, (old) => (old === undefined ? old : fn(old)));
+}
+
+function replace<T>(qc: QueryClient, key: QueryKey, data: T) {
+  if (fetching(qc, key)) void qc.invalidateQueries({ queryKey: key, exact: true });
+  else qc.setQueryData<T>(key, data);
+}
+
 /**
  * Replace an item in every cached list under `listKey`. If a list doesn't
  * contain it, or its status changed (filters may no longer match), refetch.
@@ -34,7 +57,7 @@ function patchLists<T extends { id: string; status: string }>(qc: QueryClient, l
     if (isInfinite(old)) return { ...old, pages: old.pages.map((p) => ({ ...p, items: replace(p.items) })) };
     return { ...old, items: replace(old.items) };
   });
-  if (!found || statusChanged) void qc.invalidateQueries({ queryKey: listKey });
+  if (!found || statusChanged || fetching(qc, listKey)) void qc.invalidateQueries({ queryKey: listKey });
 }
 
 /** Map over a step tree; returns null when `fn` changed nothing. */
@@ -70,16 +93,16 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
   switch (event.type) {
     case "request.updated": {
       const r = event.data;
-      qc.setQueryData<ServiceRequest>(keys.requests.detail(r.number), r);
-      qc.setQueryData<ServiceRequest>(keys.requests.detail(r.id), r);
+      replace<ServiceRequest>(qc, keys.requests.detail(r.number), r);
+      replace<ServiceRequest>(qc, keys.requests.detail(r.id), r);
       patchLists(qc, keys.requests.lists(), r);
       break;
     }
     case "request.step": {
       const { request_id, step, parent_step_id } = event.data;
-      qc.setQueryData<{ items: Step[] }>(keys.requests.steps(request_id), (old) =>
-        old ? { items: upsertStep(old.items, step, parent_step_id ?? null) } : old,
-      );
+      patch<{ items: Step[] }>(qc, keys.requests.steps(request_id), (old) => ({
+        items: upsertStep(old.items, step, parent_step_id ?? null),
+      }));
       break;
     }
     case "request.log":
@@ -87,14 +110,13 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       break;
     case "deployment.updated": {
       const d: Deployment = event.data;
-      qc.setQueryData<DeploymentDetail>(keys.deployments.detail(d.id), (old) => (old ? { ...old, ...d } : old));
+      patch<DeploymentDetail>(qc, keys.deployments.detail(d.id), (old) => ({ ...old, ...d }));
       patchLists(qc, keys.deployments.lists(), d);
       break;
     }
     case "resource.updated": {
       const { deployment_id, resource } = event.data;
-      qc.setQueryData<DeploymentDetail>(keys.deployments.detail(deployment_id), (old) => {
-        if (!old) return old;
+      patch<DeploymentDetail>(qc, keys.deployments.detail(deployment_id), (old) => {
         const exists = old.resources.some((r) => r.id === resource.id);
         return {
           ...old,

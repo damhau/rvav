@@ -48,14 +48,13 @@ export function reserveIp(db: Db, network: string) {
 }
 
 export function vmNames(db: Db, project: Project, env: EnvironmentKey, role: string, count: number): string[] {
-  const taken = new Set(db.deployments.flatMap((d) => d.resources.map((r) => r.name)));
+  // Like the naming policy's {seq:03} counter: continue after the highest number in use.
   const base = `${project.code}-${env}-${role || "app"}`;
-  const names: string[] = [];
-  for (let n = 1; names.length < count && n < 1000; n++) {
-    const name = `${base}${String(n).padStart(3, "0")}`;
-    if (!taken.has(name)) names.push(name);
-  }
-  return names;
+  const pattern = new RegExp(`^${base}(\\d{3})$`);
+  const highest = db.deployments
+    .flatMap((d) => d.resources.map((r) => pattern.exec(r.name)?.[1]))
+    .reduce((max, seq) => (seq ? Math.max(max, Number(seq)) : max), 0);
+  return Array.from({ length: count }, (_, i) => `${base}${String(highest + 1 + i).padStart(3, "0")}`);
 }
 
 export function resolveField(

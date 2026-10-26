@@ -113,6 +113,25 @@ describe("applyEvent", () => {
   });
 });
 
+describe("events that arrive during a fetch", () => {
+  it("refetch instead of patching, so the response can't overwrite them", async () => {
+    const qc = new QueryClient();
+    let resolve: (v: { items: Step[] }) => void = () => {};
+    const key = keys.requests.steps("req_9");
+    const first = qc.fetchQuery({ queryKey: key, queryFn: () => new Promise<{ items: Step[] }>((r) => (resolve = r)) });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    applyEvent(qc, {
+      id: "e9",
+      at,
+      type: "request.step",
+      data: { request_id: "req_9", parent_step_id: null, step: step("clone", "done") },
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: key, exact: true });
+    resolve({ items: [step("clone", "running")] });
+    await first.catch(() => {});
+  });
+});
+
 describe("upsertStep", () => {
   it("inserts under the parent, or appends when the step is new at the top", () => {
     const tree = [step("job", "running", [step("t1", "done")])];
