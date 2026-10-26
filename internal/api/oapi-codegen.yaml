@@ -1,0 +1,10 @@
+# Generates Go types and a net/http (Go 1.22 ServeMux) server interface from
+# the shared contract. Run `make gen` after changing api/openapi.yaml.
+package: api
+output: api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: true
