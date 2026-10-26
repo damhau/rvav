@@ -24,6 +24,7 @@ provisioning workflow with live updates. Mock data lives in the browser tab and 
 | `pnpm lint`         | ESLint (typescript-eslint, react-hooks, jsx-a11y, tanstack-query) and Prettier |
 | `pnpm test`         | Vitest and Testing Library, against the mock API through `msw/node`            |
 | `pnpm e2e`          | Playwright smoke tests and screenshots, against `vite` in mock mode (1)        |
+| `pnpm e2e:stack`    | Playwright against a running compose stack (`RVAV_WEB_URL`, default `:3000`)   |
 | `pnpm build`        | Production build (real API)                                                    |
 | `pnpm build:mockup` | One self-contained HTML page with the mock API running in-process              |
 

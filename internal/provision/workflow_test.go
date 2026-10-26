@@ -91,6 +91,44 @@ func TestProvisionFailureRecordsStep(t *testing.T) {
 	}
 }
 
+// A transient error (vCenter or EfficientIP briefly unreachable) is retried,
+// and the request carries on.
+func TestProvisionRetriesTransientErrors(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(false), nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.ReserveIP, mock.Anything, mock.Anything).Return("", errors.New("dial tcp: connection refused")).Times(2)
+	env.OnActivity(a.ReserveIP, mock.Anything, mock.Anything).Return("10.31.10.20", nil).Once()
+	env.OnActivity(a.CreateDNS, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.CloneVM, mock.Anything, mock.Anything).Return("vm-42", nil)
+	env.OnActivity(a.Customize, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Return(nil)
+	env.OnActivity(a.RunJob, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// After the last attempt, a transient error fails the request on its step.
+func TestProvisionGivesUpAfterRetries(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(false), nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.ReserveIP, mock.Anything, mock.Anything).Return("", errors.New("dial tcp: connection refused")).Times(int(activityOptions.RetryPolicy.MaximumAttempts))
+	env.OnActivity(a.Finish, mock.Anything, mock.MatchedBy(func(in FinishInput) bool {
+		return in.Outcome == "failed" && in.StepKey == KeyIPAM
+	})).Return(nil)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProvisionCancelledWhileWaitingForApproval(t *testing.T) {
 	env := newEnv(t)
 	var a *Activities

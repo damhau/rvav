@@ -80,6 +80,26 @@ jobs:
         run: docker compose -f deploy/docker-compose.yml up --build -d --wait
       - name: Smoke test
         run: deploy/smoke.sh
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Browser test against the stack
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e:stack
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-stack
+          path: web/test-results/stack
+          if-no-files-found: ignore
       - name: Logs
         if: failure()
         run: docker compose -f deploy/docker-compose.yml logs --no-color
