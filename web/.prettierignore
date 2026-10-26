@@ -1,0 +1,10 @@
+dist
+dist-mockup
+node_modules
+pnpm-lock.yaml
+public/mockServiceWorker.js
+src/routeTree.gen.ts
+src/lib/api/schema.d.ts
+e2e/__screenshots__
+test-results
+playwright-report
