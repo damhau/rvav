@@ -4,18 +4,25 @@ Milestones are ordered so that each one ends in something usable end to end.
 
 ## Status
 
-Slice 1 is built: catalog to running VM, including the AWX post-configuration steps.
-See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices work.
+Slices 1 and 2 are built: catalog to running VM, including the AWX
+post-configuration steps, now running for real on the Docker Compose stack.
+See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
+work, and [progress.md](progress.md) for the R0 work item by item.
 
-Verified so far: Go unit tests, vCenter driver tests against vcsim, workflow
-tests, and an end-to-end API test against PostgreSQL 16 and vcsim. Frontend:
-typecheck, lint, 43 unit tests, build, and Playwright smoke tests on mock
-data. The web app was also run against the real Go API for catalog, form,
-dynamic values, preview, requests and deployments.
+Verified so far:
+- `make check` (also in CI on every push): spec lint, generated code, Go vet
+  and tests, end-to-end tests on their own PostgreSQL with vcsim, through
+  Temporal's test environment and through a real Temporal dev server, OIDC
+  token checks against a fake provider; web typecheck, lint, 43 unit tests,
+  build and Playwright on mock data.
+- The Docker Compose stack, run locally: it starts in order with health
+  checks, `deploy/smoke.sh` gets a request to succeeded through the real
+  Temporal server, and `pnpm e2e:stack` requests a VM in the browser and
+  follows it to Ready, with dev authentication and with Keycloak sign-in
+  (groups mapped to project roles).
 
-Not verified yet: a real Temporal server, the Docker Compose stack, Keycloak
-sign-in, real EfficientIP and AWX, and a full submit from the browser to the
-real API (it needs Temporal).
+Not verified yet: a real vCenter (S2 acceptance on the lab vCenter), real
+EfficientIP and AWX, the corporate identity provider.
 
 ### Open items found in slice 1
 - AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin (S6).
@@ -25,7 +32,7 @@ real API (it needs Temporal).
 - Approvals API, replacing `rvav approve` on the command line (S3).
 - Retry and rollback of a failed request, deployment history (S4).
 - Per-field rule results in the preview, descriptions on checklist options (S8).
-- CI pipeline (S2), accessibility audit (S14), Storybook.
+- Accessibility audit (S14), Storybook.
 
 ## Plan
 
