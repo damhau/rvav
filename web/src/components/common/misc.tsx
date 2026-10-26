@@ -1,0 +1,103 @@
+import {
+  Database,
+  Globe,
+  KeyRound,
+  Lock,
+  Monitor,
+  Server,
+  Shield,
+  Users,
+  Check,
+  Copy,
+} from "lucide-react";
+import { useState } from "react";
+import { Tip } from "@/components/ui/tooltip";
+import type { ItemType } from "@/lib/types";
+import { cn, fullDate, relative } from "@/lib/utils";
+
+const icons: Record<string, React.ElementType> = {
+  server: Server,
+  monitor: Monitor,
+  database: Database,
+  "key-round": KeyRound,
+  shield: Shield,
+  globe: Globe,
+  lock: Lock,
+  users: Users,
+};
+
+export function ItemIcon({ name, className }: { name: string; className?: string }) {
+  const I = icons[name] ?? Server;
+  return (
+    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken text-muted", className)}>
+      <I className="size-4" strokeWidth={1.75} />
+    </span>
+  );
+}
+
+export const itemTypeLabel: Record<ItemType, string> = {
+  vm_blueprint: "VM blueprint",
+  awx_job_template: "AWX job template",
+  awx_workflow: "AWX workflow",
+  composite: "Composite",
+};
+
+export function Time({ iso, className }: { iso: string; className?: string }) {
+  return (
+    <Tip content={fullDate(iso)}>
+      <time dateTime={iso} className={cn("tnum whitespace-nowrap", className)}>
+        {relative(iso)}
+      </time>
+    </Tip>
+  );
+}
+
+export function Mono({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <span className={cn("font-mono text-[12px]", className)}>{children}</span>;
+}
+
+export function CopyText({ value, className }: { value: string; className?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <span className={cn("group inline-flex min-w-0 items-center gap-1", className)}>
+      <span className="truncate font-mono text-[12px]">{value}</span>
+      <button
+        type="button"
+        aria-label={`Copy ${value}`}
+        className="rounded-sm p-0.5 text-faint opacity-0 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          navigator.clipboard?.writeText(value).then(
+            () => {
+              setDone(true);
+              setTimeout(() => setDone(false), 1200);
+            },
+            () => {},
+          );
+        }}
+      >
+        {done ? <Check className="size-3 text-ok" /> : <Copy className="size-3" />}
+      </button>
+    </span>
+  );
+}
+
+export function Avatar({ name, className }: { name: string; className?: string }) {
+  const init = name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2);
+  return (
+    <span
+      className={cn(
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent",
+        className,
+      )}
+      aria-hidden
+    >
+      {init}
+    </span>
+  );
+}

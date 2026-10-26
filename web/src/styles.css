@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/*
+  Layout: operations console. A fixed left rail, one dense work column, and a
+  right-hand context panel where a screen needs one (request form, approvals).
+  Neutrals lean slightly toward the petrol accent; status colours are separate.
+*/
+:root {
+  --bg: #f3f5f6;
+  --surface: #ffffff;
+  --sunken: #e9edef;
+  --rail: #eaeef0;
+  --line: #d5dbdf;
+  --line-strong: #b9c2c8;
+  --fg: #14191c;
+  --fg-muted: #56616a;
+  --fg-faint: #85909a;
+  --accent: #0e6488;
+  --accent-fg: #ffffff;
+  --accent-soft: #dcedf4;
+  --ok: #1d7a45;
+  --ok-soft: #dff1e6;
+  --warn: #9a6207;
+  --warn-soft: #f8ecd3;
+  --bad: #b3332b;
+  --bad-soft: #f8e0de;
+  --run: #3159b8;
+  --run-soft: #e1e8f8;
+  --focus: #0e6488;
+  --shadow: 0 1px 2px rgb(20 25 28 / 0.06), 0 4px 16px rgb(20 25 28 / 0.08);
+
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-code: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1315;
+    --surface: #161b1e;
+    --sunken: #0b0e10;
+    --rail: #12171a;
+    --line: #273036;
+    --line-strong: #3a454c;
+    --fg: #e4e9ec;
+    --fg-muted: #9aa6ae;
+    --fg-faint: #6b7780;
+    --accent: #4fb0d8;
+    --accent-fg: #06222e;
+    --accent-soft: #123344;
+    --ok: #53c084;
+    --ok-soft: #13301f;
+    --warn: #e0a940;
+    --warn-soft: #36290f;
+    --bad: #ef7a70;
+    --bad-soft: #3a1a17;
+    --run: #8aa8f0;
+    --run-soft: #1b2640;
+    --focus: #4fb0d8;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1315;
+  --surface: #161b1e;
+  --sunken: #0b0e10;
+  --rail: #12171a;
+  --line: #273036;
+  --line-strong: #3a454c;
+  --fg: #e4e9ec;
+  --fg-muted: #9aa6ae;
+  --fg-faint: #6b7780;
+  --accent: #4fb0d8;
+  --accent-fg: #06222e;
+  --accent-soft: #123344;
+  --ok: #53c084;
+  --ok-soft: #13301f;
+  --warn: #e0a940;
+  --warn-soft: #36290f;
+  --bad: #ef7a70;
+  --bad-soft: #3a1a17;
+  --run: #8aa8f0;
+  --run-soft: #1b2640;
+  --focus: #4fb0d8;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-rail: var(--rail);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-run: var(--run);
+  --color-run-soft: var(--run-soft);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
+  --shadow-pop: var(--shadow);
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
