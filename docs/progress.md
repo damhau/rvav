@@ -33,7 +33,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S2.5 Real Temporal: the worker connects once Temporal is healthy (S2.1); retries of transient errors and giving up after four attempts are tested; `e2e-stack/request.spec.ts` submits in the browser and reaches Ready through the compose stack (27 s); workflows and their history are in the Temporal UI; `TestThroughTemporal` runs start, approval signal and cancel on a real Temporal dev server
 - [x] S2.6 Dev auth mode refuses to start without `RVAV_ALLOW_DEV_AUTH=1` (checked where the authenticator is built, so `api` and `dev` only); the compose stack and `.env.example` set it
 - [x] S2.7 OIDC sign-in end to end with Keycloak: PKCE sign-in, return to the page asked for, sign-out (`e2e-stack/sign-in.spec.ts` with `RVAV_STACK_AUTH=oidc`); the request test passes with real tokens too. Fixed on the way: the `offline_access` scope Keycloak refused (now `VITE_OIDC_SCOPE`, default without it), the API exiting when Keycloak isn't up yet (provider discovered on first use, `503` with `Retry-After` until then), nginx keeping a stale API address. `TestOIDCTokens` covers signature, issuer, audience, expiry and groups to roles. Keycloak has a health check
-- [ ] S2.8 ADRs for the decisions S2 needs: where Temporal runs, hosting, identity provider
+- [x] S2.8 ADRs for the decisions S2 needs: [ADR-0008](adr/0008-self-hosted-temporal.md) self-hosted Temporal, [ADR-0009](adr/0009-hosting.md) Kubernetes with Helm and Compose for development, [ADR-0010](adr/0010-identity-provider.md) any OIDC provider with Keycloak for development
 - [ ] S2.9 Slice review, docs and roadmap status
 - [-] S2.x First run against the lab vCenter with a real template, customisation spec and network
 
@@ -80,6 +80,11 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Decision | Choice | Where |
 |---|---|---|
 | Git workflow | Commits go straight to `main`; CI runs on every push | – |
+| Go version | 1.27.3, pinned with `toolchain` in `go.mod` (CI and the image follow it) | – |
+| Where Temporal runs | Self-hosted on PostgreSQL | ADR-0008 |
+| Hosting | Kubernetes with Helm; Compose for development and the lab | ADR-0009 |
+| Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |
+| Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
 ## Needs real infrastructure
 

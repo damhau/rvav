@@ -46,6 +46,9 @@ criteria, effort, calendar, risks and decisions.
 - vRA importer: **Phase 2**, after the first release.
 - EfficientIP: target the **latest SOLIDserver** release and its current REST API.
 - AWX: target the **latest AWX** release. Red Hat AAP is not a target for now.
+- Temporal: **self-hosted** on PostgreSQL ([ADR-0008](adr/0008-self-hosted-temporal.md)).
+- Hosting: **Kubernetes with Helm** in production, Docker Compose for development and the lab ([ADR-0009](adr/0009-hosting.md)).
+- Identity: **any OIDC provider**; Keycloak for development and tests ([ADR-0010](adr/0010-identity-provider.md)).
 
 ## Out of scope for now
 
