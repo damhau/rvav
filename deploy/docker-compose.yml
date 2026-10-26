@@ -1,0 +1,122 @@
+# Local development stack: docker compose -f deploy/docker-compose.yml up --build
+#
+#   API            http://localhost:8080/api/v1   (dev auth by default)
+#   Temporal UI    http://localhost:8233
+#   Keycloak       http://localhost:8081          (admin / admin, realm "rvav")
+#   vcsim          https://localhost:8989/sdk     (user / pass)
+#
+# Image tags are pinned; check them against the registries when upgrading.
+
+x-rvav-env: &rvav-env
+  RVAV_DATABASE_URL: postgres://rvav:rvav@postgres:5432/rvav?sslmode=disable
+  RVAV_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
+  # Tokens carry the issuer the browser sees; the API discovers Keycloak
+  # inside the compose network.
+  RVAV_OIDC_ISSUER: http://localhost:8081/realms/rvav
+  RVAV_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/rvav
+  RVAV_OIDC_CLIENT_ID: rvav
+  RVAV_CORS_ORIGINS: ${RVAV_CORS_ORIGINS:-http://localhost:5173}
+  RVAV_TEMPORAL_ADDRESS: temporal:7233
+  RVAV_VCENTER_URL: https://vcsim:8989/sdk
+  RVAV_VCENTER_USERNAME: user
+  RVAV_VCENTER_PASSWORD: pass
+  RVAV_VCENTER_INSECURE: "1"
+  RVAV_FAKE_EFFICIENTIP: "1"
+  RVAV_FAKE_AWX: "1"
+  RVAV_FAKE_AWX_FAIL_TASK: ${RVAV_FAKE_AWX_FAIL_TASK:-}
+
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: rvav
+      POSTGRES_PASSWORD: rvav
+      POSTGRES_DB: rvav
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rvav -d rvav"]
+      interval: 2s
+      retries: 30
+
+  temporal:
+    # auto-setup creates the temporal and temporal_visibility databases.
+    image: temporalio/auto-setup:1.25.2
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: rvav
+      POSTGRES_PWD: rvav
+      POSTGRES_SEEDS: postgres
+    ports: ["7233:7233"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports: ["8233:8080"]
+    depends_on: [temporal]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports: ["8081:8080"]
+    volumes: ["./keycloak:/opt/keycloak/data/import:ro"]
+
+  vcsim:
+    image: vmware/vcsim:v0.52.0
+    command: ["-l", "0.0.0.0:8989"]
+    ports: ["8989:8989"]
+
+  # One-shot jobs: schema and seed data, then the GVA inventory in vcsim.
+  migrate:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["migrate", "-seed"]
+    environment: *rvav-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  vcsim-bootstrap:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["vcsim-bootstrap"]
+    environment: *rvav-env
+    restart: on-failure
+    depends_on: [vcsim]
+
+  api:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["api"]
+    environment: *rvav-env
+    ports: ["8080:8080"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  worker:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["worker"]
+    environment: *rvav-env
+    restart: on-failure
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vcsim-bootstrap: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  sync:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["sync"]
+    environment: *rvav-env
+    restart: on-failure
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vcsim-bootstrap: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
