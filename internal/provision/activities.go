@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -301,7 +302,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			ip = p.Address
 			return "Reserved " + ip, "Subnet " + in.VM.Subnet, nil
 		}
-		addr, err := a.IPAM.Reserve(ctx, a.subnet(in.VM), in.VM.Name)
+		addr, err := a.IPAM.Reserve(ctx, a.subnet(in.VM), cmp.Or(in.VM.FQDN, in.VM.Name))
 		if errors.Is(err, efficientip.ErrSubnetFull) {
 			return "", "", permanent("Subnet %s has no free address", in.VM.Subnet)
 		}

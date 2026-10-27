@@ -59,7 +59,9 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		a.IPAM = f
 		log.Warn("using the fake EfficientIP (RVAV_FAKE_EFFICIENTIP=1); no real addresses or DNS records are created")
 	} else if cfg.IPAM.URL != "" {
-		if a.IPAM, err = efficientip.NewHTTPClient(cfg.IPAM.URL, cfg.IPAM.Username, cfg.IPAM.Password, cfg.IPAM.Insecure); err != nil {
+		if a.IPAM, err = efficientip.New(efficientip.Options{URL: cfg.IPAM.URL, Auth: efficientip.Auth(cfg.IPAM.Auth),
+			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Space: cfg.IPAM.Space,
+			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView}); err != nil {
 			return nil, err
 		}
 	} else {

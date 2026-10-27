@@ -134,29 +134,29 @@ the default.
 - Form pickers: subnets, free IPs, DNS zones; async validation that a hostname or
   IP is free.
 
-### Interface (sketch)
+### Client
+`internal/integrations/efficientip`: the calls, authentication and how
+retries stay safe are in [ADR-0015](adr/0015-efficientip-client.md). The
+client follows EfficientIP's SOLIDserverRest library and the API reference
+it ships (SOLIDserver 9.0.1a): services under `/rest/`, the free-address
+search under `/rpc/`. `FakeServer` speaks the same API for tests and the
+development stack.
 
 ```go
-type IPAM interface {
-    ListSubnets(ctx context.Context, filter SubnetFilter) ([]Subnet, error)
-    ReserveNextFree(ctx context.Context, subnetID string, req Reservation) (IPAddress, error)
-    Release(ctx context.Context, ipID string) error
-}
-
-type DNS interface {
-    UpsertRecord(ctx context.Context, rr Record) error
-    DeleteRecord(ctx context.Context, rr Record) error
+type Client interface {
+    NextFree(ctx context.Context, s Subnet) (string, error)
+    Reserve(ctx context.Context, s Subnet, hostname string) (Address, error)
+    Release(ctx context.Context, a Address) error
+    CreateRecord(ctx context.Context, r Record) (Record, error)
+    DeleteRecord(ctx context.Context, r Record) error
     NameExists(ctx context.Context, fqdn string) (bool, error)
 }
 ```
 
 ### Notes
-- Targets the **latest SOLIDserver release** and its current REST API (IPAM:
-  free address lookup, address add/delete; DNS: resource record add/delete).
-  Older releases and the legacy `/rest/` API are not supported. Exact endpoints
-  are confirmed against the API reference when the connector is built.
-- Race safety: reserve immediately after the lookup and retry on conflict. The
-  reservation is keyed by request ID so activity retries are idempotent.
+- Race safety: the reservation looks for the hostname first and skips an
+  address taken between the search and the add, so activity retries are
+  idempotent.
 - The mapping between vSphere networks and EfficientIP subnets is configured in
   placement rules, or found automatically from a class parameter on the subnet
   (for example `vsphere_portgroup`).

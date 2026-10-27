@@ -69,11 +69,15 @@ type VCenterConfig struct {
 }
 
 type EfficientIPConfig struct {
-	Fake     bool
-	URL      string
-	Username string
-	Password string
-	Insecure bool
+	Fake      bool
+	URL       string
+	Auth      string // native, basic or token
+	Username  string // the token's key ID with token authentication
+	Password  string // the token's secret with token authentication
+	Insecure  bool
+	Space     string
+	DNSServer string
+	DNSView   string
 }
 
 type AWXConfig struct {
@@ -118,11 +122,15 @@ func Load() (Config, error) {
 			Name:     env("RVAV_VCENTER_NAME", "vc01.corp.example"),
 		},
 		IPAM: EfficientIPConfig{
-			Fake:     boolean("RVAV_FAKE_EFFICIENTIP"),
-			URL:      env("RVAV_EFFICIENTIP_URL", ""),
-			Username: env("RVAV_EFFICIENTIP_USERNAME", ""),
-			Password: env("RVAV_EFFICIENTIP_PASSWORD", ""),
-			Insecure: boolean("RVAV_EFFICIENTIP_INSECURE"),
+			Fake:      boolean("RVAV_FAKE_EFFICIENTIP"),
+			URL:       env("RVAV_EFFICIENTIP_URL", ""),
+			Username:  env("RVAV_EFFICIENTIP_USERNAME", ""),
+			Password:  env("RVAV_EFFICIENTIP_PASSWORD", ""),
+			Insecure:  boolean("RVAV_EFFICIENTIP_INSECURE"),
+			Auth:      env("RVAV_EFFICIENTIP_AUTH", "native"),
+			Space:     env("RVAV_EFFICIENTIP_SPACE", ""),
+			DNSServer: env("RVAV_EFFICIENTIP_DNS_SERVER", ""),
+			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
 		},
 		AWX: AWXConfig{
 			Fake:     boolean("RVAV_FAKE_AWX"),
