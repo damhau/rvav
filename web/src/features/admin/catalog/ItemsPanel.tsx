@@ -236,22 +236,23 @@ export function ItemsPanel() {
           onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value || undefined }))}
         />
         <Select
-          aria-describedby={undefined}
-          value={filters.category ?? ""}
-          onChange={(v) => setFilters((f) => ({ ...f, category: v || undefined }))}
-          placeholder="All categories"
+          aria-label="Category"
+          value={filters.category ?? "any"}
+          onChange={(v) => setFilters((f) => ({ ...f, category: v === "any" ? undefined : v }))}
           options={[
-            { value: "", label: "All categories" },
+            { value: "any", label: "All categories" },
             ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name })),
           ]}
           className="w-44"
         />
         <Select
-          value={filters.state ?? ""}
-          onChange={(v) => setFilters((f) => ({ ...f, state: (v || undefined) as AdminItemFilters["state"] }))}
-          placeholder="Any state"
+          aria-label="State"
+          value={filters.state ?? "any"}
+          onChange={(v) =>
+            setFilters((f) => ({ ...f, state: v === "any" ? undefined : (v as AdminItemFilters["state"]) }))
+          }
           options={[
-            { value: "", label: "Any state" },
+            { value: "any", label: "Any state" },
             { value: "published", label: "Published" },
             { value: "unpublished", label: "Not published" },
           ]}

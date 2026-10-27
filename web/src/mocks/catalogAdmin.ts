@@ -4,6 +4,8 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
+import { celCheck } from "./cel";
+import { fieldStates, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
 type S = components["schemas"];
@@ -15,6 +17,22 @@ interface AdminState {
   allProjects: Set<string>;
   sortOrder: Record<string, number>;
 }
+
+const builtinSources = [
+  "vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
+  "ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
+]; // prettier-ignore
+
+/** Who may be previewed as, per project, with their groups (as the server's seed). */
+const previewMembers: Record<string, { id: string; role: string; groups: string[] }[]> = {
+  web: [
+    { id: "usr_lmartin", role: "project-admin", groups: ["rvav-web-admins", "rvav-catalog-admins"] },
+    { id: "usr_tnguyen", role: "member", groups: ["rvav-web"] },
+  ],
+  data: [{ id: "usr_sbrunner", role: "project-admin", groups: ["rvav-data"] }],
+  fin: [{ id: "usr_sbrunner", role: "member", groups: ["rvav-fin"] }],
+  core: [{ id: "usr_afavre", role: "project-admin", groups: ["rvav-core", "rvav-network"] }],
+};
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
@@ -141,6 +159,49 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         code: "not_placed",
         message: `"${name}" is in no section, so it would never show.`,
       });
+    for (const [rule, expr] of Object.entries(f.rules ?? {})) {
+      const problem = typeof expr === "string" && expr ? celCheck(expr) : null;
+      if (problem)
+        errors.push({
+          field: `${prefix}/ui_schema/fields/${name}/rules/${rule}`,
+          code: "invalid",
+          message: `This rule is not valid CEL: ${problem}`,
+        });
+    }
+    const src = f.value_source;
+    if (src?.kind === "builtin" && !builtinSources.includes(src.name ?? ""))
+      errors.push({
+        field: `${prefix}/ui_schema/fields/${name}/value_source/name`,
+        code: "unknown",
+        message: `"${src.name ?? ""}" is not a built-in value source.`,
+      });
+    if (src?.kind === "cel") {
+      const params = src.params ?? {};
+      if (!params.options && !params.value)
+        errors.push({
+          field: `${prefix}/ui_schema/fields/${name}/value_source/params`,
+          code: "required",
+          message: "Give an options or a value expression.",
+        });
+      for (const k of ["options", "value"]) {
+        const problem = typeof params[k] === "string" && params[k] ? celCheck(params[k]) : null;
+        if (problem)
+          errors.push({
+            field: `${prefix}/ui_schema/fields/${name}/value_source/params/${k}`,
+            code: "invalid",
+            message: `This expression is not valid CEL: ${problem}`,
+          });
+      }
+    }
+    if (
+      src?.kind === "rest" &&
+      !/^https:\/\/cmdb\.corp\.example\//.test(typeof src.params?.url === "string" ? src.params.url : "")
+    )
+      errors.push({
+        field: `${prefix}/ui_schema/fields/${name}/value_source/params/url`,
+        code: "host",
+        message: "The URL's host is not in RVAV_REST_SOURCE_HOSTS (cmdb.corp.example here).",
+      });
   }
   for (const name of Object.keys(props))
     if (!def.ui_schema.fields[name])
@@ -211,6 +272,29 @@ function serve(db: Db, item: StoredItem, v: Version | undefined) {
     ui_schema: v.definition.ui_schema,
     initial_values: v.definition.initial_values,
   };
+}
+
+/**
+ * Any version's form and item, and the user a designer previews as: what
+ * `/forms/values` with `as_user_id` resolves against.
+ */
+export function designerForm(db: Db, versionId: string, projectCode: string, asUserId: string | undefined) {
+  const st = state(db);
+  for (const item of db.items) {
+    const v = st.versions[item.id]?.find((x) => x.id === versionId);
+    if (!v) continue;
+    const form: S["RequestForm"] = {
+      item_id: item.id,
+      version_id: v.id,
+      schema: v.definition.form_schema,
+      ui_schema: v.definition.ui_schema,
+      initial_values: v.definition.initial_values,
+    };
+    const userId = asUserId ?? db.me.user.id;
+    const member = previewMembers[projectCode]?.find((m) => m.id === userId);
+    return { item, form, user: { id: userId, roles: [], groups: member?.groups ?? [] } };
+  }
+  return undefined;
 }
 
 export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<void>) {
@@ -566,5 +650,50 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/catalog/icons`, () => HttpResponse.json({ items: iconSet })),
+    http.get(`${base}/admin/catalog/preview-users`, async ({ request }) => {
+      await wait();
+      const project = db.projects.find((p) => p.id === new URL(request.url).searchParams.get("project_id"));
+      if (!project) return problem(404, "Not found");
+      const items = (previewMembers[project.code] ?? []).map((m) => ({
+        id: m.id,
+        name: db.users.find((u) => u.id === m.id)?.name ?? m.id,
+        role: m.role,
+      }));
+      return HttpResponse.json({ items });
+    }),
+    http.post(`${base}/admin/catalog/items/:id/versions/:vid/preview`, async ({ params, request }) => {
+      await wait();
+      const q = (await request.json()) as S["DesignerPreviewQuery"];
+      const project = db.projects.find((p) => p.id === q.project_id);
+      if (!project) return problem(404, "Not found");
+      if (q.as_user_id && !db.users.some((u) => u.id === q.as_user_id))
+        return problem(422, "Some inputs need attention", [
+          { field: "/as_user_id", code: "unknown", message: "There is no such user." },
+        ]);
+      const found = designerForm(db, String(params.vid), project.code, q.as_user_id);
+      if (!found) return problem(404, "Not found");
+      const env = q.environment ?? "dev";
+      const fields = fieldStates(found.form, q.inputs, {
+        environment: env,
+        project: { id: project.id, code: project.code, name: project.name },
+        user: found.user,
+      });
+      const errors = validateInputs(db, found.item, q.inputs, found.form);
+      for (const [name, st] of Object.entries(fields)) {
+        const v = q.inputs[name];
+        if (
+          st.visible &&
+          st.required &&
+          (v === undefined || v === "") &&
+          !errors.some((e) => e.field === `/inputs/${name}`)
+        )
+          errors.push({
+            field: `/inputs/${name}`,
+            code: "required",
+            message: `${found.form.ui_schema.fields[name]?.label ?? name} is required.`,
+          });
+      }
+      return HttpResponse.json({ form: found.form, fields, errors } satisfies S["DesignerPreview"]);
+    }),
   ];
 }

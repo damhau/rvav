@@ -63,6 +63,15 @@ func formatGB(gb int64) string {
 // FieldValues resolves a form field's options or computed value.
 func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.FieldValuesQuery) (api.FieldValues, error) {
 	out := api.FieldValues{Field: q.Field}
+	// The form designer resolves any version, as the user it previews as.
+	designer := q.AsUserId != nil
+	if designer {
+		as, err := s.previewPrincipal(ctx, p, q.AsUserId)
+		if err != nil {
+			return out, err
+		}
+		p = as
+	}
 	proj, err := s.visibleProject(ctx, p, q.ProjectId)
 	if err != nil {
 		return out, err
@@ -74,13 +83,15 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	if err != nil {
 		return out, err
 	}
-	if ok, err := s.Store.IsEntitled(ctx, ver.ItemID, proj.ID); err != nil {
-		return out, err
-	} else if !ok {
-		return out, ErrNotFound
-	}
-	if ver.State != "published" && !canAdminCatalog(p) {
-		return out, ErrNotFound // drafts and earlier versions are for catalog admins
+	if !designer {
+		if ok, err := s.Store.IsEntitled(ctx, ver.ItemID, proj.ID); err != nil {
+			return out, err
+		} else if !ok {
+			return out, ErrNotFound
+		}
+		if ver.State != "published" && !canAdminCatalog(p) {
+			return out, ErrNotFound // drafts and earlier versions are for catalog admins
+		}
 	}
 	var ui api.UiSchema
 	if err := json.Unmarshal(ver.UISchema, &ui); err != nil {

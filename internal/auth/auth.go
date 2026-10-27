@@ -356,6 +356,21 @@ func (d *Dev) Authenticate(r *http.Request) (*Principal, error) {
 	return build(ctx, d.Store, u, groups)
 }
 
+// PrincipalFor is what a user may do, with the groups stored at their last
+// sign-in: for previews made on their behalf (the form designer's "preview
+// as"), never to act as them.
+func PrincipalFor(ctx context.Context, s *store.Store, userID string) (*Principal, error) {
+	u, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.UserGroups(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	return build(ctx, s, u, groups)
+}
+
 type ctxKey struct{}
 
 func WithPrincipal(ctx context.Context, p *Principal) context.Context {

@@ -1164,6 +1164,34 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/catalog/preview-users:
+    get:
+      tags: [catalog-admin]
+      operationId: listPreviewUsers
+      summary: The members of a project, to preview a form as one of them
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, role]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        role: { type: string, examples: [member] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/catalog/items/{itemId}/compare:
     parameters:
       - { $ref: "#/components/parameters/ItemIdPath" }

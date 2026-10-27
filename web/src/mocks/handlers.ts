@@ -27,7 +27,7 @@ import {
 } from "./approvals";
 import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
-import { catalogAdminHandlers } from "./catalogAdmin";
+import { catalogAdminHandlers, designerForm } from "./catalogAdmin";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
@@ -466,11 +466,19 @@ export const handlers = [
     await wait();
     // `environment` is not in FieldValuesQuery yet (spec gap); the web client sends it anyway.
     const body = (await request.json()) as S["FieldValuesQuery"] & { environment?: EnvironmentKey };
-    const item = db.items.find((i) => i.version.id === body.version_id);
     const project = projectById(body.project_id);
+    // The form designer resolves any version, as the user it previews as.
+    const designer =
+      body.as_user_id && project ? designerForm(db, body.version_id, project.code, body.as_user_id) : undefined;
+    const item = designer?.item ?? db.items.find((i) => i.version.id === body.version_id);
     if (!item || !project) return notFound("Form");
     const env = body.environment ?? project.environments[0] ?? "dev";
-    const result = resolveField(db, item, project, env, body.field, body.inputs ?? {});
+    let result: S["FieldValues"] | null;
+    try {
+      result = resolveField(db, item, project, env, body.field, body.inputs ?? {}, designer);
+    } catch (e) {
+      return problem(400, "bad-request", `The expression failed: ${String(e)}`);
+    }
     return result
       ? json<S["FieldValues"]>(result)
       : problem(400, "bad-request", `Field “${body.field}” has no value source`);

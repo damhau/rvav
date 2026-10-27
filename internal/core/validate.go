@@ -67,6 +67,11 @@ func validateInputs(versionID string, schema json.RawMessage, inputs map[string]
 		return nil, err
 	}
 	b, _ := json.Marshal(inputs)
+	return validateWith(s, b)
+}
+
+// validateWith checks a JSON document against a compiled schema.
+func validateWith(s *jsonschema.Schema, b []byte) ([]api.FieldError, error) {
 	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
 	if err != nil {
 		return nil, err

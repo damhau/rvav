@@ -417,3 +417,77 @@ func TestFormRulesOnServer(t *testing.T) {
 		}
 	})
 }
+
+// TestDesignerPreview: a catalog admin previews a draft that no project may
+// request yet, as a project member: their groups drive the rules and the
+// value sources; nobody else may (S8.8).
+func TestDesignerPreview(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin = "prj_web", "lmartin"
+		def := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "required": []any{"name"}, "properties": map[string]any{
+				"name": map[string]any{"type": "string"}, "budget": map[string]any{"type": "string"}, "group": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"name":   {Widget: api.UiWidgetText, Label: "Name"},
+				"budget": {Widget: api.UiWidgetText, Label: "Budget", Rules: &api.UiRules{Visible: new(`"rvav-web-admins" in user.groups`)}},
+				"group": {Widget: api.UiWidgetSelect, Label: "Group", ValueSource: &api.ValueSource{Kind: api.Cel,
+					Params: &map[string]any{"options": `user.groups`}}},
+			}},
+			Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Grant", "job_template": "pg-create-role"}},
+		}
+		def.UiSchema.Layout.Kind = api.Page
+		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Grant", Fields: []string{"name", "budget", "group"}}}
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "grant", Name: "Grant", Summary: "A grant.",
+			Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, 201, &item)
+		draft := "/api/v1/admin/catalog/items/grant/versions/" + item.DraftVersion.Id + "/preview"
+
+		var members struct {
+			Items []struct{ Id, Name, Role string }
+		}
+		h.json("GET", "/api/v1/admin/catalog/preview-users?project_id="+web, admin, nil, 200, &members)
+		if !slices.ContainsFunc(members.Items, func(m struct{ Id, Name, Role string }) bool { return m.Id == "usr_tnguyen" && m.Role == "member" }) {
+			t.Fatalf("preview users = %+v", members.Items)
+		}
+
+		preview := func(as string) api.DesignerPreview {
+			t.Helper()
+			var out api.DesignerPreview
+			q := api.DesignerPreviewQuery{ProjectId: web, Inputs: map[string]any{}}
+			if as != "" {
+				q.AsUserId = new(as)
+			}
+			h.json("POST", draft, admin, q, 200, &out)
+			return out
+		}
+		self := preview("")
+		if !self.Fields["budget"].Visible || self.Form.VersionId != item.DraftVersion.Id ||
+			!slices.ContainsFunc(self.Errors, func(e api.FieldError) bool { return e.Field == "/inputs/name" }) {
+			t.Fatalf("preview as myself = %+v", self)
+		}
+		if member := preview("usr_tnguyen"); member.Fields["budget"].Visible {
+			t.Fatalf("a member sees the budget: %+v", member.Fields)
+		}
+		h.json("POST", draft, admin, api.DesignerPreviewQuery{ProjectId: web, Inputs: map[string]any{}, AsUserId: new("usr_nobody")}, 422, nil)
+
+		// Value sources of the draft, as the member, through /forms/values.
+		var values api.FieldValues
+		h.json("POST", "/api/v1/forms/values", admin, api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: web,
+			Field: "group", Inputs: map[string]any{}, AsUserId: new("usr_tnguyen")}, 200, &values)
+		if values.Options == nil || len(*values.Options) != 1 || (*values.Options)[0].Value != "rvav-web" {
+			t.Fatalf("values as the member = %+v", values.Options)
+		}
+
+		// The member can neither preview nor resolve the draft.
+		h.json("POST", draft, "tnguyen", api.DesignerPreviewQuery{ProjectId: web, Inputs: map[string]any{}}, 403, nil)
+		h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: web,
+			Field: "group", Inputs: map[string]any{}, AsUserId: new("usr_tnguyen")}, 403, nil)
+		h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: web,
+			Field: "group", Inputs: map[string]any{}}, 404, nil)
+		h.json("GET", "/api/v1/admin/catalog/preview-users?project_id="+web, "tnguyen", nil, 403, nil)
+	})
+}

@@ -8,6 +8,10 @@ export interface FormContext {
   versionId: string;
   projectId: string;
   environment: string;
+  /** The form designer's preview: resolve as this user, any version (ADR-0019). */
+  asUserId?: string;
+  /** The designer's saved revision of the draft, so a changed source is fetched again. */
+  revision?: number;
 }
 
 /**
@@ -22,7 +26,11 @@ export function useFieldValues(name: string, ui: UiField, values: Record<string,
   // Deliberately keyed on the dependencies only: other inputs are sent but don't trigger a refetch.
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery({
-    queryKey: keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
+    queryKey: [
+      ...keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
+      ctx.asUserId,
+      ctx.revision,
+    ],
     queryFn: ({ signal }) => {
       const body: FieldValuesQuery = {
         version_id: ctx.versionId,
@@ -30,6 +38,7 @@ export function useFieldValues(name: string, ui: UiField, values: Record<string,
         environment: ctx.environment,
         field: name,
         inputs: latest.current,
+        ...(ctx.asUserId ? { as_user_id: ctx.asUserId } : {}),
       };
       return call(api.POST("/forms/values", { body, signal }));
     },

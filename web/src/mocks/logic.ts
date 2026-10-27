@@ -62,6 +62,12 @@ export function vmNames(db: Db, project: Project, env: EnvironmentKey, role: str
   return Array.from({ length: count }, (_, i) => `${base}${String(highest + 1 + i).padStart(3, "0")}`);
 }
 
+function withDefaultOptions(field: string, inputs: Inputs, options: Option[]): FieldValues {
+  const current = typeof inputs[field] === "string" ? inputs[field] : "";
+  const valid = options.some((o) => o.value === current && !o.disabled);
+  return { field, options, default: valid ? current : options.find((o) => !o.disabled)?.value, cache_seconds: 60 };
+}
+
 export function resolveField(
   db: Db,
   item: StoredItem,
@@ -69,16 +75,36 @@ export function resolveField(
   env: EnvironmentKey,
   field: string,
   inputs: Inputs,
+  designer?: { form: RequestForm; user: Record<string, unknown> },
 ): FieldValues | null {
-  const ui = db.forms[item.id]?.ui_schema.fields[field];
+  const ui = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
   const source = ui?.value_source;
   if (!ui || !source) return null;
   const params = resolveParams(source.params, inputs);
-  const withDefault = (options: Option[]): FieldValues => {
-    const current = typeof inputs[field] === "string" ? inputs[field] : "";
-    const valid = options.some((o) => o.value === current && !o.disabled);
-    return { field, options, default: valid ? current : options.find((o) => !o.disabled)?.value, cache_seconds: 60 };
-  };
+  if (source.kind === "cel") {
+    // Throws on a broken expression; the handler answers 400.
+    const ctx = {
+      inputs,
+      environment: env,
+      project: { id: project.id, code: project.code, name: project.name },
+      user: designer?.user ?? { id: db.me.user.id, roles: [], groups: [] },
+    };
+    const p = source.params ?? {};
+    const value = typeof p.value === "string" ? String(celEval(p.value, ctx)) : undefined;
+    const list = typeof p.options === "string" ? celEval(p.options, ctx) : undefined;
+    const options = Array.isArray(list)
+      ? list.map((x): Option => (typeof x === "string" ? { value: x, label: x } : (x as Option)))
+      : undefined;
+    return { field, ...(options ? { options } : {}), ...(value !== undefined ? { value } : {}), cache_seconds: 30 };
+  }
+  if (source.kind === "rest") {
+    const host = params.url ? new URL(params.url, "https://cmdb.corp.example").host : "the service";
+    return withDefaultOptions(field, inputs, [
+      { value: "svc-01", label: "Service 01", meta: `from ${host}` },
+      { value: "svc-02", label: "Service 02", meta: `from ${host}` },
+    ]);
+  }
+  const withDefault = (options: Option[]) => withDefaultOptions(field, inputs, options);
   switch (source.name) {
     case "vsphere.clusters":
       return withDefault(
@@ -155,12 +181,16 @@ type JsonSchema = {
   readOnly?: boolean;
 };
 
-const fieldLabel = (db: Db, item: StoredItem, field: string) =>
-  db.forms[item.id]?.ui_schema.fields[field]?.label ?? field;
+const fieldLabel = (form: RequestForm | undefined, field: string) => form?.ui_schema.fields[field]?.label ?? field;
 
 /** The subset of JSON Schema the mock forms use. Messages are written for end users. */
-export function validateInputs(db: Db, item: StoredItem, inputs: Inputs): FieldError[] {
-  const schema = db.forms[item.id]?.schema as JsonSchema | undefined;
+export function validateInputs(
+  db: Db,
+  item: StoredItem,
+  inputs: Inputs,
+  form: RequestForm | undefined = db.forms[item.id],
+): FieldError[] {
+  const schema = form?.schema as JsonSchema | undefined;
   if (!schema) return [];
   const errors: FieldError[] = [];
   const add = (field: string, code: string, message: string) =>
@@ -168,13 +198,13 @@ export function validateInputs(db: Db, item: StoredItem, inputs: Inputs): FieldE
   for (const name of schema.required ?? []) {
     const v = inputs[name];
     if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) {
-      add(name, "required", `${fieldLabel(db, item, name)} is required.`);
+      add(name, "required", `${fieldLabel(form, name)} is required.`);
     }
   }
   for (const [name, prop] of Object.entries(schema.properties ?? {})) {
     const v = inputs[name];
     if (v === undefined || v === null || v === "" || prop.readOnly) continue;
-    const label = fieldLabel(db, item, name);
+    const label = fieldLabel(form, name);
     if (prop.type === "string") {
       if (typeof v !== "string") add(name, "type", `${label} must be text.`);
       else if (prop.pattern && !new RegExp(prop.pattern).test(v)) {

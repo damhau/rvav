@@ -21,6 +21,7 @@ export function Select({
 }: {
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
+  "aria-label"?: string;
   id?: string;
   value: string;
   onChange: (v: string) => void;

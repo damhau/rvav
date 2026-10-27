@@ -72,3 +72,70 @@ test("create an item and a category", async ({ page }) => {
   await categories.getByRole("button", { name: "Add category" }).click();
   await expect(categories.getByText("storage", { exact: true })).toBeVisible();
 });
+
+test("build a small form in the designer", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const dialog = page.getByRole("dialog", { name: "New item" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Team share");
+  await dialog.getByRole("textbox", { name: "Slug" }).fill("team-share");
+  await dialog.getByRole("textbox", { name: "Summary" }).fill("A file share for a team.");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("tab", { name: "Form designer" }).click();
+
+  const fields = page.getByRole("region", { name: "Fields" });
+  const props = page.getByRole("region", { name: "Properties" });
+  const preview = page.getByRole("region", { name: "Preview" });
+  const status = page.getByRole("status").filter({ hasText: "Draft 1.0" });
+
+  // A dropdown whose options come from a CEL source, tested as two users.
+  await fields.getByRole("combobox", { name: "Add a field" }).click();
+  await page.getByRole("option", { name: "Dropdown", exact: true }).click();
+  await props.getByRole("textbox", { name: "Name" }).fill("group");
+  await props.getByRole("textbox", { name: "Name" }).press("Enter");
+  await props.getByRole("textbox", { name: "Label" }).fill("Owning group");
+  await props.getByRole("combobox", { name: "Value source" }).click();
+  await page.getByRole("option", { name: "CEL expression" }).click();
+  await props.getByRole("textbox", { name: "Options" }).fill("user.groups");
+  await props.getByRole("textbox", { name: "Options" }).press("Enter");
+  await expect(status).toHaveText("Draft 1.0: saved");
+  await props.getByRole("button", { name: "Test the source" }).click();
+  await expect(props.getByRole("status")).toContainText("2 options: rvav-web-admins, rvav-catalog-admins");
+  await preview.getByRole("combobox", { name: "Preview as" }).click();
+  await page.getByRole("option", { name: "Thomas Nguyen (member)" }).click();
+  await props.getByRole("button", { name: "Test the source" }).click();
+  await expect(props.getByRole("status")).toContainText("1 option: rvav-web");
+
+  // A field shown in production only; a broken rule is the server's problem, shown on the rule.
+  await fields.getByRole("combobox", { name: "Add a field" }).click();
+  await page.getByRole("option", { name: "Text", exact: true }).click();
+  await props.getByRole("textbox", { name: "Name" }).fill("reason");
+  await props.getByRole("textbox", { name: "Name" }).press("Enter");
+  await props.getByRole("textbox", { name: "Label" }).fill("Why production");
+  const shown = props.getByRole("textbox", { name: "Shown when" });
+  await shown.fill('environment == "prd" &&');
+  await shown.press("Enter");
+  await expect(status).toContainText("not saved, 1 problem to fix");
+  await expect(props.getByText(/This rule is not valid CEL/)).toBeVisible();
+  await expect(fields.getByRole("img", { name: "Why production has problems" })).toBeVisible();
+  await shown.fill('environment == "prd"');
+  await shown.press("Enter");
+  await expect(status).toHaveText("Draft 1.0: saved");
+  await expect(preview.getByRole("textbox", { name: "Why production" })).toBeHidden();
+  await preview.getByRole("combobox", { name: "Environment" }).click();
+  await page.getByRole("option", { name: "Production" }).click();
+  await expect(preview.getByRole("textbox", { name: "Why production" })).toBeVisible();
+
+  // Reordered by keyboard; the YAML has it all.
+  await fields.getByRole("button", { name: "Move Why production up" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(fields.getByRole("listitem").nth(1)).toContainText("Why production");
+  await expect(status).toHaveText("Draft 1.0: saved");
+  await page.getByRole("tab", { name: "Definition" }).click();
+  const yaml = page.getByRole("textbox", { name: "Definition of Team share 1.0" });
+  await expect(yaml).toContainText("fields:");
+  await expect(yaml).toContainText('visible: environment == "prd"');
+  expect(errors).toEqual([]);
+});

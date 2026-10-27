@@ -20,6 +20,7 @@ import type { AdminCatalogItem, CatalogItemVersion } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
+import { FormDesigner } from "./designer/FormDesigner";
 import type { LineProblem } from "./YamlEditor";
 
 const YamlEditor = lazy(() => import("./YamlEditor"));
@@ -547,12 +548,16 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
       <Tabs defaultValue="versions">
         <TabsList aria-label="Item sections">
           <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="designer">Form designer</TabsTrigger>
           <TabsTrigger value="definition">Definition</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="entitlements">Entitlements</TabsTrigger>
         </TabsList>
         <TabsContent value="versions" className="pt-4">
           <VersionsTab item={it} />
+        </TabsContent>
+        <TabsContent value="designer" className="pt-4">
+          <FormDesigner item={it} />
         </TabsContent>
         <TabsContent value="definition" className="pt-4">
           <DefinitionTab item={it} />

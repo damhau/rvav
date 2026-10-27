@@ -122,7 +122,26 @@ func (s *Server) DeprecateCatalogItemVersion(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	var q api.DesignerPreviewQuery
+	if !s.decode(w, r, &q) {
+		return
+	}
+	out, err := s.Core.PreviewCatalogItemVersion(r.Context(), principal(r), itemID, versionID, q)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) ListPreviewUsers(w http.ResponseWriter, r *http.Request, params api.ListPreviewUsersParams) {
+	users, roles, err := s.Core.PreviewUsers(r.Context(), principal(r), params.ProjectId)
+	type user struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Role string `json:"role"`
+	}
+	items := make([]user, len(users))
+	for i, u := range users {
+		items[i] = user{ID: u.Id, Name: u.Name, Role: roles[i]}
+	}
+	s.reply(w, r, http.StatusOK, map[string]any{"items": items}, err)
 }
 
 func (s *Server) CompareCatalogItemVersions(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, params api.CompareCatalogItemVersionsParams) {

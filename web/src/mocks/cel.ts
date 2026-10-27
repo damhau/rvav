@@ -296,6 +296,16 @@ export function celEval(expression: string, ctx: Record<string, unknown>): unkno
   return evaluate(ast, ctx);
 }
 
+/** Checks an expression's syntax, as the server does when a draft is saved. */
+export function celCheck(expression: string): string | null {
+  try {
+    parse(expression);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 /** Evaluate a rule as a boolean, falling back when it is empty or broken. */
 export function celBool(expression: string | undefined, ctx: Record<string, unknown>, fallback: boolean): boolean {
   if (!expression) return fallback;
