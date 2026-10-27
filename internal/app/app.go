@@ -51,10 +51,11 @@ type App struct {
 }
 
 // awxCatalog imports the AWX templates of the organisation that have one of
-// the catalog labels.
+// the catalog labels, and those with an action label as day-2 actions.
 func (a *App) awxCatalog() *awxcatalog.Sync {
 	return &awxcatalog.Sync{Store: a.Store, AWX: a.AWX, Log: a.Log, Interval: a.Cfg.AWX.SyncInterval,
-		Filter: awx.TemplateFilter{Organization: a.Cfg.AWX.Organization, Labels: a.Cfg.AWX.CatalogLabels}}
+		Filter:       awx.TemplateFilter{Organization: a.Cfg.AWX.Organization, Labels: a.Cfg.AWX.CatalogLabels},
+		ActionLabels: a.Cfg.AWX.ActionLabels}
 }
 
 // NewFakeEfficientIP is a fake SOLIDserver holding the subnets of rvav's

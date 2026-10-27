@@ -115,6 +115,10 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	if err != nil {
 		return nil, err
 	}
+	actions, err := s.day2Actions(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := []api.Day2Action{}
 	active := map[string]string{}
 	for _, t := range targets(d, resources) {
@@ -125,8 +129,8 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 		if err != nil {
 			return nil, err
 		}
-		for _, a := range day2.All() {
-			if !a.AppliesTo(t.Type) || a.Hidden {
+		for _, a := range actions {
+			if !a.AppliesTo(t.Type) || a.Hidden || !j.offered(a, t) {
 				continue
 			}
 			dec := j.decide(a, t, nil)
@@ -186,7 +190,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if err != nil {
 		return store.RequestRow{}, err
 	}
-	a := day2.Get(draft.Action)
+	a, err := s.day2Action(ctx, draft.Action)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
 	if a == nil {
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
 			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
@@ -220,6 +227,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	j, err := s.judge(ctx, p, d)
 	if err != nil {
 		return store.RequestRow{}, err
+	}
+	if !j.offered(a, *target) {
+		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "not_offered",
+			fmt.Sprintf("%s is not offered for %s.", a.Name, target.ResourceName))}}
 	}
 	if dec := j.decide(a, *target, nil); dec.Denied != "" {
 		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
@@ -297,9 +308,15 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	wf := provision.WorkflowID(req.ID)
 	req.WorkflowID = &wf
 	// What it adds is reserved while it waits and runs, as for new requests.
+	ops := a.Ops(*target, inputs)
+	for _, op := range ops {
+		if op.System == day2.SystemAWX && op.Op == day2.OpJob {
+			op.Args["rvav"] = rvavContext(req.ID, p, d, *target)
+		}
+	}
 	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Quota: day2Add(a, *target, inputs), Day2: &provision.Day2{
 		Action: a.Key, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
-		Ops: a.Ops(*target, inputs), Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
+		Ops: ops, Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
 	req.Plan, _ = json.Marshal(plan)
 	req.Inputs, _ = json.Marshal(inputs)

@@ -1,0 +1,173 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+
+	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/store"
+)
+
+// Day-2 actions backed by AWX templates (ADR-0018), next to the native ones.
+
+func awxAction(a store.AWXAction) *day2.Action {
+	return day2.AWXAction(day2.AWXDef{Key: a.Key, Name: a.Name, Template: a.Template, Workflow: a.Workflow,
+		Types: a.Types, Condition: a.Condition, Schema: a.FormSchema, UISchema: a.UISchema, Initial: a.Initial})
+}
+
+// day2Actions are the native actions and the AWX actions offered now
+// (enabled, and their template still chosen), in menu order.
+func (s *Service) day2Actions(ctx context.Context) ([]*day2.Action, error) {
+	list, err := s.Store.AWXActions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := day2.All()
+	for _, a := range list {
+		if a.Enabled && !a.Gone {
+			out = append(out, awxAction(a))
+		}
+	}
+	return day2.Sorted(out), nil
+}
+
+// day2Action is the action with this key, native or AWX (nil when none is
+// offered).
+func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, error) {
+	if a := day2.Get(key); a != nil {
+		return a, nil
+	}
+	a, err := s.Store.GetAWXAction(ctx, key)
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.Enabled || a.Gone) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return awxAction(a), nil
+}
+
+// offered says whether an action's condition holds for the target. A
+// condition that can't be evaluated offers nothing.
+func (j *judge) offered(a *day2.Action, t day2.Target) bool {
+	if a.Condition == "" {
+		return true
+	}
+	ok, err := policy.Day2Bool(a.Condition, day2Vars(j.p, j.d, j.env, a, t, nil, j.roles))
+	if err != nil {
+		j.s.Log.Warn("day-2 action condition could not be evaluated", "action", a.Key, "err", err)
+		return false
+	}
+	return ok
+}
+
+// rvavContext is what an AWX job of a day-2 action gets as extra_vars.rvav,
+// as provisioning jobs do (integrations.md, launch contract).
+func rvavContext(requestID string, p *auth.Principal, d store.DeploymentRow, t day2.Target) map[string]any {
+	var resources []map[string]any
+	add := func(name string, vm api.VmProperties) {
+		r := map[string]any{"name": name, "fqdn": deref(vm.Fqdn), "moref": vm.Moref}
+		for _, nic := range vm.Nics {
+			if nic.IpAddresses != nil && len(*nic.IpAddresses) > 0 {
+				r["ip"] = (*nic.IpAddresses)[0]
+				break
+			}
+		}
+		resources = append(resources, r)
+	}
+	if t.Type == day2.DeploymentType {
+		for _, r := range t.Resources {
+			if r.Type == "vsphere.vm" {
+				add(r.Name, r.VM)
+			}
+		}
+	} else {
+		add(t.ResourceName, t.VM)
+	}
+	return map[string]any{"request_id": requestID, "deployment_id": d.ID, "deployment": d.Name, "project": d.ProjectCode,
+		"environment": d.Environment, "requester": p.User.Email, "resources": resources}
+}
+
+func presentAWXAction(a store.AWXAction) api.AwxAction {
+	out := api.AwxAction{Key: a.Key, Name: a.Name, Description: a.Description, TemplateId: a.AWXID, Template: a.Template,
+		Workflow: a.Workflow, Condition: a.Condition, Enabled: a.Enabled, Warnings: append([]string{}, a.Warnings...),
+		Gone: a.Gone, SyncedAt: a.SyncedAt, Types: []api.AwxActionTypes{}}
+	for _, t := range a.Types {
+		out.Types = append(out.Types, api.AwxActionTypes(t))
+	}
+	var ui api.UiSchema
+	if json.Unmarshal(a.UISchema, &ui) == nil {
+		fields := []string{}
+		for _, sec := range ui.Layout.Sections {
+			fields = append(fields, sec.Fields...)
+		}
+		out.Fields = &fields
+	}
+	return out
+}
+
+// AWXActions lists the AWX templates synced as day-2 actions, for
+// administrators.
+func (s *Service) AWXActions(ctx context.Context, p *auth.Principal) (api.AwxActionList, error) {
+	out := api.AwxActionList{Items: []api.AwxAction{}}
+	if !p.IsAdmin() {
+		return out, ErrForbidden
+	}
+	list, err := s.Store.AWXActions(ctx)
+	for _, a := range list {
+		out.Items = append(out.Items, presentAWXAction(a))
+	}
+	return out, err
+}
+
+// UpdateAWXAction sets what administrators choose for an AWX action: its
+// name, the resource types it applies to, its condition and whether it is
+// offered.
+func (s *Service) UpdateAWXAction(ctx context.Context, p *auth.Principal, key string, u api.AwxActionUpdate) (api.AwxAction, error) {
+	if !p.IsAdmin() {
+		return api.AwxAction{}, ErrForbidden
+	}
+	var errs []api.FieldError
+	if u.Name != nil && (len(*u.Name) == 0 || len(*u.Name) > 80) {
+		errs = append(errs, fieldErr("/name", "invalid", "Give the action a name of 1 to 80 characters."))
+	}
+	var types []string
+	if u.Types != nil {
+		if len(*u.Types) == 0 {
+			errs = append(errs, fieldErr("/types", "required", "Choose what the action runs on."))
+		}
+		for _, t := range *u.Types {
+			if !slices.Contains([]string{"vsphere.vm", day2.DeploymentType}, string(t)) {
+				errs = append(errs, fieldErr("/types", "invalid", fmt.Sprintf("%q is not a VM or a deployment.", t)))
+			}
+			if !slices.Contains(types, string(t)) {
+				types = append(types, string(t))
+			}
+		}
+	}
+	if u.Condition != nil && *u.Condition != "" {
+		if err := policy.CheckDay2(*u.Condition); err != nil {
+			errs = append(errs, fieldErr("/condition", "invalid", "This condition is not valid: "+err.Error()))
+		}
+	}
+	if len(errs) > 0 {
+		return api.AwxAction{}, &ValidationError{Errors: errs}
+	}
+	b := store.AWXActionBinding{Name: u.Name, Types: types, Condition: u.Condition, Enabled: u.Enabled}
+	a, err := s.Store.UpdateAWXAction(ctx, key, b)
+	if errors.Is(err, store.ErrNotFound) {
+		return api.AwxAction{}, ErrNotFound
+	}
+	if err != nil {
+		return api.AwxAction{}, err
+	}
+	_ = s.Store.Audit(ctx, s.Store.Pool, store.AuditEvent{ActorID: &p.User.ID, Action: "awx_action.update", TargetType: "awx_action",
+		TargetID: key, Detail: map[string]any{"name": a.Name, "types": a.Types, "condition": a.Condition, "enabled": a.Enabled}})
+	return presentAWXAction(a), nil
+}

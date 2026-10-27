@@ -107,9 +107,12 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	if err != nil {
 		return err
 	}
-	a := day2.Get(deref(r.Action))
+	a, err := s.day2Action(ctx, deref(r.Action))
+	if err != nil {
+		return err
+	}
 	if a == nil {
-		return &ConflictError{Msg: "This action no longer exists."}
+		return &ConflictError{Msg: "This action is no longer offered."}
 	}
 	if a.Hidden || r.RequesterID == SystemUserID {
 		return &ConflictError{Msg: "rvav runs this itself and tries again when it is due."}

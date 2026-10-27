@@ -865,6 +865,52 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /admin/awx/actions:
+    get:
+      tags: [admin]
+      operationId: listAwxActions
+      summary: AWX templates offered as day-2 actions
+      description: |
+        The templates of the organisation with a label of
+        `RVAV_AWX_ACTION_LABELS` (`day2`), synced with the catalog's
+        (ADR-0018): each is a day-2 action with its form from the survey,
+        on the resource types and under the condition administrators
+        choose. Administrators.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AwxActionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/awx/actions/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string, examples: [awx.install-monitoring-agent] }
+    patch:
+      tags: [admin]
+      operationId: updateAwxAction
+      summary: Choose where an AWX action is offered, its name, or turn it off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AwxActionUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AwxAction" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /events:
     get:
       tags: [events]
@@ -1063,6 +1109,58 @@ components:
           description: AWX no longer has it, or it lost the label; the item stays.
         modified_at: { type: string, format: date-time, description: When AWX last changed it. }
         synced_at: { type: string, format: date-time }
+    AwxActionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AwxAction" }
+    AwxAction:
+      type: object
+      required: [key, name, description, template_id, template, workflow, types, condition, enabled, warnings, gone, synced_at]
+      properties:
+        key: { type: string, description: "The day-2 action's key: `awx.` and the template's name.", examples: [awx.install-monitoring-agent] }
+        name: { type: string, examples: [Install monitoring agent] }
+        description: { type: string, description: The template's description in AWX. }
+        template_id: { type: integer, description: The template's ID in AWX. }
+        template: { type: string, description: The template's name in AWX. }
+        workflow: { type: boolean }
+        types:
+          type: array
+          description: What it runs on.
+          items: { type: string, enum: [vsphere.vm, deployment] }
+        condition:
+          type: string
+          description: |
+            A CEL expression over the day-2 policy variables (`resource`,
+            `deployment`, `project`, `environment`, `user`); the action is
+            offered only where it is true. Empty: everywhere.
+          examples: ["resource.os_family == 'linux'"]
+        enabled: { type: boolean, description: Offered on deployments. }
+        fields:
+          type: array
+          description: The form's fields, from the survey.
+          items: { type: string }
+        warnings:
+          type: array
+          description: Launch settings or survey questions rvav can't use as meant.
+          items: { type: string }
+        gone:
+          type: boolean
+          description: AWX no longer has it, or it lost the label; it is no longer offered.
+        synced_at: { type: string, format: date-time }
+    AwxActionUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        types:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [vsphere.vm, deployment] }
+        condition: { type: string, maxLength: 2000 }
+        enabled: { type: boolean }
     IpamReconcile:
       type: object
       required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]
@@ -1918,7 +2016,8 @@ components:
         name: { type: string, examples: [Power off] }
         group:
           type: string
-          enum: [power, configuration, snapshots, access, lifecycle]
+          enum: [power, configuration, snapshots, automation, access, lifecycle]
+          description: "`automation` holds the actions backed by AWX templates (ADR-0018)."
         resource_id:
           type: [string, "null"]
           description: The resource it acts on; null for actions on the whole deployment.

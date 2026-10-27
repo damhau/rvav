@@ -216,3 +216,82 @@ func TestAnsibleInventory(t *testing.T) {
 		}
 	})
 }
+
+// TestAWXDay2Action: an AWX template with the day2 label becomes a day-2
+// action, with its form from the survey, offered where its condition holds,
+// and run as an AWX job on rvav's inventory with the VM as limit (S6).
+func TestAWXDay2Action(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		h.svc.AWXCatalog = &awxcatalog.Sync{Store: h.store, AWX: h.awx, Log: h.acts.Log,
+			Filter: awx.TemplateFilter{Labels: []string{"catalog"}}, ActionLabels: []string{"day2"}}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, nil)
+		const key = "awx.monitoring-agent"
+		var list api.AwxActionList
+		h.json("GET", "/api/v1/admin/awx/actions", "mkeller", nil, 200, &list)
+		if len(list.Items) != 1 || list.Items[0].Key != key || list.Items[0].Name != "Monitoring agent" || !list.Items[0].Enabled ||
+			len(list.Items[0].Types) != 1 || list.Items[0].Types[0] != "vsphere.vm" || list.Items[0].Fields == nil || len(*list.Items[0].Fields) != 2 {
+			t.Fatalf("AWX actions = %+v", list.Items)
+		}
+		h.json("GET", "/api/v1/admin/awx/actions", "tnguyen", nil, 403, nil)
+
+		d := buildVM(h, model)
+		a, ok := d.actions("tnguyen")[key]
+		if !ok || !a.Enabled || a.Group != api.Automation || a.Form == nil || a.Form.InitialValues["monitoring_agent"] != "node_exporter" {
+			t.Fatalf("the AWX action on the VM = %+v", a)
+		}
+
+		// Offered only where the condition holds; a bad condition is refused.
+		patch := func(u api.AwxActionUpdate, want int) {
+			t.Helper()
+			h.json("PATCH", "/api/v1/admin/awx/actions/"+key, "mkeller", u, want, nil)
+		}
+		windows, linux, broken := "resource.os_family == 'windows'", "resource.os_family == 'linux'", "(("
+		patch(api.AwxActionUpdate{Condition: &broken}, 422)
+		patch(api.AwxActionUpdate{Condition: &windows}, 200)
+		if _, ok := d.actions("tnguyen")[key]; ok {
+			t.Fatal("offered on a Linux VM with a Windows condition")
+		}
+		d.run("tnguyen", key, map[string]any{"monitoring_agent": "telegraf", "listen_port": 9100}, 422)
+		name := "Install monitoring agent"
+		patch(api.AwxActionUpdate{Condition: &linux, Name: &name}, 200)
+
+		// The form is checked against the survey, then the job runs on rvav's inventory.
+		d.run("tnguyen", key, map[string]any{"monitoring_agent": "telegraf", "listen_port": 80}, 422)
+		h.acts.AWXInventorySource = 1
+		r := d.succeed("tnguyen", key, map[string]any{"monitoring_agent": "telegraf", "listen_port": 9100})
+		if r.Title != "Install monitoring agent · web-dev-app001" {
+			t.Fatalf("title = %q", r.Title)
+		}
+		step, err := h.store.GetStepByKey(ctx, r.Id, "awx.job:monitoring-agent")
+		if err != nil || step.ExternalID == nil || step.Status != "done" {
+			t.Fatalf("job step = %+v, %v", step, err)
+		}
+		if _, err := h.store.GetStepByKey(ctx, r.Id, "awx.inventory"); err != nil {
+			t.Fatalf("no inventory refresh: %v", err)
+		}
+		var jobID int
+		fmt.Sscan(*step.ExternalID, &jobID)
+		job := h.awx.Launched(jobID)
+		if job.Limit != "web-dev-app001" || job.Inventory != awx.FakeInventory || job.ExtraVars["monitoring_agent"] != "telegraf" {
+			t.Fatalf("launched %+v", job)
+		}
+		rvav, _ := job.ExtraVars["rvav"].(map[string]any)
+		resources, _ := rvav["resources"].([]any)
+		if rvav["request_id"] != r.Id || rvav["project"] != "web" || len(resources) != 1 {
+			t.Fatalf("rvav context = %v", job.ExtraVars["rvav"])
+		}
+
+		// Turned off, or gone from AWX, it is no longer offered.
+		off := false
+		patch(api.AwxActionUpdate{Enabled: &off}, 200)
+		if _, ok := d.actions("tnguyen")[key]; ok {
+			t.Fatal("offered while turned off")
+		}
+		d.run("tnguyen", key, nil, 422)
+	})
+}

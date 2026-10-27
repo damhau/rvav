@@ -14,6 +14,7 @@ import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
 import { Route as AdminCatalogItemsRouteImport } from "./routes/admin/catalog-items"
+import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
 import { Route as DeploymentsIndexRouteImport } from "./routes/deployments/index"
@@ -46,6 +47,11 @@ const AdminSectionRoute = AdminSectionRouteImport.update({
 const AdminCatalogItemsRoute = AdminCatalogItemsRouteImport.update({
   id: "/admin/catalog-items",
   path: "/admin/catalog-items",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
+  id: "/admin/day2-actions",
+  path: "/admin/day2-actions",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
   "/admin/catalog-items": typeof AdminCatalogItemsRoute
+  "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
   "/admin/catalog-items": typeof AdminCatalogItemsRoute
+  "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
   "/admin/catalog-items": typeof AdminCatalogItemsRoute
+  "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | "/reports"
     | "/admin/$section"
     | "/admin/catalog-items"
+    | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -159,6 +169,7 @@ export interface FileRouteTypes {
     | "/reports"
     | "/admin/$section"
     | "/admin/catalog-items"
+    | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | "/reports"
     | "/admin/$section"
     | "/admin/catalog-items"
+    | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -190,6 +202,7 @@ export interface RootRouteChildren {
   ReportsRoute: typeof ReportsRoute
   AdminSectionRoute: typeof AdminSectionRoute
   AdminCatalogItemsRoute: typeof AdminCatalogItemsRoute
+  AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRoute
@@ -235,6 +248,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/catalog-items"
       fullPath: "/admin/catalog-items"
       preLoaderRoute: typeof AdminCatalogItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/day2-actions": {
+      id: "/admin/day2-actions"
+      path: "/admin/day2-actions"
+      fullPath: "/admin/day2-actions"
+      preLoaderRoute: typeof AdminDay2ActionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/integrations": {
@@ -302,6 +322,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsRoute: ReportsRoute,
   AdminSectionRoute: AdminSectionRoute,
   AdminCatalogItemsRoute: AdminCatalogItemsRoute,
+  AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
   RequestsRequestIdRoute: RequestsRequestIdRoute,

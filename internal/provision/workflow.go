@@ -8,6 +8,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/day2"
 )
 
 // SignalApproval tells a waiting workflow that an approval level was decided.
@@ -207,9 +208,29 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 			if info.done(op.Key) {
 				continue
 			}
-			in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
-				ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
-			if err := workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil); err != nil {
+			var err error
+			switch {
+			case op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory:
+				err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
+			case op.System == day2.SystemAWX && op.Op == day2.OpJob:
+				// An AWX action (ADR-0018): the job on rvav's inventory, its
+				// tasks and output followed as for post-configuration.
+				vars, _ := op.Args["extra_vars"].(map[string]any)
+				extra := map[string]any{"rvav": op.Args["rvav"]}
+				for k, v := range vars {
+					extra[k] = v
+				}
+				workflowJob, _ := op.Args["workflow"].(bool)
+				job := Job{Key: op.Key, Title: op.Title, Template: argStr(op.Args, "template"), Workflow: workflowJob}
+				in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: op.Key, Job: job,
+					Limit: argStr(op.Args, "limit"), ExtraVars: extra}
+				err = workflow.ExecuteActivity(ctx, a.RunJob, in).Get(ctx, nil)
+			default:
+				in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
+					ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
+				err = workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil)
+			}
+			if err != nil {
 				return op.Key, err
 			}
 		}

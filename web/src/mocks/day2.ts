@@ -208,6 +208,44 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    // An AWX template with the day2 label (ADR-0018).
+    key: "awx.install-monitoring-agent",
+    name: "Install monitoring agent",
+    group: "automation",
+    unavailable: poweredOn,
+    form: () =>
+      form("Install monitoring agent", [
+        [
+          "monitoring_agent",
+          { type: "string", enum: ["node_exporter", "telegraf"] },
+          {
+            label: "Agent",
+            widget: "select",
+            options: [
+              { value: "node_exporter", label: "node_exporter" },
+              { value: "telegraf", label: "telegraf" },
+            ],
+          },
+          "node_exporter",
+        ],
+        [
+          "listen_port",
+          { type: "integer", minimum: 1024, maximum: 65535 },
+          { label: "Port", widget: "number", help: "The port the agent listens on." },
+          9100,
+        ],
+      ]),
+    ops: (vm) => [
+      { key: "awx.inventory", title: "Refresh the AWX inventory", system: "awx", apply: () => {} },
+      {
+        key: "awx.job:install-monitoring-agent",
+        title: `Install monitoring agent on ${vm?.name}`,
+        system: "awx",
+        apply: () => {},
+      },
+    ],
+  },
+  {
     key: "snapshot_create",
     name: "Take a snapshot",
     group: "snapshots",

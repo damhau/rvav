@@ -34,6 +34,7 @@ export const keys = {
   me: ["me"] as const,
   ipamReconcile: ["admin", "ipam", "reconcile"] as const,
   awxTemplates: ["admin", "awx", "templates"] as const,
+  awxActions: ["admin", "awx", "actions"] as const,
   environments: ["environments"] as const,
   project: (id: string) => ["projects", id] as const,
   quota: (id: string, environment?: string) => ["projects", id, "quota", environment ?? "all"] as const,
@@ -76,6 +77,11 @@ export const keys = {
 const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
 
 export const q = {
+  awxActions: () =>
+    queryOptions({
+      queryKey: keys.awxActions,
+      queryFn: ({ signal }) => call(api.GET("/admin/awx/actions", { signal })),
+    }),
   awxTemplates: () =>
     queryOptions({
       queryKey: keys.awxTemplates,

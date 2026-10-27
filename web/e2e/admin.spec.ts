@@ -33,3 +33,28 @@ test("see an AWX template whose survey changed", async ({ page }) => {
   await page.getByRole("button", { name: "Sync now" }).click();
   await expect(page.getByText("AWX templates synced")).toBeVisible();
 });
+
+test("choose where an AWX day-2 action is offered", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Day-2 actions" }).click();
+  await expect(page.getByRole("heading", { name: "Day-2 actions" })).toBeVisible();
+  const row = page.getByRole("row", { name: /Install monitoring agent/ });
+  await expect(row.getByText("Offered")).toBeVisible();
+  await expect(row.getByText("resource.os_family == 'linux'")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Patch now/ }).getByText("Off")).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit Install monitoring agent" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Install monitoring agent" });
+  const condition = dialog.getByRole("textbox", { name: "Condition" });
+  await condition.fill("resource.os_family == 'linux' && (environment.production");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByText(/This condition is not valid/)).toBeVisible();
+  await condition.fill("resource.os_family == 'linux' && !environment.production");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.getByText("resource.os_family == 'linux' && !environment.production")).toBeVisible();
+  expect(errors).toEqual([]);
+});

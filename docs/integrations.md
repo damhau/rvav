@@ -107,6 +107,15 @@ checked against a real AWX by contract tests ([deploy/awx](../deploy/awx/README.
   mapped into the request timeline. Polling is simple and reliable; the AWX
   websocket can be added later as an optimisation.
 
+### Day-2 actions from AWX
+
+Templates with the `day2` label (`RVAV_AWX_ACTION_LABELS`) become day-2
+actions in the Automation group, with their form from the survey; an
+administrator chooses whether they run on VMs or whole deployments, a CEL
+condition for where they are offered, and can turn them off. A run refreshes
+the inventory and launches the template on rvav's inventory with the VM as
+`limit` ([ADR-0018](adr/0018-awx-day2-actions.md)).
+
 ### Dynamic inventory: AWX pulls from rvav
 
 AWX gets its host list from rvav through a custom **inventory plugin** that rvav

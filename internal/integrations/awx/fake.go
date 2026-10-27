@@ -21,6 +21,8 @@ type Fake struct {
 	// Workflows the templates that are workflow job templates.
 	Surveys   map[string][]SurveyQuestion
 	Workflows map[string]bool
+	// Labels are the templates' labels besides "rvav", which they all have.
+	Labels map[string][]string
 
 	mu      sync.Mutex
 	nextJob int
@@ -33,6 +35,7 @@ type fakeJob struct {
 	template  string
 	limit     string
 	inventory int
+	extraVars map[string]any
 	started   time.Time
 	canceled  bool
 	tasks     []string
@@ -60,6 +63,7 @@ func DefaultTemplates() map[string][]string {
 func NewFake(taskDelay time.Duration, failTask string) *Fake {
 	return &Fake{TaskDelay: taskDelay, FailTask: failTask, Plays: DefaultTemplates(),
 		Surveys: DefaultSurveys(), Workflows: map[string]bool{"fw-flow-request": true},
+		Labels:  map[string][]string{"monitoring-agent": {"day2"}},
 		nextJob: 18240, jobs: map[int]*fakeJob{}, now: time.Now}
 }
 
@@ -90,7 +94,7 @@ func (f *Fake) Launch(_ context.Context, templateID int, _ bool, req LaunchReque
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextJob++
-	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, started: f.now(), tasks: f.Plays[names[idx]]}
+	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, extraVars: req.ExtraVars, started: f.now(), tasks: f.Plays[names[idx]]}
 	f.jobs[j.id] = j
 	return f.jobLocked(j), nil
 }
@@ -224,13 +228,16 @@ func (f *Fake) InventoryOfSource(context.Context, int) (int, error) { return Fak
 
 // LaunchedInventory returns the inventory a job was launched against (0:
 // the template's).
-func (f *Fake) LaunchedInventory(id int) int {
+func (f *Fake) LaunchedInventory(id int) int { return f.Launched(id).Inventory }
+
+// Launched returns what a job was launched with.
+func (f *Fake) Launched(id int) LaunchRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if j, ok := f.jobs[id]; ok {
-		return j.inventory
+		return LaunchRequest{Limit: j.limit, Inventory: j.inventory, ExtraVars: j.extraVars}
 	}
-	return 0
+	return LaunchRequest{}
 }
 
 func (f *Fake) GetInventoryUpdate(ctx context.Context, id int) (Job, error) {
@@ -275,11 +282,12 @@ func (f *Fake) Templates(_ context.Context, filter TemplateFilter) ([]Template, 
 	defer f.mu.Unlock()
 	var out []Template
 	for i, n := range f.templateNames() {
-		if len(filter.Labels) > 0 && !slices.Contains(filter.Labels, "rvav") {
+		labels := append([]string{"rvav"}, f.Labels[n]...)
+		if len(filter.Labels) > 0 && !slices.ContainsFunc(labels, func(l string) bool { return slices.Contains(filter.Labels, l) }) {
 			continue
 		}
-		out = append(out, Template{ID: 100 + i, Name: n, Workflow: f.Workflows[n], Organization: "rvav", Labels: []string{"rvav"},
-			AskLimit: true, AskVariables: true, SurveyEnabled: len(f.Surveys[n]) > 0})
+		out = append(out, Template{ID: 100 + i, Name: n, Workflow: f.Workflows[n], Organization: "rvav", Labels: labels,
+			AskLimit: true, AskVariables: true, AskInventory: true, SurveyEnabled: len(f.Surveys[n]) > 0})
 	}
 	return out, nil
 }

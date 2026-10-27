@@ -12,6 +12,7 @@ const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] ho
 
 const admin = [
   ["catalog-items", "Catalog items"],
+  ["day2-actions", "Day-2 actions"],
   ["policies", "Policies"],
   ["projects", "Projects"],
   ["integrations", "Integrations"],

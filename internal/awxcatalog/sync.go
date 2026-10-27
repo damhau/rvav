@@ -14,13 +14,16 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// Sync imports the AWX templates the filter chooses, every interval.
+// Sync imports the AWX templates the filter chooses, every interval, as
+// catalog items; and those with one of ActionLabels (in the filter's
+// organisation) as day-2 actions (ADR-0018).
 type Sync struct {
-	Store    *store.Store
-	AWX      awx.Client
-	Filter   awx.TemplateFilter
-	Log      *slog.Logger
-	Interval time.Duration
+	Store        *store.Store
+	AWX          awx.Client
+	Filter       awx.TemplateFilter
+	ActionLabels []string
+	Log          *slog.Logger
+	Interval     time.Duration
 }
 
 func (s *Sync) Run(ctx context.Context) error {
@@ -39,6 +42,9 @@ func (s *Sync) Run(ctx context.Context) error {
 // Result is what a sync did.
 type Result struct {
 	Templates, Created, Linked, Gone int
+	// Actions are the templates synced as day-2 actions, ActionsGone those
+	// no longer chosen.
+	Actions, ActionsGone int
 }
 
 // SyncOnce reads the templates: a new one becomes an item (or is linked to
@@ -102,8 +108,63 @@ func (s *Sync) SyncOnce(ctx context.Context) (Result, error) {
 	if res.Gone, err = s.Store.MarkAWXTemplatesGone(ctx, seenIDs, seenWorkflow); err != nil {
 		return res, err
 	}
-	s.Log.Info("AWX catalog synced", "templates", res.Templates, "created", res.Created, "linked", res.Linked, "gone", res.Gone)
+	if len(s.ActionLabels) > 0 {
+		if err := s.syncActions(ctx, &res); err != nil {
+			return res, err
+		}
+	}
+	s.Log.Info("AWX catalog synced", "templates", res.Templates, "created", res.Created, "linked", res.Linked, "gone", res.Gone,
+		"actions", res.Actions, "actions_gone", res.ActionsGone)
 	return res, nil
+}
+
+// syncActions records the templates with an action label as day-2
+// actions, with their form from the survey; those no longer chosen are
+// flagged gone and no longer offered.
+func (s *Sync) syncActions(ctx context.Context, res *Result) error {
+	templates, err := s.AWX.Templates(ctx, awx.TemplateFilter{Organization: s.Filter.Organization, Labels: s.ActionLabels})
+	if err != nil {
+		return err
+	}
+	seenIDs, seenWorkflow := []int{}, []bool{}
+	for _, t := range templates {
+		res.Actions++
+		seenIDs, seenWorkflow = append(seenIDs, t.ID), append(seenWorkflow, t.Workflow)
+		survey := []awx.SurveyQuestion{}
+		if t.SurveyEnabled {
+			if survey, err = s.AWX.Survey(ctx, t.ID, t.Workflow); err != nil {
+				return err
+			}
+		}
+		name := displayName(t.Name)
+		schema, ui, initial, formWarnings := Form(name, survey)
+		warnings := append(launchWarnings(t), formWarnings...)
+		if !t.AskInventory {
+			warnings = append(warnings, "Inventory is not prompted on launch: rvav can't run it on its inventory.")
+		}
+		key := "awx." + slug(t.Name)
+		if t.Workflow {
+			key += "-workflow"
+		}
+		j := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+		if err := s.Store.SyncAWXAction(ctx, store.AWXAction{Key: key, AWXID: t.ID, Workflow: t.Workflow, Template: t.Name,
+			Name: name, Description: t.Description, FormSchema: j(schema), UISchema: j(ui), Initial: j(initial), Warnings: warnings}); err != nil {
+			return err
+		}
+	}
+	res.ActionsGone, err = s.Store.MarkAWXActionsGone(ctx, seenIDs, seenWorkflow)
+	return err
+}
+
+// displayName makes a template's name readable: "install-monitoring-agent"
+// is "Install monitoring agent".
+func displayName(template string) string {
+	name := strings.ReplaceAll(strings.ReplaceAll(template, "-", " "), "_", " ")
+	return strings.ToUpper(name[:1]) + name[1:]
+}
+
+func slug(s string) string {
+	return strings.Trim(slugUnsafe.ReplaceAllString(strings.ToLower(s), "-"), "-")
 }
 
 // launchWarnings are the template's launch settings that keep rvav's
@@ -122,8 +183,7 @@ func launchWarnings(t awx.Template) []string {
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
 
 func (s *Sync) create(ctx context.Context, t awx.Template, survey []awx.SurveyQuestion) (string, error) {
-	name := strings.ReplaceAll(strings.ReplaceAll(t.Name, "-", " "), "_", " ")
-	name = strings.ToUpper(name[:1]) + name[1:]
+	name := displayName(t.Name)
 	schema, ui, initial, _ := Form(name, survey)
 	typ, icon := "awx_job_template", "terminal"
 	if t.Workflow {
@@ -147,7 +207,7 @@ func (s *Sync) create(ctx context.Context, t awx.Template, survey []awx.SurveyQu
 	bp := map[string]any{"kind": "awx", "awx": map[string]any{"title": name, "job_template": t.Name, "workflow": t.Workflow}}
 	j := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 	it := store.NewAWXItem{ID: ids.New(ids.Item), VersionID: ids.New(ids.Version),
-		Slug: strings.Trim(slugUnsafe.ReplaceAllString(strings.ToLower(t.Name), "-"), "-"), Name: name, Summary: summary,
+		Slug: slug(t.Name), Name: name, Summary: summary,
 		Category: category, Type: typ, Icon: icon, AWXID: t.ID, AWXName: t.Name,
 		Schema: j(schema), UI: j(ui), Initial: j(initial), Blueprint: j(bp)}
 	return it.ID, s.Store.CreateAWXItem(ctx, it)

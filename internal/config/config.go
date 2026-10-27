@@ -88,7 +88,9 @@ type AWXConfig struct {
 	Token        string
 	Organization string // template lookups stay in this organisation when set
 	// The catalog imports the organisation's templates with any of these labels.
-	CatalogLabels     []string
+	CatalogLabels []string
+	// Templates with any of these labels become day-2 actions.
+	ActionLabels      []string
 	SyncInterval      time.Duration
 	Insecure          bool
 	InventorySourceID int
@@ -144,6 +146,7 @@ func Load() (Config, error) {
 			Token:         env("RVAV_AWX_TOKEN", ""),
 			Organization:  env("RVAV_AWX_ORGANIZATION", ""),
 			CatalogLabels: list("RVAV_AWX_CATALOG_LABELS"),
+			ActionLabels:  list("RVAV_AWX_ACTION_LABELS"),
 			Insecure:      boolean("RVAV_AWX_INSECURE"),
 		},
 	}
@@ -158,6 +161,9 @@ func Load() (Config, error) {
 	c.AWX.FakeFailTask = env("RVAV_FAKE_AWX_FAIL_TASK", "")
 	if len(c.AWX.CatalogLabels) == 0 {
 		c.AWX.CatalogLabels = []string{"catalog"}
+	}
+	if len(c.AWX.ActionLabels) == 0 {
+		c.AWX.ActionLabels = []string{"day2"}
 	}
 	if c.AWX.SyncInterval, err = duration("RVAV_AWX_SYNC_INTERVAL", 5*time.Minute); err != nil {
 		return c, err

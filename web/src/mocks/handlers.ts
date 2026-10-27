@@ -284,6 +284,62 @@ export const handlers = [
     ];
   })(),
 
+  // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).
+  ...(() => {
+    const actions: S["AwxAction"][] = [
+      {
+        key: "awx.install-monitoring-agent",
+        name: "Install monitoring agent",
+        description: "Install a monitoring agent on a VM.",
+        template_id: 12,
+        template: "install-monitoring-agent",
+        workflow: false,
+        types: ["vsphere.vm"],
+        condition: "resource.os_family == 'linux'",
+        enabled: true,
+        fields: ["monitoring_agent", "agent_version", "listen_port"],
+        warnings: [],
+        gone: false,
+        synced_at: new Date().toISOString(),
+      },
+      {
+        key: "awx.patch-now",
+        name: "Patch now",
+        description: "Apply the pending updates.",
+        template_id: 14,
+        template: "patch-now",
+        workflow: false,
+        types: ["vsphere.vm", "deployment"],
+        condition: "",
+        enabled: false,
+        fields: [],
+        warnings: ["Inventory is not prompted on launch: rvav can't run it on its inventory."],
+        gone: false,
+        synced_at: new Date().toISOString(),
+      },
+    ];
+    return [
+      http.get(`${base}/admin/awx/actions`, async () => {
+        await wait();
+        return json<S["AwxActionList"]>({ items: actions });
+      }),
+      http.patch(`${base}/admin/awx/actions/:key`, async ({ params, request }) => {
+        await wait();
+        const a = actions.find((x) => x.key === params.key);
+        if (!a) return notFound("AWX action");
+        const body = (await request.json()) as S["AwxActionUpdate"];
+        // The server compiles the condition; here, unbalanced parentheses are enough.
+        const c = body.condition ?? "";
+        if ((c.match(/\(/g) ?? []).length !== (c.match(/\)/g) ?? []).length)
+          return problem(422, "validation-failed", "Some fields need attention", undefined, [
+            { field: "/condition", code: "invalid", message: "This condition is not valid: Syntax error: missing ')'" },
+          ]);
+        Object.assign(a, body);
+        return json<S["AwxAction"]>(a);
+      }),
+    ];
+  })(),
+
   // The mock user is an administrator for this check; one address and one
   // record left behind, and a PTR record someone deleted.
   http.get(`${base}/admin/ipam/reconcile`, async () => {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path"
 	"slices"
+	"strings"
 
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
@@ -146,6 +147,8 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		resource["power_state"] = string(t.VM.PowerState)
 		resource["cpu_count"] = t.VM.CpuCount
 		resource["memory_gb"] = t.VM.MemoryMb / 1024
+		resource["guest_os"] = deref(t.VM.GuestOs)
+		resource["os_family"] = osFamily(deref(t.VM.GuestOs))
 	}
 	return policy.Vars{
 		"action":      map[string]any{"key": a.Key, "group": a.Group, "destructive": a.Destructive},
@@ -156,4 +159,12 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		"user":        map[string]any{"id": p.User.ID, "roles": nonNilStrings(roles), "groups": nonNilStrings(p.Groups)},
 		"inputs":      inputs,
 	}
+}
+
+// osFamily is "windows" or "linux", from vCenter's guest OS identifier.
+func osFamily(guestOS string) string {
+	if strings.Contains(strings.ToLower(guestOS), "windows") {
+		return "windows"
+	}
+	return "linux"
 }

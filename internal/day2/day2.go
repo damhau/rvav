@@ -6,6 +6,7 @@ package day2
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -18,6 +19,8 @@ const (
 	GroupSnapshots     = "snapshots"
 	GroupAccess        = "access"
 	GroupLifecycle     = "lifecycle"
+	// GroupAutomation holds the actions backed by AWX templates.
+	GroupAutomation = "automation"
 )
 
 // Target is the resource an action runs on, as rvav last saw it. Actions
@@ -85,7 +88,11 @@ type Action struct {
 	Name  string
 	Group string
 	// Types are the resource types it applies to.
-	Types       []string
+	Types []string
+	// Condition, a CEL expression over the day-2 policy variables, limits
+	// where the action is offered ("": everywhere). Native actions use
+	// Unavailable instead.
+	Condition   string
 	Destructive bool
 	// Confirm is the message of the confirmation dialog, if any.
 	Confirm string
@@ -123,8 +130,13 @@ func register(a *Action) { catalogue = append(catalogue, a) }
 
 // All lists the actions in menu order.
 func All() []*Action {
-	order := map[string]int{GroupPower: 0, GroupConfiguration: 1, GroupSnapshots: 2, GroupAccess: 3, GroupLifecycle: 4}
-	out := slices.Clone(catalogue)
+	return Sorted(catalogue)
+}
+
+// Sorted puts actions in menu order: by group, then as given.
+func Sorted(actions []*Action) []*Action {
+	order := map[string]int{GroupPower: 0, GroupConfiguration: 1, GroupSnapshots: 2, GroupAutomation: 3, GroupAccess: 4, GroupLifecycle: 5}
+	out := slices.Clone(actions)
 	slices.SortStableFunc(out, func(a, b *Action) int { return order[a.Group] - order[b.Group] })
 	return out
 }
@@ -139,10 +151,16 @@ func Get(key string) *Action {
 	return nil
 }
 
-// Name is the display name of an action key (the key itself when unknown).
+// Name is the display name of an action key: an AWX action's is made from
+// its template's (awx.install-monitoring-agent is "Install monitoring
+// agent"), anything else unknown is the key itself.
 func Name(key string) string {
 	if a := Get(key); a != nil {
 		return a.Name
+	}
+	if tpl, ok := strings.CutPrefix(key, "awx."); ok && tpl != "" {
+		name := strings.ReplaceAll(strings.TrimSuffix(tpl, "-workflow"), "-", " ")
+		return strings.ToUpper(name[:1]) + name[1:]
 	}
 	return key
 }

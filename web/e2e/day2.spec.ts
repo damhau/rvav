@@ -87,3 +87,16 @@ test("extend a lease, and see that a longer one needs approval", async ({ page }
   await expect(next.getByText(/Needs approval: All 2 extensions without approval are used/)).toBeVisible();
   await expect(next.getByRole("button", { name: "Ask for approval" })).toBeVisible();
 });
+
+test("run an AWX action on a VM", async ({ page }) => {
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await page.getByRole("button", { name: "More actions for web-dev-api004" }).click();
+  await expect(page.getByText("Automation", { exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: /^Install monitoring agent/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Install monitoring agent · web-dev-api004" });
+  await expect(dialog.getByRole("spinbutton", { name: "Port" })).toHaveValue("9100");
+  await dialog.getByRole("button", { name: "Install monitoring agent" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(/^REQ-\d+ has started\.$/)).toBeVisible();
+});

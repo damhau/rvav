@@ -135,3 +135,75 @@ func (s *Store) CategoryExists(ctx context.Context, key string) (bool, error) {
 	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_categories where key = $1)`, key).Scan(&ok)
 	return ok, err
 }
+
+// AWXAction is a day-2 action backed by an AWX template (ADR-0018).
+type AWXAction struct {
+	Key         string          `db:"key"`
+	AWXID       int             `db:"awx_id"`
+	Workflow    bool            `db:"workflow"`
+	Template    string          `db:"template"`
+	Name        string          `db:"name"`
+	Description string          `db:"description"`
+	Types       []string        `db:"types"`
+	Condition   string          `db:"condition"`
+	Enabled     bool            `db:"enabled"`
+	FormSchema  json.RawMessage `db:"form_schema"`
+	UISchema    json.RawMessage `db:"ui_schema"`
+	Initial     json.RawMessage `db:"initial"`
+	Warnings    []string        `db:"warnings"`
+	Gone        bool            `db:"gone"`
+	SyncedAt    time.Time       `db:"synced_at"`
+}
+
+const awxActionCols = `key, awx_id, workflow, template, name, description, types, condition, enabled, form_schema, ui_schema,
+	initial, warnings, gone, synced_at`
+
+func (s *Store) AWXActions(ctx context.Context) ([]AWXAction, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+awxActionCols+` from awx_actions order by name, key`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[AWXAction])
+}
+
+func (s *Store) GetAWXAction(ctx context.Context, key string) (AWXAction, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+awxActionCols+` from awx_actions where key = $1`, key)
+	a, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[AWXAction])
+	return a, notFound(err)
+}
+
+// SyncAWXAction records a template chosen as a day-2 action as AWX has it
+// now: a new one gets a key, a name and the default binding; a known one
+// keeps what the administrators set.
+func (s *Store) SyncAWXAction(ctx context.Context, a AWXAction) error {
+	_, err := s.Pool.Exec(ctx, `insert into awx_actions (key, awx_id, workflow, template, name, description, form_schema,
+		ui_schema, initial, warnings, gone, synced_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false, now())
+		on conflict (awx_id, workflow) do update set template = excluded.template, description = excluded.description,
+			form_schema = excluded.form_schema, ui_schema = excluded.ui_schema, initial = excluded.initial,
+			warnings = excluded.warnings, gone = false, synced_at = now()`,
+		a.Key, a.AWXID, a.Workflow, a.Template, a.Name, a.Description, a.FormSchema, a.UISchema, jsonOr(a.Initial, "{}"),
+		nonNilStrings(a.Warnings))
+	return err
+}
+
+// MarkAWXActionsGone flags the actions whose template a sync did not see;
+// they are no longer offered.
+func (s *Store) MarkAWXActionsGone(ctx context.Context, seenIDs []int, seenWorkflow []bool) (int, error) {
+	tag, err := s.Pool.Exec(ctx, `update awx_actions a set gone = true where not gone and not exists (
+		select 1 from unnest($1::int[], $2::boolean[]) as seen(id, workflow) where seen.id = a.awx_id and seen.workflow = a.workflow)`,
+		seenIDs, seenWorkflow)
+	return int(tag.RowsAffected()), err
+}
+
+// AWXActionBinding is what administrators set on an AWX action.
+type AWXActionBinding struct {
+	Name      *string
+	Types     []string
+	Condition *string
+	Enabled   *bool
+}
+
+func (s *Store) UpdateAWXAction(ctx context.Context, key string, b AWXActionBinding) (AWXAction, error) {
+	rows, _ := s.Pool.Query(ctx, `update awx_actions set name = coalesce($2, name), types = coalesce($3, types),
+		condition = coalesce($4, condition), enabled = coalesce($5, enabled), updated_at = now()
+		where key = $1 returning `+awxActionCols, key, b.Name, b.Types, b.Condition, b.Enabled)
+	a, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[AWXAction])
+	return a, notFound(err)
+}

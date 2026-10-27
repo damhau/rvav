@@ -20,6 +20,7 @@ export const groupLabel: Record<Day2Action["group"], string> = {
   power: "Power",
   configuration: "Configuration",
   snapshots: "Snapshots",
+  automation: "Automation",
   access: "Access",
   lifecycle: "Lifecycle",
 };

@@ -726,6 +726,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/awx/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * AWX templates offered as day-2 actions
+         * @description The templates of the organisation with a label of
+         *     `RVAV_AWX_ACTION_LABELS` (`day2`), synced with the catalog's
+         *     (ADR-0018): each is a day-2 action with its form from the survey,
+         *     on the resource types and under the condition administrators
+         *     choose. Administrators.
+         */
+        get: operations["listAwxActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/awx/actions/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Choose where an AWX action is offered, its name, or turn it off */
+        patch: operations["updateAwxAction"];
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -802,6 +845,50 @@ export interface components {
             modified_at?: string;
             /** Format: date-time */
             synced_at: string;
+        };
+        AwxActionList: {
+            items: components["schemas"]["AwxAction"][];
+        };
+        AwxAction: {
+            /**
+             * @description The day-2 action's key: `awx.` and the template's name.
+             * @example awx.install-monitoring-agent
+             */
+            key: string;
+            /** @example Install monitoring agent */
+            name: string;
+            /** @description The template's description in AWX. */
+            description: string;
+            /** @description The template's ID in AWX. */
+            template_id: number;
+            /** @description The template's name in AWX. */
+            template: string;
+            workflow: boolean;
+            /** @description What it runs on. */
+            types: ("vsphere.vm" | "deployment")[];
+            /**
+             * @description A CEL expression over the day-2 policy variables (`resource`,
+             *     `deployment`, `project`, `environment`, `user`); the action is
+             *     offered only where it is true. Empty: everywhere.
+             * @example resource.os_family == 'linux'
+             */
+            condition: string;
+            /** @description Offered on deployments. */
+            enabled: boolean;
+            /** @description The form's fields, from the survey. */
+            fields?: string[];
+            /** @description Launch settings or survey questions rvav can't use as meant. */
+            warnings: string[];
+            /** @description AWX no longer has it, or it lost the label; it is no longer offered. */
+            gone: boolean;
+            /** Format: date-time */
+            synced_at: string;
+        };
+        AwxActionUpdate: {
+            name?: string;
+            types?: ("vsphere.vm" | "deployment")[];
+            condition?: string;
+            enabled?: boolean;
         };
         IpamReconcile: {
             /** Format: date-time */
@@ -1383,8 +1470,11 @@ export interface components {
             key: string;
             /** @example Power off */
             name: string;
-            /** @enum {string} */
-            group: "power" | "configuration" | "snapshots" | "access" | "lifecycle";
+            /**
+             * @description `automation` holds the actions backed by AWX templates (ADR-0018).
+             * @enum {string}
+             */
+            group: "power" | "configuration" | "snapshots" | "automation" | "access" | "lifecycle";
             /** @description The resource it acts on; null for actions on the whole deployment. */
             resource_id?: string | null;
             resource_name?: string;
@@ -2872,6 +2962,58 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    listAwxActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwxActionList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateAwxAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AwxActionUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwxAction"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     streamEvents: {
