@@ -345,6 +345,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        /** The approval levels of a request, with their decisions */
+        get: operations["listRequestApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Approvals waiting for the caller, or decided by them
+         * @description `view=mine` (default) lists the levels the caller may decide: they are
+         *     named in it, in its group, or it was delegated to them. `view=all`
+         *     lists every approval and needs the admin or auditor role.
+         */
+        get: operations["listApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{approvalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        /** One approval level, with what an approver needs to decide */
+        get: operations["getApproval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{approvalId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject
+         * @description Only an approver of the level may decide, and never the requester.
+         *     Rejecting needs a comment, which is sent to the requester. When
+         *     approving, `inputs` may change fields marked `approver_editable`,
+         *     within their limits; the request is evaluated again with them.
+         *     With mode `all`, the level is approved once every named approver has
+         *     approved; any rejection rejects it.
+         */
+        post: operations["decideApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{approvalId}/delegate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let another user decide this level
+         * @description Only an approver of a pending level may delegate it. The delegate becomes an approver of this level only.
+         */
+        post: operations["delegateApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments": {
         parameters: {
             query?: never;
@@ -601,6 +711,8 @@ export interface components {
             secret?: boolean;
             /** @description Published as a host variable in the AWX dynamic inventory. */
             expose_to_inventory?: boolean;
+            /** @description Approvers may change this input, within its schema, when they approve. */
+            approver_editable?: boolean;
         };
         /**
          * @description CEL expressions over `inputs`, `project`, `user` and `environment`.
@@ -798,6 +910,122 @@ export interface components {
         RequestPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Request"][];
         };
+        /**
+         * @description `waiting`: an earlier level is not decided yet. `pending`: waiting for a decision.
+         * @enum {string}
+         */
+        ApprovalStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled";
+        ApprovalSummary: {
+            id: string;
+            request: {
+                id: string;
+                number: string;
+                title: string;
+                status: components["schemas"]["RequestStatus"];
+            };
+            project: components["schemas"]["ProjectRef"];
+            environment: components["schemas"]["EnvironmentKey"];
+            requester: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            submitted_at: string;
+            level: {
+                /** @description 1 for the first level. */
+                index: number;
+                count: number;
+                /** @example Infrastructure leads */
+                name: string;
+            };
+            /** @description Plain-language reasons from the policies, for example `Production VM above 32 GB RAM`. */
+            reasons: string[];
+            status: components["schemas"]["ApprovalStatus"];
+            /**
+             * Format: date-time
+             * @description When the level times out. Null when it has no timeout or is decided.
+             */
+            due_at?: string | null;
+            overdue: boolean;
+            escalated?: boolean;
+            /** @description Whether the caller may approve or reject this level now. */
+            can_decide: boolean;
+        };
+        Approval: components["schemas"]["ApprovalSummary"] & {
+            /** @description The CEL conditions that matched, for approvers who want the detail. */
+            rules: string[];
+            /** @description The requester's reason. */
+            justification?: string;
+            /** @description What will be created, in a few lines (size, placement, network, quota after). */
+            facts: {
+                label: string;
+                value: string;
+            }[];
+            /** @description Inputs the caller may change when approving. Empty unless `can_decide`. */
+            editable_fields: components["schemas"]["ApprovalEditableField"][];
+            /** @description OIDC group whose members may decide. */
+            group?: string | null;
+            /** @description Users who may decide (named, members of the group seen so far, and delegates). */
+            approvers: components["schemas"]["UserRef"][];
+            /**
+             * @description `any`: one approval decides. `all`: every named approver must approve.
+             * @enum {string}
+             */
+            mode: "any" | "all";
+            votes: components["schemas"]["ApprovalVote"][];
+            delegates: components["schemas"]["UserRef"][];
+            /** @enum {string|null} */
+            on_timeout?: "approve" | "reject" | "escalate" | null;
+            escalate_to?: components["schemas"]["UserRef"][] | null;
+            /** Format: date-time */
+            decided_at?: string | null;
+            /** @description How the level ended, for example `Approved by Marc Keller`, or `Approved automatically: no answer within 48 h`. */
+            outcome?: string | null;
+        };
+        ApprovalEditableField: {
+            /** @example size */
+            field: string;
+            label: string;
+            /** @description The current value. */
+            value: unknown;
+            /** @description Allowed values, for enumerated fields. */
+            options?: components["schemas"]["Option"][];
+            minimum?: number;
+            maximum?: number;
+        };
+        ApprovalVote: {
+            user: components["schemas"]["UserRef"];
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            comment?: string;
+            /** @description Inputs the approver changed. */
+            changes: {
+                field: string;
+                label: string;
+                /** @description Value before. */
+                from: unknown;
+                /** @description Value after. */
+                to: unknown;
+            }[];
+            /** Format: date-time */
+            decided_at: string;
+        };
+        ApprovalDecision: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            /** @description Sent to the requester. Required to reject. */
+            comment?: string;
+            /** @description New values for `approver_editable` fields only. */
+            inputs?: {
+                [key: string]: unknown;
+            };
+        };
+        ApprovalDelegation: {
+            user_id: string;
+            comment?: string;
+        };
+        ApprovalPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["ApprovalSummary"][];
+            /** @description Number of approvals matching the filters, on all pages (the sidebar badge). */
+            total: number;
+        };
         /** @enum {string} */
         StepStatus: "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
         Step: {
@@ -985,7 +1213,7 @@ export interface components {
              */
             type: "dns.record";
         };
-        Event: components["schemas"]["RequestUpdatedEvent"] | components["schemas"]["RequestStepEvent"] | components["schemas"]["RequestLogEvent"] | components["schemas"]["DeploymentUpdatedEvent"] | components["schemas"]["ResourceUpdatedEvent"] | components["schemas"]["NotificationEvent"] | components["schemas"]["ControlEvent"];
+        Event: components["schemas"]["RequestUpdatedEvent"] | components["schemas"]["RequestStepEvent"] | components["schemas"]["RequestLogEvent"] | components["schemas"]["DeploymentUpdatedEvent"] | components["schemas"]["ResourceUpdatedEvent"] | components["schemas"]["NotificationEvent"] | components["schemas"]["ApprovalUpdatedEvent"] | components["schemas"]["ControlEvent"];
         EventBase: {
             /** @description Same as the SSE `id`. */
             id: string;
@@ -1080,6 +1308,22 @@ export interface components {
              */
             type: "notification";
         };
+        /** @description An approval the receiver may decide was opened, decided or changed. Refetch it. */
+        ApprovalUpdatedEvent: components["schemas"]["EventBase"] & {
+            /** @constant */
+            type: "approval.updated";
+            data: {
+                approval_id: string;
+                request_id: string;
+                status: components["schemas"]["ApprovalStatus"];
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approval.updated";
+        };
         /** @description `heartbeat` keeps the connection open. `resync` means missed events were dropped: refetch. */
         ControlEvent: components["schemas"]["EventBase"] & {
             /** @enum {string} */
@@ -1163,6 +1407,7 @@ export interface components {
         ProjectIdQueryRequired: string;
         /** @description Catalog item ID or slug. */
         ItemIdPath: string;
+        ApprovalIdPath: string;
         /** @description Request ID or number (for example `REQ-10491`). */
         RequestIdPath: string;
         /** @description Free-text search. */
@@ -1697,6 +1942,149 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listRequestApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Levels in the order they run; empty when no approval was needed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Approval"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listApprovals: {
+        parameters: {
+            query?: {
+                view?: "mine" | "all";
+                /** @description Defaults to `pending`. */
+                status?: components["schemas"]["ApprovalStatus"][];
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending ones oldest first (the most urgent on top); others newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    decideApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecision"];
+            };
+        };
+        responses: {
+            /** @description The level after the decision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    delegateApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: components["parameters"]["ApprovalIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDelegation"];
+            };
+        };
+        responses: {
+            /** @description The level with its new approver */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
     listDeployments: {
         parameters: {
             query?: {
@@ -1760,8 +2148,9 @@ export interface operations {
             query: {
                 /**
                  * @description Comma-separated topics: `requests`, `deployments`, `notifications`,
-                 *     or a single object such as `request:<id>` or `deployment:<id>`.
-                 *     `requests` and `deployments` are limited to `project_id`.
+                 *     `approvals` (approvals the caller may decide), or a single object
+                 *     such as `request:<id>` or `deployment:<id>`. `requests` and
+                 *     `deployments` are limited to `project_id`.
                  */
                 topics: string;
                 project_id?: components["parameters"]["ProjectIdQuery"];

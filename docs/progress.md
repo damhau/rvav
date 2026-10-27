@@ -39,7 +39,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 
 ## S3 Approvals
 
-- [ ] S3.1 Spec: approvals waiting for me, detail, approve or reject with a comment, approve with edited inputs (within field limits), delegate, approval history on a request
+- [x] S3.1 Spec: approvals waiting for me, detail, approve or reject with a comment, approve with edited inputs (within field limits), delegate, approval history on a request. Design in [ADR-0011](adr/0011-approvals.md); handlers answer 501 until S3.4
 - [ ] S3.2 Policies: several levels, any or all approvers per level, CEL conditions, auto-approve rules, timeout with auto-approve, auto-reject or escalation
 - [ ] S3.3 Workflow waits for the decision signal; timeouts use Temporal timers
 - [ ] S3.4 API, audit entries and live events
@@ -84,6 +84,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Where Temporal runs | Self-hosted on PostgreSQL | ADR-0008 |
 | Hosting | Kubernetes with Helm; Compose for development and the lab | ADR-0009 |
 | Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |
+| Approvals | Levels merged across policies, votes in the database, the workflow signalled per level; group membership from tokens, stored per user | ADR-0011 |
 | Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
 ## Needs real infrastructure

@@ -28,6 +28,8 @@ tags:
     description: Request forms and their dynamic values.
   - name: requests
     description: Submitting requests and following their progress.
+  - name: approvals
+    description: Requests waiting for a decision, and the decisions taken.
   - name: deployments
     description: What requests created, with live state from vCenter.
   - name: events
@@ -430,6 +432,133 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /requests/{requestId}/approvals:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    get:
+      tags: [approvals]
+      operationId: listRequestApprovals
+      summary: The approval levels of a request, with their decisions
+      responses:
+        "200":
+          description: Levels in the order they run; empty when no approval was needed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Approval" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /approvals:
+    get:
+      tags: [approvals]
+      operationId: listApprovals
+      summary: Approvals waiting for the caller, or decided by them
+      description: |
+        `view=mine` (default) lists the levels the caller may decide: they are
+        named in it, in its group, or it was delegated to them. `view=all`
+        lists every approval and needs the admin or auditor role.
+      parameters:
+        - name: view
+          in: query
+          schema: { type: string, enum: [mine, all], default: mine }
+        - name: status
+          in: query
+          style: form
+          explode: false
+          description: Defaults to `pending`.
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/ApprovalStatus" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Pending ones oldest first (the most urgent on top); others newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /approvals/{approvalId}:
+    parameters:
+      - { $ref: "#/components/parameters/ApprovalIdPath" }
+    get:
+      tags: [approvals]
+      operationId: getApproval
+      summary: One approval level, with what an approver needs to decide
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Approval" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /approvals/{approvalId}/decision:
+    parameters:
+      - { $ref: "#/components/parameters/ApprovalIdPath" }
+    post:
+      tags: [approvals]
+      operationId: decideApproval
+      summary: Approve or reject
+      description: |
+        Only an approver of the level may decide, and never the requester.
+        Rejecting needs a comment, which is sent to the requester. When
+        approving, `inputs` may change fields marked `approver_editable`,
+        within their limits; the request is evaluated again with them.
+        With mode `all`, the level is approved once every named approver has
+        approved; any rejection rejects it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDecision" }
+      responses:
+        "200":
+          description: The level after the decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Approval" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /approvals/{approvalId}/delegate:
+    parameters:
+      - { $ref: "#/components/parameters/ApprovalIdPath" }
+    post:
+      tags: [approvals]
+      operationId: delegateApproval
+      summary: Let another user decide this level
+      description: Only an approver of a pending level may delegate it. The delegate becomes an approver of this level only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDelegation" }
+      responses:
+        "200":
+          description: The level with its new approver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Approval" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /deployments:
     get:
       tags: [deployments]
@@ -513,8 +642,9 @@ paths:
           required: true
           description: |
             Comma-separated topics: `requests`, `deployments`, `notifications`,
-            or a single object such as `request:<id>` or `deployment:<id>`.
-            `requests` and `deployments` are limited to `project_id`.
+            `approvals` (approvals the caller may decide), or a single object
+            such as `request:<id>` or `deployment:<id>`. `requests` and
+            `deployments` are limited to `project_id`.
           schema: { type: string, examples: ["requests,deployments,notifications"] }
         - { $ref: "#/components/parameters/ProjectIdQuery" }
         - name: Last-Event-ID
@@ -557,6 +687,11 @@ components:
       in: path
       required: true
       description: Catalog item ID or slug.
+      schema: { type: string }
+    ApprovalIdPath:
+      name: approvalId
+      in: path
+      required: true
       schema: { type: string }
     RequestIdPath:
       name: requestId
@@ -958,6 +1093,9 @@ components:
         expose_to_inventory:
           type: boolean
           description: Published as a host variable in the AWX dynamic inventory.
+        approver_editable:
+          type: boolean
+          description: Approvers may change this input, within its schema, when they approve.
 
     UiRules:
       type: object
@@ -1228,6 +1366,170 @@ components:
               type: array
               items: { $ref: "#/components/schemas/Request" }
 
+    ApprovalStatus:
+      type: string
+      description: "`waiting`: an earlier level is not decided yet. `pending`: waiting for a decision."
+      enum: [waiting, pending, approved, rejected, cancelled]
+
+    ApprovalSummary:
+      type: object
+      required: [id, request, project, environment, requester, submitted_at, level, reasons, status, overdue, can_decide]
+      properties:
+        id: { type: string }
+        request:
+          type: object
+          required: [id, number, title, status]
+          properties:
+            id: { type: string }
+            number: { type: string }
+            title: { type: string }
+            status: { $ref: "#/components/schemas/RequestStatus" }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        requester: { $ref: "#/components/schemas/UserRef" }
+        submitted_at: { type: string, format: date-time }
+        level:
+          type: object
+          required: [index, count, name]
+          properties:
+            index: { type: integer, minimum: 1, description: "1 for the first level." }
+            count: { type: integer, minimum: 1 }
+            name: { type: string, examples: [Infrastructure leads] }
+        reasons:
+          type: array
+          description: Plain-language reasons from the policies, for example `Production VM above 32 GB RAM`.
+          items: { type: string }
+        status: { $ref: "#/components/schemas/ApprovalStatus" }
+        due_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the level times out. Null when it has no timeout or is decided.
+        overdue: { type: boolean }
+        escalated: { type: boolean }
+        can_decide:
+          type: boolean
+          description: Whether the caller may approve or reject this level now.
+
+    Approval:
+      allOf:
+        - $ref: "#/components/schemas/ApprovalSummary"
+        - type: object
+          required: [rules, facts, editable_fields, approvers, mode, votes, delegates]
+          properties:
+            rules:
+              type: array
+              description: The CEL conditions that matched, for approvers who want the detail.
+              items: { type: string }
+            justification: { type: string, description: "The requester's reason." }
+            facts:
+              type: array
+              description: What will be created, in a few lines (size, placement, network, quota after).
+              items:
+                type: object
+                required: [label, value]
+                properties:
+                  label: { type: string }
+                  value: { type: string }
+            editable_fields:
+              type: array
+              description: Inputs the caller may change when approving. Empty unless `can_decide`.
+              items: { $ref: "#/components/schemas/ApprovalEditableField" }
+            group:
+              type: [string, "null"]
+              description: OIDC group whose members may decide.
+            approvers:
+              type: array
+              description: Users who may decide (named, members of the group seen so far, and delegates).
+              items: { $ref: "#/components/schemas/UserRef" }
+            mode:
+              type: string
+              enum: [any, all]
+              description: "`any`: one approval decides. `all`: every named approver must approve."
+            votes:
+              type: array
+              items: { $ref: "#/components/schemas/ApprovalVote" }
+            delegates:
+              type: array
+              items: { $ref: "#/components/schemas/UserRef" }
+            on_timeout:
+              type: [string, "null"]
+              enum: [approve, reject, escalate, null]
+            escalate_to:
+              type: [array, "null"]
+              items: { $ref: "#/components/schemas/UserRef" }
+            decided_at: { type: [string, "null"], format: date-time }
+            outcome:
+              type: [string, "null"]
+              description: "How the level ended, for example `Approved by Marc Keller`, or `Approved automatically: no answer within 48 h`."
+
+    ApprovalEditableField:
+      type: object
+      required: [field, label, value]
+      properties:
+        field: { type: string, examples: [size] }
+        label: { type: string }
+        value: { description: The current value. }
+        options:
+          type: array
+          description: Allowed values, for enumerated fields.
+          items: { $ref: "#/components/schemas/Option" }
+        minimum: { type: number }
+        maximum: { type: number }
+
+    ApprovalVote:
+      type: object
+      required: [user, decision, decided_at, changes]
+      properties:
+        user: { $ref: "#/components/schemas/UserRef" }
+        decision: { type: string, enum: [approve, reject] }
+        comment: { type: string }
+        changes:
+          type: array
+          description: Inputs the approver changed.
+          items:
+            type: object
+            required: [field, label, from, to]
+            properties:
+              field: { type: string }
+              label: { type: string }
+              from: { description: Value before. }
+              to: { description: Value after. }
+        decided_at: { type: string, format: date-time }
+
+    ApprovalDecision:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        comment:
+          type: string
+          maxLength: 2000
+          description: Sent to the requester. Required to reject.
+        inputs:
+          type: object
+          additionalProperties: true
+          description: New values for `approver_editable` fields only.
+
+    ApprovalDelegation:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+        comment: { type: string, maxLength: 2000 }
+
+    ApprovalPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items, total]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ApprovalSummary" }
+            total:
+              type: integer
+              description: Number of approvals matching the filters, on all pages (the sidebar badge).
+
     StepStatus:
       type: string
       enum: [pending, running, done, failed, skipped, cancelled]
@@ -1479,6 +1781,7 @@ components:
         - $ref: "#/components/schemas/DeploymentUpdatedEvent"
         - $ref: "#/components/schemas/ResourceUpdatedEvent"
         - $ref: "#/components/schemas/NotificationEvent"
+        - $ref: "#/components/schemas/ApprovalUpdatedEvent"
         - $ref: "#/components/schemas/ControlEvent"
       discriminator:
         propertyName: type
@@ -1489,6 +1792,7 @@ components:
           deployment.updated: "#/components/schemas/DeploymentUpdatedEvent"
           resource.updated: "#/components/schemas/ResourceUpdatedEvent"
           notification: "#/components/schemas/NotificationEvent"
+          approval.updated: "#/components/schemas/ApprovalUpdatedEvent"
           heartbeat: "#/components/schemas/ControlEvent"
           resync: "#/components/schemas/ControlEvent"
 
@@ -1582,6 +1886,22 @@ components:
                 link:
                   type: string
                   description: App path to open, for example `/requests/REQ-10491`.
+
+    ApprovalUpdatedEvent:
+      description: An approval the receiver may decide was opened, decided or changed. Refetch it.
+      allOf:
+        - $ref: "#/components/schemas/EventBase"
+        - type: object
+          required: [type, data]
+          properties:
+            type: { const: approval.updated }
+            data:
+              type: object
+              required: [approval_id, request_id, status]
+              properties:
+                approval_id: { type: string }
+                request_id: { type: string }
+                status: { $ref: "#/components/schemas/ApprovalStatus" }
 
     ControlEvent:
       description: "`heartbeat` keeps the connection open. `resync` means missed events were dropped: refetch."
