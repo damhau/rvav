@@ -196,10 +196,29 @@ func (s *Server) ListCatalogIcons(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": core.CatalogIcons})
 }
 
-func (s *Server) ListSecrets(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) ListSecrets(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Core.ListSecrets(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, list, err)
+}
 
-func (s *Server) CreateSecret(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) CreateSecret(w http.ResponseWriter, r *http.Request) {
+	var body api.SecretWrite
+	if !s.decode(w, r, &body) {
+		return
+	}
+	out, err := s.Core.PutSecret(r.Context(), principal(r), "", body, true)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
 
-func (s *Server) UpdateSecret(w http.ResponseWriter, r *http.Request, name string) { s.notBuilt(w, r) }
+func (s *Server) UpdateSecret(w http.ResponseWriter, r *http.Request, name string) {
+	var body api.SecretWrite
+	if !s.decode(w, r, &body) {
+		return
+	}
+	out, err := s.Core.PutSecret(r.Context(), principal(r), name, body, false)
+	s.reply(w, r, http.StatusOK, out, err)
+}
 
-func (s *Server) DeleteSecret(w http.ResponseWriter, r *http.Request, name string) { s.notBuilt(w, r) }
+func (s *Server) DeleteSecret(w http.ResponseWriter, r *http.Request, name string) {
+	s.replyEmpty(w, r, s.Core.DeleteSecret(r.Context(), principal(r), name))
+}

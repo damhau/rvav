@@ -97,12 +97,34 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		return out, nil
 	}
 	src := field.ValueSource
-	if src.Kind != api.Builtin || src.Name == nil {
-		return out, &BadRequestError{Msg: fmt.Sprintf("Value source %q of %s is not supported yet.", src.Kind, q.Field)}
-	}
 	env := ""
 	if q.Environment != nil {
 		env = *q.Environment
+	}
+	raw := map[string]any{}
+	if src.Params != nil {
+		raw = *src.Params
+	}
+	switch src.Kind {
+	case api.Rest:
+		opts, cacheSeconds, err := s.REST.Options(ctx, raw, q.Inputs, func(name string) (store.Secret, string, error) {
+			return s.secretValue(ctx, name)
+		})
+		if err != nil {
+			return out, err
+		}
+		out.Options, out.CacheSeconds = &opts, &cacheSeconds
+		return out, nil
+	case api.Cel:
+		opts, value, err := celValues(raw, formVars(q.Inputs, proj, env, p))
+		if err != nil {
+			return out, err
+		}
+		out.Options, out.Value = opts, value
+		return out, nil
+	}
+	if src.Kind != api.Builtin || src.Name == nil {
+		return out, &BadRequestError{Msg: fmt.Sprintf("Value source %q of %s is not supported.", src.Kind, q.Field)}
 	}
 	params := resolveParams(src.Params, q.Inputs)
 	needEnv := func() error {

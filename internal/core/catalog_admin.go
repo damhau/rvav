@@ -138,7 +138,11 @@ func (s *Service) CreateCatalogItem(ctx context.Context, p *auth.Principal, c ap
 		def = *c.Definition
 	}
 	errs = append(errs, checkDefinition(string(c.Type), def, "/definition", false)...)
-	if len(errs) > 0 {
+	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	if err != nil {
+		return api.AdminCatalogItem{}, err
+	}
+	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.AdminCatalogItem{}, &ValidationError{Errors: errs}
 	}
 	it := store.NewItem{ID: ids.New(ids.Item), Slug: c.Slug, Name: strings.TrimSpace(c.Name), Summary: strings.TrimSpace(c.Summary),
@@ -309,7 +313,12 @@ func (s *Service) UpdateCatalogItemVersion(ctx context.Context, p *auth.Principa
 	if _, _, err := s.itemVersion(ctx, it, versionID); err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
-	if errs := checkDefinition(it.Type, u.Definition, "/definition", false); len(errs) > 0 {
+	errs := checkDefinition(it.Type, u.Definition, "/definition", false)
+	refs, err := s.checkSourceRefs(ctx, u.Definition, "/definition")
+	if err != nil {
+		return api.CatalogItemVersionDetail{}, err
+	}
+	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.CatalogItemVersionDetail{}, &ValidationError{Errors: errs}
 	}
 	if err := s.Store.SaveDraft(ctx, versionID, u.Number, u.Changelog, storeDef(u.Definition)); errors.Is(err, store.ErrVersionState) {
@@ -353,7 +362,12 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	if errs := checkDefinition(it.Type, def, "/definition", true); len(errs) > 0 {
+	errs := checkDefinition(it.Type, def, "/definition", true)
+	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	if err != nil {
+		return api.AdminCatalogItem{}, err
+	}
+	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.AdminCatalogItem{}, &ValidationError{Errors: errs}
 	}
 	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog); errors.Is(err, store.ErrVersionState) {

@@ -38,6 +38,9 @@ x-rvav-env: &rvav-env
   RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
   RVAV_FAKE_AWX: "1"
   RVAV_FAKE_AWX_FAIL_TASK: ${RVAV_FAKE_AWX_FAIL_TASK:-}
+  # A development key for stored secrets (ADR-0019); never use it elsewhere.
+  RVAV_SECRETS_KEY: ${RVAV_SECRETS_KEY:-ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=}
+  RVAV_REST_SOURCE_HOSTS: ${RVAV_REST_SOURCE_HOSTS:-}
 
 services:
   postgres:

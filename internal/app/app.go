@@ -28,6 +28,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -38,6 +39,8 @@ type App struct {
 	IPAM   efficientip.Client
 	AWX    awx.Client
 	Events *events.Publisher
+	// Secrets seals stored secrets; nil without RVAV_SECRETS_KEY.
+	Secrets *secrets.Box
 
 	vcMu    sync.Mutex
 	vc      vsphere.Driver
@@ -87,6 +90,9 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, err
 	}
 	a := &App{Cfg: cfg, Log: log, Store: st, Events: &events.Publisher{Store: st, Logger: log}}
+	if a.Secrets, err = secrets.New(cfg.SecretsKey); err != nil {
+		return nil, err
+	}
 
 	if cfg.IPAM.Fake {
 		fake, err := NewFakeEfficientIP(ctx, st)
@@ -209,7 +215,8 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
-		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization}
+		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
+		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts)}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}

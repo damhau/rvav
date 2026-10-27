@@ -23,6 +23,11 @@ type Config struct {
 	IPAM     EfficientIPConfig
 	AWX      AWXConfig
 
+	// SecretsKey encrypts stored secrets (32 bytes, base64); RESTSourceHosts
+	// are the hosts `rest` value sources may call (ADR-0019).
+	SecretsKey      string
+	RESTSourceHosts []string
+
 	SyncInterval time.Duration
 	// How often the network mappings are read from EfficientIP.
 	IPAMSyncInterval time.Duration
@@ -140,6 +145,8 @@ func Load() (Config, error) {
 			DNSServer: env("RVAV_EFFICIENTIP_DNS_SERVER", ""),
 			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
 		},
+		SecretsKey:      env("RVAV_SECRETS_KEY", ""),
+		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
 			URL:           env("RVAV_AWX_URL", ""),

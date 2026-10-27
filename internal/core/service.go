@@ -13,6 +13,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -45,6 +46,10 @@ type Service struct {
 	// awx.credentials pickers.
 	AWX             awx.Client
 	AWXOrganization string
+	// Secrets seals the secrets value sources use; REST calls the URLs of
+	// `rest` value sources (ADR-0019).
+	Secrets *secrets.Box
+	REST    *RESTSources
 }
 
 // ConsoleSource is what the web console needs from vCenter.

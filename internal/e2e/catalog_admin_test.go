@@ -2,8 +2,12 @@ package e2e
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -273,5 +277,96 @@ func TestCatalogEntitlementsCategoriesYAML(t *testing.T) {
 			t.Fatalf("errors = %+v", problem.Errors)
 		}
 		h.json("POST", "/api/v1/admin/catalog/import", "tnguyen", rawYAML(copyYAML), 403, nil, "Content-Type", "application/yaml")
+	})
+}
+
+// TestValueSourcesRESTAndCEL: a dropdown from a CMDB's REST API, with a
+// stored secret, only on allowed hosts, cached; and options and values
+// from CEL (S8.4).
+func TestValueSourcesRESTAndCEL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin = "prj_web", "lmartin"
+		var calls atomic.Int32
+		cmdb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			if r.Header.Get("Authorization") != "Bearer cmdb-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			app := r.URL.Query().Get("app")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"data": [{"code": "%s-01", "title": "%s main", "env": "dev"}, {"code": "%s-02", "title": "%s spare", "env": "tst"}]}`, app, app, app, app)
+		}))
+		defer cmdb.Close()
+		host := strings.TrimPrefix(cmdb.URL, "http://")
+
+		// Secrets: stored, listed without their value.
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb", Kind: api.SecretWriteKindToken, Value: new("cmdb-token")}, 201, nil)
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb", Kind: api.SecretWriteKindToken, Value: new("x")}, 409, nil)
+		_, listed, _ := h.do("GET", "/api/v1/admin/secrets", admin, nil)
+		if strings.Contains(string(listed), "cmdb-token") || !strings.Contains(string(listed), `"name":"cmdb"`) {
+			t.Fatalf("secrets = %s", listed)
+		}
+		h.json("GET", "/api/v1/admin/secrets", "tnguyen", nil, 403, nil)
+
+		// An item with a REST dropdown and CEL options; the host must be allowed.
+		rest := map[string]any{"url": cmdb.URL + "/apps?app=${inputs.app}", "secret": "cmdb", "items": "$.data", "value": "$.code",
+			"label": "$.title", "meta": "$.env", "cache_seconds": float64(60)}
+		def := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "properties": map[string]any{"app": map[string]any{"type": "string"},
+				"service": map[string]any{"type": "string"}, "tier": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"app":     {Widget: api.UiWidgetText, Label: "Application"},
+				"service": {Widget: api.UiWidgetSelect, Label: "Service", DependsOn: &[]string{"app"}, ValueSource: &api.ValueSource{Kind: api.Rest, Params: &rest}},
+				"tier": {Widget: api.UiWidgetSelect, Label: "Tier", ValueSource: &api.ValueSource{Kind: api.Cel,
+					Params: &map[string]any{"options": `environment == "prd" ? ["gold"] : ["bronze", "silver"]`, "value": `inputs.app + "-" + environment`}}},
+			}},
+			Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Register", "job_template": "pg-create-role"}},
+		}
+		def.UiSchema.Layout.Kind = api.Page
+		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Service", Fields: []string{"app", "service", "tier"}}}
+		create := api.CatalogItemCreate{Slug: "service-register", Name: "Register a service", Summary: "From the CMDB.",
+			Category: "compute", Type: api.AwxJobTemplate, Definition: &def}
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/items", admin, create, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/ui_schema/fields/service/value_source/params/url" {
+			t.Fatalf("a host not allowed = %+v", problem.Errors)
+		}
+		h.svc.REST.Hosts = []string{host}
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, create, 201, &item)
+		h.json("DELETE", "/api/v1/admin/secrets/cmdb", admin, nil, 409, nil) // in use
+		h.json("POST", "/api/v1/admin/catalog/items/service-register/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/service-register/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+
+		values := func(field string, inputs map[string]any) api.FieldValues {
+			t.Helper()
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: web,
+				Environment: new(api.EnvironmentKey("dev")), Field: field, Inputs: inputs}, 200, &out)
+			return out
+		}
+		got := values("service", map[string]any{"app": "pay roll"})
+		if got.Options == nil || len(*got.Options) != 2 || (*got.Options)[0].Value != "pay roll-01" || (*got.Options)[0].Label != "pay roll main" ||
+			deref((*got.Options)[0].Meta) != "dev" {
+			t.Fatalf("REST options = %+v", got.Options)
+		}
+		values("service", map[string]any{"app": "pay roll"})
+		if calls.Load() != 1 {
+			t.Fatalf("the CMDB was called %d times; the answer should be cached", calls.Load())
+		}
+		tier := values("tier", map[string]any{"app": "web"})
+		if tier.Options == nil || len(*tier.Options) != 2 || (*tier.Options)[1].Value != "silver" || tier.Value != "web-dev" {
+			t.Fatalf("CEL options = %+v, value %v", tier.Options, tier.Value)
+		}
+
+		// A new secret value is used; a CMDB that refuses is an upstream error.
+		h.json("PUT", "/api/v1/admin/secrets/cmdb", admin, api.SecretWrite{Name: "cmdb", Kind: api.SecretWriteKindToken, Value: new("wrong")}, 200, nil)
+		h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: web,
+			Environment: new(api.EnvironmentKey("dev")), Field: "service", Inputs: map[string]any{"app": "billing"}}, 502, nil)
 	})
 }
