@@ -3,9 +3,9 @@ PNPM    ?= pnpm
 BIN     := bin
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: check build test test-e2e vet gen gen-check lint-spec web-check up down vcsim
+.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec web-check up down vcsim
 
-check: gen-check lint-spec vet test test-e2e web-check ## Everything CI checks; must pass before every push
+check: gen-check lint-spec vet test test-e2e test-ansible web-check ## Everything CI checks; must pass before every push
 
 build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
@@ -16,6 +16,11 @@ test: ## Unit tests, plus vcsim and workflow tests (no database needed)
 
 test-e2e: ## End-to-end tests on their own PostgreSQL, or on RVAV_TEST_DATABASE_URL (wiped)
 	$(GO) test ./internal/e2e/ -count=1 -v
+
+test-ansible: ## The rvav.platform collection: it builds, and its inventory plugin works through ansible-inventory (uv)
+	export ANSIBLE_HOME=$$(mktemp -d) && cd ansible && uv run --frozen -- ansible-galaxy collection build --force \
+		--output-path "$$ANSIBLE_HOME" ansible_collections/rvav/platform
+	uv run --frozen --project ansible -- pytest -q -p no:cacheprovider ansible/ansible_collections/rvav/platform/tests
 
 vet:
 	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi

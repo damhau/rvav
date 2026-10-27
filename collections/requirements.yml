@@ -1,0 +1,6 @@
+# Collections AWX installs when it syncs this repository as a project
+# (deploy/awx): rvav.platform, from this repository, for the rvav inventory.
+collections:
+  - name: https://github.com/damhau/rvav.git#/ansible/ansible_collections/rvav/platform
+    type: git
+    version: main

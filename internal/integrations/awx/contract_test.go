@@ -31,7 +31,7 @@ func contractClient(t *testing.T) (*HTTPClient, context.Context) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Bootstrap(ctx, c, content, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+	if _, err := Bootstrap(ctx, c, content, Rvav{}, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
 		t.Fatal(err)
 	}
 	c.Organization = content.Organization
@@ -120,8 +120,13 @@ func TestContractTemplates(t *testing.T) {
 func TestContractJobs(t *testing.T) {
 	c, ctx := contractClient(t)
 
-	// A successful job, with rvav's variables and a limit; its events.
-	j := launch(t, ctx, c, "linux-baseline", false, LaunchRequest{Limit: "localhost",
+	// A successful job, with rvav's variables, a limit and an inventory
+	// other than the template's; its events.
+	inventory, err := c.find(ctx, "/inventories/", "rvav-test-localhost", 0)
+	if err != nil || inventory == 0 {
+		t.Fatalf("inventory rvav-test-localhost = %d, %v", inventory, err)
+	}
+	j := launch(t, ctx, c, "linux-baseline", false, LaunchRequest{Limit: "localhost", Inventory: inventory,
 		ExtraVars: map[string]any{"rvav": map[string]any{"request_id": "req_contract", "project": "web"}}})
 	if j.ID == 0 || !strings.Contains(j.URL, "/jobs/playbook/") {
 		t.Fatalf("launched %+v", j)
@@ -167,6 +172,12 @@ func TestContractJobs(t *testing.T) {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) || apiErr.Status != 400 || !strings.Contains(apiErr.Message, "listen_port") {
 		t.Fatalf("a port below the survey's minimum = %v", err)
+	}
+
+	// A template that doesn't prompt for an inventory is not launched on another.
+	sleep, _ := c.LookupJobTemplate(ctx, "sleep", false)
+	if _, err := c.Launch(ctx, sleep, false, LaunchRequest{Limit: "localhost", Inventory: inventory}); !errors.Is(err, ErrNoInventoryPrompt) {
+		t.Fatalf("launching sleep on another inventory = %v", err)
 	}
 
 	// Cancel.

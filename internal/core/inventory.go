@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 )
 
@@ -17,10 +18,12 @@ func groupName(prefix, value string) string {
 }
 
 // AnsibleInventory is the inventory AWX reads through the rvav.platform
-// collection (ADR-0016), in the format of `ansible-inventory --list`: every
-// VM of a deployment that is not deleted, with ansible_host its reserved
-// address, groups by project, environment, catalog item and OS family, and
-// rvav's context as host variables. Administrators and auditors.
+// collection (ADR-0017), in the format of `ansible-inventory --list`: every
+// VM of a deployment that is not being deleted, with ansible_host its
+// reserved address, groups by project, environment, catalog item, its tags
+// and OS family, and rvav's context as host variables, the inputs the form
+// exposes to the inventory among them (rvav_inputs). Administrators and
+// auditors.
 func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[string]any, error) {
 	if !p.IsAdmin() && !p.HasGlobal("auditor") {
 		return nil, ErrForbidden
@@ -59,9 +62,16 @@ func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[
 			}
 		}
 		vars["rvav_os_family"] = family
+		if inputs := exposedInputs(h.UISchema, h.Inputs); len(inputs) > 0 {
+			vars["rvav_inputs"] = inputs
+		}
 		hostvars[h.Name] = vars
-		for _, g := range []string{"rvav", groupName("project", h.Project), groupName("env", h.Environment),
-			groupName("item", h.Item), groupName("os", family)} {
+		names := []string{"rvav", groupName("project", h.Project), groupName("env", h.Environment),
+			groupName("item", h.Item), groupName("os", family)}
+		for _, t := range h.Tags {
+			names = append(names, groupName("tag", t))
+		}
+		for _, g := range slices.Compact(names) {
 			groups[g] = append(groups[g], h.Name)
 		}
 	}
@@ -74,4 +84,22 @@ func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[
 	slices.Sort(children)
 	out["all"] = map[string]any{"children": children}
 	return out, nil
+}
+
+// exposedInputs are the deployment's inputs whose field is marked
+// expose_to_inventory; secret ones never are.
+func exposedInputs(ui, inputs json.RawMessage) map[string]any {
+	var schema api.UiSchema
+	var values map[string]any
+	if json.Unmarshal(ui, &schema) != nil || json.Unmarshal(inputs, &values) != nil {
+		return nil
+	}
+	out := map[string]any{}
+	for name, f := range schema.Fields {
+		v, ok := values[name]
+		if ok && f.ExposeToInventory != nil && *f.ExposeToInventory && (f.Secret == nil || !*f.Secret) {
+			out[name] = v
+		}
+	}
+	return out
 }

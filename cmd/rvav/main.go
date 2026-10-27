@@ -38,7 +38,7 @@ Usage:
   rvav seed                load or refresh the example organisation and catalog
   rvav vcsim-bootstrap     create the GVA inventory in vcsim (development)
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
-  rvav awx-bootstrap [-content deploy/awx/content.yml]
+  rvav awx-bootstrap [-content deploy/awx/content.yml] [-rvav-url URL -rvav-token TOKEN]
                            set up rvav's test content in the AWX at RVAV_AWX_URL
   rvav api-token -user ID -name NAME [-days N]
                            make an API token for a user and print it once
@@ -119,6 +119,8 @@ func run(ctx context.Context, cmd string, args []string) error {
 	case "awx-bootstrap":
 		fs := flag.NewFlagSet("awx-bootstrap", flag.ExitOnError)
 		path := fs.String("content", "deploy/awx/content.yml", "the content to set up")
+		rvavURL := fs.String("rvav-url", "", "rvav's URL as AWX reaches it, for the rvav inventory's source")
+		rvavToken := fs.String("rvav-token", os.Getenv("RVAV_INVENTORY_TOKEN"), "an rvav API token of a user with the auditor role (rvav api-token)")
 		_ = fs.Parse(args)
 		content, err := awx.LoadContent(*path)
 		if err != nil {
@@ -128,7 +130,8 @@ func run(ctx context.Context, cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
-		return awx.Bootstrap(ctx, c, content, log)
+		_, err = awx.Bootstrap(ctx, c, content, awx.Rvav{URL: *rvavURL, Token: *rvavToken}, log)
+		return err
 	}
 
 	if cmd == "fake-efficientip" {

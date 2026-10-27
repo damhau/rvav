@@ -29,13 +29,14 @@ type Fake struct {
 }
 
 type fakeJob struct {
-	id       int
-	template string
-	limit    string
-	started  time.Time
-	canceled bool
-	tasks    []string
-	update   bool // an inventory update rather than a playbook run
+	id        int
+	template  string
+	limit     string
+	inventory int
+	started   time.Time
+	canceled  bool
+	tasks     []string
+	update    bool // an inventory update rather than a playbook run
 }
 
 // DefaultTemplates are the job templates used by the seed catalog.
@@ -89,7 +90,7 @@ func (f *Fake) Launch(_ context.Context, templateID int, _ bool, req LaunchReque
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextJob++
-	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, started: f.now(), tasks: f.Plays[names[idx]]}
+	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, started: f.now(), tasks: f.Plays[names[idx]]}
 	f.jobs[j.id] = j
 	return f.jobLocked(j), nil
 }
@@ -214,6 +215,22 @@ func (f *Fake) UpdateInventorySource(_ context.Context, _ int) (int, error) {
 	f.nextJob++
 	f.jobs[f.nextJob] = &fakeJob{id: f.nextJob, started: f.now(), update: true, tasks: []string{"update"}}
 	return f.nextJob, nil
+}
+
+// FakeInventory is the inventory the fake's inventory sources fill.
+const FakeInventory = 2
+
+func (f *Fake) InventoryOfSource(context.Context, int) (int, error) { return FakeInventory, nil }
+
+// LaunchedInventory returns the inventory a job was launched against (0:
+// the template's).
+func (f *Fake) LaunchedInventory(id int) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if j, ok := f.jobs[id]; ok {
+		return j.inventory
+	}
+	return 0
 }
 
 func (f *Fake) GetInventoryUpdate(ctx context.Context, id int) (Job, error) {

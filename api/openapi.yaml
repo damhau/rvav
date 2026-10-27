@@ -791,14 +791,15 @@ paths:
       summary: The Ansible inventory of rvav's VMs
       description: |
         In the format of `ansible-inventory --list`, for the `rvav.platform.rvav`
-        inventory plugin AWX uses: every VM of a deployment that is not
-        deleted, `ansible_host` its reserved address, groups `rvav`,
-        `project_<code>`, `env_<key>`, `item_<slug>` and `os_<family>`, and
-        host variables `rvav_deployment_id`, `rvav_deployment`,
-        `rvav_deployment_status`, `rvav_project`, `rvav_environment`,
-        `rvav_item`, `rvav_owner`, `rvav_fqdn`, `rvav_moref`,
-        `rvav_power_state` and `rvav_os_family`. For an API token of a user
-        with the auditor (or admin) role.
+        inventory plugin AWX uses (ADR-0017): every VM of a deployment that is
+        not being deleted, `ansible_host` its reserved address, groups `rvav`,
+        `project_<code>`, `env_<key>`, `item_<slug>`, `tag_<item tag>` and
+        `os_<family>`, and host variables `rvav_deployment_id`,
+        `rvav_deployment`, `rvav_deployment_status`, `rvav_project`,
+        `rvav_environment`, `rvav_item`, `rvav_owner`, `rvav_fqdn`,
+        `rvav_moref`, `rvav_power_state`, `rvav_os_family` and `rvav_inputs`
+        (the inputs whose field is marked `expose_to_inventory`, never secret
+        ones). For an API token of a user with the auditor (or admin) role.
       responses:
         "200":
           description: OK

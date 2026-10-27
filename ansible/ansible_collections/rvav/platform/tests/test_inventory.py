@@ -71,19 +71,35 @@ def rvav():
     server.shutdown()
 
 
+def ansible_env(tmp_path, url, token):
+    return dict(os.environ, ANSIBLE_COLLECTIONS_PATH=str(COLLECTIONS), ANSIBLE_HOME=str(tmp_path / "ansible"),
+                RVAV_URL=url, RVAV_TOKEN=token, ANSIBLE_INVENTORY_UNPARSED_FAILED="true",
+                ANSIBLE_INVENTORY_ENABLED="rvav.platform.rvav")
+
+
 def inventory(tmp_path, url, token=TOKEN, extra=""):
     config = tmp_path / "rvav.yml"
     config.write_text("plugin: rvav.platform.rvav\n" + extra)
-    env = dict(os.environ, ANSIBLE_COLLECTIONS_PATH=str(COLLECTIONS), RVAV_URL=url, RVAV_TOKEN=token,
-               ANSIBLE_INVENTORY_UNPARSED_FAILED="true", ANSIBLE_INVENTORY_ENABLED="rvav.platform.rvav")
+    env = ansible_env(tmp_path, url, token)
     return subprocess.run(["ansible-inventory", "-i", str(config), "--list"], capture_output=True, text=True, env=env)
+
+
+def plain(value):
+    """A value as ansible-inventory prints it: since ansible-core 2.19, data
+    from an inventory plugin is never a template, and shows as
+    {"__ansible_unsafe": value}."""
+    if isinstance(value, dict) and set(value) == {"__ansible_unsafe"}:
+        return value["__ansible_unsafe"]
+    if isinstance(value, dict):
+        return {k: plain(v) for k, v in value.items()}
+    return value
 
 
 def test_hosts_groups_and_vars(tmp_path, rvav):
     out = inventory(tmp_path, rvav, extra="keyed_groups:\n  - key: rvav_owner.split('@')[0]\n    prefix: owner\n")
     assert out.returncode == 0, out.stderr
     inv = json.loads(out.stdout)
-    hostvars = inv["_meta"]["hostvars"]
+    hostvars = plain(inv["_meta"]["hostvars"])
     assert hostvars["web-dev-app001"]["ansible_host"] == "10.31.10.20"
     assert hostvars["fin-prd-db001"]["rvav_owner"] == "sophie.brunner@corp.example"
     assert inv["project_web"]["hosts"] == ["web-dev-app001"]
@@ -101,7 +117,6 @@ def test_wrong_token(tmp_path, rvav):
 def test_only_rvav_files(tmp_path, rvav):
     other = tmp_path / "hosts.yml"
     other.write_text("plugin: rvav.platform.rvav\n")
-    env = dict(os.environ, ANSIBLE_COLLECTIONS_PATH=str(COLLECTIONS), RVAV_URL=rvav, RVAV_TOKEN=TOKEN,
-               ANSIBLE_INVENTORY_UNPARSED_FAILED="true", ANSIBLE_INVENTORY_ENABLED="rvav.platform.rvav")
+    env = ansible_env(tmp_path, rvav, TOKEN)
     out = subprocess.run(["ansible-inventory", "-i", str(other), "--list"], capture_output=True, text=True, env=env)
     assert out.returncode != 0

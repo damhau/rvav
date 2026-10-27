@@ -73,7 +73,7 @@ func vmItem(template, osFamily, required string, post []option, defaultPost []st
 			},
 		},
 		"fields": map[string]any{
-			"role": map[string]any{"widget": "text", "label": "Role", "placeholder": "app",
+			"role": map[string]any{"widget": "text", "label": "Role", "placeholder": "app", "expose_to_inventory": true,
 				"help": "Lower case, 2–12 letters. Used in the VM name."},
 			"vm_name": map[string]any{"widget": "computed", "label": "VM name",
 				"help":         "From the naming policy {project}-{environment}-{role}{seq:03}. Checked free in vCenter and DNS.",

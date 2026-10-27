@@ -526,7 +526,17 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		if err != nil {
 			return permanent("AWX: %v", err)
 		}
-		job, err := a.AWX.Launch(ctx, tplID, in.Job.Workflow, awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars})
+		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars}
+		if in.Limit != "" && a.AWXInventorySource != 0 {
+			// Jobs on rvav's VMs run against rvav's inventory, refreshed before.
+			if launch.Inventory, err = a.AWX.InventoryOfSource(ctx, a.AWXInventorySource); err != nil {
+				return fmt.Errorf("AWX: %w", err)
+			}
+		}
+		job, err := a.AWX.Launch(ctx, tplID, in.Job.Workflow, launch)
+		if errors.Is(err, awx.ErrNoInventoryPrompt) {
+			return permanent("AWX: %s does not prompt for an inventory on launch, so it can't run against rvav's inventory", in.Job.Template)
+		}
 		if err != nil {
 			return fmt.Errorf("AWX: %w", err)
 		}

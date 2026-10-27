@@ -5,13 +5,22 @@ package awx
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
 
+// ErrNoInventoryPrompt is a template asked to run against another
+// inventory that doesn't prompt for one on launch (AWX would ignore it).
+var ErrNoInventoryPrompt = errors.New("the template does not prompt for an inventory on launch")
+
 type LaunchRequest struct {
 	Limit     string
 	ExtraVars map[string]any
+	// Inventory, when set, is the inventory the job runs against instead of
+	// the template's: rvav's, for jobs on its VMs. The template must prompt
+	// for an inventory on launch.
+	Inventory int
 }
 
 type Job struct {
@@ -81,6 +90,8 @@ type Client interface {
 	Cancel(ctx context.Context, jobID int, workflow bool) error
 	// UpdateInventorySource starts a refresh and returns the update job ID.
 	UpdateInventorySource(ctx context.Context, sourceID int) (int, error)
+	// InventoryOfSource returns the ID of the inventory a source fills.
+	InventoryOfSource(ctx context.Context, sourceID int) (int, error)
 	GetInventoryUpdate(ctx context.Context, id int) (Job, error)
 }
 

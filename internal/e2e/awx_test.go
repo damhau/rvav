@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -157,7 +158,19 @@ func TestAnsibleInventory(t *testing.T) {
 				"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
 		var req api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.acts.AWXInventorySource = 1
 		h.runWorkflow(req.Id, nil)
+
+		// The post-configuration job ran against rvav's inventory.
+		step, err := h.store.GetStepByKey(ctx, req.Id, "awx.job:linux-baseline")
+		if err != nil || step.ExternalID == nil {
+			t.Fatalf("job step = %+v, %v", step, err)
+		}
+		var jobID int
+		fmt.Sscan(*step.ExternalID, &jobID)
+		if inv := h.awx.LaunchedInventory(jobID); inv != awx.FakeInventory {
+			t.Fatalf("the job ran against inventory %d", inv)
+		}
 
 		token := auth.NewToken()
 		if err := h.store.CreateAPIToken(ctx, "tok_test", "usr_svc-awx", "awx inventory", auth.HashToken(token), nil); err != nil {
@@ -181,7 +194,10 @@ func TestAnsibleInventory(t *testing.T) {
 			vars["rvav_fqdn"] != "web-dev-app001.corp.example" || vars["rvav_os_family"] != "linux" || vars["rvav_owner"] != "thomas.nguyen@corp.example" {
 			t.Fatalf("host vars = %v", vars)
 		}
-		for _, g := range []string{"rvav", "project_web", "env_dev", "item_rhel9_server", "os_linux"} {
+		if inputs, _ := vars["rvav_inputs"].(map[string]any); len(inputs) != 1 || inputs["role"] != "app" {
+			t.Fatalf("inputs exposed to the inventory = %v", vars["rvav_inputs"])
+		}
+		for _, g := range []string{"rvav", "project_web", "env_dev", "item_rhel9_server", "os_linux", "tag_linux", "tag_rhel"} {
 			var members struct{ Hosts []string }
 			_ = json.Unmarshal(groups[g], &members)
 			if !slices.Contains(inv.All.Children, g) || !slices.Contains(members.Hosts, "web-dev-app001") {
@@ -189,5 +205,14 @@ func TestAnsibleInventory(t *testing.T) {
 			}
 		}
 		h.json("GET", "/api/v1/ansible/inventory", "tnguyen", nil, 403, nil)
+
+		// A deployment being deleted is no longer in the inventory.
+		if _, err := h.store.Pool.Exec(ctx, `update deployments set status = 'deleting' where created_by_request_id = $1`, req.Id); err != nil {
+			t.Fatal(err)
+		}
+		_, body, _ = h.do("GET", "/api/v1/ansible/inventory", "", nil, "Authorization", "Bearer "+token)
+		if strings.Contains(string(body), "web-dev-app001") {
+			t.Fatalf("inventory with the deployment being deleted = %s", body)
+		}
 	})
 }

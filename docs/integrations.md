@@ -81,8 +81,12 @@ checked against a real AWX by contract tests ([deploy/awx](../deploy/awx/README.
 
 ### Launch contract
 - Job templates used by rvav must enable **Prompt on launch** for *Limit* and
-  *Variables* (and for *Inventory* or *Credentials* if the form overrides them).
-  The import checks this and warns.
+  *Variables* (and for *Credentials* if the form overrides them). The import
+  checks this and warns.
+- Templates that run on rvav's VMs (post-configuration, AWX day-2 actions)
+  must also prompt for *Inventory*: rvav launches them with its own
+  inventory, the one it has just refreshed, and refuses to launch one that
+  doesn't prompt ([ADR-0017](adr/0017-awx-inventory.md)).
 - `extra_vars` sent to AWX:
   ```yaml
   # user inputs mapped from the form
@@ -110,20 +114,26 @@ ships (an Ansible collection, for example `rvav.platform`). Hosts and variables
 come straight from the rvav database, so they're always correct and include
 deployment context.
 
-- rvav exposes `GET /api/v1/ansible/inventory`, authenticated with a read-only API token.
+- rvav exposes `GET /api/v1/ansible/inventory`, authenticated with an API
+  token of a user with the auditor role (`rvav api-token -user usr_svc-awx`).
 - The output contains hosts (managed VMs with `ansible_host` = IP), groups built
-  from project, environment, catalog item, OS family and tags, and hostvars
-  (`rvav_deployment_id`, `rvav_project`, `rvav_owner`, form inputs marked
-  "expose to inventory").
+  from project, environment, catalog item, the item's tags and OS family, and
+  hostvars (`rvav_deployment_id`, `rvav_project`, `rvav_owner`, and in
+  `rvav_inputs` the form inputs marked "expose to inventory").
+- The collection is `ansible/ansible_collections/rvav/platform`; AWX installs
+  it from this repository (`collections/requirements.yml`) when it syncs the
+  project. `make test-ansible` tests it with ansible-core.
 - In AWX: an inventory "rvav" with an inventory source pointing to an SCM project
-  that contains the plugin config (`rvav.yml`). Its credential is a custom
-  credential type that injects `RVAV_URL` and `RVAV_TOKEN`.
+  that contains the plugin config (`deploy/awx/inventory/rvav.yml`). Its
+  credential is a custom credential type "rvav API" that injects `RVAV_URL`
+  and `RVAV_TOKEN`. `rvav awx-bootstrap` sets this up in a test AWX.
 - **Freshness**: before launching a job that targets a newly provisioned VM, the
   workflow calls `POST /inventory_sources/{id}/update/` and waits for it to
-  finish. Then it launches with `limit=<hostname>`. Setting *Update on launch*
-  with cache timeout 0 is an alternative, but an explicit update gives clearer
-  errors and timing.
-- Only resources in state `ready_for_config` or `ready` appear in the inventory.
+  finish. Then it launches on that source's inventory with
+  `limit=<hostname>`. Setting *Update on launch* with cache timeout 0 is an
+  alternative, but an explicit update gives clearer errors and timing.
+- VMs of deployments being deleted are left out; those of failed deployments
+  stay, so a retried post-configuration step reaches them.
 
 An alternative is the `community.vmware.vmware_vm_inventory` plugin filtered on
 rvav tags. It's simpler but slower, and it lacks deployment context, so it isn't

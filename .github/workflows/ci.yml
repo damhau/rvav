@@ -31,6 +31,14 @@ jobs:
       - name: End-to-end tests (embedded PostgreSQL, vcsim)
         run: make test-e2e
 
+  ansible:
+    name: Ansible collection
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: make test-ansible
+
   spec:
     name: API spec
     runs-on: ubuntu-24.04

@@ -16,7 +16,9 @@ import (
 
 // Content is test content for an AWX (deploy/awx/content.yml): an
 // organisation, a project, an inventory, job templates with surveys and
-// workflows. Bootstrap sets it up and only ever touches that organisation.
+// workflows, and rvav's inventory. Bootstrap sets it up and only ever
+// touches that organisation (and rvav's credential type: AWX's credential
+// types belong to no organisation).
 type Content struct {
 	Organization string `yaml:"organization"`
 	Project      struct {
@@ -30,6 +32,20 @@ type Content struct {
 	} `yaml:"inventory"`
 	JobTemplates []TemplateContent `yaml:"job_templates"`
 	Workflows    []WorkflowContent `yaml:"workflow_job_templates"`
+	// RvavInventory is rvav's VMs, read by the rvav.platform inventory
+	// plugin with the plugin configuration at SourcePath in the project, and
+	// a credential of type CredentialType.
+	RvavInventory struct {
+		Name           string `yaml:"name"`
+		SourcePath     string `yaml:"source_path"`
+		CredentialType string `yaml:"credential_type"`
+	} `yaml:"rvav_inventory"`
+}
+
+// Rvav is how AWX reaches rvav for its inventory: rvav's URL as AWX sees
+// it, and an API token of a user with the auditor role.
+type Rvav struct {
+	URL, Token string
 }
 
 type TemplateContent struct {
@@ -38,13 +54,17 @@ type TemplateContent struct {
 	Playbook    string           `yaml:"playbook"`
 	Labels      []string         `yaml:"labels"`
 	Survey      []SurveyQuestion `yaml:"survey"`
+	// AskInventory: the template runs on rvav's VMs, so rvav launches it
+	// against its inventory.
+	AskInventory bool `yaml:"ask_inventory"`
 }
 
 type WorkflowContent struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Labels      []string `yaml:"labels"`
-	Nodes       []string `yaml:"nodes"`
+	Name         string   `yaml:"name"`
+	Description  string   `yaml:"description"`
+	Labels       []string `yaml:"labels"`
+	Nodes        []string `yaml:"nodes"`
+	AskInventory bool     `yaml:"ask_inventory"`
 }
 
 // SurveyQuestion is a question of an AWX survey, as in survey_spec.
@@ -147,32 +167,34 @@ func (c *HTTPClient) ensureAt(ctx context.Context, path, itemPath, name string, 
 }
 
 // Bootstrap sets up the content: it updates what exists and adds what is
-// missing, then syncs the project.
-func Bootstrap(ctx context.Context, c *HTTPClient, content Content, log *slog.Logger) error {
+// missing, then syncs the project. With rvav's URL and a token, rvav's
+// inventory gets its source, which is synced once; its ID is returned (0
+// without).
+func Bootstrap(ctx context.Context, c *HTTPClient, content Content, rvav Rvav, log *slog.Logger) (int, error) {
 	org, err := c.ensure(ctx, "/organizations/", content.Organization, 0, map[string]any{
 		"description": "rvav's test content (deploy/awx/content.yml)"})
 	if err != nil {
-		return fmt.Errorf("organization: %w", err)
+		return 0, fmt.Errorf("organization: %w", err)
 	}
 	project, err := c.ensure(ctx, "/projects/", content.Project.Name, org, map[string]any{
 		"scm_type": "git", "scm_url": content.Project.SCMURL, "scm_branch": content.Project.SCMBranch,
 		"scm_update_on_launch": false})
 	if err != nil {
-		return fmt.Errorf("project: %w", err)
+		return 0, fmt.Errorf("project: %w", err)
 	}
 	if err := c.syncProject(ctx, project); err != nil {
-		return err
+		return 0, err
 	}
 	log.Info("AWX project synced", "project", content.Project.Name)
 
 	inventory, err := c.ensure(ctx, "/inventories/", content.Inventory.Name, org, map[string]any{})
 	if err != nil {
-		return fmt.Errorf("inventory: %w", err)
+		return 0, fmt.Errorf("inventory: %w", err)
 	}
 	for _, h := range content.Inventory.Hosts {
 		if _, err := c.ensureAt(ctx, fmt.Sprintf("/inventories/%d/hosts/", inventory), "/hosts/", h, 0, map[string]any{
 			"variables": "ansible_connection: local\nansible_python_interpreter: '{{ ansible_playbook_python }}'"}); err != nil {
-			return fmt.Errorf("host %s: %w", h, err)
+			return 0, fmt.Errorf("host %s: %w", h, err)
 		}
 	}
 
@@ -181,9 +203,9 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, log *slog.Lo
 		id, err := c.ensure(ctx, "/job_templates/", t.Name, org, map[string]any{
 			"description": t.Description, "job_type": "run", "inventory": inventory, "project": project,
 			"playbook": t.Playbook, "ask_limit_on_launch": true, "ask_variables_on_launch": true,
-			"survey_enabled": len(t.Survey) > 0})
+			"ask_inventory_on_launch": t.AskInventory, "survey_enabled": len(t.Survey) > 0})
 		if err != nil {
-			return fmt.Errorf("job template %s: %w", t.Name, err)
+			return 0, fmt.Errorf("job template %s: %w", t.Name, err)
 		}
 		templates[t.Name] = id
 		if len(t.Survey) > 0 {
@@ -194,30 +216,90 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, log *slog.Lo
 			}
 			spec := map[string]any{"name": t.Name, "description": t.Description, "spec": t.Survey}
 			if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/job_templates/%d/survey_spec/", id), nil, spec, nil); err != nil {
-				return fmt.Errorf("survey of %s: %w", t.Name, err)
+				return 0, fmt.Errorf("survey of %s: %w", t.Name, err)
 			}
 		}
 		if err := c.label(ctx, fmt.Sprintf("/job_templates/%d/labels/", id), org, t.Labels); err != nil {
-			return fmt.Errorf("labels of %s: %w", t.Name, err)
+			return 0, fmt.Errorf("labels of %s: %w", t.Name, err)
 		}
 	}
 
 	for _, w := range content.Workflows {
 		id, err := c.ensure(ctx, "/workflow_job_templates/", w.Name, org, map[string]any{
-			"description": w.Description, "ask_limit_on_launch": true, "ask_variables_on_launch": true})
+			"description": w.Description, "ask_limit_on_launch": true, "ask_variables_on_launch": true,
+			"ask_inventory_on_launch": w.AskInventory})
 		if err != nil {
-			return fmt.Errorf("workflow %s: %w", w.Name, err)
+			return 0, fmt.Errorf("workflow %s: %w", w.Name, err)
 		}
 		if err := c.workflowNodes(ctx, id, w.Nodes, templates); err != nil {
-			return fmt.Errorf("workflow %s: %w", w.Name, err)
+			return 0, fmt.Errorf("workflow %s: %w", w.Name, err)
 		}
 		if err := c.label(ctx, fmt.Sprintf("/workflow_job_templates/%d/labels/", id), org, w.Labels); err != nil {
-			return fmt.Errorf("labels of %s: %w", w.Name, err)
+			return 0, fmt.Errorf("labels of %s: %w", w.Name, err)
 		}
 	}
 	log.Info("AWX test content set up", "organization", content.Organization,
 		"job_templates", len(content.JobTemplates), "workflows", len(content.Workflows))
-	return nil
+	if content.RvavInventory.Name == "" {
+		return 0, nil
+	}
+	return c.rvavInventory(ctx, content, org, project, rvav, log)
+}
+
+// rvavInventory sets up rvav's inventory: the credential type that gives
+// the inventory plugin RVAV_URL and RVAV_TOKEN, the inventory, and, with
+// rvav's URL and a token, a credential and the inventory's source, synced
+// once to show whether AWX reaches rvav.
+func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, project int, rvav Rvav, log *slog.Logger) (int, error) {
+	ri := content.RvavInventory
+	ct, err := c.find(ctx, "/credential_types/", ri.CredentialType, 0)
+	if err != nil {
+		return 0, fmt.Errorf("credential type: %w", err)
+	}
+	if ct == 0 { // created once: AWX refuses changes to a credential type in use
+		var created named
+		if err := c.do(ctx, http.MethodPost, "/credential_types/", nil, map[string]any{"name": ri.CredentialType, "kind": "cloud",
+			"description": "rvav's URL and an API token, for the rvav.platform inventory plugin",
+			"inputs": map[string]any{"fields": []map[string]any{
+				{"id": "url", "label": "rvav URL", "type": "string"},
+				{"id": "token", "label": "API token", "type": "string", "secret": true}},
+				"required": []string{"url", "token"}},
+			"injectors": map[string]any{"env": map[string]string{"RVAV_URL": "{{ url }}", "RVAV_TOKEN": "{{ token }}"}}}, &created); err != nil {
+			return 0, fmt.Errorf("credential type: %w", err)
+		}
+		ct = created.ID
+	}
+	inventory, err := c.ensure(ctx, "/inventories/", ri.Name, org, map[string]any{
+		"description": "rvav's VMs, from rvav (rvav.platform.rvav)"})
+	if err != nil {
+		return 0, fmt.Errorf("rvav inventory: %w", err)
+	}
+	if rvav.URL == "" || rvav.Token == "" {
+		log.Info("no rvav URL and token: the rvav inventory has no source yet", "inventory", ri.Name)
+		return 0, nil
+	}
+	cred, err := c.ensure(ctx, "/credentials/", ri.Name+" API", org, map[string]any{"credential_type": ct,
+		"description": "rvav's API for the rvav inventory", "inputs": map[string]string{"url": rvav.URL, "token": rvav.Token}})
+	if err != nil {
+		return 0, fmt.Errorf("rvav credential: %w", err)
+	}
+	source, err := c.ensureAt(ctx, fmt.Sprintf("/inventories/%d/inventory_sources/", inventory), "/inventory_sources/", ri.Name, 0,
+		map[string]any{"source": "scm", "source_project": project, "source_path": ri.SourcePath, "credential": cred,
+			"overwrite": true, "overwrite_vars": true, "update_on_launch": false})
+	if err != nil {
+		return 0, fmt.Errorf("rvav inventory source: %w", err)
+	}
+	id, err := c.UpdateInventorySource(ctx, source)
+	if err == nil {
+		err = c.waitUpdate(ctx, "/inventory_updates/", id)
+	}
+	if err != nil {
+		log.Warn("the rvav inventory could not be synced; check that AWX reaches rvav at its URL", "url", rvav.URL, "err", err)
+	} else {
+		log.Info("rvav inventory synced", "inventory", ri.Name)
+	}
+	log.Info("set RVAV_AWX_INVENTORY_SOURCE_ID for rvav's worker", "RVAV_AWX_INVENTORY_SOURCE_ID", source)
+	return source, nil
 }
 
 func (c *HTTPClient) syncProject(ctx context.Context, project int) error {
@@ -228,21 +310,30 @@ func (c *HTTPClient) syncProject(ctx context.Context, project int) error {
 	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/update/", project), nil, map[string]any{}, &started); err != nil {
 		return fmt.Errorf("project sync: %w", err)
 	}
-	id := max(started.ProjectUpdate, started.ID)
+	if err := c.waitUpdate(ctx, "/project_updates/", max(started.ProjectUpdate, started.ID)); err != nil {
+		return fmt.Errorf("project sync: %w", err)
+	}
+	return nil
+}
+
+// waitUpdate waits for a project or inventory update to finish, five
+// minutes at most.
+func (c *HTTPClient) waitUpdate(ctx context.Context, path string, id int) error {
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
 		var u struct {
 			Status          string `json:"status"`
 			ResultTraceback string `json:"result_traceback"`
+			Explanation     string `json:"job_explanation"`
 		}
-		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/project_updates/%d/", id), nil, nil, &u); err != nil {
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s%d/", path, id), nil, nil, &u); err != nil {
 			return err
 		}
 		switch u.Status {
 		case "successful":
 			return nil
 		case "failed", "error", "canceled":
-			return fmt.Errorf("project sync %d %s %s", id, u.Status, strings.TrimSpace(u.ResultTraceback))
+			return fmt.Errorf("update %d %s %s", id, u.Status, strings.TrimSpace(u.Explanation+" "+u.ResultTraceback))
 		}
 		select {
 		case <-ctx.Done():
@@ -250,7 +341,7 @@ func (c *HTTPClient) syncProject(ctx context.Context, project int) error {
 		case <-time.After(2 * time.Second):
 		}
 	}
-	return fmt.Errorf("project sync %d did not finish in 5 minutes", id)
+	return fmt.Errorf("update %d did not finish in 5 minutes", id)
 }
 
 // label attaches labels (made in the organisation when missing).

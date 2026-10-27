@@ -166,12 +166,26 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 }
 
 // Launch starts a job. The template must allow "Prompt on launch" for limit
-// and variables, or AWX silently ignores them.
+// and variables, or AWX silently ignores them. With an inventory, the
+// template is checked to prompt for it first: run against its own
+// inventory, a limit could match another host of the same name.
 func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, req LaunchRequest) (Job, error) {
 	tpl, _ := kindPath(workflow)
 	body := map[string]any{"extra_vars": req.ExtraVars}
 	if req.Limit != "" {
 		body["limit"] = req.Limit
+	}
+	if req.Inventory != 0 {
+		var prompts struct {
+			AskInventory bool `json:"ask_inventory_on_launch"`
+		}
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, nil, &prompts); err != nil {
+			return Job{}, err
+		}
+		if !prompts.AskInventory {
+			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoInventoryPrompt)
+		}
+		body["inventory"] = req.Inventory
 	}
 	var j jobJSON
 	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, body, &j); err != nil {
@@ -246,6 +260,16 @@ func (c *HTTPClient) UpdateInventorySource(ctx context.Context, sourceID int) (i
 		return res.InventoryUpdate, nil
 	}
 	return res.ID, nil
+}
+
+func (c *HTTPClient) InventoryOfSource(ctx context.Context, sourceID int) (int, error) {
+	var res struct {
+		Inventory int `json:"inventory"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/inventory_sources/%d/", sourceID), nil, nil, &res); err != nil {
+		return 0, err
+	}
+	return res.Inventory, nil
 }
 
 func (c *HTTPClient) GetInventoryUpdate(ctx context.Context, id int) (Job, error) {

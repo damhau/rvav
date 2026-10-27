@@ -1,0 +1,4 @@
+# rvav's VMs for AWX's "rvav" inventory (rvav awx-bootstrap): the
+# rvav.platform inventory plugin, with RVAV_URL and RVAV_TOKEN from the
+# "rvav API" credential. The file name must end in rvav.yml.
+plugin: rvav.platform.rvav
