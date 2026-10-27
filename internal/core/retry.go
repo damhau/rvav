@@ -78,7 +78,7 @@ func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRo
 		if err := s.Store.LockDeployment(ctx, tx, id); err != nil {
 			return err
 		}
-		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, id, deref(r.ResourceID), r.ID)
+		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, id, deref(r.ResourceID), r.ID, true)
 		if err != nil {
 			return err
 		}
@@ -111,6 +111,9 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	if a == nil {
 		return &ConflictError{Msg: "This action no longer exists."}
 	}
+	if a.Hidden || r.RequesterID == SystemUserID {
+		return &ConflictError{Msg: "rvav runs this itself and tries again when it is due."}
+	}
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {
 		return err
@@ -131,11 +134,23 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
-	dec := j.decide(a, *target, inputs)
+	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)
+	if err != nil {
+		return err
+	}
+	dec := j.decideQuota(a, *target, inputs, overSoft)
+	needs := len(dec.Chain) > 0
+	if a.Approval != nil && dec.Denied == "" {
+		c, err := s.choices(ctx, p, d, *target)
+		if err != nil {
+			return err
+		}
+		needs = needs || a.Approval(*target, c, inputs) != ""
+	}
 	switch {
 	case dec.Denied != "":
 		return fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
-	case len(dec.Chain) > 0:
+	case needs:
 		return &ConflictError{Msg: a.Name + " needs approval now: run it again to ask for it."}
 	}
 	return nil

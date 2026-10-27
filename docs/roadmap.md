@@ -4,14 +4,20 @@ Milestones are ordered so that each one ends in something usable end to end.
 
 ## Status
 
-Slices 1 to 4 are built: catalog to running VM, including the AWX
+R0 (slices 1 to 5) is built, on the lab stack; what remains for its
+acceptance needs the lab vCenter (below). The demo script is
+[demo-r0.md](demo-r0.md). Built: catalog to running VM, including the AWX
 post-configuration steps, running for real on the Docker Compose stack;
 approvals (levels, timeouts and escalation, delegation, approvers editing
 inputs, the inbox); and day-2 actions (power, resize, disks, network
 adapters, snapshots with retention, rename, ISO images, owner and project,
 delete, the VM console), each a request with its own timeline, decided by
 day-2 policies, with retry and rollback of failed requests
-([ADR-0013](adr/0013-day2-actions.md), [ADR-0012](adr/0012-vm-console.md)).
+([ADR-0013](adr/0013-day2-actions.md), [ADR-0012](adr/0012-vm-console.md));
+and leases and quotas (lease policies with project overrides, extension
+with approval beyond the policy, reminders, power off at expiry and
+deletion after a grace period; hard and soft quotas per project and
+environment, [ADR-0014](adr/0014-leases-and-quotas.md)).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
@@ -20,14 +26,16 @@ Verified so far:
   and tests, end-to-end tests on their own PostgreSQL with vcsim, through
   Temporal's test environment and through a real Temporal dev server, OIDC
   token checks against a fake provider, day-2 actions against vcsim and the
-  console proxy against a fake ESXi WebSocket; web typecheck, lint, 48 unit
+  console proxy against a fake ESXi WebSocket, the lease and quota
+  acceptance scenario through a real Temporal server; web typecheck, lint, 48 unit
   tests, build and Playwright on mock data (day-2 menus, dialogs and bulk
   actions included).
 - The Docker Compose stack, run locally: it starts in order with health
   checks, `deploy/smoke.sh` gets a request to succeeded through the real
   Temporal server, and `pnpm e2e:stack` requests a VM in the browser,
   follows it to Ready and powers it off from its menu, with dev
-  authentication and with Keycloak sign-in (groups mapped to project roles).
+  authentication and with Keycloak sign-in (groups mapped to project roles);
+  the housekeeping schedule runs every 15 minutes there.
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the

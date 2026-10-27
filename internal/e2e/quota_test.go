@@ -74,10 +74,28 @@ func TestQuotas(t *testing.T) {
 		if req.Status != api.RequestStatusPendingApproval {
 			t.Fatalf("request over a soft limit = %s", req.Status)
 		}
+		// It reserves its vCPU while it waits.
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		for _, l := range pv.Quota {
+			if l.Environment != nil && l.Resource == api.Vcpu && l.Used != vcpu+2 {
+				t.Fatalf("dev vCPU used with a request waiting = %d, want %d", l.Used, vcpu+2)
+			}
+		}
 		var levels struct{ Items []api.Approval }
 		h.json("GET", "/api/v1/requests/"+req.Id+"/approvals", "tnguyen", nil, 200, &levels)
 		if len(levels.Items) != 1 || !contains(levels.Items[0].Reasons, "Over the project's soft quota") {
 			t.Fatalf("approval of a request over a soft limit = %+v", levels.Items)
+		}
+
+		// Disks count against storage.
+		if _, err := h.store.Pool.Exec(ctx, `insert into quotas (project_id, environment, resource, limit_value, enforcement)
+			values ('prj_web', 'dev', 'storage_gb', $1, 'hard')`, d.vm().Disks[0].CapacityGb+10); err != nil {
+			t.Fatal(err)
+		}
+		_, body, _ = h.do("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen",
+			api.Day2Draft{Action: "disk_add", ResourceId: &d.resource, Inputs: map[string]any{"size_gb": 50}}, "Idempotency-Key", uuid.NewString())
+		if !strings.Contains(string(body), "The disk needs 50 GB of storage but Web Platform in Development has") {
+			t.Fatalf("disk over a hard limit = %s", body)
 		}
 
 		// Moving to a project without room is not offered.

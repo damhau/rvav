@@ -48,7 +48,7 @@ func init() {
 	register(&Action{
 		Key: "lease_expire", Name: "End of the lease", Group: GroupLifecycle, Types: []string{DeploymentType}, Hidden: true,
 		Ops: func(t Target, _ map[string]any) []Op {
-			var ops []Op
+			ops := []Op{leaseCheck()}
 			for _, r := range t.Resources {
 				if r.Type == vmType && r.VM.PowerState != api.Off {
 					ops = append(ops, vcenter("vsphere.power_off@"+r.Name, "Power off "+r.Name, "power_off",
@@ -58,4 +58,10 @@ func init() {
 			return append(ops, Op{Key: "rvav.lease_expired", Title: "Record the end of the lease", System: "rvav", Op: "lease_expired"})
 		},
 	})
+}
+
+// leaseCheck is the first step of what rvav does when a lease ends: it
+// stops there if the lease was extended in the meantime.
+func leaseCheck() Op {
+	return Op{Key: "rvav.lease_check", Title: "Check that the lease has ended", System: "rvav", Op: "lease_check"}
 }

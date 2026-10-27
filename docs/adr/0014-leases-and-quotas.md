@@ -24,27 +24,35 @@ grace period), `delete`, or `notify_only`. No `default_days` means no lease.
 
 ### Extending
 Extending is the day-2 action `extend_lease` on the whole deployment, so
-it has a timeline, an audit entry and a place in the history. Within the
-policy (at most `max_days`, fewer than `max_extensions` used) it runs at
-once; beyond it, it needs the approval of the project's admins. A lease
-extended during the grace period stops the deletion; the VMs stay off until
-someone powers them on.
+it has a timeline, an audit entry and a place in the history; who may run
+it is up to the day-2 policies (the seed: the owner and the project's
+members). Within the policy (at most `max_days`, fewer than
+`max_extensions` used) it runs at once; beyond it, it needs the approval of
+one of the project's other admins, and is rejected after three days
+without a decision. A lease extended during the grace period stops the
+deletion; the VMs stay off until someone powers them on.
 
 ### Expiry
 The `Housekeeping` workflow (ADR-0013), every 15 minutes, sends in-app
 reminders 7 days and 1 day before a lease ends (email comes in S11), and
 starts the expiry of each deployment whose lease ended as ordinary day-2
 requests by the system user `rvav`: `lease_expire` powers the VMs off and
-records when; `delete` runs once the grace period is over. No workflow
-waits for months, so upgrades stay safe.
+records when; `delete` runs once the grace period is over (at once for a
+failed deployment). Both first check the lease has really ended, so an
+extension in the meantime wins. A lease that ended without its 1-day
+reminder (housekeeping down, or a deployment from before leases) is moved
+on a day so the owner hears first. Requests waiting for approval don't hold
+expiry up, and are cancelled before a deletion. No workflow waits for
+months, so upgrades stay safe.
 
 ### Quotas
 Limits are project-wide (`environment` empty) or per environment, each
-`hard` or `soft`. Submitting, resizing and moving to another project check
-both: over a hard limit is refused with what is left; over a soft one needs
-approval, through policies: approval policies and day-2 policies see
-`quota.over_soft` (and the resources over it), and the seed asks the
-Infrastructure leads.
+`hard` or `soft`. Submitting, resizing, adding or extending disks and moving
+to another project check both, and what a request adds is reserved from
+submit (waiting for approval included) until it ends. Over a hard limit is
+refused with what is left. Over a soft one needs approval, through
+policies: approval policies and day-2 policies see `quota.over_soft` (and
+the resources over it), and the seed asks the Infrastructure leads.
 
 ## Consequences
 - Leases, reminders and expiry are all visible as requests and audit

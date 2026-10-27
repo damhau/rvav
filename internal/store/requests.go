@@ -116,20 +116,30 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 // or "". Actions on different VMs run side by side; the request that
 // created the deployment and actions on the whole deployment are in the way
 // of everything, and resourceID "" (a whole-deployment action) waits for
-// any request. except leaves one request out. Lock the deployment row first
-// (LockDeployment) to make it a reliable check.
-func (s *Store) ActiveDeploymentRequest(ctx context.Context, db DB, deploymentID, resourceID, except string) (string, error) {
+// any request. except leaves one request out. waiting counts requests that
+// wait for approval or their start time too; rvav's lease expiry doesn't
+// wait for them. Lock the deployment row first (LockDeployment) to make it
+// a reliable check.
+func (s *Store) ActiveDeploymentRequest(ctx context.Context, db DB, deploymentID, resourceID, except string, waiting bool) (string, error) {
 	var number string
 	err := db.QueryRow(ctx, `select r.number from requests r
 		where (r.deployment_id = $1 or r.id = (select created_by_request_id from deployments where id = $1))
-		  and r.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')
+		  and (r.status in ('queued', 'running', 'cancelling') or $4 and r.status in ('pending_approval', 'scheduled'))
 		  and ($2 = '' or r.resource_id is null or r.resource_id = $2)
 		  and r.id <> $3
-		order by r.submitted_at limit 1`, deploymentID, resourceID, except).Scan(&number)
+		order by r.submitted_at limit 1`, deploymentID, resourceID, except, waiting).Scan(&number)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
 	return number, err
+}
+
+// WaitingDeploymentRequests lists the numbers of the requests on the
+// deployment that wait for approval or their start time.
+func (s *Store) WaitingDeploymentRequests(ctx context.Context, deploymentID string) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select number from requests where deployment_id = $1
+		and status in ('pending_approval', 'scheduled') order by submitted_at`, deploymentID)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // OtherRunningOnDeployment reports whether a day-2 request other than

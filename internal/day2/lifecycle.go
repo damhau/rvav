@@ -146,8 +146,11 @@ func init() {
 		Key: "delete", Name: "Delete", Group: GroupLifecycle, Types: []string{DeploymentType}, Destructive: true, TypeName: true,
 		During: "deleting", After: "deleted", OnFailed: true,
 		Confirm: "Deletes the VMs and releases their IP addresses and DNS records. This can't be undone.",
-		Ops: func(t Target, _ map[string]any) []Op {
+		Ops: func(t Target, in map[string]any) []Op {
 			var ops []Op
+			if in["lease"] == true {
+				ops = append(ops, leaseCheck()) // deleting because the lease ended
+			}
 			for _, r := range t.Resources {
 				if r.Type == vmType {
 					ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))

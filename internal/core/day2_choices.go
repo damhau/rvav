@@ -119,14 +119,39 @@ func deploymentUsage(t day2.Target) map[string]int {
 	return add
 }
 
-// day2Quota checks what the action adds to a quota: resizing adds to the
-// deployment's project, moving adds the deployment to the new one. A hard
-// limit passed refuses it; it returns the resources over a soft one.
+// day2Add is what the action adds to its deployment's project quota.
+func day2Add(a *day2.Action, t day2.Target, inputs map[string]any) map[string]int {
+	num := func(k string) int { v, _ := inputs[k].(float64); return int(v) }
+	switch a.Key {
+	case "resize":
+		return map[string]int{"vcpu": max(num("cpu_count")-t.VM.CpuCount, 0), "memory_gb": max(num("memory_gb")-t.VM.MemoryMb/1024, 0)}
+	case "disk_add":
+		return map[string]int{"storage_gb": num("size_gb")}
+	case "disk_extend":
+		for _, disk := range t.VM.Disks {
+			if disk.Label == inputs["disk"] {
+				return map[string]int{"storage_gb": max(num("size_gb")-disk.CapacityGb, 0)}
+			}
+		}
+	}
+	return nil
+}
+
+// day2Quota checks what the action adds to a quota: resizing and disks add
+// to the deployment's project, moving adds the deployment to the new one. A
+// hard limit passed refuses it; it returns the resources over a soft one.
 func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.DeploymentRow, t day2.Target, inputs map[string]any) ([]string, error) {
 	var proj store.Project
 	var add map[string]int
 	what := "The change"
 	switch a.Key {
+	case "disk_add", "disk_extend":
+		add = day2Add(a, t, inputs)
+		var err error
+		if proj, err = s.Store.GetProject(ctx, d.ProjectID); err != nil {
+			return nil, err
+		}
+		what = "The disk"
 	case "resize":
 		cpu, _ := inputs["cpu_count"].(float64)
 		mem, _ := inputs["memory_gb"].(float64)
@@ -156,9 +181,9 @@ func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.Deploym
 		return nil, err
 	}
 	if len(q.Hard) > 0 {
-		field := "/inputs/project"
-		if a.Key == "resize" {
-			field = "/inputs/cpu_count"
+		field := map[string]string{"resize": "/inputs/cpu_count", "change_project": "/inputs/project"}[a.Key]
+		if field == "" {
+			field = "/inputs/size_gb"
 		}
 		errs := make([]api.FieldError, len(q.Hard))
 		for i, m := range q.Hard {

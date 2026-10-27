@@ -69,11 +69,11 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S5.3 Quotas project-wide and per environment, hard or soft, checked on submit (and preview), resize and change of project: over a hard limit is refused with what is left; over a soft one, approval and day-2 policies see `quota.over_soft` and the seed asks the Infrastructure leads
 - [x] S5.4 UI: lease panel (end date, what expiry does, the grace period and deletion date once expired, extensions used and the limit) with Extend (the `extend_lease` action dialog, approval notice beyond the policy); per-environment and soft-limit lines in the form summary; the overview already shows the project quota. Mock catalogue and Playwright flow
 - [x] S5.5 End-to-end test of the acceptance scenario (`TestLeasesAndQuotasAcceptance`), through a real Temporal server and worker with the housekeeping clock moved on: a 1-day dev lease gets its reminder, is powered off at expiry, kept during the grace period and deleted after it; a 120-day extension waits for the project admin; a request over a hard quota is refused with what is left
-- [ ] S5.6 Slice review, docs and roadmap status
+- [x] S5.6 Slice review, docs and roadmap status. An independent review of `67abb9f..f463370` found one high-severity issue, fixed: a request waiting for approval (an extension only its requester could approve, for instance) held lease expiry up for good; rvav's expiry no longer waits for waiting requests, cancels them before deleting, and extensions go to the project's other admins (group members included) and are rejected after three days. Also fixed from it: expiry and lease deletion first check the lease has ended (an extension in the meantime wins; retrying rvav's own requests refused), a stale expiry date no longer skips the grace period, reminders don't overwrite an extension, a lease that ended unannounced (deployments from before leases included) is moved on a day for its reminder, failed deployments are deleted when their lease ends, disks count against storage, requests waiting for approval reserve their quota, day-2 retries re-check quota and lease approval, the housekeeping schedule has a 10-minute run timeout (updated on existing schedules). Found while testing it: the quota reservation query failed on day-2 plans (a submit during a day-2 action answered 500); fixed. Stack check: migration 00006 on existing data, smoke, an extension, the schedule running and updated, the browser test
 
 ## R0 close
 
-- [ ] Demo script for the lab, roadmap status, report to the product owner
+- [x] Demo script for the lab ([demo-r0.md](demo-r0.md)), roadmap status, report to the product owner
 
 ## Decisions taken
 
@@ -86,8 +86,8 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |
 | Approvals | Levels merged across policies, votes in the database, the workflow signalled per level; group membership from tokens, stored per user | ADR-0011 |
 | Workflow versioning | Not before the R1 pilot: development stacks are drained or reset when workflow code changes; from R1 on, `GetVersion` or worker versioning | ADR-0011 |
-| VM console | VMRC link always; web console through an rvav WebSocket proxy, with the WMKS client provided by the organisation | ADR-0012 |
-| Day-2 actions | Requests of kind `day2`, run by a `Day2` workflow; `day2_policies` allow, deny or require approval | ADR-0013 |
+| VM console | VMRC link always (a clone ticket only from a console-only account, never rvav's own session); web console through an rvav WebSocket proxy, with the WMKS client provided by the organisation | ADR-0012 |
+| Day-2 actions | Requests of kind `day2`, run by the request workflow with the action's operations as steps; one request per VM at a time; `day2_policies` allow, deny or require approval | ADR-0013 |
 | Leases and quotas | Lease policy per environment with project overrides; extension is a day-2 action, approved by project admins beyond the policy; expiry runs as day-2 requests by `rvav` from housekeeping; soft quotas go through approval policies | ADR-0014 |
 | Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
@@ -99,4 +99,5 @@ Items marked `[-]` above, plus anything found while building:
 |---|---|
 | S2 acceptance on the lab vCenter | Lab vCenter, RHEL 9 template, customisation spec, network |
 | Corporate sign-in | OIDC client in the corporate identity provider and its group names; `VITE_OIDC_SCOPE` with `offline_access` if it is Entra ID |
-| Console through firewalls | Network path from browsers to the ESXi hosts, or to rvav |
+| Console through firewalls | Network path from browsers to the ESXi hosts, or to rvav; a console-only vCenter account for VMRC clone tickets, scoped to rvav's folders |
+| S4 acceptance on the lab vCenter | Guest shut down and restart with VMware Tools, hot add, device labels ("Hard disk 1", "Network adapter 1"), snapshots with memory, folder moves, WebMKS tickets |

@@ -675,7 +675,8 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 			if q.Limit == nil || (q.Resource != "vcpu" && q.Resource != "memory_gb") {
 				continue
 			}
-			after := used[q.Resource] + reserved[q.Resource] + plan.Quota[q.Resource]
+			// The request itself is among the reserved while it waits.
+			after := used[q.Resource] + reserved[q.Resource]
 			unit := " vCPU"
 			if q.Resource == "memory_gb" {
 				unit = " GB"

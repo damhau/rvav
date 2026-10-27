@@ -242,6 +242,19 @@ func (a *Activities) setLease(ctx context.Context, in OpInput) (string, error) {
 	return "Until " + until.Format("2 Jan 2006 15:04 UTC"), nil
 }
 
+// leaseCheck stops a lease expiry or deletion when the lease no longer
+// ends: it was extended after rvav decided to act.
+func (a *Activities) leaseCheck(ctx context.Context, in OpInput) (string, error) {
+	d, err := a.Store.GetDeployment(ctx, in.DeploymentID)
+	if err != nil {
+		return "", err
+	}
+	if d.LeaseExpiresAt == nil || d.LeaseExpiresAt.After(a.now()) {
+		return "", permanent("The lease was extended; nothing to do.")
+	}
+	return "Ended " + d.LeaseExpiresAt.UTC().Format("2 Jan 2006 15:04 UTC"), nil
+}
+
 // leaseExpired records that the lease's expiry powered the VMs off: the
 // grace period before deletion starts now.
 func (a *Activities) leaseExpired(ctx context.Context, in OpInput) (string, error) {
@@ -250,7 +263,7 @@ func (a *Activities) leaseExpired(ctx context.Context, in OpInput) (string, erro
 		return "", err
 	}
 	if d.LeaseExpiredAt == nil {
-		if err := a.Store.SetLeaseExpired(ctx, a.Store.Pool, d.ID, time.Now().UTC()); err != nil {
+		if err := a.Store.SetLeaseExpired(ctx, a.Store.Pool, d.ID, a.now()); err != nil {
 			return "", err
 		}
 	}

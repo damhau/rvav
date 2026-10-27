@@ -84,15 +84,17 @@ func (s *Store) QuotaUsed(ctx context.Context, projectID, environment string) (Q
 	return QuotaAmounts{"vcpu": vcpu, "memory_gb": memMB / 1024, "storage_gb": storage, "vm_count": vms}, nil
 }
 
-// QuotaReserved sums the planned amounts of requests that are approved or
-// running but not finished.
+// QuotaReserved sums the planned amounts of requests not finished yet,
+// including those waiting for approval: approving them must not take a
+// project over a limit that others counted on.
 func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
 	out := QuotaAmounts{}
 	rows, err := s.Pool.Query(ctx, `
 		select q.key, coalesce(sum(q.value::int), 0)
-		from requests r, jsonb_each_text(r.plan->'quota') q
+		from requests r, jsonb_each_text(case when jsonb_typeof(r.plan->'quota') = 'object'
+		                                      then r.plan->'quota' else '{}' end) q
 		where r.project_id = $1 and ($2 = '' or r.environment = $2)
-		  and r.status in ('queued', 'scheduled', 'running')
+		  and r.status in ('pending_approval', 'queued', 'scheduled', 'running')
 		group by q.key`, projectID, environment)
 	if err != nil {
 		return nil, err

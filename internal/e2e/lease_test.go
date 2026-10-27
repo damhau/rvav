@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,6 +96,10 @@ func TestLeaseExtension(t *testing.T) {
 		if a := d.actions("tnguyen")["extend_lease"]; !a.Approval.Required || a.Approval.Reasons[0] != "All 2 extensions without approval are used" {
 			t.Fatalf("extend_lease after two = %+v", a)
 		}
+		// Léa is Web Platform's only admin: nobody else could approve her own long extension.
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "lmartin", api.Day2Draft{Action: "extend_lease",
+			Inputs: map[string]any{"days": 120}}, 409, nil, "Idempotency-Key", uuid.NewString())
+
 		// A project's own policy wins over the environment's.
 		if _, err := h.store.Pool.Exec(ctx, `insert into lease_policies (environment, project_id, default_days, max_days,
 			max_extensions, expiry_action, grace_days) values ('dev', 'prj_web', 7, 14, 5, 'delete', 2)`); err != nil {
@@ -125,8 +130,12 @@ func TestLeaseExpiry(t *testing.T) {
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
+		// The activities' clock follows the sweeps', as on the worker.
+		var clock atomic.Int64
+		h.acts.Now = func() time.Time { return time.Unix(0, clock.Load()) }
 		sweep := func(at time.Time, want int) []string {
 			t.Helper()
+			clock.Store(at.UnixNano())
 			started, err := h.svc.ExpireLeases(ctx, at)
 			if err != nil || len(started) != want {
 				t.Fatalf("expire leases at %s: %v, %v", at.Format(time.DateTime), started, err)
@@ -155,6 +164,14 @@ func TestLeaseExpiry(t *testing.T) {
 			t.Fatalf("%d reminders", n)
 		}
 
+		// An extension waiting for approval doesn't hold the expiry up.
+		var waiting api.Request
+		h.json("POST", "/api/v1/deployments/"+d1.id+"/actions", "tnguyen", api.Day2Draft{Action: "extend_lease",
+			Inputs: map[string]any{"days": 120}}, 202, &waiting, "Idempotency-Key", uuid.NewString())
+		if waiting.Status != api.RequestStatusPendingApproval {
+			t.Fatalf("a 120-day extension = %s", waiting.Status)
+		}
+
 		// Expired: rvav powers the VM off; the grace period starts.
 		started := sweep(now.Add(25*time.Hour), 1)
 		var r api.Request
@@ -170,9 +187,11 @@ func TestLeaseExpiry(t *testing.T) {
 			t.Fatalf("lease after expiry = %+v", l)
 		}
 
-		// Another one expires too, and its owner extends it during the grace period.
+		// Another one expires too (after its reminder), and its owner extends
+		// it during the grace period.
 		d2 := leasedVM(h, 1)
-		sweep(now.Add(25*time.Hour), 1) // d2's expiry; d1 is in its grace period
+		sweep(now.Add(time.Hour), 0)    // d2's reminder; d1 is in its grace period
+		sweep(now.Add(25*time.Hour), 1) // d2's expiry
 		var ext api.Request
 		h.json("POST", "/api/v1/deployments/"+d2.id+"/actions", "tnguyen", api.Day2Draft{Action: "extend_lease",
 			Inputs: map[string]any{"days": 30}}, 202, &ext, "Idempotency-Key", uuid.NewString())
@@ -182,19 +201,36 @@ func TestLeaseExpiry(t *testing.T) {
 			t.Fatalf("lease extended in its grace period = %+v", l)
 		}
 
-		// After the grace period, only the first is deleted.
-		sweep(now.Add(8*24*time.Hour), 1)
+		// After the grace period (7 days from the power off), only the first is deleted.
+		sweep(now.Add(8*24*time.Hour), 0)
+		sweep(now.Add(9*24*time.Hour), 1)
 		var dep1, dep2 api.Deployment
 		h.json("GET", "/api/v1/deployments/"+d1.id, "tnguyen", nil, 200, &dep1)
 		h.json("GET", "/api/v1/deployments/"+d2.id, "tnguyen", nil, 200, &dep2)
 		if dep1.Status != api.DeploymentStatusDeleted || dep2.Status != api.DeploymentStatusReady {
 			t.Fatalf("after the grace period: %s and %s", dep1.Status, dep2.Status)
 		}
-		sweep(now.Add(9*24*time.Hour), 0)
+		// The extension that still waited was cancelled before the deletion.
+		h.json("GET", "/api/v1/requests/"+waiting.Id, "tnguyen", nil, 200, &waiting)
+		if waiting.Status != api.RequestStatusCancelled {
+			t.Fatalf("the waiting extension is %s", waiting.Status)
+		}
+		sweep(now.Add(10*24*time.Hour), 0)
+
+		// A lease that ended without its reminder (housekeeping was down) is
+		// moved on a day, so its owner hears first.
+		d4 := leasedVM(h, 1)
+		late := time.Now().Add(30 * time.Hour)
+		sweep(late, 0)
+		if l := d4.lease(); l.ExpiresAt.Sub(late) < 23*time.Hour || l.ExpiredAt != nil || d4.vm().PowerState != api.On {
+			t.Fatalf("lease that ended unannounced = %+v", l)
+		}
+		sweep(late.Add(time.Hour), 0) // now the reminder
 
 		// A week or less left: the 7-day reminder.
 		d3 := leasedVM(h, 5)
 		sweep(time.Now(), 0)
+		h.acts.Now = nil
 		var n int
 		if err := h.store.Pool.QueryRow(ctx, `select count(*) from events where type = 'notification'
 			and payload->'data'->>'title' like '% ends in 5 days'`).Scan(&n); err != nil || n != 1 {

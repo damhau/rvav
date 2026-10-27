@@ -70,16 +70,27 @@ func (a *Activities) now() time.Time {
 	return time.Now().UTC()
 }
 
-// EnsureHousekeeping creates the housekeeping schedule unless it exists.
+// EnsureHousekeeping creates the housekeeping schedule, or brings an
+// existing one up to date. A run ends after 10 minutes at most, so one
+// stuck run (overlapping runs are skipped) can't stop the rounds after it.
 func EnsureHousekeeping(ctx context.Context, c client.Client, taskQueue string) error {
+	spec := client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: HousekeepingEvery}}}
+	action := &client.ScheduleWorkflowAction{ID: "housekeeping", Workflow: Housekeeping, TaskQueue: taskQueue,
+		WorkflowRunTimeout: 10 * time.Minute}
 	_, err := c.ScheduleClient().Create(ctx, client.ScheduleOptions{
-		ID:      HousekeepingSchedule,
-		Spec:    client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: HousekeepingEvery}}},
-		Action:  &client.ScheduleWorkflowAction{ID: "housekeeping", Workflow: Housekeeping, TaskQueue: taskQueue},
-		Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+		ID: HousekeepingSchedule, Spec: spec, Action: action, Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
 	})
-	if errors.Is(err, temporal.ErrScheduleAlreadyRunning) {
-		return nil
+	if !errors.Is(err, temporal.ErrScheduleAlreadyRunning) {
+		return err
 	}
-	return err
+	return c.ScheduleClient().GetHandle(ctx, HousekeepingSchedule).Update(ctx, client.ScheduleUpdateOptions{
+		DoUpdate: func(in client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
+			s := in.Description.Schedule
+			s.Spec, s.Action = &spec, action
+			if s.Policy != nil {
+				s.Policy.Overlap = enumspb.SCHEDULE_OVERLAP_POLICY_SKIP
+			}
+			return &client.ScheduleUpdate{Schedule: &s}, nil
+		},
+	})
 }

@@ -272,9 +272,17 @@ func (s *Store) SetLeaseExpired(ctx context.Context, db DB, id string, at time.T
 	return err
 }
 
-// SetLeaseReminded records the reminders sent for the current lease.
-func (s *Store) SetLeaseReminded(ctx context.Context, db DB, id string, reminded []string) error {
-	_, err := db.Exec(ctx, `update deployments set lease_reminded = $2 where id = $1`, id, reminded)
+// SetLeaseReminded records the reminders sent for the lease ending at
+// expires; an extension since then (another end) is left alone.
+func (s *Store) SetLeaseReminded(ctx context.Context, db DB, id string, expires time.Time, reminded []string) error {
+	_, err := db.Exec(ctx, `update deployments set lease_reminded = $2 where id = $1 and lease_expires_at = $3`, id, reminded, expires)
+	return err
+}
+
+// PostponeLease moves the end of a lease that ended unannounced, so its
+// owner gets the 1-day reminder first.
+func (s *Store) PostponeLease(ctx context.Context, db DB, id string, expires, until time.Time) error {
+	_, err := db.Exec(ctx, `update deployments set lease_expires_at = $3 where id = $1 and lease_expires_at = $2`, id, expires, until)
 	return err
 }
 
@@ -282,6 +290,6 @@ func (s *Store) SetLeaseReminded(ctx context.Context, db DB, id string, reminded
 // created or deleted.
 func (s *Store) LeasedDeployments(ctx context.Context) ([]DeploymentRow, error) {
 	rows, _ := s.Pool.Query(ctx, deploymentRowSelect+` where d.lease_expires_at is not null
-		and d.status in ('ready', 'updating') order by d.lease_expires_at, d.id`)
+		and d.status in ('ready', 'updating', 'failed') order by d.lease_expires_at, d.id`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentRow])
 }

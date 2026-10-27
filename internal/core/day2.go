@@ -118,7 +118,7 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	out := []api.Day2Action{}
 	active := map[string]string{}
 	for _, t := range targets(d, resources) {
-		if active[t.ResourceID], err = s.Store.ActiveDeploymentRequest(ctx, s.Store.Pool, d.ID, t.ResourceID, ""); err != nil {
+		if active[t.ResourceID], err = s.Store.ActiveDeploymentRequest(ctx, s.Store.Pool, d.ID, t.ResourceID, "", true); err != nil {
 			return nil, err
 		}
 		c, err := s.choices(ctx, p, d, t)
@@ -271,7 +271,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	}
 	if a.Approval != nil && p.User.ID != SystemUserID {
 		if why := a.Approval(*target, c, inputs); why != "" {
-			level, err := s.projectAdminsLevel(ctx, d, why)
+			level, err := s.projectAdminsLevel(ctx, d, p.User.ID, why)
 			if err != nil {
 				return store.RequestRow{}, err
 			}
@@ -296,7 +296,8 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	}
 	wf := provision.WorkflowID(req.ID)
 	req.WorkflowID = &wf
-	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Day2: &provision.Day2{
+	// What it adds is reserved while it waits and runs, as for new requests.
+	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Quota: day2Add(a, *target, inputs), Day2: &provision.Day2{
 		Action: a.Key, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
 		Ops: a.Ops(*target, inputs), Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
@@ -307,7 +308,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
 			return err
 		}
-		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, d.ID, target.ResourceID, "")
+		// rvav's own actions (lease expiry, retention) don't wait for
+		// requests that are themselves waiting, such as an extension nobody
+		// approves.
+		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, d.ID, target.ResourceID, "", p.User.ID != SystemUserID)
 		if err != nil {
 			return err
 		}
@@ -360,21 +364,30 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	return s.Store.GetRequest(ctx, req.ID)
 }
 
-// projectAdminsLevel is an approval level for the project's admins.
-func (s *Service) projectAdminsLevel(ctx context.Context, d store.DeploymentRow, reason string) (ChainLevel, error) {
+// projectAdminsLevel is an approval level for the project's admins other
+// than the requester, directly or through the groups mapped to the role.
+// It is rejected after three days without a decision, so it never blocks
+// the deployment for good.
+func (s *Service) projectAdminsLevel(ctx context.Context, d store.DeploymentRow, requesterID, reason string) (ChainLevel, error) {
 	ids, groups, err := s.Store.ProjectAdmins(ctx, d.ProjectID)
 	if err != nil {
 		return ChainLevel{}, err
 	}
-	l := ChainLevel{Name: "Project admins", Approvers: ids, Mode: "any", PolicyIDs: []string{"lease_policy"},
-		Reasons: []string{reason}, Rules: []string{"lease policy"}}
-	if len(groups) > 0 {
-		l.Group = groups[0]
+	members, err := s.Store.GroupMembers(ctx, groups)
+	if err != nil {
+		return ChainLevel{}, err
 	}
-	if len(ids) == 0 && l.Group == "" {
-		return l, &ConflictError{Msg: d.ProjectName + " has no project admin to approve this."}
+	var approvers []string
+	for _, id := range append(ids, members...) {
+		if id != requesterID && !contains(approvers, id) {
+			approvers = append(approvers, id)
+		}
 	}
-	return l, nil
+	if len(approvers) == 0 {
+		return ChainLevel{}, &ConflictError{Msg: d.ProjectName + " has no other project admin to approve this."}
+	}
+	return ChainLevel{Name: "Project admins", Approvers: approvers, Mode: "any", PolicyIDs: []string{"lease_policy"},
+		Reasons: []string{reason}, Rules: []string{"lease policy"}, Timeout: 72 * time.Hour, OnTimeout: "reject"}, nil
 }
 
 func deref(s *string) string {

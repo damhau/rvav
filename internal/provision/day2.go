@@ -91,6 +91,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return a.setLease(ctx, in)
 	case "lease_expired":
 		return a.leaseExpired(ctx, in)
+	case "lease_check":
+		return a.leaseCheck(ctx, in)
 	case "destroy_vm", "delete_resources":
 		return a.deleteResources(ctx, in)
 	case "create_snapshot":
