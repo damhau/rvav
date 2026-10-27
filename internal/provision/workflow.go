@@ -2,6 +2,7 @@ package provision
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -32,6 +33,14 @@ var activityOptions = workflow.ActivityOptions{
 		MaximumAttempts:        4,
 		NonRetryableErrorTypes: []string{"Permanent", "AWXJobFailed"},
 	},
+}
+
+// jobCtx gives an AWX job up to six hours: the activity heartbeats while it
+// follows the job, so a worker that dies is still noticed in minutes.
+func jobCtx(ctx workflow.Context) workflow.Context {
+	o := activityOptions
+	o.StartToCloseTimeout = 6 * time.Hour
+	return workflow.WithActivityOptions(ctx, o)
 }
 
 // Provision runs one request: approval, then the plan, then the outcome.
@@ -204,8 +213,12 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	p := info.Plan
 
 	if p.Day2 != nil {
-		for _, op := range p.Day2.Ops {
-			if info.done(op.Key) {
+		for i, op := range p.Day2.Ops {
+			// An inventory refresh done before a job that failed is run
+			// again on a retry: the job must see the inventory as it is now.
+			refreshAgain := op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory &&
+				slices.ContainsFunc(p.Day2.Ops[i+1:], func(o day2.Op) bool { return !info.done(o.Key) })
+			if info.done(op.Key) && !refreshAgain {
 				continue
 			}
 			var err error
@@ -216,15 +229,17 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 				// An AWX action (ADR-0018): the job on rvav's inventory, its
 				// tasks and output followed as for post-configuration.
 				vars, _ := op.Args["extra_vars"].(map[string]any)
-				extra := map[string]any{"rvav": op.Args["rvav"]}
+				extra := map[string]any{}
 				for k, v := range vars {
 					extra[k] = v
 				}
+				extra["rvav"] = op.Args["rvav"] // the inputs never replace rvav's context
 				workflowJob, _ := op.Args["workflow"].(bool)
-				job := Job{Key: op.Key, Title: op.Title, Template: argStr(op.Args, "template"), Workflow: workflowJob}
+				job := Job{Key: op.Key, Title: op.Title, Template: argStr(op.Args, "template"),
+					TemplateID: argInt(op.Args, "template_id"), Workflow: workflowJob}
 				in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: op.Key, Job: job,
-					Limit: argStr(op.Args, "limit"), ExtraVars: extra}
-				err = workflow.ExecuteActivity(ctx, a.RunJob, in).Get(ctx, nil)
+					Limit: argStr(op.Args, "limit"), ExtraVars: extra, Action: argStr(op.Args, "action")}
+				err = workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 			default:
 				in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
 					ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
@@ -248,7 +263,7 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		}
 		vars["rvav"] = p.Context
 		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: *p.AWX, ExtraVars: vars}
-		return key, workflow.ExecuteActivity(ctx, a.RunJob, in).Get(ctx, nil)
+		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
 	type built struct {
@@ -303,7 +318,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	}
 
 	if len(p.PostConfig) > 0 {
-		if !info.done(KeyInventory) {
+		// Refreshed again on a retry, before the jobs left to run.
+		pending := slices.ContainsFunc(p.PostConfig, func(j Job) bool { return !info.done(KeyJob + j.Key) })
+		if !info.done(KeyInventory) || pending {
 			if err := workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil); err != nil {
 				return KeyInventory, err
 			}
@@ -324,7 +341,7 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 			}
 			in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job,
 				Limit: p.Limit(), ExtraVars: map[string]any{"rvav": rvav}}
-			if err := workflow.ExecuteActivity(ctx, a.RunJob, in).Get(ctx, nil); err != nil {
+			if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
 				return key, err
 			}
 		}

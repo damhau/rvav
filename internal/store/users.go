@@ -87,23 +87,32 @@ func (s *Store) GroupRoles(ctx context.Context, groups []string) (global []strin
 	return global, projects, rows.Err()
 }
 
-// CreateAPIToken stores a token by the SHA-256 hash of its value.
-func (s *Store) CreateAPIToken(ctx context.Context, id, userID, name, hash string, expires *time.Time) error {
-	_, err := s.Pool.Exec(ctx, `insert into api_tokens (id, user_id, name, token_hash, expires_at) values ($1, $2, $3, $4, $5)`,
-		id, userID, name, hash, expires)
+// CreateAPIToken stores a token by the SHA-256 hash of its value. A scope
+// limits what it may do ("": what its user may).
+func (s *Store) CreateAPIToken(ctx context.Context, id, userID, name, hash, scope string, expires *time.Time) error {
+	_, err := s.Pool.Exec(ctx, `insert into api_tokens (id, user_id, name, token_hash, scope, expires_at) values ($1, $2, $3, $4, $5, $6)`,
+		id, userID, name, hash, scope, expires)
 	return err
 }
 
-// UserForToken returns the owner of an unexpired API token, by its SHA-256 hash.
-func (s *Store) UserForToken(ctx context.Context, hash string) (User, error) {
-	rows, _ := s.Pool.Query(ctx, `update api_tokens set last_used_at = now()
+// DeleteAPITokens revokes a user's tokens of this name.
+func (s *Store) DeleteAPITokens(ctx context.Context, userID, name string) (int, error) {
+	tag, err := s.Pool.Exec(ctx, `delete from api_tokens where user_id = $1 and name = $2`, userID, name)
+	return int(tag.RowsAffected()), err
+}
+
+// UserForToken returns the owner of an unexpired API token, by its SHA-256
+// hash, and the token's scope.
+func (s *Store) UserForToken(ctx context.Context, hash string) (User, string, error) {
+	var userID, scope string
+	err := s.Pool.QueryRow(ctx, `update api_tokens set last_used_at = now()
 		where token_hash = $1 and (expires_at is null or expires_at > now())
-		returning user_id`, hash)
-	userID, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		returning user_id, scope`, hash).Scan(&userID, &scope)
 	if err != nil {
-		return User{}, notFound(err)
+		return User{}, "", notFound(err)
 	}
-	return s.GetUser(ctx, userID)
+	u, err := s.GetUser(ctx, userID)
+	return u, scope, err
 }
 
 // FindUsers returns users by ID; missing IDs are skipped.

@@ -124,7 +124,8 @@ come straight from the rvav database, so they're always correct and include
 deployment context.
 
 - rvav exposes `GET /api/v1/ansible/inventory`, authenticated with an API
-  token of a user with the auditor role (`rvav api-token -user usr_svc-awx`).
+  token of a user with the auditor role, made with the inventory scope so
+  it reads nothing else (`rvav api-token -user usr_svc-awx -scope inventory`).
 - The output contains hosts (managed VMs with `ansible_host` = IP), groups built
   from project, environment, catalog item, the item's tags and OS family, and
   hostvars (`rvav_deployment_id`, `rvav_project`, `rvav_owner`, and in

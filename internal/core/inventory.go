@@ -87,7 +87,9 @@ func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[
 }
 
 // exposedInputs are the deployment's inputs whose field is marked
-// expose_to_inventory; secret ones never are.
+// expose_to_inventory; secret ones never are, and neither is a value that
+// looks like a Jinja template: an AWX on an older ansible-core could
+// evaluate it.
 func exposedInputs(ui, inputs json.RawMessage) map[string]any {
 	var schema api.UiSchema
 	var values map[string]any
@@ -97,9 +99,14 @@ func exposedInputs(ui, inputs json.RawMessage) map[string]any {
 	out := map[string]any{}
 	for name, f := range schema.Fields {
 		v, ok := values[name]
-		if ok && f.ExposeToInventory != nil && *f.ExposeToInventory && (f.Secret == nil || !*f.Secret) {
+		if ok && f.ExposeToInventory != nil && *f.ExposeToInventory && (f.Secret == nil || !*f.Secret) && !looksLikeTemplate(v) {
 			out[name] = v
 		}
 	}
 	return out
+}
+
+func looksLikeTemplate(v any) bool {
+	b, _ := json.Marshal(v)
+	return strings.Contains(string(b), "{{") || strings.Contains(string(b), "{%") || strings.Contains(string(b), "{#")
 }

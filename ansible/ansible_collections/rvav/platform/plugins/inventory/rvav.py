@@ -54,6 +54,7 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.urls import open_url
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable
+from ansible.utils.unsafe_proxy import wrap_var
 
 
 class InventoryModule(BaseInventoryPlugin, Constructable):
@@ -74,6 +75,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                 self.inventory.add_host(host, group=group)
         strict = self.get_option("strict")
         for host, variables in (data.get("_meta") or {}).get("hostvars", {}).items():
+            # rvav's values are data, never templates: they include what users
+            # typed in forms. ansible-core 2.19 and later do this themselves.
+            variables = wrap_var(variables)
             self.inventory.add_host(host)
             for key, value in variables.items():
                 self.inventory.set_variable(host, key, value)

@@ -170,16 +170,16 @@ func (s *Store) GetAWXAction(ctx context.Context, key string) (AWXAction, error)
 }
 
 // SyncAWXAction records a template chosen as a day-2 action as AWX has it
-// now: a new one gets a key, a name and the default binding; a known one
-// keeps what the administrators set.
+// now: a new one gets a key, a name, the default binding and a.Enabled; a
+// known one keeps what the administrators set.
 func (s *Store) SyncAWXAction(ctx context.Context, a AWXAction) error {
 	_, err := s.Pool.Exec(ctx, `insert into awx_actions (key, awx_id, workflow, template, name, description, form_schema,
-		ui_schema, initial, warnings, gone, synced_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false, now())
+		ui_schema, initial, warnings, enabled, gone, synced_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false, now())
 		on conflict (awx_id, workflow) do update set template = excluded.template, description = excluded.description,
 			form_schema = excluded.form_schema, ui_schema = excluded.ui_schema, initial = excluded.initial,
 			warnings = excluded.warnings, gone = false, synced_at = now()`,
 		a.Key, a.AWXID, a.Workflow, a.Template, a.Name, a.Description, a.FormSchema, a.UISchema, jsonOr(a.Initial, "{}"),
-		nonNilStrings(a.Warnings))
+		nonNilStrings(a.Warnings), a.Enabled)
 	return err
 }
 

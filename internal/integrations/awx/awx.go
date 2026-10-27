@@ -14,6 +14,15 @@ import (
 // inventory that doesn't prompt for one on launch (AWX would ignore it).
 var ErrNoInventoryPrompt = errors.New("the template does not prompt for an inventory on launch")
 
+// ErrNoLimitPrompt is a template asked to run on some hosts that doesn't
+// prompt for a limit on launch: AWX would ignore the limit and run it on
+// every host of the inventory.
+var ErrNoLimitPrompt = errors.New("the template does not prompt for a limit on launch")
+
+// ErrPromptIgnored is a launch whose limit or inventory AWX ignored anyway;
+// the job is cancelled at once.
+var ErrPromptIgnored = errors.New("AWX ignored the launch's limit or inventory")
+
 type LaunchRequest struct {
 	Limit     string
 	ExtraVars map[string]any
@@ -79,9 +88,13 @@ type Credential struct {
 
 // WorkflowNode is a node of a workflow job, and the job it ran.
 type WorkflowNode struct {
-	ID       int
-	Name     string // the template's name
-	JobID    int    // 0 until the node runs
+	ID    int
+	Name  string // the template's name
+	JobID int    // 0 until the node runs
+	// Kind is the job's type: job (a playbook run, the only kind with
+	// events), project_update, inventory_update, workflow_job,
+	// workflow_approval; "" until it runs.
+	Kind     string
 	Status   string // the job's; "" until it runs
 	DoNotRun bool   // skipped because of an earlier node's outcome
 }

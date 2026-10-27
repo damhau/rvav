@@ -135,6 +135,21 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	if err != nil {
 		return err
 	}
+	if !j.offered(a, *target) {
+		return &ConflictError{Msg: a.Name + " is no longer offered for " + target.ResourceName + "."}
+	}
+	// An AWX action needs its VMs as when it was asked for (powered on). A
+	// native one is not checked: it may have half done its work, and its
+	// retry must finish it (a resize that powered the VM off, for instance).
+	if a.Unavailable != nil && a.Group == day2.GroupAutomation {
+		c, err := s.choices(ctx, p, d, *target)
+		if err != nil {
+			return err
+		}
+		if reason := a.Unavailable(*target, c); reason != "" {
+			return &ConflictError{Msg: reason}
+		}
+	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
 	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)

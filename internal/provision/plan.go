@@ -32,7 +32,10 @@ type Plan struct {
 
 // Day2 is the plan of a day-2 request: operations on one resource, in order.
 type Day2 struct {
-	Action       string    `json:"action"`
+	Action string `json:"action"`
+	// Name is the action's name when it was asked for (an AWX action's is
+	// set by administrators).
+	Name         string    `json:"name,omitempty"`
 	DeploymentID string    `json:"deployment_id"`
 	ResourceID   string    `json:"resource_id,omitempty"`
 	Moref        string    `json:"moref,omitempty"`
@@ -70,7 +73,10 @@ type Job struct {
 	Key      string `json:"key"`
 	Title    string `json:"title"`
 	Template string `json:"template"`
-	Workflow bool   `json:"workflow,omitempty"`
+	// TemplateID, when known, is what is launched; else the template is
+	// looked up by name.
+	TemplateID int  `json:"template_id,omitempty"`
+	Workflow   bool `json:"workflow,omitempty"`
 }
 
 // StepDef is a top-level step created, pending, when the request is submitted.

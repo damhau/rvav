@@ -120,12 +120,20 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		a.AWX = awx.NewFake(cfg.AWX.FakeTaskDelay, cfg.AWX.FakeFailTask)
 		log.Warn("using the fake AWX (RVAV_FAKE_AWX=1); jobs are simulated")
 	} else if cfg.AWX.URL != "" {
+		// Templates become catalog items and day-2 actions, and pickers list
+		// inventories and credentials: only from rvav's own organisation.
+		if cfg.AWX.Organization == "" {
+			return nil, errors.New("set RVAV_AWX_ORGANIZATION: rvav uses the templates, inventories and credentials of its own AWX organisation only")
+		}
 		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure)
 		if err != nil {
 			return nil, err
 		}
 		c.Organization = cfg.AWX.Organization
 		a.AWX = c
+		if cfg.AWX.InventorySourceID == 0 {
+			log.Warn("RVAV_AWX_INVENTORY_SOURCE_ID is not set: jobs on rvav's VMs (post-configuration, AWX day-2 actions) will be refused")
+		}
 	} else {
 		return nil, errors.New("set RVAV_AWX_URL, or RVAV_FAKE_AWX=1 for development")
 	}
@@ -265,7 +273,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 		return nil, err
 	}
 	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
-		AWXInventorySource: a.Cfg.AWX.InventorySourceID, Events: a.Events, Log: a.Log}, nil
+		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log}, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.

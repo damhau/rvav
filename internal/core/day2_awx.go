@@ -11,13 +11,14 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
 // Day-2 actions backed by AWX templates (ADR-0018), next to the native ones.
 
 func awxAction(a store.AWXAction) *day2.Action {
-	return day2.AWXAction(day2.AWXDef{Key: a.Key, Name: a.Name, Template: a.Template, Workflow: a.Workflow,
+	return day2.AWXAction(day2.AWXDef{Key: a.Key, Name: a.Name, Template: a.Template, TemplateID: a.AWXID, Workflow: a.Workflow,
 		Types: a.Types, Condition: a.Condition, Schema: a.FormSchema, UISchema: a.UISchema, Initial: a.Initial})
 }
 
@@ -112,6 +113,31 @@ func presentAWXAction(a store.AWXAction) api.AwxAction {
 	return out
 }
 
+// checkCondition evaluates an action's condition on a sample of each type it
+// runs on: it must give a boolean, so a misspelt variable (or one a
+// deployment doesn't have) is caught when it is saved rather than hiding
+// the action.
+func checkCondition(condition string, types []string) error {
+	if err := policy.CheckDay2(condition); err != nil {
+		return err
+	}
+	p := &auth.Principal{User: store.User{ID: "usr_sample"}}
+	d := store.DeploymentRow{}
+	d.ID, d.Name, d.OwnerID, d.ProjectID, d.ProjectCode, d.ProjectName = "dep_sample", "sample", "usr_sample", "prj_sample", "sample", "Sample"
+	a := &day2.Action{Key: "awx.sample", Group: day2.GroupAutomation}
+	vm := api.VmProperties{Moref: "vm-1", PowerState: api.On, GuestOs: present.Ptr("rhel9_64Guest")}
+	for _, typ := range types {
+		t := day2.Target{ResourceID: "res_sample", ResourceName: "sample", Type: typ, VM: vm}
+		if typ == day2.DeploymentType {
+			t = day2.Target{Type: typ, ResourceName: "sample", Resources: []day2.Resource{{ID: "res_sample", Type: "vsphere.vm", Name: "sample", VM: vm}}}
+		}
+		if _, err := policy.Day2Bool(condition, day2Vars(p, d, store.Environment{Key: "dev", Name: "Development"}, a, t, nil, []string{"member"})); err != nil {
+			return fmt.Errorf("on a %s: %w", map[string]string{"vsphere.vm": "VM", day2.DeploymentType: "deployment"}[typ], err)
+		}
+	}
+	return nil
+}
+
 // AWXActions lists the AWX templates synced as day-2 actions, for
 // administrators.
 func (s *Service) AWXActions(ctx context.Context, p *auth.Principal) (api.AwxActionList, error) {
@@ -151,8 +177,22 @@ func (s *Service) UpdateAWXAction(ctx context.Context, p *auth.Principal, key st
 			}
 		}
 	}
-	if u.Condition != nil && *u.Condition != "" {
-		if err := policy.CheckDay2(*u.Condition); err != nil {
+	current, err := s.Store.GetAWXAction(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return api.AwxAction{}, ErrNotFound
+	}
+	if err != nil {
+		return api.AwxAction{}, err
+	}
+	condition := current.Condition
+	if u.Condition != nil {
+		condition = *u.Condition
+	}
+	if types == nil {
+		types = current.Types
+	}
+	if condition != "" && len(errs) == 0 {
+		if err := checkCondition(condition, types); err != nil {
 			errs = append(errs, fieldErr("/condition", "invalid", "This condition is not valid: "+err.Error()))
 		}
 	}

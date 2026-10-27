@@ -23,6 +23,9 @@ type Fake struct {
 	Workflows map[string]bool
 	// Labels are the templates' labels besides "rvav", which they all have.
 	Labels map[string][]string
+	// NoInventoryPrompt are templates that don't prompt for an inventory
+	// on launch.
+	NoInventoryPrompt map[string]bool
 
 	mu      sync.Mutex
 	nextJob int
@@ -93,6 +96,9 @@ func (f *Fake) Launch(_ context.Context, templateID int, _ bool, req LaunchReque
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if req.Inventory != 0 && f.NoInventoryPrompt[names[idx]] {
+		return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoInventoryPrompt)
+	}
 	f.nextJob++
 	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, extraVars: req.ExtraVars, started: f.now(), tasks: f.Plays[names[idx]]}
 	f.jobs[j.id] = j
@@ -297,7 +303,7 @@ func (f *Fake) Templates(_ context.Context, filter TemplateFilter) ([]Template, 
 			continue
 		}
 		out = append(out, Template{ID: 100 + i, Name: n, Workflow: f.Workflows[n], Organization: "rvav", Labels: labels,
-			AskLimit: true, AskVariables: true, AskInventory: true, SurveyEnabled: len(f.Surveys[n]) > 0})
+			AskLimit: true, AskVariables: true, AskInventory: !f.NoInventoryPrompt[n], SurveyEnabled: len(f.Surveys[n]) > 0})
 	}
 	return out, nil
 }

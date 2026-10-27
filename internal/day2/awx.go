@@ -11,6 +11,7 @@ import (
 // and the administrators set it (ADR-0018).
 type AWXDef struct {
 	Key, Name, Template string
+	TemplateID          int
 	Workflow            bool
 	Types               []string
 	// Condition is a CEL expression over the day-2 policy variables; the
@@ -32,7 +33,11 @@ const (
 func AWXAction(d AWXDef) *Action {
 	a := &Action{Key: d.Key, Name: d.Name, Group: GroupAutomation, Types: d.Types, Condition: d.Condition,
 		Unavailable: func(t Target, _ Choices) string {
-			for _, vm := range targetVMs(t) {
+			vms := targetVMs(t)
+			if len(vms) == 0 {
+				return "There is no VM to run it on."
+			}
+			for _, vm := range vms {
 				if vm.VM.PowerState != api.On {
 					return vm.Name + " must be powered on."
 				}
@@ -52,8 +57,8 @@ func AWXAction(d AWXDef) *Action {
 			return []Op{
 				{Key: "awx.inventory", Title: "Refresh the AWX inventory", System: SystemAWX, Op: OpRefreshInventory},
 				{Key: "awx.job:" + d.Template, Title: d.Name, Detail: "AWX " + kind + " " + d.Template + " · limit=" + limit,
-					System: SystemAWX, Op: OpJob, Args: map[string]any{"template": d.Template, "workflow": d.Workflow,
-						"limit": limit, "extra_vars": inputs}},
+					System: SystemAWX, Op: OpJob, Args: map[string]any{"template": d.Template, "template_id": d.TemplateID,
+						"workflow": d.Workflow, "limit": limit, "extra_vars": inputs, "action": d.Key}},
 			}
 		},
 	}

@@ -150,6 +150,22 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		resource["guest_os"] = deref(t.VM.GuestOs)
 		resource["os_family"] = osFamily(deref(t.VM.GuestOs))
 	}
+	if t.Type == day2.DeploymentType {
+		// The family its VMs share, or "mixed".
+		family := ""
+		for _, r := range t.Resources {
+			if r.Type != "vsphere.vm" {
+				continue
+			}
+			switch f := osFamily(deref(r.VM.GuestOs)); family {
+			case "", f:
+				family = f
+			default:
+				family = "mixed"
+			}
+		}
+		resource["os_family"], resource["guest_os"] = family, ""
+	}
 	return policy.Vars{
 		"action":      map[string]any{"key": a.Key, "group": a.Group, "destructive": a.Destructive},
 		"resource":    resource,

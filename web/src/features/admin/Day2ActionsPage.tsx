@@ -71,10 +71,25 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
             save.mutate({ name, types, condition, enabled });
           }}
         >
-          <Field label="Name" htmlFor="awx-action-name" hint={errors.name}>
-            <Input id="awx-action-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+          <Field label="Name" htmlFor="awx-action-name">
+            <Input
+              id="awx-action-name"
+              value={name}
+              maxLength={80}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "awx-action-name-error" : undefined}
+            />
+            {errors.name && (
+              <p id="awx-action-name-error" className="text-xs text-bad">
+                {errors.name}
+              </p>
+            )}
           </Field>
-          <fieldset className="flex flex-col gap-1.5">
+          <fieldset
+            className="flex flex-col gap-1.5"
+            aria-describedby={errors.types ? "awx-action-types-error" : undefined}
+          >
             <legend className="mb-1 text-xs font-medium">Runs on</legend>
             {(Object.keys(targetLabel) as Target[]).map((t) => (
               <div key={t} className="flex items-center gap-2 text-[13px]">
@@ -85,18 +100,20 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
                 </span>
               </div>
             ))}
-            {errors.types && <p className="text-xs text-bad">{errors.types}</p>}
+            {errors.types && (
+              <p id="awx-action-types-error" className="text-xs text-bad">
+                {errors.types}
+              </p>
+            )}
           </fieldset>
           <Field
             label="Condition"
             htmlFor="awx-action-condition"
             hint={
-              errors.condition ?? (
-                <>
-                  Offered only where this CEL expression is true, for example{" "}
-                  <span className="font-mono">resource.os_family == &apos;linux&apos;</span>. Empty: everywhere.
-                </>
-              )
+              <>
+                Offered only where this CEL expression is true, for example{" "}
+                <span className="font-mono">resource.os_family == &apos;linux&apos;</span>. Empty: everywhere.
+              </>
             }
           >
             <Textarea
@@ -105,7 +122,13 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
               aria-invalid={errors.condition ? true : undefined}
+              aria-describedby={errors.condition ? "awx-action-condition-error" : undefined}
             />
+            {errors.condition && (
+              <p id="awx-action-condition-error" className="text-xs text-bad">
+                {errors.condition}
+              </p>
+            )}
           </Field>
           <div className="flex items-center gap-2 text-[13px]">
             <Checkbox id="awx-action-enabled" checked={enabled} onChange={setEnabled} />

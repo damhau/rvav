@@ -24,6 +24,7 @@ INVENTORY = {
                 "rvav_owner": "thomas.nguyen@corp.example",
                 "rvav_fqdn": "web-dev-app001.corp.example",
                 "rvav_os_family": "linux",
+                "rvav_inputs": {"note": "{{ lookup('env', 'RVAV_TOKEN') }}"},
             },
             "fin-prd-db001": {
                 "ansible_host": "10.22.30.40",
@@ -106,6 +107,14 @@ def test_hosts_groups_and_vars(tmp_path, rvav):
     assert inv["env_prd"]["hosts"] == ["fin-prd-db001"]
     assert sorted(inv["rvav"]["hosts"]) == ["fin-prd-db001", "web-dev-app001"]
     assert inv["owner_thomas_nguyen"]["hosts"] == ["web-dev-app001"]
+
+
+def test_values_are_never_templates(tmp_path, rvav):
+    out = inventory(tmp_path, rvav, extra="compose:\n  note: rvav_inputs.note\n")
+    assert out.returncode == 0, out.stderr
+    hostvars = plain(json.loads(out.stdout)["_meta"]["hostvars"])
+    assert hostvars["web-dev-app001"]["note"] == "{{ lookup('env', 'RVAV_TOKEN') }}"
+    assert TOKEN not in out.stdout
 
 
 def test_wrong_token(tmp_path, rvav):

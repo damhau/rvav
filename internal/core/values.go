@@ -277,30 +277,9 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		cache(60)
 
 	case "awx.inventories", "awx.credentials":
-		if s.AWX == nil {
-			return out, &UpstreamError{System: "AWX", Err: errors.New("no AWX is configured")}
-		}
-		opts := []api.Option{}
-		if *src.Name == "awx.inventories" {
-			list, err := s.AWX.Inventories(ctx, s.AWXOrganization)
-			if err != nil {
-				return out, &UpstreamError{System: "AWX", Err: err}
-			}
-			for _, i := range list {
-				meta := ""
-				if i.Kind == "smart" {
-					meta = "Smart inventory"
-				}
-				opts = append(opts, option(strconv.Itoa(i.ID), i.Name, meta))
-			}
-		} else {
-			list, err := s.AWX.Credentials(ctx, s.AWXOrganization, params["kind"])
-			if err != nil {
-				return out, &UpstreamError{System: "AWX", Err: err}
-			}
-			for _, c := range list {
-				opts = append(opts, option(strconv.Itoa(c.ID), c.Name, c.Type))
-			}
+		opts, err := s.awxOptions(ctx, *src.Name, params)
+		if err != nil {
+			return out, err
 		}
 		out.Options = &opts
 		cache(60)
@@ -347,4 +326,45 @@ func (s *Service) dnsZones(ctx context.Context) ([]string, error) {
 	}
 	slices.Sort(zones)
 	return slices.Compact(zones), nil
+}
+
+// awxOptions are the inventories, or the credentials (of params["kind"]
+// when set), of rvav's AWX organisation.
+func (s *Service) awxOptions(ctx context.Context, source string, params map[string]string) ([]api.Option, error) {
+	if s.AWX == nil {
+		return nil, &UpstreamError{System: "AWX", Err: errors.New("no AWX is configured")}
+	}
+	opts := []api.Option{}
+	if source == "awx.inventories" {
+		list, err := s.AWX.Inventories(ctx, s.AWXOrganization)
+		if err != nil {
+			return nil, &UpstreamError{System: "AWX", Err: err}
+		}
+		for _, i := range list {
+			meta := ""
+			if i.Kind == "smart" {
+				meta = "Smart inventory"
+			}
+			opts = append(opts, option(strconv.Itoa(i.ID), i.Name, meta))
+		}
+		return opts, nil
+	}
+	list, err := s.AWX.Credentials(ctx, s.AWXOrganization, params["kind"])
+	if err != nil {
+		return nil, &UpstreamError{System: "AWX", Err: err}
+	}
+	for _, c := range list {
+		opts = append(opts, option(strconv.Itoa(c.ID), c.Name, c.Type))
+	}
+	return opts, nil
+}
+
+// awxChoices are the values awxOptions offers.
+func (s *Service) awxChoices(ctx context.Context, source string, params map[string]string) ([]string, error) {
+	opts, err := s.awxOptions(ctx, source, params)
+	out := make([]string, len(opts))
+	for i, o := range opts {
+		out[i] = o.Value
+	}
+	return out, err
 }

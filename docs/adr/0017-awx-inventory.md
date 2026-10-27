@@ -18,9 +18,13 @@ rvav inventory as their own.
 
 ### The endpoint
 `GET /api/v1/ansible/inventory` answers in the format of
-`ansible-inventory --list`, for an API token of a user with the auditor
-role (the seeded `svc-awx`; `rvav api-token` makes one). It lists every VM
-of a deployment that is not being deleted. A failed deployment's VMs stay
+`ansible-inventory --list`, for a user with the auditor role. AWX uses an
+API token of the seeded `svc-awx` made with the inventory scope
+(`rvav api-token -user usr_svc-awx -name awx-inventory -scope inventory`).
+That token reads the inventory and nothing else, since anyone who can use
+the credential in AWX can read it. Tokens expire after a year by default,
+and `-revoke` deletes them. The endpoint lists every VM of a deployment
+that is not being deleted. A failed deployment's VMs stay
 in it, so a retried post-configuration step can reach them.
 - `ansible_host`: the address rvav reserved, else the FQDN.
 - Groups: `rvav`, `project_<code>`, `env_<key>`, `item_<slug>`,
@@ -28,16 +32,17 @@ in it, so a retried post-configuration step can reach them.
 - Host variables: rvav's context (`rvav_deployment_id`, `rvav_project`,
   `rvav_owner`, `rvav_fqdn`, `rvav_moref`, …). `rvav_inputs` holds the
   inputs whose form field is marked `expose_to_inventory`, never secret
-  ones.
+  ones, nor values that look like a Jinja template.
 
 ### The collection
 `ansible/ansible_collections/rvav/platform`:
 - The inventory plugin `rvav.platform.rvav` takes `RVAV_URL` and
   `RVAV_TOKEN`, a file ending in `rvav.yml`, and `compose`, `groups` and
   `keyed_groups`.
-- Since ansible-core 2.19, what the plugin returns is data and never a
-  template (`ansible-inventory` prints it as `__ansible_unsafe`). That
-  matters: rvav's values include what users typed in forms.
+- What the plugin returns is data and never a template: the plugin marks
+  it so (`wrap_var`), and ansible-core 2.19 and later do it themselves
+  (`ansible-inventory` prints it as `__ansible_unsafe`). That matters:
+  rvav's values include what users typed in forms.
 - AWX installs the collection from this repository
   (`collections/requirements.yml`, git) when it syncs the project.
 - Publishing to Ansible Galaxy or an Automation Hub is an outward-facing
@@ -63,6 +68,14 @@ rvav checks this first (`GET …/launch/`) and refuses, without launching,
 a template that doesn't: run on its own inventory, the limit could match
 another host of the same name. Jobs without a limit (AWX catalog items)
 keep the template's inventory.
+
+rvav also checks that a template prompts for a limit before launching it on
+some hosts: AWX ignores a limit it doesn't prompt for and runs the job on
+every host. Should AWX ignore the limit or the inventory all the same (its
+launch answer lists `ignored_fields`), the job is cancelled at once. With a
+real AWX, `RVAV_AWX_ORGANIZATION` is required, and a job on rvav's VMs is
+refused while `RVAV_AWX_INVENTORY_SOURCE_ID` is not set. A retried job
+refreshes the inventory again first.
 
 This replaces "the templates use the rvav inventory". Templates can then
 keep a default inventory for other uses; the contract tests launch them

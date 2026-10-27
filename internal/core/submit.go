@@ -105,7 +105,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			req.Title = ev.Item.Name + " · " + titleNames(plan.VMs)
 		case blueprint.KindAWX:
 			a := ev.Blueprint.AWX
-			plan.AWX = &provision.Job{Key: a.JobTemplate, Title: a.Title, Template: a.JobTemplate, Workflow: a.Workflow}
+			plan.AWX = &provision.Job{Key: a.JobTemplate, Title: a.Title, Template: a.JobTemplate, TemplateID: a.TemplateID, Workflow: a.Workflow}
 			plan.ExtraVars = ev.Inputs
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		}

@@ -91,3 +91,23 @@ func IsUniqueViolation(err error) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && pg.Code == "23505"
 }
+
+// Advisory lock keys.
+const (
+	LockAWXSync int64 = 0x7276_6176_0001
+)
+
+// WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever
+// holds it (another process included).
+func (s *Store) WithLock(ctx context.Context, key int64, fn func() error) error {
+	conn, err := s.Pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1)`, key); err != nil {
+		return err
+	}
+	defer func() { _, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, key) }()
+	return fn()
+}

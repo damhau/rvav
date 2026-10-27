@@ -40,8 +40,9 @@ Usage:
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
   rvav awx-bootstrap [-content deploy/awx/content.yml] [-rvav-url URL -rvav-token TOKEN]
                            set up rvav's test content in the AWX at RVAV_AWX_URL
-  rvav api-token -user ID -name NAME [-days N]
+  rvav api-token -user ID -name NAME [-scope inventory] [-days N] [-revoke]
                            make an API token for a user and print it once
+                           (-revoke deletes the user's tokens of that name)
   rvav ipam-reconcile      list EfficientIP addresses and records no deployment owns,
                            and owned ones EfficientIP no longer has (JSON)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
@@ -170,13 +171,25 @@ func run(ctx context.Context, cmd string, args []string) error {
 		fs := flag.NewFlagSet("api-token", flag.ExitOnError)
 		user := fs.String("user", "", "the user the token acts as, for example usr_svc-awx")
 		name := fs.String("name", "", "what the token is for")
-		days := fs.Int("days", 0, "days until it expires (0: never)")
+		scope := fs.String("scope", "", `"inventory": it only reads the Ansible inventory; empty: all its user may do`)
+		days := fs.Int("days", 365, "days until it expires (0: never)")
+		revoke := fs.Bool("revoke", false, "delete the user's tokens of this name instead")
 		_ = fs.Parse(args)
 		if *user == "" || *name == "" {
 			return errors.New("-user and -name are required")
 		}
+		if *scope != "" && *scope != auth.ScopeInventory {
+			return fmt.Errorf("-scope %q: use %q or nothing", *scope, auth.ScopeInventory)
+		}
 		if _, err := a.Store.GetUser(ctx, *user); err != nil {
 			return fmt.Errorf("user %s: %w", *user, err)
+		}
+		if *revoke {
+			n, err := a.Store.DeleteAPITokens(ctx, *user, *name)
+			if err == nil {
+				fmt.Printf("%d token(s) revoked\n", n)
+			}
+			return err
 		}
 		var expires *time.Time
 		if *days > 0 {
@@ -184,7 +197,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 			expires = &t
 		}
 		token := auth.NewToken()
-		if err := a.Store.CreateAPIToken(ctx, ids.New(ids.Token), *user, *name, auth.HashToken(token), expires); err != nil {
+		if err := a.Store.CreateAPIToken(ctx, ids.New(ids.Token), *user, *name, auth.HashToken(token), *scope, expires); err != nil {
 			return err
 		}
 		fmt.Println(token)

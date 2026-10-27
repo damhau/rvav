@@ -158,9 +158,10 @@ func Name(key string) string {
 	if a := Get(key); a != nil {
 		return a.Name
 	}
-	if tpl, ok := strings.CutPrefix(key, "awx."); ok && tpl != "" {
-		name := strings.ReplaceAll(strings.TrimSuffix(tpl, "-workflow"), "-", " ")
-		return strings.ToUpper(name[:1]) + name[1:]
+	if tpl, ok := strings.CutPrefix(key, "awx."); ok {
+		if name := strings.ReplaceAll(strings.TrimSuffix(tpl, "-workflow"), "-", " "); name != "" {
+			return strings.ToUpper(name[:1]) + name[1:] // keys are ASCII
+		}
 	}
 	return key
 }

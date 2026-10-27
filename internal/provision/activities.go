@@ -31,8 +31,11 @@ type Activities struct {
 	IPAM               efficientip.Client
 	AWX                awx.Client
 	AWXInventorySource int
-	Events             *events.Publisher
-	Log                *slog.Logger
+	// AWXInventoryRequired: a real AWX, where jobs on rvav's VMs need the
+	// inventory source (the fake has none).
+	AWXInventoryRequired bool
+	Events               *events.Publisher
+	Log                  *slog.Logger
 	// PollInterval is how often AWX jobs and inventory updates are polled.
 	PollInterval time.Duration
 	// IPTimeout bounds the wait for VMware Tools to report the guest IP.
@@ -97,6 +100,9 @@ type JobInput struct {
 	Job       Job            `json:"job"`
 	Limit     string         `json:"limit"`
 	ExtraVars map[string]any `json:"extra_vars"`
+	// Action is the AWX day-2 action the job runs, checked to be still
+	// offered before launching (ADR-0018).
+	Action string `json:"action,omitempty"`
 }
 
 type FinishInput struct {
@@ -480,6 +486,9 @@ func (a *Activities) poll() time.Duration {
 
 func (a *Activities) RefreshInventory(ctx context.Context, requestID, projectID string) error {
 	return a.run(ctx, requestID, projectID, KeyInventory, func() (string, string, error) {
+		if a.AWXInventorySource == 0 && a.AWXInventoryRequired {
+			return "", "", permanent("AWX: RVAV_AWX_INVENTORY_SOURCE_ID is not set, so jobs can't run on rvav's VMs")
+		}
 		id, err := a.AWX.UpdateInventorySource(ctx, a.AWXInventorySource)
 		if err != nil {
 			return "", "", fmt.Errorf("AWX: %w", err)
@@ -522,20 +531,37 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		fmt.Sscan(*st.ExternalID, &jobID)
 	}
 	if jobID == 0 {
-		tplID, err := a.AWX.LookupJobTemplate(ctx, in.Job.Template, in.Job.Workflow)
-		if err != nil {
-			return permanent("AWX: %v", err)
+		if err := a.checkAWXAction(ctx, in.Action); err != nil {
+			return err
+		}
+		// Launched by its ID when rvav has it: a template renamed since, or
+		// another one given the name, can't be launched instead.
+		tplID := in.Job.TemplateID
+		if tplID == 0 {
+			if tplID, err = a.AWX.LookupJobTemplate(ctx, in.Job.Template, in.Job.Workflow); err != nil {
+				return permanent("AWX: %v", err)
+			}
 		}
 		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars}
-		if in.Limit != "" && a.AWXInventorySource != 0 {
+		if in.Limit != "" {
 			// Jobs on rvav's VMs run against rvav's inventory, refreshed before.
-			if launch.Inventory, err = a.AWX.InventoryOfSource(ctx, a.AWXInventorySource); err != nil {
-				return fmt.Errorf("AWX: %w", err)
+			if a.AWXInventorySource == 0 && a.AWXInventoryRequired {
+				return permanent("AWX: RVAV_AWX_INVENTORY_SOURCE_ID is not set, so jobs can't run on rvav's VMs")
+			}
+			if a.AWXInventorySource != 0 {
+				if launch.Inventory, err = a.AWX.InventoryOfSource(ctx, a.AWXInventorySource); err != nil {
+					return fmt.Errorf("AWX: %w", err)
+				}
 			}
 		}
 		job, err := a.AWX.Launch(ctx, tplID, in.Job.Workflow, launch)
-		if errors.Is(err, awx.ErrNoInventoryPrompt) {
+		switch {
+		case errors.Is(err, awx.ErrNoInventoryPrompt):
 			return permanent("AWX: %s does not prompt for an inventory on launch, so it can't run against rvav's inventory", in.Job.Template)
+		case errors.Is(err, awx.ErrNoLimitPrompt):
+			return permanent("AWX: %s does not prompt for a limit on launch, so it would run on every host", in.Job.Template)
+		case errors.Is(err, awx.ErrPromptIgnored):
+			return permanent("AWX: %v", err)
 		}
 		if err != nil {
 			return fmt.Errorf("AWX: %w", err)
@@ -678,7 +704,9 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 				status = "running"
 			}
 			a.child(ctx, in, fmt.Sprintf("%s/node:%d", in.StepKey, n.ID), n.Name, status, errText)
-			if n.JobID == 0 || !awx.Done(n.Status) || slices.Contains(logged, n.JobID) {
+			// Only playbook runs have events; an inventory sync or an
+			// approval node only has its status.
+			if n.JobID == 0 || !awx.Done(n.Status) || slices.Contains(logged, n.JobID) || n.Kind != "" && n.Kind != "job" {
 				continue
 			}
 			evs, err := a.AWX.Events(ctx, n.JobID, 0)
@@ -917,5 +945,25 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		return err
 	}
 	a.Events.Step(ctx, projectID, requestID, st)
+	return nil
+}
+
+// checkAWXAction refuses to launch the job of an AWX day-2 action turned off,
+// or gone from AWX, since it was asked for: it may have waited for approval.
+func (a *Activities) checkAWXAction(ctx context.Context, key string) error {
+	if key == "" {
+		return nil
+	}
+	act, err := a.Store.GetAWXAction(ctx, key)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return permanent("%s is no longer a day-2 action.", key)
+	case err != nil:
+		return err
+	case act.Gone:
+		return permanent("%s is no longer in AWX, or lost its label, since it was asked for.", act.Name)
+	case !act.Enabled:
+		return permanent("%s was turned off since it was asked for.", act.Name)
+	}
 	return nil
 }

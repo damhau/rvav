@@ -173,7 +173,7 @@ func TestAnsibleInventory(t *testing.T) {
 		}
 
 		token := auth.NewToken()
-		if err := h.store.CreateAPIToken(ctx, "tok_test", "usr_svc-awx", "awx inventory", auth.HashToken(token), nil); err != nil {
+		if err := h.store.CreateAPIToken(ctx, "tok_test", "usr_svc-awx", "awx inventory", auth.HashToken(token), auth.ScopeInventory, nil); err != nil {
 			t.Fatal(err)
 		}
 		status, body, _ := h.do("GET", "/api/v1/ansible/inventory", "", nil, "Authorization", "Bearer "+token)
@@ -205,6 +205,10 @@ func TestAnsibleInventory(t *testing.T) {
 			}
 		}
 		h.json("GET", "/api/v1/ansible/inventory", "tnguyen", nil, 403, nil)
+		// The token reads the inventory and nothing else.
+		if status, body, _ := h.do("GET", "/api/v1/requests?project_id=prj_web", "", nil, "Authorization", "Bearer "+token); status != 403 {
+			t.Fatalf("the inventory token read requests: %d %s", status, body)
+		}
 
 		// A deployment being deleted is no longer in the inventory.
 		if _, err := h.store.Pool.Exec(ctx, `update deployments set status = 'deleting' where created_by_request_id = $1`, req.Id); err != nil {
@@ -326,6 +330,104 @@ func TestAWXValueSources(t *testing.T) {
 		}
 		if cred := values("machine"); len(cred) != 1 || cred[0].Value != "4" || cred[0].Label != "Linux machine" || deref(cred[0].Meta) != "Machine" {
 			t.Fatalf("awx.credentials of kind ssh = %+v", cred)
+		}
+
+		// A value the picker doesn't offer is refused on submit.
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/dns-record?project_id="+web, "lmartin", nil, 200, &item)
+		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"name": "www", "type": "A", "value": "10.31.10.9", "zone": "elsewhere.example"}}
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/requests", "lmartin", draft, 422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/inputs/zone" || deref(problem.Errors[0].Code) != "not_allowed" {
+			t.Fatalf("a zone of no DNS server = %+v", problem.Errors)
+		}
+		draft.Inputs["zone"] = "corp.example"
+		h.json("POST", "/api/v1/requests", "lmartin", draft, 202, nil, "Idempotency-Key", uuid.NewString())
+	})
+}
+
+// TestAWXDay2ActionGuards: what keeps AWX actions from running other than
+// as meant: no inputs without a form, an action turned off while its
+// request waited, a template that doesn't prompt for an inventory, two
+// templates with the same key, and a run on the whole deployment.
+func TestAWXDay2ActionGuards(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		h.awx.Labels["role-nginx"] = []string{"day2"}         // no survey
+		h.awx.Plays["Role_nginx"] = h.awx.Plays["role-nginx"] // the same key as role-nginx
+		h.awx.Labels["Role_nginx"] = []string{"day2"}
+		h.awx.NoInventoryPrompt = map[string]bool{"Role_nginx": true}
+		h.svc.AWXCatalog = &awxcatalog.Sync{Store: h.store, AWX: h.awx, Log: h.acts.Log,
+			Filter: awx.TemplateFilter{Labels: []string{"catalog"}}, ActionLabels: []string{"day2"}}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, nil)
+		var list api.AwxActionList
+		h.json("GET", "/api/v1/admin/awx/actions", "mkeller", nil, 200, &list)
+		byTemplate := map[string]api.AwxAction{}
+		for _, a := range list.Items {
+			byTemplate[a.Template] = a
+		}
+		nginx, other := byTemplate["role-nginx"], byTemplate["Role_nginx"]
+		if len(list.Items) != 3 || nginx.Key == other.Key || !strings.HasPrefix(nginx.Key, "awx.role-nginx") || !strings.HasPrefix(other.Key, "awx.role-nginx") {
+			t.Fatalf("actions = %+v", list.Items)
+		}
+		if other.Enabled || len(other.Warnings) == 0 {
+			t.Fatalf("an action whose template doesn't prompt for an inventory = %+v", other)
+		}
+
+		d := buildVM(h, model)
+		h.acts.AWXInventorySource = 1
+
+		// No form: no inputs, and only rvav's context reaches AWX.
+		d.run("tnguyen", nginx.Key, map[string]any{"ansible_ssh_common_args": "-o ProxyCommand=x"}, 422)
+		r := d.succeed("tnguyen", nginx.Key, nil)
+		step, _ := h.store.GetStepByKey(ctx, r.Id, "awx.job:role-nginx")
+		var jobID int
+		fmt.Sscan(*step.ExternalID, &jobID)
+		if vars := h.awx.Launched(jobID).ExtraVars; len(vars) != 1 || vars["rvav"] == nil {
+			t.Fatalf("extra vars = %v", vars)
+		}
+
+		// Turned on anyway, the action without the inventory prompt is
+		// refused before launching.
+		on := true
+		h.json("PATCH", "/api/v1/admin/awx/actions/"+other.Key, "mkeller", api.AwxActionUpdate{Enabled: &on}, 200, nil)
+		r = d.run("tnguyen", other.Key, nil, 202)
+		h.runWorkflow(r.Id, nil)
+		failed := h.waitStatus(r.Id, "tnguyen", api.RequestStatusFailed)
+		if failed.Error == nil || !strings.Contains(failed.Error.Message, "does not prompt for an inventory") {
+			t.Fatalf("error = %+v", failed.Error)
+		}
+
+		// Turned off while its request waited: the job is not launched.
+		r = d.run("tnguyen", nginx.Key, nil, 202)
+		off := false
+		h.json("PATCH", "/api/v1/admin/awx/actions/"+nginx.Key, "mkeller", api.AwxActionUpdate{Enabled: &off}, 200, nil)
+		h.runWorkflow(r.Id, nil)
+		failed = h.waitStatus(r.Id, "tnguyen", api.RequestStatusFailed)
+		if failed.Error == nil || !strings.Contains(failed.Error.Message, "was turned off since it was asked for") {
+			t.Fatalf("error = %+v", failed.Error)
+		}
+
+		// On the whole deployment: every VM in the limit, no resource. A
+		// condition a deployment can't evaluate is refused when saved.
+		h.json("PATCH", "/api/v1/admin/awx/actions/"+nginx.Key, "mkeller", api.AwxActionUpdate{Enabled: &on,
+			Types: &[]api.AwxActionUpdateTypes{"deployment"}, Condition: new("resource.power_state == 'on'")}, 422, nil)
+		h.json("PATCH", "/api/v1/admin/awx/actions/"+nginx.Key, "mkeller", api.AwxActionUpdate{Enabled: &on,
+			Types: &[]api.AwxActionUpdateTypes{"deployment"}, Condition: new("resource.os_family == 'linux'")}, 200, nil)
+		var whole api.Request
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: nginx.Key, Inputs: map[string]any{}},
+			202, &whole, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(whole.Id, nil)
+		h.waitStatus(whole.Id, "tnguyen", api.RequestStatusSucceeded)
+		step, _ = h.store.GetStepByKey(ctx, whole.Id, "awx.job:role-nginx")
+		fmt.Sscan(*step.ExternalID, &jobID)
+		if job := h.awx.Launched(jobID); job.Limit != "web-dev-app001" || job.Inventory != awx.FakeInventory {
+			t.Fatalf("launched on the deployment: %+v", job)
 		}
 	})
 }

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -624,7 +625,7 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 			}
 			out = append(out, fact{"Deployment", d.Name + " · " + d.Environment})
 		}
-		out = append(out, fact{"Action", day2.Name(plan.Day2.Action) + " · " + on})
+		out = append(out, fact{"Action", cmp.Or(plan.Day2.Name, day2.Name(plan.Day2.Action)) + " · " + on})
 		steps := make([]string, len(plan.Day2.Ops))
 		for i, op := range plan.Day2.Ops {
 			steps[i] = op.Title

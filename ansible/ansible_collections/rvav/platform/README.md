@@ -19,7 +19,8 @@ plugin: rvav.platform.rvav
 ```
 
 with `RVAV_URL` and `RVAV_TOKEN` (an API token of a user with the auditor
-role: `rvav api-token -user usr_svc-awx -name awx-inventory`).
+role, limited to reading the inventory:
+`rvav api-token -user usr_svc-awx -name awx-inventory -scope inventory`).
 
 ## In AWX
 

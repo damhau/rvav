@@ -6,8 +6,11 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -51,7 +54,17 @@ type Result struct {
 // the AWX item already launching it, as the seeded ones are), and every
 // one's survey and launch settings are recorded so changes show. Templates
 // no longer chosen are flagged gone; their items stay.
-func (s *Sync) SyncOnce(ctx context.Context) (Result, error) {
+func (s *Sync) SyncOnce(ctx context.Context) (res Result, err error) {
+	// The sync service and an admin's "Sync now" don't run at once: both
+	// would make an item of a new template.
+	err = s.Store.WithLock(ctx, store.LockAWXSync, func() error {
+		res, err = s.syncOnce(ctx)
+		return err
+	})
+	return res, err
+}
+
+func (s *Sync) syncOnce(ctx context.Context) (Result, error) {
 	var res Result
 	templates, err := s.AWX.Templates(ctx, s.Filter)
 	if err != nil {
@@ -80,7 +93,14 @@ func (s *Sync) SyncOnce(ctx context.Context) (Result, error) {
 			}
 		}
 		_, _, _, formWarnings := Form(t.Name, survey)
-		row := store.AWXTemplate{AWXID: t.ID, Workflow: t.Workflow, Name: t.Name, Warnings: append(launchWarnings(t), formWarnings...)}
+		warnings := formWarnings
+		if !t.AskVariables {
+			warnings = append(warnings, "Variables are not prompted on launch: AWX ignores rvav's context and anything outside the survey.")
+		}
+		if slices.ContainsFunc(t.Labels, func(l string) bool { return slices.Contains(s.ActionLabels, l) }) {
+			warnings = append(warnings, "It is a day-2 action too: from the catalog it runs on its own inventory, with no limit.")
+		}
+		row := store.AWXTemplate{AWXID: t.ID, Workflow: t.Workflow, Name: t.Name, Warnings: warnings}
 		if !t.Modified.IsZero() {
 			row.ModifiedAt = &t.Modified
 		}
@@ -126,30 +146,50 @@ func (s *Sync) syncActions(ctx context.Context, res *Result) error {
 	if err != nil {
 		return err
 	}
+	known, err := s.Store.AWXActions(ctx)
+	if err != nil {
+		return err
+	}
+	type ref struct {
+		id       int
+		workflow bool
+	}
+	keys := map[string]ref{}
+	for _, a := range known {
+		keys[a.Key] = ref{a.AWXID, a.Workflow}
+	}
 	seenIDs, seenWorkflow := []int{}, []bool{}
 	for _, t := range templates {
 		res.Actions++
+		// Seen even when it can't be synced now: it stays as it was rather
+		// than being taken for gone.
 		seenIDs, seenWorkflow = append(seenIDs, t.ID), append(seenWorkflow, t.Workflow)
 		survey := []awx.SurveyQuestion{}
 		if t.SurveyEnabled {
 			if survey, err = s.AWX.Survey(ctx, t.ID, t.Workflow); err != nil {
-				return err
+				s.Log.Warn("AWX action not synced", "template", t.Name, "err", err)
+				continue
 			}
 		}
 		name := displayName(t.Name)
 		schema, ui, initial, formWarnings := Form(name, survey)
-		warnings := append(launchWarnings(t), formWarnings...)
-		if !t.AskInventory {
-			warnings = append(warnings, "Inventory is not prompted on launch: rvav can't run it on its inventory.")
-		}
+		launch := actionWarnings(t)
+		// A key of its own: "Install agent" and "install_agent" make the same
+		// slug, and a renamed template's old name may come back.
 		key := "awx." + slug(t.Name)
 		if t.Workflow {
 			key += "-workflow"
 		}
+		if r, taken := keys[key]; taken && r != (ref{t.ID, t.Workflow}) {
+			key += "-" + strconv.Itoa(t.ID)
+		}
+		keys[key] = ref{t.ID, t.Workflow}
 		j := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+		// A new action with a launch problem starts turned off.
 		if err := s.Store.SyncAWXAction(ctx, store.AWXAction{Key: key, AWXID: t.ID, Workflow: t.Workflow, Template: t.Name,
-			Name: name, Description: t.Description, FormSchema: j(schema), UISchema: j(ui), Initial: j(initial), Warnings: warnings}); err != nil {
-			return err
+			Name: name, Description: t.Description, FormSchema: j(schema), UISchema: j(ui), Initial: j(initial),
+			Warnings: append(launch, formWarnings...), Enabled: len(launch) == 0}); err != nil {
+			s.Log.Warn("AWX action not synced", "template", t.Name, "err", err)
 		}
 	}
 	res.ActionsGone, err = s.Store.MarkAWXActionsGone(ctx, seenIDs, seenWorkflow)
@@ -159,23 +199,30 @@ func (s *Sync) syncActions(ctx context.Context, res *Result) error {
 // displayName makes a template's name readable: "install-monitoring-agent"
 // is "Install monitoring agent".
 func displayName(template string) string {
-	name := strings.ReplaceAll(strings.ReplaceAll(template, "-", " "), "_", " ")
-	return strings.ToUpper(name[:1]) + name[1:]
+	name := []rune(strings.ReplaceAll(strings.ReplaceAll(template, "-", " "), "_", " "))
+	if len(name) == 0 {
+		return template
+	}
+	return string(unicode.ToUpper(name[0])) + string(name[1:])
 }
 
 func slug(s string) string {
 	return strings.Trim(slugUnsafe.ReplaceAllString(strings.ToLower(s), "-"), "-")
 }
 
-// launchWarnings are the template's launch settings that keep rvav's
-// launch from working as meant.
-func launchWarnings(t awx.Template) []string {
+// actionWarnings are the launch settings that keep a day-2 action from
+// running as meant: rvav refuses to launch it on a VM without the limit
+// and inventory prompted.
+func actionWarnings(t awx.Template) []string {
 	var out []string
+	if !t.AskLimit {
+		out = append(out, "Limit is not prompted on launch: rvav won't run it, as it would run on every host.")
+	}
+	if !t.AskInventory {
+		out = append(out, "Inventory is not prompted on launch: rvav won't run it, as it can't run on rvav's inventory.")
+	}
 	if !t.AskVariables {
 		out = append(out, "Variables are not prompted on launch: AWX ignores rvav's context and anything outside the survey.")
-	}
-	if !t.AskLimit {
-		out = append(out, "Limit is not prompted on launch: the template can't be run on one VM.")
 	}
 	return out
 }
@@ -204,7 +251,7 @@ func (s *Sync) create(ctx context.Context, t awx.Template, survey []awx.SurveyQu
 	if summary == "" {
 		summary = "Runs the AWX template " + t.Name + "."
 	}
-	bp := map[string]any{"kind": "awx", "awx": map[string]any{"title": name, "job_template": t.Name, "workflow": t.Workflow}}
+	bp := map[string]any{"kind": "awx", "awx": map[string]any{"title": name, "job_template": t.Name, "template_id": t.ID, "workflow": t.Workflow}}
 	j := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 	it := store.NewAWXItem{ID: ids.New(ids.Item), VersionID: ids.New(ids.Version),
 		Slug: slug(t.Name), Name: name, Summary: summary,

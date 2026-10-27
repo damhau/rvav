@@ -27,6 +27,13 @@ of `RVAV_AWX_ORGANIZATION` that carry one of `RVAV_AWX_ACTION_LABELS`
   launch.
 - A template that loses the label, or that AWX no longer has, is flagged
   gone and no longer offered.
+- A new action whose template doesn't prompt for a limit, an inventory or
+  variables starts turned off, with a warning saying why.
+- Two templates whose names give the same key (`Install agent`,
+  `install_agent`) get distinct keys (the AWX ID added). A template that
+  can't be read is left as it was, and the sync goes on.
+- Survey questions whose variable starts with `ansible_` are left out of
+  the form: they would let a user set how Ansible connects.
 - Putting the label on a template is the AWX admin's way of offering it.
 
 ### What administrators choose
@@ -37,12 +44,14 @@ actions admin page) sets:
   (every VM at once);
 - a **condition**, a CEL expression over the day-2 policy variables, which
   limits where the action is offered (for example
-  `resource.os_family == 'linux'`). It is checked when it is saved.
-  `resource` now also has `guest_os` and `os_family`;
+  `resource.os_family == 'linux'`). It is checked when it is saved: it must
+  give a boolean on a sample of each type the action runs on.
+  `resource` now also has `guest_os` and `os_family`; a deployment's
+  `os_family` is its VMs' family, or `mixed`;
 - whether the action is offered at all.
 
-New actions run on VMs, everywhere, and are offered. A sync never changes
-what administrators set.
+New actions run on VMs, everywhere, and are offered unless their launch
+settings have a problem. A sync never changes what administrators set.
 
 ### Who may run them
 The day-2 policies decide, as for native actions. Their action patterns
@@ -62,7 +71,15 @@ by policy, audit and history. It has two steps:
 
 The job's tasks and output are followed as for post-configuration. The VMs
 must be powered on. The form is checked against the survey's schema before
-the request is made.
+the request is made, and an action without a form takes no inputs. The
+`rvav` variable is always rvav's context, never an input.
+- The template is launched by its AWX ID, so a template renamed since, or
+  another one given its name, can't be launched instead. Catalog items made
+  from a template are launched by ID too.
+- Just before launching, rvav checks that the action is still offered. It
+  may have been turned off, or gone from AWX, while its request waited for
+  approval.
+- A retry checks the condition and the VMs' power state again.
 
 ## Consequences
 - An AWX admin can offer automation on rvav's VMs without a code change,

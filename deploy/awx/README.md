@@ -32,7 +32,7 @@ filled from rvav's API by the `rvav.platform` collection
 URL as the AWX reaches it, and an API token:
 
 ```sh
-token=$(rvav api-token -user usr_svc-awx -name awx-inventory)
+token=$(rvav api-token -user usr_svc-awx -name awx-inventory -scope inventory)
 RVAV_AWX_URL=... RVAV_AWX_TOKEN=... rvav awx-bootstrap -rvav-url http://rvav-api:8080 -rvav-token "$token"
 ```
 
@@ -51,7 +51,7 @@ name like `postgres` can belong to the AWX's stack.
 
 ```sh
 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.awx.yml up --build -d
-token=$(docker exec rvav-api-1 rvav api-token -user usr_svc-awx -name awx-inventory -days 30)
+token=$(docker exec rvav-api-1 rvav api-token -user usr_svc-awx -name awx-inventory -scope inventory -days 30)
 RVAV_AWX_URL=http://<awx>:8052 RVAV_AWX_TOKEN=... rvav awx-bootstrap -rvav-url http://rvav-api:8080 -rvav-token "$token"
 # then again, with RVAV_AWX_INVENTORY_SOURCE_ID set to the ID it printed
 ```

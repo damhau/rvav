@@ -35,7 +35,12 @@ type Principal struct {
 	ProjectRoles map[string]string
 	// Groups are the caller's OIDC groups (approvers may be a group).
 	Groups []string
+	// Scope limits an API token to one use (ScopeInventory); "" otherwise.
+	Scope string
 }
+
+// ScopeInventory: the token only reads the Ansible inventory.
+const ScopeInventory = "inventory"
 
 func (p *Principal) HasGlobal(role string) bool { return slices.Contains(p.GlobalRoles, role) }
 
@@ -148,7 +153,7 @@ func HashToken(token string) string {
 }
 
 func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, error) {
-	u, err := s.UserForToken(ctx, HashToken(token))
+	u, scope, err := s.UserForToken(ctx, HashToken(token))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrUnauthenticated
 	}
@@ -157,7 +162,11 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	}
 	// No roles from groups: those stored from the last sign-in may be stale,
 	// and automation should not approve anything.
-	return build(ctx, s, u, nil)
+	p, err := build(ctx, s, u, nil)
+	if p != nil {
+		p.Scope = scope
+	}
+	return p, err
 }
 
 // OIDC validates access tokens issued by the organisation's identity provider.

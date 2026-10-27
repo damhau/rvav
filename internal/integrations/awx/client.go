@@ -166,33 +166,51 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 	return Job{ID: id, Status: j.Status, Failed: j.Failed, Finished: Done(j.Status), URL: u.String()}
 }
 
-// Launch starts a job. The template must allow "Prompt on launch" for limit
-// and variables, or AWX silently ignores them. With an inventory, the
-// template is checked to prompt for it first: run against its own
-// inventory, a limit could match another host of the same name.
+// Launch starts a job. A limit or an inventory are checked first to be
+// prompted on launch: AWX ignores what it doesn't prompt for and launches
+// anyway, so a limit would be dropped (the job runs on every host) and an
+// inventory too (the limit could match another host of the same name).
+// Should AWX ignore them all the same, the job is cancelled at once.
+// Variables not prompted for are dropped by AWX, except survey answers.
 func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, req LaunchRequest) (Job, error) {
 	tpl, _ := kindPath(workflow)
 	body := map[string]any{"extra_vars": req.ExtraVars}
-	if req.Limit != "" {
-		body["limit"] = req.Limit
-	}
-	if req.Inventory != 0 {
+	if req.Limit != "" || req.Inventory != 0 {
 		var prompts struct {
+			AskLimit     bool `json:"ask_limit_on_launch"`
 			AskInventory bool `json:"ask_inventory_on_launch"`
 		}
 		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, nil, &prompts); err != nil {
 			return Job{}, err
 		}
-		if !prompts.AskInventory {
+		if req.Limit != "" && !prompts.AskLimit {
+			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoLimitPrompt)
+		}
+		if req.Inventory != 0 && !prompts.AskInventory {
 			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoInventoryPrompt)
 		}
+	}
+	if req.Limit != "" {
+		body["limit"] = req.Limit
+	}
+	if req.Inventory != 0 {
 		body["inventory"] = req.Inventory
 	}
-	var j jobJSON
+	var j struct {
+		jobJSON
+		Ignored map[string]any `json:"ignored_fields"`
+	}
 	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, body, &j); err != nil {
 		return Job{}, err
 	}
-	return c.toJob(j, workflow), nil
+	job := c.toJob(j.jobJSON, workflow)
+	for _, f := range []string{"limit", "inventory"} {
+		if _, ignored := j.Ignored[f]; ignored {
+			_ = c.Cancel(context.WithoutCancel(ctx), job.ID, workflow)
+			return Job{}, fmt.Errorf("awx job %d of template %d: %w (%s), so it was cancelled", job.ID, templateID, ErrPromptIgnored, f)
+		}
+	}
+	return job, nil
 }
 
 func (c *HTTPClient) GetJob(ctx context.Context, id int, workflow bool) (Job, error) {
@@ -452,6 +470,7 @@ func (c *HTTPClient) WorkflowNodes(ctx context.Context, workflowJobID int) ([]Wo
 				} `json:"unified_job_template"`
 				Job struct {
 					Status string `json:"status"`
+					Type   string `json:"type"`
 				} `json:"job"`
 			} `json:"summary_fields"`
 		} `json:"results"`
@@ -462,7 +481,8 @@ func (c *HTTPClient) WorkflowNodes(ctx context.Context, workflowJobID int) ([]Wo
 	}
 	out := make([]WorkflowNode, len(res.Results))
 	for i, n := range res.Results {
-		out[i] = WorkflowNode{ID: n.ID, Name: n.Summary.Template.Name, Status: n.Summary.Job.Status, DoNotRun: n.DoNotRun}
+		out[i] = WorkflowNode{ID: n.ID, Name: n.Summary.Template.Name, Status: n.Summary.Job.Status, Kind: n.Summary.Job.Type,
+			DoNotRun: n.DoNotRun}
 		if n.Job != nil {
 			out[i].JobID = *n.Job
 		}

@@ -248,6 +248,12 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
+	if a.Form == nil && len(inputs) > 0 && a.Group == day2.GroupAutomation {
+		// Nothing a user sends reaches AWX unchecked. (rvav's own hidden
+		// actions, such as lease expiry, pass inputs without a form.)
+		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "no_inputs",
+			a.Name+" takes no inputs.")}}
+	}
 	if a.Form != nil {
 		form := a.Form(*target, c)
 		schema, _ := json.Marshal(form.Schema)
@@ -315,7 +321,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 	}
 	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Quota: day2Add(a, *target, inputs), Day2: &provision.Day2{
-		Action: a.Key, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
+		Action: a.Key, Name: a.Name, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
 		Ops: ops, Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
 	req.Plan, _ = json.Marshal(plan)

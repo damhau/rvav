@@ -125,7 +125,7 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		return nil, err
 	}
 	ev.Errors = append(ev.Errors, fieldErrs...)
-	if err := s.evaluateZones(ctx, ev, strict); err != nil {
+	if err := s.evaluatePickers(ctx, ev, strict); err != nil {
 		return nil, err
 	}
 
@@ -173,33 +173,39 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	return ev, nil
 }
 
-// evaluateZones checks inputs picked from dns.zones against the zones of
-// rvav's DNS server: the picker alone doesn't stop another value. On submit
-// a zone that can't be checked is an error; in the preview it is skipped.
-func (s *Service) evaluateZones(ctx context.Context, ev *Evaluation, strict bool) error {
+// evaluatePickers checks inputs picked from dns.zones, awx.inventories and
+// awx.credentials against what those sources offer now: the picker alone
+// doesn't stop another value. On submit a value that can't be checked is
+// an error; in the preview it is skipped.
+func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bool) error {
 	var ui api.UiSchema
 	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
 		return err
 	}
-	var zones []string
 	for name, f := range ui.Fields {
-		zone, _ := ev.Inputs[name].(string)
+		value, _ := ev.Inputs[name].(string)
 		src := f.ValueSource
-		if zone == "" || src == nil || src.Kind != api.Builtin || src.Name == nil || *src.Name != "dns.zones" {
+		if value == "" || src == nil || src.Kind != api.Builtin || src.Name == nil {
 			continue
 		}
-		if zones == nil {
-			list, err := s.dnsZones(ctx)
-			if err != nil {
-				if strict {
-					return err
-				}
-				return nil
-			}
-			zones = list
+		var allowed []string
+		var err error
+		switch *src.Name {
+		case "dns.zones":
+			allowed, err = s.dnsZones(ctx)
+		case "awx.inventories", "awx.credentials":
+			allowed, err = s.awxChoices(ctx, *src.Name, resolveParams(src.Params, ev.Inputs))
+		default:
+			continue
 		}
-		if !slices.Contains(zones, zone) {
-			ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not a zone of rvav's DNS server.", zone)))
+		if err != nil {
+			if strict {
+				return err
+			}
+			continue
+		}
+		if !slices.Contains(allowed, value) {
+			ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
 		}
 	}
 	return nil

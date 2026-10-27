@@ -199,6 +199,11 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				"Send a valid access token in the Authorization header.", nil)
 			return
 		}
+		if p.Scope == auth.ScopeInventory && !(r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/ansible/inventory")) {
+			s.problem(w, r, http.StatusForbidden, "forbidden", "This token only reads the Ansible inventory",
+				"It was made with the inventory scope (rvav api-token -scope inventory).", nil)
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), p)))
 	})
 }

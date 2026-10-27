@@ -140,7 +140,7 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 			out.Action = &struct {
 				Key  string `json:"key"`
 				Name string `json:"name"`
-			}{Key: *r.Action, Name: day2.Name(*r.Action)}
+			}{Key: *r.Action, Name: actionName(r)}
 		}
 		if r.ResourceID != nil && r.ResourceName != nil {
 			out.Resource = &struct {
@@ -343,4 +343,18 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		return out, err == nil
 	}
 	return out, false
+}
+
+// actionName is a day-2 request's action name as it was asked for, from
+// its plan (older plans don't have it: the catalogue's name then).
+func actionName(r store.RequestRow) string {
+	var plan struct {
+		Day2 *struct {
+			Name string `json:"name"`
+		} `json:"day2"`
+	}
+	if json.Unmarshal(r.Plan, &plan) == nil && plan.Day2 != nil && plan.Day2.Name != "" {
+		return plan.Day2.Name
+	}
+	return day2.Name(*r.Action)
 }

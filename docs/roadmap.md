@@ -27,9 +27,14 @@ follows EfficientIP's own library and runs everywhere against a fake
 SOLIDserver speaking the same API ([ADR-0015](adr/0015-efficientip-client.md)),
 network mappings come from subnet class parameters, renames reach
 EfficientIP, and a reconcile report lists orphans; its acceptance needs a
-real SOLIDserver. S6 AWX is in progress against a test AWX: templates with
-the catalog label become catalog items with forms from their surveys
-([ADR-0016](adr/0016-awx-catalog.md)).
+real SOLIDserver. S6 AWX is built and accepted against a test AWX
+(24.6.1): templates with the catalog label become catalog items with forms
+from their surveys, changed surveys flagged
+([ADR-0016](adr/0016-awx-catalog.md)); AWX reads rvav's VMs through the
+`rvav.platform` inventory plugin, and jobs on rvav's VMs run on that
+inventory ([ADR-0017](adr/0017-awx-inventory.md)); templates with the day2
+label become day-2 actions bound to resource types and a condition
+([ADR-0018](adr/0018-awx-day2-actions.md)). S8 and S9 come next.
 
 Verified so far:
 - `make check` (also in CI on every push): spec lint, generated code, Go vet
@@ -49,14 +54,14 @@ Verified so far:
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the
-ESXi hosts' firewalls), real EfficientIP and AWX, the corporate identity
-provider.
+ESXi hosts' firewalls), a real EfficientIP SOLIDserver, the corporate
+identity provider. AWX is verified against a test AWX 24.6.1, not yet the
+organisation's.
 
 ### Open items found in slice 1
-- AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin (S6).
 - EfficientIP client: endpoints confirmed against EfficientIP's own library (S7); a real SOLIDserver still has to confirm them.
 - Inventory sync polls; switch to property collector updates (S13).
-- Value sources `awx.*` (S6), REST and CEL (S8) are not implemented yet.
+- Value sources REST and CEL (S8) are not implemented yet; using an `awx.*` picker as a launch's inventory or credential waits for the form designer (S8).
 - Per-field rule results in the preview, descriptions on checklist options (S8).
 - Accessibility audit (S14), Storybook.
 

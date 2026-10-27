@@ -21,7 +21,9 @@ func Form(title string, survey []awx.SurveyQuestion) (schema, ui, initial map[st
 	props, fields, initial := map[string]any{}, map[string]any{}, map[string]any{}
 	required, order := []string{}, []string{}
 	for _, q := range survey {
-		if !variableName.MatchString(q.Variable) || q.Variable == "rvav" {
+		if !variableName.MatchString(q.Variable) || q.Variable == "rvav" || strings.HasPrefix(strings.ToLower(q.Variable), "ansible_") {
+			// rvav is rvav's context; ansible_* would let a user set how
+			// Ansible connects (ansible_ssh_common_args and the like).
 			warnings = append(warnings, fmt.Sprintf("Question %q is not in the form: its variable %q can't be used.", q.Question, q.Variable))
 			continue
 		}

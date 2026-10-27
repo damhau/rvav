@@ -51,7 +51,10 @@ type Size struct {
 type AWXTemplate struct {
 	Title       string `json:"title"`
 	JobTemplate string `json:"job_template"`
-	Workflow    bool   `json:"workflow,omitempty"`
+	// TemplateID is the template's AWX ID, set on items made from a
+	// template: it is launched by ID, whatever it is called since.
+	TemplateID int  `json:"template_id,omitempty"`
+	Workflow   bool `json:"workflow,omitempty"`
 }
 
 // VMPlan is one VM to build, after evaluating the bindings.
