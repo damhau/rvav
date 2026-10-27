@@ -109,3 +109,10 @@ func (s *Store) ApprovalPolicies(ctx context.Context, projectID, itemType string
 		order by priority, id`, projectID, itemType)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[ApprovalPolicy])
 }
+
+// Day2Policies returns the enabled day-2 policies that apply to the project, by priority.
+func (s *Store) Day2Policies(ctx context.Context, projectID string) ([]Day2Policy, error) {
+	rows, _ := s.Pool.Query(ctx, `select id, name, reason, priority, actions, roles, condition, effect, levels, project_id
+		from day2_policies where enabled and (project_id is null or project_id = $1) order by priority, id`, projectID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[Day2Policy])
+}

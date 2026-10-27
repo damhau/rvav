@@ -14,6 +14,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
@@ -365,6 +366,10 @@ func (l loadedLevel) isEscalationApprover(p *auth.Principal) bool {
 // applyEdits checks approver changes against the form and evaluates the
 // request again as its requester, keeping its names and deployments.
 func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
+	if req.Kind == "day2" {
+		return nil, nil, nil, nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_editable",
+			"Approvers can't change the inputs of a day-2 action.")}}
+	}
 	version, err := s.Store.GetVersion(ctx, req.VersionID)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -611,6 +616,20 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 	_ = json.Unmarshal(l.req.Plan, &plan)
 	out := []fact{}
 	switch {
+	case plan.Day2 != nil:
+		on := deref(l.req.ResourceName)
+		if d, err := s.Store.GetDeployment(ctx, plan.Day2.DeploymentID); err == nil {
+			if on == "" {
+				on = d.Name
+			}
+			out = append(out, fact{"Deployment", d.Name + " · " + d.Environment})
+		}
+		out = append(out, fact{"Action", day2.Name(plan.Day2.Action) + " · " + on})
+		steps := make([]string, len(plan.Day2.Ops))
+		for i, op := range plan.Day2.Ops {
+			steps[i] = op.Title
+		}
+		out = append(out, fact{"Steps", strings.Join(steps, "; ")})
 	case len(plan.VMs) > 0:
 		vm := plan.VMs[0]
 		size := fmt.Sprintf("%d vCPU · %d GB · %d GB", vm.VCPU, vm.MemoryGB, vm.DiskGB)
@@ -672,6 +691,9 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 
 // editableFields lists the inputs approvers may change, with their limits.
 func (s *Service) editableFields(ctx context.Context, l loadedLevel) ([]api.ApprovalEditableField, error) {
+	if l.req.Kind == "day2" {
+		return []api.ApprovalEditableField{}, nil // the catalog form is not what a day-2 action asked
+	}
 	version, err := s.Store.GetVersion(ctx, l.req.VersionID)
 	if err != nil {
 		return nil, err

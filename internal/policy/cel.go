@@ -15,39 +15,49 @@ import (
 // empty maps so `inputs.size` on an empty form fails cleanly instead of panicking.
 type Vars map[string]any
 
-var varNames = []string{"inputs", "environment", "project", "item", "vm", "user", "sizes"}
+// set is a CEL environment with its variables and compiled programs.
+type set struct {
+	names   []string
+	strings map[string]bool // variables that are strings (others are dynamic)
 
-var (
-	envOnce sync.Once
-	env     *cel.Env
-	envErr  error
+	once sync.Once
+	env  *cel.Env
+	err  error
 
-	cacheMu sync.Mutex
-	cache   = map[string]cel.Program{}
-)
+	mu    sync.Mutex
+	cache map[string]cel.Program
+}
 
-func celEnv() (*cel.Env, error) {
-	envOnce.Do(func() {
-		opts := make([]cel.EnvOption, 0, len(varNames))
-		for _, n := range varNames {
-			if n == "environment" {
+// forms is for approval policies, form rules and blueprint bindings.
+var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes"},
+	strings: map[string]bool{"environment": true}}
+
+// day2 is for day-2 policy conditions, where environment is an object
+// (key, name, production).
+var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs"}}
+
+func (s *set) celEnv() (*cel.Env, error) {
+	s.once.Do(func() {
+		opts := make([]cel.EnvOption, 0, len(s.names))
+		for _, n := range s.names {
+			if s.strings[n] {
 				opts = append(opts, cel.Variable(n, cel.StringType))
 				continue
 			}
 			opts = append(opts, cel.Variable(n, cel.DynType))
 		}
-		env, envErr = cel.NewEnv(opts...)
+		s.env, s.err = cel.NewEnv(opts...)
 	})
-	return env, envErr
+	return s.env, s.err
 }
 
-func program(expr string) (cel.Program, error) {
-	cacheMu.Lock()
-	defer cacheMu.Unlock()
-	if p, ok := cache[expr]; ok {
+func (s *set) program(expr string) (cel.Program, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.cache[expr]; ok {
 		return p, nil
 	}
-	e, err := celEnv()
+	e, err := s.celEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -59,27 +69,23 @@ func program(expr string) (cel.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("program %q: %w", expr, err)
 	}
-	cache[expr] = p
+	if s.cache == nil {
+		s.cache = map[string]cel.Program{}
+	}
+	s.cache[expr] = p
 	return p, nil
 }
 
-// Check compiles expr without evaluating it, for validating stored policies.
-func Check(expr string) error {
-	_, err := program(expr)
-	return err
-}
-
-// Eval evaluates expr and returns its value converted to a Go value.
-func Eval(expr string, vars Vars) (any, error) {
-	p, err := program(expr)
+func (s *set) eval(expr string, vars Vars) (any, error) {
+	p, err := s.program(expr)
 	if err != nil {
 		return nil, err
 	}
 	act := map[string]any{}
-	for _, n := range varNames {
+	for _, n := range s.names {
 		if v, ok := vars[n]; ok && v != nil {
 			act[n] = v
-		} else if n == "environment" {
+		} else if s.strings[n] {
 			act[n] = ""
 		} else {
 			act[n] = map[string]any{}
@@ -92,9 +98,8 @@ func Eval(expr string, vars Vars) (any, error) {
 	return native(out), nil
 }
 
-// Bool evaluates expr and requires a boolean result.
-func Bool(expr string, vars Vars) (bool, error) {
-	v, err := Eval(expr, vars)
+func (s *set) boolean(expr string, vars Vars) (bool, error) {
+	v, err := s.eval(expr, vars)
 	if err != nil {
 		return false, err
 	}
@@ -103,6 +108,27 @@ func Bool(expr string, vars Vars) (bool, error) {
 		return false, fmt.Errorf("%q: want a boolean, got %T", expr, v)
 	}
 	return b, nil
+}
+
+// Check compiles expr without evaluating it, for validating stored policies.
+func Check(expr string) error {
+	_, err := forms.program(expr)
+	return err
+}
+
+// Eval evaluates expr and returns its value converted to a Go value.
+func Eval(expr string, vars Vars) (any, error) { return forms.eval(expr, vars) }
+
+// Bool evaluates expr and requires a boolean result.
+func Bool(expr string, vars Vars) (bool, error) { return forms.boolean(expr, vars) }
+
+// Day2Bool evaluates the condition of a day-2 policy.
+func Day2Bool(expr string, vars Vars) (bool, error) { return day2.boolean(expr, vars) }
+
+// CheckDay2 compiles a day-2 policy condition without evaluating it.
+func CheckDay2(expr string) error {
+	_, err := day2.program(expr)
+	return err
 }
 
 func native(v ref.Val) any {

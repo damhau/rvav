@@ -9,6 +9,7 @@ import (
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/types"
+	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
@@ -545,4 +546,84 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// TestDay2Policies checks who may run what: viewers nothing, members their
+// VMs' operations, owners and project admins deletion and hand-over, and a
+// policy that asks for approval.
+func TestDay2Policies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		if _, err := h.store.Pool.Exec(ctx, `insert into project_members (project_id, user_id, role)
+			values ('prj_web', 'usr_sbrunner', 'viewer'), ('prj_web', 'usr_afavre', 'member')`); err != nil {
+			t.Fatal(err)
+		}
+		d := buildVM(h, model)
+
+		// Viewers: nothing.
+		if a := d.actions("sbrunner")["power_off"]; a.Enabled || deref(a.DisabledReason) != "Your role in Web Platform does not allow Power off." {
+			t.Fatalf("viewer's power_off = %+v", a)
+		}
+		// A member who is not the owner operates the VM but can't delete it.
+		a := d.actions("afavre")
+		if !a["power_off"].Enabled {
+			t.Fatalf("member's power_off = %+v", a["power_off"])
+		}
+		if del := a["delete"]; del.Enabled || deref(del.DisabledReason) != "Only the owner and the project admins can delete this deployment or hand it over." {
+			t.Fatalf("member's delete = %+v", del)
+		}
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "afavre", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},
+			403, nil, "Idempotency-Key", uuid.NewString())
+		// The owner and the project admin may.
+		if !d.actions("tnguyen")["delete"].Enabled || !d.actions("lmartin")["change_owner"].Enabled {
+			t.Fatal("owner or project admin may not delete or hand over")
+		}
+
+		// A policy that asks the leads before a running VM is reverted.
+		if _, err := h.store.Pool.Exec(ctx, `insert into day2_policies (id, name, reason, priority, actions, roles, condition, effect, levels)
+			values ('d2p_revert', 'Reverting running VMs', 'Reverting a running VM loses its current state', 15,
+			'{snapshot_revert}', '{owner,member}', 'resource.power_state == "on" && environment.key == "dev"', 'approval',
+			'[{"name": "Infrastructure leads", "approvers": ["usr_mkeller"]}]')`); err != nil {
+			t.Fatal(err)
+		}
+		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "base"})
+		rv := d.actions("tnguyen")["snapshot_revert"]
+		if !rv.Enabled || !rv.Approval.Required || len(rv.Approval.Reasons) != 1 || rv.Approval.Reasons[0] != "Reverting a running VM loses its current state" {
+			t.Fatalf("snapshot_revert = %+v", rv)
+		}
+		r := d.run("tnguyen", "snapshot_revert", map[string]any{"snapshot": "base"}, 202)
+		if r.Status != api.RequestStatusPendingApproval {
+			t.Fatalf("revert status = %s", r.Status)
+		}
+		h.runWorkflow(r.Id, func(env *testsuite.TestWorkflowEnvironment) {
+			env.RegisterDelayedCallback(func() {
+				var inbox api.ApprovalPage
+				h.json("GET", "/api/v1/approvals", "mkeller", nil, 200, &inbox)
+				if inbox.Total != 1 || inbox.Items[0].Request.Id != r.Id {
+					t.Errorf("mkeller's inbox = %+v", inbox)
+					return
+				}
+				var detail api.Approval
+				h.json("GET", "/api/v1/approvals/"+inbox.Items[0].Id, "mkeller", nil, 200, &detail)
+				if len(detail.EditableFields) != 0 || len(detail.Facts) < 2 {
+					t.Errorf("approval detail = %+v", detail)
+				}
+				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", "mkeller",
+					api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove, Inputs: &map[string]any{"snapshot": "x"}}, 422, nil)
+				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", "mkeller",
+					api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove}, 200, nil)
+				h.wf.deliver(env)
+			}, time.Hour)
+		})
+		h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
+		// Powered off, no approval.
+		d.succeed("tnguyen", "power_off", nil)
+		if rv := d.actions("tnguyen")["snapshot_revert"]; rv.Approval.Required {
+			t.Fatalf("revert of a powered-off VM = %+v", rv)
+		}
+	}, model)
 }

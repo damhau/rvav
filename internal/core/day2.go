@@ -32,15 +32,6 @@ func (s *Service) visibleDeployment(ctx context.Context, p *auth.Principal, id s
 	return d, err
 }
 
-// permit says whether the principal may run the action on the deployment.
-// Day-2 policies replace it in S4.7.
-func permit(p *auth.Principal, d store.DeploymentRow, _ *day2.Action) string {
-	if p.CanRequest(d.ProjectID) || d.OwnerID == p.User.ID {
-		return ""
-	}
-	return "Only the owner and the members of " + d.ProjectName + " can run actions on it."
-}
-
 // deploymentBusy says why the action can't start on the deployment now ("" when it can).
 func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action) string {
 	switch {
@@ -115,6 +106,10 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	if err != nil {
 		return nil, err
 	}
+	j, err := s.judge(ctx, p, d)
+	if err != nil {
+		return nil, err
+	}
 	out := []api.Day2Action{}
 	for _, t := range targets(d, resources) {
 		c, err := s.choices(ctx, p, d, t)
@@ -125,20 +120,21 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 			if !a.AppliesTo(t.Type) {
 				continue
 			}
+			dec := j.decide(a, t, nil)
 			reason := deploymentBusy(d, active, a)
 			if reason == "" {
-				reason = permit(p, d, a)
+				reason = dec.Denied
 			}
 			if reason == "" && a.Unavailable != nil {
 				reason = a.Unavailable(t, c)
 			}
-			out = append(out, presentAction(a, t, c, reason))
+			out = append(out, presentAction(a, t, c, dec, reason))
 		}
 	}
 	return out, nil
 }
 
-func presentAction(a *day2.Action, t day2.Target, c day2.Choices, reason string) api.Day2Action {
+func presentAction(a *day2.Action, t day2.Target, c day2.Choices, dec decision, reason string) api.Day2Action {
 	id, name := t.ResourceID, t.ResourceName
 	out := api.Day2Action{
 		Key: a.Key, Name: a.Name, Group: api.Day2ActionGroup(a.Group), ResourceName: &name,
@@ -146,7 +142,7 @@ func presentAction(a *day2.Action, t day2.Target, c day2.Choices, reason string)
 		Approval: struct {
 			Reasons  []string `json:"reasons"`
 			Required bool     `json:"required"`
-		}{Reasons: []string{}},
+		}{Reasons: dec.reasons(), Required: len(dec.Chain) > 0},
 	}
 	if t.Type != day2.DeploymentType {
 		out.ResourceId = &id
@@ -181,9 +177,6 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
 			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
 	}
-	if reason := permit(p, d, a); reason != "" {
-		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, reason)
-	}
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -201,6 +194,13 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			msg = a.Name + " acts on the whole deployment: leave out resource_id."
 		}
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/resource_id", "unknown_resource", msg)}}
+	}
+	j, err := s.judge(ctx, p, d)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
+	if dec := j.decide(a, *target, draft.Inputs); dec.Denied != "" {
+		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
 	}
 	c, err := s.choices(ctx, p, d, *target)
 	if err != nil {
@@ -238,6 +238,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 		return store.RequestRow{}, &ValidationError{Errors: errs}
 	}
+	// The inputs may matter to a policy's condition: decide again with them.
+	dec := j.decide(a, *target, inputs)
+	if dec.Denied != "" {
+		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
+	}
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: d.VersionID, ProjectID: d.ProjectID,
 		Environment: d.Environment, Title: a.Name + " · " + target.ResourceName, Status: "queued",
@@ -247,12 +252,16 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if target.Type != day2.DeploymentType {
 		req.ResourceID, req.ResourceName = &target.ResourceID, &target.ResourceName
 	}
+	if len(dec.Chain) > 0 {
+		req.Status, req.ApprovalRequired = "pending_approval", true
+	}
+	req.Approval, _ = json.Marshal(map[string]any{"required": req.ApprovalRequired, "policy": dec.Policy, "reasons": dec.reasons()})
 	if draft.Justification != nil {
 		req.Justification = strings.TrimSpace(*draft.Justification)
 	}
 	wf := provision.WorkflowID(req.ID)
 	req.WorkflowID = &wf
-	plan := provision.Plan{Kind: "day2", Day2: &provision.Day2{
+	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Day2: &provision.Day2{
 		Action: a.Key, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
 		Ops: a.Ops(*target, inputs), Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
@@ -293,6 +302,9 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			steps = append(steps, st)
 		}
 		if err := s.Store.InsertSteps(ctx, tx, steps); err != nil {
+			return err
+		}
+		if err := s.Store.InsertApprovals(ctx, tx, chainRows(req.ID, dec.Chain)); err != nil {
 			return err
 		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "action.run", TargetType: "deployment",

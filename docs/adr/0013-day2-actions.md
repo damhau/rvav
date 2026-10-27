@@ -35,10 +35,16 @@ with whether the caller may run them and why not.
 `snapshot_*`, `*`), the roles it applies to and a CEL condition over the
 action, resource, deployment, environment and user, an effect: `allow`,
 `deny` (with a reason shown to the user) or `approval` (with levels, as
-approval policies). The first matching policy wins; nothing matching denies.
-The seed allows members to operate their VMs, asks approval to delete in
-production, and lets only owners and project admins delete or change
-ownership.
+approval policies). The first matching policy wins; nothing matching denies,
+and so does a condition that fails to evaluate. Roles are `owner`, the
+project role (`viewer`, `member`, `project-admin`) and `admin`. Conditions
+have their own CEL variables: `action`, `resource`, `deployment`, `project`,
+`environment` (`key`, `name`, `production`), `user` and `inputs`. The
+system user `rvav`, which applies retention and lease policies, is not
+subject to them. Approvers of a day-2 action see what it will do and cannot
+change its inputs. The seed allows members to operate their VMs, asks
+approval to delete in production, and lets only owners and project admins
+delete or hand a deployment over.
 
 ### Snapshot retention
 Each environment sets how many snapshots a VM may have (`snapshot_create`

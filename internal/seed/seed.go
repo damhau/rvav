@@ -247,5 +247,42 @@ func seedPolicies(exec func(string, ...any) error) error {
 			return err
 		}
 	}
+	return seedDay2Policies(exec, leads)
+}
+
+// seedDay2Policies: members operate their VMs; only owners and project
+// admins delete or hand a deployment over, and deleting in production needs
+// the Infrastructure leads. Viewers match nothing, so they are refused.
+func seedDay2Policies(exec func(string, ...any) error, leads []byte) error {
+	handover := []string{"delete", "change_owner", "change_project"}
+	for _, p := range []struct {
+		id, name, reason string
+		priority         int
+		actions, roles   []string
+		condition        string
+		effect           string
+		levels           []byte
+	}{
+		{"d2p_admins", "Administrators", "", 10, []string{"*"}, []string{"admin"}, "true", "allow", nil},
+		{"d2p_prd_delete", "Deleting in production", "Deleting a production deployment needs sign-off", 20,
+			[]string{"delete"}, []string{"owner", "project-admin"}, "environment.production", "approval", leads},
+		{"d2p_handover", "Owners and project admins", "", 30, handover, []string{"owner", "project-admin"}, "true", "allow", nil},
+		{"d2p_handover_others", "Not the owner", "Only the owner and the project admins can delete this deployment or hand it over.", 40,
+			handover, nil, "true", "deny", nil},
+		{"d2p_members", "Members operate their VMs", "", 50, []string{"*"}, []string{"owner", "member", "project-admin"}, "true", "allow", nil},
+	} {
+		levels := p.levels
+		if levels == nil {
+			levels = []byte("[]")
+		}
+		if err := exec(`insert into day2_policies (id, name, reason, priority, actions, roles, condition, effect, levels)
+			values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			on conflict (id) do update set name = excluded.name, reason = excluded.reason, priority = excluded.priority,
+			actions = excluded.actions, roles = excluded.roles, condition = excluded.condition, effect = excluded.effect,
+			levels = excluded.levels`,
+			p.id, p.name, p.reason, p.priority, p.actions, nonNil(p.roles), p.condition, p.effect, levels); err != nil {
+			return err
+		}
+	}
 	return nil
 }
