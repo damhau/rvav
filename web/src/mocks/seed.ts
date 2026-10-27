@@ -580,6 +580,7 @@ export function createDb(now = Date.now()): Db {
   ) => ({
     id: `req_${number.slice(4)}`,
     number,
+    kind: "provision" as const,
     title,
     catalog_item: { id: it.id, slug: it.slug, name: it.name, type: it.type },
     version: it.version,

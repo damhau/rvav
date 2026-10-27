@@ -116,7 +116,7 @@ func SecretFields(uiSchema json.RawMessage) map[string]bool {
 
 func Request(r store.RequestRow, secret map[string]bool) api.Request {
 	out := api.Request{
-		Id: r.ID, Number: r.Number, Title: r.Title,
+		Id: r.ID, Number: r.Number, Title: r.Title, Kind: api.Provision,
 		Status:      api.RequestStatus(r.Status),
 		Version:     api.CatalogItemVersionRef{Id: r.VersionID, Number: r.VersionNumber},
 		Project:     ProjectRef(r.ProjectID, r.ProjectCode, r.ProjectName),

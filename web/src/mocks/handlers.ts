@@ -417,6 +417,7 @@ export const handlers = [
     const req: ServiceRequest = {
       id,
       number,
+      kind: "provision",
       title: title(item, host, draft.inputs),
       status: approval ? "pending_approval" : "running",
       catalog_item: { id: item.id, slug: item.slug, name: item.name, type: item.type },

@@ -345,6 +345,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a failed request again from its failed step
+         * @description Steps that completed are kept; the failed step and the ones after it run again.
+         */
+        post: operations["retryRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo what a failed provisioning request created
+         * @description Deletes the VMs, DNS records and IP addresses it created, and marks its deployments deleted.
+         */
+        post: operations["rollbackRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/{requestId}/approvals": {
         parameters: {
             query?: never;
@@ -484,6 +530,100 @@ export interface paths {
         };
         /** One deployment with its resources */
         get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{deploymentId}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The day-2 actions available on a deployment and its resources
+         * @description Every action that applies, with whether the caller may run it now
+         *     (day-2 policies and the resource's state) and why not.
+         */
+        get: operations["listDeploymentActions"];
+        put?: never;
+        /**
+         * Run a day-2 action
+         * @description Creates a request of kind `day2` and starts it, or waits for approval
+         *     when a day-2 policy asks for one. Follow it like any request.
+         */
+        post: operations["runDeploymentAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{deploymentId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        /** The requests that created and changed a deployment */
+        get: operations["listDeploymentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{deploymentId}/resources/{resourceId}/console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a VM's console (ADR-0012)
+         * @description Returns a VMRC link with a fresh clone ticket and, when the web
+         *     console is configured, a single-use WebSocket URL valid for one
+         *     minute. Allowed by the `console` day-2 policy; recorded in the audit log.
+         */
+        post: operations["openConsole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The web console's WebSocket, proxied to the ESXi host
+         * @description Upgrades to WebSocket. The token comes from `openConsole` and works once.
+         */
+        get: operations["consoleStream"];
         put?: never;
         post?: never;
         delete?: never;
@@ -867,10 +1007,30 @@ export interface components {
         };
         /** @enum {string} */
         RequestStatus: "pending_approval" | "scheduled" | "queued" | "running" | "succeeded" | "failed" | "rejected" | "cancelling" | "cancelled";
+        /**
+         * @description `provision`: from the catalog. `day2`: an action on a deployment (ADR-0013).
+         * @enum {string}
+         */
+        RequestKind: "provision" | "day2";
         Request: {
             id: string;
             /** @example REQ-10491 */
             number: string;
+            kind: components["schemas"]["RequestKind"];
+            /** @description The day-2 action this request runs. */
+            action?: {
+                /** @example snapshot_create */
+                key: string;
+                /** @example Take a snapshot */
+                name: string;
+            };
+            /** @description The deployment a day-2 request acts on. */
+            deployment_id?: string;
+            /** @description The resource a day-2 request acts on, when it acts on one. */
+            resource?: {
+                id: string;
+                name: string;
+            };
             /** @description For example `RHEL 9 server · web-dev-app007`. */
             title: string;
             status: components["schemas"]["RequestStatus"];
@@ -1031,6 +1191,66 @@ export interface components {
             items: components["schemas"]["ApprovalSummary"][];
             /** @description Number of approvals matching the filters, on all pages (the sidebar badge). */
             total: number;
+        };
+        Day2Action: {
+            /**
+             * @example power_off
+             * @example snapshot_create
+             * @example delete
+             */
+            key: string;
+            /** @example Power off */
+            name: string;
+            /** @enum {string} */
+            group: "power" | "configuration" | "snapshots" | "access" | "lifecycle";
+            /** @description The resource it acts on; null for actions on the whole deployment. */
+            resource_id?: string | null;
+            resource_name?: string;
+            enabled: boolean;
+            /** @description Why it can't run now, for example `The VM is already powered off.` */
+            disabled_reason?: string;
+            destructive: boolean;
+            approval: {
+                required: boolean;
+                reasons: string[];
+            };
+            confirm?: {
+                message: string;
+                /** @description Text the user must type to confirm, for example the VM name. */
+                type_to_confirm?: string;
+            };
+            form?: components["schemas"]["ActionForm"];
+        };
+        ActionForm: {
+            /** @description JSON Schema of `inputs`. */
+            schema: {
+                [key: string]: unknown;
+            };
+            ui_schema: components["schemas"]["UiSchema"];
+            initial_values: {
+                [key: string]: unknown;
+            };
+        };
+        Day2Draft: {
+            action: string;
+            resource_id?: string;
+            inputs: {
+                [key: string]: unknown;
+            };
+            justification?: string;
+        };
+        ConsoleSession: {
+            /** @description Opens VMware Remote Console. Valid once, for a few minutes. */
+            vmrc_url: string;
+            /** @description Present when the web console is configured. */
+            web?: {
+                /** @description WebSocket URL on rvav. */
+                url: string;
+                /** Format: date-time */
+                expires_at: string;
+                /** @description Where the browser loads VMware's WMKS client. */
+                sdk_url: string;
+            };
         };
         /** @enum {string} */
         StepStatus: "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
@@ -1413,6 +1633,7 @@ export interface components {
         ProjectIdQueryRequired: string;
         /** @description Catalog item ID or slug. */
         ItemIdPath: string;
+        DeploymentIdPath: string;
         ApprovalIdPath: string;
         /** @description Request ID or number (for example `REQ-10491`). */
         RequestIdPath: string;
@@ -1948,6 +2169,60 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    retryRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Running again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Request"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    rollbackRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rolling back */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Request"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listRequestApprovals: {
         parameters: {
             query?: never;
@@ -2146,6 +2421,149 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listDeploymentActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grouped by resource, then by action group */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Day2Action"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runDeploymentAction: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A client-generated UUID. Retrying with the same key and body returns
+                 *     the original response; the same key with a different body returns 409.
+                 *     Keys are kept for 24 hours.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2Draft"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Request"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listDeploymentHistory: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    openConsole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleSession"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    consoleStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
         };
     };

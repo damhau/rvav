@@ -432,6 +432,44 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /requests/{requestId}/retry:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    post:
+      tags: [requests]
+      operationId: retryRequest
+      summary: Run a failed request again from its failed step
+      description: Steps that completed are kept; the failed step and the ones after it run again.
+      responses:
+        "202":
+          description: Running again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /requests/{requestId}/rollback:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+    post:
+      tags: [requests]
+      operationId: rollbackRequest
+      summary: Undo what a failed provisioning request created
+      description: Deletes the VMs, DNS records and IP addresses it created, and marks its deployments deleted.
+      responses:
+        "202":
+          description: Rolling back
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /requests/{requestId}/approvals:
     parameters:
       - { $ref: "#/components/parameters/RequestIdPath" }
@@ -624,6 +662,121 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /deployments/{deploymentId}/actions:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    get:
+      tags: [deployments]
+      operationId: listDeploymentActions
+      summary: The day-2 actions available on a deployment and its resources
+      description: |
+        Every action that applies, with whether the caller may run it now
+        (day-2 policies and the resource's state) and why not.
+      responses:
+        "200":
+          description: Grouped by resource, then by action group
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Day2Action" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [deployments]
+      operationId: runDeploymentAction
+      summary: Run a day-2 action
+      description: |
+        Creates a request of kind `day2` and starts it, or waits for approval
+        when a day-2 policy asks for one. Follow it like any request.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2Draft" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /deployments/{deploymentId}/history:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    get:
+      tags: [deployments]
+      operationId: listDeploymentHistory
+      summary: The requests that created and changed a deployment
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /deployments/{deploymentId}/resources/{resourceId}/console:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+      - name: resourceId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [deployments]
+      operationId: openConsole
+      summary: Open a VM's console (ADR-0012)
+      description: |
+        Returns a VMRC link with a fresh clone ticket and, when the web
+        console is configured, a single-use WebSocket URL valid for one
+        minute. Allowed by the `console` day-2 policy; recorded in the audit log.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /console/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [deployments]
+      operationId: consoleStream
+      summary: The web console's WebSocket, proxied to the ESXi host
+      description: Upgrades to WebSocket. The token comes from `openConsole` and works once.
+      security: []
+      responses:
+        "101":
+          description: Switching protocols
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /events:
     get:
       tags: [events]
@@ -688,6 +841,11 @@ components:
       in: path
       required: true
       description: Catalog item ID or slug.
+      schema: { type: string }
+    DeploymentIdPath:
+      name: deploymentId
+      in: path
+      required: true
       schema: { type: string }
     ApprovalIdPath:
       name: approvalId
@@ -1302,12 +1460,35 @@ components:
       type: string
       enum: [pending_approval, scheduled, queued, running, succeeded, failed, rejected, cancelling, cancelled]
 
+    RequestKind:
+      type: string
+      description: "`provision`: from the catalog. `day2`: an action on a deployment (ADR-0013)."
+      enum: [provision, day2]
+
     Request:
       type: object
-      required: [id, number, title, status, catalog_item, version, project, environment, requester, submitted_at, progress]
+      required: [id, number, kind, title, status, catalog_item, version, project, environment, requester, submitted_at, progress]
       properties:
         id: { type: string }
         number: { type: string, examples: [REQ-10491] }
+        kind: { $ref: "#/components/schemas/RequestKind" }
+        action:
+          type: object
+          description: The day-2 action this request runs.
+          required: [key, name]
+          properties:
+            key: { type: string, examples: [snapshot_create] }
+            name: { type: string, examples: [Take a snapshot] }
+        deployment_id:
+          type: string
+          description: The deployment a day-2 request acts on.
+        resource:
+          type: object
+          description: The resource a day-2 request acts on, when it acts on one.
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
         title:
           type: string
           description: For example `RHEL 9 server · web-dev-app007`.
@@ -1534,6 +1715,82 @@ components:
             total:
               type: integer
               description: Number of approvals matching the filters, on all pages (the sidebar badge).
+
+    Day2Action:
+      type: object
+      required: [key, name, group, enabled, destructive, approval]
+      properties:
+        key: { type: string, examples: [power_off, snapshot_create, delete] }
+        name: { type: string, examples: [Power off] }
+        group:
+          type: string
+          enum: [power, configuration, snapshots, access, lifecycle]
+        resource_id:
+          type: [string, "null"]
+          description: The resource it acts on; null for actions on the whole deployment.
+        resource_name: { type: string }
+        enabled: { type: boolean }
+        disabled_reason:
+          type: string
+          description: Why it can't run now, for example `The VM is already powered off.`
+        destructive: { type: boolean }
+        approval:
+          type: object
+          required: [required, reasons]
+          properties:
+            required: { type: boolean }
+            reasons:
+              type: array
+              items: { type: string }
+        confirm:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
+            type_to_confirm:
+              type: string
+              description: Text the user must type to confirm, for example the VM name.
+        form: { $ref: "#/components/schemas/ActionForm" }
+
+    ActionForm:
+      type: object
+      required: [schema, ui_schema, initial_values]
+      properties:
+        schema:
+          type: object
+          description: JSON Schema of `inputs`.
+          additionalProperties: true
+        ui_schema: { $ref: "#/components/schemas/UiSchema" }
+        initial_values:
+          type: object
+          additionalProperties: true
+
+    Day2Draft:
+      type: object
+      required: [action, inputs]
+      properties:
+        action: { type: string }
+        resource_id: { type: string }
+        inputs:
+          type: object
+          additionalProperties: true
+        justification: { type: string, maxLength: 2000 }
+
+    ConsoleSession:
+      type: object
+      required: [vmrc_url]
+      properties:
+        vmrc_url:
+          type: string
+          description: Opens VMware Remote Console. Valid once, for a few minutes.
+        web:
+          type: object
+          description: Present when the web console is configured.
+          required: [url, expires_at, sdk_url]
+          properties:
+            url: { type: string, description: WebSocket URL on rvav. }
+            expires_at: { type: string, format: date-time }
+            sdk_url: { type: string, description: Where the browser loads VMware's WMKS client. }
 
     StepStatus:
       type: string
