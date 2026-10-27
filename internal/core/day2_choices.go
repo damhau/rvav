@@ -69,7 +69,6 @@ func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.De
 	if err != nil {
 		return "", err
 	}
-	add := map[string]int{}
 	for _, r := range t.Resources {
 		if r.Type != "vsphere.vm" {
 			continue
@@ -90,41 +89,84 @@ func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.De
 				return fmt.Sprintf("%s does not use network %s.", proj.Name, n.Network), nil
 			}
 		}
-		add["vcpu"] += vm.CpuCount
-		add["memory_gb"] += vm.MemoryMb / 1024
+	}
+	add := deploymentUsage(t)
+	env, err := s.Store.GetEnvironment(ctx, d.Environment)
+	if err != nil {
+		return "", err
+	}
+	q, err := s.quotaCheck(ctx, proj, d.Environment, env.Name, "It", add)
+	if err != nil || len(q.Hard) == 0 {
+		return "", err
+	}
+	return q.Hard[0], nil
+}
+
+// deploymentUsage is what the deployment's VMs count against a quota.
+func deploymentUsage(t day2.Target) map[string]int {
+	add := map[string]int{}
+	for _, r := range t.Resources {
+		if r.Type != "vsphere.vm" {
+			continue
+		}
+		add["vcpu"] += r.VM.CpuCount
+		add["memory_gb"] += r.VM.MemoryMb / 1024
 		add["vm_count"]++
-		for _, disk := range vm.Disks {
+		for _, disk := range r.VM.Disks {
 			add["storage_gb"] += disk.CapacityGb
 		}
 	}
-	return s.hardQuotaExceeded(ctx, proj, add)
+	return add
 }
 
-// hardQuotaExceeded says which hard quota of the project adding would
-// exceed ("" when none).
-func (s *Service) hardQuotaExceeded(ctx context.Context, proj store.Project, add map[string]int) (string, error) {
-	limits, err := s.Store.QuotaLimits(ctx, proj.ID, "")
-	if err != nil {
-		return "", err
-	}
-	used, err := s.Store.QuotaUsed(ctx, proj.ID, "")
-	if err != nil {
-		return "", err
-	}
-	reserved, err := s.Store.QuotaReserved(ctx, proj.ID, "")
-	if err != nil {
-		return "", err
-	}
-	for _, l := range limits {
-		if l.Limit == nil || l.Enforcement != "hard" || add[l.Resource] == 0 {
-			continue
+// day2Quota checks what the action adds to a quota: resizing adds to the
+// deployment's project, moving adds the deployment to the new one. A hard
+// limit passed refuses it; it returns the resources over a soft one.
+func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.DeploymentRow, t day2.Target, inputs map[string]any) ([]string, error) {
+	var proj store.Project
+	var add map[string]int
+	what := "The change"
+	switch a.Key {
+	case "resize":
+		cpu, _ := inputs["cpu_count"].(float64)
+		mem, _ := inputs["memory_gb"].(float64)
+		add = map[string]int{"vcpu": max(int(cpu)-t.VM.CpuCount, 0), "memory_gb": max(int(mem)-t.VM.MemoryMb/1024, 0)}
+		var err error
+		if proj, err = s.Store.GetProject(ctx, d.ProjectID); err != nil {
+			return nil, err
 		}
-		if have := used[l.Resource] + reserved[l.Resource]; have+add[l.Resource] > *l.Limit {
-			return fmt.Sprintf("It needs %d %s; %s has %d of %d left.", add[l.Resource], quotaLabel(l.Resource),
-				proj.Name, max(*l.Limit-have, 0), *l.Limit), nil
+		what = "The new size"
+	case "change_project":
+		id, _ := inputs["project"].(string)
+		var err error
+		if proj, err = s.Store.GetProject(ctx, id); err != nil {
+			return nil, err
 		}
+		add = deploymentUsage(t)
+		what = "Moving it"
+	default:
+		return nil, nil
 	}
-	return "", nil
+	env, err := s.Store.GetEnvironment(ctx, d.Environment)
+	if err != nil {
+		return nil, err
+	}
+	q, err := s.quotaCheck(ctx, proj, d.Environment, env.Name, what, add)
+	if err != nil {
+		return nil, err
+	}
+	if len(q.Hard) > 0 {
+		field := "/inputs/project"
+		if a.Key == "resize" {
+			field = "/inputs/cpu_count"
+		}
+		errs := make([]api.FieldError, len(q.Hard))
+		for i, m := range q.Hard {
+			errs[i] = fieldErr(field, "quota_exceeded", m)
+		}
+		return nil, &ValidationError{Errors: errs}
+	}
+	return q.OverSoft, nil
 }
 
 // checkAction runs the checks of an action that need vCenter's inventory

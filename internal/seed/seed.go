@@ -239,6 +239,7 @@ func seedPolicies(exec func(string, ...any) error) error {
 		{"pol_prd_big_vm", "Large production VMs", "Production VM above 32 GB RAM", `environment == "prd" && vm.memory_gb > 32`, "vm_blueprint", leads, 50, nil},
 		{"pol_prd_db", "Production databases", "Production database clusters always need approval", `item.category == "databases" && environment == "prd"`, "composite", leads, 100, nil},
 		{"pol_fw", "Firewall flows", "Firewall changes are reviewed by network security", `true`, "awx_workflow", network, 100, nil},
+		{"pol_soft_quota", "Over a soft quota", "Over the project's soft quota", `quota.over_soft`, "vm_blueprint", leads, 60, nil},
 	}
 	for _, p := range policies {
 		if err := exec(`insert into approval_policies (id, name, reason, condition, item_type, levels, priority, auto_approve) values ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -267,6 +268,10 @@ func seedDay2Policies(exec func(string, ...any) error, leads []byte) error {
 		{"d2p_admins", "Administrators", "", 10, []string{"*"}, []string{"admin"}, "true", "allow", nil},
 		{"d2p_prd_delete", "Deleting in production", "Deleting a production deployment needs sign-off", 20,
 			[]string{"delete"}, []string{"owner", "project-admin"}, "environment.production", "approval", leads},
+		{"d2p_soft_quota_resize", "Over a soft quota", "Over the project's soft quota", 25,
+			[]string{"resize"}, []string{"owner", "member", "project-admin"}, "quota.over_soft", "approval", leads},
+		{"d2p_soft_quota_move", "Over a soft quota", "Over the new project's soft quota", 26,
+			[]string{"change_project"}, []string{"owner", "project-admin"}, "quota.over_soft", "approval", leads},
 		{"d2p_handover", "Owners and project admins", "", 30, handover, []string{"owner", "project-admin"}, "true", "allow", nil},
 		{"d2p_handover_others", "Not the owner", "Only the owner and the project admins can delete this deployment or hand it over.", 40,
 			handover, nil, "true", "deny", nil},

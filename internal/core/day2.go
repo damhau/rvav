@@ -260,8 +260,12 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 		return store.RequestRow{}, &ValidationError{Errors: errs}
 	}
+	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
 	// The inputs may matter to a policy's condition: decide again with them.
-	dec := j.decide(a, *target, inputs)
+	dec := j.decideQuota(a, *target, inputs, overSoft)
 	if dec.Denied != "" {
 		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
 	}

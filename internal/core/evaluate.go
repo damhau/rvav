@@ -46,9 +46,11 @@ type Evaluation struct {
 	AutoApproved []string
 	QuotaAdd     map[string]int
 	Quota        []api.QuotaImpact
-	Lease        LeaseInfo
-	OnBehalfOf   *store.User
-	Errors       []api.FieldError
+	// OverSoft are the resources over a soft quota (approval policies see them).
+	OverSoft   []string
+	Lease      LeaseInfo
+	OnBehalfOf *store.User
+	Errors     []api.FieldError
 }
 
 type LeaseInfo struct {
@@ -153,10 +155,11 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 			return nil, err
 		}
 	}
-	if err := s.evaluateApproval(ctx, p, ev, strict); err != nil {
+	// Quota first: approval policies may ask approval for a soft quota.
+	if err := s.evaluateQuota(ctx, ev, strict); err != nil {
 		return nil, err
 	}
-	if err := s.evaluateQuota(ctx, ev, strict); err != nil {
+	if err := s.evaluateApproval(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
 	if err := s.evaluateLease(ctx, ev, d.LeaseDays); err != nil {
@@ -265,7 +268,14 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
 		"vm":          map[string]any{"vcpu": ev.VM.VCPU, "memory_gb": ev.VM.MemoryGB, "disk_gb": ev.VM.DiskGB, "count": ev.Count},
 		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles, "groups": nonNilStrings(p.Groups)},
+		"quota":       quotaVars(ev.OverSoft),
 	}
+}
+
+// quotaVars is what policies see of the quota: whether a soft limit is
+// passed, and on which resources.
+func quotaVars(overSoft []string) map[string]any {
+	return map[string]any{"over_soft": len(overSoft) > 0, "over": nonNilStrings(overSoft)}
 }
 
 // level is one level of an approval policy, as stored in its levels JSON.
@@ -443,7 +453,7 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 	return nil
 }
 
-func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, strict bool) error {
+func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) error {
 	ev.QuotaAdd = map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
 	if ev.Blueprint.Kind == blueprint.KindVM {
 		ev.QuotaAdd = map[string]int{
@@ -451,45 +461,14 @@ func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, strict bool
 			"storage_gb": ev.VM.DiskGB * ev.Count, "vm_count": ev.Count,
 		}
 	}
-	limits, err := s.Store.QuotaLimits(ctx, ev.Project.ID, "")
+	q, err := s.quotaCheck(ctx, ev.Project, ev.Env.Key, ev.Env.Name, "This request", ev.QuotaAdd)
 	if err != nil {
 		return err
 	}
-	used, err := s.Store.QuotaUsed(ctx, ev.Project.ID, "")
-	if err != nil {
-		return err
+	ev.Quota, ev.OverSoft = q.Impacts, q.OverSoft
+	for _, msg := range q.Hard {
+		ev.Errors = append(ev.Errors, fieldErr("", "quota_exceeded", msg))
 	}
-	reserved, err := s.Store.QuotaReserved(ctx, ev.Project.ID, "")
-	if err != nil {
-		return err
-	}
-	byRes := map[string]store.QuotaLimit{}
-	for _, l := range limits {
-		byRes[l.Resource] = l
-	}
-	ev.Quota = []api.QuotaImpact{}
-	for _, res := range quotaOrder {
-		l, ok := byRes[res]
-		impact := api.QuotaImpact{Resource: api.QuotaResource(res), Used: used[res] + reserved[res], Adding: ev.QuotaAdd[res]}
-		if ok {
-			impact.Limit = l.Limit
-			impact.Enforcement = present.Ptr(api.QuotaImpactEnforcement(l.Enforcement))
-			if l.Limit != nil && impact.Used+impact.Adding > *l.Limit {
-				impact.Exceeds = true
-				if l.Enforcement == "hard" && impact.Adding > 0 {
-					left := *l.Limit - impact.Used
-					if left < 0 {
-						left = 0
-					}
-					ev.Errors = append(ev.Errors, fieldErr("", "quota_exceeded", fmt.Sprintf(
-						"This request needs %d %s but %s has %d left. Choose a smaller size or ask a project admin to raise the quota.",
-						impact.Adding, quotaLabel(res), ev.Project.Name, left)))
-				}
-			}
-		}
-		ev.Quota = append(ev.Quota, impact)
-	}
-	_ = strict
 	return nil
 }
 

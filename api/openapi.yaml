@@ -1421,6 +1421,9 @@ components:
       required: [resource, used, adding, exceeds]
       properties:
         resource: { $ref: "#/components/schemas/QuotaResource" }
+        environment:
+          $ref: "#/components/schemas/EnvironmentKey"
+          description: Set for a limit of one environment; absent for the project-wide one.
         limit: { type: [integer, "null"] }
         used: { type: integer, description: Used plus reserved. }
         adding: { type: integer }

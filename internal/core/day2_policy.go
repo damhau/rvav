@@ -48,11 +48,18 @@ func (s *Service) judge(ctx context.Context, p *auth.Principal, d store.Deployme
 // denies. rvav itself (retention, leases) is not subject to the policies.
 // inputs is nil when listing actions, before the form is filled in.
 func (j *judge) decide(a *day2.Action, t day2.Target, inputs map[string]any) decision {
+	return j.decideQuota(a, t, inputs, nil)
+}
+
+// decideQuota is decide, with the resources the action takes over a soft
+// quota (policies see them as quota.over_soft and quota.over).
+func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any, overSoft []string) decision {
 	p, d, roles := j.p, j.d, j.roles
 	if p.User.ID == SystemUserID {
 		return decision{}
 	}
 	vars := day2Vars(p, d, j.env, a, t, inputs, roles)
+	vars["quota"] = quotaVars(overSoft)
 	for _, pol := range j.policies {
 		if !matchesAction(pol.Actions, a.Key) || (len(pol.Roles) > 0 && !slices.ContainsFunc(pol.Roles, func(r string) bool { return slices.Contains(roles, r) })) {
 			continue

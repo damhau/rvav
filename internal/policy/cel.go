@@ -29,12 +29,12 @@ type set struct {
 }
 
 // forms is for approval policies, form rules and blueprint bindings.
-var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes"},
+var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota"},
 	strings: map[string]bool{"environment": true}}
 
 // day2 is for day-2 policy conditions, where environment is an object
 // (key, name, production).
-var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs"}}
+var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
 
 func (s *set) celEnv() (*cel.Env, error) {
 	s.once.Do(func() {

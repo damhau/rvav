@@ -975,6 +975,8 @@ export interface components {
         };
         QuotaImpact: {
             resource: components["schemas"]["QuotaResource"];
+            /** @description Set for a limit of one environment; absent for the project-wide one. */
+            environment?: components["schemas"]["EnvironmentKey"];
             limit?: number | null;
             /** @description Used plus reserved. */
             used: number;
