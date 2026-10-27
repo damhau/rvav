@@ -44,6 +44,7 @@ import (
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/awx"
+	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/pgtest"
@@ -146,6 +147,7 @@ type harness struct {
 	vc    *vsphere.Client
 	wf    *recorder
 	awx   *awx.Fake
+	ipam  *efficientip.FakeServer
 }
 
 func (h *harness) do(method, path, user string, body any, headers ...string) (int, []byte, http.Header) {
@@ -262,7 +264,7 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
 		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second}
-	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX}
+	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX, ipam: fakeIPAM}
 }
 
 func TestSlice1EndToEnd(t *testing.T) {

@@ -157,9 +157,11 @@ type Client interface {
 - Race safety: the reservation looks for the hostname first and skips an
   address taken between the search and the add, so activity retries are
   idempotent.
-- The mapping between vSphere networks and EfficientIP subnets is configured in
-  placement rules, or found automatically from a class parameter on the subnet
-  (for example `vsphere_portgroup`).
+- The mapping between vSphere networks and EfficientIP subnets comes from the
+  subnet class parameters `vsphere_network`, `gateway`, `domain` and
+  `dns_servers`, read by the sync service; mappings set by an administrator
+  win (ADR-0015).
+- VM names are checked free in DNS as well as in vCenter.
 
 ## Identity (OIDC)
 

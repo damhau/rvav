@@ -93,6 +93,12 @@ export function resolveField(
       return withDefault(
         networks.filter((n) => n.env === env).map((n) => ({ value: n.name, label: n.name, meta: n.subnet })),
       );
+    case "ipam.subnets":
+      return withDefault(
+        networks
+          .filter((n) => !params.network || n.name === params.network)
+          .map((n) => ({ value: n.subnet, label: `${n.subnet} · ${n.name}`, meta: `Gateway ${n.gateway}` })),
+      );
     case "dns.zones":
       return withDefault(dnsZones.map((z) => ({ value: z, label: z })));
     case "ipam.next_free_address": {

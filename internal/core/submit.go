@@ -73,11 +73,18 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			if err != nil {
 				return err
 			}
+			names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, zone: ev.Subnet.DNSZone}
+			if ev.names != nil {
+				names.dns = ev.names.dns
+			}
 			order := optionOrder(ev.Version.UISchema, "post_config")
 			for i := 0; i < ev.Count; i++ {
-				seq, err := s.Store.NextName(ctx, tx, ev.NamePrefix, func(n int) bool { return taken[ev.Naming.Name(ev.NamePrefix, n)] })
+				seq, err := s.Store.NextName(ctx, tx, ev.NamePrefix, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
 				if err != nil {
 					return err
+				}
+				if names.err != nil {
+					return names.err
 				}
 				name := ev.Naming.Name(ev.NamePrefix, seq)
 				dep := store.Deployment{

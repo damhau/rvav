@@ -118,15 +118,47 @@ func (s *Store) PlacementRules(ctx context.Context, projectID, environment strin
 	return pgx.CollectRows(rows, pgx.RowToStructByName[PlacementRule])
 }
 
+const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id, subnet_name, source`
+
+// SyncNetworkSubnets replaces the mappings found in EfficientIP with these:
+// rows set by hand are kept, and get the subnet's ID when their CIDR is
+// the one found; synced rows no longer found are removed.
+func (s *Store) SyncNetworkSubnets(ctx context.Context, found []NetworkSubnet) (synced, removed int, err error) {
+	err = s.Tx(ctx, func(tx pgx.Tx) error {
+		networks := make([]string, len(found))
+		for i, n := range found {
+			networks[i] = n.Network
+			tag, err := tx.Exec(ctx, `insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers,
+				efficientip_subnet_id, subnet_name, source, synced_at) values ($1, $2, $3, $4, $5, $6, $7, 'efficientip', now())
+				on conflict (network) do update set subnet = excluded.subnet, gateway = excluded.gateway, dns_zone = excluded.dns_zone,
+					dns_servers = excluded.dns_servers, efficientip_subnet_id = excluded.efficientip_subnet_id,
+					subnet_name = excluded.subnet_name, synced_at = now()
+				where network_subnets.source = 'efficientip'`, n.Network, n.Subnet, n.Gateway, n.DNSZone, n.DNSServers, n.EfficientIPSubnetID, n.SubnetName)
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() == 0 {
+				if _, err := tx.Exec(ctx, `update network_subnets set efficientip_subnet_id = $2, subnet_name = $3, synced_at = now()
+					where network = $1 and source = 'manual' and subnet = $4`, n.Network, n.EfficientIPSubnetID, n.SubnetName, n.Subnet); err != nil {
+					return err
+				}
+			}
+		}
+		tag, err := tx.Exec(ctx, `delete from network_subnets where source = 'efficientip' and not (network = any($1))`, networks)
+		removed = int(tag.RowsAffected())
+		return err
+	})
+	return len(found), removed, err
+}
+
 func (s *Store) NetworkSubnet(ctx context.Context, network string) (NetworkSubnet, error) {
-	rows, _ := s.Pool.Query(ctx, `select network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id
-		from network_subnets where network = $1`, network)
+	rows, _ := s.Pool.Query(ctx, `select `+subnetColumns+` from network_subnets where network = $1`, network)
 	n, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[NetworkSubnet])
 	return n, notFound(err)
 }
 
 func (s *Store) NetworkSubnets(ctx context.Context) (map[string]NetworkSubnet, error) {
-	rows, _ := s.Pool.Query(ctx, `select network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id from network_subnets`)
+	rows, _ := s.Pool.Query(ctx, `select `+subnetColumns+` from network_subnets`)
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[NetworkSubnet])
 	if err != nil {
 		return nil, err

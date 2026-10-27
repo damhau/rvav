@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -237,13 +238,22 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		if err != nil {
 			return out, err
 		}
-		for taken[tpl.Name(prefix, next)] {
+		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken}
+		if network, _ := q.Inputs["network"].(string); network != "" {
+			if sn, err := s.Store.NetworkSubnet(ctx, network); err == nil {
+				names.zone = sn.DNSZone
+			}
+		}
+		for names.taken(tpl.Name(prefix, next)) {
 			next++
+		}
+		if names.err != nil {
+			s.Log.Warn("checking VM names in DNS", "err", names.err)
 		}
 		out.Value = tpl.Name(prefix, next)
 		cache(5)
 
-	case "dns.zones":
+	case "ipam.subnets":
 		subnets, err := s.Store.NetworkSubnets(ctx)
 		if err != nil {
 			return out, err
@@ -251,17 +261,47 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		seen := map[string]bool{}
 		opts := []api.Option{}
 		for _, sn := range subnets {
-			if !seen[sn.DNSZone] {
-				seen[sn.DNSZone] = true
-				opts = append(opts, option(sn.DNSZone, sn.DNSZone, ""))
+			if network := params["network"]; (network != "" && sn.Network != network) || seen[sn.Subnet] {
+				continue
 			}
+			seen[sn.Subnet] = true
+			label := sn.Subnet
+			if sn.SubnetName != "" {
+				label += " · " + sn.SubnetName
+			}
+			opts = append(opts, option(sn.Subnet, label, "Gateway "+sn.Gateway))
 		}
 		sort.Slice(opts, func(i, j int) bool { return opts[i].Value < opts[j].Value })
+		out.Options = &opts
+		cache(60)
+
+	case "dns.zones":
+		var zones []string
+		if s.IPAM != nil {
+			list, err := s.IPAM.Zones(ctx)
+			if err != nil {
+				return out, &UpstreamError{System: "EfficientIP", Err: err}
+			}
+			zones = list
+		} else {
+			subnets, err := s.Store.NetworkSubnets(ctx)
+			if err != nil {
+				return out, err
+			}
+			for _, sn := range subnets {
+				zones = append(zones, sn.DNSZone)
+			}
+		}
+		slices.Sort(zones)
+		opts := []api.Option{}
+		for _, z := range slices.Compact(zones) {
+			opts = append(opts, option(z, z, ""))
+		}
 		out.Options = &opts
 		cache(300)
 
 	default:
-		if strings.HasPrefix(*src.Name, "awx.") || strings.HasPrefix(*src.Name, "ipam.") {
+		if strings.HasPrefix(*src.Name, "awx.") {
 			return out, &BadRequestError{Msg: fmt.Sprintf("Value source %s is not available yet.", *src.Name)}
 		}
 		return out, &BadRequestError{Msg: fmt.Sprintf("Unknown value source %s.", *src.Name)}

@@ -108,6 +108,19 @@ func (f *FakeServer) AddSubnet(space, cidr, name string, params map[string]strin
 	return id, nil
 }
 
+// SetSubnetParams replaces a subnet's class parameters.
+func (f *FakeServer) SetSubnetParams(id string, params map[string]string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := url.Values{}
+	for k, v := range params {
+		cp.Set(k, v)
+	}
+	if s := f.subnetByID(id); s != nil {
+		s["subnet_class_parameters"] = cp.Encode()
+	}
+}
+
 // AddZone adds a DNS zone on a server; zones ending in in-addr.arpa are
 // reverse zones.
 func (f *FakeServer) AddZone(server, zone string) {

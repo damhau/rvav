@@ -62,6 +62,25 @@ Workflow activities are retried, so every call can run twice:
 - Every address and record rvav creates has the class parameter
   `rvav_managed=1`.
 
+### Network mappings
+The sync service reads the terminal subnets every
+`RVAV_IPAM_SYNC_INTERVAL` (5 minutes). A subnet maps the vSphere networks
+named in its class parameter `vsphere_network` (several, separated by
+commas), with `gateway`, `domain` (the DNS zone) and `dns_servers`. A
+subnet without a gateway or a zone is left out, and so is a network two
+subnets claim; both are logged. Mappings an administrator set
+(`source = manual`: the seeded ones, and the placement screens from S9)
+win, and the sync only fills in their subnet's ID. A synced mapping whose
+subnet lost the parameter is removed; an empty answer changes nothing.
+
+### Names and pickers
+A VM name is free when vCenter has no VM of that name and DNS has no A,
+AAAA or CNAME record for it in the subnet's zone. The name preview and
+submit skip taken names; when EfficientIP can't be asked, the preview
+carries on and submit is refused. Forms can use `ipam.subnets` (the
+mapped subnets, of one network with the `network` parameter) and
+`dns.zones` (the forward zones of rvav's DNS server).
+
 ### The fake is a SOLIDserver
 `efficientip.FakeServer` answers the same calls over HTTP, with their
 mandatory parameters, `add_flag` rules and result shapes. Tests and the
@@ -75,4 +94,6 @@ development stack use the real client against it.
   accepted on the classes used for addresses and records; and the exact
   `WHERE` syntax on these fields. All of it is in `client.go`; the rest of
   rvav only sees the `Client` interface.
+- The class parameter names are fixed for now; they become settings once
+  the real SOLIDserver's classes are known.
 - Moving to the object-style API later stays inside the client.

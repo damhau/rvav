@@ -6,6 +6,7 @@ package efficientip
 import (
 	"context"
 	"errors"
+	"net/url"
 )
 
 // Subnet identifies an IPAM subnet. ID is the SOLIDserver subnet ID when
@@ -31,6 +32,12 @@ type Record struct {
 	Zone  string
 }
 
+// SubnetInfo is a terminal subnet and its class parameters.
+type SubnetInfo struct {
+	ID, Name, CIDR, Space string
+	Params                url.Values
+}
+
 var ErrSubnetFull = errors.New("no free address in subnet")
 
 // Client is what rvav needs from IPAM and DNS. Reserve and CreateRecord are
@@ -43,6 +50,11 @@ type Client interface {
 	CreateRecord(ctx context.Context, r Record) (Record, error)
 	DeleteRecord(ctx context.Context, r Record) error
 	NameExists(ctx context.Context, fqdn string) (bool, error)
+	// Subnets lists the terminal subnets of rvav's space (all spaces when
+	// none is set).
+	Subnets(ctx context.Context) ([]SubnetInfo, error)
+	// Zones lists the forward zones of rvav's DNS server and view.
+	Zones(ctx context.Context) ([]string, error)
 }
 
 // PTRName returns the reverse lookup name for an IPv4 address.

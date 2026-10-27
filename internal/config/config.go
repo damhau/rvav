@@ -24,6 +24,8 @@ type Config struct {
 	AWX      AWXConfig
 
 	SyncInterval time.Duration
+	// How often the network mappings are read from EfficientIP.
+	IPAMSyncInterval time.Duration
 
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
 	// order (RVAV_WMKS_SDK_URLS, comma-separated). Without them the console
@@ -148,6 +150,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	c.AWX.FakeFailTask = env("RVAV_FAKE_AWX_FAIL_TASK", "")
+	if c.IPAMSyncInterval, err = duration("RVAV_IPAM_SYNC_INTERVAL", 5*time.Minute); err != nil {
+		return c, err
+	}
 	if c.SyncInterval, err = duration("RVAV_SYNC_INTERVAL", 20*time.Second); err != nil {
 		return c, err
 	}

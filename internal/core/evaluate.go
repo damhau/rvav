@@ -38,8 +38,10 @@ type Evaluation struct {
 	Naming     *naming.Template
 	NamePrefix string
 	Names      []string
-	Addresses  []string
-	Approval   api.ApprovalPreview
+	// names is what was learned about names, kept for Submit.
+	names     *nameCheck
+	Addresses []string
+	Approval  api.ApprovalPreview
 	// Chain is the approval levels to pass, merged across policies.
 	Chain []ChainLevel
 	// AutoApproved names the matching policies whose auto_approve held.
@@ -224,12 +226,22 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 	if err != nil {
 		return err
 	}
+	ev.names = &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken}
+	if ev.Subnet != nil {
+		ev.names.zone = ev.Subnet.DNSZone
+	}
 	for len(ev.Names) < ev.Count {
 		name := tpl.Name(prefix, next)
 		next++
-		if !taken[name] {
+		if !ev.names.taken(name) {
 			ev.Names = append(ev.Names, name)
 		}
+	}
+	if err := ev.names.err; err != nil {
+		if strict {
+			return err
+		}
+		s.Log.Warn("checking VM names in DNS", "err", err)
 	}
 	if len(ev.Names) > 0 && !naming.Valid(ev.Names[0]) {
 		add("/inputs/role", "invalid_name", fmt.Sprintf("%s is not a valid host name.", ev.Names[0]))

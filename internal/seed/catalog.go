@@ -76,9 +76,9 @@ func vmItem(template, osFamily, required string, post []option, defaultPost []st
 			"role": map[string]any{"widget": "text", "label": "Role", "placeholder": "app",
 				"help": "Lower case, 2–12 letters. Used in the VM name."},
 			"vm_name": map[string]any{"widget": "computed", "label": "VM name",
-				"help":         "From the naming policy {project}-{environment}-{role}{seq:03}. Checked free in vCenter.",
+				"help":         "From the naming policy {project}-{environment}-{role}{seq:03}. Checked free in vCenter and DNS.",
 				"value_source": map[string]any{"kind": "builtin", "name": "naming.preview"},
-				"depends_on":   []string{"$environment", "role"}},
+				"depends_on":   []string{"$environment", "role", "network"}},
 			"size": map[string]any{"widget": "radio_cards", "label": "Size", "approver_editable": true, "options": options(
 				option{"S", "Small", "2 vCPU · 4 GB · 60 GB"},
 				option{"M", "Medium", "4 vCPU · 16 GB · 80 GB"},
@@ -221,13 +221,13 @@ func catalogItems() []item {
 			"name":  map[string]any{"type": "string", "pattern": "^[a-z0-9-]{1,63}$"},
 			"type":  map[string]any{"type": "string", "enum": []string{"A", "CNAME", "TXT"}},
 			"value": map[string]any{"type": "string", "minLength": 1},
-			"zone":  map[string]any{"type": "string", "enum": []string{"corp.example"}},
+			"zone":  map[string]any{"type": "string", "minLength": 1},
 		}, []string{"name", "type", "value", "zone"},
 		map[string]any{
 			"name":  map[string]any{"widget": "text", "label": "Name"},
 			"type":  map[string]any{"widget": "segmented", "label": "Type", "options": options(option{"A", "A", ""}, option{"CNAME", "CNAME", ""}, option{"TXT", "TXT", ""})},
 			"value": map[string]any{"widget": "text", "label": "Value"},
-			"zone":  map[string]any{"widget": "dns_zone", "label": "Zone", "options": options(option{"corp.example", "corp.example", ""})},
+			"zone":  map[string]any{"widget": "dns_zone", "label": "Zone", "value_source": map[string]any{"kind": "builtin", "name": "dns.zones"}},
 		}, []string{"name", "type", "value", "zone"})
 	add(item{slug: "dns-record", name: "DNS record", category: "network", typ: "awx_job_template", icon: "globe",
 		summary: "Adds an A, CNAME or TXT record in an EfficientIP zone your project owns.", awxTemplate: "ddi-dns-record",

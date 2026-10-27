@@ -500,3 +500,59 @@ func (c *HTTPClient) NameExists(ctx context.Context, name string) (bool, error) 
 		list("rr_full_name="+quote(fqdn(name))+" and (rr_type='A' or rr_type='AAAA' or rr_type='CNAME')", 1))
 	return len(rows) > 0, err
 }
+
+// pages calls a list service page after page.
+func (c *HTTPClient) pages(ctx context.Context, service, where string) ([]row, error) {
+	const size = 500
+	var out []row
+	for offset := 0; ; offset += size {
+		q := list(where, size)
+		q.Set("offset", strconv.Itoa(offset))
+		rows, err := c.call(ctx, http.MethodGet, service, q)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+		if len(rows) < size {
+			return out, nil
+		}
+	}
+}
+
+func (c *HTTPClient) Subnets(ctx context.Context) ([]SubnetInfo, error) {
+	where := "is_terminal='1'"
+	if c.opts.Space != "" {
+		where += " and site_name=" + quote(c.opts.Space)
+	}
+	rows, err := c.pages(ctx, "ip_block_subnet_list", where)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SubnetInfo, 0, len(rows))
+	for _, r := range rows {
+		bits := prefixLen(r)
+		if bits < 0 {
+			continue
+		}
+		params, _ := url.ParseQuery(r["subnet_class_parameters"])
+		out = append(out, SubnetInfo{ID: r["subnet_id"], Name: r["subnet_name"], Space: r["site_name"],
+			CIDR: r["start_hostaddr"] + "/" + strconv.Itoa(bits), Params: params})
+	}
+	return out, nil
+}
+
+func (c *HTTPClient) Zones(ctx context.Context) ([]string, error) {
+	where := "dns_name=" + quote(c.opts.DNSServer) + " and dnszone_is_reverse='0'"
+	if c.opts.DNSView != "" {
+		where += " and dnsview_name=" + quote(c.opts.DNSView)
+	}
+	rows, err := c.pages(ctx, "dns_zone_list", where)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r["dnszone_name"])
+	}
+	return out, nil
+}

@@ -277,6 +277,8 @@ func (a *App) RunSync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval}
+	go func() { _ = subnets.Run(ctx) }()
 	s := &inventory.Syncer{Store: a.Store, VSphere: vc, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 	return s.Run(ctx)
 }

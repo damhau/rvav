@@ -67,6 +67,8 @@ type NetworkSubnet struct {
 	DNSZone             string   `db:"dns_zone"`
 	DNSServers          []string `db:"dns_servers"`
 	EfficientIPSubnetID string   `db:"efficientip_subnet_id"`
+	SubnetName          string   `db:"subnet_name"`
+	Source              string   `db:"source"` // manual or efficientip
 }
 
 // LeasePolicy is the lease policy of an environment, or a project's
