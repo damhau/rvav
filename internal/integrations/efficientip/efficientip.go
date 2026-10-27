@@ -56,6 +56,10 @@ type Client interface {
 	Subnets(ctx context.Context) ([]SubnetInfo, error)
 	// Zones lists the forward zones of rvav's DNS server and view.
 	Zones(ctx context.Context) ([]string, error)
+	// Managed lists the addresses and records tagged rvav_managed=1.
+	Managed(ctx context.Context) ([]Address, []Record, error)
+	// Existing reports which of these address and record IDs EfficientIP has.
+	Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
 }
 
 // PTRName returns the reverse lookup name for an IPv4 address.

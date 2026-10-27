@@ -575,3 +575,68 @@ func (c *HTTPClient) Zones(ctx context.Context) ([]string, error) {
 	}
 	return out, nil
 }
+
+var tagged = TagParam + "=1"
+
+func isTagged(classParams string) bool {
+	params, _ := url.ParseQuery(classParams)
+	return params.Get(TagParam) == "1"
+}
+
+func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
+	rows, err := c.pages(ctx, "ip_address_list", "ip_class_parameters like "+quote("%"+tagged+"%"))
+	if err != nil {
+		return nil, nil, err
+	}
+	var addresses []Address
+	for _, r := range rows {
+		if !isTagged(r["ip_class_parameters"]) {
+			continue
+		}
+		subnet := r["subnet_name"]
+		if start, bits := r["subnet_start_hostaddr"], r["subnet_prefix"]; start != "" && bits != "" {
+			subnet = start + "/" + bits
+		}
+		addresses = append(addresses, Address{ID: r["ip_id"], IP: r["hostaddr"], Subnet: subnet, Hostname: r["name"]})
+	}
+	rows, err = c.pages(ctx, "dns_rr_list", "rr_class_parameters like "+quote("%"+tagged+"%")+" and dns_name="+quote(c.opts.DNSServer))
+	if err != nil {
+		return nil, nil, err
+	}
+	var records []Record
+	for _, r := range rows {
+		if isTagged(r["rr_class_parameters"]) {
+			records = append(records, Record{ID: r["rr_id"], FQDN: r["rr_full_name"], Type: r["rr_type"], Value: r["value1"], Zone: r["dnszone_name"]})
+		}
+	}
+	return addresses, records, nil
+}
+
+func (c *HTTPClient) Existing(ctx context.Context, addressIDs, recordIDs []string) (map[string]bool, map[string]bool, error) {
+	addresses, err := c.existing(ctx, "ip_address_list", "ip_id", addressIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	records, err := c.existing(ctx, "dns_rr_list", "rr_id", recordIDs)
+	return addresses, records, err
+}
+
+// existing asks for the IDs fifty at a time.
+func (c *HTTPClient) existing(ctx context.Context, service, key string, ids []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for start := 0; start < len(ids); start += 50 {
+		chunk := ids[start:min(start+50, len(ids))]
+		terms := make([]string, len(chunk))
+		for i, id := range chunk {
+			terms[i] = key + "=" + quote(id)
+		}
+		rows, err := c.call(ctx, http.MethodGet, service, list(strings.Join(terms, " or "), len(chunk)))
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			out[r[key]] = true
+		}
+	}
+	return out, nil
+}

@@ -244,6 +244,33 @@ export const handlers = [
     return json<Ok<"/environments", "get">>({ items: db.environments });
   }),
 
+  // The mock user is an administrator for this check; one address and one
+  // record left behind, and a PTR record someone deleted.
+  http.get(`${base}/admin/ipam/reconcile`, async () => {
+    await wait();
+    return json<S["IpamReconcile"]>({
+      checked_at: new Date().toISOString(),
+      managed_addresses: 13,
+      managed_records: 26,
+      orphan_addresses: [
+        { efficientip_id: "48213", ip: "10.31.10.61", name: "web-dev-app014.corp.example", subnet: "10.31.10.0/24" },
+      ],
+      orphan_records: [
+        { efficientip_id: "90311", fqdn: "web-dev-app014.corp.example", type: "A", value: "10.31.10.61" },
+      ],
+      missing: [
+        {
+          resource_id: "res_01",
+          deployment_id: db.deployments[0]?.id ?? "dep_01",
+          deployment_name: db.deployments[0]?.name ?? "web-dev-app001",
+          type: "dns.record",
+          name: "PTR 57.10.31.10.in-addr.arpa",
+          efficientip_id: "90207",
+        },
+      ],
+    });
+  }),
+
   http.get(`${base}/projects`, async ({ request }) => {
     await wait();
     const mine = db.projects.filter((p) => myProjectIds().has(p.id));

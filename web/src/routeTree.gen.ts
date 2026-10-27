@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from "./routes/index"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
+import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
 import { Route as DeploymentsIndexRouteImport } from "./routes/deployments/index"
 import { Route as DeploymentsDeploymentIdRouteImport } from "./routes/deployments/$deploymentId"
@@ -39,6 +40,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const AdminSectionRoute = AdminSectionRouteImport.update({
   id: "/admin/$section",
   path: "/admin/$section",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
+  id: "/admin/integrations",
+  path: "/admin/integrations",
   getParentRoute: () => rootRouteImport,
 } as any)
 const CatalogIndexRoute = CatalogIndexRouteImport.update({
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog/": typeof CatalogIndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog": typeof CatalogIndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog/": typeof CatalogIndexRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog/"
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog"
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog/"
@@ -165,6 +177,7 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   ReportsRoute: typeof ReportsRoute
   AdminSectionRoute: typeof AdminSectionRoute
+  AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
@@ -202,6 +215,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/$section"
       fullPath: "/admin/$section"
       preLoaderRoute: typeof AdminSectionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/integrations": {
+      id: "/admin/integrations"
+      path: "/admin/integrations"
+      fullPath: "/admin/integrations"
+      preLoaderRoute: typeof AdminIntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/catalog/": {
@@ -261,6 +281,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   ReportsRoute: ReportsRoute,
   AdminSectionRoute: AdminSectionRoute,
+  AdminIntegrationsRoute: AdminIntegrationsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
   RequestsRequestIdRoute: RequestsRequestIdRoute,
   CatalogIndexRoute: CatalogIndexRoute,

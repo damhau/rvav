@@ -402,7 +402,8 @@ func (f *FakeServer) addAddress(method string, q url.Values) ([]row, *fakeError)
 		return nil, failf(http.StatusBadRequest, "-1", "no subnet holds %s in this space", ip)
 	}
 	a := row{"ip_id": f.id(), "hostaddr": ip.String(), "name": q.Get("name"), "subnet_id": subnet["subnet_id"],
-		"subnet_name": subnet["subnet_name"], "site_id": subnet["site_id"], "site_name": subnet["site_name"],
+		"subnet_name": subnet["subnet_name"], "subnet_start_hostaddr": subnet["start_hostaddr"], "subnet_prefix": subnet["subnet_prefix"],
+		"site_id": subnet["site_id"], "site_name": subnet["site_name"],
 		"ip_class_parameters": q.Get("ip_class_parameters"), "mac_addr": q.Get("mac_addr")}
 	f.addresses = append(f.addresses, a)
 	return []row{{"ret_oid": a["ip_id"]}}, nil

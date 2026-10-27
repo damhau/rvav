@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,7 +17,9 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/app"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
@@ -33,6 +36,8 @@ Usage:
   rvav seed                load or refresh the example organisation and catalog
   rvav vcsim-bootstrap     create the GVA inventory in vcsim (development)
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
+  rvav ipam-reconcile      list EfficientIP addresses and records no deployment owns,
+                           and owned ones EfficientIP no longer has (JSON)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
@@ -139,6 +144,14 @@ func run(ctx context.Context, cmd string, args []string) error {
 		return a.RunWorker(ctx)
 	case "sync":
 		return a.RunSync(ctx)
+	case "ipam-reconcile":
+		report, err := a.Core(nil).ReconcileIPAM(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID}, GlobalRoles: []string{"admin"}})
+		if err != nil {
+			return err
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
 	case "dev":
 		errc := make(chan error, 3)
 		go func() { errc <- fmt.Errorf("sync: %w", a.RunSync(ctx)) }()

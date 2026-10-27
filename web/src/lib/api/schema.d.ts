@@ -632,6 +632,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/ipam/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare EfficientIP with what rvav recorded
+         * @description Addresses and DNS records EfficientIP has with the class parameter
+         *     `rvav_managed=1` that no deployment owns (orphans, for example left by
+         *     a failed run), and addresses and records a deployment owns that
+         *     EfficientIP no longer has. Nothing is changed. A request running
+         *     while the check runs may show its newest objects as orphans.
+         *     Administrators only.
+         */
+        get: operations["reconcileIpam"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -662,6 +687,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        IpamReconcile: {
+            /** Format: date-time */
+            checked_at: string;
+            /** @description Addresses in EfficientIP with rvav_managed=1. */
+            managed_addresses: number;
+            /** @description DNS records in EfficientIP with rvav_managed=1. */
+            managed_records: number;
+            orphan_addresses: components["schemas"]["IpamOrphanAddress"][];
+            orphan_records: components["schemas"]["IpamOrphanRecord"][];
+            /** @description What deployments own that EfficientIP no longer has. */
+            missing: components["schemas"]["IpamMissing"][];
+        };
+        IpamOrphanAddress: {
+            efficientip_id: string;
+            ip: string;
+            name: string;
+            /** @description The subnet's name in EfficientIP. */
+            subnet: string;
+        };
+        IpamOrphanRecord: {
+            efficientip_id: string;
+            fqdn: string;
+            /** @example A */
+            type: string;
+            value: string;
+        };
+        IpamMissing: {
+            resource_id: string;
+            deployment_id: string;
+            deployment_name: string;
+            /** @enum {string} */
+            type: "ipam.address" | "dns.record";
+            /** @example A web-dev-app001.corp.example */
+            name: string;
+            efficientip_id?: string;
+        };
         /** @description RFC 9457 problem details. */
         Problem: {
             /** @description A URI identifying the problem type, for example `https://rvav.dev/problems/quota-exceeded`. */
@@ -2601,6 +2662,29 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    reconcileIpam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpamReconcile"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };

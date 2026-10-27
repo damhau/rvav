@@ -293,3 +293,18 @@ func (s *Store) LeasedDeployments(ctx context.Context) ([]DeploymentRow, error) 
 		and d.status in ('ready', 'updating', 'failed') order by d.lease_expires_at, d.id`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentRow])
 }
+
+// IPAMResource is an address or DNS record a deployment owns.
+type IPAMResource struct {
+	Resource
+	DeploymentName string `db:"deployment_name"`
+}
+
+// IPAMResources lists the addresses and DNS records deployments own.
+func (s *Store) IPAMResources(ctx context.Context) ([]IPAMResource, error) {
+	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state,
+		r.properties, d.name as deployment_name
+		from resources r join deployments d on d.id = r.deployment_id
+		where r.type in ('ipam.address', 'dns.record') order by d.name, r.type, r.name`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAMResource])
+}

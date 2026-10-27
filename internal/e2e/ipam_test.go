@@ -127,3 +127,68 @@ func TestEfficientIPMappings(t *testing.T) {
 		}
 	})
 }
+
+// TestIPAMReconcile: the report lists what EfficientIP has tagged for rvav
+// that no deployment owns, and what a deployment owns that EfficientIP lost.
+func TestIPAMReconcile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web = "prj_web"
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "lmartin", nil, 200, &item)
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+				"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+
+		report := func() api.IpamReconcile {
+			var out api.IpamReconcile
+			h.json("GET", "/api/v1/admin/ipam/reconcile", "mkeller", nil, 200, &out)
+			return out
+		}
+		if r := report(); r.ManagedAddresses != 1 || r.ManagedRecords != 2 || len(r.OrphanAddresses)+len(r.OrphanRecords)+len(r.Missing) != 0 {
+			t.Fatalf("after one VM = %+v", r)
+		}
+
+		// A failed run left an address and a record behind; someone deleted
+		// the deployment's PTR record in EfficientIP.
+		left, err := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "web-dev-app099.corp.example")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.acts.IPAM.CreateRecord(ctx, efficientip.Record{FQDN: "web-dev-app099.corp.example", Type: "A", Value: left.IP, Zone: "corp.example"}); err != nil {
+			t.Fatal(err)
+		}
+		var ptr store.IPAMResource
+		owned, _ := h.store.IPAMResources(ctx)
+		for _, r := range owned {
+			if strings.HasPrefix(r.Name, "PTR ") {
+				ptr = r
+			}
+		}
+		if err := h.acts.IPAM.DeleteRecord(ctx, efficientip.Record{ID: *ptr.ExternalID}); err != nil {
+			t.Fatal(err)
+		}
+
+		r := report()
+		if len(r.OrphanAddresses) != 1 || r.OrphanAddresses[0].Ip != left.IP || r.OrphanAddresses[0].Name != "web-dev-app099.corp.example" ||
+			r.OrphanAddresses[0].Subnet != "10.31.10.0/24" {
+			t.Fatalf("orphan addresses = %+v", r.OrphanAddresses)
+		}
+		if len(r.OrphanRecords) != 1 || r.OrphanRecords[0].Fqdn != "web-dev-app099.corp.example" || r.OrphanRecords[0].Type != "A" {
+			t.Fatalf("orphan records = %+v", r.OrphanRecords)
+		}
+		if len(r.Missing) != 1 || r.Missing[0].ResourceId != ptr.ID || r.Missing[0].DeploymentName != "web-dev-app001" {
+			t.Fatalf("missing = %+v", r.Missing)
+		}
+
+		h.json("GET", "/api/v1/admin/ipam/reconcile", "tnguyen", nil, 403, nil)
+	})
+}

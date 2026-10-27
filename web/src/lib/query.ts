@@ -32,6 +32,7 @@ export interface DeploymentFilters {
 // Query key factories: one place per resource, so invalidation stays precise.
 export const keys = {
   me: ["me"] as const,
+  ipamReconcile: ["admin", "ipam", "reconcile"] as const,
   environments: ["environments"] as const,
   project: (id: string) => ["projects", id] as const,
   quota: (id: string, environment?: string) => ["projects", id, "quota", environment ?? "all"] as const,
@@ -74,6 +75,12 @@ export const keys = {
 const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
 
 export const q = {
+  ipamReconcile: () =>
+    queryOptions({
+      queryKey: keys.ipamReconcile,
+      queryFn: ({ signal }) => call(api.GET("/admin/ipam/reconcile", { signal })),
+      staleTime: Infinity,
+    }),
   me: () =>
     queryOptions({
       queryKey: keys.me,

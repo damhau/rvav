@@ -81,6 +81,16 @@ carries on and submit is refused. Forms can use `ipam.subnets` (the
 mapped subnets, of one network with the `network` parameter) and
 `dns.zones` (the forward zones of rvav's DNS server).
 
+### Reconcile report
+`GET /api/v1/admin/ipam/reconcile` (administrators; also `rvav
+ipam-reconcile`, and the Integrations page) lists addresses and records
+with `rvav_managed=1` that no deployment owns, and addresses and records a
+deployment owns that EfficientIP no longer has (looked up by ID, since an
+adopted record has no tag). It changes nothing: deleting an orphan is a
+person's decision. The tagged objects are found with `like` on
+`ip_class_parameters` and `rr_class_parameters` and checked again on
+rvav's side.
+
 ### The fake is a SOLIDserver
 `efficientip.FakeServer` answers the same calls over HTTP, with their
 mandatory parameters, `add_flag` rules and result shapes. Tests and the
@@ -90,9 +100,10 @@ development stack use the real client against it.
 - What only a real SOLIDserver can confirm, in order of risk: the status
   codes and `errno` values of refusals; whether free addresses honour pools
   and reserved ranges; whether DNS records are created on the smart
-  architecture or on each server; whether the class `rvav_managed` is
+  architecture or on each server; whether the class parameter `rvav_managed` is
   accepted on the classes used for addresses and records; and the exact
-  `WHERE` syntax on these fields. All of it is in `client.go`; the rest of
+  `WHERE` syntax on these fields (`like` on the class parameters
+  especially; eip-pydantic filters on `tag_ip_<name>` with `TAGS` instead). All of it is in `client.go`; the rest of
   rvav only sees the `Client` interface.
 - The class parameter names are fixed for now; they become settings once
   the real SOLIDserver's classes are known.

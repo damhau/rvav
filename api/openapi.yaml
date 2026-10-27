@@ -34,6 +34,8 @@ tags:
     description: What requests created, with live state from vCenter.
   - name: events
     description: Live updates over Server-Sent Events.
+  - name: admin
+    description: Checks and settings for administrators.
 
 paths:
   /me:
@@ -780,6 +782,28 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /admin/ipam/reconcile:
+    get:
+      tags: [admin]
+      operationId: reconcileIpam
+      summary: Compare EfficientIP with what rvav recorded
+      description: |
+        Addresses and DNS records EfficientIP has with the class parameter
+        `rvav_managed=1` that no deployment owns (orphans, for example left by
+        a failed run), and addresses and records a deployment owns that
+        EfficientIP no longer has. Nothing is changed. A request running
+        while the check runs may show its newest objects as orphans.
+        Administrators only.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpamReconcile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
   /events:
     get:
       tags: [events]
@@ -923,6 +947,55 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
 
   schemas:
+    # ── Admin ─────────────────────────────────────────────────────────────
+    IpamReconcile:
+      type: object
+      required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]
+      properties:
+        checked_at: { type: string, format: date-time }
+        managed_addresses:
+          type: integer
+          description: Addresses in EfficientIP with rvav_managed=1.
+        managed_records:
+          type: integer
+          description: DNS records in EfficientIP with rvav_managed=1.
+        orphan_addresses:
+          type: array
+          items: { $ref: "#/components/schemas/IpamOrphanAddress" }
+        orphan_records:
+          type: array
+          items: { $ref: "#/components/schemas/IpamOrphanRecord" }
+        missing:
+          type: array
+          description: What deployments own that EfficientIP no longer has.
+          items: { $ref: "#/components/schemas/IpamMissing" }
+    IpamOrphanAddress:
+      type: object
+      required: [efficientip_id, ip, name, subnet]
+      properties:
+        efficientip_id: { type: string }
+        ip: { type: string }
+        name: { type: string }
+        subnet: { type: string, description: The subnet's name in EfficientIP. }
+    IpamOrphanRecord:
+      type: object
+      required: [efficientip_id, fqdn, type, value]
+      properties:
+        efficientip_id: { type: string }
+        fqdn: { type: string }
+        type: { type: string, example: A }
+        value: { type: string }
+    IpamMissing:
+      type: object
+      required: [resource_id, deployment_id, deployment_name, type, name]
+      properties:
+        resource_id: { type: string }
+        deployment_id: { type: string }
+        deployment_name: { type: string }
+        type: { type: string, enum: [ipam.address, dns.record] }
+        name: { type: string, example: A web-dev-app001.corp.example }
+        efficientip_id: { type: string }
+
     # ── Common ────────────────────────────────────────────────────────────
     Problem:
       description: RFC 9457 problem details.
