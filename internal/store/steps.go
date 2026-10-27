@@ -161,3 +161,30 @@ func (s *Store) ReplacePendingSteps(ctx context.Context, db DB, requestID string
 	}
 	return s.InsertSteps(ctx, db, steps)
 }
+
+// ResetForRetry makes a failed request runnable again: its failed, running
+// and cancelled steps, with their sub-steps, are pending again, or every
+// step after the approval when what it built was rolled back (the rollback
+// step goes). The request is queued, without its error.
+func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool) error {
+	reset := `request_id = $1 and parent_id is null and status in ('failed', 'running', 'cancelled')`
+	if all {
+		reset = `request_id = $1 and parent_id is null and key not in ('submit', 'policy')`
+		if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and key = 'rollback'`, requestID); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(ctx, `delete from request_steps where parent_id in (select id from request_steps where `+reset+`)`, requestID); err != nil {
+		return err
+	}
+	if _, err := db.Exec(ctx, `delete from step_log_lines where step_id in (select id from request_steps where `+reset+`)`, requestID); err != nil {
+		return err
+	}
+	if _, err := db.Exec(ctx, `update request_steps set status = 'pending', started_at = null, finished_at = null, error = null,
+		external_kind = null, external_id = null, external_url = null, has_log = false where `+reset, requestID); err != nil {
+		return err
+	}
+	_, err := db.Exec(ctx, `update requests set status = 'queued', error_step_id = null, error_message = null, finished_at = null
+		where id = $1`, requestID)
+	return err
+}

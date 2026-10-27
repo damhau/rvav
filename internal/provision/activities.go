@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,7 +52,19 @@ type Info struct {
 	Plan        Plan       `json:"plan"`
 	// Approvals are the request's approval levels, in the order they run.
 	Approvals []string `json:"approvals,omitempty"`
+	// Done are the keys of steps already done, and Built what they built
+	// per deployment: a retried request resumes after them (ADR-0013).
+	Done  []string         `json:"done,omitempty"`
+	Built map[string]Built `json:"built,omitempty"`
 }
+
+// Built is what earlier steps made for one VM.
+type Built struct {
+	IP    string `json:"ip,omitempty"`
+	Moref string `json:"moref,omitempty"`
+}
+
+func (info Info) done(key string) bool { return slices.Contains(info.Done, key) }
 
 // LevelState is an approval level after it was opened or timed out.
 type LevelState struct {
@@ -171,6 +184,41 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 	}
 	for _, l := range levels {
 		info.Approvals = append(info.Approvals, l.ID)
+	}
+	steps, err := a.Store.ListSteps(ctx, r.ID)
+	if err != nil {
+		return info, err
+	}
+	for _, s := range steps {
+		if s.ParentID == nil && s.Status == "done" && s.Key != KeySubmit && s.Key != KeyPolicy {
+			info.Done = append(info.Done, s.Key)
+		}
+	}
+	if len(info.Done) > 0 {
+		resources, err := a.Store.ResourcesForRequest(ctx, r.ID)
+		if err != nil {
+			return info, err
+		}
+		for _, res := range resources {
+			var p struct {
+				Address string `json:"address"`
+				VM      struct {
+					Moref string `json:"moref"`
+				} `json:"vm"`
+			}
+			_ = json.Unmarshal(res.Properties, &p)
+			if info.Built == nil {
+				info.Built = map[string]Built{}
+			}
+			b := info.Built[res.DeploymentID]
+			switch res.Type {
+			case "ipam.address":
+				b.IP = p.Address
+			case "vsphere.vm":
+				b.Moref = p.VM.Moref
+			}
+			info.Built[res.DeploymentID] = b
+		}
 	}
 	return info, nil
 }

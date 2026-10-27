@@ -87,8 +87,9 @@ type recorder struct {
 	mu        sync.Mutex
 	started   []string
 	cancelled []string
-	signals   []provision.ApprovalSignal
-	startErr  error // returned by Start, to act as an unreachable Temporal
+	signals    []provision.ApprovalSignal
+	rolledBack []string
+	startErr   error // returned by Start, to act as an unreachable Temporal
 }
 
 func (r *recorder) Start(_ context.Context, id string) error {
@@ -112,6 +113,13 @@ func (r *recorder) Approval(_ context.Context, _, approvalID, outcome string) er
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.signals = append(r.signals, provision.ApprovalSignal{ApprovalID: approvalID, Outcome: outcome})
+	return nil
+}
+
+func (r *recorder) Rollback(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rolledBack = append(r.rolledBack, id)
 	return nil
 }
 

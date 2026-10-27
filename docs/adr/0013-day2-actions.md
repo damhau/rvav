@@ -56,10 +56,14 @@ deletion has a timeline, an audit entry and a place in the deployment's
 history. Lease expiry (S5) joins the same workflow.
 
 ### Retry and roll back
-A failed request can be retried from its failed step: completed steps are
-skipped (activities are idempotent), the failed and later steps run again.
-Rolling back undoes what a failed provisioning request created (VM, DNS
-records, IP) and marks the deployment deleted.
+A failed request can be retried from its failed step: the workflow starts
+again under the same ID, skips the steps that are done (taking the address
+and VM they built from the request's resources), and runs the failed and
+later steps. Rolling back undoes what a failed provisioning request created
+(VMs, DNS records, addresses) in a short `RollbackWorkflow` and marks its
+deployments deleted; retrying it afterwards builds everything again, if its
+VM names are still free. Both are for the requester, the owner and project
+admins, and are audited.
 
 ## Consequences
 - One timeline, inbox and audit model for everything users do.

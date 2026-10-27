@@ -8,11 +8,11 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// Day-2 actions (ADR-0013). Console, retry and rollback are specified and
-// answer 501 until they are built.
+// Day-2 actions, retry and rollback (ADR-0013). The console is specified
+// and answers 501 until it is built.
 
 func (s *Server) day2NotYet(w http.ResponseWriter, r *http.Request) {
-	s.problem(w, r, http.StatusNotImplemented, "not-implemented", "Not available yet", "This part of day-2 actions is being built.", nil)
+	s.problem(w, r, http.StatusNotImplemented, "not-implemented", "Not available yet", "The web console is being built.", nil)
 }
 
 func (s *Server) ListDeploymentActions(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath) {
@@ -67,10 +67,21 @@ func (s *Server) ConsoleStream(w http.ResponseWriter, r *http.Request, _ string)
 	s.day2NotYet(w, r)
 }
 
-func (s *Server) RetryRequest(w http.ResponseWriter, r *http.Request, _ api.RequestIdPath) {
-	s.day2NotYet(w, r)
+func (s *Server) RetryRequest(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath) {
+	row, err := s.Core.Retry(r.Context(), principal(r), requestID)
+	s.accepted(w, r, row, err)
 }
 
-func (s *Server) RollbackRequest(w http.ResponseWriter, r *http.Request, _ api.RequestIdPath) {
-	s.day2NotYet(w, r)
+func (s *Server) RollbackRequest(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath) {
+	row, err := s.Core.RollbackRequest(r.Context(), principal(r), requestID)
+	s.accepted(w, r, row, err)
+}
+
+// accepted answers 202 with the request, or the error.
+func (s *Server) accepted(w http.ResponseWriter, r *http.Request, row store.RequestRow, err error) {
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, present.Request(row, s.secretFields(r, row.VersionID)))
 }

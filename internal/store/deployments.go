@@ -245,3 +245,11 @@ func (s *Store) SetDeploymentProject(ctx context.Context, db DB, id, projectID s
 	_, err := db.Exec(ctx, `update deployments set project_id = $2 where id = $1`, id, projectID)
 	return err
 }
+
+// ReviveDeploymentsForRequest puts the deployments a request created back
+// to provisioning, rolled back ones included, for a retry.
+func (s *Store) ReviveDeploymentsForRequest(ctx context.Context, db DB, requestID string) error {
+	_, err := db.Exec(ctx, `update deployments set status = 'provisioning', deleted_at = null
+		where created_by_request_id = $1`, requestID)
+	return err
+}

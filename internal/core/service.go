@@ -19,6 +19,8 @@ type Workflows interface {
 	Cancel(ctx context.Context, requestID string) error
 	// Approval signals that an approval level was decided (approved or rejected).
 	Approval(ctx context.Context, requestID, approvalID, outcome string) error
+	// Rollback deletes what a failed request created.
+	Rollback(ctx context.Context, requestID string) error
 }
 
 type Service struct {

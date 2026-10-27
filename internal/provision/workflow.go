@@ -171,6 +171,18 @@ func awaitApprovals(ctx workflow.Context, info Info) (approved, cancelled bool, 
 	return approved, false, err
 }
 
+// RollbackWorkflow deletes what a failed request created, then records
+// the outcome on its deployments.
+func RollbackWorkflow(ctx workflow.Context, requestID string) error {
+	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+	var a *Activities
+	msg := ""
+	if err := workflow.ExecuteActivity(ctx, a.Rollback, requestID, "").Get(ctx, nil); err != nil {
+		msg = errMessage(err)
+	}
+	return workflow.ExecuteActivity(ctx, a.RolledBack, requestID, msg).Get(ctx, nil)
+}
+
 // finishCancelled rolls back (when something may have been created) and
 // records the cancellation, outside the cancelled context.
 func finishCancelled(ctx workflow.Context, info Info, rollback bool) error {
@@ -192,6 +204,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 
 	if p.Day2 != nil {
 		for _, op := range p.Day2.Ops {
+			if info.done(op.Key) {
+				continue
+			}
 			in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
 				ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
 			if err := workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil); err != nil {
@@ -203,6 +218,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 
 	if p.Kind == blueprint.KindAWX && p.AWX != nil {
 		key := KeyJob + p.AWX.Key
+		if info.done(key) {
+			return "", nil
+		}
 		vars := map[string]any{}
 		for k, v := range p.ExtraVars {
 			vars[k] = v
@@ -222,32 +240,46 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
 		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = p.Guest.OSFamily, p.Guest.Domain, p.Guest.TimeZone
 
+		// Steps done before a retry are skipped, with what they built.
+		before := info.Built[vm.DeploymentID]
 		in.Key = p.VMKey(KeyIPAM, vm)
-		if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
-			return in.Key, err
+		if in.IP = before.IP; !info.done(in.Key) || in.IP == "" {
+			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
+				return in.Key, err
+			}
 		}
 		in.Key = p.VMKey(KeyDNS, vm)
-		if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
-			return in.Key, err
+		if !info.done(in.Key) {
+			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
+				return in.Key, err
+			}
 		}
 		in.Key = p.VMKey(KeyClone, vm)
-		if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
-			return in.Key, err
+		if in.Moref = before.Moref; !info.done(in.Key) || in.Moref == "" {
+			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
+				return in.Key, err
+			}
 		}
-		in.Key = p.VMKey(KeyCustomize, vm)
-		if err := workflow.ExecuteActivity(ctx, a.Customize, in).Get(ctx, nil); err != nil {
-			return in.Key, err
-		}
-		in.Key = p.VMKey(KeyPowerOn, vm)
-		if err := workflow.ExecuteActivity(ctx, a.PowerOn, in).Get(ctx, nil); err != nil {
-			return in.Key, err
+		for _, step := range []struct {
+			key string
+			fn  any
+		}{{KeyCustomize, a.Customize}, {KeyPowerOn, a.PowerOn}} {
+			in.Key = p.VMKey(step.key, vm)
+			if info.done(in.Key) {
+				continue
+			}
+			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {
+				return in.Key, err
+			}
 		}
 		vms = append(vms, built{vm: vm, ip: in.IP, moref: in.Moref})
 	}
 
 	if len(p.PostConfig) > 0 {
-		if err := workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil); err != nil {
-			return KeyInventory, err
+		if !info.done(KeyInventory) {
+			if err := workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil); err != nil {
+				return KeyInventory, err
+			}
 		}
 		resources := make([]map[string]any, len(vms))
 		for i, b := range vms {
@@ -260,6 +292,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		}
 		for _, job := range p.PostConfig {
 			key := KeyJob + job.Key
+			if info.done(key) {
+				continue
+			}
 			in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job,
 				Limit: p.Limit(), ExtraVars: map[string]any{"rvav": rvav}}
 			if err := workflow.ExecuteActivity(ctx, a.RunJob, in).Get(ctx, nil); err != nil {

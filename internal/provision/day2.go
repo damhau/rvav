@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
 )
 
@@ -185,4 +187,33 @@ func day2Status(plan Plan, outcome string, started bool) string {
 		return d.Before
 	}
 	return "ready"
+}
+
+// RolledBack records the end of a rollback requested after a failure: the
+// deployments are deleted, or failed again with the error.
+func (a *Activities) RolledBack(ctx context.Context, requestID, errMsg string) error {
+	r, err := a.Store.GetRequest(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	status := "deleted"
+	if errMsg != "" {
+		status = "failed"
+		now := time.Now().UTC()
+		sys := "rvav"
+		steps, _ := a.Store.ListSteps(ctx, requestID)
+		st := store.Step{ID: ids.New(ids.Step), RequestID: requestID, Position: len(steps), Key: "rollback", Title: "Roll back failed",
+			System: &sys, Status: "failed", StartedAt: &now, FinishedAt: &now, Error: &errMsg}
+		if err := a.Store.InsertSteps(ctx, a.Store.Pool, []store.Step{st}); err != nil && !store.IsUniqueViolation(err) {
+			return err
+		}
+	}
+	if err := a.Store.SetDeploymentsStatusForRequest(ctx, a.Store.Pool, requestID, status); err != nil {
+		return err
+	}
+	a.publishAll(ctx, r.ProjectID, requestID)
+	if errMsg == "" {
+		a.Events.Notify(ctx, r.OwnerID, "Rolled back: "+r.Title, "", "info", "/requests/"+r.Number)
+	}
+	return nil
 }
