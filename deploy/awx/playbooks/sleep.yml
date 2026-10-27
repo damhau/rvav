@@ -1,0 +1,10 @@
+# rvav test content (see deploy/awx/README.md): a job that runs long
+# enough to be cancelled.
+- name: Wait
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Sleep
+      ansible.builtin.command: "sleep {{ sleep_seconds | default(300) }}"
+      changed_when: false

@@ -1,0 +1,10 @@
+# rvav test content (see deploy/awx/README.md): a catalog item that is not
+# a VM. Survey: record_name, record_type, record_value, zone.
+- name: Add a DNS record
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Add the record
+      ansible.builtin.debug:
+        msg: "{{ record_type }} {{ record_name }}.{{ zone }} -> {{ record_value }}"

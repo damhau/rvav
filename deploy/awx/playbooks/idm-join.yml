@@ -1,0 +1,9 @@
+# rvav test content (see deploy/awx/README.md).
+- name: Join the IdM domain
+  hosts: all
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Enrol the host
+      ansible.builtin.debug:
+        msg: "ipa-client-install --hostname {{ rvav_fqdn | default(inventory_hostname) }}"

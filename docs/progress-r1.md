@@ -30,9 +30,18 @@ compose stack run the real client.
 ## S6 AWX integration
 
 The user's test AWX (24.6.1) runs on this machine; rvav works in its own
-organisation `rvav-test` there.
+organisation `rvav-test` there and leaves the rest alone. Its playbooks and
+the inventory plugin come from this repository (public on GitHub). The VMs
+are vcsim's, so test playbooks run on the execution environment
+(`connection: local`) against the hosts the rvav inventory gives.
 
-- [ ] S6.1 to be broken down when S7 is done
+- [ ] S6.1 AWX test content (`deploy/awx/`: playbooks with surveys, among them "Install monitoring agent", and a workflow), set up idempotently in `rvav-test` by `rvav awx-bootstrap`; client contract tests against the test AWX (opt-in, `RVAV_AWX_TEST_URL`): templates by organisation and label, survey and launch prompts, launch with limit and extra vars, job events, cancel, workflow jobs, errors
+- [ ] S6.2 Content source: templates chosen by organisation or label, synced every few minutes into catalog items with forms generated from their surveys; a changed survey is flagged with a diff; launch prompts checked (limit and variables) with warnings
+- [ ] S6.3 Dynamic inventory `GET /api/v1/ansible/inventory` (read-only API token): VMs ready for configuration, groups by project, environment, item and OS, rvav host variables; the `rvav.platform` collection (inventory plugin and credential type) in `ansible/`, tested with ansible-core; not published (outward-facing)
+- [ ] S6.4 Custom day-2 actions backed by AWX templates, bound to resource types and a CEL condition, their form from the survey, running against the rvav inventory with `limit`
+- [ ] S6.5 Value sources `awx.inventories` and `awx.credentials`
+- [ ] S6.6 Acceptance on the test AWX: an imported template requested with its survey as a form; "Install monitoring agent" as a day-2 action on a VM through the rvav inventory; a changed survey flagged
+- [ ] S6.7 Slice review, docs and roadmap status
 
 ## S8 Catalog administration
 

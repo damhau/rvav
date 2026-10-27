@@ -1,0 +1,23 @@
+# rvav test content (see deploy/awx/README.md): the day-2 action of the S6
+# acceptance. Survey: monitoring_agent, agent_version, listen_port,
+# fail_on_purpose.
+- name: Install a monitoring agent
+  hosts: all
+  connection: local
+  gather_facts: false
+  vars:
+    monitoring_agent: node_exporter
+    agent_version: "1.8.2"
+    listen_port: 9100
+    fail_on_purpose: false
+  tasks:
+    - name: Install the package
+      ansible.builtin.debug:
+        msg: "{{ monitoring_agent }} {{ agent_version }} on {{ inventory_hostname }} ({{ ansible_host | default('no address') }})"
+    - name: Open the port
+      ansible.builtin.debug:
+        msg: "firewalld: allow {{ listen_port }}/tcp"
+    - name: Fail when asked to
+      ansible.builtin.fail:
+        msg: "The agent did not start on {{ inventory_hostname }}"
+      when: fail_on_purpose | bool

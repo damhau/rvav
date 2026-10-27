@@ -1,0 +1,17 @@
+# rvav test content (see deploy/awx/README.md). The lab's VMs are vcsim's,
+# so every play runs on the execution environment and only reports what it
+# would do to each host the rvav inventory gives.
+- name: Linux baseline
+  hosts: all
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Show what rvav sent
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} for request {{ rvav.request_id | default('none') }} in {{ rvav.project | default('no project') }}"
+    - name: Harden SSH
+      ansible.builtin.debug:
+        msg: "PermitRootLogin no, PasswordAuthentication no on {{ inventory_hostname }}"
+    - name: Configure time sync
+      ansible.builtin.debug:
+        msg: "chrony pointing to ntp.corp.example"

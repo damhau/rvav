@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
@@ -36,6 +37,8 @@ Usage:
   rvav seed                load or refresh the example organisation and catalog
   rvav vcsim-bootstrap     create the GVA inventory in vcsim (development)
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
+  rvav awx-bootstrap [-content deploy/awx/content.yml]
+                           set up rvav's test content in the AWX at RVAV_AWX_URL
   rvav ipam-reconcile      list EfficientIP addresses and records no deployment owns,
                            and owned ones EfficientIP no longer has (JSON)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
@@ -68,8 +71,8 @@ func run(ctx context.Context, cmd string, args []string) error {
 	if cmd == "healthcheck" {
 		return healthcheck(ctx)
 	}
-	// migrate, seed, vcsim-bootstrap and fake-efficientip work without auth settings.
-	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" {
+	// migrate, seed and the development helpers work without auth settings.
+	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -110,6 +113,19 @@ func run(ctx context.Context, cmd string, args []string) error {
 		}
 		log.Info("GVA inventory created", "vcenter", cfg.VCenter.URL)
 		return nil
+	case "awx-bootstrap":
+		fs := flag.NewFlagSet("awx-bootstrap", flag.ExitOnError)
+		path := fs.String("content", "deploy/awx/content.yml", "the content to set up")
+		_ = fs.Parse(args)
+		content, err := awx.LoadContent(*path)
+		if err != nil {
+			return err
+		}
+		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure)
+		if err != nil {
+			return err
+		}
+		return awx.Bootstrap(ctx, c, content, log)
 	}
 
 	if cmd == "fake-efficientip" {

@@ -1,0 +1,96 @@
+# What `rvav awx-bootstrap` sets up in a test AWX (see README.md). Run it
+# again after changing this file: it updates what exists and adds what is
+# missing, and only ever touches this organisation.
+organization: rvav-test
+
+project:
+  name: rvav
+  scm_url: https://github.com/damhau/rvav.git
+  scm_branch: main
+
+# Where jobs that are not about a VM run.
+inventory:
+  name: rvav-test-localhost
+  hosts: [localhost]
+
+job_templates:
+  - name: linux-baseline
+    description: Hardening and time sync after a VM is built.
+    playbook: deploy/awx/playbooks/linux-baseline.yml
+    labels: [rvav]
+
+  - name: idm-join
+    description: Join the VM to the IdM domain.
+    playbook: deploy/awx/playbooks/idm-join.yml
+    labels: [rvav]
+
+  - name: install-monitoring-agent
+    description: Install a monitoring agent on a VM.
+    playbook: deploy/awx/playbooks/install-monitoring-agent.yml
+    labels: [rvav, day2]
+    survey:
+      - variable: monitoring_agent
+        question: Agent
+        type: multiplechoice
+        choices: [node_exporter, telegraf]
+        default: node_exporter
+        required: true
+      - variable: agent_version
+        question: Version
+        type: text
+        default: "1.8.2"
+        required: true
+        max: 20
+      - variable: listen_port
+        question: Port
+        description: The port the agent listens on.
+        type: integer
+        min: 1024
+        max: 65535
+        default: 9100
+        required: true
+      - variable: fail_on_purpose
+        question: Fail on purpose
+        description: For testing how a failed job looks.
+        type: multiplechoice
+        choices: ["false", "true"]
+        default: "false"
+
+  - name: dns-record
+    description: Add an A, CNAME or TXT record.
+    playbook: deploy/awx/playbooks/dns-record.yml
+    labels: [rvav, catalog]
+    survey:
+      - variable: record_name
+        question: Name
+        type: text
+        required: true
+        min: 1
+        max: 63
+      - variable: record_type
+        question: Type
+        type: multiplechoice
+        choices: [A, CNAME, TXT]
+        default: A
+        required: true
+      - variable: record_value
+        question: Value
+        type: text
+        required: true
+        min: 1
+      - variable: zone
+        question: Zone
+        type: multiplechoice
+        choices: [corp.example]
+        default: corp.example
+        required: true
+
+  - name: sleep
+    description: Runs long enough to be cancelled (contract tests).
+    playbook: deploy/awx/playbooks/sleep.yml
+
+workflow_job_templates:
+  - name: configure-vm
+    description: Baseline, then the monitoring agent.
+    labels: [rvav]
+    nodes: [linux-baseline, install-monitoring-agent]
