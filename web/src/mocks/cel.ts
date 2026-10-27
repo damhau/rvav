@@ -3,7 +3,7 @@
 // and submit. Supported: literals, lists, member and index access, ! - * / % +
 // < <= > >= == != in && || ?:, size(), and string startsWith/endsWith/contains.
 // Unlike full CEL, a missing field evaluates to null instead of an error.
-import { toText } from "./utils";
+import { toText } from "@/lib/utils";
 
 type Node =
   | { k: "lit"; v: unknown }

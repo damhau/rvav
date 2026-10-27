@@ -370,3 +370,50 @@ func TestValueSourcesRESTAndCEL(t *testing.T) {
 			Environment: new(api.EnvironmentKey("dev")), Field: "service", Inputs: map[string]any{"app": "billing"}}, 502, nil)
 	})
 }
+
+// TestFormRulesOnServer: the preview carries each field's rule results, a
+// computed value is an input, and a field a rule makes required is checked
+// on submit (S8.5).
+func TestFormRulesOnServer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin = "prj_web", "lmartin"
+		def := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"name": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}, "label": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"name":   {Widget: api.UiWidgetText, Label: "Name"},
+				"reason": {Widget: api.UiWidgetText, Label: "Why production", Rules: &api.UiRules{Visible: new(`environment == "prd"`), Required: new(`environment == "prd"`)}},
+				"label":  {Widget: api.UiWidgetText, Label: "Label", Rules: &api.UiRules{Value: new(`project.code + "-" + inputs.name`)}},
+			}},
+			Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Note", "job_template": "pg-create-role"}},
+		}
+		def.UiSchema.Layout.Kind = api.Page
+		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Note", Fields: []string{"name", "reason", "label"}}}
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "note", Name: "Note", Summary: "A note.",
+			Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/note/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/note/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+
+		preview := func(env string) api.RequestPreview {
+			t.Helper()
+			var out api.RequestPreview
+			h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+				ProjectId: web, Environment: env, Inputs: map[string]any{"name": "orders"}}, 200, &out)
+			return out
+		}
+		dev := preview("dev")
+		if dev.Fields == nil || (*dev.Fields)["reason"].Visible || !(*dev.Fields)["label"].ReadOnly || (*dev.Fields)["label"].Value != "web-orders" || !dev.Valid {
+			t.Fatalf("dev preview = %+v", dev)
+		}
+		prd := preview("prd")
+		reason := (*prd.Fields)["reason"]
+		if !reason.Visible || !reason.Required || prd.Valid || !slices.ContainsFunc(prd.Errors, func(e api.FieldError) bool { return e.Field == "/inputs/reason" }) {
+			t.Fatalf("prd preview = %+v", prd)
+		}
+	})
+}

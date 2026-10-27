@@ -1,8 +1,8 @@
 // Renders a request form from its JSON Schema and UI schema: sections, widgets,
-// server-resolved values with dependencies, CEL rules and field errors.
+// server-resolved values with dependencies, the server's rule results and
+// field errors.
 import type { ReactNode } from "react";
-import type { RequestForm, UiField } from "@/lib/api/types";
-import { celBool, celEval } from "@/lib/cel";
+import type { FieldStates, RequestForm, UiField } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import type { FormContext } from "./useFieldValues";
 import { selfLabelled, widgets, type JsonSchemaProp } from "./widgets";
@@ -14,8 +14,12 @@ export interface FormRendererProps {
   onBlur?: (name: string) => void;
   errors?: Record<string, string>;
   ctx: FormContext;
-  /** Extra variables for CEL rules besides `inputs` and `environment` (project, user). */
-  ruleContext?: Record<string, unknown>;
+  /**
+   * The server's rule results (the preview's `fields`): which fields show,
+   * are required or read-only, and computed values. Until they come, the
+   * schema's defaults.
+   */
+  fieldStates?: FieldStates;
   /** Rendered at the start of the first section (the environment picker). */
   leading?: ReactNode;
 }
@@ -39,23 +43,16 @@ export interface FieldState {
   computed?: unknown;
 }
 
-/** Evaluate a field's rules against the current values. */
-export function fieldState(name: string, ui: UiField, schema: Schema, ruleCtx: Record<string, unknown>): FieldState {
-  const rules = ui.rules ?? {};
-  const prop = schema.properties?.[name];
-  let computed: unknown;
-  if (rules.value) {
-    try {
-      computed = celEval(rules.value, ruleCtx);
-    } catch {
-      computed = undefined;
-    }
+/** A field's state: the server's rule results, else the schema's defaults. */
+export function fieldState(name: string, ui: UiField, schema: Schema, states?: FieldStates): FieldState {
+  const server = states?.[name];
+  if (server) {
+    return { visible: server.visible, required: server.required, readOnly: server.read_only, computed: server.value };
   }
   return {
-    visible: celBool(rules.visible, ruleCtx, true),
-    required: celBool(rules.required, ruleCtx, schema.required?.includes(name) ?? false),
-    readOnly: celBool(rules.read_only, ruleCtx, Boolean(prop?.readOnly) || rules.value !== undefined),
-    computed,
+    visible: true,
+    required: schema.required?.includes(name) ?? false,
+    readOnly: Boolean(schema.properties?.[name]?.readOnly) || Boolean(ui.rules?.value),
   };
 }
 
@@ -66,18 +63,17 @@ export function FormRenderer({
   onBlur,
   errors = {},
   ctx,
-  ruleContext,
+  fieldStates,
   leading,
 }: FormRendererProps) {
   const schema = form.schema as Schema;
-  const ruleCtx = { ...ruleContext, inputs: values, environment: ctx.environment };
   return (
     <div className="flex flex-col gap-4">
       {form.ui_schema.layout.sections.map((section, i) => {
         const fields = section.fields
           .map((name) => ({ name, ui: form.ui_schema.fields[name] }))
           .filter((f): f is { name: string; ui: UiField } => Boolean(f.ui))
-          .map((f) => ({ ...f, state: fieldState(f.name, f.ui, schema, ruleCtx) }))
+          .map((f) => ({ ...f, state: fieldState(f.name, f.ui, schema, fieldStates) }))
           .filter((f) => f.state.visible);
         if (fields.length === 0 && !(i === 0 && leading)) return null;
         return (

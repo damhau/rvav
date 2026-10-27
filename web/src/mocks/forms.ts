@@ -38,6 +38,7 @@ const sizeOptions: Option[] = Object.entries(sizes).map(([value, s]) => ({
 interface PostConfig {
   value: string;
   label: string;
+  description?: string;
   required?: boolean;
 }
 
@@ -123,6 +124,7 @@ function vmBlueprint(itemId: string, versionId: string, postConfig: PostConfig[]
           value: p.value,
           label: p.label,
           meta: p.value,
+          ...(p.description ? { description: p.description } : {}),
           ...(p.required ? { disabled: true, disabled_reason: "Required" } : {}),
         })),
       },
@@ -132,10 +134,19 @@ function vmBlueprint(itemId: string, versionId: string, postConfig: PostConfig[]
 }
 
 const linuxPost: PostConfig[] = [
-  { value: "linux-baseline", label: "Corporate baseline: chrony, sshd hardening, Satellite", required: true },
-  { value: "idm-join", label: "Join IdM and apply the project's HBAC rules" },
-  { value: "monitoring-agent", label: "Monitoring agent: node_exporter on port 9100" },
-  { value: "role-nginx", label: "nginx 1.27 with the corporate TLS defaults" },
+  {
+    value: "linux-baseline",
+    label: "Corporate baseline",
+    description: "chrony, sshd hardening, journald, Satellite registration",
+    required: true,
+  },
+  { value: "idm-join", label: "Join IdM", description: "Enrols the host in idm.corp.example and applies HBAC rules" },
+  {
+    value: "monitoring-agent",
+    label: "Monitoring agent",
+    description: "node_exporter on port 9100, registered in Prometheus",
+  },
+  { value: "role-nginx", label: "nginx", description: "nginx 1.27 with the corporate TLS defaults" },
 ];
 
 const windowsPost: PostConfig[] = [

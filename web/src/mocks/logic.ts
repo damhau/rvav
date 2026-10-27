@@ -8,6 +8,7 @@ import type {
   FieldError,
   FieldValues,
   Option,
+  RequestForm,
   Project,
   QuotaImpact,
   QuotaResource,
@@ -15,7 +16,11 @@ import type {
   RequestPreview,
   VmResource,
 } from "@/lib/api/types";
+import type { components } from "@/lib/api/schema";
+
+type FieldState = components["schemas"]["FieldState"];
 import { toText } from "@/lib/utils";
+import { celBool, celEval } from "./cel";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
 
@@ -291,6 +296,10 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
   return {
     valid: errors.length === 0,
     errors,
+    fields: fieldStates(db.forms[item.id], inputs, {
+      environment: draft.environment,
+      project: { id: project.id, code: project.code },
+    }),
     names,
     addresses: next ? [next.ip] : [],
     placement:
@@ -329,4 +338,33 @@ export function summarize(d: DeploymentDetail): Deployment {
     vms_powered_on: vms.filter((v) => v.vm.power_state === "on").length,
     primary_address: first ? { ip: first.vm.nics[0]?.ip_addresses?.[0] ?? "", fqdn: first.vm.fqdn ?? "" } : null,
   };
+}
+
+/** The rule results the server computes (core.fieldStates), with the mock's CEL. */
+export function fieldStates(
+  form: RequestForm | undefined,
+  inputs: Record<string, unknown>,
+  vars: Record<string, unknown>,
+): Record<string, FieldState> {
+  const out: Record<string, FieldState> = {};
+  if (!form) return out;
+  const schema = form.schema as { required?: string[]; properties?: Record<string, { readOnly?: boolean }> };
+  const ctx = { ...vars, inputs };
+  for (const [name, ui] of Object.entries(form.ui_schema.fields)) {
+    const rules = ui.rules ?? {};
+    const state: FieldState = {
+      visible: celBool(rules.visible, ctx, true),
+      required: celBool(rules.required, ctx, schema.required?.includes(name) ?? false),
+      read_only: celBool(rules.read_only, ctx, Boolean(schema.properties?.[name]?.readOnly) || Boolean(rules.value)),
+    };
+    if (rules.value) {
+      try {
+        state.value = celEval(rules.value, ctx);
+      } catch (e) {
+        state.error = `value: ${String(e)}`;
+      }
+    }
+    out[name] = state;
+  }
+  return out;
 }

@@ -202,6 +202,7 @@ function ChecklistWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
               />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="font-medium">{o.label}</span>
+                {o.description && <span className="text-xs text-muted">{o.description}</span>}
                 {o.meta && <span className="font-mono text-[11px] text-faint">{o.meta}</span>}
               </span>
               {o.disabled_reason && (

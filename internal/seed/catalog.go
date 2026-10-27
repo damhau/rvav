@@ -23,6 +23,19 @@ func options(list ...option) []map[string]any {
 	return out
 }
 
+// describedOptions are checklist options: the text after the label is a
+// description, and the value (the AWX template) shows as meta.
+func describedOptions(list ...option) []map[string]any {
+	out := make([]map[string]any, len(list))
+	for i, o := range list {
+		out[i] = map[string]any{"value": o.value, "label": o.label, "meta": o.value}
+		if o.meta != "" {
+			out[i]["description"] = o.meta
+		}
+	}
+	return out
+}
+
 func enumOf(list []option) []string {
 	out := make([]string, len(list))
 	for i, o := range list {
@@ -99,7 +112,7 @@ func vmItem(template, osFamily, required string, post []option, defaultPost []st
 				"help":         "Reserved in EfficientIP when the request starts, with A and PTR records.",
 				"value_source": map[string]any{"kind": "builtin", "name": "ipam.next_free_address", "params": map[string]any{"network": "${inputs.network}"}},
 				"depends_on":   []string{"network"}},
-			"post_config": map[string]any{"widget": "checklist", "label": "Configuration after boot", "options": options(post...)},
+			"post_config": map[string]any{"widget": "checklist", "label": "Configuration after boot", "options": describedOptions(post...)},
 		},
 	}
 	initial = map[string]any{"role": "app", "size": "M", "post_config": defaultPost}

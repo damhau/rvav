@@ -52,7 +52,9 @@ type Evaluation struct {
 	OverSoft   []string
 	Lease      LeaseInfo
 	OnBehalfOf *store.User
-	Errors     []api.FieldError
+	// Fields are the form's rule results for these inputs.
+	Fields api.FieldStates
+	Errors []api.FieldError
 }
 
 type LeaseInfo struct {
@@ -120,9 +122,17 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		return ev, nil
 	}
 
+	// Rules first: computed values are inputs like any other.
+	ev.Fields = fieldStates(ev.Version.FormSchema, ev.Version.UISchema, formVars(ev.Inputs, ev.Project, ev.Env.Key, p))
+	ruleErrs := applyStates(ev.Fields, ev.Inputs)
 	fieldErrs, err := validateInputs(ev.Version.ID, ev.Version.FormSchema, ev.Inputs)
 	if err != nil {
 		return nil, err
+	}
+	for _, e := range ruleErrs {
+		if !slices.ContainsFunc(fieldErrs, func(f api.FieldError) bool { return f.Field == e.Field }) {
+			fieldErrs = append(fieldErrs, e)
+		}
 	}
 	ev.Errors = append(ev.Errors, fieldErrs...)
 	if err := s.evaluatePickers(ctx, ev, strict); err != nil {
@@ -573,6 +583,7 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 		Errors:   append([]api.FieldError{}, ev.Errors...),
 		Quota:    ev.Quota,
 		Approval: ev.Approval,
+		Fields:   &ev.Fields,
 	}
 	if out.Quota == nil {
 		out.Quota = []api.QuotaImpact{}

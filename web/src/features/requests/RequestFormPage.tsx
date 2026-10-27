@@ -245,7 +245,6 @@ function RequestFormBody({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { me } = useCurrentProject();
   const firstEnv =
     environments
       .filter((e) => project.environments.includes(e.key) && !e.production)
@@ -334,7 +333,7 @@ function RequestFormBody({
           onBlur={(name) => setTouched((t) => (t.has(name) ? t : new Set(t).add(name)))}
           errors={Object.fromEntries(Object.entries(fieldErrors).filter(([, m]) => m))}
           ctx={{ versionId: form.version_id, projectId: project.id, environment }}
-          ruleContext={{ project: { id: project.id, code: project.code }, user: { id: me.user.id } }}
+          fieldStates={preview.data?.fields}
           leading={
             <EnvironmentPicker
               environments={environments}

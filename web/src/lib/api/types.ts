@@ -68,6 +68,7 @@ export type NotificationEvent = S["NotificationEvent"];
 export type IpamReconcile = S["IpamReconcile"];
 export type AwxTemplate = S["AwxTemplate"];
 export type AwxAction = S["AwxAction"];
+export type FieldStates = S["FieldStates"];
 export type AwxActionUpdate = S["AwxActionUpdate"];
 
 /** Every paginated list has this shape. */
