@@ -142,12 +142,14 @@ func (s *Store) OtherRunningOnDeployment(ctx context.Context, db DB, deploymentI
 }
 
 // RecentlyFailedAction reports whether a request by requesterID running
-// action on the resource with these inputs failed since a time.
-func (s *Store) RecentlyFailedAction(ctx context.Context, requesterID, resourceID, action, input, value string, since time.Time) (bool, error) {
+// action on the deployment (and resource, "" for the whole deployment)
+// failed since a time; input and value, when set, must match its inputs.
+func (s *Store) RecentlyFailedAction(ctx context.Context, requesterID, deploymentID, resourceID, action, input, value string, since time.Time) (bool, error) {
 	var n int
-	err := s.Pool.QueryRow(ctx, `select count(*) from requests where requester_id = $1 and resource_id = $2
-		and action = $3 and inputs->>$4 = $5 and status = 'failed' and submitted_at > $6`,
-		requesterID, resourceID, action, input, value, since).Scan(&n)
+	err := s.Pool.QueryRow(ctx, `select count(*) from requests where requester_id = $1 and deployment_id = $2
+		and coalesce(resource_id, '') = $3 and action = $4 and ($5 = '' or inputs->>$5 = $6)
+		and status = 'failed' and submitted_at > $7`,
+		requesterID, deploymentID, resourceID, action, input, value, since).Scan(&n)
 	return n > 0, err
 }
 

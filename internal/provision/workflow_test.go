@@ -354,13 +354,19 @@ func (f *fakeHousekeeper) ExpireSnapshots(context.Context, time.Time) ([]string,
 	return []string{"req_9"}, nil
 }
 
+func (f *fakeHousekeeper) ExpireLeases(context.Context, time.Time) ([]string, error) {
+	f.calls++
+	return nil, errors.New("database unavailable")
+}
+
 func TestHousekeepingExpiresSnapshots(t *testing.T) {
 	var s testsuite.WorkflowTestSuite
 	env := s.NewTestWorkflowEnvironment()
 	fake := &fakeHousekeeper{}
 	env.RegisterActivity(&Activities{Housekeeper: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	env.ExecuteWorkflow(Housekeeping)
-	if err := env.GetWorkflowError(); err != nil || fake.calls != 1 {
+	// Leases failing (three attempts) does not stop snapshots.
+	if err := env.GetWorkflowError(); err == nil || fake.calls != 4 {
 		t.Fatalf("housekeeping: %v, %d calls", err, fake.calls)
 	}
 }

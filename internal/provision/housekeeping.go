@@ -11,10 +11,11 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// Housekeeper applies rvav's own policies (core.Service): expired
-// snapshots now, leases in S5.
+// Housekeeper applies rvav's own policies (core.Service): snapshot
+// retention and leases.
 type Housekeeper interface {
 	ExpireSnapshots(ctx context.Context, now time.Time) ([]string, error)
+	ExpireLeases(ctx context.Context, now time.Time) ([]string, error)
 }
 
 // HousekeepingSchedule is the ID of the Temporal schedule that starts
@@ -32,7 +33,10 @@ func Housekeeping(ctx workflow.Context) error {
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
 	})
 	var a *Activities
-	return workflow.ExecuteActivity(ctx, a.ExpireSnapshots).Get(ctx, nil)
+	// One failing does not keep the other from running.
+	snapshots := workflow.ExecuteActivity(ctx, a.ExpireSnapshots)
+	leases := workflow.ExecuteActivity(ctx, a.ExpireLeases)
+	return errors.Join(snapshots.Get(ctx, nil), leases.Get(ctx, nil))
 }
 
 // ExpireSnapshots starts the deletion of snapshots past their retention.
@@ -43,6 +47,18 @@ func (a *Activities) ExpireSnapshots(ctx context.Context) (int, error) {
 	started, err := a.Housekeeper.ExpireSnapshots(ctx, time.Now().UTC())
 	if len(started) > 0 {
 		a.Log.Info("expired snapshots", "requests", len(started))
+	}
+	return len(started), err
+}
+
+// ExpireLeases sends lease reminders and starts the expiry of ended leases.
+func (a *Activities) ExpireLeases(ctx context.Context) (int, error) {
+	if a.Housekeeper == nil {
+		return 0, nil
+	}
+	started, err := a.Housekeeper.ExpireLeases(ctx, time.Now().UTC())
+	if len(started) > 0 {
+		a.Log.Info("lease expiries started", "requests", len(started))
 	}
 	return len(started), err
 }

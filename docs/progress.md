@@ -65,7 +65,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 ## S5 Leases and quotas
 
 - [x] S5.1 Lease policies per environment, overridden per project (`lease_policies.project_id`): default and maximum, extensions, grace period, expiry action. Extending is the day-2 action `extend_lease`: within the policy at once, beyond it (longer than `max_days`, or the extensions used up) with the approval of the project's admins. Design in [ADR-0014](adr/0014-leases-and-quotas.md)
-- [ ] S5.2 Temporal schedule every 15 minutes: reminders 7 days and 1 day before (in-app), expiry workflow per deployment
+- [x] S5.2 The `Housekeeping` workflow (15-minute Temporal schedule) also applies leases: in-app reminders 7 days and 1 day before, then expiry as day-2 requests by `rvav`: `lease_expire` powers the VMs off and starts the grace period, `delete` follows after it (at once with `expiry_action: delete`); `notify_only` only tells the owner. Extending during the grace period calls the deletion off. A failed expiry is retried after a day; snapshots and leases run as separate activities
 - [ ] S5.3 Quotas per project and environment, hard or soft, checked on submit, resize and change of project
 - [ ] S5.4 UI: lease section, extend dialog, quota on the overview and in the form summary
 - [ ] S5.5 End-to-end test of the acceptance scenario

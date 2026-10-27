@@ -62,7 +62,7 @@ func (s *Service) ExpireSnapshots(ctx context.Context, now time.Time) ([]string,
 			if now.Sub(snap.CreatedAt) <= age || (oldest != nil && !snap.CreatedAt.Before(*oldest)) {
 				continue
 			}
-			failed, err := s.Store.RecentlyFailedAction(ctx, SystemUserID, r.ID, "snapshot_delete", "snapshot", snap.Name, now.Add(-24*time.Hour))
+			failed, err := s.Store.RecentlyFailedAction(ctx, SystemUserID, d.ID, r.ID, "snapshot_delete", "snapshot", snap.Name, now.Add(-24*time.Hour))
 			if err != nil {
 				return started, err
 			}

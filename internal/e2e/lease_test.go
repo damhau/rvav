@@ -115,3 +115,93 @@ func TestLeaseExtension(t *testing.T) {
 			Inputs: map[string]any{}}, 422, nil, "Idempotency-Key", uuid.NewString())
 	})
 }
+
+// TestLeaseExpiry follows a 1-day dev lease: a reminder, the VMs powered off
+// at expiry, the deployment deleted after the grace period; another one,
+// extended during its grace period, is kept.
+func TestLeaseExpiry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		sweep := func(at time.Time, want int) []string {
+			t.Helper()
+			started, err := h.svc.ExpireLeases(ctx, at)
+			if err != nil || len(started) != want {
+				t.Fatalf("expire leases at %s: %v, %v", at.Format(time.DateTime), started, err)
+			}
+			for _, id := range started {
+				h.runWorkflow(id, nil)
+				h.waitStatus(id, "tnguyen", api.RequestStatusSucceeded)
+			}
+			return started
+		}
+		reminders := func() int {
+			var n int
+			if err := h.store.Pool.QueryRow(ctx, `select count(*) from events where type = 'notification'
+				and 'user:usr_tnguyen' = any(topics) and payload->'data'->>'title' like 'The lease of %'`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+
+		d1 := leasedVM(h, 1)
+		now := time.Now()
+		// Less than a day left: one reminder, not repeated.
+		sweep(now.Add(time.Hour), 0)
+		sweep(now.Add(2*time.Hour), 0)
+		if n := reminders(); n != 1 {
+			t.Fatalf("%d reminders", n)
+		}
+
+		// Expired: rvav powers the VM off; the grace period starts.
+		started := sweep(now.Add(25*time.Hour), 1)
+		var r api.Request
+		h.json("GET", "/api/v1/requests/"+started[0], "tnguyen", nil, 200, &r)
+		if r.Requester.Name != "rvav" || r.Action.Key != "lease_expire" {
+			t.Fatalf("expiry request = %+v", r)
+		}
+		if p := d1.vm().PowerState; p != api.Off {
+			t.Fatalf("after expiry the VM is %s", p)
+		}
+		l := d1.lease()
+		if l.ExpiredAt == nil || l.DeletesAt == nil || l.DeletesAt.Sub(*l.ExpiredAt) != 7*24*time.Hour {
+			t.Fatalf("lease after expiry = %+v", l)
+		}
+
+		// Another one expires too, and its owner extends it during the grace period.
+		d2 := leasedVM(h, 1)
+		sweep(now.Add(25*time.Hour), 1) // d2's expiry; d1 is in its grace period
+		var ext api.Request
+		h.json("POST", "/api/v1/deployments/"+d2.id+"/actions", "tnguyen", api.Day2Draft{Action: "extend_lease",
+			Inputs: map[string]any{"days": 30}}, 202, &ext, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(ext.Id, nil)
+		h.waitStatus(ext.Id, "tnguyen", api.RequestStatusSucceeded)
+		if l := d2.lease(); l.ExpiredAt != nil || l.DeletesAt != nil {
+			t.Fatalf("lease extended in its grace period = %+v", l)
+		}
+
+		// After the grace period, only the first is deleted.
+		sweep(now.Add(8*24*time.Hour), 1)
+		var dep1, dep2 api.Deployment
+		h.json("GET", "/api/v1/deployments/"+d1.id, "tnguyen", nil, 200, &dep1)
+		h.json("GET", "/api/v1/deployments/"+d2.id, "tnguyen", nil, 200, &dep2)
+		if dep1.Status != api.DeploymentStatusDeleted || dep2.Status != api.DeploymentStatusReady {
+			t.Fatalf("after the grace period: %s and %s", dep1.Status, dep2.Status)
+		}
+		sweep(now.Add(9*24*time.Hour), 0)
+
+		// A week or less left: the 7-day reminder.
+		d3 := leasedVM(h, 5)
+		sweep(time.Now(), 0)
+		var n int
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from events where type = 'notification'
+			and payload->'data'->>'title' like '% ends in 5 days'`).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("%d week reminders (%v)", n, err)
+		}
+		if dep, _ := h.store.GetDeployment(ctx, d3.id); len(dep.LeaseReminded) != 1 || dep.LeaseReminded[0] != "7d" {
+			t.Fatalf("reminded = %v", dep.LeaseReminded)
+		}
+	})
+}

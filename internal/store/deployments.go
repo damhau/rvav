@@ -277,3 +277,11 @@ func (s *Store) SetLeaseReminded(ctx context.Context, db DB, id string, reminded
 	_, err := db.Exec(ctx, `update deployments set lease_reminded = $2 where id = $1`, id, reminded)
 	return err
 }
+
+// LeasedDeployments lists the deployments with a lease that are not being
+// created or deleted.
+func (s *Store) LeasedDeployments(ctx context.Context) ([]DeploymentRow, error) {
+	rows, _ := s.Pool.Query(ctx, deploymentRowSelect+` where d.lease_expires_at is not null
+		and d.status in ('ready', 'updating') order by d.lease_expires_at, d.id`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentRow])
+}
