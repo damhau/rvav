@@ -137,11 +137,17 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 type OIDC struct {
 	Store       *store.Store
 	GroupsClaim string
+	// RetryInterval is how long a failed discovery is remembered before the
+	// next request tries again (default 5 s); requests meanwhile answer 503
+	// at once instead of queueing.
+	RetryInterval time.Duration
 
 	issuer, discoveryURL, clientID string
 
 	mu       sync.Mutex
 	verifier *oidc.IDTokenVerifier
+	failedAt time.Time
+	lastErr  error
 }
 
 // NewOIDC prepares token checks against the provider. discoveryURL, when set,
@@ -161,11 +167,26 @@ func NewOIDC(ctx context.Context, s *store.Store, issuer, discoveryURL, clientID
 	return o, err
 }
 
+// Ready reports whether the provider has been discovered. The API's
+// readiness check uses it, so a wrong issuer or a provider that never comes
+// up keeps new instances out of service instead of answering 503.
+func (o *OIDC) Ready(ctx context.Context) error {
+	_, err := o.verifierFor(ctx)
+	return err
+}
+
 func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.verifier != nil {
 		return o.verifier, nil
+	}
+	retry := o.RetryInterval
+	if retry == 0 {
+		retry = 5 * time.Second
+	}
+	if o.lastErr != nil && time.Since(o.failedAt) < retry {
+		return nil, o.lastErr
 	}
 	if o.discoveryURL != o.issuer {
 		ctx = oidc.InsecureIssuerURLContext(ctx, o.issuer)
@@ -174,12 +195,40 @@ func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
 	defer cancel()
 	provider, err := oidc.NewProvider(ctx, o.discoveryURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
+		o.failedAt, o.lastErr = time.Now(), fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
+		return nil, o.lastErr
+	}
+	var meta struct {
+		JWKSURL string   `json:"jwks_uri"`
+		Algs    []string `json:"id_token_signing_alg_values_supported"`
+	}
+	if err := provider.Claims(&meta); err != nil {
+		o.failedAt, o.lastErr = time.Now(), fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
+		return nil, o.lastErr
 	}
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
-	o.verifier = provider.Verifier(&oidc.Config{ClientID: o.clientID})
+	keys := keySet{oidc.NewRemoteKeySet(context.Background(), meta.JWKSURL)}
+	o.verifier = oidc.NewVerifier(o.issuer, keys, &oidc.Config{ClientID: o.clientID, SupportedSigningAlgs: meta.Algs})
+	o.lastErr = nil
 	return o.verifier, nil
+}
+
+// keySet notes when the provider's keys could not be fetched: go-oidc reports
+// that as a plain signature failure, but it means the provider is down (503),
+// not that the token is bad (401).
+type keySet struct{ remote *oidc.RemoteKeySet }
+
+type fetchErrKey struct{}
+
+func (k keySet) VerifySignature(ctx context.Context, jwt string) ([]byte, error) {
+	payload, err := k.remote.VerifySignature(ctx, jwt)
+	if err != nil && strings.HasPrefix(err.Error(), "fetching keys") {
+		if seen, ok := ctx.Value(fetchErrKey{}).(*error); ok {
+			*seen = err
+		}
+	}
+	return payload, err
 }
 
 func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
@@ -195,7 +244,11 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil {
 		return nil, err
 	}
-	idt, err := v.Verify(ctx, token)
+	var fetchErr error
+	idt, err := v.Verify(context.WithValue(ctx, fetchErrKey{}, &fetchErr), token)
+	if fetchErr != nil {
+		return nil, fmt.Errorf("%w: fetching keys: %v", ErrProviderUnavailable, fetchErr)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
@@ -245,6 +298,10 @@ func (d *Dev) Authenticate(r *http.Request) (*Principal, error) {
 	u, err := d.Store.GetUserBySubject(ctx, "seed:"+name)
 	if errors.Is(err, store.ErrNotFound) {
 		u, err = d.Store.GetUser(ctx, name)
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		// A seeded user linked to an OIDC subject on first sign-in keeps its ID.
+		u, err = d.Store.GetUser(ctx, "usr_"+name)
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, fmt.Errorf("%w: dev user %q does not exist", ErrUnauthenticated, name)

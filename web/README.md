@@ -43,8 +43,9 @@ provisioning steps advance.
 
 `Dockerfile` builds the app for the real API and serves it with nginx on port 8080. nginx proxies `/api` to `RVAV_API_UPSTREAM` (default `http://api:8080`),
 with buffering off for `/api/v1/events`, so the browser uses a single origin
-and needs no CORS. It looks the API up through `RVAV_DNS_RESOLVER` (default `127.0.0.11`, Docker's DNS) at request time,
-so a recreated API container is found again. Sign-in is fixed at build time with the `VITE_AUTH_MODE`,
+and needs no CORS. It looks the API up at request time with the nameservers from `/etc/resolv.conf`, so a recreated API
+container is found again. nginx ignores DNS search domains: on Kubernetes, set `RVAV_API_UPSTREAM` to
+the service's full name (`http://rvav-api.<namespace>.svc.cluster.local:8080`). Sign-in is fixed at build time with the `VITE_AUTH_MODE`,
 `VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID` and `VITE_OIDC_SCOPE` build arguments. Docker
 Compose builds it as the `web` service (see `deploy/README.md`).
 

@@ -22,8 +22,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -64,6 +66,14 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	databaseURL = url
+	// Ctrl-C would otherwise leave PostgreSQL running: pg_ctl detaches it.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		_ = stop()
+		os.Exit(1)
+	}()
 	code := m.Run()
 	if err := stop(); err != nil {
 		fmt.Fprintln(os.Stderr, "e2e: stop PostgreSQL:", err)

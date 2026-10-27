@@ -22,7 +22,13 @@ choice by S2 and the production setup by S14.
   (`RVAV_*`, `VITE_*` at build time for the web app).
 
 ## Consequences
-- The containers must not depend on Compose: the web app resolves the API at
-  request time (`RVAV_DNS_RESOLVER`, Docker's DNS by default, the cluster DNS
-  on Kubernetes), and every process has a health check.
+- The containers must not depend on Compose. The web app resolves the API at
+  request time with the nameservers from `/etc/resolv.conf`; nginx ignores
+  search domains, so on Kubernetes `RVAV_API_UPSTREAM` is the service's full
+  name. The API and the web app have health checks (`/readyz` checks the
+  database and, with OIDC, the identity provider); the worker and sync exit
+  on fatal errors and are restarted.
+- The Compose stack is for one machine: it publishes its ports on 127.0.0.1
+  unless `RVAV_BIND_ADDRESS` says otherwise, and its Keycloak realm only knows
+  the default web ports.
 - The Helm chart, its secrets and the HA setup are S14 work.

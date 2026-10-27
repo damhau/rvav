@@ -8,15 +8,17 @@
 #
 # Image tags are pinned; check them against the registries when upgrading.
 # Host ports can be changed with RVAV_*_PORT variables, in the shell or in
-# deploy/.env (for example RVAV_API_PORT=18080 when 8080 is taken).
+# deploy/.env (for example RVAV_API_PORT=18080 when 8080 is taken). They are
+# published on 127.0.0.1 only: with dev authentication anyone who reaches the
+# API is trusted. RVAV_BIND_ADDRESS=0.0.0.0 opens them, with RVAV_AUTH_MODE=oidc.
 
 name: rvav
 
 x-rvav-env: &rvav-env
   RVAV_DATABASE_URL: postgres://rvav:rvav@postgres:5432/rvav?sslmode=disable
   RVAV_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
-  # A development stack: dev authentication is allowed here, never in production.
-  RVAV_ALLOW_DEV_AUTH: "1"
+  # A development stack: dev authentication is allowed unless set to "" here.
+  RVAV_ALLOW_DEV_AUTH: ${RVAV_ALLOW_DEV_AUTH-1}
   # Tokens carry the issuer the browser sees; the API discovers Keycloak
   # inside the compose network.
   RVAV_OIDC_ISSUER: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}/realms/rvav
@@ -39,7 +41,7 @@ services:
       POSTGRES_USER: rvav
       POSTGRES_PASSWORD: rvav
       POSTGRES_DB: rvav
-    ports: ["${RVAV_POSTGRES_PORT:-5432}:5432"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_POSTGRES_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rvav -d rvav"]
@@ -55,7 +57,7 @@ services:
       POSTGRES_USER: rvav
       POSTGRES_PWD: rvav
       POSTGRES_SEEDS: postgres
-    ports: ["${RVAV_TEMPORAL_PORT:-7233}:7233"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_TEMPORAL_PORT:-7233}:7233"]
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
@@ -69,7 +71,7 @@ services:
     image: temporalio/ui:2.31.2
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-    ports: ["${RVAV_TEMPORAL_UI_PORT:-8233}:8080"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_TEMPORAL_UI_PORT:-8233}:8080"]
     depends_on:
       temporal: { condition: service_healthy }
 
@@ -82,7 +84,7 @@ services:
       KC_HOSTNAME: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
-    ports: ["${RVAV_KEYCLOAK_PORT:-8081}:8080"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_KEYCLOAK_PORT:-8081}:8080"]
     volumes: ["./keycloak:/opt/keycloak/data/import:ro"]
     healthcheck:
       # No curl in the image: ask the management port with bash.
@@ -94,7 +96,7 @@ services:
   vcsim:
     image: vmware/vcsim:v0.52.0
     command: ["-l", "0.0.0.0:8989"]
-    ports: ["${RVAV_VCSIM_PORT:-8989}:8989"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_VCSIM_PORT:-8989}:8989"]
 
   # One-shot jobs: schema and seed data, then the GVA inventory in vcsim.
   migrate:
@@ -115,14 +117,15 @@ services:
     build: { context: .., dockerfile: Dockerfile }
     command: ["api"]
     environment: *rvav-env
-    ports: ["${RVAV_API_PORT:-8080}:8080"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_API_PORT:-8080}:8080"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       temporal: { condition: service_healthy }
     healthcheck:
+      # With Keycloak sign-in, ready once Keycloak answers too.
       test: ["CMD", "rvav", "healthcheck"]
       interval: 2s
-      retries: 30
+      retries: 60
 
   worker:
     build: { context: .., dockerfile: Dockerfile }
@@ -155,7 +158,7 @@ services:
         VITE_OIDC_CLIENT_ID: rvav
     environment:
       RVAV_API_UPSTREAM: http://api:8080
-    ports: ["${RVAV_WEB_PORT:-3000}:8080"]
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_WEB_PORT:-3000}:8080"]
     depends_on:
       api: { condition: service_healthy }
     healthcheck:

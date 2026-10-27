@@ -24,6 +24,13 @@ When a port is already taken, change it with `RVAV_API_PORT`,
 `RVAV_WEB_PORT`, `RVAV_KEYCLOAK_PORT`, `RVAV_TEMPORAL_PORT`,
 `RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the
 shell or in `deploy/.env` (not committed). For example `RVAV_API_PORT=18080`.
+Keycloak sign-in only accepts the web app on ports 3000, 5173 and 8080, the
+redirect URIs in `deploy/keycloak/realm-rvav.json`.
+
+Ports are published on 127.0.0.1 only, because with dev authentication
+anyone who reaches the API is trusted. To reach the stack from other
+machines, set `RVAV_BIND_ADDRESS=0.0.0.0` together with `RVAV_AUTH_MODE=oidc`
+(and `RVAV_ALLOW_DEV_AUTH=` to make sure dev authentication can't start).
 
 To check that the stack works (CI doesn't run these for now):
 
@@ -44,8 +51,8 @@ To use Keycloak sign-in instead of dev authentication, start with
 and the API discovers Keycloak at `http://keycloak:8080` inside the network.
 The web app reads the same variable, but at build time, so rebuild it when you
 switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --build`.
-The API starts even while Keycloak is still booting, and answers `503` until
-it can reach it. `RVAV_STACK_AUTH=oidc pnpm e2e:stack` signs in as `lea` and
+The API starts even while Keycloak is still booting; it answers `503`, and
+reports not ready, until it can reach it. `RVAV_STACK_AUTH=oidc pnpm e2e:stack` signs in as `lea` and
 `thomas` and checks that their Keycloak groups give them their project roles.
 
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
@@ -75,8 +82,9 @@ as someone else. The API logs a warning at startup and answers with
 `X-Rvav-Auth-Mode: dev`.
 
 The API refuses to start in this mode unless `RVAV_ALLOW_DEV_AUTH=1` is also
-set (the compose stack and `.env.example` set it), so a stray
-`RVAV_AUTH_MODE=dev` can't open a real installation.
+set (the compose stack and `.env.example` set it; `RVAV_ALLOW_DEV_AUTH=`
+turns it off in compose), so a stray `RVAV_AUTH_MODE=dev` can't open a real
+installation.
 
 ## Approvals
 

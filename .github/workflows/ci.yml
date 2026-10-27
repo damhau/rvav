@@ -7,9 +7,11 @@ on:
     branches: [main]
   pull_request:
 
+# Commits go straight to main: check every one of them, cancel only
+# superseded pull request runs.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

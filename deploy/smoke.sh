@@ -25,7 +25,8 @@ draft=$(jq -n --arg item "$item" --arg version "$version" --arg project "$projec
 		network: "dvpg-app-dev-vl310", post_config: ["linux-baseline"]},
 	justification: "Smoke test of the compose stack."}')
 
-req=$(call -X POST "$base/requests" -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" -d "$draft")
+key=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)
+req=$(call -X POST "$base/requests" -H "Idempotency-Key: $key" -d "$draft")
 id=$(jq -r .id <<<"$req")
 echo "submitted $(jq -r .number <<<"$req") ($id)"
 

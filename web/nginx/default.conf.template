@@ -1,14 +1,16 @@
 # Serves the built web app and proxies the API on the same origin.
-# ${RVAV_API_UPSTREAM} and ${RVAV_DNS_RESOLVER} are filled in by the nginx
-# image at start-up.
+# ${RVAV_API_UPSTREAM} is filled in by the nginx image at start-up, and
+# ${NGINX_LOCAL_RESOLVERS} with the nameservers from /etc/resolv.conf.
 server {
     listen 8080;
     server_name _;
     root /usr/share/nginx/html;
 
     # The API's address is looked up at request time, not once at start-up,
-    # so a recreated or rescheduled API container is found again.
-    resolver ${RVAV_DNS_RESOLVER} valid=10s ipv6=off;
+    # so a recreated or rescheduled API container is found again. nginx
+    # ignores search domains: on Kubernetes, RVAV_API_UPSTREAM needs the
+    # service's full name (http://rvav-api.<namespace>.svc.cluster.local:8080).
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
     set $api_upstream ${RVAV_API_UPSTREAM};
 
     add_header X-Content-Type-Options nosniff always;

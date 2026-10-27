@@ -23,9 +23,11 @@ lab need sign-in now.
   refresh tokens (Entra ID).
 - **Dev authentication** (`RVAV_AUTH_MODE=dev`) only starts with
   `RVAV_ALLOW_DEV_AUTH=1`; it is for developer machines and tests.
-- The API discovers the provider on first use and retries after a failure, so
-  it starts, and recovers, while the provider is down; requests answer `503`
-  until then.
+- The API discovers the provider on first use and retries after a failure
+  (at most every 5 seconds), so it starts, and recovers, while the provider is
+  down. Until then requests answer `503`, and `/readyz` fails, so a wrong
+  issuer stops a rollout instead of replacing working instances. Keys that
+  can't be fetched also answer `503`, not `401`.
 
 ## Consequences
 - The same code path is tested against Keycloak (`pnpm e2e:stack` with

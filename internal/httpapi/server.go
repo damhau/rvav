@@ -60,6 +60,13 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		// OIDC: not ready until the identity provider has been discovered.
+		if a, ok := s.Auth.(interface{ Ready(context.Context) error }); ok {
+			if err := a.Ready(r.Context()); err != nil {
+				http.Error(w, "identity provider unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	api.HandlerWithOptions(s, api.StdHTTPServerOptions{

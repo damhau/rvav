@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 	sdklog "go.temporal.io/sdk/log"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/api"
@@ -101,8 +102,13 @@ func TestThroughTemporal(t *testing.T) {
 		h.waitStatus(waiting.Id, "lmartin", api.RequestStatusPendingApproval)
 		h.json("POST", "/api/v1/requests/"+waiting.Id+"/cancel", "lmartin", nil, 202, nil)
 		h.waitStatus(waiting.Id, "lmartin", api.RequestStatusCancelled)
-		// Get returns the canceled error once the workflow has ended.
-		_ = tc.GetWorkflow(wctx, provision.WorkflowID(waiting.Id), "").Get(wctx, nil)
+		cctx, cancelWait := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWait()
+		// It records the cancellation and completes; a timeout here means it
+		// is still waiting.
+		if err := tc.GetWorkflow(cctx, provision.WorkflowID(waiting.Id), "").Get(cctx, nil); err != nil && !temporal.IsCanceledError(err) {
+			t.Fatalf("cancelled request's workflow: %v", err)
+		}
 		desc, err = tc.DescribeWorkflowExecution(ctx, provision.WorkflowID(waiting.Id), "")
 		if err != nil {
 			t.Fatal(err)
