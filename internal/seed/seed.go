@@ -34,6 +34,8 @@ var users = []user{
 	{"sbrunner", "Sophie Brunner", "sophie.brunner@corp.example", "DBA", []string{"user"}},
 	{"afavre", "Alain Favre", "alain.favre@corp.example", "Network engineer", []string{"user"}},
 	{"cdubois", "Claire Dubois", "claire.dubois@corp.example", "Head of infrastructure", []string{"user"}},
+	// The account AWX's inventory plugin signs in with (an API token).
+	{"svc-awx", "AWX inventory", "awx@corp.example", "Service account", []string{"auditor"}},
 }
 
 // userGroups are the OIDC groups seeded users are in, as in the Keycloak

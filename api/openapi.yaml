@@ -36,6 +36,8 @@ tags:
     description: Live updates over Server-Sent Events.
   - name: admin
     description: Checks and settings for administrators.
+  - name: ansible
+    description: What AWX reads from rvav.
 
 paths:
   /me:
@@ -782,6 +784,30 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /ansible/inventory:
+    get:
+      tags: [ansible]
+      operationId: getAnsibleInventory
+      summary: The Ansible inventory of rvav's VMs
+      description: |
+        In the format of `ansible-inventory --list`, for the `rvav.platform.rvav`
+        inventory plugin AWX uses: every VM of a deployment that is not
+        deleted, `ansible_host` its reserved address, groups `rvav`,
+        `project_<code>`, `env_<key>`, `item_<slug>` and `os_<family>`, and
+        host variables `rvav_deployment_id`, `rvav_deployment`,
+        `rvav_deployment_status`, `rvav_project`, `rvav_environment`,
+        `rvav_item`, `rvav_owner`, `rvav_fqdn`, `rvav_moref`,
+        `rvav_power_state` and `rvav_os_family`. For an API token of a user
+        with the auditor (or admin) role.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnsibleInventory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/ipam/reconcile:
     get:
       tags: [admin]
@@ -981,6 +1007,28 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
 
   schemas:
+    # ── Ansible ───────────────────────────────────────────────────────────
+    AnsibleInventory:
+      type: object
+      description: "`_meta.hostvars`, `all.children`, and one object per group with its `hosts`."
+      required: [_meta, all]
+      additionalProperties: true
+      properties:
+        _meta:
+          type: object
+          required: [hostvars]
+          properties:
+            hostvars:
+              type: object
+              additionalProperties: { type: object, additionalProperties: true }
+        all:
+          type: object
+          required: [children]
+          properties:
+            children:
+              type: array
+              items: { type: string }
+
     # ── Admin ─────────────────────────────────────────────────────────────
     AwxTemplateList:
       type: object

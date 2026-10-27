@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
@@ -39,6 +40,8 @@ Usage:
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
   rvav awx-bootstrap [-content deploy/awx/content.yml]
                            set up rvav's test content in the AWX at RVAV_AWX_URL
+  rvav api-token -user ID -name NAME [-days N]
+                           make an API token for a user and print it once
   rvav ipam-reconcile      list EfficientIP addresses and records no deployment owns,
                            and owned ones EfficientIP no longer has (JSON)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
@@ -160,6 +163,29 @@ func run(ctx context.Context, cmd string, args []string) error {
 		return a.RunWorker(ctx)
 	case "sync":
 		return a.RunSync(ctx)
+	case "api-token":
+		fs := flag.NewFlagSet("api-token", flag.ExitOnError)
+		user := fs.String("user", "", "the user the token acts as, for example usr_svc-awx")
+		name := fs.String("name", "", "what the token is for")
+		days := fs.Int("days", 0, "days until it expires (0: never)")
+		_ = fs.Parse(args)
+		if *user == "" || *name == "" {
+			return errors.New("-user and -name are required")
+		}
+		if _, err := a.Store.GetUser(ctx, *user); err != nil {
+			return fmt.Errorf("user %s: %w", *user, err)
+		}
+		var expires *time.Time
+		if *days > 0 {
+			t := time.Now().Add(time.Duration(*days) * 24 * time.Hour)
+			expires = &t
+		}
+		token := auth.NewToken()
+		if err := a.Store.CreateAPIToken(ctx, ids.New(ids.Token), *user, *name, auth.HashToken(token), expires); err != nil {
+			return err
+		}
+		fmt.Println(token)
+		return nil
 	case "ipam-reconcile":
 		report, err := a.Core(nil).ReconcileIPAM(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID}, GlobalRoles: []string{"admin"}})
 		if err != nil {

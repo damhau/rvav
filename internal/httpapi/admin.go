@@ -28,3 +28,12 @@ func (s *Server) SyncAwxTemplates(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, list)
 }
+
+func (s *Server) GetAnsibleInventory(w http.ResponseWriter, r *http.Request) {
+	inv, err := s.Core.AnsibleInventory(r.Context(), principal(r))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inv)
+}

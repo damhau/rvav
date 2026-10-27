@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -84,6 +85,13 @@ func (s *Store) GroupRoles(ctx context.Context, groups []string) (global []strin
 		}
 	}
 	return global, projects, rows.Err()
+}
+
+// CreateAPIToken stores a token by the SHA-256 hash of its value.
+func (s *Store) CreateAPIToken(ctx context.Context, id, userID, name, hash string, expires *time.Time) error {
+	_, err := s.Pool.Exec(ctx, `insert into api_tokens (id, user_id, name, token_hash, expires_at) values ($1, $2, $3, $4, $5)`,
+		id, userID, name, hash, expires)
+	return err
 }
 
 // UserForToken returns the owner of an unexpired API token, by its SHA-256 hash.

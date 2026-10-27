@@ -1,0 +1,12 @@
+namespace: rvav
+name: platform
+version: 0.1.0
+readme: README.md
+authors:
+  - rvav
+description: Use rvav's VMs from Ansible and AWX.
+license_file: LICENSE
+tags: [inventory, vmware, selfservice]
+repository: https://github.com/damhau/rvav
+build_ignore:
+  - tests

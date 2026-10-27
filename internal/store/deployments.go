@@ -308,3 +308,35 @@ func (s *Store) IPAMResources(ctx context.Context) ([]IPAMResource, error) {
 		where r.type in ('ipam.address', 'dns.record') order by d.name, r.type, r.name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAMResource])
 }
+
+// InventoryHost is a VM for the Ansible inventory, with its deployment's
+// context.
+type InventoryHost struct {
+	Name           string          `db:"name"`
+	VM             json.RawMessage `db:"vm"`
+	Address        *string         `db:"address"`
+	DeploymentID   string          `db:"deployment_id"`
+	DeploymentName string          `db:"deployment_name"`
+	Status         string          `db:"status"`
+	Environment    string          `db:"environment"`
+	Project        string          `db:"project"`
+	Item           string          `db:"item"`
+	Owner          string          `db:"owner"`
+	OSFamily       string          `db:"os_family"`
+}
+
+// InventoryHosts lists the VMs of deployments that are not deleted, each
+// with the address rvav reserved for it.
+func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
+	rows, _ := s.Pool.Query(ctx, `select r.name, r.properties->'vm' as vm,
+		(select a.properties->>'address' from resources a where a.deployment_id = d.id and a.type = 'ipam.address'
+			and (a.properties->>'hostname' = r.name or a.properties->>'fqdn' = r.properties->'vm'->>'fqdn')
+			order by a.name limit 1) as address,
+		d.id as deployment_id, d.name as deployment_name, d.status, d.environment, p.code as project, i.slug as item,
+		coalesce(u.email, '') as owner, coalesce(v.blueprint->'guest'->>'os_family', '') as os_family
+		from resources r join deployments d on d.id = r.deployment_id join projects p on p.id = d.project_id
+		join catalog_items i on i.id = d.item_id left join catalog_item_versions v on v.id = d.version_id
+		left join users u on u.id = d.owner_id
+		where r.type = 'vsphere.vm' and d.status <> 'deleted' order by r.name`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InventoryHost])
+}

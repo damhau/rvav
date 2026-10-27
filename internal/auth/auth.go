@@ -4,7 +4,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -132,6 +134,13 @@ func bearer(r *http.Request) string {
 
 // TokenPrefix marks rvav API tokens.
 const TokenPrefix = "rvav_pat_"
+
+// NewToken makes a token value: the prefix and 32 random bytes.
+func NewToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return TokenPrefix + base64.RawURLEncoding.EncodeToString(b)
+}
 
 func HashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))

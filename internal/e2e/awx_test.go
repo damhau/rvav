@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/awxcatalog"
 	"github.com/damhau/rvav/internal/integrations/awx"
 )
@@ -133,5 +136,58 @@ func TestAWXCatalogImport(t *testing.T) {
 			}
 		}
 		h.json("GET", "/api/v1/catalog/items/monitoring-agent?project_id="+web, "tnguyen", nil, 200, &item)
+	})
+}
+
+// TestAnsibleInventory: AWX's view of rvav's VMs, read with an API token of
+// the auditor service account.
+func TestAnsibleInventory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web = "prj_web"
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "lmartin", nil, 200, &item)
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+				"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+
+		token := auth.NewToken()
+		if err := h.store.CreateAPIToken(ctx, "tok_test", "usr_svc-awx", "awx inventory", auth.HashToken(token), nil); err != nil {
+			t.Fatal(err)
+		}
+		status, body, _ := h.do("GET", "/api/v1/ansible/inventory", "", nil, "Authorization", "Bearer "+token)
+		if status != 200 {
+			t.Fatalf("inventory = %d %s", status, body)
+		}
+		var inv struct {
+			Meta struct {
+				Hostvars map[string]map[string]any `json:"hostvars"`
+			} `json:"_meta"`
+			All struct{ Children []string }
+		}
+		_ = json.Unmarshal(body, &inv)
+		var groups map[string]json.RawMessage
+		_ = json.Unmarshal(body, &groups)
+		vars := inv.Meta.Hostvars["web-dev-app001"]
+		if vars["ansible_host"] != "10.31.10.20" || vars["rvav_project"] != "web" || vars["rvav_environment"] != "dev" ||
+			vars["rvav_fqdn"] != "web-dev-app001.corp.example" || vars["rvav_os_family"] != "linux" || vars["rvav_owner"] != "thomas.nguyen@corp.example" {
+			t.Fatalf("host vars = %v", vars)
+		}
+		for _, g := range []string{"rvav", "project_web", "env_dev", "item_rhel9_server", "os_linux"} {
+			var members struct{ Hosts []string }
+			_ = json.Unmarshal(groups[g], &members)
+			if !slices.Contains(inv.All.Children, g) || !slices.Contains(members.Hosts, "web-dev-app001") {
+				t.Fatalf("group %s = %s (children %v)", g, groups[g], inv.All.Children)
+			}
+		}
+		h.json("GET", "/api/v1/ansible/inventory", "tnguyen", nil, 403, nil)
 	})
 }
