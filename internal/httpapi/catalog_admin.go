@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -129,34 +131,70 @@ func (s *Server) CompareCatalogItemVersions(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) GetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	e, err := s.Core.CatalogItemEntitlements(r.Context(), principal(r), itemID)
+	s.reply(w, r, http.StatusOK, e, err)
 }
 
 func (s *Server) SetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	var e api.CatalogEntitlements
+	if !s.decode(w, r, &e) {
+		return
+	}
+	out, err := s.Core.SetCatalogItemEntitlements(r.Context(), principal(r), itemID, e)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ExportCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, params api.ExportCatalogItemParams) {
-	s.notBuilt(w, r)
+	body, name, err := s.Core.ExportCatalogItem(r.Context(), principal(r), itemID, deref(params.VersionId))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	_, _ = w.Write(body)
 }
 
 func (s *Server) ImportCatalogItem(w http.ResponseWriter, r *http.Request, params api.ImportCatalogItemParams) {
-	s.notBuilt(w, r)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
+	if err != nil {
+		s.problem(w, r, http.StatusBadRequest, "bad-request", "The file could not be read", err.Error(), nil)
+		return
+	}
+	out, err := s.Core.ImportCatalogItem(r.Context(), principal(r), body, deref(params.ItemId))
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
-func (s *Server) ListAdminCatalogCategories(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) ListAdminCatalogCategories(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Core.AdminCatalogCategories(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, list, err)
+}
 
-func (s *Server) CreateCatalogCategory(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) CreateCatalogCategory(w http.ResponseWriter, r *http.Request) {
+	var c api.AdminCatalogCategory
+	if !s.decode(w, r, &c) {
+		return
+	}
+	out, err := s.Core.CreateCatalogCategory(r.Context(), principal(r), c)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
 
 func (s *Server) UpdateCatalogCategory(w http.ResponseWriter, r *http.Request, key string) {
-	s.notBuilt(w, r)
+	var u api.AdminCatalogCategoryUpdate
+	if !s.decode(w, r, &u) {
+		return
+	}
+	out, err := s.Core.UpdateCatalogCategory(r.Context(), principal(r), key, u)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) DeleteCatalogCategory(w http.ResponseWriter, r *http.Request, key string) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteCatalogCategory(r.Context(), principal(r), key))
 }
 
-func (s *Server) ListCatalogIcons(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) ListCatalogIcons(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": core.CatalogIcons})
+}
 
 func (s *Server) ListSecrets(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
 

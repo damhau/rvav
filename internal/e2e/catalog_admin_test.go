@@ -167,6 +167,9 @@ func TestCatalogVersions(t *testing.T) {
 	})
 }
 
+// rawYAML is a request body sent as it is (the harness sends others as JSON).
+type rawYAML string
+
 func versionOf(it api.AdminCatalogItem, id string) api.CatalogItemVersion {
 	for _, v := range it.Versions {
 		if v.Id == id {
@@ -177,3 +180,98 @@ func versionOf(it api.AdminCatalogItem, id string) api.CatalogItemVersion {
 }
 
 func stateOf(it api.AdminCatalogItem, id string) string { return string(versionOf(it, id).State) }
+
+// TestCatalogEntitlementsCategoriesYAML: who may request an item,
+// categories and icons, and items exported to YAML and imported back
+// (S8.3).
+func TestCatalogEntitlementsCategoriesYAML(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "lmartin"
+		inCatalog := func(project, slug string) bool {
+			t.Helper()
+			var page api.CatalogItemPage
+			h.json("GET", "/api/v1/catalog/items?limit=200&project_id="+project, "mkeller", nil, 200, &page)
+			return slices.ContainsFunc(page.Items, func(i api.CatalogItem) bool { return i.Slug == slug })
+		}
+
+		// Entitlements: no project, chosen projects, every project.
+		var rhel api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server", admin, nil, 200, &rhel)
+		var published api.CatalogItemVersionDetail
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/versions/"+rhel.PublishedVersion.Id, admin, nil, 200, &published)
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "linux-small", Name: "Small Linux VM",
+			Summary: "A small VM.", Category: "compute", Type: api.VmBlueprint, Icon: new("cpu"), Definition: &published.Definition}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/linux-small/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		if inCatalog("prj_web", "linux-small") {
+			t.Fatal("open to a project before any entitlement")
+		}
+		set := func(e api.CatalogEntitlements, want int) {
+			t.Helper()
+			h.json("PUT", "/api/v1/admin/catalog/items/linux-small/entitlements", admin, e, want, nil)
+		}
+		set(api.CatalogEntitlements{ProjectIds: []string{"prj_nope"}}, 422)
+		set(api.CatalogEntitlements{ProjectIds: []string{"prj_web"}}, 200)
+		if !inCatalog("prj_web", "linux-small") || inCatalog("prj_data", "linux-small") {
+			t.Fatal("open to the wrong projects")
+		}
+		set(api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200)
+		if !inCatalog("prj_data", "linux-small") {
+			t.Fatal("not open to every project")
+		}
+
+		// Categories and icons.
+		var icons struct{ Items []string }
+		h.json("GET", "/api/v1/admin/catalog/icons", admin, nil, 200, &icons)
+		if !slices.Contains(icons.Items, "server") || !slices.Contains(icons.Items, "cpu") {
+			t.Fatalf("icons = %v", icons.Items)
+		}
+		h.json("PATCH", "/api/v1/admin/catalog/items/linux-small", admin, api.CatalogItemUpdate{Icon: new("upload:evil")}, 422, nil)
+		h.json("POST", "/api/v1/admin/catalog/categories", admin, api.AdminCatalogCategory{Key: "storage", Name: "Storage"}, 201, nil)
+		h.json("POST", "/api/v1/admin/catalog/categories", admin, api.AdminCatalogCategory{Key: "storage", Name: "Again"}, 409, nil)
+		h.json("PATCH", "/api/v1/admin/catalog/categories/storage", admin, api.AdminCatalogCategoryUpdate{Name: new("Storage and backup")}, 200, nil)
+		h.json("DELETE", "/api/v1/admin/catalog/categories/compute", admin, nil, 409, nil)
+		h.json("DELETE", "/api/v1/admin/catalog/categories/storage", admin, nil, 204, nil)
+
+		// YAML: exported, imported as a new item, exported again: the same definition.
+		status, body, headers := h.do("GET", "/api/v1/admin/catalog/items/rhel9-server/export", admin, nil)
+		if status != 200 || !strings.HasPrefix(headers.Get("Content-Type"), "application/yaml") || !strings.Contains(string(body), "apiVersion: rvav.dev/v1") {
+			t.Fatalf("export = %d %s %s", status, headers.Get("Content-Type"), body)
+		}
+		copyYAML := strings.Replace(string(body), "slug: rhel9-server", "slug: rhel9-copy", 1)
+		var imported api.CatalogImportResult
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(copyYAML), 200, &imported, "Content-Type", "application/yaml")
+		if !imported.Created || len(imported.Versions) != 1 || imported.Versions[0].State != "draft" {
+			t.Fatalf("imported = %+v", imported)
+		}
+		var copied api.CatalogItemVersionDetail
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-copy/versions/"+imported.Versions[0].Id, admin, nil, 200, &copied)
+		h.json("POST", "/api/v1/admin/catalog/items/rhel9-copy/versions/"+copied.Id+"/publish", admin, nil, 200, nil)
+		_, again, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-copy/export", admin, nil)
+		if strings.Replace(string(again), "slug: rhel9-copy", "slug: rhel9-server", 1) != string(body) {
+			t.Fatalf("a round trip changed the item:\n%s\n---\n%s", body, again)
+		}
+
+		// The slug is taken; into the item, the file becomes a draft once.
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(copyYAML), 409, nil, "Content-Type", "application/yaml")
+		h.json("POST", "/api/v1/admin/catalog/import?item_id=rhel9-copy", admin, rawYAML(copyYAML), 200, &imported, "Content-Type", "application/yaml")
+		if imported.Created || len(imported.Versions) != 2 || imported.Versions[0].State != "draft" || imported.Versions[0].Number == imported.Versions[1].Number {
+			t.Fatalf("imported into the item = %+v", imported)
+		}
+		h.json("POST", "/api/v1/admin/catalog/import?item_id=rhel9-copy", admin, rawYAML(copyYAML), 409, nil, "Content-Type", "application/yaml")
+
+		// A problem names its line.
+		broken := strings.Replace(copyYAML, "slug: rhel9-copy", "slug: rhel9-broken", 1)
+		broken = strings.Replace(broken, "label: Size\n", "label: \"\"\n", 1)
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(broken), 422, &problem, "Content-Type", "application/yaml")
+		if len(problem.Errors) != 1 || !strings.HasSuffix(problem.Errors[0].Field, "/label") || !strings.Contains(problem.Errors[0].Message, "(line ") {
+			t.Fatalf("errors = %+v", problem.Errors)
+		}
+		h.json("POST", "/api/v1/admin/catalog/import", "tnguyen", rawYAML(copyYAML), 403, nil, "Content-Type", "application/yaml")
+	})
+}

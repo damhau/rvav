@@ -290,3 +290,111 @@ func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string) 
 		return err
 	})
 }
+
+// SetEntitlements opens an item to every project, or to these projects
+// only.
+func (s *Store) SetEntitlements(ctx context.Context, itemID string, all bool, projectIDs []string) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `update catalog_items set all_projects = $2, updated_at = now() where id = $1`, itemID, all); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `delete from catalog_entitlements where item_id = $1 and not (project_id = any($2))`,
+			itemID, nonNilStrings(projectIDs)); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `insert into catalog_entitlements (item_id, project_id) select $1, unnest($2::text[])
+			on conflict do nothing`, itemID, nonNilStrings(projectIDs))
+		return err
+	})
+}
+
+// UnknownProjects returns the IDs that are not projects.
+func (s *Store) UnknownProjects(ctx context.Context, ids []string) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select x.pid from unnest($1::text[]) as x(pid)
+		where not exists (select 1 from projects p where p.id = x.pid)`, nonNilStrings(ids))
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// AdminCategory is a category with its number of items, in any state.
+type AdminCategory struct {
+	Key       string `db:"key"`
+	Name      string `db:"name"`
+	SortOrder int    `db:"sort_order"`
+	Items     int    `db:"items"`
+}
+
+func (s *Store) AdminCategories(ctx context.Context) ([]AdminCategory, error) {
+	rows, _ := s.Pool.Query(ctx, `select c.key, c.name, c.sort_order,
+		(select count(*) from catalog_items i where i.category = c.key)::int as items
+		from catalog_categories c order by c.sort_order, c.key`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[AdminCategory])
+}
+
+// CreateCategory adds a category (ErrInUse when the key is taken).
+func (s *Store) CreateCategory(ctx context.Context, c AdminCategory) error {
+	_, err := s.Pool.Exec(ctx, `insert into catalog_categories (key, name, sort_order) values ($1, $2, $3)`, c.Key, c.Name, c.SortOrder)
+	if IsUniqueViolation(err) {
+		return ErrInUse
+	}
+	return err
+}
+
+func (s *Store) UpdateCategory(ctx context.Context, key string, name *string, sortOrder *int) error {
+	tag, err := s.Pool.Exec(ctx, `update catalog_categories set name = coalesce($2, name), sort_order = coalesce($3, sort_order)
+		where key = $1`, key, name, sortOrder)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+// DeleteCategory removes an empty category (ErrInUse when items are in it).
+func (s *Store) DeleteCategory(ctx context.Context, key string) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		var used bool
+		if err := tx.QueryRow(ctx, `select exists (select 1 from catalog_items where category = $1)`, key).Scan(&used); err != nil {
+			return err
+		}
+		if used {
+			return ErrInUse
+		}
+		tag, err := tx.Exec(ctx, `delete from catalog_categories where key = $1`, key)
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+}
+
+// ImportVersion is a version an import adds, in its state.
+type ImportVersion struct {
+	NewVersion
+	State string // draft or deprecated
+}
+
+// ImportItem creates an item with imported versions (ErrInUse when the slug
+// is taken).
+func (s *Store) ImportItem(ctx context.Context, it NewItem, versions []ImportVersion) error {
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `insert into catalog_items (id, slug, name, summary, description_md, category, type, icon, tags,
+			featured) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			it.ID, it.Slug, it.Name, it.Summary, it.DescriptionMD, it.Category, it.Type, it.Icon, nonNilStrings(it.Tags), it.Featured); err != nil {
+			return err
+		}
+		for _, v := range versions {
+			v.ItemID = it.ID
+			if _, err := tx.Exec(ctx, `insert into catalog_item_versions (id, item_id, number, state, form_schema, ui_schema,
+				initial_values, blueprint, changelog, created_by, deprecated_at)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, case when $4 = 'deprecated' then now() end)`,
+				v.ID, v.ItemID, v.Number, v.State, v.Def.FormSchema, v.Def.UISchema, jsonOr(v.Def.InitialValues, "{}"),
+				jsonOr(v.Def.Blueprint, "{}"), v.Changelog, v.CreatedBy); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if IsUniqueViolation(err) {
+		return ErrInUse
+	}
+	return err
+}

@@ -93,7 +93,7 @@ func (s *Store) CreateAWXItem(ctx context.Context, it NewAWXItem) error {
 		if _, err := tx.Exec(ctx, `update catalog_items set published_version_id = $2 where id = $1`, it.ID, it.VersionID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `insert into catalog_entitlements (item_id, project_id) select $1, id from projects`, it.ID)
+		_, err := tx.Exec(ctx, `update catalog_items set all_projects = true where id = $1`, it.ID)
 		return err
 	})
 }

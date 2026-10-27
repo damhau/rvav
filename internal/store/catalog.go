@@ -45,7 +45,7 @@ func (s *Store) ListItems(ctx context.Context, f ItemFilter) (Page[CatalogItem],
 	}
 	rows, _ := s.Pool.Query(ctx, itemSelect+`
 		where i.published_version_id is not null
-		  and exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $2)
+		  and (i.all_projects or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $2))
 		  and ($3 = '' or i.category = $3)
 		  and ($4 = '' or i.type = $4)
 		  and (not $5 or exists (select 1 from favourites f where f.item_id = i.id and f.user_id = $1))
@@ -69,16 +69,16 @@ func (s *Store) GetItem(ctx context.Context, idOrSlug, userID string) (CatalogIt
 
 func (s *Store) IsEntitled(ctx context.Context, itemID, projectID string) (bool, error) {
 	var ok bool
-	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_entitlements
-		where item_id = $1 and project_id = $2)`, itemID, projectID).Scan(&ok)
+	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_items where id = $1 and all_projects)
+		or exists (select 1 from catalog_entitlements where item_id = $1 and project_id = $2)`, itemID, projectID).Scan(&ok)
 	return ok, err
 }
 
 func (s *Store) ListCategories(ctx context.Context, projectID string) ([]Category, error) {
 	rows, _ := s.Pool.Query(ctx, `select c.key, c.name,
 		(select count(*) from catalog_items i
-		 join catalog_entitlements e on e.item_id = i.id and e.project_id = $1
-		 where i.category = c.key and i.published_version_id is not null)::int as item_count
+		 where i.category = c.key and i.published_version_id is not null
+		   and (i.all_projects or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $1)))::int as item_count
 		from catalog_categories c order by c.sort_order, c.key`, projectID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Category])
 }

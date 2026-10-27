@@ -153,7 +153,9 @@ type harness struct {
 func (h *harness) do(method, path, user string, body any, headers ...string) (int, []byte, http.Header) {
 	h.t.Helper()
 	var rd io.Reader
-	if body != nil {
+	if raw, ok := body.(rawYAML); ok {
+		rd = strings.NewReader(string(raw))
+	} else if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}

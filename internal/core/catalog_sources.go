@@ -9,7 +9,9 @@ import (
 
 // CatalogIcons are the icons an item may have; the web app draws the same
 // set (components/common/misc.tsx).
-var CatalogIcons = []string{"server", "monitor", "database", "key-round", "shield", "globe", "lock", "users", "terminal", "workflow"}
+var CatalogIcons = []string{"server", "monitor", "database", "key-round", "shield", "globe", "lock", "users", "terminal", "workflow",
+	"box", "container", "hard-drive", "network", "cloud", "cpu", "package", "wrench", "mail", "file-text", "archive",
+	"git-branch", "layers", "activity"}
 
 // checkCustomSource checks a `rest` or `cel` value source's parameters.
 func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {

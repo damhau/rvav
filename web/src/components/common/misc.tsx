@@ -1,23 +1,38 @@
 import {
+  Activity,
+  Archive,
+  Box,
+  Check,
+  Cloud,
+  Container,
+  Copy,
+  Cpu,
   Database,
+  FileText,
+  GitBranch,
   Globe,
+  HardDrive,
   KeyRound,
+  Layers,
   Lock,
+  Mail,
   Monitor,
+  Network,
+  Package,
   Server,
   Shield,
   SquareTerminal,
   Users,
   Workflow,
-  Check,
-  Copy,
+  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { Tip } from "@/components/ui/tooltip";
 import type { CatalogItemType } from "@/lib/api/types";
 import { cn, fullDate, relative } from "@/lib/utils";
 
-const icons: Record<string, React.ElementType> = {
+/** Catalog item icons: the same set as the server's (core.CatalogIcons). */
+export const icons: Record<string, React.ElementType> = {
   server: Server,
   monitor: Monitor,
   database: Database,
@@ -28,6 +43,20 @@ const icons: Record<string, React.ElementType> = {
   users: Users,
   terminal: SquareTerminal,
   workflow: Workflow,
+  box: Box,
+  container: Container,
+  "hard-drive": HardDrive,
+  network: Network,
+  cloud: Cloud,
+  cpu: Cpu,
+  package: Package,
+  wrench: Wrench,
+  mail: Mail,
+  "file-text": FileText,
+  archive: Archive,
+  "git-branch": GitBranch,
+  layers: Layers,
+  activity: Activity,
 };
 
 export function ItemIcon({ name, className }: { name: string; className?: string }) {
