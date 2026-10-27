@@ -240,7 +240,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, core.ErrForbidden):
 		detail := strings.TrimPrefix(msg, core.ErrForbidden.Error()+": ")
 		if detail == msg {
-			detail = "You do not have permission to do this."
+			detail = "You do not have permission to do this"
 		}
 		s.problem(w, r, http.StatusForbidden, "forbidden", "Not allowed", upperFirst(detail)+".", nil)
 	case errors.As(err, &ve):

@@ -43,7 +43,10 @@ cd web && pnpm e2e:stack        # the browser: request a RHEL 9 server and follo
 (default `http://localhost:3000`).
 
 The stack uses a fake SOLIDserver (the `efficientip` service, which rvav
-reaches with its real EfficientIP client) and the fake AWX. Set
+reaches with its real EfficientIP client) and the fake AWX. The fake
+SOLIDserver keeps addresses and records in memory: after it restarts, the
+reconcile report (Administration → Integrations) lists older deployments'
+records as missing. Set
 `RVAV_FAKE_AWX_FAIL_TASK="idm : join realm"` to see how a failed AWX task
 looks in the timeline.
 
