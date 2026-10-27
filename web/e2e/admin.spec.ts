@@ -21,3 +21,15 @@ test("run the EfficientIP reconcile check", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Check again" })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("see an AWX template whose survey changed", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Catalog items" }).click();
+  await expect(page.getByRole("heading", { name: "Catalog items" })).toBeVisible();
+  const row = page.getByRole("row", { name: /install-monitoring-agent/ });
+  await expect(row.getByText("Survey changed")).toBeVisible();
+  await expect(row.getByText("listen_port: maximum 65535 → 32767")).toBeVisible();
+  await expect(page.getByRole("row", { name: /configure-vm/ }).getByText("Check settings")).toBeVisible();
+  await page.getByRole("button", { name: "Sync now" }).click();
+  await expect(page.getByText("AWX templates synced")).toBeVisible();
+});

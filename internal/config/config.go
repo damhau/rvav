@@ -83,10 +83,13 @@ type EfficientIPConfig struct {
 }
 
 type AWXConfig struct {
-	Fake              bool
-	URL               string
-	Token             string
-	Organization      string // template lookups stay in this organisation when set
+	Fake         bool
+	URL          string
+	Token        string
+	Organization string // template lookups stay in this organisation when set
+	// The catalog imports the organisation's templates with any of these labels.
+	CatalogLabels     []string
+	SyncInterval      time.Duration
 	Insecure          bool
 	InventorySourceID int
 	// Fake only: time each fake task takes, and a task title that fails.
@@ -136,11 +139,12 @@ func Load() (Config, error) {
 			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
 		},
 		AWX: AWXConfig{
-			Fake:         boolean("RVAV_FAKE_AWX"),
-			URL:          env("RVAV_AWX_URL", ""),
-			Token:        env("RVAV_AWX_TOKEN", ""),
-			Organization: env("RVAV_AWX_ORGANIZATION", ""),
-			Insecure:     boolean("RVAV_AWX_INSECURE"),
+			Fake:          boolean("RVAV_FAKE_AWX"),
+			URL:           env("RVAV_AWX_URL", ""),
+			Token:         env("RVAV_AWX_TOKEN", ""),
+			Organization:  env("RVAV_AWX_ORGANIZATION", ""),
+			CatalogLabels: list("RVAV_AWX_CATALOG_LABELS"),
+			Insecure:      boolean("RVAV_AWX_INSECURE"),
 		},
 	}
 
@@ -152,6 +156,12 @@ func Load() (Config, error) {
 		return c, err
 	}
 	c.AWX.FakeFailTask = env("RVAV_FAKE_AWX_FAIL_TASK", "")
+	if len(c.AWX.CatalogLabels) == 0 {
+		c.AWX.CatalogLabels = []string{"catalog"}
+	}
+	if c.AWX.SyncInterval, err = duration("RVAV_AWX_SYNC_INTERVAL", 5*time.Minute); err != nil {
+		return c, err
+	}
 	if c.IPAMSyncInterval, err = duration("RVAV_IPAM_SYNC_INTERVAL", 5*time.Minute); err != nil {
 		return c, err
 	}

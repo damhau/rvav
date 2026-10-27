@@ -244,6 +244,46 @@ export const handlers = [
     return json<Ok<"/environments", "get">>({ items: db.environments });
   }),
 
+  // AWX templates imported into the catalog: one whose survey changed.
+  ...(() => {
+    const templates = (): S["AwxTemplate"][] => [
+      {
+        template_id: 12,
+        name: "install-monitoring-agent",
+        workflow: false,
+        item_id: "itm_monitoring",
+        item_name: "Install monitoring agent",
+        survey_changed: true,
+        survey_diff: ["listen_port: maximum 65535 → 32767", "scrape_interval added (integer)"],
+        warnings: [],
+        gone: false,
+        synced_at: new Date().toISOString(),
+      },
+      {
+        template_id: 9,
+        name: "configure-vm",
+        workflow: true,
+        item_id: "itm_configure",
+        item_name: "Configure vm",
+        survey_changed: false,
+        survey_diff: [],
+        warnings: ["Limit is not prompted on launch: the template can't be run on one VM."],
+        gone: false,
+        synced_at: new Date().toISOString(),
+      },
+    ];
+    return [
+      http.get(`${base}/admin/awx/templates`, async () => {
+        await wait();
+        return json<S["AwxTemplateList"]>({ items: templates() });
+      }),
+      http.post(`${base}/admin/awx/templates/sync`, async () => {
+        await wait();
+        return json<S["AwxTemplateList"]>({ items: templates() });
+      }),
+    ];
+  })(),
+
   // The mock user is an administrator for this check; one address and one
   // record left behind, and a PTR record someone deleted.
   http.get(`${base}/admin/ipam/reconcile`, async () => {

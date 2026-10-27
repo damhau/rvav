@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"github.com/damhau/rvav/internal/awxcatalog"
 	"log/slog"
 	"path"
 	"slices"
@@ -37,6 +38,8 @@ type Service struct {
 	// only open consoles: VMRC links carry a clone ticket of it. Never
 	// rvav's own session, which a clone ticket would hand to the user.
 	ConsoleAccount func(ctx context.Context) (CloneTicketer, error)
+	// AWXCatalog imports AWX templates into the catalog (ADR-0016).
+	AWXCatalog *awxcatalog.Sync
 }
 
 // ConsoleSource is what the web console needs from vCenter.

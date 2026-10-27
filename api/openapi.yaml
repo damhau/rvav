@@ -804,6 +804,40 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /admin/awx/templates:
+    get:
+      tags: [admin]
+      operationId: listAwxTemplates
+      summary: AWX templates imported into the catalog
+      description: |
+        The templates chosen by organisation and label (ADR-0016), each with
+        the item made from it, whether its survey changed since the item's
+        form was made (and what changed), and warnings about its launch
+        settings. Catalog admins and administrators.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AwxTemplateList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/awx/templates/sync:
+    post:
+      tags: [admin]
+      operationId: syncAwxTemplates
+      summary: Import the AWX templates now, instead of waiting for the next sync
+      responses:
+        "200":
+          description: The templates after the sync
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AwxTemplateList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
   /events:
     get:
       tags: [events]
@@ -948,6 +982,38 @@ components:
 
   schemas:
     # ── Admin ─────────────────────────────────────────────────────────────
+    AwxTemplateList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AwxTemplate" }
+    AwxTemplate:
+      type: object
+      required: [template_id, name, workflow, survey_changed, survey_diff, warnings, gone, synced_at]
+      properties:
+        template_id: { type: integer, description: The template's ID in AWX. }
+        name: { type: string }
+        workflow: { type: boolean }
+        item_id: { type: string, description: The catalog item made from it. }
+        item_name: { type: string }
+        survey_changed:
+          type: boolean
+          description: The survey changed in AWX since the item's form was made from it.
+        survey_diff:
+          type: array
+          items: { type: string }
+          example: ["listen_port: maximum 65535 → 32767", "scrape_interval added (integer)"]
+        warnings:
+          type: array
+          description: Launch settings or survey questions rvav can't use as meant.
+          items: { type: string }
+        gone:
+          type: boolean
+          description: AWX no longer has it, or it lost the label; the item stays.
+        modified_at: { type: string, format: date-time, description: When AWX last changed it. }
+        synced_at: { type: string, format: date-time }
     IpamReconcile:
       type: object
       required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]

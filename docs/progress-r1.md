@@ -36,7 +36,7 @@ are vcsim's, so test playbooks run on the execution environment
 (`connection: local`) against the hosts the rvav inventory gives.
 
 - [x] S6.1 AWX test content ([deploy/awx](../deploy/awx/README.md): playbooks, templates with surveys among them `install-monitoring-agent`, a workflow), set up in `rvav-test` by `rvav awx-bootstrap` (repeatable, syncs the project from GitHub). Client: templates by organisation and label, surveys, workflow nodes, AWX's error messages; lookups kept to `RVAV_AWX_ORGANIZATION`; workflow jobs followed node by node (they used to be read as playbook jobs). Contract tests against the test AWX (opt-in, `RVAV_AWX_TEST_URL`) pass: templates and labels, surveys, launch with limit and variables, events, a failed task's message, a refused survey answer, cancel, a workflow and its nodes. Found: AWX can't filter workflow templates on labels; a survey question needs a default. The fake plays workflows (the seeded firewall-flow item now runs; `TestAWXWorkflowItem`)
-- [ ] S6.2 Content source: templates chosen by organisation or label, synced every few minutes into catalog items with forms generated from their surveys; a changed survey is flagged with a diff; launch prompts checked (limit and variables) with warnings
+- [x] S6.2 Content source ([ADR-0016](adr/0016-awx-catalog.md)): templates of `RVAV_AWX_ORGANIZATION` with a label of `RVAV_AWX_CATALOG_LABELS` (`catalog`), synced by the `sync` service every `RVAV_AWX_SYNC_INTERVAL` (5 minutes) or at once by an admin; new ones become published items open to every project, with forms from their surveys (text, numbers, choices, multiselect, required, defaults; passwords left out), or are linked to the AWX item already launching them (the seeded ones keep their forms); a changed survey is flagged with a line per change, launch settings that break rvav's launch are warnings, templates no longer chosen are flagged and their items stay (migration 00008). Admin API and the Catalog items page; mock and Playwright test
 - [ ] S6.3 Dynamic inventory `GET /api/v1/ansible/inventory` (read-only API token): VMs ready for configuration, groups by project, environment, item and OS, rvav host variables; the `rvav.platform` collection (inventory plugin and credential type) in `ansible/`, tested with ansible-core; not published (outward-facing)
 - [ ] S6.4 Custom day-2 actions backed by AWX templates, bound to resource types and a CEL condition, their form from the survey, running against the rvav inventory with `limit`
 - [ ] S6.5 Value sources `awx.inventories` and `awx.credentials`
@@ -55,6 +55,7 @@ are vcsim's, so test playbooks run on the execution environment
 
 | Decision | Choice | Where |
 |---|---|---|
+| AWX in the catalog | Templates with the catalog label are published to every project; surveys become forms; a changed survey is flagged, the form stays | ADR-0016 |
 | EfficientIP API | The `/rest/` and `/rpc/` services, as EfficientIP's SOLIDserverRest library calls them; the fake is an HTTP SOLIDserver | ADR-0015 |
 
 ## Needs real infrastructure

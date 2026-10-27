@@ -17,6 +17,10 @@ type Fake struct {
 	FailTask  string
 	// Plays maps job template names to their task titles.
 	Plays map[string][]string
+	// Surveys are the templates' surveys (the others have none), and
+	// Workflows the templates that are workflow job templates.
+	Surveys   map[string][]SurveyQuestion
+	Workflows map[string]bool
 
 	mu      sync.Mutex
 	nextJob int
@@ -54,6 +58,7 @@ func DefaultTemplates() map[string][]string {
 
 func NewFake(taskDelay time.Duration, failTask string) *Fake {
 	return &Fake{TaskDelay: taskDelay, FailTask: failTask, Plays: DefaultTemplates(),
+		Surveys: DefaultSurveys(), Workflows: map[string]bool{"fw-flow-request": true},
 		nextJob: 18240, jobs: map[int]*fakeJob{}, now: time.Now}
 }
 
@@ -233,13 +238,15 @@ func stars(s string) string {
 	return strings.Repeat("*", n)
 }
 
-// FakeSurveys are the surveys of the fake's templates (the others have none).
-var FakeSurveys = map[string][]SurveyQuestion{
-	"monitoring-agent": {
-		{Variable: "monitoring_agent", Question: "Agent", Type: "multiplechoice", Choices: Choices{"node_exporter", "telegraf"},
-			Default: "node_exporter", Required: true},
-		{Variable: "listen_port", Question: "Port", Type: "integer", Min: ptr(1024), Max: ptr(65535), Default: 9100, Required: true},
-	},
+// DefaultSurveys are the surveys of the fake's templates.
+func DefaultSurveys() map[string][]SurveyQuestion {
+	return map[string][]SurveyQuestion{
+		"monitoring-agent": {
+			{Variable: "monitoring_agent", Question: "Agent", Type: "multiplechoice", Choices: Choices{"node_exporter", "telegraf"},
+				Default: "node_exporter", Required: true},
+			{Variable: "listen_port", Question: "Port", Type: "integer", Min: ptr(1024), Max: ptr(65535), Default: float64(9100), Required: true},
+		},
+	}
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -247,21 +254,25 @@ func ptr[T any](v T) *T { return &v }
 // Templates lists the fake's job templates, all with the label rvav and
 // prompts for limit and variables.
 func (f *Fake) Templates(_ context.Context, filter TemplateFilter) ([]Template, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var out []Template
 	for i, n := range f.templateNames() {
 		if len(filter.Labels) > 0 && !slices.Contains(filter.Labels, "rvav") {
 			continue
 		}
-		out = append(out, Template{ID: 100 + i, Name: n, Organization: "rvav", Labels: []string{"rvav"},
-			AskLimit: true, AskVariables: true, SurveyEnabled: len(FakeSurveys[n]) > 0})
+		out = append(out, Template{ID: 100 + i, Name: n, Workflow: f.Workflows[n], Organization: "rvav", Labels: []string{"rvav"},
+			AskLimit: true, AskVariables: true, SurveyEnabled: len(f.Surveys[n]) > 0})
 	}
 	return out, nil
 }
 
 func (f *Fake) Survey(_ context.Context, templateID int, _ bool) ([]SurveyQuestion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	names := f.templateNames()
 	if idx := templateID - 100; idx >= 0 && idx < len(names) {
-		return FakeSurveys[names[idx]], nil
+		return f.Surveys[names[idx]], nil
 	}
 	return nil, fmt.Errorf("awx job template %d not found", templateID)
 }

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from "./routes/index"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
+import { Route as AdminCatalogItemsRouteImport } from "./routes/admin/catalog-items"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
 import { Route as DeploymentsIndexRouteImport } from "./routes/deployments/index"
@@ -40,6 +41,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const AdminSectionRoute = AdminSectionRouteImport.update({
   id: "/admin/$section",
   path: "/admin/$section",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminCatalogItemsRoute = AdminCatalogItemsRouteImport.update({
+  id: "/admin/catalog-items",
+  path: "/admin/catalog-items",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/catalog-items"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/catalog-items"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
+    | "/admin/catalog-items"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   ReportsRoute: typeof ReportsRoute
   AdminSectionRoute: typeof AdminSectionRoute
+  AdminCatalogItemsRoute: typeof AdminCatalogItemsRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRoute
@@ -215,6 +228,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/$section"
       fullPath: "/admin/$section"
       preLoaderRoute: typeof AdminSectionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/catalog-items": {
+      id: "/admin/catalog-items"
+      path: "/admin/catalog-items"
+      fullPath: "/admin/catalog-items"
+      preLoaderRoute: typeof AdminCatalogItemsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/integrations": {
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   ReportsRoute: ReportsRoute,
   AdminSectionRoute: AdminSectionRoute,
+  AdminCatalogItemsRoute: AdminCatalogItemsRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
   RequestsRequestIdRoute: RequestsRequestIdRoute,

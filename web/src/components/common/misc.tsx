@@ -1,4 +1,17 @@
-import { Database, Globe, KeyRound, Lock, Monitor, Server, Shield, Users, Check, Copy } from "lucide-react";
+import {
+  Database,
+  Globe,
+  KeyRound,
+  Lock,
+  Monitor,
+  Server,
+  Shield,
+  SquareTerminal,
+  Users,
+  Workflow,
+  Check,
+  Copy,
+} from "lucide-react";
 import { useState } from "react";
 import { Tip } from "@/components/ui/tooltip";
 import type { CatalogItemType } from "@/lib/api/types";
@@ -13,6 +26,8 @@ const icons: Record<string, React.ElementType> = {
   globe: Globe,
   lock: Lock,
   users: Users,
+  terminal: SquareTerminal,
+  workflow: Workflow,
 };
 
 export function ItemIcon({ name, className }: { name: string; className?: string }) {

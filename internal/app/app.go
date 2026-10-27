@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/damhau/rvav/internal/awxcatalog"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -44,6 +45,13 @@ type App struct {
 	tcErr  error
 
 	stopFake context.CancelFunc
+}
+
+// awxCatalog imports the AWX templates of the organisation that have one of
+// the catalog labels.
+func (a *App) awxCatalog() *awxcatalog.Sync {
+	return &awxcatalog.Sync{Store: a.Store, AWX: a.AWX, Log: a.Log, Interval: a.Cfg.AWX.SyncInterval,
+		Filter: awx.TemplateFilter{Organization: a.Cfg.AWX.Organization, Labels: a.Cfg.AWX.CatalogLabels}}
 }
 
 // NewFakeEfficientIP is a fake SOLIDserver holding the subnets of rvav's
@@ -182,7 +190,8 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 // Core builds the business service with the given workflow engine.
 func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
-		VCenter: func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) }}
+		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
+		AWXCatalog: a.awxCatalog()}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}
@@ -282,6 +291,7 @@ func (a *App) RunSync(ctx context.Context) error {
 	}
 	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval}
 	go func() { _ = subnets.Run(ctx) }()
+	go func() { _ = a.awxCatalog().Run(ctx) }()
 	s := &inventory.Syncer{Store: a.Store, VSphere: vc, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 	return s.Run(ctx)
 }

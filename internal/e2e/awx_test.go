@@ -10,6 +10,8 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/awxcatalog"
+	"github.com/damhau/rvav/internal/integrations/awx"
 )
 
 // TestAWXWorkflowItem requests an item backed by an AWX workflow: the step
@@ -51,5 +53,85 @@ func TestAWXWorkflowItem(t *testing.T) {
 		if strings.Join(nodes, ",") != "fw-check-flow,fw-open-change,fw-push-rules" {
 			t.Fatalf("workflow nodes = %v", nodes)
 		}
+	})
+}
+
+// TestAWXCatalogImport: templates become items with forms from their
+// surveys (or are linked to the seeded items launching them), an imported
+// item can be requested, a changed survey is flagged with what changed, and
+// templates no longer chosen are flagged gone.
+func TestAWXCatalogImport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		h.svc.AWXCatalog = &awxcatalog.Sync{Store: h.store, AWX: h.awx, Log: h.acts.Log, Filter: awx.TemplateFilter{Labels: []string{"rvav"}}}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "tnguyen", nil, 403, nil)
+		var list api.AwxTemplateList
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, &list)
+		byName := map[string]api.AwxTemplate{}
+		for _, tpl := range list.Items {
+			byName[tpl.Name] = tpl
+			if tpl.ItemId == nil || tpl.SurveyChanged || tpl.Gone {
+				t.Errorf("after the first sync: %+v", tpl)
+			}
+		}
+		if len(list.Items) != len(h.awx.Plays) {
+			t.Fatalf("%d templates, the fake has %d", len(list.Items), len(h.awx.Plays))
+		}
+		if id := byName["ddi-dns-record"].ItemId; id == nil || *id != "itm_dns-record" {
+			t.Fatalf("the seeded DNS record item was not linked: %+v", byName["ddi-dns-record"])
+		}
+		if id := byName["fw-flow-request"].ItemId; id == nil || *id != "itm_firewall-flow" || !byName["fw-flow-request"].Workflow {
+			t.Fatalf("the seeded firewall workflow was not linked: %+v", byName["fw-flow-request"])
+		}
+
+		// The imported monitoring agent item, with its survey as the form.
+		const web = "prj_web"
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/monitoring-agent?project_id="+web, "tnguyen", nil, 200, &item)
+		if item.Type != api.AwxJobTemplate || item.Category != "automation" || item.Id != *byName["monitoring-agent"].ItemId {
+			t.Fatalf("imported item = %+v", item)
+		}
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/monitoring-agent/form?project_id="+web, "tnguyen", nil, 200, &form)
+		if f := form.UiSchema.Fields["listen_port"]; f.Label != "Port" || f.Widget != api.UiWidgetNumber || form.InitialValues["listen_port"] != float64(9100) {
+			t.Fatalf("port field = %+v, initial %v", f, form.InitialValues)
+		}
+		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"monitoring_agent": "telegraf", "listen_port": 80}}
+		status, body, _ := h.do("POST", "/api/v1/requests", "tnguyen", draft, "Idempotency-Key", uuid.NewString())
+		if status != 422 || !strings.Contains(string(body), "listen_port") {
+			t.Fatalf("a port below the survey's minimum = %d %s", status, body)
+		}
+		draft.Inputs["listen_port"] = 9273
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
+		if req.Status != api.RequestStatusSucceeded {
+			t.Fatalf("imported item request = %s", req.Status)
+		}
+
+		// The survey changes in AWX: flagged, with what changed; the form stays.
+		h.awx.Surveys["monitoring-agent"][1].Max = new(int)
+		*h.awx.Surveys["monitoring-agent"][1].Max = 32767
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, &list)
+		for _, tpl := range list.Items {
+			if tpl.Name == "monitoring-agent" && (!tpl.SurveyChanged || strings.Join(tpl.SurveyDiff, "; ") != "listen_port: maximum 65535 → 32767") {
+				t.Fatalf("changed survey = %+v", tpl)
+			}
+		}
+
+		// No longer chosen: flagged gone, the items stay.
+		h.svc.AWXCatalog.Filter.Labels = []string{"retired"}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, &list)
+		for _, tpl := range list.Items {
+			if !tpl.Gone {
+				t.Fatalf("not gone: %+v", tpl)
+			}
+		}
+		h.json("GET", "/api/v1/catalog/items/monitoring-agent?project_id="+web, "tnguyen", nil, 200, &item)
 	})
 }

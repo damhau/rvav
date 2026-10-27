@@ -66,6 +66,7 @@ export type ApprovalPage = S["ApprovalPage"];
 export type LiveEvent = S["Event"];
 export type NotificationEvent = S["NotificationEvent"];
 export type IpamReconcile = S["IpamReconcile"];
+export type AwxTemplate = S["AwxTemplate"];
 
 /** Every paginated list has this shape. */
 export interface Page<T> {
