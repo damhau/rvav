@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from "./routes/index"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
-import { Route as AdminCatalogItemsRouteImport } from "./routes/admin/catalog-items"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
@@ -21,6 +20,8 @@ import { Route as DeploymentsIndexRouteImport } from "./routes/deployments/index
 import { Route as DeploymentsDeploymentIdRouteImport } from "./routes/deployments/$deploymentId"
 import { Route as RequestsIndexRouteImport } from "./routes/requests/index"
 import { Route as RequestsRequestIdRouteImport } from "./routes/requests/$requestId"
+import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catalog-items/index"
+import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
@@ -42,11 +43,6 @@ const ReportsRoute = ReportsRouteImport.update({
 const AdminSectionRoute = AdminSectionRouteImport.update({
   id: "/admin/$section",
   path: "/admin/$section",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminCatalogItemsRoute = AdminCatalogItemsRouteImport.update({
-  id: "/admin/catalog-items",
-  path: "/admin/catalog-items",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
@@ -84,6 +80,16 @@ const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
   path: "/requests/$requestId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCatalogItemsIndexRoute = AdminCatalogItemsIndexRouteImport.update({
+  id: "/admin/catalog-items/",
+  path: "/admin/catalog-items/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminCatalogItemsItemIdRoute = AdminCatalogItemsItemIdRouteImport.update({
+  id: "/admin/catalog-items/$itemId",
+  path: "/admin/catalog-items/$itemId",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CatalogItemIdRequestRoute = CatalogItemIdRequestRouteImport.update({
   id: "/catalog/$itemId/request",
   path: "/catalog/$itemId/request",
@@ -101,7 +107,6 @@ export interface FileRoutesByFullPath {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
-  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -109,7 +114,9 @@ export interface FileRoutesByFullPath {
   "/catalog/": typeof CatalogIndexRoute
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
+  "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesByTo {
@@ -117,7 +124,6 @@ export interface FileRoutesByTo {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
-  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -125,7 +131,9 @@ export interface FileRoutesByTo {
   "/catalog": typeof CatalogIndexRoute
   "/deployments": typeof DeploymentsIndexRoute
   "/requests": typeof RequestsIndexRoute
+  "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesById {
@@ -134,7 +142,6 @@ export interface FileRoutesById {
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
   "/admin/$section": typeof AdminSectionRoute
-  "/admin/catalog-items": typeof AdminCatalogItemsRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -142,7 +149,9 @@ export interface FileRoutesById {
   "/catalog/": typeof CatalogIndexRoute
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
+  "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRouteTypes {
@@ -152,7 +161,6 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
-    | "/admin/catalog-items"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -160,7 +168,9 @@ export interface FileRouteTypes {
     | "/catalog/"
     | "/deployments/"
     | "/requests/"
+    | "/admin/catalog-items/$itemId"
     | "/catalog/$itemId/request"
+    | "/admin/catalog-items/"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -168,7 +178,6 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
-    | "/admin/catalog-items"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -176,7 +185,9 @@ export interface FileRouteTypes {
     | "/catalog"
     | "/deployments"
     | "/requests"
+    | "/admin/catalog-items/$itemId"
     | "/catalog/$itemId/request"
+    | "/admin/catalog-items"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
     | "__root__"
@@ -184,7 +195,6 @@ export interface FileRouteTypes {
     | "/approvals"
     | "/reports"
     | "/admin/$section"
-    | "/admin/catalog-items"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -192,7 +202,9 @@ export interface FileRouteTypes {
     | "/catalog/"
     | "/deployments/"
     | "/requests/"
+    | "/admin/catalog-items/$itemId"
     | "/catalog/$itemId/request"
+    | "/admin/catalog-items/"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
 }
@@ -201,7 +213,6 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   ReportsRoute: typeof ReportsRoute
   AdminSectionRoute: typeof AdminSectionRoute
-  AdminCatalogItemsRoute: typeof AdminCatalogItemsRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
@@ -209,7 +220,9 @@ export interface RootRouteChildren {
   CatalogIndexRoute: typeof CatalogIndexRoute
   DeploymentsIndexRoute: typeof DeploymentsIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
+  AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
+  AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 
@@ -241,13 +254,6 @@ declare module "@tanstack/react-router" {
       path: "/admin/$section"
       fullPath: "/admin/$section"
       preLoaderRoute: typeof AdminSectionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/admin/catalog-items": {
-      id: "/admin/catalog-items"
-      path: "/admin/catalog-items"
-      fullPath: "/admin/catalog-items"
-      preLoaderRoute: typeof AdminCatalogItemsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/day2-actions": {
@@ -299,6 +305,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof RequestsRequestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/catalog-items/": {
+      id: "/admin/catalog-items/"
+      path: "/admin/catalog-items"
+      fullPath: "/admin/catalog-items/"
+      preLoaderRoute: typeof AdminCatalogItemsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/catalog-items/$itemId": {
+      id: "/admin/catalog-items/$itemId"
+      path: "/admin/catalog-items/$itemId"
+      fullPath: "/admin/catalog-items/$itemId"
+      preLoaderRoute: typeof AdminCatalogItemsItemIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/catalog/$itemId/request": {
       id: "/catalog/$itemId/request"
       path: "/catalog/$itemId/request"
@@ -321,7 +341,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   ReportsRoute: ReportsRoute,
   AdminSectionRoute: AdminSectionRoute,
-  AdminCatalogItemsRoute: AdminCatalogItemsRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
@@ -329,7 +348,9 @@ const rootRouteChildren: RootRouteChildren = {
   CatalogIndexRoute: CatalogIndexRoute,
   DeploymentsIndexRoute: DeploymentsIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
+  AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
+  AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,
 }

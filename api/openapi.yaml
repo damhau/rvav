@@ -1862,6 +1862,17 @@ components:
           type: array
           description: The projects it is open to when not all of them.
           items: { type: string }
+        projects:
+          type: array
+          readOnly: true
+          description: Every project, to choose from.
+          items:
+            type: object
+            required: [id, code, name]
+            properties:
+              id: { type: string }
+              code: { type: string }
+              name: { type: string }
     CatalogImportResult:
       type: object
       required: [item_id, created, versions]

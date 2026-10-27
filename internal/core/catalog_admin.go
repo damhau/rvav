@@ -77,8 +77,25 @@ func (s *Service) presentAdminItem(ctx context.Context, it store.AdminItem) (api
 }
 
 func (s *Service) entitlements(ctx context.Context, it store.AdminItem) (api.CatalogEntitlements, error) {
-	projects, err := s.Store.ItemProjects(ctx, it.ID)
-	return api.CatalogEntitlements{AllProjects: it.AllProjects, ProjectIds: append([]string{}, projects...)}, err
+	ids, err := s.Store.ItemProjects(ctx, it.ID)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	out := api.CatalogEntitlements{AllProjects: it.AllProjects, ProjectIds: append([]string{}, ids...)}
+	all, err := s.Store.ListProjects(ctx, nil, 500, nil)
+	if err != nil {
+		return out, err
+	}
+	projects := make([]struct {
+		Code string `json:"code"`
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	}, len(all.Items))
+	for i, p := range all.Items {
+		projects[i].Code, projects[i].Id, projects[i].Name = p.Code, p.ID, p.Name
+	}
+	out.Projects = &projects
+	return out, nil
 }
 
 // AdminCatalogItems lists every item, in any state.

@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { CategoriesPanel } from "@/features/admin/catalog/CategoriesPanel";
+import { ItemsPanel } from "@/features/admin/catalog/ItemsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -30,7 +32,7 @@ function Row({ t }: { t: AwxTemplate }) {
       <td className="border-b border-line px-3 py-2 align-top">
         {t.item_id ? (
           <Link
-            to="/catalog/$itemId/request"
+            to="/admin/catalog-items/$itemId"
             params={{ itemId: t.item_id }}
             className="font-medium text-fg hover:text-accent"
           >
@@ -66,7 +68,7 @@ function Row({ t }: { t: AwxTemplate }) {
   );
 }
 
-export function CatalogItemsPage() {
+export function AwxTemplatesPanel() {
   const qc = useQueryClient();
   const templates = useQuery(q.awxTemplates());
   const sync = useMutation({
@@ -83,59 +85,67 @@ export function CatalogItemsPage() {
   });
   const items = templates.data?.items ?? [];
   return (
+    <Panel
+      title="Imported from AWX"
+      flush
+      actions={
+        <Button size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
+          {sync.isPending ? "Syncing…" : "Sync now"}
+        </Button>
+      }
+    >
+      {templates.isPending && <SkeletonRows rows={4} cols={5} />}
+      {templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
+      {templates.data && items.length === 0 && (
+        <EmptyState
+          title="No AWX templates yet"
+          body="Templates of rvav's AWX organisation with the catalog label become items here, every few minutes or when you sync."
+        />
+      )}
+      {items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[880px] border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className="border-b border-line px-4 py-2 font-medium">
+                  AWX template
+                </th>
+                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
+                  Catalog item
+                </th>
+                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
+                  Status
+                </th>
+                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
+                  What changed
+                </th>
+                <th scope="col" className="border-b border-line px-4 py-2 text-right font-medium">
+                  Synced
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((t) => (
+                <Row key={`${t.workflow}-${t.template_id}`} t={t} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function CatalogItemsPage() {
+  return (
     <Page>
       <PageHeader
         title="Catalog items"
-        meta="Editing items, their forms and versions comes with the catalog administration screens."
+        meta="Build items, publish their versions and choose which projects may request them."
       />
-      <Panel
-        title="Imported from AWX"
-        flush
-        actions={
-          <Button size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
-            {sync.isPending ? "Syncing…" : "Sync now"}
-          </Button>
-        }
-      >
-        {templates.isPending && <SkeletonRows rows={4} cols={5} />}
-        {templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
-        {templates.data && items.length === 0 && (
-          <EmptyState
-            title="No AWX templates yet"
-            body="Templates of rvav's AWX organisation with the catalog label become items here, every few minutes or when you sync."
-          />
-        )}
-        {items.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] border-collapse text-[13px]">
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                    AWX template
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Catalog item
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Status
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    What changed
-                  </th>
-                  <th scope="col" className="border-b border-line px-4 py-2 text-right font-medium">
-                    Synced
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((t) => (
-                  <Row key={`${t.workflow}-${t.template_id}`} t={t} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+      <ItemsPanel />
+      <CategoriesPanel />
+      <AwxTemplatesPanel />
     </Page>
   );
 }

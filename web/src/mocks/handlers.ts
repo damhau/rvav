@@ -27,6 +27,7 @@ import {
 } from "./approvals";
 import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
+import { catalogAdminHandlers } from "./catalogAdmin";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
@@ -283,6 +284,8 @@ export const handlers = [
       }),
     ];
   })(),
+
+  ...catalogAdminHandlers(db, base, wait),
 
   // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).
   ...(() => {

@@ -69,6 +69,13 @@ export type IpamReconcile = S["IpamReconcile"];
 export type AwxTemplate = S["AwxTemplate"];
 export type AwxAction = S["AwxAction"];
 export type FieldStates = S["FieldStates"];
+export type AdminCatalogItem = S["AdminCatalogItem"];
+export type CatalogItemVersion = S["CatalogItemVersion"];
+export type CatalogItemVersionDetail = S["CatalogItemVersionDetail"];
+export type CatalogVersionDefinition = S["CatalogVersionDefinition"];
+export type CatalogVersionChange = S["CatalogVersionChange"];
+export type CatalogEntitlements = S["CatalogEntitlements"];
+export type AdminCatalogCategory = S["AdminCatalogCategory"];
 export type AwxActionUpdate = S["AwxActionUpdate"];
 
 /** Every paginated list has this shape. */

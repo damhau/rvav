@@ -29,12 +29,28 @@ export interface DeploymentFilters {
   limit?: number;
 }
 
+export interface AdminItemFilters {
+  q?: string;
+  category?: string;
+  source?: "native" | "awx";
+  state?: "published" | "unpublished";
+}
+
 // Query key factories: one place per resource, so invalidation stays precise.
 export const keys = {
   me: ["me"] as const,
   ipamReconcile: ["admin", "ipam", "reconcile"] as const,
   awxTemplates: ["admin", "awx", "templates"] as const,
   awxActions: ["admin", "awx", "actions"] as const,
+  catalogAdmin: {
+    all: ["admin", "catalog"] as const,
+    items: (f: AdminItemFilters) => ["admin", "catalog", "items", f] as const,
+    item: (id: string) => ["admin", "catalog", "item", id] as const,
+    version: (itemId: string, versionId: string) => ["admin", "catalog", "version", itemId, versionId] as const,
+    compare: (itemId: string, from: string, to: string) => ["admin", "catalog", "compare", itemId, from, to] as const,
+    categories: ["admin", "catalog", "categories"] as const,
+    icons: ["admin", "catalog", "icons"] as const,
+  },
   environments: ["environments"] as const,
   project: (id: string) => ["projects", id] as const,
   quota: (id: string, environment?: string) => ["projects", id, "quota", environment ?? "all"] as const,
@@ -77,6 +93,51 @@ export const keys = {
 const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
 
 export const q = {
+  adminCatalogItems: (f: AdminItemFilters) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.items(f),
+      queryFn: ({ signal }) =>
+        call(api.GET("/admin/catalog/items", { params: { query: { ...f, limit: 200 } }, signal })),
+    }),
+  adminCatalogItem: (id: string) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.item(id),
+      queryFn: ({ signal }) =>
+        call(api.GET("/admin/catalog/items/{itemId}", { params: { path: { itemId: id } }, signal })),
+    }),
+  catalogVersion: (itemId: string, versionId: string) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.version(itemId, versionId),
+      queryFn: ({ signal }) =>
+        call(
+          api.GET("/admin/catalog/items/{itemId}/versions/{versionId}", {
+            params: { path: { itemId, versionId } },
+            signal,
+          }),
+        ),
+    }),
+  catalogCompare: (itemId: string, from: string, to: string) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.compare(itemId, from, to),
+      queryFn: ({ signal }) =>
+        call(
+          api.GET("/admin/catalog/items/{itemId}/compare", {
+            params: { path: { itemId }, query: { from, to } },
+            signal,
+          }),
+        ),
+    }),
+  adminCatalogCategories: () =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.categories,
+      queryFn: ({ signal }) => call(api.GET("/admin/catalog/categories", { signal })),
+    }),
+  catalogIcons: () =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.icons,
+      queryFn: ({ signal }) => call(api.GET("/admin/catalog/icons", { signal })),
+      staleTime: Infinity,
+    }),
   awxActions: () =>
     queryOptions({
       queryKey: keys.awxActions,

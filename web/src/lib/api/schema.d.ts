@@ -1381,6 +1381,12 @@ export interface components {
             all_projects: boolean;
             /** @description The projects it is open to when not all of them. */
             project_ids: string[];
+            /** @description Every project, to choose from. */
+            readonly projects?: {
+                id: string;
+                code: string;
+                name: string;
+            }[];
         };
         CatalogImportResult: {
             item_id: string;
