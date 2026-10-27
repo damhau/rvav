@@ -40,6 +40,8 @@ type Activities struct {
 	ShutdownTimeout time.Duration
 	// Housekeeper applies retention and lease policies (the core service).
 	Housekeeper Housekeeper
+	// Now is the housekeeping clock (time.Now when nil); tests move it on.
+	Now func() time.Time
 }
 
 // Info is what the workflow loads first.

@@ -69,8 +69,8 @@ func (s *Service) quotaCheck(ctx context.Context, proj store.Project, env, envNa
 					impact.Exceeds = true
 					if l.Enforcement == "hard" {
 						out.Hard = append(out.Hard, fmt.Sprintf(
-							"%s needs %d %s but %s has %d left. Choose a smaller size or ask a project admin to raise the quota.",
-							what, impact.Adding, quotaLabel(res), where, max(*l.Limit-impact.Used, 0)))
+							"%s needs %s but %s has %d left. Choose a smaller size or ask a project admin to raise the quota.",
+							what, quotaAmount(res, impact.Adding), where, max(*l.Limit-impact.Used, 0)))
 					} else if !contains(out.OverSoft, res) {
 						out.OverSoft = append(out.OverSoft, res)
 					}
@@ -89,4 +89,12 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// quotaAmount is an amount of a quota resource in words: "1 VM", "4 vCPU".
+func quotaAmount(res string, n int) string {
+	if res == "vm_count" && n == 1 {
+		return "1 VM"
+	}
+	return fmt.Sprintf("%d %s", n, quotaLabel(res))
 }

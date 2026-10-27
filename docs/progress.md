@@ -68,7 +68,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S5.2 The `Housekeeping` workflow (15-minute Temporal schedule) also applies leases: in-app reminders 7 days and 1 day before, then expiry as day-2 requests by `rvav`: `lease_expire` powers the VMs off and starts the grace period, `delete` follows after it (at once with `expiry_action: delete`); `notify_only` only tells the owner. Extending during the grace period calls the deletion off. A failed expiry is retried after a day; snapshots and leases run as separate activities
 - [x] S5.3 Quotas project-wide and per environment, hard or soft, checked on submit (and preview), resize and change of project: over a hard limit is refused with what is left; over a soft one, approval and day-2 policies see `quota.over_soft` and the seed asks the Infrastructure leads
 - [x] S5.4 UI: lease panel (end date, what expiry does, the grace period and deletion date once expired, extensions used and the limit) with Extend (the `extend_lease` action dialog, approval notice beyond the policy); per-environment and soft-limit lines in the form summary; the overview already shows the project quota. Mock catalogue and Playwright flow
-- [ ] S5.5 End-to-end test of the acceptance scenario
+- [x] S5.5 End-to-end test of the acceptance scenario (`TestLeasesAndQuotasAcceptance`), through a real Temporal server and worker with the housekeeping clock moved on: a 1-day dev lease gets its reminder, is powered off at expiry, kept during the grace period and deleted after it; a 120-day extension waits for the project admin; a request over a hard quota is refused with what is left
 - [ ] S5.6 Slice review, docs and roadmap status
 
 ## R0 close

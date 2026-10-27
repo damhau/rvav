@@ -44,7 +44,7 @@ func (a *Activities) ExpireSnapshots(ctx context.Context) (int, error) {
 	if a.Housekeeper == nil {
 		return 0, nil
 	}
-	started, err := a.Housekeeper.ExpireSnapshots(ctx, time.Now().UTC())
+	started, err := a.Housekeeper.ExpireSnapshots(ctx, a.now())
 	if len(started) > 0 {
 		a.Log.Info("expired snapshots", "requests", len(started))
 	}
@@ -56,11 +56,18 @@ func (a *Activities) ExpireLeases(ctx context.Context) (int, error) {
 	if a.Housekeeper == nil {
 		return 0, nil
 	}
-	started, err := a.Housekeeper.ExpireLeases(ctx, time.Now().UTC())
+	started, err := a.Housekeeper.ExpireLeases(ctx, a.now())
 	if len(started) > 0 {
 		a.Log.Info("lease expiries started", "requests", len(started))
 	}
 	return len(started), err
+}
+
+func (a *Activities) now() time.Time {
+	if a.Now != nil {
+		return a.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // EnsureHousekeeping creates the housekeeping schedule unless it exists.
