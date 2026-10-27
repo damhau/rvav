@@ -391,6 +391,8 @@ export function createDb(now = Date.now()): Db {
         expires_at: s.leaseDays === null ? null : inDays(s.leaseDays),
         extensions_used: s.leaseDays !== null && s.leaseDays < 7 ? 1 : 0,
         extensions_max: s.leaseDays === null ? null : 2,
+        max_days: s.leaseDays === null ? null : 90,
+        grace_days: 7,
         expiry_action: "power_off_then_delete",
       },
       vm_count: vms.length,

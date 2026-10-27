@@ -143,6 +143,8 @@ function createDeployment(
       expires_at: days ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
       extensions_used: 0,
       extensions_max: days ? 2 : null,
+      max_days: days ? 90 : null,
+      grace_days: 7,
       expiry_action: "power_off_then_delete",
     },
     vm_count: 0,

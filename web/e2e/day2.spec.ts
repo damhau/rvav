@@ -67,3 +67,23 @@ test("shut down the guests of two deployments at once", async ({ page }) => {
   await dialog.getByRole("button", { name: "Close", exact: true }).last().click();
   await expect(bar).toBeHidden();
 });
+
+test("extend a lease, and see that a longer one needs approval", async ({ page }) => {
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  const lease = page.getByRole("region", { name: "Lease" });
+  await expect(lease.getByText(/1 of 2 extensions used; up to 90 days without approval/)).toBeVisible();
+  await lease.getByRole("button", { name: "Extend the lease" }).click();
+  const dialog = page.getByRole("dialog", { name: "Extend the lease · web-dev-api" });
+  const days = dialog.getByRole("spinbutton", { name: "Days from now" });
+  await expect(days).toHaveValue("30");
+  await days.fill("45");
+  await dialog.getByRole("button", { name: "Extend the lease" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(lease.getByText(/2 of 2 extensions used/)).toBeVisible({ timeout: 15_000 });
+  // Both used: the next one asks the project admins.
+  await lease.getByRole("button", { name: "Extend the lease" }).click();
+  const next = page.getByRole("dialog", { name: "Extend the lease · web-dev-api" });
+  await expect(next.getByText(/Needs approval: All 2 extensions without approval are used/)).toBeVisible();
+  await expect(next.getByRole("button", { name: "Ask for approval" })).toBeVisible();
+});

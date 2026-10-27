@@ -265,6 +265,38 @@ export const catalogue: MockAction[] = [
     ops: () => [],
   },
   {
+    key: "extend_lease",
+    name: "Extend the lease",
+    group: "lifecycle",
+    deployment: true,
+    unavailable: (_vm, d) => (d.lease.expires_at ? null : "The deployment has no lease."),
+    form: () =>
+      form("New lease", [
+        [
+          "days",
+          { type: "integer", minimum: 1, maximum: 3650 },
+          { label: "Days from now", widget: "number", help: "Up to 90 days without approval." },
+          30,
+        ],
+      ]),
+    ops: (_vm, i, d) => [
+      {
+        key: "rvav.lease",
+        title: `Extend the lease of ${d.name} by ${Number(i.days)} days`,
+        system: "rvav",
+        apply: (dep) => {
+          dep.lease = {
+            ...dep.lease,
+            expires_at: new Date(Date.now() + Number(i.days) * 86_400_000).toISOString(),
+            extensions_used: (dep.lease.extensions_used ?? 0) + 1,
+            expired_at: null,
+            deletes_at: null,
+          };
+        },
+      },
+    ],
+  },
+  {
     key: "delete",
     name: "Delete",
     group: "lifecycle",
@@ -304,7 +336,17 @@ const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
       (!vm || !r.request.resource || r.request.resource.id === vm.id),
   );
 
-const approvalNeeded = (a: MockAction, d: DeploymentDetail) => a.key === "delete" && d.environment === "prd";
+// Why the action needs approval ("" when it doesn't); inputs are unknown when listing.
+function approvalReason(a: MockAction, d: DeploymentDetail, inputs?: Inputs): string {
+  if (a.key === "delete" && d.environment === "prd") return "Deleting a production deployment needs sign-off";
+  if (a.key === "extend_lease") {
+    if ((d.lease.extensions_used ?? 0) >= (d.lease.extensions_max ?? 0))
+      return `All ${d.lease.extensions_max ?? 0} extensions without approval are used`;
+    if (inputs && Number(inputs.days) > (d.lease.max_days ?? 90))
+      return "Longer than the 90 days allowed without approval";
+  }
+  return "";
+}
 
 /** The actions list of a deployment, as GET /deployments/{id}/actions answers. */
 export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
@@ -335,8 +377,8 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         enabled: reason === null,
         ...(reason ? { disabled_reason: reason } : {}),
         destructive: Boolean(a.destructive),
-        approval: approvalNeeded(a, d)
-          ? { required: true, reasons: ["Deleting a production deployment needs sign-off"] }
+        approval: approvalReason(a, d)
+          ? { required: true, reasons: [approvalReason(a, d)] }
           : { required: false, reasons: [] },
         ...(a.confirm || a.typeName
           ? { confirm: { message: a.confirm ?? "", ...(a.typeName ? { type_to_confirm: vm?.name ?? d.name } : {}) } }
@@ -398,7 +440,8 @@ export function runAction(
   const invalid = a.validate?.(vm, inputs);
   if (invalid) return { error: { status: 422, title: invalid, field: "/inputs" } };
 
-  const needsApproval = approvalNeeded(a, d);
+  const why = approvalReason(a, d, inputs);
+  const needsApproval = why !== "";
   const marc: UserRef = db.users.find((u) => u.id === "usr_mkeller")!;
   const ops = a.ops(vm, inputs, d);
   const steps: Step[] = [
@@ -452,10 +495,14 @@ export function runAction(
           required: true,
           policies: [
             {
-              policy_id: "d2p_prd_delete",
-              name: "Deleting in production",
-              reason: "Deleting a production deployment needs sign-off",
-              levels: [{ name: "Infrastructure leads", approvers: [marc], mode: "any" }],
+              policy_id: a.key === "delete" ? "d2p_prd_delete" : "lease_policy",
+              name: a.key === "delete" ? "Deleting in production" : "Lease policy",
+              reason: why,
+              levels: [
+                a.key === "delete"
+                  ? { name: "Infrastructure leads", approvers: [marc], mode: "any" }
+                  : { name: "Project admins", approvers: [marc], mode: "any" },
+              ],
             },
           ],
         }

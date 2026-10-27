@@ -185,8 +185,10 @@ function Summary({
                 <span className="label">Quota after this request</span>
                 {preview.quota.map((l) => (
                   <Meter
-                    key={l.resource}
-                    label={quotaLabel[l.resource][0]}
+                    key={`${l.resource}-${l.environment ?? ""}`}
+                    label={`${quotaLabel[l.resource][0]}${l.environment ? ` in ${l.environment}` : ""}${
+                      l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""
+                    }`}
                     unit={quotaLabel[l.resource][1]}
                     used={l.used}
                     adding={l.adding}

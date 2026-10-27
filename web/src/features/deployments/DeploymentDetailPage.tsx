@@ -273,6 +273,49 @@ function ActionTiles({ actions, onPick }: { actions: Day2Action[]; onPick: Pick 
   );
 }
 
+const afterExpiry = (d: DeploymentDetail) =>
+  d.lease.expiry_action === "delete"
+    ? "Then it is deleted."
+    : d.lease.expiry_action === "notify_only"
+      ? "Then you are told; nothing is deleted."
+      : `Then its VMs are powered off, and deleted ${d.lease.grace_days ?? 7} days later.`;
+
+function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2Action; onPick: Pick }) {
+  const l = d.lease;
+  if (!l.expires_at) {
+    return <p className="text-xs text-muted">No expiry: the lease policy keeps it until someone deletes it.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-2.5 text-xs">
+      {l.expired_at ? (
+        <p role="status" className="rounded-md bg-warn-soft px-3 py-2 text-warn">
+          The lease ended on {fullDate(l.expires_at)} and its VMs were powered off.
+          {l.deletes_at && ` It is deleted on ${fullDate(l.deletes_at)} unless you extend the lease.`}
+        </p>
+      ) : (
+        <p className="text-muted">
+          {leaseLabel(l.expires_at)} ({fullDate(l.expires_at)}). {afterExpiry(d)}
+        </p>
+      )}
+      <p className="text-faint">
+        {l.extensions_used ?? 0} of {l.extensions_max ?? 0} extensions used
+        {l.max_days ? `; up to ${l.max_days} days without approval` : ""}.
+      </p>
+      {extend && (
+        <Tip
+          content={extend.enabled ? (extend.approval.required ? "Needs approval" : "Extend") : extend.disabled_reason}
+        >
+          <span className="self-start">
+            <Button size="sm" disabled={!extend.enabled} onClick={() => onPick(extend)}>
+              Extend the lease
+            </Button>
+          </span>
+        </Tip>
+      )}
+    </div>
+  );
+}
+
 function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const ips = d.resources.filter((r): r is IpAddressResource => r.type === "ipam.address");
@@ -312,11 +355,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
           <Network ips={ips} dns={dns} />
         </Panel>
         <Panel title="Lease">
-          <p className="text-xs text-muted">
-            {d.lease.expires_at
-              ? `${leaseLabel(d.lease.expires_at)} (${fullDate(d.lease.expires_at)}). Then powered off, and deleted after a grace period. ${d.lease.extensions_used ?? 0} of ${d.lease.extensions_max ?? 0} extensions used.`
-              : "No expiry. The production lease policy keeps deployments until someone deletes them."}
-          </p>
+          <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />
         </Panel>
       </aside>
     </div>
