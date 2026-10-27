@@ -65,10 +65,20 @@ func (s *Server) ListRequests(w http.ResponseWriter, r *http.Request, params api
 	writeJSON(w, http.StatusOK, out)
 }
 
-// CreateRequest submits a request. The Idempotency-Key makes retries safe:
-// the same key and body return the first response; the same key with
-// another body is refused.
+// CreateRequest submits a request.
 func (s *Server) CreateRequest(w http.ResponseWriter, r *http.Request, params api.CreateRequestParams) {
+	submitOnce(s, w, r, params.IdempotencyKey.String(), func(d api.RequestDraft) (store.RequestRow, error) {
+		if d.Inputs == nil {
+			d.Inputs = map[string]any{}
+		}
+		return s.Core.Submit(r.Context(), principal(r), d)
+	})
+}
+
+// submitOnce decodes the body and creates a request with submit, answering
+// 202 with it. The Idempotency-Key makes retries safe: the same key and body
+// return the first response; the same key with another body is refused.
+func submitOnce[T any](s *Server, w http.ResponseWriter, r *http.Request, key string, submit func(T) (store.RequestRow, error)) {
 	p := principal(r)
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
@@ -77,7 +87,6 @@ func (s *Server) CreateRequest(w http.ResponseWriter, r *http.Request, params ap
 	}
 	sum := sha256.Sum256(bytes.TrimSpace(body))
 	hash := hex.EncodeToString(sum[:])
-	key := params.IdempotencyKey.String()
 
 	rec, claimed, err := s.Store.ClaimIdempotencyKey(r.Context(), p.User.ID, key, hash)
 	if err != nil {
@@ -105,16 +114,13 @@ func (s *Server) CreateRequest(w http.ResponseWriter, r *http.Request, params ap
 		return
 	}
 
-	var d api.RequestDraft
+	var d T
 	if err := json.Unmarshal(body, &d); err != nil {
 		_ = s.Store.ReleaseIdempotencyKey(r.Context(), p.User.ID, key)
 		s.problem(w, r, http.StatusBadRequest, "bad-request", "The request body is not valid JSON", err.Error(), nil)
 		return
 	}
-	if d.Inputs == nil {
-		d.Inputs = map[string]any{}
-	}
-	row, err := s.Core.Submit(r.Context(), p, d)
+	row, err := submit(d)
 	if err != nil {
 		// Let a corrected retry use the same key.
 		_ = s.Store.ReleaseIdempotencyKey(r.Context(), p.User.ID, key)

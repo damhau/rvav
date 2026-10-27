@@ -154,6 +154,12 @@ type Request struct {
 	WorkflowID       *string         `db:"workflow_id"`
 	ErrorStepID      *string         `db:"error_step_id"`
 	ErrorMessage     *string         `db:"error_message"`
+	// Kind is provision or day2; a day-2 request runs Action on a deployment.
+	Kind         string  `db:"kind"`
+	Action       *string `db:"action"`
+	DeploymentID *string `db:"deployment_id"`
+	ResourceID   *string `db:"resource_id"`
+	ResourceName *string `db:"resource_name"`
 }
 
 // RequestRow is a request joined with the names the API shows next to it.

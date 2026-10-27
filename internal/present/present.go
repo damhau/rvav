@@ -11,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -131,6 +132,22 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 	}
 	out.CatalogItem.Id, out.CatalogItem.Slug, out.CatalogItem.Name = r.ItemID, r.ItemSlug, r.ItemName
 	out.CatalogItem.Type = api.CatalogItemType(r.ItemType)
+	if r.Kind == "day2" {
+		out.Kind = api.Day2
+		out.DeploymentId = r.DeploymentID
+		if r.Action != nil {
+			out.Action = &struct {
+				Key  string `json:"key"`
+				Name string `json:"name"`
+			}{Key: *r.Action, Name: day2.Name(*r.Action)}
+		}
+		if r.ResourceID != nil && r.ResourceName != nil {
+			out.Resource = &struct {
+				Id   string `json:"id"`
+				Name string `json:"name"`
+			}{Id: *r.ResourceID, Name: *r.ResourceName}
+		}
+	}
 	if r.Justification != "" {
 		out.Justification = Ptr(r.Justification)
 	}
@@ -278,6 +295,7 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		if p.VM.Nics == nil {
 			p.VM.Nics = []struct {
 				IpAddresses *[]string `json:"ip_addresses,omitempty"`
+				Label       *string   `json:"label,omitempty"`
 				Mac         *string   `json:"mac,omitempty"`
 				Network     string    `json:"network"`
 			}{}

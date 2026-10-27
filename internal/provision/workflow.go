@@ -190,6 +190,17 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	var a *Activities
 	p := info.Plan
 
+	if p.Day2 != nil {
+		for _, op := range p.Day2.Ops {
+			in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
+				ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
+			if err := workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil); err != nil {
+				return op.Key, err
+			}
+		}
+		return "", nil
+	}
+
 	if p.Kind == blueprint.KindAWX && p.AWX != nil {
 		key := KeyJob + p.AWX.Key
 		vars := map[string]any{}

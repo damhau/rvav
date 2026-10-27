@@ -35,6 +35,8 @@ type Activities struct {
 	PollInterval time.Duration
 	// IPTimeout bounds the wait for VMware Tools to report the guest IP.
 	IPTimeout time.Duration
+	// ShutdownTimeout bounds the wait for a guest OS to shut down.
+	ShutdownTimeout time.Duration
 }
 
 // Info is what the workflow loads first.
@@ -202,6 +204,12 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 	}
 	if err := a.Store.SetRequestStatus(ctx, a.Store.Pool, requestID, "running"); err != nil {
 		return false, err
+	}
+	if r.DeploymentID != nil {
+		if err := a.Store.SetDeploymentStatus(ctx, a.Store.Pool, *r.DeploymentID, "updating"); err != nil {
+			return false, err
+		}
+		a.Events.Deployment(ctx, *r.DeploymentID)
 	}
 	a.Events.Request(ctx, requestID)
 	return true, nil
@@ -593,10 +601,19 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 		return err
 	}
 	db := a.Store.Pool
+	if r.DeploymentID != nil {
+		// A day-2 request: the deployment it acted on goes back to ready,
+		// or to what the action made of it.
+		var plan Plan
+		_ = json.Unmarshal(r.Plan, &plan)
+		if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, day2Status(plan, in.Outcome)); err != nil {
+			return err
+		}
+	}
 	switch in.Outcome {
 	case "succeeded":
 		title := "Ready"
-		if r.ItemType != "vm_blueprint" {
+		if r.ItemType != "vm_blueprint" || r.Kind == "day2" {
 			title = "Done"
 		}
 		if _, err := a.Store.UpdateStep(ctx, db, in.RequestID, KeyReady, store.StepUpdate{Status: "done", Title: &title}); err != nil {
@@ -608,7 +625,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 		if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "succeeded"); err != nil {
 			return err
 		}
-		a.Events.Notify(ctx, r.OwnerID, "Ready: "+r.Title, "", "success", "/requests/"+r.Number)
+		a.Events.Notify(ctx, r.OwnerID, title+": "+r.Title, "", "success", "/requests/"+r.Number)
 	case "failed":
 		stepID := ""
 		if st, err := a.Store.GetStepByKey(ctx, in.RequestID, in.StepKey); err == nil {

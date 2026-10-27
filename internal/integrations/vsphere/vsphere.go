@@ -75,6 +75,18 @@ type VM struct {
 	Folder       string
 	Datastore    string
 	Template     bool
+	// CPUHotAdd and MemoryHotAdd allow adding CPU or memory while running.
+	CPUHotAdd    bool
+	MemoryHotAdd bool
+	Snapshots    []Snapshot
+	// ISO is the image mounted in the first CD-ROM drive, if any.
+	ISO string
+}
+
+type Snapshot struct {
+	Name        string
+	Description string
+	Created     time.Time
 }
 
 type Disk struct {
@@ -84,6 +96,7 @@ type Disk struct {
 }
 
 type NIC struct {
+	Label   string
 	Network string
 	MAC     string
 	IPs     []string
@@ -102,6 +115,27 @@ type Driver interface {
 	WaitForIP(ctx context.Context, moref string) (string, error)
 	Destroy(ctx context.Context, moref string) error
 	Inventory(ctx context.Context) (*Inventory, error)
+
+	// Day-2 operations (day2.go).
+	ShutdownGuest(ctx context.Context, moref string) error
+	WaitPoweredOff(ctx context.Context, moref string) error
+	RebootGuest(ctx context.Context, moref string) error
+	Reset(ctx context.Context, moref string) error
+	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
+	AddDisk(ctx context.Context, moref string, sizeGB int) (string, error)
+	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error
+	AddNIC(ctx context.Context, moref, network string) error
+	RemoveNIC(ctx context.Context, moref, label string) error
+	SetNICNetwork(ctx context.Context, moref, label, network string) error
+	CreateSnapshot(ctx context.Context, moref, name, description string, memory bool) error
+	RevertSnapshot(ctx context.Context, moref, name string) error
+	DeleteSnapshot(ctx context.Context, moref, name string) error
+	Rename(ctx context.Context, moref, name string) error
+	MountISO(ctx context.Context, moref, path string) error
+	UnmountISO(ctx context.Context, moref string) error
+	CloneTicket(ctx context.Context) (string, error)
+	Host() string
+	WebMKSTicket(ctx context.Context, moref string) (*types.VirtualMachineTicket, error)
 }
 
 // Client implements Driver for one vCenter.
@@ -324,6 +358,8 @@ func toVM(m mo.VirtualMachine) VM {
 		vm.CPUCount = int(m.Config.Hardware.NumCPU)
 		vm.MemoryMB = int(m.Config.Hardware.MemoryMB)
 		vm.Template = m.Config.Template
+		vm.CPUHotAdd = m.Config.CpuHotAddEnabled != nil && *m.Config.CpuHotAddEnabled
+		vm.MemoryHotAdd = m.Config.MemoryHotAddEnabled != nil && *m.Config.MemoryHotAddEnabled
 		for _, d := range m.Config.Hardware.Device {
 			switch dev := d.(type) {
 			case *types.VirtualDisk:
@@ -336,9 +372,27 @@ func toVM(m mo.VirtualMachine) VM {
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:
 				card := dev.GetVirtualEthernetCard()
-				vm.NICs = append(vm.NICs, NIC{MAC: card.MacAddress, Network: backingName(card.Backing)})
+				label := ""
+				if card.DeviceInfo != nil {
+					label = card.DeviceInfo.GetDescription().Label
+				}
+				vm.NICs = append(vm.NICs, NIC{Label: label, MAC: card.MacAddress, Network: backingName(card.Backing)})
+			case *types.VirtualCdrom:
+				if iso, ok := dev.Backing.(*types.VirtualCdromIsoBackingInfo); ok && vm.ISO == "" {
+					vm.ISO = iso.FileName
+				}
 			}
 		}
+	}
+	if m.Snapshot != nil {
+		var walk func([]types.VirtualMachineSnapshotTree)
+		walk = func(list []types.VirtualMachineSnapshotTree) {
+			for _, s := range list {
+				vm.Snapshots = append(vm.Snapshots, Snapshot{Name: s.Name, Description: s.Description, Created: s.CreateTime})
+				walk(s.ChildSnapshotList)
+			}
+		}
+		walk(m.Snapshot.RootSnapshotList)
 	}
 	if m.Guest != nil {
 		switch m.Guest.ToolsRunningStatus {

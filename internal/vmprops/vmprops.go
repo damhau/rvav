@@ -44,7 +44,22 @@ func Build(vcenter string, vm vsphere.VM, fqdn, template string, usage *Usage, s
 	}
 	p.GuestOs, p.Cluster, p.Host, p.Folder = set(vm.GuestOS), set(vm.Cluster), set(vm.Host), set(vm.Folder)
 	p.Fqdn, p.Template = set(fqdn), set(template)
+	if len(vm.Snapshots) > snapshots {
+		snapshots = len(vm.Snapshots)
+	}
 	p.SnapshotCount = present.Ptr(snapshots)
+	p.CpuHotAdd, p.MemoryHotAdd, p.Iso = present.Ptr(vm.CPUHotAdd), present.Ptr(vm.MemoryHotAdd), set(vm.ISO)
+	if len(vm.Snapshots) > 0 {
+		list := make([]struct {
+			CreatedAt   time.Time `json:"created_at"`
+			Description *string   `json:"description,omitempty"`
+			Name        string    `json:"name"`
+		}, len(vm.Snapshots))
+		for i, s := range vm.Snapshots {
+			list[i].Name, list[i].Description, list[i].CreatedAt = s.Name, set(s.Description), s.Created
+		}
+		p.Snapshots = &list
+	}
 	p.Disks = make([]struct {
 		CapacityGb int     `json:"capacity_gb"`
 		Datastore  *string `json:"datastore,omitempty"`
@@ -59,11 +74,16 @@ func Build(vcenter string, vm vsphere.VM, fqdn, template string, usage *Usage, s
 	}
 	p.Nics = make([]struct {
 		IpAddresses *[]string `json:"ip_addresses,omitempty"`
+		Label       *string   `json:"label,omitempty"`
 		Mac         *string   `json:"mac,omitempty"`
 		Network     string    `json:"network"`
 	}, len(vm.NICs))
 	for i, n := range vm.NICs {
-		p.Nics[i].Network, p.Nics[i].Mac = n.Network, set(n.MAC)
+		label := n.Label
+		if label == "" {
+			label = "Network adapter " + strconv.Itoa(i+1)
+		}
+		p.Nics[i].Network, p.Nics[i].Mac, p.Nics[i].Label = n.Network, set(n.MAC), &label
 		if len(n.IPs) > 0 {
 			ips := append([]string{}, n.IPs...)
 			p.Nics[i].IpAddresses = &ips

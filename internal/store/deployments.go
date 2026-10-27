@@ -43,8 +43,11 @@ func (s *Store) GetDeployment(ctx context.Context, id string) (DeploymentRow, er
 	return d, notFound(err)
 }
 
+// DeploymentsForRequest lists the deployments a request created, or the one
+// a day-2 request acts on.
 func (s *Store) DeploymentsForRequest(ctx context.Context, requestID string) ([]DeploymentRow, error) {
-	rows, _ := s.Pool.Query(ctx, deploymentRowSelect+` where d.created_by_request_id = $1 order by d.created_at, d.id`, requestID)
+	rows, _ := s.Pool.Query(ctx, deploymentRowSelect+` where d.created_by_request_id = $1
+		or d.id = (select deployment_id from requests where id = $1) order by d.created_at, d.id`, requestID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentRow])
 }
 
@@ -152,6 +155,12 @@ func (s *Store) UpsertResource(ctx context.Context, db DB, r Resource) (Resource
 		r.ID, r.DeploymentID, r.RequestID, r.Type, r.Name, r.ExternalID, orDefault(r.SyncState, "in_sync"), jsonOr(r.Properties, "{}"))
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Resource])
 	return res, err
+}
+
+func (s *Store) GetResource(ctx context.Context, id string) (Resource, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+resourceCols+` from resources where id = $1`, id)
+	r, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Resource])
+	return r, notFound(err)
 }
 
 func (s *Store) ListResources(ctx context.Context, deploymentID string) ([]Resource, error) {

@@ -1392,10 +1392,24 @@ export interface components {
                 datastore?: string;
             }[];
             nics: {
+                /** @example Network adapter 1 */
+                label?: string;
                 network: string;
                 mac?: string;
                 ip_addresses?: string[];
             }[];
+            /** @description CPUs can be added while the VM runs. */
+            cpu_hot_add?: boolean;
+            /** @description Memory can be added while the VM runs. */
+            memory_hot_add?: boolean;
+            snapshots?: {
+                name: string;
+                description?: string;
+                /** Format: date-time */
+                created_at: string;
+            }[];
+            /** @description The ISO image mounted in the CD-ROM drive, for example `[nfs-iso] rhel-9.4.iso`. */
+            iso?: string;
             fqdn?: string;
             cluster?: string;
             host?: string;

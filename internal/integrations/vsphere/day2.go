@@ -1,0 +1,343 @@
+package vsphere
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/session"
+	"github.com/vmware/govmomi/vim25/types"
+)
+
+// Day-2 operations (ADR-0013). Each is safe to retry: it checks the current
+// state first where vCenter would otherwise fail or duplicate.
+
+// ErrToolsNotRunning means a guest operation needs VMware Tools.
+var ErrToolsNotRunning = errors.New("VMware Tools is not running in the guest")
+
+// IsNotFound reports whether err means the object is no longer in vCenter.
+func IsNotFound(err error) bool { return errors.Is(err, ErrNotFound) || isNotFoundFault(err) }
+
+func (cl *Client) vmObject(ctx context.Context, moref string) (*object.VirtualMachine, error) {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return object.NewVirtualMachine(c, vmRef(moref)), nil
+}
+
+func (cl *Client) guestOp(ctx context.Context, moref string, op func(*object.VirtualMachine) error) error {
+	vm, err := cl.GetVM(ctx, moref)
+	if err != nil {
+		return err
+	}
+	if vm.PowerState != "on" {
+		return nil
+	}
+	if vm.GuestState != "running" {
+		return ErrToolsNotRunning
+	}
+	obj, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	return op(obj)
+}
+
+// ShutdownGuest asks the guest OS to shut down. It returns without waiting.
+func (cl *Client) ShutdownGuest(ctx context.Context, moref string) error {
+	return cl.guestOp(ctx, moref, func(vm *object.VirtualMachine) error { return vm.ShutdownGuest(ctx) })
+}
+
+// WaitPoweredOff waits until the VM is powered off.
+func (cl *Client) WaitPoweredOff(ctx context.Context, moref string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	return vm.WaitForPowerState(ctx, types.VirtualMachinePowerStatePoweredOff)
+}
+
+// RebootGuest asks the guest OS to restart.
+func (cl *Client) RebootGuest(ctx context.Context, moref string) error {
+	return cl.guestOp(ctx, moref, func(vm *object.VirtualMachine) error { return vm.RebootGuest(ctx) })
+}
+
+// Reset is a hard reset, like pressing the reset button.
+func (cl *Client) Reset(ctx context.Context, moref string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	task, err := vm.Reset(ctx)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// Reconfigure sets the number of CPUs and the memory.
+func (cl *Client) Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	task, err := vm.Reconfigure(ctx, types.VirtualMachineConfigSpec{NumCPUs: int32(cpus), MemoryMB: int64(memoryMB)})
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// AddDisk adds a thin disk on the VM's datastore and returns its label.
+func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int) (string, error) {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return "", err
+	}
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return "", err
+	}
+	controller, err := devices.FindDiskController("")
+	if err != nil {
+		return "", err
+	}
+	before := devices.SelectByType((*types.VirtualDisk)(nil))
+	disk := devices.CreateDisk(controller, types.ManagedObjectReference{}, "")
+	disk.CapacityInKB = int64(sizeGB) * 1024 * 1024
+	if err := vm.AddDevice(ctx, disk); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Hard disk %d", len(before)+1), nil
+}
+
+// ExtendDisk grows a disk. Shrinking is refused, as in vCenter.
+func (cl *Client) ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return err
+	}
+	disk, ok := devices.Find(label).(*types.VirtualDisk)
+	if !ok {
+		return fmt.Errorf("%s: %w", label, ErrNotFound)
+	}
+	want := int64(sizeGB) * 1024 * 1024
+	if want == disk.CapacityInKB {
+		return nil
+	}
+	if want < disk.CapacityInKB {
+		return fmt.Errorf("%s is %d GB; disks can only grow", label, disk.CapacityInKB/(1024*1024))
+	}
+	disk.CapacityInKB = want
+	return vm.EditDevice(ctx, disk)
+}
+
+func (cl *Client) networkBacking(ctx context.Context, network string) (types.BaseVirtualDeviceBackingInfo, error) {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	finder := find.NewFinder(c)
+	dc, err := finder.DefaultDatacenter(ctx)
+	if err == nil {
+		finder.SetDatacenter(dc)
+	}
+	net, err := finder.Network(ctx, network)
+	if err != nil {
+		return nil, fmt.Errorf("network %s: %w", network, ErrNotFound)
+	}
+	return net.EthernetCardBackingInfo(ctx)
+}
+
+// AddNIC connects a new vmxnet3 adapter to the network.
+func (cl *Client) AddNIC(ctx context.Context, moref, network string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	backing, err := cl.networkBacking(ctx, network)
+	if err != nil {
+		return err
+	}
+	nic, err := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", backing)
+	if err != nil {
+		return err
+	}
+	return vm.AddDevice(ctx, nic)
+}
+
+func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, label string) (types.BaseVirtualDevice, error) {
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dev := devices.Find(label)
+	if _, ok := dev.(types.BaseVirtualEthernetCard); !ok {
+		return nil, fmt.Errorf("%s: %w", label, ErrNotFound)
+	}
+	return dev, nil
+}
+
+// RemoveNIC removes a network adapter. One already gone is not an error.
+func (cl *Client) RemoveNIC(ctx context.Context, moref, label string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	dev, err := cl.findNIC(ctx, vm, label)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return vm.RemoveDevice(ctx, false, dev)
+}
+
+// SetNICNetwork moves a network adapter to another network.
+func (cl *Client) SetNICNetwork(ctx context.Context, moref, label, network string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	dev, err := cl.findNIC(ctx, vm, label)
+	if err != nil {
+		return err
+	}
+	backing, err := cl.networkBacking(ctx, network)
+	if err != nil {
+		return err
+	}
+	dev.(types.BaseVirtualEthernetCard).GetVirtualEthernetCard().Backing = backing
+	return vm.EditDevice(ctx, dev)
+}
+
+// CreateSnapshot takes a snapshot, with the memory when asked.
+func (cl *Client) CreateSnapshot(ctx context.Context, moref, name, description string, memory bool) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	task, err := vm.CreateSnapshot(ctx, name, description, memory, false)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// RevertSnapshot goes back to a snapshot.
+func (cl *Client) RevertSnapshot(ctx context.Context, moref, name string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	task, err := vm.RevertToSnapshot(ctx, name, true)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// DeleteSnapshot removes a snapshot and consolidates. One already gone is not an error.
+func (cl *Client) DeleteSnapshot(ctx context.Context, moref, name string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	consolidate := true
+	task, err := vm.RemoveSnapshot(ctx, name, false, &consolidate)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil
+		}
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// Rename changes the VM's name in vCenter (not the guest hostname).
+func (cl *Client) Rename(ctx context.Context, moref, name string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	task, err := vm.Rename(ctx, name)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// MountISO inserts an ISO image (`[datastore] path/file.iso`) in the first
+// CD-ROM drive, adding a drive when the VM has none.
+func (cl *Client) MountISO(ctx context.Context, moref, path string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return err
+	}
+	cdrom, err := devices.FindCdrom("")
+	if err != nil {
+		ide, err := devices.FindIDEController("")
+		if err != nil {
+			return err
+		}
+		if cdrom, err = devices.CreateCdrom(ide); err != nil {
+			return err
+		}
+		if err := vm.AddDevice(ctx, devices.InsertIso(cdrom, path)); err != nil {
+			return err
+		}
+		return nil
+	}
+	return vm.EditDevice(ctx, devices.InsertIso(cdrom, path))
+}
+
+// UnmountISO ejects the ISO image from the first CD-ROM drive.
+func (cl *Client) UnmountISO(ctx context.Context, moref string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return err
+	}
+	cdrom, err := devices.FindCdrom("")
+	if err != nil {
+		return nil // no drive: nothing mounted
+	}
+	return vm.EditDevice(ctx, devices.EjectIso(cdrom))
+}
+
+// CloneTicket returns a one-time ticket for VMRC (ADR-0012).
+func (cl *Client) CloneTicket(ctx context.Context) (string, error) {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return "", err
+	}
+	return session.NewManager(c).AcquireCloneTicket(ctx)
+}
+
+// Host returns the vCenter host name, for VMRC links.
+func (cl *Client) Host() string { return cl.url.Hostname() }
+
+// WebMKSTicket returns where and how the HTML console connects (ADR-0012).
+func (cl *Client) WebMKSTicket(ctx context.Context, moref string) (*types.VirtualMachineTicket, error) {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return nil, err
+	}
+	return vm.AcquireTicket(ctx, string(types.VirtualMachineTicketTypeWebmks))
+}

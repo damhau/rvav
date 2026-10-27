@@ -1992,11 +1992,26 @@ components:
             type: object
             required: [network]
             properties:
+              label: { type: string, examples: [Network adapter 1] }
               network: { type: string }
               mac: { type: string }
               ip_addresses:
                 type: array
                 items: { type: string }
+        cpu_hot_add: { type: boolean, description: CPUs can be added while the VM runs. }
+        memory_hot_add: { type: boolean, description: Memory can be added while the VM runs. }
+        snapshots:
+          type: array
+          items:
+            type: object
+            required: [name, created_at]
+            properties:
+              name: { type: string }
+              description: { type: string }
+              created_at: { type: string, format: date-time }
+        iso:
+          type: string
+          description: The ISO image mounted in the CD-ROM drive, for example `[nfs-iso] rhel-9.4.iso`.
         fqdn: { type: string }
         cluster: { type: string }
         host: { type: string }

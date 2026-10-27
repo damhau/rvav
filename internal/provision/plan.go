@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/day2"
 )
 
 // Plan is everything the workflow needs, computed when the request is
@@ -25,6 +26,19 @@ type Plan struct {
 	Rollback     bool            `json:"rollback_on_failure"`
 	ExtraVars    map[string]any  `json:"extra_vars,omitempty"`
 	Context      map[string]any  `json:"context,omitempty"`
+	// Day2 is set on day-2 requests instead of VMs or AWX.
+	Day2 *Day2 `json:"day2,omitempty"`
+}
+
+// Day2 is the plan of a day-2 request: operations on one resource, in order.
+type Day2 struct {
+	Action       string    `json:"action"`
+	DeploymentID string    `json:"deployment_id"`
+	ResourceID   string    `json:"resource_id,omitempty"`
+	Moref        string    `json:"moref,omitempty"`
+	Ops          []day2.Op `json:"ops"`
+	// After is the deployment's status once the action succeeded: ready or deleted.
+	After string `json:"after"`
 }
 
 // VMUnit is one VM and the deployment it belongs to.
@@ -107,6 +121,12 @@ func (p Plan) Steps(environment string) []StepDef {
 	default:
 		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Approval not required",
 			Detail: "No approval policy applies in " + environment, System: "policy", Status: "done"})
+	}
+	if p.Day2 != nil {
+		for _, op := range p.Day2.Ops {
+			steps = append(steps, StepDef{Key: op.Key, Title: op.Title, Detail: op.Detail, System: op.System, Status: "pending"})
+		}
+		return append(steps, StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
 	}
 	if p.Kind == blueprint.KindAWX && p.AWX != nil {
 		return append(steps,

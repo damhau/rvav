@@ -51,7 +51,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 
 - [x] S4.1 Console spike and [ADR-0012](adr/0012-vm-console.md): a VMRC link (clone ticket) always, and a WebMKS session proxied by rvav when the organisation provides VMware's WMKS client; vcsim has no WebMKS tickets, so a real ESXi host must confirm it
 - [x] S4.2 Spec: actions available on a deployment (filtered by policy and state), run an action (a request of kind `day2`), deployment history, console session and its WebSocket, retry and roll back. Design in [ADR-0013](adr/0013-day2-actions.md); handlers answer 501 until built
-- [ ] S4.3 Power: on, off, shut down guest, restart guest, reset
+- [x] S4.3 Power: on, off, shut down guest, restart guest, reset. Day-2 plumbing: `internal/day2` catalogue, requests of kind `day2` run by the request workflow (one `RunOp` activity per step, VM refreshed after each), one request at a time per deployment, history, `action.run` audit entries. Until S4.7, members, project admins and the owner may run actions. vcsim VMs have no VMware Tools; the test simulates it
 - [ ] S4.4 Resize CPU and RAM (hot-add aware), add or extend disks, add, remove or move NICs
 - [ ] S4.5 Snapshots: create, revert, delete, retention policy
 - [ ] S4.6 Rename (vCenter and DNS), mount ISO, change owner or project (quota check), delete deployment (VM, IP and DNS released)

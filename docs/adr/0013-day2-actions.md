@@ -15,9 +15,12 @@ history, and can fail and be retried. Requests already have all of this.
 A day-2 action is a request with `kind: day2`, the `action` key, the target
 `deployment_id` and, for VM actions, `resource_id`. It has the deployment's
 catalog item and version, its own steps, approvals (ADR-0011), live events and
-audit entries, and is run by the `Day2` workflow. The deployment's history is
-its requests: the one that created it and every action since. `kind:
-provision` is what slice 1 built.
+audit entries. The request workflow runs it like any request (approval,
+schedule, cancel, outcome); its plan holds the action's operations instead of
+VMs to build, each one a step, and each refreshes the VM from vCenter. While
+it runs the deployment is `updating`; one request runs on a deployment at a
+time. The deployment's history is its requests: the one that created it and
+every action since. `kind: provision` is what slice 1 built.
 
 ### The actions
 Native actions are code (`internal/day2`): each has a key, a name, a group,

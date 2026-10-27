@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,12 +15,14 @@ select r.id, r.number, r.item_id, r.version_id, r.project_id, r.environment, r.t
        r.requester_id, r.on_behalf_of_id, r.owner_id, r.inputs, r.count, r.justification, r.lease_days,
        r.approval_required, r.approval, r.plan, r.submitted_at, r.scheduled_at, r.started_at,
        r.finished_at, r.workflow_id, r.error_step_id, r.error_message,
+       r.kind, r.action, r.deployment_id, r.resource_id, r.resource_name,
        i.slug as item_slug, i.name as item_name, i.type as item_type, v.number as version_number,
        p.code as project_code, p.name as project_name,
        u.name as requester_name, u.email as requester_email,
        ob.name as on_behalf_of_name, ob.email as on_behalf_of_email,
-       coalesce((select array_agg(d.id order by d.created_at) from deployments d
-                 where d.created_by_request_id = r.id), '{}') as deployment_ids,
+       case when r.deployment_id is not null then array[r.deployment_id]
+            else coalesce((select array_agg(d.id order by d.created_at) from deployments d
+                           where d.created_by_request_id = r.id), '{}') end as deployment_ids,
        (select count(*) from request_steps s where s.request_id = r.id and s.parent_id is null
           and s.status in ('done', 'skipped'))::int as steps_done,
        (select count(*) from request_steps s where s.request_id = r.id and s.parent_id is null)::int as steps_total,
@@ -45,11 +48,13 @@ func (s *Store) NextRequestNumber(ctx context.Context, db DB) (string, error) {
 func (s *Store) InsertRequest(ctx context.Context, db DB, r Request) error {
 	_, err := db.Exec(ctx, `insert into requests (id, number, item_id, version_id, project_id, environment, title,
 		status, requester_id, on_behalf_of_id, owner_id, inputs, count, justification, lease_days,
-		approval_required, approval, plan, submitted_at, scheduled_at, workflow_id)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		approval_required, approval, plan, submitted_at, scheduled_at, workflow_id,
+		kind, action, deployment_id, resource_id, resource_name)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
 		r.ID, r.Number, r.ItemID, r.VersionID, r.ProjectID, r.Environment, r.Title, r.Status, r.RequesterID,
 		r.OnBehalfOfID, r.OwnerID, r.Inputs, r.Count, r.Justification, r.LeaseDays, r.ApprovalRequired,
-		jsonOr(r.Approval, "{}"), jsonOr(r.Plan, "{}"), r.SubmittedAt, r.ScheduledAt, r.WorkflowID)
+		jsonOr(r.Approval, "{}"), jsonOr(r.Plan, "{}"), r.SubmittedAt, r.ScheduledAt, r.WorkflowID,
+		orDefault(r.Kind, "provision"), r.Action, r.DeploymentID, r.ResourceID, r.ResourceName)
 	return err
 }
 
@@ -68,8 +73,10 @@ type RequestFilter struct {
 	Statuses    []string
 	RequesterID string
 	Search      string
-	Limit       int
-	After       *Cursor
+	// DeploymentID lists the requests that created or changed the deployment.
+	DeploymentID string
+	Limit        int
+	After        *Cursor
 }
 
 // ListRequests returns requests newest first. A request is visible when it is
@@ -90,9 +97,11 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 		  and ($6 = '' or r.requester_id = $6)
 		  and ($7 = '' or r.title ilike $7 or r.number ilike $7)
 		  and ($8 = '' or (r.submitted_at, r.id) < ($9, $8))
+		  and ($11 = '' or r.deployment_id = $11
+		       or r.id = (select created_by_request_id from deployments where id = $11))
 		order by r.submitted_at desc, r.id desc limit $10`,
 		f.Projects == nil, f.Projects, f.ViewerID, f.ProjectID, nonNil(f.Statuses), f.RequesterID,
-		SearchText(f.Search), afterID, afterTime, f.Limit+1)
+		SearchText(f.Search), afterID, afterTime, f.Limit+1, f.DeploymentID)
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[RequestRow])
 	if err != nil {
 		return Page[RequestRow]{}, err
@@ -100,6 +109,27 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 	return paginate(list, f.Limit, func(r RequestRow) Cursor {
 		return Cursor{Value: r.SubmittedAt.Format(time.RFC3339Nano), ID: r.ID}
 	}), nil
+}
+
+// ActiveDeploymentRequest returns the number of a request that has not
+// finished on the deployment, the one that created it or an action, or "".
+// Lock the deployment row first (LockDeployment) to make it a reliable check.
+func (s *Store) ActiveDeploymentRequest(ctx context.Context, db DB, deploymentID string) (string, error) {
+	var number string
+	err := db.QueryRow(ctx, `select r.number from requests r
+		where (r.deployment_id = $1 or r.id = (select created_by_request_id from deployments where id = $1))
+		  and r.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')
+		order by r.submitted_at limit 1`, deploymentID).Scan(&number)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return number, err
+}
+
+// LockDeployment locks a deployment row until the transaction ends.
+func (s *Store) LockDeployment(ctx context.Context, tx pgx.Tx, id string) error {
+	_, err := tx.Exec(ctx, `select 1 from deployments where id = $1 for update`, id)
+	return err
 }
 
 // SetRequestStatus updates the status and the matching timestamps.
