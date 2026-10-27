@@ -102,9 +102,12 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		a.AWX = awx.NewFake(cfg.AWX.FakeTaskDelay, cfg.AWX.FakeFailTask)
 		log.Warn("using the fake AWX (RVAV_FAKE_AWX=1); jobs are simulated")
 	} else if cfg.AWX.URL != "" {
-		if a.AWX, err = awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure); err != nil {
+		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure)
+		if err != nil {
 			return nil, err
 		}
+		c.Organization = cfg.AWX.Organization
+		a.AWX = c
 	} else {
 		return nil, errors.New("set RVAV_AWX_URL, or RVAV_FAKE_AWX=1 for development")
 	}

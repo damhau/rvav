@@ -2,6 +2,7 @@ package awx
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -48,15 +49,38 @@ type WorkflowContent struct {
 
 // SurveyQuestion is a question of an AWX survey, as in survey_spec.
 type SurveyQuestion struct {
-	Variable    string   `yaml:"variable" json:"variable"`
-	Question    string   `yaml:"question" json:"question_name"`
-	Description string   `yaml:"description" json:"question_description"`
-	Type        string   `yaml:"type" json:"type"`
-	Choices     []string `yaml:"choices" json:"choices,omitempty"`
-	Default     any      `yaml:"default" json:"default"`
-	Required    bool     `yaml:"required" json:"required"`
-	Min         *int     `yaml:"min" json:"min,omitempty"`
-	Max         *int     `yaml:"max" json:"max,omitempty"`
+	Variable    string  `yaml:"variable" json:"variable"`
+	Question    string  `yaml:"question" json:"question_name"`
+	Description string  `yaml:"description" json:"question_description"`
+	Type        string  `yaml:"type" json:"type"`
+	Choices     Choices `yaml:"choices" json:"choices,omitempty"`
+	Default     any     `yaml:"default" json:"default"`
+	Required    bool    `yaml:"required" json:"required"`
+	Min         *int    `yaml:"min" json:"min,omitempty"`
+	Max         *int    `yaml:"max" json:"max,omitempty"`
+}
+
+// Choices are a question's options. AWX gives them as a list, or (older
+// surveys) as one string with a line per option.
+type Choices []string
+
+func (c *Choices) UnmarshalJSON(b []byte) error {
+	var list []string
+	if err := json.Unmarshal(b, &list); err == nil {
+		*c = list
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*c = nil
+	for _, line := range strings.Split(s, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			*c = append(*c, line)
+		}
+	}
+	return nil
 }
 
 func LoadContent(path string) (Content, error) {
@@ -98,6 +122,12 @@ func (c *HTTPClient) find(ctx context.Context, path, name string, orgID int) (in
 
 // ensure creates the named object at path, or updates it with body.
 func (c *HTTPClient) ensure(ctx context.Context, path, name string, orgID int, body map[string]any) (int, error) {
+	return c.ensureAt(ctx, path, path, name, orgID, body)
+}
+
+// ensureAt is ensure for objects listed and created at one path and
+// updated at another (hosts: /inventories/{id}/hosts/ and /hosts/{id}/).
+func (c *HTTPClient) ensureAt(ctx context.Context, path, itemPath, name string, orgID int, body map[string]any) (int, error) {
 	id, err := c.find(ctx, path, name, orgID)
 	if err != nil {
 		return 0, err
@@ -107,7 +137,7 @@ func (c *HTTPClient) ensure(ctx context.Context, path, name string, orgID int, b
 		body["organization"] = orgID
 	}
 	if id != 0 {
-		return id, c.do(ctx, http.MethodPatch, fmt.Sprintf("%s%d/", path, id), nil, body, nil)
+		return id, c.do(ctx, http.MethodPatch, fmt.Sprintf("%s%d/", itemPath, id), nil, body, nil)
 	}
 	var created named
 	if err := c.do(ctx, http.MethodPost, path, nil, body, &created); err != nil {
@@ -140,7 +170,7 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, log *slog.Lo
 		return fmt.Errorf("inventory: %w", err)
 	}
 	for _, h := range content.Inventory.Hosts {
-		if _, err := c.ensure(ctx, fmt.Sprintf("/inventories/%d/hosts/", inventory), h, 0, map[string]any{
+		if _, err := c.ensureAt(ctx, fmt.Sprintf("/inventories/%d/hosts/", inventory), "/hosts/", h, 0, map[string]any{
 			"variables": "ansible_connection: local\nansible_python_interpreter: '{{ ansible_playbook_python }}'"}); err != nil {
 			return fmt.Errorf("host %s: %w", h, err)
 		}
@@ -157,6 +187,11 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, log *slog.Lo
 		}
 		templates[t.Name] = id
 		if len(t.Survey) > 0 {
+			for i := range t.Survey {
+				if t.Survey[i].Default == nil {
+					t.Survey[i].Default = "" // AWX's "no default"
+				}
+			}
 			spec := map[string]any{"name": t.Name, "description": t.Description, "spec": t.Survey}
 			if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/job_templates/%d/survey_spec/", id), nil, spec, nil); err != nil {
 				return fmt.Errorf("survey of %s: %w", t.Name, err)

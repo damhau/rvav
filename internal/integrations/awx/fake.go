@@ -3,6 +3,7 @@ package awx
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,8 +15,8 @@ import (
 type Fake struct {
 	TaskDelay time.Duration
 	FailTask  string
-	// Templates maps job template names to their task titles.
-	Templates map[string][]string
+	// Plays maps job template names to their task titles.
+	Plays map[string][]string
 
 	mu      sync.Mutex
 	nextJob int
@@ -46,17 +47,19 @@ func DefaultTemplates() map[string][]string {
 		"ddi-dns-record":   {"Gathering Facts", "efficientip : add record"},
 		"pki-renew-deploy": {"Gathering Facts", "pki : issue certificate", "pki : deploy certificate", "pki : reload services"},
 		"idm-hbac-group":   {"Gathering Facts", "idm : create group", "idm : add sudo rule", "idm : add HBAC rule"},
+		// A workflow: each entry is a node.
+		"fw-flow-request": {"fw-check-flow", "fw-open-change", "fw-push-rules"},
 	}
 }
 
 func NewFake(taskDelay time.Duration, failTask string) *Fake {
-	return &Fake{TaskDelay: taskDelay, FailTask: failTask, Templates: DefaultTemplates(),
+	return &Fake{TaskDelay: taskDelay, FailTask: failTask, Plays: DefaultTemplates(),
 		nextJob: 18240, jobs: map[int]*fakeJob{}, now: time.Now}
 }
 
 func (f *Fake) templateNames() []string {
-	names := make([]string, 0, len(f.Templates))
-	for n := range f.Templates {
+	names := make([]string, 0, len(f.Plays))
+	for n := range f.Plays {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -81,7 +84,7 @@ func (f *Fake) Launch(_ context.Context, templateID int, _ bool, req LaunchReque
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextJob++
-	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, started: f.now(), tasks: f.Templates[names[idx]]}
+	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, started: f.now(), tasks: f.Plays[names[idx]]}
 	f.jobs[j.id] = j
 	return f.jobLocked(j), nil
 }
@@ -228,4 +231,63 @@ func stars(s string) string {
 		n = 4
 	}
 	return strings.Repeat("*", n)
+}
+
+// FakeSurveys are the surveys of the fake's templates (the others have none).
+var FakeSurveys = map[string][]SurveyQuestion{
+	"monitoring-agent": {
+		{Variable: "monitoring_agent", Question: "Agent", Type: "multiplechoice", Choices: Choices{"node_exporter", "telegraf"},
+			Default: "node_exporter", Required: true},
+		{Variable: "listen_port", Question: "Port", Type: "integer", Min: ptr(1024), Max: ptr(65535), Default: 9100, Required: true},
+	},
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// Templates lists the fake's job templates, all with the label rvav and
+// prompts for limit and variables.
+func (f *Fake) Templates(_ context.Context, filter TemplateFilter) ([]Template, error) {
+	var out []Template
+	for i, n := range f.templateNames() {
+		if len(filter.Labels) > 0 && !slices.Contains(filter.Labels, "rvav") {
+			continue
+		}
+		out = append(out, Template{ID: 100 + i, Name: n, Organization: "rvav", Labels: []string{"rvav"},
+			AskLimit: true, AskVariables: true, SurveyEnabled: len(FakeSurveys[n]) > 0})
+	}
+	return out, nil
+}
+
+func (f *Fake) Survey(_ context.Context, templateID int, _ bool) ([]SurveyQuestion, error) {
+	names := f.templateNames()
+	if idx := templateID - 100; idx >= 0 && idx < len(names) {
+		return FakeSurveys[names[idx]], nil
+	}
+	return nil, fmt.Errorf("awx job template %d not found", templateID)
+}
+
+// WorkflowNodes plays a workflow as one node per task of its template.
+func (f *Fake) WorkflowNodes(_ context.Context, id int) ([]WorkflowNode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	j, ok := f.jobs[id]
+	if !ok {
+		return nil, fmt.Errorf("awx workflow job %d not found", id)
+	}
+	done, failedAt := f.progress(j)
+	out := make([]WorkflowNode, len(j.tasks))
+	for i, t := range j.tasks {
+		out[i] = WorkflowNode{ID: id*100 + i, Name: t}
+		switch {
+		case failedAt >= 0 && i > failedAt:
+			out[i].DoNotRun = true
+		case i == failedAt:
+			out[i].Status = "failed"
+		case i < done:
+			out[i].Status = "successful"
+		case i == done && !j.canceled:
+			out[i].Status = "running"
+		}
+	}
+	return out, nil
 }

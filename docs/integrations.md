@@ -71,7 +71,13 @@ target for now: its controller API is close to AWX's but sits behind the AAP
 gateway with different paths and auth, so it would need its own small adapter.
 
 Authentication uses an AWX OAuth2 token for a dedicated service user, with
-**Execute** permission on the templates exposed in the catalog.
+**Execute** permission on the templates exposed in the catalog. With
+`RVAV_AWX_ORGANIZATION` set, templates are looked up in that organisation
+only, so a template of the same name elsewhere is never launched.
+
+A workflow job is followed node by node: each node is a task of the step,
+and a finished node's job output goes to the step's log. The client is
+checked against a real AWX by contract tests ([deploy/awx](../deploy/awx/README.md)).
 
 ### Launch contract
 - Job templates used by rvav must enable **Prompt on launch** for *Limit* and

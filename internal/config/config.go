@@ -86,6 +86,7 @@ type AWXConfig struct {
 	Fake              bool
 	URL               string
 	Token             string
+	Organization      string // template lookups stay in this organisation when set
 	Insecure          bool
 	InventorySourceID int
 	// Fake only: time each fake task takes, and a task title that fails.
@@ -135,10 +136,11 @@ func Load() (Config, error) {
 			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
 		},
 		AWX: AWXConfig{
-			Fake:     boolean("RVAV_FAKE_AWX"),
-			URL:      env("RVAV_AWX_URL", ""),
-			Token:    env("RVAV_AWX_TOKEN", ""),
-			Insecure: boolean("RVAV_AWX_INSECURE"),
+			Fake:         boolean("RVAV_FAKE_AWX"),
+			URL:          env("RVAV_AWX_URL", ""),
+			Token:        env("RVAV_AWX_TOKEN", ""),
+			Organization: env("RVAV_AWX_ORGANIZATION", ""),
+			Insecure:     boolean("RVAV_AWX_INSECURE"),
 		},
 	}
 

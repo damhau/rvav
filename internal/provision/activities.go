@@ -535,15 +535,23 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 			ExternalID: &ext, ExternalURL: &job.URL, HasLog: &hasLog})
 	}
 
-	// Resume from the last event an earlier attempt processed; without that,
-	// start over so log lines and tasks are not duplicated.
+	// Resume from what an earlier attempt processed; without that, start
+	// over so log lines and tasks are not duplicated.
+	resumed := activity.HasHeartbeatDetails(ctx)
+	if !resumed {
+		if _, err := a.Store.Pool.Exec(ctx, `delete from step_log_lines where step_id = $1`, st.ID); err != nil {
+			return err
+		}
+		if _, err := a.Store.Pool.Exec(ctx, `delete from request_steps where parent_id = $1`, st.ID); err != nil {
+			return err
+		}
+	}
+	if in.Job.Workflow {
+		return a.followWorkflow(ctx, in, st.ID, jobID, resumed)
+	}
 	counter := 0
-	if activity.HasHeartbeatDetails(ctx) {
+	if resumed {
 		_ = activity.GetHeartbeatDetails(ctx, &counter)
-	} else if _, err := a.Store.Pool.Exec(ctx, `delete from step_log_lines where step_id = $1`, st.ID); err != nil {
-		return err
-	} else if _, err := a.Store.Pool.Exec(ctx, `delete from request_steps where parent_id = $1`, st.ID); err != nil {
-		return err
 	}
 
 	tasks, _ := a.countChildren(ctx, st.ID)
@@ -620,6 +628,80 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		if err := vsphere.Sleep(ctx, a.poll()); err != nil {
 			// Cancelled: stop the job too, so it does not keep changing the host.
 			_ = a.AWX.Cancel(context.Background(), jobID, in.Job.Workflow)
+			return err
+		}
+	}
+}
+
+// followWorkflow follows a workflow job node by node: each node is a task
+// of the step, and a finished node's job output goes to the step's log.
+func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID string, jobID int, resumed bool) error {
+	var logged []int // jobs whose output is in the log
+	if resumed {
+		_ = activity.GetHeartbeatDetails(ctx, &logged)
+	}
+	for {
+		nodes, err := a.AWX.WorkflowNodes(ctx, jobID)
+		if err != nil {
+			return fmt.Errorf("AWX: %w", err)
+		}
+		failedMsg := ""
+		for _, n := range nodes {
+			status := "pending"
+			var errText *string
+			switch {
+			case n.DoNotRun:
+				status = "skipped"
+			case n.Status == "successful":
+				status = "done"
+			case n.Status == "failed" || n.Status == "error" || n.Status == "canceled":
+				status = "failed"
+				msg := fmt.Sprintf("%s ended %s", n.Name, n.Status)
+				errText, failedMsg = &msg, msg
+			case n.Status != "":
+				status = "running"
+			}
+			a.child(ctx, in, fmt.Sprintf("%s/node:%d", in.StepKey, n.ID), n.Name, status, errText)
+			if n.JobID == 0 || !awx.Done(n.Status) || slices.Contains(logged, n.JobID) {
+				continue
+			}
+			evs, err := a.AWX.Events(ctx, n.JobID, 0)
+			if err != nil {
+				return fmt.Errorf("AWX: %w", err)
+			}
+			lines := []store.LogLine{{Text: fmt.Sprintf("%s · AWX job %d", n.Name, n.JobID), Kind: "header"}}
+			for _, e := range evs {
+				for _, l := range splitLines(e.Stdout) {
+					lines = append(lines, store.LogLine{Text: l, Kind: awx.LineKind(l)})
+				}
+				if strings.HasPrefix(e.Event, "runner_on_failed") && e.Message != "" {
+					failedMsg = fmt.Sprintf("%s: %s: %s", n.Name, e.Task, e.Message)
+				}
+			}
+			next, err := a.Store.AppendLogLines(ctx, a.Store.Pool, stepID, lines)
+			if err != nil {
+				return err
+			}
+			a.Events.Log(ctx, in.ProjectID, in.RequestID, stepID, next)
+			logged = append(logged, n.JobID)
+		}
+		activity.RecordHeartbeat(ctx, logged)
+
+		job, err := a.AWX.GetJob(ctx, jobID, true)
+		if err != nil {
+			return fmt.Errorf("AWX: %w", err)
+		}
+		if job.Finished {
+			if job.Status == "successful" {
+				return nil
+			}
+			if failedMsg == "" {
+				failedMsg = fmt.Sprintf("AWX workflow job %d ended %s", jobID, job.Status)
+			}
+			return temporal.NewNonRetryableApplicationError(failedMsg, "AWXJobFailed", nil)
+		}
+		if err := vsphere.Sleep(ctx, a.poll()); err != nil {
+			_ = a.AWX.Cancel(context.Background(), jobID, true)
 			return err
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,6 +19,44 @@ type HTTPClient struct {
 	base  *url.URL
 	token string
 	http  *http.Client
+	// Organization limits template lookups to one organisation.
+	Organization string
+}
+
+// APIError is an error AWX answered with.
+type APIError struct {
+	Method, Path string
+	Status       int
+	Message      string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("awx %s %s: %d %s", e.Method, e.Path, e.Status, e.Message)
+}
+
+// errorMessage reads AWX's error body: {"detail": "..."}, or field errors
+// such as {"extra_vars": ["..."], "variables_needed_to_start": ["..."]}.
+func errorMessage(body []byte) string {
+	var m map[string]any
+	if json.Unmarshal(body, &m) != nil {
+		return strings.TrimSpace(string(body[:min(len(body), 300)]))
+	}
+	if d, ok := m["detail"].(string); ok {
+		return d
+	}
+	var parts []string
+	for k, v := range m {
+		switch v := v.(type) {
+		case []any:
+			for _, x := range v {
+				parts = append(parts, fmt.Sprintf("%s: %v", k, x))
+			}
+		default:
+			parts = append(parts, fmt.Sprintf("%s: %v", k, v))
+		}
+	}
+	slices.Sort(parts)
+	return strings.Join(parts, "; ")
 }
 
 func NewHTTPClient(rawURL, token string, insecure bool) (*HTTPClient, error) {
@@ -60,7 +99,7 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, query url.Valu
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("awx %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
+		return &APIError{Method: method, Path: path, Status: resp.StatusCode, Message: errorMessage(data)}
 	}
 	if out != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {
@@ -84,10 +123,17 @@ func (c *HTTPClient) LookupJobTemplate(ctx context.Context, name string, workflo
 			ID int `json:"id"`
 		} `json:"results"`
 	}
-	if err := c.do(ctx, http.MethodGet, tpl+"/", url.Values{"name": {name}}, nil, &res); err != nil {
+	q := url.Values{"name": {name}}
+	if c.Organization != "" {
+		q.Set("organization__name", c.Organization)
+	}
+	if err := c.do(ctx, http.MethodGet, tpl+"/", q, nil, &res); err != nil {
 		return 0, err
 	}
 	if len(res.Results) == 0 {
+		if c.Organization != "" {
+			return 0, fmt.Errorf("awx template %q not found in organization %s", name, c.Organization)
+		}
 		return 0, fmt.Errorf("awx template %q not found", name)
 	}
 	return res.Results[0].ID, nil
@@ -212,4 +258,113 @@ func (c *HTTPClient) GetInventoryUpdate(ctx context.Context, id int) (Job, error
 	u.Fragment = fmt.Sprintf("/jobs/inventory/%d/output", id)
 	job.URL = u.String()
 	return job, nil
+}
+
+type templateJSON struct {
+	ID            int       `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	AskLimit      bool      `json:"ask_limit_on_launch"`
+	AskVariables  bool      `json:"ask_variables_on_launch"`
+	AskInventory  bool      `json:"ask_inventory_on_launch"`
+	AskCredential bool      `json:"ask_credential_on_launch"`
+	SurveyEnabled bool      `json:"survey_enabled"`
+	Modified      time.Time `json:"modified"`
+	Summary       struct {
+		Organization struct {
+			Name string `json:"name"`
+		} `json:"organization"`
+		Labels struct {
+			Results []struct {
+				Name string `json:"name"`
+			} `json:"results"`
+		} `json:"labels"`
+	} `json:"summary_fields"`
+}
+
+func (c *HTTPClient) Templates(ctx context.Context, f TemplateFilter) ([]Template, error) {
+	var out []Template
+	for _, workflow := range []bool{false, true} {
+		tpl, _ := kindPath(workflow)
+		q := url.Values{"page_size": {"200"}, "order_by": {"name"}}
+		if f.Organization != "" {
+			q.Set("organization__name", f.Organization)
+		}
+		if len(f.Labels) > 0 && !workflow { // AWX can't filter workflow templates on labels
+			q.Set("labels__name__in", strings.Join(f.Labels, ","))
+		}
+		seen := map[int]bool{}
+		for page := 1; page < 100; page++ {
+			q.Set("page", fmt.Sprint(page))
+			var res struct {
+				Next    *string        `json:"next"`
+				Results []templateJSON `json:"results"`
+			}
+			if err := c.do(ctx, http.MethodGet, tpl+"/", q, nil, &res); err != nil {
+				return nil, err
+			}
+			for _, t := range res.Results {
+				if seen[t.ID] { // a template with two of the labels is listed twice
+					continue
+				}
+				seen[t.ID] = true
+				labels := []string{}
+				for _, l := range t.Summary.Labels.Results {
+					labels = append(labels, l.Name)
+				}
+				if len(f.Labels) > 0 && !slices.ContainsFunc(labels, func(l string) bool { return slices.Contains(f.Labels, l) }) {
+					continue
+				}
+				out = append(out, Template{ID: t.ID, Name: t.Name, Description: t.Description, Workflow: workflow,
+					Organization: t.Summary.Organization.Name, Labels: labels, AskLimit: t.AskLimit,
+					AskVariables: t.AskVariables, AskInventory: t.AskInventory, AskCredential: t.AskCredential,
+					SurveyEnabled: t.SurveyEnabled, Modified: t.Modified})
+			}
+			if res.Next == nil {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+func (c *HTTPClient) Survey(ctx context.Context, templateID int, workflow bool) ([]SurveyQuestion, error) {
+	tpl, _ := kindPath(workflow)
+	var spec struct {
+		Spec []SurveyQuestion `json:"spec"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/survey_spec/", tpl, templateID), nil, nil, &spec); err != nil {
+		return nil, err
+	}
+	return spec.Spec, nil
+}
+
+func (c *HTTPClient) WorkflowNodes(ctx context.Context, workflowJobID int) ([]WorkflowNode, error) {
+	var res struct {
+		Results []struct {
+			ID       int  `json:"id"`
+			Job      *int `json:"job"`
+			DoNotRun bool `json:"do_not_run"`
+			Summary  struct {
+				Template struct {
+					Name string `json:"name"`
+				} `json:"unified_job_template"`
+				Job struct {
+					Status string `json:"status"`
+				} `json:"job"`
+			} `json:"summary_fields"`
+		} `json:"results"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/workflow_jobs/%d/workflow_nodes/", workflowJobID),
+		url.Values{"page_size": {"200"}, "order_by": {"id"}}, nil, &res); err != nil {
+		return nil, err
+	}
+	out := make([]WorkflowNode, len(res.Results))
+	for i, n := range res.Results {
+		out[i] = WorkflowNode{ID: n.ID, Name: n.Summary.Template.Name, Status: n.Summary.Job.Status, DoNotRun: n.DoNotRun}
+		if n.Job != nil {
+			out[i].JobID = *n.Job
+		}
+	}
+	return out, nil
 }

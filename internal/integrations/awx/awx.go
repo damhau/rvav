@@ -6,6 +6,7 @@ package awx
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 type LaunchRequest struct {
@@ -33,13 +34,49 @@ type Event struct {
 	Message string // error message of a failed task
 }
 
+// Template is a job template or workflow job template.
+type Template struct {
+	ID           int
+	Name         string
+	Description  string
+	Workflow     bool
+	Organization string
+	Labels       []string
+	// What the template lets a launch set ("Prompt on launch").
+	AskLimit, AskVariables, AskInventory, AskCredential bool
+	SurveyEnabled                                       bool
+	Modified                                            time.Time
+}
+
+// TemplateFilter chooses templates: of an organisation, with any of the
+// labels (all templates when empty).
+type TemplateFilter struct {
+	Organization string
+	Labels       []string
+}
+
+// WorkflowNode is a node of a workflow job, and the job it ran.
+type WorkflowNode struct {
+	ID       int
+	Name     string // the template's name
+	JobID    int    // 0 until the node runs
+	Status   string // the job's; "" until it runs
+	DoNotRun bool   // skipped because of an earlier node's outcome
+}
+
 type Client interface {
 	// LookupJobTemplate returns the ID of a job template (or workflow job
-	// template) by name.
+	// template) by name, in rvav's organisation when one is set.
 	LookupJobTemplate(ctx context.Context, name string, workflow bool) (int, error)
+	// Templates lists job templates and workflow job templates.
+	Templates(ctx context.Context, f TemplateFilter) ([]Template, error)
+	// Survey returns a template's survey questions (none when it has no survey).
+	Survey(ctx context.Context, templateID int, workflow bool) ([]SurveyQuestion, error)
+	// WorkflowNodes lists a workflow job's nodes.
+	WorkflowNodes(ctx context.Context, workflowJobID int) ([]WorkflowNode, error)
 	Launch(ctx context.Context, templateID int, workflow bool, req LaunchRequest) (Job, error)
 	GetJob(ctx context.Context, id int, workflow bool) (Job, error)
-	// Events returns events with a counter greater than after.
+	// Events returns a playbook job's events with a counter greater than after.
 	Events(ctx context.Context, jobID int, after int) ([]Event, error)
 	Cancel(ctx context.Context, jobID int, workflow bool) error
 	// UpdateInventorySource starts a refresh and returns the update job ID.
