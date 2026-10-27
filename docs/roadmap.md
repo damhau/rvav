@@ -34,7 +34,8 @@ from their surveys, changed surveys flagged
 `rvav.platform` inventory plugin, and jobs on rvav's VMs run on that
 inventory ([ADR-0017](adr/0017-awx-inventory.md)); templates with the day2
 label become day-2 actions bound to resource types and a condition
-([ADR-0018](adr/0018-awx-day2-actions.md)). S8 and S9 come next.
+([ADR-0018](adr/0018-awx-day2-actions.md)). S8 and S9 come next. The work
+left, slice by slice, is in [GitHub milestones and issues](https://github.com/damhau/rvav/milestones).
 
 Verified so far:
 - `make check` (also in CI on every push): spec lint, generated code, Go vet

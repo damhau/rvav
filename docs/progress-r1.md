@@ -43,13 +43,14 @@ are vcsim's, so test playbooks run on the execution environment
 - [x] S6.6 Acceptance on the test AWX (24.6.1), with the compose stack on it (`deploy/docker-compose.awx.yml`: rvav reaches AWX through its published port, AWX reaches rvav's API through a gateway, the only rvav container on the AWX's network, after rvav's services joining it resolved `postgres` to the AWX stack's database and were refused): the `rvav` inventory synced from rvav by the collection installed from GitHub (29 hosts, groups by project, environment, item, tags and OS); a new VM's `linux-baseline` ran on it as AWX job 49 with `limit` the VM; "Install monitoring agent" ran as a day-2 action on that VM, job 51 on the rvav inventory, the playbook seeing the VM's address (`telegraf 1.30.0 on web-dev-app011 (10.31.10.26)`); the template `dns-record`, imported into the catalog, was requested with its survey as a form (job 52, on its own inventory); its survey changed in AWX was flagged with `record_name: maximum 63 → 40` and `ttl added (integer)`, then restored. The contract tests pass too
 - [x] S6.7 Slice review, docs and roadmap status. An independent review of the S6 commits found two high-severity issues, fixed: an AWX action without a survey passed whatever inputs a user sent to AWX as extra variables (Ansible connection variables such as `ansible_ssh_common_args` among them) and they could replace the `rvav` context; an action without a form now takes no inputs, `rvav` is always rvav's, and survey questions on `ansible_*` variables are left out of forms. And a template that doesn't prompt for a limit would have run on every VM rvav manages (AWX ignores the limit and launches); a limit is now checked to be prompted before launching, a job whose limit or inventory AWX ignored all the same is cancelled at once, an action with no VM is unavailable, and a new action with a launch problem starts turned off. Also fixed from it: action keys unique when names collide (the AWX ID added), and a template that can't be read no longer stops the sync; jobs launched by their AWX ID (actions, and catalog items made from a template); a job checks its action is still offered just before launching (turned off or gone while waiting for approval), and a retry checks the condition and power state again; workflow nodes that are not playbook runs (an inventory sync) no longer fail the step; the plugin marks its values as data on older ansible-core too, and inputs that look like templates are not exposed; API tokens have a scope (`-scope inventory` reads the inventory only, migration 00010), expire after a year by default and can be revoked; the two syncs can't make the same item twice (advisory lock); with a real AWX the organisation is required and jobs on rvav's VMs are refused without the inventory source; `awx.*` and `dns.zones` values checked on submit; conditions checked on a sample of each type when saved, deployments given `os_family`; a retried job refreshes the inventory first; AWX jobs may run six hours; action names as administrators set them in lists and approvals; the admin page's errors tied to their fields. Not changed: catalog items linked to existing AWX items (the seeded ones) still launch by name
 
-## S8 Catalog administration
+## S8 and S9
 
-- [ ] S8.1 to be broken down
-
-## S9 Projects, placement and governance
-
-- [ ] S9.1 to be broken down
+From S8 on, work is tracked in GitHub: one milestone per slice
+([S8](https://github.com/damhau/rvav/milestone/1),
+[S9](https://github.com/damhau/rvav/milestone/2)), one issue per item, each
+closed with what was done and how it was verified. What needs real
+infrastructure is in the
+[Lab acceptance](https://github.com/damhau/rvav/milestone/9) milestone.
 
 ## Decisions taken
 
