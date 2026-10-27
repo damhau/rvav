@@ -6,6 +6,7 @@ package day2
 import (
 	"encoding/json"
 	"slices"
+	"time"
 
 	"github.com/damhau/rvav/internal/api"
 )
@@ -29,6 +30,15 @@ type Target struct {
 	VM           api.VmProperties
 	Resources    []Resource
 	OwnerID      string
+	Lease        Lease
+}
+
+// Lease is the deployment's lease now.
+type Lease struct {
+	ExpiresAt      *time.Time
+	ExtensionsUsed int
+	// ExpiredAt is when its expiry powered the VMs off (the grace period runs).
+	ExpiredAt *time.Time
 }
 
 // Resource is one resource of a deployment.
@@ -54,6 +64,9 @@ type Choices struct {
 	Members []api.Option
 	// Projects the deployment may move to; disabled ones say why not.
 	Projects []api.Option
+	// The lease policy that applies (ADR-0014).
+	LeaseDefaultDays, LeaseMaxDays *int
+	LeaseMaxExtensions             int
 }
 
 // Op is one step of a day-2 request. The workflow runs Op with Args.
@@ -95,6 +108,11 @@ type Action struct {
 	// Direct actions are not requests: the UI calls their own endpoint
 	// (the console), and only the policy decides.
 	Direct bool
+	// Hidden actions are not offered: only rvav runs them (lease expiry).
+	Hidden bool
+	// Approval says why the action needs approval on top of the day-2
+	// policies ("" when it doesn't); inputs is nil when listing actions.
+	Approval func(t Target, c Choices, inputs map[string]any) string
 }
 
 func (a *Action) AppliesTo(typ string) bool { return slices.Contains(a.Types, typ) }

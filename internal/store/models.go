@@ -69,12 +69,16 @@ type NetworkSubnet struct {
 	EfficientIPSubnetID string   `db:"efficientip_subnet_id"`
 }
 
+// LeasePolicy is the lease policy of an environment, or a project's
+// override of it (ADR-0014).
 type LeasePolicy struct {
-	Environment   string `db:"environment"`
-	DefaultDays   *int   `db:"default_days"`
-	MaxDays       *int   `db:"max_days"`
-	MaxExtensions int    `db:"max_extensions"`
-	ExpiryAction  string `db:"expiry_action"`
+	Environment   string  `db:"environment"`
+	ProjectID     *string `db:"project_id"`
+	DefaultDays   *int    `db:"default_days"`
+	MaxDays       *int    `db:"max_days"`
+	MaxExtensions int     `db:"max_extensions"`
+	GraceDays     int     `db:"grace_days"`
+	ExpiryAction  string  `db:"expiry_action"`
 }
 
 type Category struct {
@@ -228,6 +232,10 @@ type Deployment struct {
 	ExpiryAction        string          `db:"expiry_action"`
 	SyncState           string          `db:"sync_state"`
 	Inputs              json.RawMessage `db:"inputs"`
+	// LeaseReminded are the reminders sent for the current lease (7d, 1d);
+	// LeaseExpiredAt is when its expiry powered the VMs off.
+	LeaseReminded  []string   `db:"lease_reminded"`
+	LeaseExpiredAt *time.Time `db:"lease_expired_at"`
 }
 
 // DeploymentRow is a deployment joined with the names and counts the API shows.
@@ -244,6 +252,10 @@ type DeploymentRow struct {
 	VMsPoweredOn  int     `db:"vms_powered_on"`
 	PrimaryIP     *string `db:"primary_ip"`
 	PrimaryFQDN   *string `db:"primary_fqdn"`
+	// The lease policy that applies now.
+	LeaseMaxDays       *int `db:"lease_max_days"`
+	LeaseMaxExtensions *int `db:"lease_max_extensions"`
+	LeaseGraceDays     *int `db:"lease_grace_days"`
 }
 
 type Resource struct {

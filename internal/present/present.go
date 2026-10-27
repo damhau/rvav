@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -245,7 +246,22 @@ func Deployment(d store.DeploymentRow) api.Deployment {
 			ExtensionsUsed: Ptr(d.LeaseExtensionsUsed),
 			ExtensionsMax:  d.LeaseExtensionsMax,
 			ExpiryAction:   Ptr(api.LeaseExpiryAction(d.ExpiryAction)),
+			ExpiredAt:      d.LeaseExpiredAt,
 		},
+	}
+	if d.LeaseExpiresAt != nil {
+		// The policy that applies now sets the limits.
+		out.Lease.MaxDays = d.LeaseMaxDays
+		if d.LeaseMaxExtensions != nil {
+			out.Lease.ExtensionsMax = d.LeaseMaxExtensions
+		}
+	}
+	if d.LeaseGraceDays != nil {
+		out.Lease.GraceDays = Ptr(*d.LeaseGraceDays)
+		if d.LeaseExpiredAt != nil && d.ExpiryAction == "power_off_then_delete" {
+			at := d.LeaseExpiredAt.Add(time.Duration(*d.LeaseGraceDays) * 24 * time.Hour)
+			out.Lease.DeletesAt = &at
+		}
 	}
 	out.CatalogItem.Id, out.CatalogItem.Slug, out.CatalogItem.Name = d.ItemID, d.ItemSlug, d.ItemName
 	if d.PrimaryIP != nil {

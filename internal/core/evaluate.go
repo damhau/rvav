@@ -509,7 +509,7 @@ func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *
 	if ev.Blueprint.Kind != blueprint.KindVM || ev.Env.Key == "" {
 		return nil
 	}
-	pol, err := s.Store.LeasePolicy(ctx, ev.Env.Key)
+	pol, err := s.Store.LeasePolicy(ctx, ev.Project.ID, ev.Env.Key)
 	if err != nil {
 		return err
 	}

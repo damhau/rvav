@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/store"
@@ -229,4 +230,35 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 		}
 	}
 	return strings.Join(done, ", "), nil
+}
+
+// setLease ends the deployment's lease the given number of days from now.
+func (a *Activities) setLease(ctx context.Context, in OpInput) (string, error) {
+	until := time.Now().UTC().Add(time.Duration(argInt(in.Op.Args, "days")) * 24 * time.Hour).Truncate(time.Second)
+	if err := a.Store.ExtendLease(ctx, a.Store.Pool, in.DeploymentID, until); err != nil {
+		return "", err
+	}
+	a.Events.Deployment(ctx, in.DeploymentID)
+	return "Until " + until.Format("2 Jan 2006 15:04 UTC"), nil
+}
+
+// leaseExpired records that the lease's expiry powered the VMs off: the
+// grace period before deletion starts now.
+func (a *Activities) leaseExpired(ctx context.Context, in OpInput) (string, error) {
+	d, err := a.Store.GetDeployment(ctx, in.DeploymentID)
+	if err != nil {
+		return "", err
+	}
+	if d.LeaseExpiredAt == nil {
+		if err := a.Store.SetLeaseExpired(ctx, a.Store.Pool, d.ID, time.Now().UTC()); err != nil {
+			return "", err
+		}
+	}
+	a.Events.Deployment(ctx, d.ID)
+	if d.LeaseGraceDays != nil && d.ExpiryAction == "power_off_then_delete" {
+		a.Events.Notify(ctx, d.OwnerID, "The lease of "+d.Name+" ended", fmt.Sprintf(
+			"Its VMs are powered off; it is deleted in %d days unless you extend the lease.", *d.LeaseGraceDays), "warning", "/deployments/"+d.ID)
+		return fmt.Sprintf("Deleted in %d days unless the lease is extended", *d.LeaseGraceDays), nil
+	}
+	return "", nil
 }

@@ -1336,7 +1336,22 @@ export interface components {
              */
             expires_at: string | null;
             extensions_used?: number;
+            /** @description Extensions the owner may make without approval. */
             extensions_max?: number | null;
+            /** @description The longest lease one may extend to without approval, in days from now. */
+            max_days?: number | null;
+            /** @description Days between powering off at expiry and deleting. */
+            grace_days?: number;
+            /**
+             * Format: date-time
+             * @description When the lease's expiry powered the VMs off; the deployment is deleted after the grace period.
+             */
+            expired_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the deployment will be deleted, once its lease expired.
+             */
+            deletes_at?: string | null;
             /** @enum {string} */
             expiry_action?: "power_off_then_delete" | "delete" | "notify_only";
         };

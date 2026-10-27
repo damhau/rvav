@@ -1908,7 +1908,23 @@ components:
           format: date-time
           description: Null when the deployment does not expire.
         extensions_used: { type: integer }
-        extensions_max: { type: [integer, "null"] }
+        extensions_max:
+          type: [integer, "null"]
+          description: Extensions the owner may make without approval.
+        max_days:
+          type: [integer, "null"]
+          description: The longest lease one may extend to without approval, in days from now.
+        grace_days:
+          type: integer
+          description: Days between powering off at expiry and deleting.
+        expired_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the lease's expiry powered the VMs off; the deployment is deleted after the grace period.
+        deletes_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the deployment will be deleted, once its lease expired.
         expiry_action:
           type: string
           enum: [power_off_then_delete, delete, notify_only]

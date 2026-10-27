@@ -64,7 +64,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 
 ## S5 Leases and quotas
 
-- [ ] S5.1 Lease policies: default and maximum per project and environment, extensions, extension through approval, expiry action and grace period
+- [x] S5.1 Lease policies per environment, overridden per project (`lease_policies.project_id`): default and maximum, extensions, grace period, expiry action. Extending is the day-2 action `extend_lease`: within the policy at once, beyond it (longer than `max_days`, or the extensions used up) with the approval of the project's admins. Design in [ADR-0014](adr/0014-leases-and-quotas.md)
 - [ ] S5.2 Temporal schedule every 15 minutes: reminders 7 days and 1 day before (in-app), expiry workflow per deployment
 - [ ] S5.3 Quotas per project and environment, hard or soft, checked on submit, resize and change of project
 - [ ] S5.4 UI: lease section, extend dialog, quota on the overview and in the form summary
@@ -88,6 +88,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Workflow versioning | Not before the R1 pilot: development stacks are drained or reset when workflow code changes; from R1 on, `GetVersion` or worker versioning | ADR-0011 |
 | VM console | VMRC link always; web console through an rvav WebSocket proxy, with the WMKS client provided by the organisation | ADR-0012 |
 | Day-2 actions | Requests of kind `day2`, run by a `Day2` workflow; `day2_policies` allow, deny or require approval | ADR-0013 |
+| Leases and quotas | Lease policy per environment with project overrides; extension is a day-2 action, approved by project admins beyond the policy; expiry runs as day-2 requests by `rvav` from housekeeping; soft quotas go through approval policies | ADR-0014 |
 | Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
 ## Needs real infrastructure

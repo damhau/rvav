@@ -136,9 +136,12 @@ func (s *Store) NetworkSubnets(ctx context.Context) (map[string]NetworkSubnet, e
 	return out, nil
 }
 
-func (s *Store) LeasePolicy(ctx context.Context, environment string) (LeasePolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select environment, default_days, max_days, max_extensions, expiry_action
-		from lease_policies where environment = $1`, environment)
+// LeasePolicy returns the project's lease policy for the environment, or
+// the environment's.
+func (s *Store) LeasePolicy(ctx context.Context, projectID, environment string) (LeasePolicy, error) {
+	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action
+		from lease_policies where environment = $1 and (project_id = $2 or project_id is null)
+		order by project_id nulls last limit 1`, environment, projectID)
 	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeasePolicy])
 	if err == pgx.ErrNoRows {
 		return LeasePolicy{Environment: environment, ExpiryAction: "notify_only"}, nil
@@ -168,6 +171,18 @@ func (s *Store) PeekName(ctx context.Context, prefix string) (int, error) {
 	var n int
 	err := s.Pool.QueryRow(ctx, `select coalesce((select last_value from name_counters where prefix = $1), 0) + 1`, prefix).Scan(&n)
 	return n, err
+}
+
+// ProjectAdmins returns the project's admins: users with the role, and the
+// OIDC groups mapped to it.
+func (s *Store) ProjectAdmins(ctx context.Context, projectID string) (ids, groups []string, err error) {
+	rows, _ := s.Pool.Query(ctx, `select user_id from project_members where project_id = $1 and role = 'project-admin' order by user_id`, projectID)
+	if ids, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		return nil, nil, err
+	}
+	rows, _ = s.Pool.Query(ctx, `select oidc_group from group_mappings where project_id = $1 and role = 'project-admin' order by oidc_group`, projectID)
+	groups, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	return ids, groups, err
 }
 
 // ProjectMembers lists the users with a role in the project, directly or

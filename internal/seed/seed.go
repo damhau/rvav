@@ -201,9 +201,10 @@ func Run(ctx context.Context, s *store.Store) error {
 			extensions int
 			action     string
 		}{{"dev", ptr(30), ptr(90), 2, "power_off_then_delete"}, {"tst", ptr(30), ptr(90), 2, "power_off_then_delete"}, {"prd", nil, nil, 0, "notify_only"}} {
-			if err := exec(`insert into lease_policies (environment, default_days, max_days, max_extensions, expiry_action)
-				values ($1,$2,$3,$4,$5) on conflict (environment) do update set default_days = excluded.default_days,
-				max_days = excluded.max_days, max_extensions = excluded.max_extensions, expiry_action = excluded.expiry_action`,
+			if err := exec(`insert into lease_policies (environment, default_days, max_days, max_extensions, expiry_action, grace_days)
+				values ($1,$2,$3,$4,$5,7) on conflict (environment, (coalesce(project_id, ''))) do update set default_days = excluded.default_days,
+				max_days = excluded.max_days, max_extensions = excluded.max_extensions, expiry_action = excluded.expiry_action,
+				grace_days = excluded.grace_days`,
 				l.env, l.def, l.max, l.extensions, l.action); err != nil {
 				return err
 			}

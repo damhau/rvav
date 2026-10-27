@@ -50,7 +50,8 @@ func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action, onVM b
 
 // targets are the deployment itself, then each of its resources.
 func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
-	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID}
+	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID,
+		Lease: day2.Lease{ExpiresAt: d.LeaseExpiresAt, ExtensionsUsed: d.LeaseExtensionsUsed, ExpiredAt: d.LeaseExpiredAt}}
 	out := []day2.Target{}
 	for _, r := range resources {
 		t := day2.Target{ResourceID: r.ID, ResourceName: r.Name, Type: r.Type, OwnerID: d.OwnerID}
@@ -75,6 +76,11 @@ func (s *Service) choices(ctx context.Context, p *auth.Principal, d store.Deploy
 		c.SnapshotMaxAgeDays = *env.SnapshotMaxAgeDays
 	}
 	if t.Type == day2.DeploymentType {
+		lease, err := s.Store.LeasePolicy(ctx, d.ProjectID, d.Environment)
+		if err != nil {
+			return c, err
+		}
+		c.LeaseDefaultDays, c.LeaseMaxDays, c.LeaseMaxExtensions = lease.DefaultDays, lease.MaxDays, lease.MaxExtensions
 		if c.Members, err = s.memberChoices(ctx, d); err != nil {
 			return c, err
 		}
@@ -120,10 +126,15 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 			return nil, err
 		}
 		for _, a := range day2.All() {
-			if !a.AppliesTo(t.Type) {
+			if !a.AppliesTo(t.Type) || a.Hidden {
 				continue
 			}
 			dec := j.decide(a, t, nil)
+			if a.Approval != nil && dec.Denied == "" {
+				if why := a.Approval(t, c, nil); why != "" {
+					dec.Chain = append(dec.Chain, ChainLevel{Name: "Project admins", Reasons: []string{why}})
+				}
+			}
 			reason := deploymentBusy(d, active[t.ResourceID], a, t.ResourceID != "")
 			if reason == "" {
 				reason = dec.Denied
@@ -183,6 +194,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if a.Direct {
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "direct_action",
 			a.Name+" is not a request: use its own endpoint.")}}
+	}
+	if a.Hidden && p.User.ID != SystemUserID {
+		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
+			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
 	}
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {
@@ -249,6 +264,15 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	dec := j.decide(a, *target, inputs)
 	if dec.Denied != "" {
 		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
+	}
+	if a.Approval != nil && p.User.ID != SystemUserID {
+		if why := a.Approval(*target, c, inputs); why != "" {
+			level, err := s.projectAdminsLevel(ctx, d, why)
+			if err != nil {
+				return store.RequestRow{}, err
+			}
+			dec.Chain = append(dec.Chain, level)
+		}
 	}
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: d.VersionID, ProjectID: d.ProjectID,
@@ -330,6 +354,23 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	}
 	s.publishRequest(ctx, req.ID)
 	return s.Store.GetRequest(ctx, req.ID)
+}
+
+// projectAdminsLevel is an approval level for the project's admins.
+func (s *Service) projectAdminsLevel(ctx context.Context, d store.DeploymentRow, reason string) (ChainLevel, error) {
+	ids, groups, err := s.Store.ProjectAdmins(ctx, d.ProjectID)
+	if err != nil {
+		return ChainLevel{}, err
+	}
+	l := ChainLevel{Name: "Project admins", Approvers: ids, Mode: "any", PolicyIDs: []string{"lease_policy"},
+		Reasons: []string{reason}, Rules: []string{"lease policy"}}
+	if len(groups) > 0 {
+		l.Group = groups[0]
+	}
+	if len(ids) == 0 && l.Group == "" {
+		return l, &ConflictError{Msg: d.ProjectName + " has no project admin to approve this."}
+	}
+	return l, nil
 }
 
 func deref(s *string) string {

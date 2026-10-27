@@ -12,13 +12,14 @@ import (
 const deploymentRowSelect = `
 select d.id, d.name, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
-       d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs,
+       d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
        p.code as project_code, p.name as project_name, i.slug as item_slug, i.name as item_name,
        v.number as version_number, u.name as owner_name, u.email as owner_email,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm')::int as vm_count,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm'
           and r.properties->'vm'->>'power_state' = 'on')::int as vms_powered_on,
-       pa.ip as primary_ip, pa.fqdn as primary_fqdn
+       pa.ip as primary_ip, pa.fqdn as primary_fqdn,
+       lp.max_days as lease_max_days, lp.max_extensions as lease_max_extensions, lp.grace_days as lease_grace_days
 from deployments d
 join projects p on p.id = d.project_id
 join catalog_items i on i.id = d.item_id
@@ -26,7 +27,10 @@ join catalog_item_versions v on v.id = d.version_id
 join users u on u.id = d.owner_id
 left join lateral (select r.properties->>'address' as ip, r.properties->>'fqdn' as fqdn
                    from resources r where r.deployment_id = d.id and r.type = 'ipam.address'
-                   order by r.created_at limit 1) pa on true`
+                   order by r.created_at limit 1) pa on true
+left join lateral (select max_days, max_extensions, grace_days from lease_policies lp
+                   where lp.environment = d.environment and (lp.project_id = d.project_id or lp.project_id is null)
+                   order by lp.project_id nulls last limit 1) lp on true`
 
 func (s *Store) InsertDeployment(ctx context.Context, db DB, d Deployment) error {
 	_, err := db.Exec(ctx, `insert into deployments (id, name, status, project_id, environment, item_id, version_id,
@@ -251,5 +255,25 @@ func (s *Store) SetDeploymentProject(ctx context.Context, db DB, id, projectID s
 func (s *Store) ReviveDeploymentsForRequest(ctx context.Context, db DB, requestID string) error {
 	_, err := db.Exec(ctx, `update deployments set status = 'provisioning', deleted_at = null
 		where created_by_request_id = $1`, requestID)
+	return err
+}
+
+// ExtendLease sets a new end to the deployment's lease and counts the
+// extension; reminders start again and a pending deletion is called off.
+func (s *Store) ExtendLease(ctx context.Context, db DB, id string, until time.Time) error {
+	_, err := db.Exec(ctx, `update deployments set lease_expires_at = $2, lease_extensions_used = lease_extensions_used + 1,
+		lease_reminded = '{}', lease_expired_at = null where id = $1`, id, until)
+	return err
+}
+
+// SetLeaseExpired records when the lease's expiry powered the VMs off.
+func (s *Store) SetLeaseExpired(ctx context.Context, db DB, id string, at time.Time) error {
+	_, err := db.Exec(ctx, `update deployments set lease_expired_at = $2 where id = $1`, id, at)
+	return err
+}
+
+// SetLeaseReminded records the reminders sent for the current lease.
+func (s *Store) SetLeaseReminded(ctx context.Context, db DB, id string, reminded []string) error {
+	_, err := db.Exec(ctx, `update deployments set lease_reminded = $2 where id = $1`, id, reminded)
 	return err
 }

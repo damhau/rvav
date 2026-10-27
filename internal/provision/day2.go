@@ -27,6 +27,10 @@ type OpInput struct {
 // RunOp runs one operation of a day-2 action and refreshes the resource
 // from vCenter, so the deployment shows the result at once.
 func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
+	// An operation of a whole-deployment action names its VM.
+	if m := argStr(in.Op.Args, "moref"); m != "" {
+		in.Moref, in.ResourceID = m, argStr(in.Op.Args, "resource")
+	}
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Op.Key, func() (string, string, error) {
 		detail, err := a.op(ctx, in)
 		if err != nil {
@@ -83,6 +87,10 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return a.moveFolder(ctx, in)
 	case "set_project":
 		return a.setProject(ctx, in)
+	case "set_lease":
+		return a.setLease(ctx, in)
+	case "lease_expired":
+		return a.leaseExpired(ctx, in)
 	case "destroy_vm", "delete_resources":
 		return a.deleteResources(ctx, in)
 	case "create_snapshot":
