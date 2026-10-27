@@ -46,6 +46,7 @@ func (s *Service) judge(ctx context.Context, p *auth.Principal, d store.Deployme
 // decide finds the first day-2 policy that matches the action, the
 // principal's roles on the deployment and its condition. Nothing matching
 // denies. rvav itself (retention, leases) is not subject to the policies.
+// inputs is nil when listing actions, before the form is filled in.
 func (j *judge) decide(a *day2.Action, t day2.Target, inputs map[string]any) decision {
 	p, d, roles := j.p, j.d, j.roles
 	if p.User.ID == SystemUserID {
@@ -57,6 +58,11 @@ func (j *judge) decide(a *day2.Action, t day2.Target, inputs map[string]any) dec
 			continue
 		}
 		match, err := policy.Day2Bool(pol.Condition, vars)
+		if err != nil && inputs == nil {
+			// Listing actions: the condition may need inputs the form hasn't
+			// given yet. It is decided when the action runs.
+			continue
+		}
 		if err != nil {
 			// A condition that can't be evaluated must not open anything:
 			// deny, and say which policy is broken.
@@ -133,9 +139,6 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		resource["power_state"] = string(t.VM.PowerState)
 		resource["cpu_count"] = t.VM.CpuCount
 		resource["memory_gb"] = t.VM.MemoryMb / 1024
-	}
-	if inputs == nil {
-		inputs = map[string]any{}
 	}
 	return policy.Vars{
 		"action":      map[string]any{"key": a.Key, "group": a.Group, "destructive": a.Destructive},

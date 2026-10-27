@@ -240,22 +240,28 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
 		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = p.Guest.OSFamily, p.Guest.Domain, p.Guest.TimeZone
 
-		// Steps done before a retry are skipped, with what they built.
+		// Steps done before a retry are skipped, with what they built. When
+		// that is gone (deleted since), it is built again, and so is what
+		// depends on it: DNS on the address, customization and power on the VM.
 		before := info.Built[vm.DeploymentID]
 		in.Key = p.VMKey(KeyIPAM, vm)
-		if in.IP = before.IP; !info.done(in.Key) || in.IP == "" {
+		newIP := !info.done(in.Key) || before.IP == ""
+		in.IP = before.IP
+		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
 				return in.Key, err
 			}
 		}
+		newVM := !info.done(p.VMKey(KeyClone, vm)) || before.Moref == ""
 		in.Key = p.VMKey(KeyDNS, vm)
-		if !info.done(in.Key) {
+		if !info.done(in.Key) || newIP || newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return in.Key, err
 			}
 		}
 		in.Key = p.VMKey(KeyClone, vm)
-		if in.Moref = before.Moref; !info.done(in.Key) || in.Moref == "" {
+		in.Moref = before.Moref
+		if newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
 				return in.Key, err
 			}
@@ -265,7 +271,7 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 			fn  any
 		}{{KeyCustomize, a.Customize}, {KeyPowerOn, a.PowerOn}} {
 			in.Key = p.VMKey(step.key, vm)
-			if info.done(in.Key) {
+			if info.done(in.Key) && !newVM {
 				continue
 			}
 			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {

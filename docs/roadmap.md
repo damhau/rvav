@@ -4,10 +4,14 @@ Milestones are ordered so that each one ends in something usable end to end.
 
 ## Status
 
-Slices 1 to 3 are built: catalog to running VM, including the AWX
-post-configuration steps, running for real on the Docker Compose stack, and
+Slices 1 to 4 are built: catalog to running VM, including the AWX
+post-configuration steps, running for real on the Docker Compose stack;
 approvals (levels, timeouts and escalation, delegation, approvers editing
-inputs, the inbox).
+inputs, the inbox); and day-2 actions (power, resize, disks, network
+adapters, snapshots with retention, rename, ISO images, owner and project,
+delete, the VM console), each a request with its own timeline, decided by
+day-2 policies, with retry and rollback of failed requests
+([ADR-0013](adr/0013-day2-actions.md), [ADR-0012](adr/0012-vm-console.md)).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
@@ -15,23 +19,26 @@ Verified so far:
 - `make check` (also in CI on every push): spec lint, generated code, Go vet
   and tests, end-to-end tests on their own PostgreSQL with vcsim, through
   Temporal's test environment and through a real Temporal dev server, OIDC
-  token checks against a fake provider; web typecheck, lint, 43 unit tests,
-  build and Playwright on mock data.
+  token checks against a fake provider, day-2 actions against vcsim and the
+  console proxy against a fake ESXi WebSocket; web typecheck, lint, 48 unit
+  tests, build and Playwright on mock data (day-2 menus, dialogs and bulk
+  actions included).
 - The Docker Compose stack, run locally: it starts in order with health
   checks, `deploy/smoke.sh` gets a request to succeeded through the real
-  Temporal server, and `pnpm e2e:stack` requests a VM in the browser and
-  follows it to Ready, with dev authentication and with Keycloak sign-in
-  (groups mapped to project roles).
+  Temporal server, and `pnpm e2e:stack` requests a VM in the browser,
+  follows it to Ready and powers it off from its menu, with dev
+  authentication and with Keycloak sign-in (groups mapped to project roles).
 
-Not verified yet: a real vCenter (S2 acceptance on the lab vCenter), real
-EfficientIP and AWX, the corporate identity provider.
+Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
+guest operations with VMware Tools, hot add, the web console through the
+ESXi hosts' firewalls), real EfficientIP and AWX, the corporate identity
+provider.
 
 ### Open items found in slice 1
 - AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin (S6).
 - EfficientIP client: confirm the endpoints against the current SOLIDserver API (S7).
 - Inventory sync polls; switch to property collector updates (S13).
 - Value sources `awx.*` (S6), REST and CEL (S8) are not implemented yet.
-- Retry and rollback of a failed request, deployment history (S4).
 - Per-field rule results in the preview, descriptions on checklist options (S8).
 - Accessibility audit (S14), Storybook.
 

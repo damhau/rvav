@@ -206,7 +206,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if err != nil {
 		return store.RequestRow{}, err
 	}
-	if dec := j.decide(a, *target, draft.Inputs); dec.Denied != "" {
+	if dec := j.decide(a, *target, nil); dec.Denied != "" {
 		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
 	}
 	c, err := s.choices(ctx, p, d, *target)

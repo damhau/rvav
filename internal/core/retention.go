@@ -23,7 +23,9 @@ func system() *auth.Principal {
 // ExpireSnapshots starts the deletion of snapshots older than their
 // environment allows: the oldest one per VM each time, as an ordinary
 // snapshot_delete request requested by rvav. A VM busy with another request
-// waits for the next round. It returns the requests started.
+// waits for the next round; a snapshot whose deletion failed is left for a
+// day, so a failure is not repeated every round. It returns the requests
+// started.
 func (s *Service) ExpireSnapshots(ctx context.Context, now time.Time) ([]string, error) {
 	envs, err := s.Store.ListEnvironments(ctx)
 	if err != nil {
@@ -57,7 +59,14 @@ func (s *Service) ExpireSnapshots(ctx context.Context, now time.Time) ([]string,
 		var oldest *time.Time
 		name := ""
 		for _, snap := range *vm.Snapshots {
-			if now.Sub(snap.CreatedAt) > age && (oldest == nil || snap.CreatedAt.Before(*oldest)) {
+			if now.Sub(snap.CreatedAt) <= age || (oldest != nil && !snap.CreatedAt.Before(*oldest)) {
+				continue
+			}
+			failed, err := s.Store.RecentlyFailedAction(ctx, SystemUserID, r.ID, "snapshot_delete", "snapshot", snap.Name, now.Add(-24*time.Hour))
+			if err != nil {
+				return started, err
+			}
+			if !failed {
 				t := snap.CreatedAt
 				oldest, name = &t, snap.Name
 			}

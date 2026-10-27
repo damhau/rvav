@@ -124,6 +124,9 @@ func TestRetryAndRollback(t *testing.T) {
 		if d := deployment(dep2); d.Status != api.DeploymentStatusDeleting {
 			t.Fatalf("deployment while rolling back = %s", d.Status)
 		}
+		// Not while the rollback runs.
+		h.json("POST", "/api/v1/requests/"+r2.Id+"/retry", "tnguyen", nil, 409, nil)
+		h.json("POST", "/api/v1/requests/"+r2.Id+"/rollback", "tnguyen", nil, 409, nil)
 		rollback(r2.Id)
 		if d := deployment(dep2); d.Status != api.DeploymentStatusDeleted {
 			t.Fatalf("deployment after rollback = %s", d.Status)
@@ -148,5 +151,21 @@ func TestRetryAndRollback(t *testing.T) {
 		if d := deployment(dep2); d.Status != api.DeploymentStatusReady {
 			t.Fatalf("rebuilt deployment = %s", d.Status)
 		}
+
+		// A failed request whose deployment was deleted since (a day-2
+		// delete is allowed on failed deployments) is not brought back.
+		h.awx.FailTask = "idm : join realm"
+		r3 := submit()
+		h.runWorkflow(r3.Id, nil)
+		failed = h.waitStatus(r3.Id, "tnguyen", api.RequestStatusFailed)
+		h.awx.FailTask = ""
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+(*failed.DeploymentIds)[0]+"/actions", "tnguyen",
+			api.Day2Draft{Action: "delete", Inputs: map[string]any{}}, 202, &del, "Idempotency-Key", uuid.NewString())
+		h.json("POST", "/api/v1/requests/"+r3.Id+"/retry", "tnguyen", nil, 409, nil) // the delete runs
+		h.runWorkflow(del.Id, nil)
+		h.waitStatus(del.Id, "tnguyen", api.RequestStatusSucceeded)
+		h.json("POST", "/api/v1/requests/"+r3.Id+"/retry", "tnguyen", nil, 409, nil)
+		h.json("POST", "/api/v1/requests/"+r3.Id+"/rollback", "tnguyen", nil, 409, nil)
 	})
 }

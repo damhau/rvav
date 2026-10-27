@@ -14,7 +14,8 @@ import (
 
 // Console is a VM console opened for a user (ADR-0012).
 type Console struct {
-	// VMRC opens VMware Remote Console with a one-time clone ticket.
+	// VMRC opens VMware Remote Console, with a one-time clone ticket of
+	// the console account when there is one.
 	VMRC string
 	// Web is where the HTML console connects, when it was asked for.
 	Web *vsphere.WebMKS
@@ -62,11 +63,20 @@ func (s *Service) OpenConsole(ctx context.Context, p *auth.Principal, deployment
 	if err != nil {
 		return out, &UpstreamError{System: "vCenter", Err: err}
 	}
-	ticket, err := vc.CloneTicket(ctx)
-	if err != nil {
-		return out, &UpstreamError{System: "vCenter", Err: err}
+	// Without a console account, VMRC asks the user to sign in with their
+	// own vCenter account, whose permissions then apply.
+	out.VMRC = fmt.Sprintf("vmrc://%s/?moid=%s", vc.Host(), url.QueryEscape(target.VM.Moref))
+	if s.ConsoleAccount != nil {
+		acct, err := s.ConsoleAccount(ctx)
+		if err != nil {
+			return out, &UpstreamError{System: "vCenter", Err: err}
+		}
+		ticket, err := acct.CloneTicket(ctx)
+		if err != nil {
+			return out, &UpstreamError{System: "vCenter", Err: err}
+		}
+		out.VMRC = fmt.Sprintf("vmrc://clone:%s@%s/?moid=%s", url.PathEscape(ticket), vc.Host(), url.QueryEscape(target.VM.Moref))
 	}
-	out.VMRC = fmt.Sprintf("vmrc://clone:%s@%s/?moid=%s", url.PathEscape(ticket), vc.Host(), url.QueryEscape(target.VM.Moref))
 	if web {
 		if out.Web, err = vc.WebMKSTicket(ctx, target.VM.Moref); err != nil {
 			return out, &UpstreamError{System: "vCenter", Err: err}

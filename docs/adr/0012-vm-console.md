@@ -23,7 +23,15 @@ rvav if browsers can't reach the hosts.
 ## Decision
 - `POST /deployments/{id}/resources/{resourceId}/console` checks the day-2
   policy for the `console` action, records it in the audit log, and returns:
-  - a **VMRC link** with a fresh clone ticket, always;
+  - a **VMRC link**, always. A clone ticket clones the *whole session* it
+    comes from, not one VM's console, so it never comes from rvav's own
+    session: by default the link has no ticket and VMRC asks the user to
+    sign in with their own vCenter account; with a console-only account
+    (`RVAV_CONSOLE_VCENTER_USERNAME`/`_PASSWORD`, a role with just the
+    console privileges) the link carries a clone ticket of that account.
+    Whoever holds the ticket gets that account's console rights on every
+    VM it can see, so scope it (for example to rvav's folders) or leave it
+    unset;
   - a **WebMKS session**: a short-lived, single-use rvav URL
     (`/api/v1/console/{token}`) that rvav proxies, over WebSocket, to the
     ESXi ticket URL. The browser only ever talks to rvav.

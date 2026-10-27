@@ -141,6 +141,16 @@ func (s *Store) OtherRunningOnDeployment(ctx context.Context, db DB, deploymentI
 	return n > 0, err
 }
 
+// RecentlyFailedAction reports whether a request by requesterID running
+// action on the resource with these inputs failed since a time.
+func (s *Store) RecentlyFailedAction(ctx context.Context, requesterID, resourceID, action, input, value string, since time.Time) (bool, error) {
+	var n int
+	err := s.Pool.QueryRow(ctx, `select count(*) from requests where requester_id = $1 and resource_id = $2
+		and action = $3 and inputs->>$4 = $5 and status = 'failed' and submitted_at > $6`,
+		requesterID, resourceID, action, input, value, since).Scan(&n)
+	return n > 0, err
+}
+
 // LockDeployment locks a deployment row until the transaction ends.
 func (s *Store) LockDeployment(ctx context.Context, tx pgx.Tx, id string) error {
 	_, err := tx.Exec(ctx, `select 1 from deployments where id = $1 for update`, id)

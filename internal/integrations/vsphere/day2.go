@@ -219,16 +219,22 @@ func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, label 
 	}
 	cards := devices.SelectByType((*types.VirtualEthernetCard)(nil))
 	var match []types.BaseVirtualDevice
+	seen, repeated := map[string]bool{}, false
 	for _, c := range cards {
-		if deviceLabel(c) == label {
+		l := deviceLabel(c)
+		repeated = repeated || seen[l]
+		seen[l] = true
+		if l == label {
 			match = append(match, c)
 		}
 	}
 	if len(match) == 1 {
 		return match[0], nil
 	}
+	// Positions only stand in for labels that repeat, as toVM does: with
+	// unique labels, a label that isn't there is an adapter already gone.
 	var n int
-	if _, err := fmt.Sscanf(label, "Network adapter %d", &n); err == nil && n >= 1 && n <= len(cards) {
+	if _, err := fmt.Sscanf(label, "Network adapter %d", &n); repeated && err == nil && n >= 1 && n <= len(cards) {
 		return cards[n-1], nil
 	}
 	return nil, &Refused{Msg: label + " is not on the VM."}
@@ -287,6 +293,8 @@ func (cl *Client) CreateSnapshot(ctx context.Context, moref, name, description s
 	return task.Wait(ctx)
 }
 
+// snapshotExists reports whether the VM has one snapshot with this name.
+// Several (taken outside rvav) can't be told apart by name: refused.
 func snapshotExists(ctx context.Context, vm *object.VirtualMachine, name string) (bool, error) {
 	var o mo.VirtualMachine
 	if err := vm.Properties(ctx, vm.Reference(), []string{"snapshot"}, &o); err != nil {
@@ -295,16 +303,21 @@ func snapshotExists(ctx context.Context, vm *object.VirtualMachine, name string)
 	if o.Snapshot == nil {
 		return false, nil
 	}
-	var walk func([]types.VirtualMachineSnapshotTree) bool
-	walk = func(list []types.VirtualMachineSnapshotTree) bool {
+	n := 0
+	var walk func([]types.VirtualMachineSnapshotTree)
+	walk = func(list []types.VirtualMachineSnapshotTree) {
 		for _, s := range list {
-			if s.Name == name || walk(s.ChildSnapshotList) {
-				return true
+			if s.Name == name {
+				n++
 			}
+			walk(s.ChildSnapshotList)
 		}
-		return false
 	}
-	return walk(o.Snapshot.RootSnapshotList), nil
+	walk(o.Snapshot.RootSnapshotList)
+	if n > 1 {
+		return false, &Refused{Msg: fmt.Sprintf("%d snapshots are named %q; rename or delete them in vCenter.", n, name)}
+	}
+	return n == 1, nil
 }
 
 // RevertSnapshot goes back to a snapshot.

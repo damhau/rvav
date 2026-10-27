@@ -98,10 +98,16 @@ func TestConsole(t *testing.T) {
 		open("sbrunner", 403)
 		d.run("tnguyen", "console", nil, 422)
 
-		// VMRC only, until the WMKS client is configured.
+		// VMRC only, until the WMKS client is configured; the user signs in
+		// to VMRC, as rvav's own session must never be cloned for them.
 		s := open("tnguyen", 200)
-		if !strings.HasPrefix(s.VmrcUrl, "vmrc://clone:") || !strings.HasSuffix(s.VmrcUrl, "/?moid="+d.vm().Moref) || s.Web != nil {
+		if s.VmrcUrl != "vmrc://"+h.vc.Host()+"/?moid="+d.vm().Moref || s.Web != nil {
 			t.Fatalf("console = %+v", s)
+		}
+		// With a console-only account, the link carries a clone ticket of it.
+		h.svc.ConsoleAccount = func(context.Context) (core.CloneTicketer, error) { return h.vc, nil }
+		if s = open("tnguyen", 200); !strings.HasPrefix(s.VmrcUrl, "vmrc://clone:") || !strings.HasSuffix(s.VmrcUrl, "/?moid="+d.vm().Moref) {
+			t.Fatalf("console with an account = %+v", s)
 		}
 		h.api.WMKSSDKURLs = []string{"https://vc01.corp.example/ui/webconsole/wmks.min.js"}
 		s = open("tnguyen", 200)
@@ -162,7 +168,7 @@ func TestConsole(t *testing.T) {
 		d.succeed("tnguyen", "power_off", nil)
 		open("tnguyen", 409)
 		var n int
-		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'console.open'`).Scan(&n); err != nil || n != 4 {
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'console.open'`).Scan(&n); err != nil || n != 5 {
 			t.Fatalf("audit has %d console opens (%v)", n, err)
 		}
 	})

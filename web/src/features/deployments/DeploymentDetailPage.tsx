@@ -11,7 +11,7 @@ import { Tip } from "@/components/ui/tooltip";
 import type { Day2Action, DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
-import { ActionDialog, ActionsMenu, runsDirectly, useRunAction } from "./actions";
+import { ActionDialog, ActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
 
@@ -367,7 +367,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
   const pick: Pick = (a) => {
     if (runsDirectly(a)) {
       const draft = { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} };
-      run.mutate({ draft, key: newIdempotencyKey() });
+      run.mutate({ draft, key: newIdempotencyKey() }, { onError: actionFailed });
       return;
     }
     setPicked(a);

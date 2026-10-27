@@ -30,15 +30,24 @@ type Service struct {
 	Workflows Workflows
 	Events    *events.Publisher
 	Log       *slog.Logger
-	// VCenter opens consoles (ADR-0012); it may connect on first use.
+	// VCenter gives WebMKS tickets for consoles (ADR-0012); it may connect
+	// on first use.
 	VCenter func(ctx context.Context) (ConsoleSource, error)
+	// ConsoleAccount, when set, is a session of a vCenter account that may
+	// only open consoles: VMRC links carry a clone ticket of it. Never
+	// rvav's own session, which a clone ticket would hand to the user.
+	ConsoleAccount func(ctx context.Context) (CloneTicketer, error)
 }
 
-// ConsoleSource is what consoles need from vCenter.
+// ConsoleSource is what the web console needs from vCenter.
 type ConsoleSource interface {
-	CloneTicket(ctx context.Context) (string, error)
 	Host() string
 	WebMKSTicket(ctx context.Context, moref string) (*vsphere.WebMKS, error)
+}
+
+// CloneTicketer hands out one-time tickets that clone its session.
+type CloneTicketer interface {
+	CloneTicket(ctx context.Context) (string, error)
 }
 
 // visibleProject loads a project the principal may see.

@@ -320,7 +320,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         (active ? `${active.request.number} is still running on this ${vm ? "VM" : "deployment"}.` : null) ??
         (d.status === "deleted"
           ? "The deployment was deleted."
-          : d.status !== "ready" && !(d.status === "updating" && vm)
+          : d.status !== "ready" && !(d.status === "updating" && vm) && !(d.status === "failed" && a.key === "delete")
             ? `The deployment is ${d.status}.`
             : null) ??
         (role === "viewer" || !role ? `Your role in ${d.project.name} does not allow ${a.name}.` : null) ??

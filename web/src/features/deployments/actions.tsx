@@ -29,6 +29,13 @@ const groupOrder = Object.keys(groupLabel) as Day2Action["group"][];
 /** Actions that run without asking anything: no form, no confirmation, no approval. */
 export const runsDirectly = (a: Day2Action) => !a.form && !a.confirm && !a.approval.required;
 
+/** Toast for an action that failed to start without a dialog to show it in. */
+export function actionFailed(e: unknown) {
+  toast.error(isApiError(e) ? e.problem.title : "The action could not start", {
+    description: isApiError(e) ? e.problem.detail : undefined,
+  });
+}
+
 /** Start a day-2 action; the toast links to its request. */
 export function useRunAction(deploymentId: string) {
   const qc = useQueryClient();
@@ -310,10 +317,13 @@ export function RowActions({ deployment }: { deployment: Deployment }) {
               consoleLink={vm ? { deploymentId: deployment.id, resourceId: vm } : undefined}
               onPick={(a) => {
                 if (runsDirectly(a)) {
-                  run.mutate({
-                    draft: { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} },
-                    key: newIdempotencyKey(),
-                  });
+                  run.mutate(
+                    {
+                      draft: { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} },
+                      key: newIdempotencyKey(),
+                    },
+                    { onError: actionFailed },
+                  );
                 } else setPicked(a);
               }}
             />

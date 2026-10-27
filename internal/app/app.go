@@ -35,8 +35,9 @@ type App struct {
 	AWX    awx.Client
 	Events *events.Publisher
 
-	vcMu sync.Mutex
-	vc   vsphere.Driver
+	vcMu    sync.Mutex
+	vc      vsphere.Driver
+	console vsphere.Driver // the console-only account, for VMRC clone tickets
 
 	tcOnce sync.Once
 	tc     client.Client
@@ -142,8 +143,28 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 
 // Core builds the business service with the given workflow engine.
 func (a *App) Core(w core.Workflows) *core.Service {
-	return &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
+	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter: func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) }}
+	if a.Cfg.ConsoleUsername != "" {
+		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
+	}
+	return svc
+}
+
+// consoleAccount logs in to vCenter as the console-only account, once it succeeds.
+func (a *App) consoleAccount(ctx context.Context) (vsphere.Driver, error) {
+	a.vcMu.Lock()
+	defer a.vcMu.Unlock()
+	if a.console != nil {
+		return a.console, nil
+	}
+	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.ConsoleUsername,
+		a.Cfg.ConsolePassword, a.Cfg.VCenter.Insecure)
+	if err != nil {
+		return nil, err
+	}
+	a.console = vc
+	return vc, nil
 }
 
 // RunAPI serves HTTP until ctx is done.

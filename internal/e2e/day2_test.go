@@ -201,6 +201,19 @@ func TestDay2Actions(t *testing.T) {
 		if failed.Error == nil || failed.Error.Message != "The VM is no longer in vCenter." {
 			t.Fatalf("failed action = %+v", failed)
 		}
+		// Retrying applies today's day-2 policies.
+		if _, err := h.store.Pool.Exec(ctx, `insert into day2_policies (id, name, reason, priority, actions, effect)
+			values ('d2p_no_power', 'No power changes', 'Power changes are frozen.', 1, '{power_*}', 'deny')`); err != nil {
+			t.Fatal(err)
+		}
+		h.json("POST", "/api/v1/requests/"+lost.Id+"/retry", "tnguyen", nil, 403, nil)
+		if _, err := h.store.Pool.Exec(ctx, `delete from day2_policies where id = 'd2p_no_power'`); err != nil {
+			t.Fatal(err)
+		}
+		h.json("POST", "/api/v1/requests/"+lost.Id+"/retry", "sbrunner", nil, 403, nil)
+		h.json("POST", "/api/v1/requests/"+lost.Id+"/retry", "tnguyen", nil, 202, nil)
+		h.runWorkflow(lost.Id, nil)
+		h.waitStatus(lost.Id, "tnguyen", api.RequestStatusFailed)
 		var after api.Deployment
 		h.json("GET", "/api/v1/deployments/"+dep, "tnguyen", nil, 200, &after)
 		if after.Status != api.DeploymentStatusReady {
@@ -210,7 +223,7 @@ func TestDay2Actions(t *testing.T) {
 		// The history: the creating request, then every action, newest first.
 		var hist api.RequestPage
 		h.json("GET", "/api/v1/deployments/"+dep+"/history", "sbrunner", nil, 200, &hist)
-		if len(hist.Items) != 7 || hist.Items[0].Id != lost.Id || hist.Items[6].Id != built.Id || hist.Items[6].Kind != api.Provision {
+		if len(hist.Items) != 7 || hist.Items[6].Id != built.Id || hist.Items[6].Kind != api.Provision {
 			t.Fatalf("history = %d items", len(hist.Items))
 		}
 		var n int

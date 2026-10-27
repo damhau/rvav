@@ -511,15 +511,36 @@ export const handlers = [
         "conflict",
         `${r.request.number} is ${r.request.status}; only failed requests can be retried.`,
       );
-    // The failed step and the ones after it run again.
+    const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
+    const rolledBack = r.steps.some((s) => s.key === "rollback" && s.status === "done");
+    const busy = db.requests.find(
+      (x) =>
+        x !== r &&
+        x.request.deployment_ids?.some((id) => id === d?.id) &&
+        ["pending_approval", "queued", "running", "cancelling"].includes(x.request.status),
+    );
+    if (busy)
+      return problem(
+        409,
+        "conflict",
+        `${busy.request.number} is running on this deployment; try again when it is done.`,
+      );
+    if (d?.status === "deleted" && !rolledBack)
+      return problem(409, "conflict", "The deployment was deleted since. Submit a new request instead.");
+    // The failed step and the ones after it run again; after a rollback,
+    // everything after the approval.
+    r.steps = r.steps.filter((s) => s.key !== "rollback");
     for (const step of r.steps) {
-      if (step.status === "failed" || step.status === "cancelled" || step.status === "skipped") {
+      const reset = rolledBack
+        ? !["request.submit", "policy.approval"].includes(step.key)
+        : step.status === "failed" || step.status === "cancelled";
+      if (reset) {
         Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined });
         step.children.forEach((c) => Object.assign(c, { status: "pending", started_at: null, finished_at: null }));
       }
     }
+    // The mock's simulator only advances running requests (the server answers queued).
     Object.assign(r.request, { status: "running", error: null, finished_at: null });
-    const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
     if (d && r.request.kind !== "day2") d.status = "provisioning";
     publishRequest(r);
     start(r.request.id);

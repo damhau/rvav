@@ -29,6 +29,12 @@ type Config struct {
 	// order (RVAV_WMKS_SDK_URLS, comma-separated). Without them the console
 	// is offered through VMRC only (ADR-0012).
 	WMKSSDKURLs []string
+	// ConsoleUsername and ConsolePassword are a vCenter account that may
+	// only open consoles. VMRC links carry a clone ticket of its session, so
+	// users don't sign in to VMRC; without it they sign in with their own
+	// account. Never rvav's own account: a clone ticket clones the session.
+	ConsoleUsername string
+	ConsolePassword string
 }
 
 type AuthConfig struct {
@@ -83,11 +89,13 @@ type AWXConfig struct {
 
 func Load() (Config, error) {
 	c := Config{
-		HTTPAddr:    env("RVAV_HTTP_ADDR", ":8080"),
-		DatabaseURL: env("RVAV_DATABASE_URL", "postgres://rvav:rvav@localhost:5432/rvav?sslmode=disable"),
-		LogLevel:    env("RVAV_LOG_LEVEL", "info"),
-		CORSOrigins: list("RVAV_CORS_ORIGINS"),
-		WMKSSDKURLs: list("RVAV_WMKS_SDK_URLS"),
+		HTTPAddr:        env("RVAV_HTTP_ADDR", ":8080"),
+		DatabaseURL:     env("RVAV_DATABASE_URL", "postgres://rvav:rvav@localhost:5432/rvav?sslmode=disable"),
+		LogLevel:        env("RVAV_LOG_LEVEL", "info"),
+		CORSOrigins:     list("RVAV_CORS_ORIGINS"),
+		WMKSSDKURLs:     list("RVAV_WMKS_SDK_URLS"),
+		ConsoleUsername: env("RVAV_CONSOLE_VCENTER_USERNAME", ""),
+		ConsolePassword: env("RVAV_CONSOLE_VCENTER_PASSWORD", ""),
 		Auth: AuthConfig{
 			Mode:             env("RVAV_AUTH_MODE", "oidc"),
 			OIDCIssuer:       env("RVAV_OIDC_ISSUER", ""),

@@ -164,15 +164,16 @@ func (s *Store) ReplacePendingSteps(ctx context.Context, db DB, requestID string
 
 // ResetForRetry makes a failed request runnable again: its failed, running
 // and cancelled steps, with their sub-steps, are pending again, or every
-// step after the approval when what it built was rolled back (the rollback
-// step goes). The request is queued, without its error.
+// step after the approval when what it built was rolled back. A rollback
+// step goes. The request is queued, without its error.
 func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool) error {
 	reset := `request_id = $1 and parent_id is null and status in ('failed', 'running', 'cancelled')`
 	if all {
 		reset = `request_id = $1 and parent_id is null and key not in ('submit', 'policy')`
-		if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and key = 'rollback'`, requestID); err != nil {
-			return err
-		}
+	}
+	// A rollback's step, done or failed, belongs to the run before.
+	if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and key = 'rollback'`, requestID); err != nil {
+		return err
 	}
 	if _, err := db.Exec(ctx, `delete from request_steps where parent_id in (select id from request_steps where `+reset+`)`, requestID); err != nil {
 		return err
