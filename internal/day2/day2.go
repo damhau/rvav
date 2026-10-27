@@ -19,13 +19,26 @@ const (
 	GroupLifecycle     = "lifecycle"
 )
 
-// Target is the resource an action runs on, as rvav last saw it.
+// Target is the resource an action runs on, as rvav last saw it. Actions
+// on the whole deployment have the type "deployment", no resource ID, the
+// deployment's name, and its resources.
 type Target struct {
 	ResourceID   string
 	ResourceName string
 	Type         string
 	VM           api.VmProperties
+	Resources    []Resource
+	OwnerID      string
 }
+
+// Resource is one resource of a deployment.
+type Resource struct {
+	ID, Type, Name string
+	VM             api.VmProperties
+}
+
+// DeploymentType is the target type of actions on a whole deployment.
+const DeploymentType = "deployment"
 
 // Choices are what the project and environment allow the target, for forms.
 type Choices struct {
@@ -37,6 +50,10 @@ type Choices struct {
 	// (age 0: kept until deleted).
 	SnapshotMaxCount   int
 	SnapshotMaxAgeDays int
+	// Members are who may own the deployment: the project's members.
+	Members []api.Option
+	// Projects the deployment may move to; disabled ones say why not.
+	Projects []api.Option
 }
 
 // Op is one step of a day-2 request. The workflow runs Op with Args.
@@ -70,6 +87,11 @@ type Action struct {
 	Validate func(t Target, inputs map[string]any) []api.FieldError
 	// Ops are the steps of the request for these inputs.
 	Ops func(t Target, inputs map[string]any) []Op
+	// During and After are the deployment's status while the action runs
+	// (default updating) and once it succeeded (default ready).
+	During, After string
+	// OnFailed: the action may run on a failed deployment.
+	OnFailed bool
 }
 
 func (a *Action) AppliesTo(typ string) bool { return slices.Contains(a.Types, typ) }

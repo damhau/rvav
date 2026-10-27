@@ -41,12 +41,12 @@ func permit(p *auth.Principal, d store.DeploymentRow, _ *day2.Action) string {
 	return "Only the owner and the members of " + d.ProjectName + " can run actions on it."
 }
 
-// deploymentBusy says why no action can start on the deployment now ("" when one can).
-func deploymentBusy(d store.DeploymentRow, active string) string {
+// deploymentBusy says why the action can't start on the deployment now ("" when it can).
+func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action) string {
 	switch {
 	case active != "":
 		return active + " is still running on this deployment."
-	case d.Status == "ready":
+	case d.Status == "ready", d.Status == "failed" && a.OnFailed:
 		return ""
 	case d.Status == "deleted":
 		return "The deployment was deleted."
@@ -54,20 +54,23 @@ func deploymentBusy(d store.DeploymentRow, active string) string {
 	return "The deployment is " + d.Status + "."
 }
 
-func targets(resources []store.Resource) []day2.Target {
-	var out []day2.Target
+// targets are the deployment itself, then each of its resources.
+func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
+	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID}
+	out := []day2.Target{}
 	for _, r := range resources {
-		t := day2.Target{ResourceID: r.ID, ResourceName: r.Name, Type: r.Type}
+		t := day2.Target{ResourceID: r.ID, ResourceName: r.Name, Type: r.Type, OwnerID: d.OwnerID}
 		if r.Type == "vsphere.vm" {
 			t.VM = day2.VM(r.Properties)
 		}
+		dep.Resources = append(dep.Resources, day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, VM: t.VM})
 		out = append(out, t)
 	}
-	return out
+	return append([]day2.Target{dep}, out...)
 }
 
 // choices are what the project's placement rules and the environment allow the target.
-func (s *Service) choices(ctx context.Context, d store.DeploymentRow, t day2.Target) (day2.Choices, error) {
+func (s *Service) choices(ctx context.Context, p *auth.Principal, d store.DeploymentRow, t day2.Target) (day2.Choices, error) {
 	var c day2.Choices
 	env, err := s.Store.GetEnvironment(ctx, d.Environment)
 	if err != nil {
@@ -76,6 +79,13 @@ func (s *Service) choices(ctx context.Context, d store.DeploymentRow, t day2.Tar
 	c.Environment, c.SnapshotMaxCount = env.Name, env.SnapshotMaxCount
 	if env.SnapshotMaxAgeDays != nil {
 		c.SnapshotMaxAgeDays = *env.SnapshotMaxAgeDays
+	}
+	if t.Type == day2.DeploymentType {
+		if c.Members, err = s.memberChoices(ctx, d); err != nil {
+			return c, err
+		}
+		c.Projects, err = s.projectChoices(ctx, p, d, t)
+		return c, err
 	}
 	if t.VM.Cluster == nil {
 		return c, nil
@@ -105,10 +115,9 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	if err != nil {
 		return nil, err
 	}
-	busy := deploymentBusy(d, active)
 	out := []api.Day2Action{}
-	for _, t := range targets(resources) {
-		c, err := s.choices(ctx, d, t)
+	for _, t := range targets(d, resources) {
+		c, err := s.choices(ctx, p, d, t)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +125,7 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 			if !a.AppliesTo(t.Type) {
 				continue
 			}
-			reason := busy
+			reason := deploymentBusy(d, active, a)
 			if reason == "" {
 				reason = permit(p, d, a)
 			}
@@ -132,12 +141,15 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 func presentAction(a *day2.Action, t day2.Target, c day2.Choices, reason string) api.Day2Action {
 	id, name := t.ResourceID, t.ResourceName
 	out := api.Day2Action{
-		Key: a.Key, Name: a.Name, Group: api.Day2ActionGroup(a.Group), ResourceId: &id, ResourceName: &name,
+		Key: a.Key, Name: a.Name, Group: api.Day2ActionGroup(a.Group), ResourceName: &name,
 		Enabled: reason == "", Destructive: a.Destructive,
 		Approval: struct {
 			Reasons  []string `json:"reasons"`
 			Required bool     `json:"required"`
 		}{Reasons: []string{}},
+	}
+	if t.Type != day2.DeploymentType {
+		out.ResourceId = &id
 	}
 	if reason != "" {
 		out.DisabledReason = &reason
@@ -177,17 +189,20 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		return store.RequestRow{}, err
 	}
 	var target *day2.Target
-	for _, t := range targets(resources) {
-		if t.ResourceID == deref(draft.ResourceId) {
+	for _, t := range targets(d, resources) {
+		if t.ResourceID == deref(draft.ResourceId) && a.AppliesTo(t.Type) {
 			target = &t
 			break
 		}
 	}
-	if target == nil || !a.AppliesTo(target.Type) {
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/resource_id", "unknown_resource",
-			a.Name+" needs one of this deployment's resources it applies to.")}}
+	if target == nil {
+		msg := a.Name + " needs one of this deployment's resources it applies to."
+		if a.AppliesTo(day2.DeploymentType) {
+			msg = a.Name + " acts on the whole deployment: leave out resource_id."
+		}
+		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/resource_id", "unknown_resource", msg)}}
 	}
-	c, err := s.choices(ctx, d, *target)
+	c, err := s.choices(ctx, p, d, *target)
 	if err != nil {
 		return store.RequestRow{}, err
 	}
@@ -217,11 +232,20 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return store.RequestRow{}, &ValidationError{Errors: errs}
 		}
 	}
+	if errs, err := s.checkAction(ctx, a, *target, inputs); err != nil || len(errs) > 0 {
+		if err != nil {
+			return store.RequestRow{}, err
+		}
+		return store.RequestRow{}, &ValidationError{Errors: errs}
+	}
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: d.VersionID, ProjectID: d.ProjectID,
 		Environment: d.Environment, Title: a.Name + " · " + target.ResourceName, Status: "queued",
 		RequesterID: p.User.ID, OwnerID: d.OwnerID, Count: 1, SubmittedAt: time.Now().UTC(),
-		Kind: "day2", Action: &a.Key, DeploymentID: &d.ID, ResourceID: &target.ResourceID, ResourceName: &target.ResourceName,
+		Kind: "day2", Action: &a.Key, DeploymentID: &d.ID,
+	}
+	if target.Type != day2.DeploymentType {
+		req.ResourceID, req.ResourceName = &target.ResourceID, &target.ResourceName
 	}
 	if draft.Justification != nil {
 		req.Justification = strings.TrimSpace(*draft.Justification)
@@ -230,7 +254,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	req.WorkflowID = &wf
 	plan := provision.Plan{Kind: "day2", Day2: &provision.Day2{
 		Action: a.Key, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
-		Ops: a.Ops(*target, inputs), After: "ready",
+		Ops: a.Ops(*target, inputs), Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
 	req.Plan, _ = json.Marshal(plan)
 	req.Inputs, _ = json.Marshal(inputs)
@@ -246,7 +270,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if d, err = s.Store.GetDeployment(ctx, d.ID); err != nil {
 			return err
 		}
-		if reason := deploymentBusy(d, active); reason != "" {
+		if reason := deploymentBusy(d, active, a); reason != "" {
 			return &ConflictError{Msg: reason}
 		}
 		if req.Number, err = s.Store.NextRequestNumber(ctx, tx); err != nil {

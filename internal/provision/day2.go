@@ -65,6 +65,24 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "", v.SetNICNetwork(ctx, in.Moref, argStr(args, "nic"), argStr(args, "network"))
 	case "remove_nic":
 		return "", v.RemoveNIC(ctx, in.Moref, argStr(args, "nic"))
+	case "rename_vm":
+		return "", v.Rename(ctx, in.Moref, argStr(args, "name"))
+	case "rename_dns":
+		return a.renameDNS(ctx, in)
+	case "rename_records":
+		return a.renameRecords(ctx, in)
+	case "mount_iso":
+		return "", v.MountISO(ctx, in.Moref, argStr(args, "iso"))
+	case "unmount_iso":
+		return "", v.UnmountISO(ctx, in.Moref)
+	case "set_owner":
+		return a.setOwner(ctx, in)
+	case "move_folder":
+		return a.moveFolder(ctx, in)
+	case "set_project":
+		return a.setProject(ctx, in)
+	case "destroy_vm", "delete_resources":
+		return a.deleteResources(ctx, in)
 	case "create_snapshot":
 		return "", heartbeatWhile(ctx, func() error {
 			return v.CreateSnapshot(ctx, in.Moref, argStr(args, "name"), argStr(args, "description"), args["memory"] == true)
@@ -150,16 +168,21 @@ func isPermanent(err error) bool {
 	return errors.As(err, &app) && app.Type() == "Permanent"
 }
 
-// day2Status is the deployment's status after a day-2 request ended.
-func day2Status(plan Plan, outcome string) string {
+// day2Status is the deployment's status after a day-2 request ended: what
+// the action made of it, or what it was before. A delete that stopped
+// half-way leaves it failed.
+func day2Status(plan Plan, outcome string, started bool) string {
 	if plan.Day2 == nil {
 		return "ready"
 	}
+	d := plan.Day2
 	switch {
-	case outcome == "succeeded" && plan.Day2.After != "":
-		return plan.Day2.After
-	case outcome == "failed" && plan.Day2.After == "deleted":
+	case outcome == "succeeded" && d.After != "":
+		return d.After
+	case d.After == "deleted" && started && outcome != "succeeded":
 		return "failed"
+	case d.Before != "":
+		return d.Before
 	}
 	return "ready"
 }

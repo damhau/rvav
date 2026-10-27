@@ -37,8 +37,11 @@ type Day2 struct {
 	ResourceID   string    `json:"resource_id,omitempty"`
 	Moref        string    `json:"moref,omitempty"`
 	Ops          []day2.Op `json:"ops"`
-	// After is the deployment's status once the action succeeded: ready or deleted.
-	After string `json:"after"`
+	// Before, During and After are the deployment's status when the action
+	// was requested, while it runs and once it succeeded.
+	Before string `json:"before,omitempty"`
+	During string `json:"during,omitempty"`
+	After  string `json:"after"`
 }
 
 // VMUnit is one VM and the deployment it belongs to.

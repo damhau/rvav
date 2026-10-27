@@ -132,6 +132,7 @@ type Driver interface {
 	RevertSnapshot(ctx context.Context, moref, name string) error
 	DeleteSnapshot(ctx context.Context, moref, name string) error
 	Rename(ctx context.Context, moref, name string) error
+	MoveToFolder(ctx context.Context, moref, folder string) error
 	MountISO(ctx context.Context, moref, path string) error
 	UnmountISO(ctx context.Context, moref string) error
 	CloneTicket(ctx context.Context) (string, error)

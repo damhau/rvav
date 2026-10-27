@@ -355,6 +355,24 @@ func (cl *Client) Rename(ctx context.Context, moref, name string) error {
 	return task.Wait(ctx)
 }
 
+// MoveToFolder moves the VM into a folder (an inventory path such as
+// /GVA/vm/rvav/web/dev), creating the folder when it is missing.
+func (cl *Client) MoveToFolder(ctx context.Context, moref, folder string) error {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return err
+	}
+	f, err := ensureFolder(ctx, c, folder)
+	if err != nil {
+		return err
+	}
+	task, err := f.MoveInto(ctx, []types.ManagedObjectReference{vmRef(moref)})
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
 // MountISO inserts an ISO image (`[datastore] path/file.iso`) in the first
 // CD-ROM drive, adding a drive when the VM has none.
 func (cl *Client) MountISO(ctx context.Context, moref, path string) error {

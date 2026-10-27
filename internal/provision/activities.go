@@ -208,7 +208,13 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 		return false, err
 	}
 	if r.DeploymentID != nil {
-		if err := a.Store.SetDeploymentStatus(ctx, a.Store.Pool, *r.DeploymentID, "updating"); err != nil {
+		var plan Plan
+		_ = json.Unmarshal(r.Plan, &plan)
+		during := "updating"
+		if plan.Day2 != nil && plan.Day2.During != "" {
+			during = plan.Day2.During
+		}
+		if err := a.Store.SetDeploymentStatus(ctx, a.Store.Pool, *r.DeploymentID, during); err != nil {
 			return false, err
 		}
 		a.Events.Deployment(ctx, *r.DeploymentID)
@@ -608,7 +614,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 		// or to what the action made of it.
 		var plan Plan
 		_ = json.Unmarshal(r.Plan, &plan)
-		if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, day2Status(plan, in.Outcome)); err != nil {
+		if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, day2Status(plan, in.Outcome, r.StartedAt != nil)); err != nil {
 			return err
 		}
 	}
@@ -660,6 +666,50 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	return nil
 }
 
+// deleteResource deletes a VM, DNS record or IP reservation where it lives,
+// then its row, and says what it did ("" for PTR records). Deleting
+// something already gone is not an error.
+func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (string, error) {
+	var err error
+	what := ""
+	switch r.Type {
+	case "vsphere.vm":
+		var p struct {
+			VM struct {
+				Moref string `json:"moref"`
+			} `json:"vm"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		err = heartbeatWhile(ctx, func() error { return a.VSphere.Destroy(ctx, p.VM.Moref) })
+		what = "deleted VM " + r.Name
+	case "dns.record":
+		var p struct {
+			FQDN  string `json:"fqdn"`
+			Type  string `json:"record_type"`
+			Value string `json:"value"`
+			ID    string `json:"efficientip_id"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		err = a.IPAM.DeleteRecord(ctx, efficientip.Record{ID: p.ID, FQDN: p.FQDN, Type: p.Type, Value: p.Value})
+		if p.Type == "A" {
+			what = "removed DNS for " + p.FQDN
+		}
+	case "ipam.address":
+		var p struct {
+			Address string `json:"address"`
+			Subnet  string `json:"subnet"`
+			ID      string `json:"efficientip_id"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet})
+		what = "released " + p.Address
+	}
+	if err != nil {
+		return "", err
+	}
+	return what, a.Store.DeleteResource(ctx, a.Store.Pool, r.ID)
+}
+
 // Rollback deletes what the request created: VMs, DNS records and IP
 // reservations. It is safe to run again.
 func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) error {
@@ -682,44 +732,12 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 			if order[r.Type] != pass {
 				continue
 			}
-			var err error
-			switch r.Type {
-			case "vsphere.vm":
-				var p struct {
-					VM struct {
-						Moref string `json:"moref"`
-					} `json:"vm"`
-				}
-				_ = json.Unmarshal(r.Properties, &p)
-				err = heartbeatWhile(ctx, func() error { return a.VSphere.Destroy(ctx, p.VM.Moref) })
-				done = append(done, "deleted VM "+r.Name)
-			case "dns.record":
-				var p struct {
-					FQDN  string `json:"fqdn"`
-					Type  string `json:"record_type"`
-					Value string `json:"value"`
-					ID    string `json:"efficientip_id"`
-				}
-				_ = json.Unmarshal(r.Properties, &p)
-				err = a.IPAM.DeleteRecord(ctx, efficientip.Record{ID: p.ID, FQDN: p.FQDN, Type: p.Type, Value: p.Value})
-				if p.Type == "A" {
-					done = append(done, "removed DNS for "+p.FQDN)
-				}
-			case "ipam.address":
-				var p struct {
-					Address string `json:"address"`
-					Subnet  string `json:"subnet"`
-					ID      string `json:"efficientip_id"`
-				}
-				_ = json.Unmarshal(r.Properties, &p)
-				err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet})
-				done = append(done, "released "+p.Address)
-			}
+			what, err := a.deleteResource(ctx, r)
 			if err != nil {
 				return fmt.Errorf("roll back %s %s: %w", r.Type, r.Name, err)
 			}
-			if err := a.Store.DeleteResource(ctx, a.Store.Pool, r.ID); err != nil {
-				return err
+			if what != "" {
+				done = append(done, what)
 			}
 		}
 	}

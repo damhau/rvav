@@ -169,3 +169,14 @@ func (s *Store) PeekName(ctx context.Context, prefix string) (int, error) {
 	err := s.Pool.QueryRow(ctx, `select coalesce((select last_value from name_counters where prefix = $1), 0) + 1`, prefix).Scan(&n)
 	return n, err
 }
+
+// ProjectMembers lists the users with a role in the project, directly or
+// through a group seen in their token, by name.
+func (s *Store) ProjectMembers(ctx context.Context, projectID string) ([]User, error) {
+	rows, _ := s.Pool.Query(ctx, `select u.id, u.subject, u.name, u.email, u.title, u.global_roles from users u
+		where exists (select 1 from project_members m where m.user_id = u.id and m.project_id = $1)
+		   or exists (select 1 from user_groups g join group_mappings gm on gm.oidc_group = g.group_name
+		              where g.user_id = u.id and gm.project_id = $1)
+		order by u.name, u.id`, projectID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[User])
+}

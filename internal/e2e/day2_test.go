@@ -11,6 +11,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/integrations/efficientip"
 )
 
 // vmDeployment is a dev VM built through the catalog, to run actions on.
@@ -20,6 +21,7 @@ type vmDeployment struct {
 	id       string
 	built    api.Request
 	resource string
+	viewer   string // who reads the deployment in vm()
 }
 
 func buildVM(h *harness, model *simulator.Model) *vmDeployment {
@@ -35,7 +37,7 @@ func buildVM(h *harness, model *simulator.Model) *vmDeployment {
 			"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
 		202, &built, "Idempotency-Key", uuid.NewString())
 	h.runWorkflow(built.Id, nil)
-	d := &vmDeployment{h: h, model: model, id: (*built.DeploymentIds)[0], built: built}
+	d := &vmDeployment{h: h, model: model, id: (*built.DeploymentIds)[0], built: built, viewer: "tnguyen"}
 	d.resource = *d.actions("tnguyen")["power_off"].ResourceId
 	return d
 }
@@ -58,7 +60,7 @@ func (d *vmDeployment) vm() api.VmProperties {
 			VM   api.VmProperties `json:"vm"`
 		}
 	}
-	d.h.json("GET", "/api/v1/deployments/"+d.id, "tnguyen", nil, 200, &dep)
+	d.h.json("GET", "/api/v1/deployments/"+d.id, d.viewer, nil, 200, &dep)
 	for _, r := range dep.Resources {
 		if r.Type == "vsphere.vm" {
 			return r.VM
@@ -387,4 +389,160 @@ func TestDay2Snapshots(t *testing.T) {
 			t.Fatalf("nothing left to expire: %v, %v", started, err)
 		}
 	}, model)
+}
+
+// TestDay2Lifecycle renames a VM (vCenter and DNS), mounts an ISO image,
+// hands the deployment to another owner and project, then deletes it.
+func TestDay2Lifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		d := buildVM(h, model)
+		type resource struct {
+			Type string
+			Name string
+			VM   api.VmProperties `json:"vm"`
+		}
+		deployment := func(user string) (api.Deployment, []resource) {
+			var dep struct {
+				api.Deployment
+				Resources []resource
+			}
+			h.json("GET", "/api/v1/deployments/"+d.id, user, nil, 200, &dep)
+			return dep.Deployment, dep.Resources
+		}
+		deploymentAction := func(user, action string, inputs map[string]any, want int) api.Request {
+			var r api.Request
+			var out any
+			if want == 202 {
+				out = &r
+			}
+			h.json("POST", "/api/v1/deployments/"+d.id+"/actions", user, api.Day2Draft{Action: action, Inputs: inputs},
+				want, out, "Idempotency-Key", uuid.NewString())
+			if want == 202 {
+				h.runWorkflow(r.Id, nil)
+				return h.waitStatus(r.Id, user, api.RequestStatusSucceeded)
+			}
+			return r
+		}
+		start := d.vm()
+		oldName := (*start.Fqdn)[:len("web-dev-app001")]
+
+		// Rename: vCenter, DNS and rvav's records.
+		if a := d.actions("tnguyen")["rename"]; a.Form == nil || a.Form.InitialValues["name"] != oldName {
+			t.Fatalf("rename = %+v", a)
+		}
+		d.run("tnguyen", "rename", map[string]any{"name": oldName}, 422)
+		d.run("tnguyen", "rename", map[string]any{"name": "Web_Dev"}, 422)
+		domain := (*start.Fqdn)[len(oldName):]
+		if _, err := h.acts.IPAM.CreateRecord(ctx, efficientip.Record{FQDN: "web-dev-taken" + domain, Type: "A", Value: "10.31.10.99"}); err != nil {
+			t.Fatal(err)
+		}
+		d.run("tnguyen", "rename", map[string]any{"name": "web-dev-taken"}, 422)
+		d.succeed("tnguyen", "rename", map[string]any{"name": "web-dev-api001"})
+		dep, resources := deployment("tnguyen")
+		if dep.Name != "web-dev-api001" {
+			t.Fatalf("deployment name = %s", dep.Name)
+		}
+		var names []string
+		for _, r := range resources {
+			names = append(names, r.Name)
+			if r.Type == "vsphere.vm" && (r.Name != "web-dev-api001" || deref(r.VM.Fqdn) != "web-dev-api001"+domain) {
+				t.Fatalf("renamed VM = %+v", r)
+			}
+		}
+		if !contains(names, "A web-dev-api001"+domain) {
+			t.Fatalf("resources after rename = %v", names)
+		}
+		if ok, _ := h.acts.IPAM.NameExists(ctx, "web-dev-api001"+domain); !ok {
+			t.Fatal("the new name is not in DNS")
+		}
+		if ok, _ := h.acts.IPAM.NameExists(ctx, oldName+domain); ok {
+			t.Fatal("the old name is still in DNS")
+		}
+
+		// ISO images.
+		if a := d.actions("tnguyen")["iso_unmount"]; a.Enabled {
+			t.Fatalf("iso_unmount with nothing mounted = %+v", a)
+		}
+		d.run("tnguyen", "iso_mount", map[string]any{"iso": "rhel.iso"}, 422)
+		d.succeed("tnguyen", "iso_mount", map[string]any{"iso": "[nfs-gva-bronze-01] iso/rhel-9.4-x86_64-dvd.iso"})
+		if iso := deref(d.vm().Iso); iso != "[nfs-gva-bronze-01] iso/rhel-9.4-x86_64-dvd.iso" {
+			t.Fatalf("mounted iso = %q", iso)
+		}
+		d.succeed("tnguyen", "iso_unmount", nil)
+		if d.vm().Iso != nil {
+			t.Fatal("the ISO is still mounted")
+		}
+
+		// Deployment actions have no resource.
+		a := d.actions("tnguyen")
+		if del := a["delete"]; del.ResourceId != nil || del.Confirm == nil || deref(del.Confirm.TypeToConfirm) != "web-dev-api001" {
+			t.Fatalf("delete = %+v", del)
+		}
+		d.run("tnguyen", "delete", nil, 422) // with a resource ID
+
+		// Owner: one of the project's members.
+		owner := a["change_owner"]
+		if owner.Form == nil || len(*owner.Form.UiSchema.Fields["owner"].Options) == 0 {
+			t.Fatalf("change_owner = %+v", owner)
+		}
+		deploymentAction("tnguyen", "change_owner", map[string]any{"owner": "usr_sbrunner"}, 422)
+		deploymentAction("tnguyen", "change_owner", map[string]any{"owner": "usr_lmartin"}, 202)
+		if dep, _ := deployment("lmartin"); dep.Owner.Id != "usr_lmartin" {
+			t.Fatalf("owner = %+v", dep.Owner)
+		}
+
+		// Project: Léa can request only in Web Platform; Marc anywhere.
+		if m := d.actions("lmartin")["change_project"]; m.Enabled {
+			t.Fatalf("change_project for lmartin = %+v", m)
+		}
+		move := d.actions("mkeller")["change_project"]
+		if !move.Enabled || move.Form == nil {
+			t.Fatalf("change_project for mkeller = %+v", move)
+		}
+		deploymentAction("mkeller", "change_project", map[string]any{"project": "prj_data"}, 202)
+		d.viewer = "lmartin"
+		dep, _ = deployment("lmartin")
+		if dep.Project.Id != "prj_data" || deref(d.vm().Folder) != "/GVA/vm/rvav/data/dev" {
+			t.Fatalf("after the move: project %s, folder %s", dep.Project.Id, deref(d.vm().Folder))
+		}
+		// Thomas is no longer in the deployment's project, nor its owner.
+		h.json("GET", "/api/v1/deployments/"+d.id, "tnguyen", nil, 404, nil)
+
+		// Delete: the VM, its DNS records and its address.
+		r := deploymentAction("lmartin", "delete", map[string]any{}, 202)
+		if r.Resource != nil || r.Title != "Delete · web-dev-api001" {
+			t.Fatalf("delete request = %+v", r)
+		}
+		dep, resources = deployment("lmartin")
+		if dep.Status != api.DeploymentStatusDeleted || len(resources) != 0 {
+			t.Fatalf("after delete: %s, %d resources", dep.Status, len(resources))
+		}
+		if ok, _ := h.acts.IPAM.NameExists(ctx, "web-dev-api001"+domain); ok {
+			t.Fatal("the DNS record is still there")
+		}
+		if _, err := h.vc.GetVM(ctx, start.Moref); err == nil {
+			t.Fatal("the VM is still in vCenter")
+		}
+		var after struct{ Items []api.Day2Action }
+		h.json("GET", "/api/v1/deployments/"+d.id+"/actions", "lmartin", nil, 200, &after)
+		for _, x := range after.Items {
+			if x.Enabled {
+				t.Fatalf("%s is enabled on a deleted deployment", x.Key)
+			}
+		}
+	}, model)
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

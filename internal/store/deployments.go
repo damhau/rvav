@@ -220,3 +220,28 @@ func orDefault(s, def string) string {
 	}
 	return s
 }
+
+// Day-2 changes to a deployment and its resources.
+
+func (s *Store) RenameDeployment(ctx context.Context, db DB, id, name string) error {
+	_, err := db.Exec(ctx, `update deployments set name = $2 where id = $1`, id, name)
+	return err
+}
+
+// RenameResource sets a resource's name and properties; the external ID is
+// kept unless ext is not nil.
+func (s *Store) RenameResource(ctx context.Context, db DB, id, name string, ext *string, props json.RawMessage) error {
+	_, err := db.Exec(ctx, `update resources set name = $2, external_id = coalesce($3, external_id), properties = $4,
+		updated_at = now() where id = $1`, id, name, ext, props)
+	return err
+}
+
+func (s *Store) SetDeploymentOwner(ctx context.Context, db DB, id, ownerID string) error {
+	_, err := db.Exec(ctx, `update deployments set owner_id = $2 where id = $1`, id, ownerID)
+	return err
+}
+
+func (s *Store) SetDeploymentProject(ctx context.Context, db DB, id, projectID string) error {
+	_, err := db.Exec(ctx, `update deployments set project_id = $2 where id = $1`, id, projectID)
+	return err
+}
