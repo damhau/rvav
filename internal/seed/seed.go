@@ -88,6 +88,7 @@ var groups = []struct{ group, project, role string }{
 
 var subnets = []store.NetworkSubnet{
 	{Network: "dvpg-app-dev-vl310", Subnet: "10.31.10.0/24", Gateway: "10.31.10.1"},
+	{Network: "dvpg-db-dev-vl320", Subnet: "10.32.20.0/24", Gateway: "10.32.20.1"},
 	{Network: "dvpg-app-tst-vl410", Subnet: "10.41.10.0/24", Gateway: "10.41.10.1"},
 	{Network: "dvpg-web-prd-vl210", Subnet: "10.21.10.0/24", Gateway: "10.21.10.1"},
 	{Network: "dvpg-app-prd-vl220", Subnet: "10.22.20.0/24", Gateway: "10.22.20.1"},

@@ -57,7 +57,7 @@ func DefaultLayout() Layout {
 		},
 		Switch: "GVA-DVS01",
 		Portgroups: []string{
-			"dvpg-app-dev-vl310", "dvpg-app-tst-vl410",
+			"dvpg-app-dev-vl310", "dvpg-db-dev-vl320", "dvpg-app-tst-vl410",
 			"dvpg-web-prd-vl210", "dvpg-app-prd-vl220", "dvpg-db-prd-vl230",
 		},
 		Folders: []string{

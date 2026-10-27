@@ -27,6 +27,12 @@ type Target struct {
 	VM           api.VmProperties
 }
 
+// Choices are what the project's placement allows the target, for forms.
+type Choices struct {
+	// Networks the VM may be connected to.
+	Networks []string
+}
+
 // Op is one step of a day-2 request. The workflow runs Op with Args.
 type Op struct {
 	Key    string         `json:"key"`
@@ -50,9 +56,12 @@ type Action struct {
 	// TypeName asks the user to type the resource name to confirm.
 	TypeName bool
 	// Unavailable says why the action can't run on the target now ("" when it can).
-	Unavailable func(t Target) string
-	// Form is the form the action asks for; nil when it has none.
-	Form func(t Target) *api.ActionForm
+	Unavailable func(t Target, c Choices) string
+	// Form is the form the action asks for; nil when it has none. Its JSON
+	// Schema is checked before Validate.
+	Form func(t Target, c Choices) *api.ActionForm
+	// Validate checks what the schema can't, such as a change to nothing.
+	Validate func(t Target, inputs map[string]any) []api.FieldError
 	// Ops are the steps of the request for these inputs.
 	Ops func(t Target, inputs map[string]any) []Op
 }

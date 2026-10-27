@@ -6,20 +6,45 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-// Day-2 operations (ADR-0013). Each is safe to retry: it checks the current
-// state first where vCenter would otherwise fail or duplicate.
+// Day-2 operations (ADR-0013). Most are safe to retry: they check the
+// current state first where vCenter would otherwise fail or duplicate.
+// AddDisk and AddNIC are not: a retry after a lost response adds another.
 
 // ErrToolsNotRunning means a guest operation needs VMware Tools.
 var ErrToolsNotRunning = errors.New("VMware Tools is not running in the guest")
 
-// IsNotFound reports whether err means the object is no longer in vCenter.
-func IsNotFound(err error) bool { return errors.Is(err, ErrNotFound) || isNotFoundFault(err) }
+// errVMGone is a guest operation on a VM vCenter no longer has.
+var errVMGone = errors.New("the VM is no longer in vCenter")
+
+// IsNotFound reports whether err means the VM is no longer in vCenter.
+func IsNotFound(err error) bool { return errors.Is(err, errVMGone) || isNotFoundFault(err) }
+
+// Refused is an operation that can't be done as asked; retrying won't help.
+type Refused struct{ Msg string }
+
+func (e *Refused) Error() string { return e.Msg }
+
+// findDevice finds a device by the label vCenter shows ("Hard disk 1").
+func findDevice(devices object.VirtualDeviceList, label string) types.BaseVirtualDevice {
+	for _, d := range devices {
+		if info := d.GetVirtualDevice().DeviceInfo; info != nil && info.GetDescription().Label == label {
+			return d
+		}
+	}
+	return devices.Find(label)
+}
+
+func deviceLabel(d types.BaseVirtualDevice) string {
+	if info := d.GetVirtualDevice().DeviceInfo; info != nil {
+		return info.GetDescription().Label
+	}
+	return ""
+}
 
 func (cl *Client) vmObject(ctx context.Context, moref string) (*object.VirtualMachine, error) {
 	c, err := cl.client(ctx)
@@ -31,6 +56,9 @@ func (cl *Client) vmObject(ctx context.Context, moref string) (*object.VirtualMa
 
 func (cl *Client) guestOp(ctx context.Context, moref string, op func(*object.VirtualMachine) error) error {
 	vm, err := cl.GetVM(ctx, moref)
+	if errors.Is(err, ErrNotFound) {
+		return errVMGone
+	}
 	if err != nil {
 		return err
 	}
@@ -106,13 +134,23 @@ func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int) (string
 	if err != nil {
 		return "", err
 	}
-	before := devices.SelectByType((*types.VirtualDisk)(nil))
+	before := map[int32]bool{}
+	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+		before[d.GetVirtualDevice().Key] = true
+	}
 	disk := devices.CreateDisk(controller, types.ManagedObjectReference{}, "")
 	disk.CapacityInKB = int64(sizeGB) * 1024 * 1024
 	if err := vm.AddDevice(ctx, disk); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Hard disk %d", len(before)+1), nil
+	if devices, err = vm.Device(ctx); err == nil {
+		for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+			if !before[d.GetVirtualDevice().Key] {
+				return deviceLabel(d), nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // ExtendDisk grows a disk. Shrinking is refused, as in vCenter.
@@ -125,18 +163,18 @@ func (cl *Client) ExtendDisk(ctx context.Context, moref, label string, sizeGB in
 	if err != nil {
 		return err
 	}
-	disk, ok := devices.Find(label).(*types.VirtualDisk)
+	disk, ok := findDevice(devices, label).(*types.VirtualDisk)
 	if !ok {
-		return fmt.Errorf("%s: %w", label, ErrNotFound)
+		return &Refused{Msg: label + " is not on the VM."}
 	}
 	want := int64(sizeGB) * 1024 * 1024
 	if want == disk.CapacityInKB {
 		return nil
 	}
 	if want < disk.CapacityInKB {
-		return fmt.Errorf("%s is %d GB; disks can only grow", label, disk.CapacityInKB/(1024*1024))
+		return &Refused{Msg: fmt.Sprintf("%s is %d GB; disks can only grow.", label, disk.CapacityInKB/(1024*1024))}
 	}
-	disk.CapacityInKB = want
+	disk.CapacityInKB, disk.CapacityInBytes = want, want*1024
 	return vm.EditDevice(ctx, disk)
 }
 
@@ -145,14 +183,12 @@ func (cl *Client) networkBacking(ctx context.Context, network string) (types.Bas
 	if err != nil {
 		return nil, err
 	}
-	finder := find.NewFinder(c)
-	dc, err := finder.DefaultDatacenter(ctx)
-	if err == nil {
-		finder.SetDatacenter(dc)
+	net, err := findNetwork(ctx, c, network)
+	if errors.Is(err, ErrNotFound) {
+		return nil, &Refused{Msg: "Network " + network + " is not in vCenter."}
 	}
-	net, err := finder.Network(ctx, network)
 	if err != nil {
-		return nil, fmt.Errorf("network %s: %w", network, ErrNotFound)
+		return nil, err
 	}
 	return net.EthernetCardBackingInfo(ctx)
 }
@@ -174,16 +210,28 @@ func (cl *Client) AddNIC(ctx context.Context, moref, network string) error {
 	return vm.AddDevice(ctx, nic)
 }
 
+// findNIC finds a network adapter by its label, or by its position when
+// labels repeat ("Network adapter 2" is the second; see toVM).
 func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, label string) (types.BaseVirtualDevice, error) {
 	devices, err := vm.Device(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dev := devices.Find(label)
-	if _, ok := dev.(types.BaseVirtualEthernetCard); !ok {
-		return nil, fmt.Errorf("%s: %w", label, ErrNotFound)
+	cards := devices.SelectByType((*types.VirtualEthernetCard)(nil))
+	var match []types.BaseVirtualDevice
+	for _, c := range cards {
+		if deviceLabel(c) == label {
+			match = append(match, c)
+		}
 	}
-	return dev, nil
+	if len(match) == 1 {
+		return match[0], nil
+	}
+	var n int
+	if _, err := fmt.Sscanf(label, "Network adapter %d", &n); err == nil && n >= 1 && n <= len(cards) {
+		return cards[n-1], nil
+	}
+	return nil, &Refused{Msg: label + " is not on the VM."}
 }
 
 // RemoveNIC removes a network adapter. One already gone is not an error.
@@ -193,7 +241,8 @@ func (cl *Client) RemoveNIC(ctx context.Context, moref, label string) error {
 		return err
 	}
 	dev, err := cl.findNIC(ctx, vm, label)
-	if errors.Is(err, ErrNotFound) {
+	var refused *Refused
+	if errors.As(err, &refused) {
 		return nil
 	}
 	if err != nil {

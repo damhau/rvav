@@ -299,7 +299,7 @@ func TestSlice1EndToEnd(t *testing.T) {
 			t.Fatalf("datastores = %+v", ds.Options)
 		}
 		nets := values("network", map[string]any{"cluster": "GVA-DEV-CL01"})
-		if nets.Options == nil || len(*nets.Options) != 1 || (*nets.Options)[0].Value != "dvpg-app-dev-vl310" {
+		if nets.Options == nil || len(*nets.Options) != 2 || (*nets.Options)[0].Value != "dvpg-app-dev-vl310" {
 			t.Fatalf("networks = %+v", nets.Options)
 		}
 		ip := values("ip_address", map[string]any{"network": "dvpg-app-dev-vl310"})

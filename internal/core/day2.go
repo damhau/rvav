@@ -66,6 +66,22 @@ func targets(resources []store.Resource) []day2.Target {
 	return out
 }
 
+// choices are what the project's placement rules allow the target.
+func (s *Service) choices(ctx context.Context, d store.DeploymentRow, t day2.Target) (day2.Choices, error) {
+	var c day2.Choices
+	if t.VM.Cluster == nil {
+		return c, nil
+	}
+	pl, err := s.placement(ctx, d.ProjectID, d.Environment)
+	if err != nil {
+		return c, err
+	}
+	for _, n := range pl.networksFor(*t.VM.Cluster) {
+		c.Networks = append(c.Networks, n.Name)
+	}
+	return c, nil
+}
+
 // Actions lists, per resource, the actions that apply and whether the
 // principal may run them now.
 func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID string) ([]api.Day2Action, error) {
@@ -84,6 +100,10 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	busy := deploymentBusy(d, active)
 	out := []api.Day2Action{}
 	for _, t := range targets(resources) {
+		c, err := s.choices(ctx, d, t)
+		if err != nil {
+			return nil, err
+		}
 		for _, a := range day2.All() {
 			if !a.AppliesTo(t.Type) {
 				continue
@@ -93,15 +113,15 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 				reason = permit(p, d, a)
 			}
 			if reason == "" && a.Unavailable != nil {
-				reason = a.Unavailable(t)
+				reason = a.Unavailable(t, c)
 			}
-			out = append(out, presentAction(a, t, reason))
+			out = append(out, presentAction(a, t, c, reason))
 		}
 	}
 	return out, nil
 }
 
-func presentAction(a *day2.Action, t day2.Target, reason string) api.Day2Action {
+func presentAction(a *day2.Action, t day2.Target, c day2.Choices, reason string) api.Day2Action {
 	id, name := t.ResourceID, t.ResourceName
 	out := api.Day2Action{
 		Key: a.Key, Name: a.Name, Group: api.Day2ActionGroup(a.Group), ResourceId: &id, ResourceName: &name,
@@ -124,8 +144,8 @@ func presentAction(a *day2.Action, t day2.Target, reason string) api.Day2Action 
 		}
 		out.Confirm = &c
 	}
-	if a.Form != nil {
-		out.Form = a.Form(t)
+	if a.Form != nil && reason == "" {
+		out.Form = a.Form(t, c)
 	}
 	return out
 }
@@ -159,8 +179,12 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/resource_id", "unknown_resource",
 			a.Name+" needs one of this deployment's resources it applies to.")}}
 	}
+	c, err := s.choices(ctx, d, *target)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
 	if a.Unavailable != nil {
-		if reason := a.Unavailable(*target); reason != "" {
+		if reason := a.Unavailable(*target, c); reason != "" {
 			return store.RequestRow{}, &ConflictError{Msg: reason}
 		}
 	}
@@ -169,7 +193,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		inputs = map[string]any{}
 	}
 	if a.Form != nil {
-		form := a.Form(*target)
+		form := a.Form(*target, c)
 		schema, _ := json.Marshal(form.Schema)
 		sum := sha256.Sum256(schema)
 		errs, err := validateInputs("day2:"+hex.EncodeToString(sum[:8]), schema, inputs)
@@ -177,6 +201,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return store.RequestRow{}, err
 		}
 		if len(errs) > 0 {
+			return store.RequestRow{}, &ValidationError{Errors: errs}
+		}
+	}
+	if a.Validate != nil {
+		if errs := a.Validate(*target, inputs); len(errs) > 0 {
 			return store.RequestRow{}, &ValidationError{Errors: errs}
 		}
 	}

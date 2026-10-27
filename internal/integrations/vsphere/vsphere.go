@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -360,7 +361,22 @@ func toVM(m mo.VirtualMachine) VM {
 		vm.Template = m.Config.Template
 		vm.CPUHotAdd = m.Config.CpuHotAddEnabled != nil && *m.Config.CpuHotAddEnabled
 		vm.MemoryHotAdd = m.Config.MemoryHotAddEnabled != nil && *m.Config.MemoryHotAddEnabled
-		for _, d := range m.Config.Hardware.Device {
+		// Disks in controller and unit order, as vCenter numbers them; other
+		// devices in the order vCenter lists them.
+		devices := slices.Clone(m.Config.Hardware.Device)
+		slices.SortStableFunc(devices, func(a, b types.BaseVirtualDevice) int {
+			_, da := a.(*types.VirtualDisk)
+			_, db := b.(*types.VirtualDisk)
+			if !da || !db {
+				return 0
+			}
+			x, y := a.GetVirtualDevice(), b.GetVirtualDevice()
+			if x.ControllerKey != y.ControllerKey {
+				return int(x.ControllerKey - y.ControllerKey)
+			}
+			return int(deref32(x.UnitNumber) - deref32(y.UnitNumber))
+		})
+		for _, d := range devices {
 			switch dev := d.(type) {
 			case *types.VirtualDisk:
 				label := ""
@@ -383,6 +399,17 @@ func toVM(m mo.VirtualMachine) VM {
 				}
 			}
 		}
+	}
+	// Labels name adapters in actions; if they repeat (vcsim), use positions.
+	seen := map[string]bool{}
+	for _, n := range vm.NICs {
+		if seen[n.Label] {
+			for i := range vm.NICs {
+				vm.NICs[i].Label = fmt.Sprintf("Network adapter %d", i+1)
+			}
+			break
+		}
+		seen[n.Label] = true
 	}
 	if m.Snapshot != nil {
 		var walk func([]types.VirtualMachineSnapshotTree)
@@ -413,6 +440,13 @@ func toVM(m mo.VirtualMachine) VM {
 		}
 	}
 	return vm
+}
+
+func deref32(p *int32) int32 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func backingName(b types.BaseVirtualDeviceBackingInfo) string {

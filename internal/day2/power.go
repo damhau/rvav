@@ -8,7 +8,7 @@ import "github.com/damhau/rvav/internal/api"
 func init() {
 	register(&Action{
 		Key: "power_on", Name: "Power on", Group: GroupPower, Types: []string{vmType},
-		Unavailable: func(t Target) string {
+		Unavailable: func(t Target, _ Choices) string {
 			if t.VM.PowerState == api.On {
 				return "The VM is already powered on."
 			}
@@ -50,16 +50,16 @@ func init() {
 	})
 }
 
-func poweredOn(t Target) string {
+func poweredOn(t Target, _ Choices) string {
 	if t.VM.PowerState != api.On {
 		return "The VM is powered off."
 	}
 	return ""
 }
 
-func needsTools(verb string) func(Target) string {
-	return func(t Target) string {
-		if reason := poweredOn(t); reason != "" {
+func needsTools(verb string) func(Target, Choices) string {
+	return func(t Target, c Choices) string {
+		if reason := poweredOn(t, c); reason != "" {
 			return reason
 		}
 		if t.VM.GuestState != api.VmPropertiesGuestStateRunning {

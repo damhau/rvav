@@ -12,7 +12,93 @@ import (
 	"github.com/damhau/rvav/internal/api"
 )
 
-// TestDay2Actions runs day-2 actions on a VM built by a dev request: each is
+// vmDeployment is a dev VM built through the catalog, to run actions on.
+type vmDeployment struct {
+	h        *harness
+	model    *simulator.Model
+	id       string
+	built    api.Request
+	resource string
+}
+
+func buildVM(h *harness, model *simulator.Model) *vmDeployment {
+	h.t.Helper()
+	const web = "prj_web"
+	var item api.CatalogItem
+	h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "lmartin", nil, 200, &item)
+	var form api.RequestForm
+	h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+	var built api.Request
+	h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId,
+		ProjectId: web, Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+			"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
+		202, &built, "Idempotency-Key", uuid.NewString())
+	h.runWorkflow(built.Id, nil)
+	d := &vmDeployment{h: h, model: model, id: (*built.DeploymentIds)[0], built: built}
+	d.resource = *d.actions("tnguyen")["power_off"].ResourceId
+	return d
+}
+
+func (d *vmDeployment) actions(user string) map[string]api.Day2Action {
+	var out struct{ Items []api.Day2Action }
+	d.h.json("GET", "/api/v1/deployments/"+d.id+"/actions", user, nil, 200, &out)
+	m := map[string]api.Day2Action{}
+	for _, a := range out.Items {
+		m[a.Key] = a
+	}
+	return m
+}
+
+func (d *vmDeployment) vm() api.VmProperties {
+	d.h.t.Helper()
+	var dep struct {
+		Resources []struct {
+			Type string
+			VM   api.VmProperties `json:"vm"`
+		}
+	}
+	d.h.json("GET", "/api/v1/deployments/"+d.id, "tnguyen", nil, 200, &dep)
+	for _, r := range dep.Resources {
+		if r.Type == "vsphere.vm" {
+			return r.VM
+		}
+	}
+	d.h.t.Fatal("no VM resource")
+	return api.VmProperties{}
+}
+
+// run submits an action on the VM and expects the status want.
+func (d *vmDeployment) run(user, action string, inputs map[string]any, want int) api.Request {
+	d.h.t.Helper()
+	if inputs == nil {
+		inputs = map[string]any{}
+	}
+	draft := api.Day2Draft{Action: action, ResourceId: &d.resource, Inputs: inputs}
+	var r api.Request
+	var out any
+	if want == 202 {
+		out = &r
+	}
+	d.h.json("POST", "/api/v1/deployments/"+d.id+"/actions", user, draft, want, out, "Idempotency-Key", uuid.NewString())
+	return r
+}
+
+// succeed runs an action through its workflow and expects it to succeed.
+func (d *vmDeployment) succeed(user, action string, inputs map[string]any) api.Request {
+	d.h.t.Helper()
+	r := d.run(user, action, inputs, 202)
+	d.h.runWorkflow(r.Id, nil)
+	return d.h.waitStatus(r.Id, user, api.RequestStatusSucceeded)
+}
+
+// toolsRunning makes vcsim report VMware Tools running in the guest; rvav
+// sees it when an action next refreshes the VM.
+func (d *vmDeployment) toolsRunning() {
+	sim := d.model.Map().Get(types.ManagedObjectReference{Type: "VirtualMachine", Value: d.vm().Moref}).(*simulator.VirtualMachine)
+	sim.Guest.ToolsRunningStatus = string(types.VirtualMachineToolsRunningStatusGuestToolsRunning)
+}
+
+// TestDay2Actions runs power actions on a VM built by a dev request: each is
 // a request with its own timeline, the VM shows the result, and actions
 // that don't fit the VM's state or the caller's role are refused.
 func TestDay2Actions(t *testing.T) {
@@ -22,63 +108,13 @@ func TestDay2Actions(t *testing.T) {
 	model := simulator.VPX()
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
-		const web = "prj_web"
 		if _, err := h.store.Pool.Exec(ctx, `insert into project_members (project_id, user_id, role) values ('prj_web', 'usr_sbrunner', 'viewer')`); err != nil {
 			t.Fatal(err)
 		}
-
-		var item api.CatalogItem
-		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "lmartin", nil, 200, &item)
-		var form api.RequestForm
-		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
-		var built api.Request
-		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: form.VersionId,
-			ProjectId: web, Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
-				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
-			202, &built, "Idempotency-Key", uuid.NewString())
-		h.runWorkflow(built.Id, nil)
-		dep := (*built.DeploymentIds)[0]
-
-		actions := func(user string) map[string]api.Day2Action {
-			var out struct{ Items []api.Day2Action }
-			h.json("GET", "/api/v1/deployments/"+dep+"/actions", user, nil, 200, &out)
-			m := map[string]api.Day2Action{}
-			for _, a := range out.Items {
-				m[a.Key] = a
-			}
-			return m
-		}
-		vm := func() api.VmProperties {
-			var d struct {
-				Status    api.DeploymentStatus
-				Resources []struct {
-					Type string
-					VM   api.VmProperties `json:"vm"`
-				}
-			}
-			h.json("GET", "/api/v1/deployments/"+dep, "tnguyen", nil, 200, &d)
-			for _, r := range d.Resources {
-				if r.Type == "vsphere.vm" {
-					return r.VM
-				}
-			}
-			t.Fatal("no VM resource")
-			return api.VmProperties{}
-		}
-		var resourceID string
-		run := func(user, action string, want int) api.Request {
-			var r api.Request
-			if resourceID == "" {
-				resourceID = *actions("tnguyen")["power_off"].ResourceId
-			}
-			d := api.Day2Draft{Action: action, ResourceId: &resourceID, Inputs: map[string]any{}}
-			if want != 202 {
-				h.json("POST", "/api/v1/deployments/"+dep+"/actions", user, d, want, nil, "Idempotency-Key", uuid.NewString())
-				return r
-			}
-			h.json("POST", "/api/v1/deployments/"+dep+"/actions", user, d, want, &r, "Idempotency-Key", uuid.NewString())
-			return r
-		}
+		d := buildVM(h, model)
+		dep, built := d.id, d.built
+		actions, vm := d.actions, d.vm
+		run := func(user, action string, want int) api.Request { return d.run(user, action, nil, want) }
 
 		// A running VM offers what a running VM can do.
 		a := actions("tnguyen")
@@ -95,9 +131,7 @@ func TestDay2Actions(t *testing.T) {
 		if a["restart_guest"].Enabled || !a["reset"].Enabled {
 			t.Fatalf("actions on a running VM = %+v", a)
 		}
-		// From now on they run; rvav sees it when an action refreshes the VM.
-		sim := model.Map().Get(types.ManagedObjectReference{Type: "VirtualMachine", Value: vm().Moref}).(*simulator.VirtualMachine)
-		sim.Guest.ToolsRunningStatus = string(types.VirtualMachineToolsRunningStatusGuestToolsRunning)
+		d.toolsRunning()
 		// Viewers see the actions but can't run them; others don't see the deployment.
 		if v := actions("sbrunner")["power_off"]; v.Enabled || v.DisabledReason == nil {
 			t.Fatalf("viewer's power_off = %+v", v)
@@ -149,6 +183,7 @@ func TestDay2Actions(t *testing.T) {
 		run("tnguyen", "fly", 422)
 		h.json("POST", "/api/v1/deployments/"+dep+"/actions", "tnguyen", api.Day2Draft{Action: "power_on", Inputs: map[string]any{}},
 			422, nil, "Idempotency-Key", uuid.NewString())
+		run("tnguyen", "resize", 422)
 
 		// A VM removed behind rvav's back: the action fails, the deployment stays usable.
 		if err := h.vc.Destroy(ctx, vm().Moref); err != nil {
@@ -157,13 +192,13 @@ func TestDay2Actions(t *testing.T) {
 		lost := run("tnguyen", "power_on", 202)
 		h.runWorkflow(lost.Id, nil)
 		failed := h.waitStatus(lost.Id, "tnguyen", api.RequestStatusFailed)
-		if failed.Error == nil || failed.Error.Message == "" {
+		if failed.Error == nil || failed.Error.Message != "The VM is no longer in vCenter." {
 			t.Fatalf("failed action = %+v", failed)
 		}
-		var d api.Deployment
-		h.json("GET", "/api/v1/deployments/"+dep, "tnguyen", nil, 200, &d)
-		if d.Status != api.DeploymentStatusReady {
-			t.Fatalf("deployment after a failed action = %s", d.Status)
+		var after api.Deployment
+		h.json("GET", "/api/v1/deployments/"+dep, "tnguyen", nil, 200, &after)
+		if after.Status != api.DeploymentStatusReady {
+			t.Fatalf("deployment after a failed action = %s", after.Status)
 		}
 
 		// The history: the creating request, then every action, newest first.
@@ -175,6 +210,96 @@ func TestDay2Actions(t *testing.T) {
 		var n int
 		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'action.run' and target_id = $1`, dep).Scan(&n); err != nil || n != 6 {
 			t.Fatalf("audit has %d action runs (%v)", n, err)
+		}
+	}, model)
+}
+
+// TestDay2Configuration resizes a VM (hot add aware), adds and extends
+// disks, and adds, moves and removes network adapters.
+func TestDay2Configuration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		d := buildVM(h, model)
+		d.toolsRunning()
+		start := d.vm()
+		if start.PowerState != api.On || start.CpuCount != 2 || len(start.Disks) != 1 || len(start.Nics) != 1 {
+			t.Fatalf("built VM = %+v", start)
+		}
+
+		// The resize form starts from the current size; without hot add, a
+		// running VM must be restarted for it.
+		a := d.actions("tnguyen")["resize"]
+		if !a.Enabled || a.Form == nil || a.Form.InitialValues["cpu_count"] != float64(2) || a.Form.UiSchema.Fields["restart"].Label == "" {
+			t.Fatalf("resize = %+v", a)
+		}
+		d.run("tnguyen", "resize", map[string]any{"cpu_count": 2, "memory_gb": start.MemoryMb / 1024}, 422)
+		d.run("tnguyen", "resize", map[string]any{"cpu_count": 4, "memory_gb": 16, "restart": false}, 422)
+		d.run("tnguyen", "resize", map[string]any{"cpu_count": 128, "memory_gb": 16, "restart": true}, 422)
+		r := d.run("tnguyen", "resize", map[string]any{"cpu_count": 4, "memory_gb": 16, "restart": true}, 202)
+		var steps struct{ Items []api.Step }
+		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", "tnguyen", nil, 200, &steps)
+		if len(steps.Items) != 6 || steps.Items[3].Title != "Set 4 vCPU and 16 GB" {
+			t.Fatalf("resize with restart steps = %+v", steps.Items)
+		}
+		h.runWorkflow(r.Id, nil)
+		h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
+		if vm := d.vm(); vm.CpuCount != 4 || vm.MemoryMb != 16384 || vm.PowerState != api.On {
+			t.Fatalf("after resize: %d vCPU, %d MB, %s", vm.CpuCount, vm.MemoryMb, vm.PowerState)
+		}
+
+		// With hot add on, it resizes in place.
+		sim := d.model.Map().Get(types.ManagedObjectReference{Type: "VirtualMachine", Value: start.Moref}).(*simulator.VirtualMachine)
+		on := true
+		sim.Config.CpuHotAddEnabled, sim.Config.MemoryHotAddEnabled = &on, &on
+		d.succeed("tnguyen", "power_off", nil)
+		d.succeed("tnguyen", "power_on", nil)
+		r = d.succeed("tnguyen", "resize", map[string]any{"cpu_count": 6, "memory_gb": 24, "restart": false})
+		if r.Progress.Total != 4 || d.vm().CpuCount != 6 {
+			t.Fatalf("hot resize: %+v, VM %d vCPU", r.Progress, d.vm().CpuCount)
+		}
+
+		// Disks.
+		d.succeed("tnguyen", "disk_add", map[string]any{"size_gb": 100})
+		vm := d.vm()
+		if len(vm.Disks) != 2 || vm.Disks[1].CapacityGb != 100 {
+			t.Fatalf("disks after add = %+v", vm.Disks)
+		}
+		first := vm.Disks[0]
+		d.run("tnguyen", "disk_extend", map[string]any{"disk": first.Label, "size_gb": first.CapacityGb}, 422)
+		d.run("tnguyen", "disk_extend", map[string]any{"disk": "Hard disk 9", "size_gb": 500}, 422)
+		d.succeed("tnguyen", "disk_extend", map[string]any{"disk": first.Label, "size_gb": first.CapacityGb + 20})
+		if got := d.vm().Disks[0].CapacityGb; got != first.CapacityGb+20 {
+			t.Fatalf("extended disk is %d GB; before %+v, after %+v", got, vm.Disks, d.vm().Disks)
+		}
+
+		// Network adapters: the placement rules decide the networks.
+		a = d.actions("tnguyen")["nic_add"]
+		if a.Form == nil || len(*a.Form.UiSchema.Fields["network"].Options) != 2 {
+			t.Fatalf("nic_add = %+v", a)
+		}
+		if m := d.actions("tnguyen")["nic_remove"]; m.Enabled {
+			t.Fatalf("nic_remove with one adapter = %+v", m)
+		}
+		d.run("tnguyen", "nic_add", map[string]any{"network": "dvpg-web-prd-vl210"}, 422)
+		d.succeed("tnguyen", "nic_add", map[string]any{"network": "dvpg-app-dev-vl310"})
+		nics := d.vm().Nics
+		if len(nics) != 2 || nics[1].Network != "dvpg-app-dev-vl310" {
+			t.Fatalf("nics after add = %+v", nics)
+		}
+		second := deref(nics[1].Label)
+		d.run("tnguyen", "nic_move", map[string]any{"nic": second, "network": "dvpg-app-dev-vl310"}, 422)
+		d.run("tnguyen", "nic_move", map[string]any{"nic": deref(nics[0].Label), "network": "dvpg-db-dev-vl320"}, 422)
+		d.succeed("tnguyen", "nic_move", map[string]any{"nic": second, "network": "dvpg-db-dev-vl320"})
+		if n := d.vm().Nics[1].Network; n != "dvpg-db-dev-vl320" {
+			t.Fatalf("moved nic is on %s", n)
+		}
+		d.succeed("tnguyen", "nic_remove", map[string]any{"nic": second})
+		if n := len(d.vm().Nics); n != 1 {
+			t.Fatalf("%d nics after remove", n)
 		}
 	}, model)
 }

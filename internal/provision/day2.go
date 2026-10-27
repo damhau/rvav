@@ -28,9 +28,12 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Op.Key, func() (string, string, error) {
 		detail, err := a.op(ctx, in)
 		if err != nil {
+			var refused *vsphere.Refused
 			switch {
 			case vsphere.IsNotFound(err):
 				return "", "", permanent("The VM is no longer in vCenter.")
+			case errors.As(err, &refused):
+				return "", "", permanent("%s", refused.Msg)
 			case errors.Is(err, vsphere.ErrToolsNotRunning):
 				return "", "", permanent("%v", err)
 			case isPermanent(err):
@@ -47,7 +50,21 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 
 func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 	v := a.VSphere
+	args := in.Op.Args
 	switch in.Op.Op {
+	case "reconfigure":
+		return "", v.Reconfigure(ctx, in.Moref, argInt(args, "cpu_count"), argInt(args, "memory_mb"))
+	case "add_disk":
+		label, err := v.AddDisk(ctx, in.Moref, argInt(args, "size_gb"))
+		return label, err
+	case "extend_disk":
+		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, argStr(args, "disk"), argInt(args, "size_gb"))
+	case "add_nic":
+		return "", v.AddNIC(ctx, in.Moref, argStr(args, "network"))
+	case "set_nic_network":
+		return "", v.SetNICNetwork(ctx, in.Moref, argStr(args, "nic"), argStr(args, "network"))
+	case "remove_nic":
+		return "", v.RemoveNIC(ctx, in.Moref, argStr(args, "nic"))
 	case "power_on":
 		return "", v.PowerOn(ctx, in.Moref)
 	case "power_off":
@@ -103,6 +120,21 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
 	}
 	a.Events.Resource(ctx, in.ProjectID, res)
 	a.Events.Deployment(ctx, in.DeploymentID)
+}
+
+func argInt(args map[string]any, key string) int {
+	switch v := args[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	}
+	return 0
+}
+
+func argStr(args map[string]any, key string) string {
+	s, _ := args[key].(string)
+	return s
 }
 
 func isPermanent(err error) bool {
