@@ -48,6 +48,25 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   return <StatusCtx.Provider value={status}>{children}</StatusCtx.Provider>;
 }
 
+/**
+ * Follow one request live when it is outside the current project (an
+ * approver or administrator looking at another project's request): the main
+ * stream only carries the current project's requests.
+ */
+export function useRequestStream(requestId: string | undefined, enabled: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!requestId || !enabled) return;
+    const client = new LiveClient({
+      url: () => apiUrl(`/events?topics=request:${encodeURIComponent(requestId)}`),
+      fetch: rawFetch,
+      onEvent: (event) => applyEvent(qc, event),
+    });
+    client.start();
+    return () => client.stop();
+  }, [qc, requestId, enabled]);
+}
+
 export function useLiveStatus() {
   return useContext(StatusCtx);
 }

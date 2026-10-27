@@ -127,7 +127,11 @@ func TestProvisionTwoLevels(t *testing.T) {
 	env := newEnv(t)
 	var a *Activities
 	var opened []string
-	track := func(args mock.Arguments) { opened = append(opened, args.String(1)) }
+	openedAt := map[string]time.Time{}
+	track := func(args mock.Arguments) {
+		opened = append(opened, args.String(1))
+		openedAt[args.String(1)] = env.Now()
+	}
 	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true, "apr_1", "apr_2"), nil).Once()
 	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(approved(48), nil).Once()
 	env.OnActivity(a.OpenApproval, mock.Anything, mock.Anything).Run(track).Return(LevelState{Status: "pending"}, nil)
@@ -143,6 +147,10 @@ func TestProvisionTwoLevels(t *testing.T) {
 	}
 	if len(opened) != 2 || opened[0] != "apr_1" || opened[1] != "apr_2" {
 		t.Fatalf("opened = %v", opened)
+	}
+	// The signal for level 2 at 30 minutes did not decide level 1.
+	if d := openedAt["apr_2"].Sub(openedAt["apr_1"]); d < time.Hour {
+		t.Fatalf("level 2 opened %s after level 1, before level 1 was approved", d)
 	}
 }
 

@@ -146,11 +146,9 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	if err != nil {
 		return nil, err
 	}
-	groups, err := s.UserGroups(ctx, u.ID)
-	if err != nil {
-		return nil, err
-	}
-	return build(ctx, s, u, groups)
+	// No roles from groups: those stored from the last sign-in may be stale,
+	// and automation should not approve anything.
+	return build(ctx, s, u, nil)
 }
 
 // OIDC validates access tokens issued by the organisation's identity provider.

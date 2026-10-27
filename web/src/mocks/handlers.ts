@@ -519,12 +519,13 @@ export const handlers = [
     }
     const statuses = list(url, "status");
     const wanted = statuses.length ? statuses : ["pending"];
+    const open = (a: StoredApproval) => a.status === "pending" || a.status === "waiting";
+    const voted = (a: StoredApproval) => a.votes.some((v) => v.user.id === db.me.user.id);
     const mine = db.approvals.filter(
       (a) =>
         wanted.includes(a.status) &&
-        isApproverOf(db, a) &&
         a.requester.id !== db.me.user.id &&
-        (a.status !== "pending" || canDecide(db, a)),
+        (open(a) ? isApproverOf(db, a) && !voted(a) && (a.status !== "pending" || canDecide(db, a)) : voted(a)),
     );
     const pendingOnly = wanted.length === 1 && wanted[0] === "pending";
     mine.sort((a, b) =>
@@ -560,6 +561,11 @@ export const handlers = [
     if (body.decision === "reject" && !comment) {
       return problem(422, "validation", "Some inputs need attention", "Say why you reject it.", [
         { field: "/comment", code: "required", message: "Say why you reject it: the requester sees this comment." },
+      ]);
+    }
+    if (body.decision === "reject" && Object.keys(body.inputs ?? {}).length > 0) {
+      return problem(422, "validation", "Some inputs need attention", "Inputs can only be changed when approving.", [
+        { field: "/inputs", code: "not_allowed", message: "Inputs can only be changed when approving." },
       ]);
     }
     const changes: S["ApprovalVote"]["changes"] = [];

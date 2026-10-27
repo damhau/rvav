@@ -45,6 +45,27 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 			Role    api.ProjectRole `json:"role"`
 		}{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name), Role: api.ProjectRole(role)})
 	}
+	// Administrators and auditors work in every project, not only their own.
+	if p.SeesEverything() {
+		all, err := s.Store.ListProjects(r.Context(), nil, 200, nil)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		for _, pr := range all.Items {
+			if _, member := p.ProjectRoles[pr.ID]; member {
+				continue
+			}
+			role := api.Viewer
+			if p.IsAdmin() {
+				role = api.ProjectAdmin
+			}
+			out.Projects = append(out.Projects, struct {
+				Project api.ProjectRef  `json:"project"`
+				Role    api.ProjectRole `json:"role"`
+			}{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name), Role: role})
+		}
+	}
 	sort.Slice(out.Projects, func(i, j int) bool { return out.Projects[i].Project.Name < out.Projects[j].Project.Name })
 	writeJSON(w, http.StatusOK, out)
 }

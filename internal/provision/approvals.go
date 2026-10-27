@@ -3,6 +3,7 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -24,9 +25,11 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	if err != nil {
 		return LevelState{}, err
 	}
-	if !opened {
+	if lv.Status != "pending" {
 		return LevelState{Status: lv.Status, DueAt: lv.DueAt}, nil
 	}
+	// A retry (opened already) repeats the step update and events, which are
+	// idempotent, but not the notifications.
 	r, err := a.Store.GetRequest(ctx, lv.RequestID)
 	if err != nil {
 		return LevelState{}, err
@@ -44,13 +47,15 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	if _, err := a.Store.UpdateStep(ctx, a.Store.Pool, r.ID, KeyPolicy, store.StepUpdate{Status: "running", Title: &title, Detail: &detail}); err != nil {
 		return LevelState{}, err
 	}
-	_ = a.Store.Audit(ctx, a.Store.Pool, store.AuditEvent{Action: "approval.opened", TargetType: "approval", TargetID: lv.ID,
-		ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name}})
 	recipients := a.approvers(ctx, lv, r.RequesterID)
-	for _, id := range recipients {
-		a.Events.Notify(ctx, id, "Approval needed: "+r.Title, strings.Join(lv.Reasons, "; "), "warning", "/approvals/"+lv.ID)
+	if opened {
+		_ = a.Store.Audit(ctx, a.Store.Pool, store.AuditEvent{Action: "approval.opened", TargetType: "approval", TargetID: lv.ID,
+			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name}})
+		for _, id := range recipients {
+			a.Events.Notify(ctx, id, "Approval needed: "+r.Title, strings.Join(lv.Reasons, "; "), "warning", "/approvals/"+lv.ID)
+		}
 	}
-	a.Events.Approval(ctx, recipients, lv.ID, r.ID, lv.Status)
+	a.Events.Approval(ctx, append(recipients, r.RequesterID), lv.ID, r.ID, lv.Status)
 	a.publishAll(ctx, r.ProjectID, r.ID)
 	return LevelState{Status: lv.Status, DueAt: lv.DueAt}, nil
 }
@@ -133,7 +138,7 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 			a.Events.Notify(ctx, id, "Approval escalated to you: "+r.Title, "No decision from "+lv.Name+" in time.", "warning", "/approvals/"+lv.ID)
 		}
 	}
-	a.Events.Approval(ctx, a.approvers(ctx, lv, r.RequesterID), lv.ID, r.ID, st.Status)
+	a.Events.Approval(ctx, append(a.approvers(ctx, lv, r.RequesterID), r.RequesterID), lv.ID, r.ID, st.Status)
 	return st, nil
 }
 
@@ -145,9 +150,15 @@ func (a *Activities) FinishApprovals(ctx context.Context, requestID string) (boo
 	if err != nil {
 		return false, err
 	}
+	if r.Status != "pending_approval" {
+		return false, nil // cancelled meanwhile: the cancel recorded it
+	}
 	levels, err := a.Store.ApprovalsForRequest(ctx, requestID)
 	if err != nil {
 		return false, err
+	}
+	if slices.ContainsFunc(levels, func(l store.Approval) bool { return l.Status == "cancelled" }) {
+		return false, nil
 	}
 	ids := make([]string, len(levels))
 	for i, l := range levels {
@@ -226,8 +237,19 @@ func (a *Activities) FinishApprovals(ctx context.Context, requestID string) (boo
 		if !approved {
 			status = "rejected"
 		}
-		return a.Store.SetRequestStatus(ctx, tx, requestID, status)
+		// Only from pending_approval: a cancel that lands now wins.
+		ok, err := a.Store.SetRequestStatusFrom(ctx, tx, requestID, "pending_approval", status)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errCancelledMeanwhile
+		}
+		return nil
 	})
+	if errors.Is(err, errCancelledMeanwhile) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
@@ -239,6 +261,8 @@ func (a *Activities) FinishApprovals(ctx context.Context, requestID string) (boo
 	a.publishAll(ctx, r.ProjectID, requestID)
 	return approved, nil
 }
+
+var errCancelledMeanwhile = errors.New("request cancelled meanwhile")
 
 // approvers lists who may decide a level: named users, group members seen
 // so far and delegates, never the requester.

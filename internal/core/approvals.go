@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
@@ -150,11 +151,16 @@ func (s *Service) GetApproval(ctx context.Context, p *auth.Principal, id string)
 // RequestApprovals is the approval history of a request.
 func (s *Service) RequestApprovals(ctx context.Context, p *auth.Principal, idOrNumber string) ([]api.Approval, error) {
 	r, err := s.Store.GetRequest(ctx, idOrNumber)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && !CanSeeRequest(p, r) && !p.SeesEverything()) {
+	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if ok, err := s.CanReadRequest(ctx, p, r); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, ErrNotFound
 	}
 	levels, err := s.Store.ApprovalsForRequest(ctx, r.ID)
 	if err != nil {
@@ -190,14 +196,15 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	if err != nil {
 		return api.Approval{}, err
 	}
-	if l.lv.Status != "pending" {
-		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be decided now.", l.lv.Status)}
-	}
+	// Who may act comes before the level's state, which others need not learn.
 	if !l.isApprover(p) {
 		return api.Approval{}, fmt.Errorf("%w: you are not an approver of this level", ErrForbidden)
 	}
 	if l.req.RequesterID == p.User.ID {
 		return api.Approval{}, fmt.Errorf("%w: you can't approve your own request", ErrForbidden)
+	}
+	if l.lv.Status != "pending" {
+		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be decided now.", l.lv.Status)}
 	}
 	approve := d.Decision == api.ApprovalDecisionDecisionApprove
 	if !approve && d.Decision != api.ApprovalDecisionDecisionReject {
@@ -212,19 +219,16 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 			"Say why you reject it: the requester sees this comment.")}}
 	}
 
-	var changes []inputChange
-	var newInputs, newPlan json.RawMessage
-	if d.Inputs != nil && len(*d.Inputs) > 0 {
-		if !approve {
-			return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_allowed",
-				"Inputs can only be changed when approving.")}}
-		}
-		changes, newInputs, newPlan, err = s.applyEdits(ctx, l, *d.Inputs)
-		if err != nil {
-			return api.Approval{}, err
-		}
+	edits := map[string]any{}
+	if d.Inputs != nil {
+		edits = *d.Inputs
+	}
+	if len(edits) > 0 && !approve {
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_allowed",
+			"Inputs can only be changed when approving.")}}
 	}
 
+	var changes []inputChange
 	var decided bool
 	var status, outcome string
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
@@ -234,6 +238,19 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		}
 		if lv.Status != "pending" {
 			return &ConflictError{Msg: fmt.Sprintf("This level was %s meanwhile.", lv.Status)}
+		}
+		// Read the request again under the lock: another approver of this
+		// level may have just changed its inputs.
+		req, err := s.Store.GetRequest(ctx, l.req.ID)
+		if err != nil {
+			return err
+		}
+		var newInputs, newPlan json.RawMessage
+		var newSteps []store.Step
+		if len(edits) > 0 {
+			if changes, newInputs, newPlan, newSteps, err = s.applyEdits(ctx, req, edits); err != nil {
+				return err
+			}
 		}
 		changeJSON, _ := json.Marshal(nonNilSlice(changes))
 		vote := store.ApprovalVote{ApprovalID: id, UserID: p.User.ID, Decision: string(d.Decision), Comment: comment, Changes: changeJSON}
@@ -245,6 +262,9 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		}
 		if len(changes) > 0 {
 			if err := s.Store.ReplaceInputs(ctx, tx, l.req.ID, newInputs, newPlan); err != nil {
+				return err
+			}
+			if err := s.Store.ReplacePendingSteps(ctx, tx, l.req.ID, newSteps); err != nil {
 				return err
 			}
 			if err := s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "request.inputs_changed",
@@ -260,21 +280,15 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		switch {
 		case !approve:
 			decided, status, outcome = true, "rejected", "Rejected by "+p.User.Name
+		case lv.Mode == "all" && lv.Escalated && l.isEscalationApprover(p):
+			// Escalation exists because someone did not answer: the escalation
+			// approver decides for the level.
+			decided, status, outcome = true, "approved", "Approved by "+p.User.Name+" after escalation"
 		case lv.Mode == "all":
-			var names []string
-			done := true
-			for _, uid := range lv.NamedApprovers() {
-				if uid == l.req.RequesterID {
-					continue
+			if names, done := allApproved(lv, l.req.RequesterID, votes[id], l.delegates); done {
+				if len(names) == 0 {
+					names = []string{p.User.Name}
 				}
-				i := slices.IndexFunc(votes[id], func(v store.ApprovalVote) bool { return v.UserID == uid && v.Decision == "approve" })
-				if i < 0 {
-					done = false
-					break
-				}
-				names = append(names, votes[id][i].UserName)
-			}
-			if done {
 				decided, status, outcome = true, "approved", "Approved by "+joinNames(names)
 			}
 		default:
@@ -314,17 +328,51 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	return s.GetApproval(ctx, p, id)
 }
 
+// allApproved reports whether every named approver (not the requester) has
+// approved, themselves or through someone they delegated to, with the names
+// of who did. A level with no named approvers (only a group) needs one.
+func allApproved(lv store.Approval, requesterID string, votes []store.ApprovalVote, delegates []store.ApprovalDelegate) ([]string, bool) {
+	var names []string
+	for _, uid := range lv.ApproverIDs {
+		if uid == requesterID {
+			continue
+		}
+		i := slices.IndexFunc(votes, func(v store.ApprovalVote) bool {
+			if v.Decision != "approve" {
+				return false
+			}
+			return v.UserID == uid || slices.ContainsFunc(delegates, func(d store.ApprovalDelegate) bool {
+				return d.UserID == v.UserID && d.DelegatedBy == uid
+			})
+		})
+		if i < 0 {
+			return nil, false
+		}
+		if !slices.Contains(names, votes[i].UserName) {
+			names = append(names, votes[i].UserName)
+		}
+	}
+	return names, true
+}
+
+func (l loadedLevel) isEscalationApprover(p *auth.Principal) bool {
+	if slices.Contains(l.lv.EscalateIDs, p.User.ID) {
+		return true
+	}
+	return l.lv.EscalateGroup != nil && slices.Contains(p.Groups, *l.lv.EscalateGroup)
+}
+
 // applyEdits checks approver changes against the form and evaluates the
 // request again as its requester, keeping its names and deployments.
-func (s *Service) applyEdits(ctx context.Context, l loadedLevel, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, error) {
-	version, err := s.Store.GetVersion(ctx, l.req.VersionID)
+func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
+	version, err := s.Store.GetVersion(ctx, req.VersionID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	var ui api.UiSchema
 	_ = json.Unmarshal(version.UISchema, &ui)
 	inputs := map[string]any{}
-	_ = json.Unmarshal(l.req.Inputs, &inputs)
+	_ = json.Unmarshal(req.Inputs, &inputs)
 	var changes []inputChange
 	var errs []api.FieldError
 	for _, field := range sortedKeys(edits) {
@@ -339,31 +387,34 @@ func (s *Service) applyEdits(ctx context.Context, l loadedLevel, edits map[strin
 		}
 	}
 	if len(errs) > 0 {
-		return nil, nil, nil, &ValidationError{Errors: errs}
+		return nil, nil, nil, nil, &ValidationError{Errors: errs}
 	}
 	if len(changes) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
-	requester, err := auth.ForUser(ctx, s.Store, l.req.RequesterID)
+	requester, err := auth.ForUser(ctx, s.Store, req.RequesterID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	draft := api.RequestDraft{CatalogItemId: l.req.ItemID, VersionId: l.req.VersionID, ProjectId: l.req.ProjectID,
-		Environment: api.EnvironmentKey(l.req.Environment), Inputs: inputs, Count: present.Ptr(l.req.Count),
-		Justification: present.Ptr(l.req.Justification)}
-	if l.req.LeaseDays != nil {
-		draft.LeaseDays = l.req.LeaseDays
+	draft := api.RequestDraft{CatalogItemId: req.ItemID, VersionId: req.VersionID, ProjectId: req.ProjectID,
+		Environment: api.EnvironmentKey(req.Environment), Inputs: inputs, Count: present.Ptr(req.Count),
+		Justification: present.Ptr(req.Justification)}
+	if req.LeaseDays != nil {
+		draft.LeaseDays = req.LeaseDays
 	}
 	ev, err := s.Evaluate(ctx, requester, draft, true)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
+	// The request keeps the version it was submitted with, even if the item
+	// was republished since.
+	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool { return e.Code != nil && *e.Code == "stale_version" })
 	if len(ev.Errors) > 0 {
-		return nil, nil, nil, &ValidationError{Errors: ev.Errors}
+		return nil, nil, nil, nil, &ValidationError{Errors: ev.Errors}
 	}
 	var plan provision.Plan
-	if err := json.Unmarshal(l.req.Plan, &plan); err != nil {
-		return nil, nil, nil, err
+	if err := json.Unmarshal(req.Plan, &plan); err != nil {
+		return nil, nil, nil, nil, err
 	}
 	switch ev.Blueprint.Kind {
 	case blueprint.KindVM:
@@ -371,7 +422,7 @@ func (s *Service) applyEdits(ctx context.Context, l loadedLevel, edits map[strin
 			plan.VMs[i] = vmUnit(ev, vm.DeploymentID, vm.Name)
 		}
 		if plan.PostConfig, err = postConfigJobs(ev, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	case blueprint.KindAWX:
 		plan.ExtraVars = ev.Inputs
@@ -379,7 +430,16 @@ func (s *Service) applyEdits(ctx context.Context, l loadedLevel, edits map[strin
 	plan.Quota = ev.QuotaAdd
 	newInputs, _ := json.Marshal(ev.Inputs)
 	newPlan, _ := json.Marshal(plan)
-	return changes, newInputs, newPlan, nil
+	// The steps still to run follow the new plan (post-config jobs, placement).
+	var steps []store.Step
+	for i, sd := range plan.Steps(ev.Env.Name) {
+		if sd.Key == provision.KeySubmit || sd.Key == provision.KeyPolicy {
+			continue
+		}
+		steps = append(steps, store.Step{ID: ids.New(ids.Step), RequestID: req.ID, Position: i, Key: sd.Key,
+			Title: sd.Title, Detail: sd.Detail, System: &sd.System, Status: "pending"})
+	}
+	return changes, newInputs, newPlan, steps, nil
 }
 
 // DelegateApproval lets another user decide this level.
@@ -388,11 +448,14 @@ func (s *Service) DelegateApproval(ctx context.Context, p *auth.Principal, id st
 	if err != nil {
 		return api.Approval{}, err
 	}
-	if l.lv.Status != "pending" {
-		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be delegated now.", l.lv.Status)}
-	}
 	if !l.isApprover(p) {
 		return api.Approval{}, fmt.Errorf("%w: only an approver of this level can delegate it", ErrForbidden)
+	}
+	if l.req.RequesterID == p.User.ID {
+		return api.Approval{}, fmt.Errorf("%w: you can't hand on the approval of your own request", ErrForbidden)
+	}
+	if l.lv.Status != "pending" {
+		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be delegated now.", l.lv.Status)}
 	}
 	to, err := s.Store.GetUser(ctx, d.UserId)
 	if errors.Is(err, store.ErrNotFound) {
@@ -453,7 +516,7 @@ func (s *Service) publishApproval(ctx context.Context, l loadedLevel) {
 	if err != nil {
 		return
 	}
-	s.Events.Approval(ctx, s.approverIDs(ctx, l), lv.ID, lv.RequestID, lv.Status)
+	s.Events.Approval(ctx, append(s.approverIDs(ctx, l), l.req.RequesterID), lv.ID, lv.RequestID, lv.Status)
 }
 
 func summary(l loadedLevel, canDecide bool) api.ApprovalSummary {

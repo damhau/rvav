@@ -162,6 +162,20 @@ func TestApprovals(t *testing.T) {
 		if len(history.Items) != 1 || history.Items[0].Status != api.ApprovalStatusApproved {
 			t.Fatalf("request approvals = %+v", history.Items)
 		}
+		// Marc's decided list has it.
+		var decided api.ApprovalPage
+		h.json("GET", "/api/v1/approvals?status=approved,rejected", "mkeller", nil, 200, &decided)
+		if decided.Total != 1 || decided.Items[0].Id != lvl {
+			t.Fatalf("mkeller decided = %+v", decided)
+		}
+
+		// ── No one decides, or hands on, the approval of their own request ────
+		self := submit("mkeller", draft("prd", "selfbig", "XL")) // 48 GB: not auto-approved
+		h.json("GET", "/api/v1/requests/"+self.Id+"/approvals", "mkeller", nil, 200, &history)
+		selfLevel := history.Items[0].Id
+		decide("mkeller", selfLevel, approve("mine"), 403)
+		h.json("POST", "/api/v1/approvals/"+selfLevel+"/delegate", "mkeller", api.ApprovalDelegation{UserId: "usr_tnguyen"}, 403, nil)
+		h.json("POST", "/api/v1/requests/"+self.Id+"/cancel", "mkeller", nil, 202, nil)
 
 		// ── Two levels: the first delegated, the second needs everyone ────────
 		policy("pol_e2e_two", `environment == "dev" && inputs.role == "twolevels"`, `[
@@ -194,6 +208,30 @@ func TestApprovals(t *testing.T) {
 			t.Fatalf("two-level step = %q", s.Title)
 		}
 
+		// ── Mode all: a delegate approves for the person who delegated ────────
+		policy("pol_e2e_board", `environment == "dev" && inputs.role == "board"`, `[
+			{"name": "Change board", "approvers": ["usr_afavre", "usr_cdubois"], "mode": "all"}]`)
+		board := submit("lmartin", draft("dev", "board", "S"))
+		bl := h.waitInbox("afavre", 1).Items[0].Id
+		h.json("POST", "/api/v1/approvals/"+bl+"/delegate", "afavre", api.ApprovalDelegation{UserId: "usr_sbrunner"}, 200, nil)
+		decide("sbrunner", bl, approve("for Alain"), 200)
+		if a := decide("cdubois", bl, approve("ok"), 200); a.Status != api.ApprovalStatusApproved {
+			t.Fatalf("mode all with a delegate = %s", a.Status)
+		}
+		h.waitStatus(board.Id, "lmartin", api.RequestStatusSucceeded)
+
+		// ── Mode all: once escalated, the escalation approver decides ─────────
+		policy("pol_e2e_esc_all", `environment == "dev" && inputs.role == "escall"`, `[
+			{"name": "Change board", "approvers": ["usr_afavre", "usr_cdubois"], "mode": "all",
+			 "timeout": "1s", "on_timeout": "escalate", "escalate_to": {"approvers": ["usr_mkeller"]}}]`)
+		escAll := submit("lmartin", draft("dev", "escall", "S"))
+		ea := h.waitInbox("mkeller", 1).Items[0]
+		if a := decide("mkeller", ea.Id, approve("Alain is away"), 200); a.Status != api.ApprovalStatusApproved ||
+			*a.Outcome != "Approved by Marc Keller after escalation" {
+			t.Fatalf("escalated mode all = %s %v", a.Status, a.Outcome)
+		}
+		h.waitStatus(escAll.Id, "lmartin", api.RequestStatusSucceeded)
+
 		// ── No answer: escalate after the timeout, then reject ────────────────
 		policy("pol_e2e_slow", `environment == "dev" && inputs.role == "slow"`, `[
 			{"name": "Infrastructure leads", "group": "rvav-infra-leads", "mode": "any",
@@ -204,6 +242,9 @@ func TestApprovals(t *testing.T) {
 		if esc.Escalated == nil || !*esc.Escalated {
 			t.Fatalf("escalated level = %+v", esc)
 		}
+		// Claire is in no project, but may read the request she is asked about.
+		h.json("GET", "/api/v1/requests/"+slow.Id, "cdubois", nil, 200, nil)
+		h.json("GET", "/api/v1/requests/"+slow.Id, "sbrunner", nil, 404, nil)
 		h.waitStatus(slow.Id, "lmartin", api.RequestStatusRejected)
 		if s := policyStep("lmartin", slow.Id); !strings.HasPrefix(s.Title, "Rejected automatically: no answer within 1s") {
 			t.Fatalf("timed-out step = %q", s.Title)

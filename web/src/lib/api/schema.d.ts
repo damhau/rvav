@@ -374,9 +374,10 @@ export interface paths {
         };
         /**
          * Approvals waiting for the caller, or decided by them
-         * @description `view=mine` (default) lists the levels the caller may decide: they are
-         *     named in it, in its group, or it was delegated to them. `view=all`
-         *     lists every approval and needs the admin or auditor role.
+         * @description `view=mine` (default) lists the open levels the caller may decide (they
+         *     are named in it, in its group, or it was delegated to them) and, for
+         *     other statuses, the levels they voted on. `view=all` lists every
+         *     approval and needs the admin or auditor role.
          */
         get: operations["listApprovals"];
         put?: never;
@@ -555,6 +556,11 @@ export interface components {
             /** @description Job title from the identity provider. */
             title?: string;
             global_roles: ("admin" | "catalog-admin" | "auditor" | "user")[];
+            /**
+             * @description Projects the caller works in: their memberships, and every project
+             *     for administrators (as project-admin) and auditors (as viewer).
+             *     Empty for someone who only approves.
+             */
             projects: {
                 project: components["schemas"]["ProjectRef"];
                 role: components["schemas"]["ProjectRole"];

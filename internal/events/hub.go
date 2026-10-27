@@ -32,6 +32,9 @@ type Filter struct {
 	UserID    string
 	// CanSeeProject reports whether the subscriber may see a project's events.
 	CanSeeProject func(projectID string) bool
+	// Requests were checked readable when subscribing to request:<id>: their
+	// events pass even when the project is not visible (approvers).
+	Requests map[string]bool
 }
 
 type Subscription struct {
@@ -71,7 +74,15 @@ func (f Filter) Matches(e store.Event) bool {
 		return false
 	}
 	if e.ProjectID != nil && f.CanSeeProject != nil && !f.CanSeeProject(*e.ProjectID) {
-		return false
+		allowed := false
+		for _, t := range e.Topics {
+			if id, ok := strings.CutPrefix(t, "request:"); ok && f.Requests[id] {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return false
+		}
 	}
 	for _, t := range f.Topics {
 		switch {

@@ -460,9 +460,10 @@ paths:
       operationId: listApprovals
       summary: Approvals waiting for the caller, or decided by them
       description: |
-        `view=mine` (default) lists the levels the caller may decide: they are
-        named in it, in its group, or it was delegated to them. `view=all`
-        lists every approval and needs the admin or auditor role.
+        `view=mine` (default) lists the open levels the caller may decide (they
+        are named in it, in its group, or it was delegated to them) and, for
+        other statuses, the levels they voted on. `view=all` lists every
+        approval and needs the admin or auditor role.
       parameters:
         - name: view
           in: query
@@ -822,6 +823,10 @@ components:
             enum: [admin, catalog-admin, auditor, user]
         projects:
           type: array
+          description: |
+            Projects the caller works in: their memberships, and every project
+            for administrators (as project-admin) and auditors (as viewer).
+            Empty for someone who only approves.
           items:
             type: object
             required: [project, role]

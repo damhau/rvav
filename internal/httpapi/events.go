@@ -51,7 +51,29 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		}
 		projectID = pr.ID
 	}
-	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, CanSeeProject: p.CanSeeProject}
+	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, CanSeeProject: p.CanSeeProject,
+		Requests: map[string]bool{}}
+	// A single request may be followed by anyone who can read it, approvers
+	// outside its project included.
+	for i, t := range filter.Topics {
+		key, ok := strings.CutPrefix(t, "request:")
+		if !ok {
+			continue
+		}
+		row, err := s.Store.GetRequest(r.Context(), key)
+		if err == nil {
+			var readable bool
+			if readable, err = s.Core.CanReadRequest(r.Context(), p, row); err == nil && !readable {
+				err = store.ErrNotFound
+			}
+		}
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		filter.Topics[i] = "request:" + row.ID
+		filter.Requests[row.ID] = true
+	}
 
 	// Subscribe before replaying so nothing falls between the two.
 	sub := s.Hub.Subscribe(filter)

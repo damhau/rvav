@@ -4,8 +4,10 @@ Milestones are ordered so that each one ends in something usable end to end.
 
 ## Status
 
-Slices 1 and 2 are built: catalog to running VM, including the AWX
-post-configuration steps, now running for real on the Docker Compose stack.
+Slices 1 to 3 are built: catalog to running VM, including the AWX
+post-configuration steps, running for real on the Docker Compose stack, and
+approvals (levels, timeouts and escalation, delegation, approvers editing
+inputs, the inbox).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
@@ -29,7 +31,6 @@ EfficientIP and AWX, the corporate identity provider.
 - EfficientIP client: confirm the endpoints against the current SOLIDserver API (S7).
 - Inventory sync polls; switch to property collector updates (S13).
 - Value sources `awx.*` (S6), REST and CEL (S8) are not implemented yet.
-- Approvals API, replacing `rvav approve` on the command line (S3).
 - Retry and rollback of a failed request, deployment history (S4).
 - Per-field rule results in the preview, descriptions on checklist options (S8).
 - Accessibility audit (S14), Storybook.

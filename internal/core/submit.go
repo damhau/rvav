@@ -220,6 +220,15 @@ func (s *Service) publishRequest(ctx context.Context, requestID string) {
 	}
 }
 
+// CanReadRequest is CanSeeRequest, and the approvers of the request, who
+// need not be in its project.
+func (s *Service) CanReadRequest(ctx context.Context, p *auth.Principal, r store.RequestRow) (bool, error) {
+	if CanSeeRequest(p, r) {
+		return true, nil
+	}
+	return s.Store.IsRequestApprover(ctx, r.ID, p.User.ID, p.Groups)
+}
+
 // CanSeeRequest is true for the requester, the owner and anyone who can see the project.
 func CanSeeRequest(p *auth.Principal, r store.RequestRow) bool {
 	return p.CanSeeProject(r.ProjectID) || r.RequesterID == p.User.ID || r.OwnerID == p.User.ID

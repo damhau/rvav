@@ -24,15 +24,19 @@ and optionally a `timeout` with `on_timeout`: `approve`, `reject` or
 ### The chain of a request
 At submit, every matching policy contributes its levels, policies in
 priority order (lower first). Levels with the same approvers (group and
-users) are merged into one, keeping all their reasons, the stricter mode and
-the shorter timeout: a 48 GB production VM matches "Large production VMs" and
-"Production VMs", and the Infrastructure leads approve it once. A policy
+users) are merged into one, keeping all their reasons, the stricter mode,
+and the shorter timeout with the strictest action, so merging never weakens
+a policy (a level that never times out cancels the other's auto-approval):
+a 48 GB production VM matches "Large production VMs" and "Production VMs",
+and the Infrastructure leads approve it once. A policy
 whose `auto_approve` is true is satisfied without anyone, and says so.
 
 Each level is a row in `approvals`. Levels run one after the other; only the
 current one is `pending`, later ones `waiting`. Decisions are rows in
 `approval_votes`; with `all`, the level is approved once every named
-approver has approved, and any rejection rejects it.
+approver has approved (a delegate's approval counts for the person who
+delegated), and any rejection rejects it. Once a level escalated, an
+escalation approver decides it alone.
 
 ### Who may decide
 The approvers of the level: the users named in it, members of its group, and
@@ -40,7 +44,9 @@ users it was delegated to. Group membership comes from the token at the time
 of the decision. Groups seen in tokens are also stored per user, so the inbox
 and notifications know who is in a group before they sign in again. Admins
 see every approval but decide only where they are an approver. The requester
-never approves their own request.
+never approves their own request, nor hands its approval to someone else.
+Approvers may read the requests they decide, even outside their projects.
+API tokens carry no roles from groups.
 
 ### Editing inputs
 UI schema fields marked `approver_editable` can be changed by an approver
@@ -73,5 +79,12 @@ only. Every vote, delegation, escalation, timeout and input change is an
 - One inbox for every approval, whoever started the workflow; custom Temporal
   workflows will use the same tables (ADR-0007).
 - `rvav approve` is removed.
+- The new workflow code is not replay-compatible with workflows started by
+  slice 1. Nothing runs in production yet, so development stacks are drained
+  or reset instead. From the R1 pilot on, every workflow change keeps old
+  histories working (`workflow.GetVersion`, or worker versioning in S14).
+- A level waits as long as it must: the workflow reads it again every hour
+  in case a decision signal was lost, and continues as new when Temporal
+  suggests it, so long waits don't grow the history without limit.
 - Out-of-office delegation and approving from email, Teams or Slack build on
   this in S11.

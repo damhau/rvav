@@ -31,6 +31,10 @@ func TestFilterMatches(t *testing.T) {
 		{"approval for me", Filter{Topics: []string{"approvals"}, UserID: "usr_mkeller"}, approval, true},
 		{"approval for someone else", Filter{Topics: []string{"approvals"}, UserID: "usr_lmartin"}, approval, false},
 		{"an approval is not a notification", Filter{Topics: []string{"notifications"}, UserID: "usr_mkeller"}, approval, false},
+		{"a request checked readable passes outside the project (approver)",
+			Filter{Topics: []string{"request:req_2"}, CanSeeProject: seesWeb, Requests: map[string]bool{"req_2": true}}, finEvent, true},
+		{"but not the project's other requests",
+			Filter{Topics: []string{"requests"}, CanSeeProject: seesWeb, Requests: map[string]bool{"req_9": true}}, finEvent, false},
 	}
 	for _, c := range cases {
 		if got := c.filter.Matches(c.event); got != c.want {

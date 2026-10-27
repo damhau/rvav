@@ -193,3 +193,12 @@ func (s *Store) ReplaceInputs(ctx context.Context, db DB, id string, inputs, pla
 	_, err := db.Exec(ctx, `update deployments set inputs = $2 where created_by_request_id = $1`, id, inputs)
 	return err
 }
+
+// SetRequestStatusFrom changes the status only from the expected one, and
+// reports whether it did.
+func (s *Store) SetRequestStatusFrom(ctx context.Context, db DB, id, from, to string) (bool, error) {
+	tag, err := db.Exec(ctx, `update requests set status = $3,
+		finished_at = case when $3 in ('succeeded', 'failed', 'rejected', 'cancelled') then now() else finished_at end
+		where id = $1 and status = $2`, id, from, to)
+	return tag.RowsAffected() == 1, err
+}

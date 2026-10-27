@@ -13,7 +13,7 @@ vRealize / Aria Automation (vRA).
 - **Modern UX**: command palette, live request timelines, inline day-2 actions,
   dark mode, keyboard-first.
 
-> Status: slices 1 and 2 built. The catalog, the request form, provisioning a
+> Status: slices 1 to 3 built, approvals included. The catalog, the request form, provisioning a
 > VM and following it live, and deployments work end to end on the Docker
 > Compose stack: real Temporal, Keycloak sign-in, vcsim (the vCenter
 > simulator), and fake AWX and EfficientIP. CI runs on every push. See the

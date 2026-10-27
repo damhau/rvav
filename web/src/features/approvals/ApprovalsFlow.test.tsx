@@ -48,4 +48,12 @@ describe("approvals inbox against the mock API", () => {
     expect(stored.steps[1]?.title).toBe("Approved by Léa Martin");
     expect(stored.steps[1]?.detail).toMatch(/Size changed from XL to L by Léa Martin/);
   });
+
+  it("works for an approver who is in no project", async () => {
+    db.me.projects = [];
+    const app = renderApp("/catalog");
+    expect(await screen.findByText("You are not in a project yet")).toBeInTheDocument();
+    await app.router.navigate({ to: "/approvals" });
+    expect(await screen.findByRole("article", { name: "Approval for REQ-10477" })).toBeInTheDocument();
+  });
 });

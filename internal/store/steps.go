@@ -151,3 +151,13 @@ func (s *Store) Now(ctx context.Context) (time.Time, error) {
 	err := s.Pool.QueryRow(ctx, `select now()`).Scan(&t)
 	return t, err
 }
+
+// ReplacePendingSteps swaps the top-level steps that have not started for
+// new ones, after an approver changed what the request will do.
+func (s *Store) ReplacePendingSteps(ctx context.Context, db DB, requestID string, steps []Step) error {
+	if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and parent_id is null
+		and status = 'pending' and key not in ('submit', 'policy')`, requestID); err != nil {
+		return err
+	}
+	return s.InsertSteps(ctx, db, steps)
+}

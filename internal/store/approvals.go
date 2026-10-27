@@ -118,9 +118,9 @@ func (s *Store) ApprovalsForRequest(ctx context.Context, requestID string) ([]Ap
 
 // ApprovalFilter selects approvals for the inbox.
 type ApprovalFilter struct {
-	// All lists every approval; otherwise only levels ViewerID may decide
-	// (named, in a group, delegated), never on their own requests, and not
-	// pending ones they already voted on.
+	// All lists every approval; otherwise the open levels ViewerID may decide
+	// (named, in a group, delegated; not once they voted) and the levels they
+	// decided, never on their own requests.
 	All      bool
 	ViewerID string
 	Groups   []string
@@ -132,11 +132,14 @@ type ApprovalFilter struct {
 // ListApprovals returns a page and the total matching the filter. Pending
 // levels come oldest first, the most urgent on top; others newest first.
 func (s *Store) ListApprovals(ctx context.Context, f ApprovalFilter) (Page[Approval], int, error) {
-	where := `($1 or (r.requester_id <> $2 and ($2 = any(a.approver_ids) or a.group_name = any($3)
-			or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
-			or exists (select 1 from approval_delegates d where d.approval_id = a.id and d.user_id = $2))
-			-- with mode all, a pending level waits for the others once you voted
-			and (a.status <> 'pending' or not exists (select 1 from approval_votes v where v.approval_id = a.id and v.user_id = $2))))
+	voted := `exists (select 1 from approval_votes v where v.approval_id = a.id and v.user_id = $2)`
+	where := `($1 or (r.requester_id <> $2 and (
+			-- open levels you may decide (with mode all, not once you voted)
+			(a.status in ('waiting', 'pending') and not ` + voted + ` and ($2 = any(a.approver_ids) or a.group_name = any($3)
+				or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
+				or exists (select 1 from approval_delegates d where d.approval_id = a.id and d.user_id = $2)))
+			-- and the ones you decided
+			or (a.status not in ('waiting', 'pending') and ` + voted + `))))
 		and (cardinality($4::text[]) = 0 or a.status = any($4))`
 	args := []any{f.All, f.ViewerID, nonNil(f.Groups), nonNil(f.Statuses)}
 	var total int
@@ -298,4 +301,16 @@ func (s *Store) Audit(ctx context.Context, db DB, e AuditEvent) error {
 	_, err = db.Exec(ctx, `insert into audit_events (actor_id, action, target_type, target_id, project_id, detail)
 		values ($1, $2, $3, $4, $5, $6)`, e.ActorID, e.Action, e.TargetType, e.TargetID, e.ProjectID, detail)
 	return err
+}
+
+// IsRequestApprover reports whether the user may decide one of the
+// request's levels (named, in a group, escalated to or delegated).
+func (s *Store) IsRequestApprover(ctx context.Context, requestID, userID string, groups []string) (bool, error) {
+	var ok bool
+	err := s.Pool.QueryRow(ctx, `select exists (select 1 from approvals a where a.request_id = $1 and a.status <> 'cancelled'
+		and ($2 = any(a.approver_ids) or a.group_name = any($3)
+			or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
+			or exists (select 1 from approval_delegates d where d.approval_id = a.id and d.user_id = $2)))`,
+		requestID, userID, nonNil(groups)).Scan(&ok)
+	return ok, err
 }

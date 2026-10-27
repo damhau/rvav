@@ -15,6 +15,8 @@ import { Tip } from "@/components/ui/tooltip";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { RequestStatus, ServiceRequest, Step } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
+import { useRequestStream } from "@/lib/live/LiveProvider";
+import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { duration, toText } from "@/lib/utils";
 import { LogViewer } from "./LogViewer";
@@ -85,6 +87,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   useNow(1000);
   const request = useQuery(q.request(requestKey));
   const id = request.data?.id;
+  const { projectId } = useCurrentProject();
+  useRequestStream(id, Boolean(request.data && request.data.project.id !== projectId));
   const steps = useQuery({ ...q.steps(id ?? ""), enabled: Boolean(id) });
   const approvals = useQuery({ ...q.requestApprovals(id ?? ""), enabled: Boolean(id) });
   const levels = approvals.data?.items ?? [];

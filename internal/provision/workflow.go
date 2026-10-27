@@ -53,6 +53,11 @@ func Provision(ctx workflow.Context, requestID string) error {
 
 	if info.Plan.ApprovalRequired && info.Status == "pending_approval" {
 		approved, cancelled, err := awaitApprovals(ctx, info)
+		if errors.Is(err, errContinueAsNew) {
+			// A long wait: start over with an empty history. Decisions are in
+			// the database, so the new run picks up where this one was.
+			return workflow.NewContinueAsNewError(ctx, Provision, requestID)
+		}
 		if cancelled || temporal.IsCanceledError(err) {
 			return finishCancelled(ctx, info, false)
 		}
@@ -105,8 +110,11 @@ func Provision(ctx workflow.Context, requestID string) error {
 }
 
 // approvalRecheck is how often a waiting level is read again from the
-// database, in case a decision signal was lost.
-const approvalRecheck = 5 * time.Minute
+// database, in case a decision signal was lost. Each check adds to the
+// workflow history, so it stays rare; continue-as-new keeps long waits small.
+const approvalRecheck = time.Hour
+
+var errContinueAsNew = errors.New("continue as new")
 
 // awaitApprovals runs the approval levels in order. Each waits for its
 // decision signal or its timeout; the database holds the decisions, and
@@ -150,6 +158,9 @@ func awaitApprovals(ctx workflow.Context, info Info) (approved, cancelled bool, 
 				if err := workflow.ExecuteActivity(ctx, next, id).Get(ctx, &st); err != nil {
 					return false, false, err
 				}
+			}
+			if st.Status == "pending" && workflow.GetInfo(ctx).GetContinueAsNewSuggested() {
+				return false, false, errContinueAsNew
 			}
 		}
 		if st.Status != "approved" {

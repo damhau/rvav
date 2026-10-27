@@ -330,12 +330,38 @@ func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLeve
 		if in.Mode == "all" {
 			c.Mode = "all"
 		}
-		if in.Timeout > 0 && (c.Timeout == 0 || in.Timeout < c.Timeout) {
-			c.Timeout, c.OnTimeout, c.EscalateGroup, c.EscalateIDs = in.Timeout, in.OnTimeout, in.EscalateGroup, in.EscalateIDs
-		}
+		mergeTimeout(c, in)
 		return chain
 	}
 	return append(chain, in)
+}
+
+// mergeTimeout keeps the shorter timeout with the strictest action (reject,
+// then escalate, then approve), so merging never weakens a policy: a level
+// with no timeout never approves by itself, so it drops the other's approve.
+func mergeTimeout(c *ChainLevel, in ChainLevel) {
+	rank := map[string]int{"approve": 0, "escalate": 1, "reject": 2}
+	switch {
+	case in.Timeout == 0 && c.Timeout == 0:
+		return
+	case in.Timeout == 0 || c.Timeout == 0:
+		timed := *c
+		if c.Timeout == 0 {
+			timed = in
+		}
+		if timed.OnTimeout == "approve" {
+			c.Timeout, c.OnTimeout, c.EscalateGroup, c.EscalateIDs = 0, "", "", nil
+			return
+		}
+		c.Timeout, c.OnTimeout, c.EscalateGroup, c.EscalateIDs = timed.Timeout, timed.OnTimeout, timed.EscalateGroup, timed.EscalateIDs
+	default:
+		strict := *c
+		if rank[in.OnTimeout] > rank[c.OnTimeout] {
+			strict = in
+		}
+		c.Timeout = min(c.Timeout, in.Timeout)
+		c.OnTimeout, c.EscalateGroup, c.EscalateIDs = strict.OnTimeout, strict.EscalateGroup, strict.EscalateIDs
+	}
 }
 
 func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {

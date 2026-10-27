@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
-	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -135,8 +134,11 @@ func (s *Server) CreateRequest(w http.ResponseWriter, r *http.Request, params ap
 
 func (s *Server) visibleRequest(w http.ResponseWriter, r *http.Request, idOrNumber string) (store.RequestRow, bool) {
 	row, err := s.Store.GetRequest(r.Context(), idOrNumber)
-	if err == nil && !core.CanSeeRequest(principal(r), row) {
-		err = store.ErrNotFound
+	if err == nil {
+		var ok bool
+		if ok, err = s.Core.CanReadRequest(r.Context(), principal(r), row); err == nil && !ok {
+			err = store.ErrNotFound
+		}
 	}
 	if err != nil {
 		s.fail(w, r, err)

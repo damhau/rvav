@@ -7,6 +7,7 @@ const KEY = "rvav.project";
 
 interface ProjectContext {
   me: Me;
+  /** Empty for someone in no project, who only approves. */
   projectId: string;
   project: ProjectRef;
   role: ProjectRole;
@@ -46,7 +47,16 @@ export function ProjectProvider({
   const value = useMemo<ProjectContext | null>(() => {
     if (!me.data) return null;
     const membership = me.data.projects.find((p) => p.project.id === chosen) ?? me.data.projects[0];
-    if (!membership) return null;
+    if (!membership) {
+      // Approvers need not be in a project: the app works, project pages say why they are empty.
+      return {
+        me: me.data,
+        projectId: "",
+        project: { id: "", code: "", name: "No project" },
+        role: "viewer",
+        setProjectId,
+      };
+    }
     return {
       me: me.data,
       projectId: membership.project.id,

@@ -45,7 +45,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S3.4 API, audit entries (`audit_events`, read in S9) and live events (`approval.updated` on the `approvals` topic, to each approver); group membership stored from tokens; approver edits re-evaluate the request as its requester
 - [x] S3.5 UI: approvals inbox and detail (from the mockup: reasons and rules, facts, requester's reason, editable size, comment required to reject, due and escalation), approval panel on the request page, sidebar badge kept live by `approval.updated`; mock API with seeded levels; Vitest and Playwright. Delegating from the UI waits for a user-search API (S9); the API supports it
 - [x] S3.6 `rvav approve` removed; `TestApprovals` runs the acceptance scenario on a real Temporal dev server (48 GB VM lowered to 32 GB and approved, two levels, mode all, delegation, escalation then rejection, auto-approval, rejection, cancel)
-- [ ] S3.7 Slice review, docs and roadmap status
+- [x] S3.7 Slice review, docs and roadmap status. An independent review of `c848276..fa1aeac` found one high-severity issue, fixed: a requester could delegate the approval of their own request. Also fixed from it: a recheck that grew workflow history (hourly now, with continue-as-new), merged levels that could weaken a policy, API tokens taking roles from stored groups, mode `all` with delegation and escalation, approver edits (under the lock, older versions, steps refreshed), a guarded finish after a cancel, permission checks before state, approval events to the requester, "decided" meaning voted on. Found by the stack check and fixed: admins and approvers with no project membership stuck on "Loading", approvers unable to read the request, no live updates for requests outside the current project. Stack check: all four browser tests pass with Keycloak, including Thomas asking for 48 GB and Marc lowering it to 32 GB
 
 ## S4 Day-2 actions
 
@@ -85,6 +85,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Hosting | Kubernetes with Helm; Compose for development and the lab | ADR-0009 |
 | Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |
 | Approvals | Levels merged across policies, votes in the database, the workflow signalled per level; group membership from tokens, stored per user | ADR-0011 |
+| Workflow versioning | Not before the R1 pilot: development stacks are drained or reset when workflow code changes; from R1 on, `GetVersion` or worker versioning | ADR-0011 |
 | Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
 ## Needs real infrastructure
