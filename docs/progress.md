@@ -49,7 +49,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 
 ## S4 Day-2 actions
 
-- [ ] S4.1 Console spike and ADR: WebMKS ticket, proxy in rvav, or VMRC link
+- [x] S4.1 Console spike and [ADR-0012](adr/0012-vm-console.md): a VMRC link (clone ticket) always, and a WebMKS session proxied by rvav when the organisation provides VMware's WMKS client; vcsim has no WebMKS tickets, so a real ESXi host must confirm it
 - [ ] S4.2 Spec: actions available for a resource (filtered by policy), run an action with its form, action runs with their own timeline, deployment history, retry and roll back
 - [ ] S4.3 Power: on, off, shut down guest, restart guest, reset
 - [ ] S4.4 Resize CPU and RAM (hot-add aware), add or extend disks, add, remove or move NICs
@@ -86,6 +86,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |
 | Approvals | Levels merged across policies, votes in the database, the workflow signalled per level; group membership from tokens, stored per user | ADR-0011 |
 | Workflow versioning | Not before the R1 pilot: development stacks are drained or reset when workflow code changes; from R1 on, `GetVersion` or worker versioning | ADR-0011 |
+| VM console | VMRC link always; web console through an rvav WebSocket proxy, with the WMKS client provided by the organisation | ADR-0012 |
 | Stack checks | `make check` per commit; the compose stack once per slice, not in CI | – |
 
 ## Needs real infrastructure
