@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,6 +22,7 @@ func TestLaunchPrompts(t *testing.T) {
 		"8":  `{"ask_limit_on_launch": true, "ask_inventory_on_launch": false}`,
 		"9":  `{"ask_limit_on_launch": false, "ask_inventory_on_launch": true}`,
 		"10": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true}`,
+		"11": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true, "ask_credential_on_launch": false}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -61,6 +63,14 @@ func TestLaunchPrompts(t *testing.T) {
 	}
 	if launched["inventory"] != float64(12) || launched["limit"] != "web-dev-app001" {
 		t.Fatalf("launched with %v", launched)
+	}
+	launched = nil
+	if _, err := c.Launch(ctx, 7, false, LaunchRequest{Credentials: []int{4}}); !errors.Is(err, ErrNoCredentialPrompt) || launched != nil {
+		t.Fatalf("credentials on a template that doesn't prompt for them = %v", err)
+	}
+	prompts["7"] = `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true, "ask_credential_on_launch": true}`
+	if _, err := c.Launch(ctx, 7, false, LaunchRequest{Credentials: []int{4, 5}}); err != nil || fmt.Sprint(launched["credentials"]) != "[4 5]" {
+		t.Fatalf("launched with credentials %v, %v", launched["credentials"], err)
 	}
 	for id, want := range map[int]error{8: ErrNoInventoryPrompt, 9: ErrNoLimitPrompt} {
 		launched = nil

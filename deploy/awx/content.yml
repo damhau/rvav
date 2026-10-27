@@ -13,6 +13,12 @@ inventory:
   name: rvav-test-localhost
   hosts: [localhost]
 
+# A machine credential with no secret, for forms that let users choose the
+# credentials a job runs with (templates with ask_credential).
+machine_credential:
+  name: rvav-test machine
+  username: rvav
+
 # rvav's VMs, read from rvav by the rvav.platform inventory plugin
 # (ansible/, installed from collections/requirements.yml). Templates with
 # ask_inventory run on rvav's VMs: rvav launches them against this
@@ -73,6 +79,8 @@ job_templates:
     description: Add an A, CNAME or TXT record.
     playbook: deploy/awx/playbooks/dns-record.yml
     labels: [rvav, catalog]
+    ask_inventory: true
+    ask_credential: true
     survey:
       - variable: record_name
         question: Name

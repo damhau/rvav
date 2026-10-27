@@ -431,3 +431,97 @@ func TestAWXDay2ActionGuards(t *testing.T) {
 		}
 	})
 }
+
+// TestAWXLaunchSettingsFromTheForm: an AWX item's form picks the inventory
+// and credentials the job launches with, which are not extra variables;
+// items linked to an AWX template launch it by ID (S8.6).
+func TestAWXLaunchSettingsFromTheForm(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin = "prj_web", "lmartin"
+		def := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "required": []any{"role"}, "properties": map[string]any{
+				"role": map[string]any{"type": "string"}, "inventory": map[string]any{"type": "string"}, "machine": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"role":      {Widget: api.UiWidgetText, Label: "Role"},
+				"inventory": {Widget: api.UiWidgetAwxInventory, Label: "Inventory", ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("awx.inventories")}},
+				"machine": {Widget: api.UiWidgetAwxCredential, Label: "Machine credential", ValueSource: &api.ValueSource{Kind: api.Builtin,
+					Name: new("awx.credentials"), Params: &map[string]any{"kind": "ssh"}}},
+			}},
+			Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Create role", "job_template": "pg-create-role",
+				"inventory": "inventory", "credentials": []any{"role"}}},
+		}
+		def.UiSchema.Layout.Kind = api.Page
+		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Role", Fields: []string{"role", "inventory", "machine"}}}
+		create := api.CatalogItemCreate{Slug: "pg-role", Name: "PostgreSQL role", Summary: "A role.", Category: "compute",
+			Type: api.AwxJobTemplate, Definition: &def}
+
+		// The blueprint's launch inputs must be picked from AWX.
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/items", admin, create, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/blueprint/awx/credentials/0" {
+			t.Fatalf("a launch input not picked from AWX = %+v", problem.Errors)
+		}
+		def.Blueprint["awx"].(map[string]any)["credentials"] = []any{"machine"}
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, create, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/pg-role/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/pg-role/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+
+		submit := func(inputs map[string]any, want int) api.Request {
+			t.Helper()
+			var req api.Request
+			var out any
+			if want == 202 {
+				out = &req
+			}
+			h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+				ProjectId: web, Environment: "dev", Inputs: inputs}, want, out, "Idempotency-Key", uuid.NewString())
+			return req
+		}
+		submit(map[string]any{"role": "app", "inventory": "999", "machine": "4"}, 422) // not an inventory of the organisation
+		req := submit(map[string]any{"role": "app", "inventory": "3", "machine": "4"}, 202)
+		h.runWorkflow(req.Id, nil)
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		step, err := h.store.GetStepByKey(ctx, req.Id, "awx.job:pg-create-role")
+		if err != nil || step.ExternalID == nil {
+			t.Fatalf("job step = %+v, %v", step, err)
+		}
+		var jobID int
+		fmt.Sscan(*step.ExternalID, &jobID)
+		job := h.awx.Launched(jobID)
+		if job.Inventory != 3 || fmt.Sprint(job.Credentials) != "[4]" || job.ExtraVars["role"] != "app" ||
+			job.ExtraVars["inventory"] != nil || job.ExtraVars["machine"] != nil {
+			t.Fatalf("launched %+v", job)
+		}
+
+		// A template that doesn't prompt for credentials fails the request.
+		h.awx.NoCredentialPrompt = map[string]bool{"pg-create-role": true}
+		req = submit(map[string]any{"role": "app", "inventory": "3", "machine": "4"}, 202)
+		h.runWorkflow(req.Id, nil)
+		if failed := h.waitStatus(req.Id, "tnguyen", api.RequestStatusFailed); failed.Error == nil ||
+			!strings.Contains(failed.Error.Message, "does not prompt for credentials") {
+			t.Fatalf("error = %+v", failed.Error)
+		}
+		h.awx.NoCredentialPrompt = nil
+
+		// A seeded AWX item, once linked to its template by the sync, launches it by ID.
+		h.svc.AWXCatalog = &awxcatalog.Sync{Store: h.store, AWX: h.awx, Log: h.acts.Log, Filter: awx.TemplateFilter{Labels: []string{"rvav"}}}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, nil)
+		var dns api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/dns-record/form?project_id="+web, "tnguyen", nil, 200, &dns)
+		var seeded api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/dns-record?project_id="+web, "tnguyen", nil, 200, &seeded)
+		var dnsReq api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: seeded.Id, VersionId: dns.VersionId, ProjectId: web,
+			Environment: "dev", Inputs: map[string]any{"name": "www", "type": "A", "value": "10.31.10.9", "zone": "corp.example"}},
+			202, &dnsReq, "Idempotency-Key", uuid.NewString())
+		var templateID int
+		if err := h.store.Pool.QueryRow(ctx, `select coalesce((plan->'awx'->>'template_id')::int, 0) from requests where id = $1`, dnsReq.Id).Scan(&templateID); err != nil || templateID == 0 {
+			t.Fatalf("the seeded item's job has no template ID: %d, %v", templateID, err)
+		}
+	})
+}

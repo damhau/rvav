@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,9 +105,8 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			}
 			req.Title = ev.Item.Name + " · " + titleNames(plan.VMs)
 		case blueprint.KindAWX:
-			a := ev.Blueprint.AWX
-			plan.AWX = &provision.Job{Key: a.JobTemplate, Title: a.Title, Template: a.JobTemplate, TemplateID: a.TemplateID, Workflow: a.Workflow}
-			plan.ExtraVars = ev.Inputs
+			job, vars := awxLaunch(ev)
+			plan.AWX, plan.ExtraVars = &job, vars
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		}
 		plan.Context = map[string]any{
@@ -329,4 +329,45 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// awxLaunch is an AWX item's job: launched by its template's AWX ID when
+// rvav knows it (items made from a template, or linked to one with the same
+// name), with the inputs the blueprint names as the launch's inventory and
+// credentials (not extra variables), and the other inputs as extra
+// variables.
+func awxLaunch(ev *Evaluation) (provision.Job, map[string]any) {
+	a := ev.Blueprint.AWX
+	job := provision.Job{Key: a.JobTemplate, Title: a.Title, Template: a.JobTemplate, TemplateID: a.TemplateID, Workflow: a.Workflow}
+	if job.TemplateID == 0 && ev.Item.AWXTemplateID != nil && deref(ev.Item.AWXTemplateName) == a.JobTemplate {
+		job.TemplateID = *ev.Item.AWXTemplateID
+	}
+	vars := map[string]any{}
+	for k, v := range ev.Inputs {
+		vars[k] = v
+	}
+	toID := func(v any) int {
+		n, _ := strconv.Atoi(fmt.Sprint(v))
+		return n
+	}
+	if a.Inventory != "" {
+		job.Inventory = toID(vars[a.Inventory])
+		delete(vars, a.Inventory)
+	}
+	for _, name := range a.Credentials {
+		switch v := vars[name].(type) {
+		case []any:
+			for _, x := range v {
+				if id := toID(x); id != 0 {
+					job.Credentials = append(job.Credentials, id)
+				}
+			}
+		default:
+			if id := toID(v); id != 0 {
+				job.Credentials = append(job.Credentials, id)
+			}
+		}
+		delete(vars, name)
+	}
+	return job, vars
 }

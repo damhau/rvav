@@ -23,9 +23,10 @@ type Fake struct {
 	Workflows map[string]bool
 	// Labels are the templates' labels besides "rvav", which they all have.
 	Labels map[string][]string
-	// NoInventoryPrompt are templates that don't prompt for an inventory
-	// on launch.
-	NoInventoryPrompt map[string]bool
+	// NoInventoryPrompt and NoCredentialPrompt are templates that don't
+	// prompt for an inventory, or credentials, on launch.
+	NoInventoryPrompt  map[string]bool
+	NoCredentialPrompt map[string]bool
 
 	mu      sync.Mutex
 	nextJob int
@@ -34,15 +35,16 @@ type Fake struct {
 }
 
 type fakeJob struct {
-	id        int
-	template  string
-	limit     string
-	inventory int
-	extraVars map[string]any
-	started   time.Time
-	canceled  bool
-	tasks     []string
-	update    bool // an inventory update rather than a playbook run
+	id          int
+	template    string
+	limit       string
+	inventory   int
+	credentials []int
+	extraVars   map[string]any
+	started     time.Time
+	canceled    bool
+	tasks       []string
+	update      bool // an inventory update rather than a playbook run
 }
 
 // DefaultTemplates are the job templates used by the seed catalog.
@@ -99,8 +101,11 @@ func (f *Fake) Launch(_ context.Context, templateID int, _ bool, req LaunchReque
 	if req.Inventory != 0 && f.NoInventoryPrompt[names[idx]] {
 		return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoInventoryPrompt)
 	}
+	if len(req.Credentials) > 0 && f.NoCredentialPrompt[names[idx]] {
+		return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoCredentialPrompt)
+	}
 	f.nextJob++
-	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, extraVars: req.ExtraVars, started: f.now(), tasks: f.Plays[names[idx]]}
+	j := &fakeJob{id: f.nextJob, template: names[idx], limit: req.Limit, inventory: req.Inventory, credentials: req.Credentials, extraVars: req.ExtraVars, started: f.now(), tasks: f.Plays[names[idx]]}
 	f.jobs[j.id] = j
 	return f.jobLocked(j), nil
 }
@@ -251,7 +256,7 @@ func (f *Fake) Launched(id int) LaunchRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if j, ok := f.jobs[id]; ok {
-		return LaunchRequest{Limit: j.limit, Inventory: j.inventory, ExtraVars: j.extraVars}
+		return LaunchRequest{Limit: j.limit, Inventory: j.inventory, Credentials: j.credentials, ExtraVars: j.extraVars}
 	}
 	return LaunchRequest{}
 }
@@ -303,7 +308,8 @@ func (f *Fake) Templates(_ context.Context, filter TemplateFilter) ([]Template, 
 			continue
 		}
 		out = append(out, Template{ID: 100 + i, Name: n, Workflow: f.Workflows[n], Organization: "rvav", Labels: labels,
-			AskLimit: true, AskVariables: true, AskInventory: !f.NoInventoryPrompt[n], SurveyEnabled: len(f.Surveys[n]) > 0})
+			AskLimit: true, AskVariables: true, AskInventory: !f.NoInventoryPrompt[n], AskCredential: !f.NoCredentialPrompt[n],
+			SurveyEnabled: len(f.Surveys[n]) > 0})
 	}
 	return out, nil
 }

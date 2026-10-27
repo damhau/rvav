@@ -19,8 +19,12 @@ var ErrNoInventoryPrompt = errors.New("the template does not prompt for an inven
 // every host of the inventory.
 var ErrNoLimitPrompt = errors.New("the template does not prompt for a limit on launch")
 
-// ErrPromptIgnored is a launch whose limit or inventory AWX ignored anyway;
-// the job is cancelled at once.
+// ErrNoCredentialPrompt is a template asked to run with other credentials
+// that doesn't prompt for them on launch.
+var ErrNoCredentialPrompt = errors.New("the template does not prompt for credentials on launch")
+
+// ErrPromptIgnored is a launch whose limit, inventory or credentials AWX
+// ignored anyway; the job is cancelled at once.
 var ErrPromptIgnored = errors.New("AWX ignored the launch's limit or inventory")
 
 type LaunchRequest struct {
@@ -30,6 +34,9 @@ type LaunchRequest struct {
 	// the template's: rvav's, for jobs on its VMs. The template must prompt
 	// for an inventory on launch.
 	Inventory int
+	// Credentials, when set, replace the template's; it must prompt for
+	// credentials on launch.
+	Credentials []int
 }
 
 type Job struct {

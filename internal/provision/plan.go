@@ -77,6 +77,10 @@ type Job struct {
 	// looked up by name.
 	TemplateID int  `json:"template_id,omitempty"`
 	Workflow   bool `json:"workflow,omitempty"`
+	// Inventory and Credentials, when set, are launched with (an AWX item's
+	// form chose them).
+	Inventory   int   `json:"inventory,omitempty"`
+	Credentials []int `json:"credentials,omitempty"`
 }
 
 // StepDef is a top-level step created, pending, when the request is submitted.

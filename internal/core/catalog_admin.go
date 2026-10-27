@@ -578,7 +578,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, prefix str
 			add("/initial_values/"+name, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
 		}
 	}
-	errs = append(errs, checkBlueprint(itemType, d.Blueprint, prefix+"/blueprint", publish)...)
+	errs = append(errs, checkBlueprint(itemType, d.Blueprint, d.UiSchema.Fields, prefix+"/blueprint", publish)...)
 	return errs
 }
 
@@ -596,7 +596,7 @@ func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
 	return nil
 }
 
-func checkBlueprint(itemType string, bp map[string]any, ptr string, publish bool) []api.FieldError {
+func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.UiField, ptr string, publish bool) []api.FieldError {
 	raw, _ := json.Marshal(bp)
 	b, err := blueprint.Parse(raw)
 	if err != nil {
@@ -629,6 +629,21 @@ func checkBlueprint(itemType string, bp map[string]any, ptr string, publish bool
 			}
 		} else if b.AWX.Workflow != (itemType == "awx_workflow") {
 			errs = append(errs, fieldErr(ptr+"/awx/workflow", "invalid", "An awx_workflow item launches a workflow template, an awx_job_template item a job template."))
+		}
+		// Launch settings come from inputs picked from AWX.
+		picked := func(name, source string) bool {
+			f, ok := fields[name]
+			return ok && f.ValueSource != nil && f.ValueSource.Kind == api.Builtin && deref(f.ValueSource.Name) == source
+		}
+		if b.AWX != nil && b.AWX.Inventory != "" && !picked(b.AWX.Inventory, "awx.inventories") {
+			errs = append(errs, fieldErr(ptr+"/awx/inventory", "invalid", fmt.Sprintf("%q must be an input picked from awx.inventories.", b.AWX.Inventory)))
+		}
+		if b.AWX != nil {
+			for i, c := range b.AWX.Credentials {
+				if !picked(c, "awx.credentials") {
+					errs = append(errs, fieldErr(fmt.Sprintf("%s/awx/credentials/%d", ptr, i), "invalid", fmt.Sprintf("%q must be an input picked from awx.credentials.", c)))
+				}
+			}
 		}
 	}
 	return errs

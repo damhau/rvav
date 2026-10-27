@@ -30,6 +30,12 @@ type Content struct {
 		Name  string   `yaml:"name"`
 		Hosts []string `yaml:"hosts"`
 	} `yaml:"inventory"`
+	// MachineCredential is a machine credential (no secret) that forms can
+	// pick and launches use.
+	MachineCredential struct {
+		Name     string `yaml:"name"`
+		Username string `yaml:"username"`
+	} `yaml:"machine_credential"`
 	JobTemplates []TemplateContent `yaml:"job_templates"`
 	Workflows    []WorkflowContent `yaml:"workflow_job_templates"`
 	// RvavInventory is rvav's VMs, read by the rvav.platform inventory
@@ -55,8 +61,9 @@ type TemplateContent struct {
 	Labels      []string         `yaml:"labels"`
 	Survey      []SurveyQuestion `yaml:"survey"`
 	// AskInventory: the template runs on rvav's VMs, so rvav launches it
-	// against its inventory.
-	AskInventory bool `yaml:"ask_inventory"`
+	// against its inventory. AskCredential: a form may choose credentials.
+	AskInventory  bool `yaml:"ask_inventory"`
+	AskCredential bool `yaml:"ask_credential"`
 }
 
 type WorkflowContent struct {
@@ -198,12 +205,23 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, rvav Rvav, l
 		}
 	}
 
+	if mc := content.MachineCredential; mc.Name != "" {
+		machine, err := c.find(ctx, "/credential_types/", "Machine", 0)
+		if err != nil || machine == 0 {
+			return 0, fmt.Errorf("the Machine credential type: %v", err)
+		}
+		if _, err := c.ensure(ctx, "/credentials/", mc.Name, org, map[string]any{"credential_type": machine,
+			"inputs": map[string]string{"username": mc.Username}}); err != nil {
+			return 0, fmt.Errorf("machine credential: %w", err)
+		}
+	}
+
 	templates := map[string]int{}
 	for _, t := range content.JobTemplates {
 		id, err := c.ensure(ctx, "/job_templates/", t.Name, org, map[string]any{
 			"description": t.Description, "job_type": "run", "inventory": inventory, "project": project,
 			"playbook": t.Playbook, "ask_limit_on_launch": true, "ask_variables_on_launch": true,
-			"ask_inventory_on_launch": t.AskInventory, "survey_enabled": len(t.Survey) > 0})
+			"ask_inventory_on_launch": t.AskInventory, "ask_credential_on_launch": t.AskCredential, "survey_enabled": len(t.Survey) > 0})
 		if err != nil {
 			return 0, fmt.Errorf("job template %s: %w", t.Name, err)
 		}

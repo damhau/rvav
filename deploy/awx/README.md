@@ -68,8 +68,9 @@ RVAV_AWX_TEST_URL=http://awx.example:8052 RVAV_AWX_TEST_TOKEN=... \
   go test -run TestContract ./internal/integrations/awx/
 ```
 
-They set the content up first. They are not part of `make check` or CI,
-which have no AWX. Last run against AWX 24.6.1 (2026-10-27): all passing,
+They set the content up first (a machine credential without a secret
+included, for a launch with chosen credentials). They are not part of
+`make check` or CI, which have no AWX. Last run against AWX 24.6.1 (2026-10-27): all passing,
 launches on another inventory and the inventory and credential lists
 included.
 

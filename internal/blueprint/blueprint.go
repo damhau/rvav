@@ -55,6 +55,11 @@ type AWXTemplate struct {
 	// template: it is launched by ID, whatever it is called since.
 	TemplateID int  `json:"template_id,omitempty"`
 	Workflow   bool `json:"workflow,omitempty"`
+	// Inventory and Credentials name inputs (picked from awx.inventories and
+	// awx.credentials) that are the launch's inventory and credentials
+	// rather than extra variables. The template must prompt for them.
+	Inventory   string   `json:"inventory,omitempty"`
+	Credentials []string `json:"credentials,omitempty"`
 }
 
 // VMPlan is one VM to build, after evaluating the bindings.

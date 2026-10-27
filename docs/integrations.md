@@ -83,6 +83,12 @@ checked against a real AWX by contract tests ([deploy/awx](../deploy/awx/README.
 - Job templates used by rvav must enable **Prompt on launch** for *Limit* and
   *Variables* (and for *Credentials* if the form overrides them). The import
   checks this and warns.
+- An AWX item's form may choose the launch's inventory and credentials:
+  its blueprint names the inputs (picked from `awx.inventories` and
+  `awx.credentials`) under `awx.inventory` and `awx.credentials`, they are
+  launch settings rather than extra variables, and the template must prompt
+  for them (checked before launching). AWX items are launched by their
+  template's ID when rvav knows it.
 - Templates that run on rvav's VMs (post-configuration, AWX day-2 actions)
   must also prompt for *Inventory*: rvav launches them with its own
   inventory, the one it has just refreshed, and refuses to launch one that

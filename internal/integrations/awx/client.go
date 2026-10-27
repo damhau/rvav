@@ -175,10 +175,11 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, req LaunchRequest) (Job, error) {
 	tpl, _ := kindPath(workflow)
 	body := map[string]any{"extra_vars": req.ExtraVars}
-	if req.Limit != "" || req.Inventory != 0 {
+	if req.Limit != "" || req.Inventory != 0 || len(req.Credentials) > 0 {
 		var prompts struct {
-			AskLimit     bool `json:"ask_limit_on_launch"`
-			AskInventory bool `json:"ask_inventory_on_launch"`
+			AskLimit      bool `json:"ask_limit_on_launch"`
+			AskInventory  bool `json:"ask_inventory_on_launch"`
+			AskCredential bool `json:"ask_credential_on_launch"`
 		}
 		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, nil, &prompts); err != nil {
 			return Job{}, err
@@ -189,6 +190,12 @@ func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, 
 		if req.Inventory != 0 && !prompts.AskInventory {
 			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoInventoryPrompt)
 		}
+		if len(req.Credentials) > 0 && !prompts.AskCredential {
+			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoCredentialPrompt)
+		}
+	}
+	if len(req.Credentials) > 0 {
+		body["credentials"] = req.Credentials
 	}
 	if req.Limit != "" {
 		body["limit"] = req.Limit
@@ -204,7 +211,7 @@ func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, 
 		return Job{}, err
 	}
 	job := c.toJob(j.jobJSON, workflow)
-	for _, f := range []string{"limit", "inventory"} {
+	for _, f := range []string{"limit", "inventory", "credentials"} {
 		if _, ignored := j.Ignored[f]; ignored {
 			_ = c.Cancel(context.WithoutCancel(ctx), job.ID, workflow)
 			return Job{}, fmt.Errorf("awx job %d of template %d: %w (%s), so it was cancelled", job.ID, templateID, ErrPromptIgnored, f)

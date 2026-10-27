@@ -3,6 +3,7 @@ package awx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -188,6 +189,34 @@ func TestContractJobs(t *testing.T) {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) || apiErr.Status != 400 || !strings.Contains(apiErr.Message, "listen_port") {
 		t.Fatalf("a port below the survey's minimum = %v", err)
+	}
+
+	// A form's choice of inventory and credentials.
+	creds, err := c.Credentials(ctx, "rvav-test", "ssh")
+	if err != nil || !slices.ContainsFunc(creds, func(c Credential) bool { return c.Name == "rvav-test machine" }) {
+		t.Fatalf("machine credentials = %+v, %v", creds, err)
+	}
+	machine := creds[slices.IndexFunc(creds, func(c Credential) bool { return c.Name == "rvav-test machine" })].ID
+	d := launch(t, ctx, c, "dns-record", false, LaunchRequest{Inventory: inventory, Credentials: []int{machine},
+		ExtraVars: map[string]any{"record_name": "contract", "record_type": "A", "record_value": "10.0.0.9", "zone": "corp.example"}})
+	if d = wait(t, ctx, c, d.ID, false, finished); d.Status != "successful" {
+		t.Fatalf("dns-record with chosen inventory and credentials = %+v", d)
+	}
+	var used struct {
+		Inventory int `json:"inventory"`
+		Summary   struct {
+			Credentials []struct {
+				ID int `json:"id"`
+			} `json:"credentials"`
+		} `json:"summary_fields"`
+	}
+	if err := c.do(ctx, "GET", fmt.Sprintf("/jobs/%d/", d.ID), nil, nil, &used); err != nil || used.Inventory != inventory ||
+		len(used.Summary.Credentials) != 1 || used.Summary.Credentials[0].ID != machine {
+		t.Fatalf("the job ran with %+v, %v", used, err)
+	}
+	baseline, _ := c.LookupJobTemplate(ctx, "linux-baseline", false)
+	if _, err := c.Launch(ctx, baseline, false, LaunchRequest{Limit: "localhost", Credentials: []int{machine}}); !errors.Is(err, ErrNoCredentialPrompt) {
+		t.Fatalf("credentials on linux-baseline = %v", err)
 	}
 
 	// A template that doesn't prompt for an inventory is not launched on another.

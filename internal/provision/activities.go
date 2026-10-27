@@ -542,7 +542,7 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 				return permanent("AWX: %v", err)
 			}
 		}
-		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars}
+		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars, Inventory: in.Job.Inventory, Credentials: in.Job.Credentials}
 		if in.Limit != "" {
 			// Jobs on rvav's VMs run against rvav's inventory, refreshed before.
 			if a.AWXInventorySource == 0 && a.AWXInventoryRequired {
@@ -558,6 +558,8 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		switch {
 		case errors.Is(err, awx.ErrNoInventoryPrompt):
 			return permanent("AWX: %s does not prompt for an inventory on launch, so it can't run against rvav's inventory", in.Job.Template)
+		case errors.Is(err, awx.ErrNoCredentialPrompt):
+			return permanent("AWX: %s does not prompt for credentials on launch, so the ones chosen can't be used", in.Job.Template)
 		case errors.Is(err, awx.ErrNoLimitPrompt):
 			return permanent("AWX: %s does not prompt for a limit on launch, so it would run on every host", in.Job.Template)
 		case errors.Is(err, awx.ErrPromptIgnored):
