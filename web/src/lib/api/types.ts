@@ -52,6 +52,13 @@ export type VmResource = S["VmResource"];
 export type VmProperties = S["VmProperties"];
 export type IpAddressResource = S["IpAddressResource"];
 export type DnsRecordResource = S["DnsRecordResource"];
+export type ApprovalStatus = S["ApprovalStatus"];
+export type ApprovalSummary = S["ApprovalSummary"];
+export type Approval = S["Approval"];
+export type ApprovalVote = S["ApprovalVote"];
+export type ApprovalEditableField = S["ApprovalEditableField"];
+export type ApprovalDecision = S["ApprovalDecision"];
+export type ApprovalPage = S["ApprovalPage"];
 export type LiveEvent = S["Event"];
 export type NotificationEvent = S["NotificationEvent"];
 

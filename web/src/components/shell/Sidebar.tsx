@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChartColumn, House, LayoutGrid, List, Server, SquareCheckBig } from "lucide-react";
 import { useLiveStatus } from "@/lib/live/LiveProvider";
@@ -46,6 +46,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { projectId } = useCurrentProject();
   const running = useInfiniteQuery(q.requests({ projectId, status: ["running", "queued", "cancelling"], limit: 50 }));
   const runningCount = running.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0;
+  const waiting = useQuery(q.approvals(["pending"])).data?.total ?? 0;
   const linkProps = { activeProps: { className: active }, onClick: onNavigate } as const;
 
   return (
@@ -86,6 +87,14 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <li>
           <Link to="/approvals" className={item} {...linkProps}>
             <SquareCheckBig aria-hidden /> Approvals
+            {waiting > 0 && (
+              <span
+                className="ml-auto min-w-[18px] rounded-full bg-warn-soft px-1.5 text-center font-mono text-[11px] font-medium text-warn"
+                aria-label={`${waiting} waiting for you`}
+              >
+                {waiting}
+              </span>
+            )}
           </Link>
         </li>
         <li>

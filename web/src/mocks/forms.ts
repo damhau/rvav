@@ -85,7 +85,7 @@ function vmBlueprint(itemId: string, versionId: string, postConfig: PostConfig[]
         value_source: { kind: "builtin", name: "naming.preview", params: { role: "${inputs.role}" } },
         depends_on: ["role"],
       },
-      size: { widget: "radio_cards", label: "Size", options: sizeOptions },
+      size: { widget: "radio_cards", label: "Size", approver_editable: true, options: sizeOptions },
       size_note: {
         widget: "info",
         label: "Needs approval",

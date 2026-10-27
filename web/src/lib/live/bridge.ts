@@ -93,9 +93,15 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
   switch (event.type) {
     case "request.updated": {
       const r = event.data;
+      const before =
+        qc.getQueryData<ServiceRequest>(keys.requests.detail(r.number)) ??
+        qc.getQueryData<ServiceRequest>(keys.requests.detail(r.id));
       replace<ServiceRequest>(qc, keys.requests.detail(r.number), r);
       replace<ServiceRequest>(qc, keys.requests.detail(r.id), r);
       patchLists(qc, keys.requests.lists(), r);
+      // Approved, rejected or cancelled: its approval history changed too.
+      if (before && before.status !== r.status)
+        void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(r.id) });
       break;
     }
     case "request.step": {
@@ -129,6 +135,12 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
     }
     case "notification":
       notify?.(event.data);
+      break;
+    case "approval.updated":
+      // Only IDs arrive: refetch the inbox, the level and the request's history.
+      void qc.invalidateQueries({ queryKey: keys.approvals.lists() });
+      void qc.invalidateQueries({ queryKey: keys.approvals.detail(event.data.approval_id) });
+      void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(event.data.request_id) });
       break;
     case "resync":
       void qc.invalidateQueries();

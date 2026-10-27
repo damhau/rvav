@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, call } from "./api/client";
-import type { CatalogItemType, DeploymentStatus, EnvironmentKey, RequestStatus } from "./api/types";
+import type { ApprovalStatus, CatalogItemType, DeploymentStatus, EnvironmentKey, RequestStatus } from "./api/types";
 
 export interface CatalogFilters {
   projectId: string;
@@ -53,6 +53,13 @@ export const keys = {
     detail: (key: string) => ["requests", "detail", key] as const,
     steps: (requestId: string) => ["requests", "steps", requestId] as const,
     logHead: (requestId: string, stepId: string) => ["requests", "log-head", requestId, stepId] as const,
+  },
+  approvals: {
+    all: ["approvals"] as const,
+    lists: () => ["approvals", "list"] as const,
+    list: (status: ApprovalStatus[]) => ["approvals", "list", status] as const,
+    detail: (id: string) => ["approvals", "detail", id] as const,
+    forRequest: (requestId: string) => ["approvals", "request", requestId] as const,
   },
   deployments: {
     all: ["deployments"] as const,
@@ -176,6 +183,27 @@ export const q = {
       queryKey: keys.requests.steps(requestId),
       queryFn: ({ signal }) =>
         call(api.GET("/requests/{requestId}/steps", { params: { path: { requestId } }, signal })),
+    }),
+  /** Approvals the caller may decide (pending), or decided ones. */
+  approvals: (status: ApprovalStatus[] = ["pending"]) =>
+    queryOptions({
+      queryKey: keys.approvals.list(status),
+      queryFn: ({ signal }) =>
+        call(
+          api.GET("/approvals", { params: { query: { status: csv(status) as ApprovalStatus[], limit: 200 } }, signal }),
+        ),
+    }),
+  approval: (id: string) =>
+    queryOptions({
+      queryKey: keys.approvals.detail(id),
+      queryFn: ({ signal }) =>
+        call(api.GET("/approvals/{approvalId}", { params: { path: { approvalId: id } }, signal })),
+    }),
+  requestApprovals: (requestId: string) =>
+    queryOptions({
+      queryKey: keys.approvals.forRequest(requestId),
+      queryFn: ({ signal }) =>
+        call(api.GET("/requests/{requestId}/approvals", { params: { path: { requestId } }, signal })),
     }),
   deployments: (f: DeploymentFilters) =>
     infiniteQueryOptions({

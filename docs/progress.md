@@ -43,7 +43,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 - [x] S3.2 Policies: several levels, any or all approvers per level, CEL conditions, auto-approve rules (`auto_approve`, for example an infrastructure lead's own production VM), timeout with auto-approve, auto-reject or escalation; levels with the same approvers are merged across policies; migration `00002_approvals.sql`
 - [x] S3.3 Workflow opens each level, waits for its `approval` signal or a Temporal timer, re-reads the level every 5 minutes in case a signal is lost, and loads the plan again after approval
 - [x] S3.4 API, audit entries (`audit_events`, read in S9) and live events (`approval.updated` on the `approvals` topic, to each approver); group membership stored from tokens; approver edits re-evaluate the request as its requester
-- [ ] S3.5 UI: approvals inbox and detail, approval step in the timeline, sidebar badge; mocks and Playwright
+- [x] S3.5 UI: approvals inbox and detail (from the mockup: reasons and rules, facts, requester's reason, editable size, comment required to reject, due and escalation), approval panel on the request page, sidebar badge kept live by `approval.updated`; mock API with seeded levels; Vitest and Playwright. Delegating from the UI waits for a user-search API (S9); the API supports it
 - [x] S3.6 `rvav approve` removed; `TestApprovals` runs the acceptance scenario on a real Temporal dev server (48 GB VM lowered to 32 GB and approved, two levels, mode all, delegation, escalation then rejection, auto-approval, rejection, cancel)
 - [ ] S3.7 Slice review, docs and roadmap status
 

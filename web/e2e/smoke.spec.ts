@@ -69,5 +69,9 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("button", { name: "Submit request" }).click();
     await expect(page.getByRole("log", { name: /Output of AWX job/ })).toContainText("changed:", { timeout: 20_000 });
     await page.screenshot({ path: `${shots}/request-detail-${theme}.png` });
+
+    await page.goto("/approvals");
+    await expect(page.getByRole("article", { name: "Approval for REQ-10477" })).toBeVisible();
+    await page.screenshot({ path: `${shots}/approvals-${theme}.png` });
   });
 }

@@ -9,6 +9,8 @@ export interface Envelope {
   requestNumber?: string;
   deploymentId?: string;
   userId?: string;
+  /** Approval events go to these users (the level's approvers). */
+  userIds?: string[];
 }
 
 type Listener = (e: Envelope) => void;
@@ -48,13 +50,14 @@ export const bus = {
 };
 
 /** Does this event belong on a stream opened with these topics? */
-export function matches(env: Envelope, topics: string[], projectId: string | null): boolean {
+export function matches(env: Envelope, topics: string[], projectId: string | null, viewerId?: string): boolean {
   const t = env.event.type;
   const inProject = !projectId || env.projectId === projectId;
   for (const topic of topics) {
     if (topic === "requests" && t.startsWith("request.") && inProject) return true;
     if (topic === "deployments" && (t === "deployment.updated" || t === "resource.updated") && inProject) return true;
     if (topic === "notifications" && t === "notification") return true;
+    if (topic === "approvals" && t === "approval.updated" && viewerId && env.userIds?.includes(viewerId)) return true;
     if (topic.startsWith("request:")) {
       const key = topic.slice("request:".length);
       if (t.startsWith("request.") && (key === env.requestId || key === env.requestNumber)) return true;

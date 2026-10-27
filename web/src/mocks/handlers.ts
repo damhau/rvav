@@ -15,9 +15,19 @@ import type {
   RequestStatus,
   ServiceRequest,
 } from "@/lib/api/types";
+import {
+  canDecide,
+  factsFor,
+  isApproverOf,
+  openLevels,
+  summaryOf,
+  viewOf,
+  vote,
+  type StoredApproval,
+} from "./approvals";
 import { bus, matches } from "./events";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
-import { db, type StoredItem } from "./seed";
+import { db, type StoredItem, type StoredRequest } from "./seed";
 import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
 
 type S = components["schemas"];
@@ -102,6 +112,105 @@ function title(item: StoredItem, host: string | null, inputs: Record<string, unk
   const first = Object.values(inputs).find((v) => typeof v === "string" && v.length > 0);
   return typeof first === "string" ? `${item.name} · ${first}` : item.name;
 }
+
+/** A deployment for a request that starts provisioning now. */
+function createDeployment(
+  item: StoredItem,
+  project: (typeof db.projects)[number],
+  environment: EnvironmentKey,
+  inputs: Record<string, unknown>,
+  count: number,
+  host: string | null,
+  number: string,
+  leaseDays?: number | null,
+): DeploymentDetail | null {
+  if (vmCount(item, count) === 0 || !host) return null;
+  const production = db.environments.find((e) => e.key === environment)?.production ?? false;
+  const days = leaseDays ?? (production ? null : 30);
+  const dep: DeploymentDetail = {
+    id: `dep_${(db.seq.id++).toString(36)}`,
+    name: host.replace(/\d+$/, ""),
+    status: "provisioning",
+    project: { id: project.id, code: project.code, name: project.name },
+    environment,
+    catalog_item: { id: item.id, slug: item.slug, name: item.name },
+    version: item.version,
+    owner: db.me.user,
+    created_at: new Date().toISOString(),
+    created_by_request_id: number,
+    lease: {
+      expires_at: days ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
+      extensions_used: 0,
+      extensions_max: days ? 2 : null,
+      expiry_action: "power_off_then_delete",
+    },
+    vm_count: 0,
+    vms_powered_on: 0,
+    primary_address: null,
+    sync_state: "in_sync",
+    inputs,
+    resources: [],
+  };
+  db.deployments.unshift(dep);
+  const q = db.quota[project.id];
+  if (q) {
+    const need = demand(item, inputs, count);
+    for (const k of Object.keys(need) as (keyof typeof need)[]) q.used[k] += need[k];
+  }
+  return dep;
+}
+
+function publishApproval(a: StoredApproval) {
+  bus.publish({
+    event: {
+      id: bus.nextId(),
+      type: "approval.updated",
+      at: new Date().toISOString(),
+      data: { approval_id: a.id, request_id: a.request.id, status: a.status },
+    },
+    projectId: a.project.id,
+    requestId: a.request.id,
+    userIds: [...a.approvers, ...a.delegates].map((u) => u.id),
+  });
+}
+
+/** Every level approved: the request is planned again with its inputs and starts. */
+function provisionApproved(stored: StoredRequest, outcome: string, detail: string) {
+  const r = stored.request;
+  const item = itemByKey(r.catalog_item.id);
+  const project = db.projects.find((p) => p.id === r.project.id);
+  if (!item || !project) return;
+  const { steps, host } = planSteps(item, project, r.environment, r.inputs ?? {}, null);
+  const [, policy, ...rest] = steps;
+  if (policy) Object.assign(policy, { title: outcome, detail, status: "done", finished_at: new Date().toISOString() });
+  stored.steps = [stored.steps[0]!, ...(policy ? [policy] : []), ...rest];
+  const dep = createDeployment(item, project, r.environment, r.inputs ?? {}, r.count ?? 1, host, r.number);
+  if (dep) r.deployment_ids = [dep.id];
+  if (host) {
+    rememberHost(r.id, host);
+    r.title = `${item.name} · ${host}`;
+  }
+  r.status = "running";
+  r.started_at = new Date().toISOString();
+  publishRequest(stored);
+  start(r.id);
+}
+
+function rejectRequest(stored: StoredRequest, outcome: string, comment: string) {
+  const now = new Date().toISOString();
+  for (const s of stored.steps) {
+    if (s.key === "policy.approval")
+      Object.assign(s, { title: outcome, detail: `“${comment}”`, status: "failed", finished_at: now });
+    else if (s.status === "pending") s.status = "cancelled";
+  }
+  Object.assign(stored.request, { status: "rejected", finished_at: now });
+  publishRequest(stored);
+}
+
+const levelsOf = (requestId: string) =>
+  db.approvals.filter((a) => a.request.id === requestId).sort((a, b) => a.level.index - b.level.index);
+
+const visibleApproval = (a: StoredApproval) => isApproverOf(db, a) || myProjectIds().has(a.project.id);
 
 export const handlers = [
   // Every call needs a bearer token, as with the real API.
@@ -292,42 +401,19 @@ export const handlers = [
     const { steps, host } = planSteps(item, project, draft.environment, draft.inputs, approval);
     const now = new Date().toISOString();
     const deploymentIds: string[] = [];
-    const vms = vmCount(item, draft.count ?? 1);
-    if (!approval && vms > 0 && host) {
-      const production = db.environments.find((e) => e.key === draft.environment)?.production ?? false;
-      const days = draft.lease_days ?? (production ? null : 30);
-      const dep: DeploymentDetail = {
-        id: `dep_${(db.seq.id++).toString(36)}`,
-        name: host.replace(/\d+$/, ""),
-        status: "provisioning",
-        project: { id: project.id, code: project.code, name: project.name },
-        environment: draft.environment,
-        catalog_item: { id: item.id, slug: item.slug, name: item.name },
-        version: item.version,
-        owner: db.me.user,
-        created_at: now,
-        created_by_request_id: number,
-        lease: {
-          expires_at: days ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
-          extensions_used: 0,
-          extensions_max: days ? 2 : null,
-          expiry_action: "power_off_then_delete",
-        },
-        vm_count: 0,
-        vms_powered_on: 0,
-        primary_address: null,
-        sync_state: "in_sync",
-        inputs: draft.inputs,
-        resources: [],
-      };
-      db.deployments.unshift(dep);
-      deploymentIds.push(dep.id);
-      const q = db.quota[project.id];
-      if (q) {
-        const need = demand(item, draft.inputs, draft.count ?? 1);
-        for (const k of Object.keys(need) as (keyof typeof need)[]) q.used[k] += need[k];
-      }
-    }
+    const dep = approval
+      ? null
+      : createDeployment(
+          item,
+          project,
+          draft.environment,
+          draft.inputs,
+          draft.count ?? 1,
+          host,
+          number,
+          draft.lease_days,
+        );
+    if (dep) deploymentIds.push(dep.id);
     const req: ServiceRequest = {
       id,
       number,
@@ -353,6 +439,11 @@ export const handlers = [
     const stored = { request: req, steps, logs: {} };
     db.requests.unshift(stored);
     if (host) rememberHost(id, host);
+    if (approval) {
+      const levels = openLevels(db, req, check.approval, host, () => `apr_${(db.seq.id++).toString(36)}`);
+      db.approvals.push(...levels);
+      levels.forEach(publishApproval);
+    }
     publishRequest(stored);
     if (!approval) start(id);
     db.idempotency.set(key, { body: raw, status: 202, response: structuredClone(req) });
@@ -410,7 +501,155 @@ export const handlers = [
       );
     }
     cancel(r);
+    for (const a of db.approvals.filter(
+      (x) => x.request.id === r.request.id && ["waiting", "pending"].includes(x.status),
+    )) {
+      a.status = "cancelled";
+      a.due_at = null;
+      publishApproval(a);
+    }
     return json<S["Request"]>(r.request, { status: 202 });
+  }),
+
+  http.get(`${base}/approvals`, async ({ request }) => {
+    await wait();
+    const url = new URL(request.url);
+    if (url.searchParams.get("view") === "all") {
+      return problem(403, "forbidden", "Not allowed", "Only administrators and auditors can see every approval.");
+    }
+    const statuses = list(url, "status");
+    const wanted = statuses.length ? statuses : ["pending"];
+    const mine = db.approvals.filter(
+      (a) =>
+        wanted.includes(a.status) &&
+        isApproverOf(db, a) &&
+        a.requester.id !== db.me.user.id &&
+        (a.status !== "pending" || canDecide(db, a)),
+    );
+    const pendingOnly = wanted.length === 1 && wanted[0] === "pending";
+    mine.sort((a, b) =>
+      pendingOnly
+        ? a.submitted_at.localeCompare(b.submitted_at)
+        : (b.decided_at ?? b.submitted_at).localeCompare(a.decided_at ?? a.submitted_at),
+    );
+    const items = mine.map((a) => summaryOf(db, a));
+    return json<S["ApprovalPage"]>({ ...page(items, url), total: items.length });
+  }),
+
+  http.get<{ approvalId: string }>(`${base}/approvals/:approvalId`, async ({ params }) => {
+    await wait();
+    const a = db.approvals.find((x) => x.id === params.approvalId);
+    if (!a || !visibleApproval(a)) return notFound("Approval");
+    return json<S["Approval"]>(viewOf(db, a, requestByKey(a.request.id)?.request));
+  }),
+
+  http.post<{ approvalId: string }>(`${base}/approvals/:approvalId/decision`, async ({ params, request }) => {
+    await wait();
+    const a = db.approvals.find((x) => x.id === params.approvalId);
+    if (!a || !visibleApproval(a)) return notFound("Approval");
+    const stored = requestByKey(a.request.id);
+    if (!stored) return notFound("Request");
+    if (a.status !== "pending") return problem(409, "conflict", "Not possible right now", `This level is ${a.status}.`);
+    if (!isApproverOf(db, a)) return problem(403, "forbidden", "Not allowed", "You are not an approver of this level.");
+    if (a.requester.id === db.me.user.id)
+      return problem(403, "forbidden", "Not allowed", "You can't approve your own request.");
+    if (a.votes.some((v) => v.user.id === db.me.user.id))
+      return problem(409, "conflict", "Not possible right now", "You have already decided on this level.");
+    const body = (await request.json()) as S["ApprovalDecision"];
+    const comment = (body.comment ?? "").trim();
+    if (body.decision === "reject" && !comment) {
+      return problem(422, "validation", "Some inputs need attention", "Say why you reject it.", [
+        { field: "/comment", code: "required", message: "Say why you reject it: the requester sees this comment." },
+      ]);
+    }
+    const changes: S["ApprovalVote"]["changes"] = [];
+    const editable = viewOf(db, a, stored.request).editable_fields;
+    for (const [field, to] of Object.entries(body.inputs ?? {})) {
+      const f = editable.find((x) => x.field === field);
+      if (!f || (f.options && !f.options.some((o) => o.value === to))) {
+        return problem(422, "validation", "Some inputs need attention", "Approvers can't set this value.", [
+          {
+            field: `/inputs/${field}`,
+            code: "not_editable",
+            message: "Approvers can't change this input to that value.",
+          },
+        ]);
+      }
+      if (to !== f.value) changes.push({ field, label: f.label, from: f.value, to });
+    }
+    a.votes.push(vote(db.me.user, body.decision, comment, changes));
+    if (changes.length) {
+      stored.request.inputs = { ...stored.request.inputs, ...Object.fromEntries(changes.map((c) => [c.field, c.to])) };
+      const host = stored.request.title.split(" · ")[1] ?? null;
+      for (const l of levelsOf(a.request.id)) l.facts = factsFor(stored.request.inputs ?? {}, host);
+    }
+    const now = new Date().toISOString();
+    if (body.decision === "reject") {
+      Object.assign(a, {
+        status: "rejected",
+        outcome: `Rejected by ${db.me.user.name}`,
+        decided_at: now,
+        due_at: null,
+      });
+      for (const l of levelsOf(a.request.id)) if (l.status === "waiting") l.status = "cancelled";
+      rejectRequest(stored, a.outcome!, comment);
+    } else if (
+      a.mode === "any" ||
+      a.approvers.every((u) => u.id === a.requester.id || a.votes.some((v) => v.user.id === u.id))
+    ) {
+      Object.assign(a, {
+        status: "approved",
+        outcome: `Approved by ${db.me.user.name}`,
+        decided_at: now,
+        due_at: null,
+      });
+      const next = levelsOf(a.request.id).find((l) => l.status === "waiting");
+      if (next) {
+        Object.assign(next, { status: "pending", due_at: new Date(Date.now() + 48 * 3_600_000).toISOString() });
+        publishApproval(next);
+      } else {
+        const levels = levelsOf(a.request.id);
+        const notes = levels.flatMap((l) =>
+          l.votes.flatMap((v) => [
+            ...(v.comment ? [`“${v.comment}”`] : []),
+            ...v.changes.map((c) => `${c.label} changed from ${String(c.from)} to ${String(c.to)} by ${v.user.name}`),
+          ]),
+        );
+        provisionApproved(stored, levels.map((l) => l.outcome).join("; "), notes.join(" · "));
+      }
+    }
+    a.request.status = stored.request.status;
+    publishApproval(a);
+    return json<S["Approval"]>(viewOf(db, a, stored.request));
+  }),
+
+  http.post<{ approvalId: string }>(`${base}/approvals/:approvalId/delegate`, async ({ params, request }) => {
+    await wait();
+    const a = db.approvals.find((x) => x.id === params.approvalId);
+    if (!a || !visibleApproval(a)) return notFound("Approval");
+    if (a.status !== "pending") return problem(409, "conflict", "Not possible right now", `This level is ${a.status}.`);
+    if (!isApproverOf(db, a)) return problem(403, "forbidden", "Not allowed", "Only an approver can delegate.");
+    const body = (await request.json()) as S["ApprovalDelegation"];
+    const to = db.users.find((u) => u.id === body.user_id);
+    if (!to || to.id === a.requester.id) {
+      return problem(422, "validation", "Some inputs need attention", "Pick another user.", [
+        {
+          field: "/user_id",
+          code: "invalid",
+          message: to ? "The requester can't approve their own request." : "There is no user with this ID.",
+        },
+      ]);
+    }
+    if (!a.delegates.some((u) => u.id === to.id)) a.delegates.push(to);
+    publishApproval(a);
+    return json<S["Approval"]>(viewOf(db, a, requestByKey(a.request.id)?.request));
+  }),
+
+  http.get<{ requestId: string }>(`${base}/requests/:requestId/approvals`, async ({ params }) => {
+    await wait();
+    const r = requestByKey(params.requestId);
+    if (!r || !visibleRequest(r.request)) return notFound("Request");
+    return json({ items: levelsOf(r.request.id).map((a) => viewOf(db, a, r.request)) });
   }),
 
   http.get(`${base}/deployments`, async ({ request }) => {
@@ -499,10 +738,10 @@ export const handlers = [
         if (lastId) {
           const missed = bus.since(lastId);
           if (missed === null) control("resync");
-          else missed.filter((env) => matches(env, topics, projectId)).forEach((env) => send(env.event));
+          else missed.filter((env) => matches(env, topics, projectId, db.me.user.id)).forEach((env) => send(env.event));
         }
         unsubscribe = bus.subscribe((env) => {
-          if (matches(env, topics, projectId)) send(env.event);
+          if (matches(env, topics, projectId, db.me.user.id)) send(env.event);
         });
         heartbeat = setInterval(() => control("heartbeat"), 15_000);
         request.signal.addEventListener("abort", () => {

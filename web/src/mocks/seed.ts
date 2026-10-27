@@ -17,6 +17,8 @@ import type {
   UserRef,
   VmResource,
 } from "@/lib/api/types";
+import type { StoredApproval } from "./approvals";
+import { factsFor } from "./approvals";
 import { formFor } from "./forms";
 import { DOMAIN, networks, templates, VCENTER } from "./inventory";
 
@@ -41,6 +43,7 @@ export interface Db {
   favourites: Set<string>;
   forms: Record<string, RequestForm>;
   requests: StoredRequest[];
+  approvals: StoredApproval[];
   deployments: DeploymentDetail[];
   idempotency: Map<string, { body: string; status: number; response: unknown }>;
   ipNext: Record<string, number>;
@@ -62,8 +65,9 @@ export function createDb(now = Date.now()): Db {
     { id: "usr_sbrunner", name: "Sophie Brunner", email: "sophie.brunner@corp.example" },
     { id: "usr_tnguyen", name: "Thomas Nguyen", email: "thomas.nguyen@corp.example" },
     { id: "usr_afavre", name: "Alain Favre", email: "alain.favre@corp.example" },
+    { id: "usr_cdubois", name: "Claire Dubois", email: "claire.dubois@corp.example" },
   ];
-  const [lea, marc, sophie, thomas] = users as [UserRef, UserRef, UserRef, UserRef, UserRef];
+  const [lea, marc, sophie, thomas, alain, claire] = users as [UserRef, UserRef, UserRef, UserRef, UserRef, UserRef];
 
   const environments: Environment[] = [
     { key: "dev", name: "Development", production: false, order: 1 },
@@ -736,7 +740,28 @@ export function createDb(now = Date.now()): Db {
       {
         role: "front",
         size: "XL",
+        cluster: "GVA-PRD-CL01",
+        datastore: "vsan-gva-prd-cl01",
+        network: "dvpg-web-prd-vl210",
         post_config: ["linux-baseline", "idm-join", "role-nginx"],
+      },
+    ),
+    pendingApproval(
+      "REQ-10479",
+      ubuntu,
+      data,
+      "prd",
+      sophie,
+      180,
+      "Ubuntu 24.04 server · data-prd-spark003",
+      "Production VM above 32 GB RAM",
+      {
+        role: "spark",
+        size: "XL",
+        cluster: "GVA-PRD-CL02",
+        datastore: "vsan-gva-prd-cl02",
+        network: "dvpg-db-prd-vl230",
+        post_config: ["linux-baseline"],
       },
     ),
     pendingApproval(
@@ -906,6 +931,90 @@ export function createDb(now = Date.now()): Db {
     };
   }
 
+  // Approval levels of the waiting requests. Marc Keller is away and has
+  // delegated his to Léa Martin, so the mock user has an inbox.
+  const byNumber = (n: string) => requests.find((r) => r.request.number === n)!.request;
+  const level = (
+    number: string,
+    o: Partial<StoredApproval> & Pick<StoredApproval, "level" | "reasons" | "approvers" | "status">,
+  ): StoredApproval => {
+    const r = byNumber(number);
+    return {
+      id: `apr_${number.slice(4)}_${o.level.index}`,
+      request: { id: r.id, number: r.number, title: r.title, status: r.status },
+      project: r.project,
+      environment: r.environment,
+      requester: r.requester,
+      submitted_at: r.submitted_at,
+      rules: [],
+      due_at: null,
+      escalated: false,
+      justification: r.justification,
+      facts: factsFor(r.inputs ?? {}, r.title.split(" · ")[1] ?? null),
+      group: null,
+      mode: "any",
+      votes: [],
+      delegates: [],
+      on_timeout: null,
+      escalate_to: null,
+      decided_at: null,
+      outcome: null,
+      ...o,
+    };
+  };
+  const leads = {
+    approvers: [marc],
+    group: "rvav-infra-leads",
+    delegates: [lea],
+    on_timeout: "escalate" as const,
+    escalate_to: [claire],
+  };
+  byNumber("REQ-10477").justification =
+    "Fourth front node for Black Friday. The JVM heap is sized at 32 GB, the rest is page cache for static assets.";
+  byNumber("REQ-10479").justification = "Spark executors for the year-end batch; the jobs spill to disk below 48 GB.";
+  const approvals: StoredApproval[] = [
+    level("REQ-10477", {
+      ...leads,
+      level: { index: 1, count: 1, name: "Infrastructure leads" },
+      reasons: ["Production VM above 32 GB RAM", "Production VMs need sign-off"],
+      rules: ['environment == "prd" && vm.memory_gb > 32', 'environment == "prd"'],
+      status: "pending",
+      due_at: inDays(20 / 24),
+    }),
+    level("REQ-10479", {
+      ...leads,
+      level: { index: 1, count: 1, name: "Infrastructure leads" },
+      reasons: ["Production VM above 32 GB RAM", "Production VMs need sign-off"],
+      rules: ['environment == "prd" && vm.memory_gb > 32', 'environment == "prd"'],
+      status: "pending",
+      due_at: inDays(1.5),
+    }),
+    level("REQ-10471", {
+      level: { index: 1, count: 2, name: "Network engineers" },
+      reasons: ["Firewall changes are reviewed by network security"],
+      approvers: [alain],
+      status: "approved",
+      votes: [
+        {
+          user: alain,
+          decision: "approve",
+          comment: "Ports and zones match the flow matrix.",
+          changes: [],
+          decided_at: ago(21 * 60),
+        },
+      ],
+      decided_at: ago(21 * 60),
+      outcome: "Approved by Alain Favre",
+    }),
+    level("REQ-10471", {
+      level: { index: 2, count: 2, name: "Network security" },
+      reasons: ["Firewall changes are reviewed by network security"],
+      approvers: [marc],
+      status: "pending",
+      due_at: ago(60),
+    }),
+  ];
+
   const ipNext: Record<string, number> = {};
   for (const n of networks) ipNext[n.name] = n.nextHost;
 
@@ -929,6 +1038,7 @@ export function createDb(now = Date.now()): Db {
     favourites: new Set(["itm_rhel9", "itm_ubuntu", "itm_dbuser"]),
     forms,
     requests,
+    approvals,
     deployments,
     idempotency: new Map(),
     ipNext,

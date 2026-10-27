@@ -111,6 +111,22 @@ describe("applyEvent", () => {
     applyEvent(qc, { id: "e8", at, type: "resync" });
     expect(invalidate).toHaveBeenCalledWith();
   });
+
+  it("approval.updated refetches the inbox, the level and the request's approvals", () => {
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    applyEvent(qc, {
+      id: "e9",
+      at,
+      type: "approval.updated",
+      data: { approval_id: "apr_1", request_id: "req_1", status: "approved" },
+    });
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([
+      keys.approvals.lists(),
+      keys.approvals.detail("apr_1"),
+      keys.approvals.forRequest("req_1"),
+    ]);
+  });
 });
 
 describe("events that arrive during a fetch", () => {

@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 const field =
   "w-full rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:opacity-60";
 
-export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return <input className={cn(field, "h-8", className)} {...props} />;
 }
 
-export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return <textarea className={cn(field, "min-h-16 py-1.5", className)} {...props} />;
 }
 

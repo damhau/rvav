@@ -19,7 +19,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const client = new LiveClient({
       url: () =>
-        apiUrl(`/events?topics=requests,deployments,notifications&project_id=${encodeURIComponent(projectId)}`),
+        apiUrl(
+          `/events?topics=requests,deployments,notifications,approvals&project_id=${encodeURIComponent(projectId)}`,
+        ),
       fetch: rawFetch,
       onStatus: setStatus,
       onEvent: (event) =>

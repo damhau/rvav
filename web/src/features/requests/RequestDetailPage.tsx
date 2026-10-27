@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ApprovalHistory } from "@/components/common/approvals";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page, Panel } from "@/components/common/page";
@@ -85,6 +86,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const request = useQuery(q.request(requestKey));
   const id = request.data?.id;
   const steps = useQuery({ ...q.steps(id ?? ""), enabled: Boolean(id) });
+  const approvals = useQuery({ ...q.requestApprovals(id ?? ""), enabled: Boolean(id) });
+  const levels = approvals.data?.items ?? [];
+  const mine = levels.find((a) => a.can_decide);
   const [chosenLog, setChosenLog] = useState<string | null>(null);
 
   if (request.isError) {
@@ -233,6 +237,23 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               </div>
             )}
           </section>
+
+          {levels.length > 0 && (
+            <Panel
+              title="Approval"
+              actions={
+                mine ? (
+                  <Button size="sm" variant="primary" asChild>
+                    <Link to="/approvals" search={{ id: mine.id }}>
+                      Decide
+                    </Link>
+                  </Button>
+                ) : null
+              }
+            >
+              <ApprovalHistory levels={levels} />
+            </Panel>
+          )}
 
           <Panel title="What was asked for">
             {r ? (
