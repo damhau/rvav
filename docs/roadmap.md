@@ -21,6 +21,16 @@ environment, [ADR-0014](adr/0014-leases-and-quotas.md)).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
+R1 (slices 6 to 9) is under way, item by item in
+[progress-r1.md](progress-r1.md). S7 EfficientIP is built: the client
+follows EfficientIP's own library and runs everywhere against a fake
+SOLIDserver speaking the same API ([ADR-0015](adr/0015-efficientip-client.md)),
+network mappings come from subnet class parameters, renames reach
+EfficientIP, and a reconcile report lists orphans; its acceptance needs a
+real SOLIDserver. S6 AWX is in progress against a test AWX: templates with
+the catalog label become catalog items with forms from their surveys
+([ADR-0016](adr/0016-awx-catalog.md)).
+
 Verified so far:
 - `make check` (also in CI on every push): spec lint, generated code, Go vet
   and tests, end-to-end tests on their own PostgreSQL with vcsim, through
@@ -44,7 +54,7 @@ provider.
 
 ### Open items found in slice 1
 - AWX dynamic inventory endpoint and the `rvav.platform` inventory plugin (S6).
-- EfficientIP client: confirm the endpoints against the current SOLIDserver API (S7).
+- EfficientIP client: endpoints confirmed against EfficientIP's own library (S7); a real SOLIDserver still has to confirm them.
 - Inventory sync polls; switch to property collector updates (S13).
 - Value sources `awx.*` (S6), REST and CEL (S8) are not implemented yet.
 - Per-field rule results in the preview, descriptions on checklist options (S8).

@@ -20,6 +20,9 @@ import (
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrTaken is an external object already recorded for another deployment.
+var ErrTaken = errors.New("already recorded for another deployment")
+
 // DB is the subset of pgx used by repository functions, satisfied by both
 // *pgxpool.Pool and pgx.Tx so functions work inside or outside a transaction.
 type DB interface {

@@ -276,25 +276,12 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		cache(60)
 
 	case "dns.zones":
-		var zones []string
-		if s.IPAM != nil {
-			list, err := s.IPAM.Zones(ctx)
-			if err != nil {
-				return out, &UpstreamError{System: "EfficientIP", Err: err}
-			}
-			zones = list
-		} else {
-			subnets, err := s.Store.NetworkSubnets(ctx)
-			if err != nil {
-				return out, err
-			}
-			for _, sn := range subnets {
-				zones = append(zones, sn.DNSZone)
-			}
+		zones, err := s.dnsZones(ctx)
+		if err != nil {
+			return out, err
 		}
-		slices.Sort(zones)
 		opts := []api.Option{}
-		for _, z := range slices.Compact(zones) {
+		for _, z := range zones {
 			opts = append(opts, option(z, z, ""))
 		}
 		out.Options = &opts
@@ -307,4 +294,27 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		return out, &BadRequestError{Msg: fmt.Sprintf("Unknown value source %s.", *src.Name)}
 	}
 	return out, nil
+}
+
+// dnsZones lists the forward zones of rvav's DNS server, sorted (those of
+// the network mappings without EfficientIP).
+func (s *Service) dnsZones(ctx context.Context) ([]string, error) {
+	var zones []string
+	if s.IPAM != nil {
+		list, err := s.IPAM.Zones(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "EfficientIP", Err: err}
+		}
+		zones = list
+	} else {
+		subnets, err := s.Store.NetworkSubnets(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, sn := range subnets {
+			zones = append(zones, sn.DNSZone)
+		}
+	}
+	slices.Sort(zones)
+	return slices.Compact(zones), nil
 }

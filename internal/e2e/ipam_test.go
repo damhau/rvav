@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -65,6 +66,25 @@ func TestEfficientIPMappings(t *testing.T) {
 			if _, err := h.store.NetworkSubnet(ctx, missing); err != store.ErrNotFound {
 				t.Fatalf("%s mapped: %v", missing, err)
 			}
+		}
+
+		// A second subnet claiming a mapped network, or the subnet losing its
+		// gateway, holds the mapping as it is until fixed.
+		dup, _ := h.ipam.AddSubnet(efficientip.FakeSpace, "10.31.34.0/24", "dup-new", map[string]string{efficientip.ParamNetwork: "dvpg-new-tst-vl330",
+			efficientip.ParamGateway: "10.31.34.1", efficientip.ParamZone: "corp.example"})
+		if err := sync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := mapping("dvpg-new-tst-vl330"); n.Subnet != "10.31.30.0/24" {
+			t.Fatalf("mapping after a competing claim = %+v", n)
+		}
+		h.ipam.SetSubnetParams(dup, nil)
+		h.ipam.SetSubnetParams(id, map[string]string{efficientip.ParamNetwork: params[efficientip.ParamNetwork], efficientip.ParamZone: "corp.example"})
+		if err := sync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := mapping("dvpg-new-dev-vl330"); n.Gateway != "10.31.30.1" {
+			t.Fatalf("mapping after its subnet lost the gateway = %+v", n)
 		}
 
 		// The subnet loses its class parameter: its mappings go, the manual ones stay.
@@ -159,7 +179,7 @@ func TestIPAMReconcile(t *testing.T) {
 
 		// A failed run left an address and a record behind; someone deleted
 		// the deployment's PTR record in EfficientIP.
-		left, err := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "web-dev-app099.corp.example")
+		left, err := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "web-dev-app099.corp.example", "dep_gone")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,5 +210,18 @@ func TestIPAMReconcile(t *testing.T) {
 		}
 
 		h.json("GET", "/api/v1/admin/ipam/reconcile", "tnguyen", nil, 403, nil)
+
+		// An address already recorded for a deployment is never moved to another.
+		var address store.IPAMResource
+		for _, r := range owned {
+			if r.Type == "ipam.address" {
+				address = r
+			}
+		}
+		_, err = h.store.UpsertResource(ctx, h.store.Pool, store.Resource{ID: "res_taken", DeploymentID: "dep_other", Type: "ipam.address",
+			Name: "10.31.10.99", ExternalID: address.ExternalID, Properties: []byte(`{}`)})
+		if !errors.Is(err, store.ErrTaken) {
+			t.Fatalf("recording another deployment's address = %v", err)
+		}
 	})
 }

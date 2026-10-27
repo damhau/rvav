@@ -35,7 +35,7 @@ func (c *nameCheck) taken(name string) bool {
 		return taken
 	}
 	if len(c.dns) >= maxDNSChecks {
-		c.err = fmt.Errorf("the next %d names are all in DNS under %s", maxDNSChecks, c.zone)
+		c.err = &ConflictError{Msg: fmt.Sprintf("The next %d names are all in DNS under %s. Ask an administrator to look at the naming rule.", maxDNSChecks, c.zone)}
 		return false
 	}
 	exists, err := c.ipam.NameExists(c.ctx, name+"."+c.zone)

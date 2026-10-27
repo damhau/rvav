@@ -91,22 +91,33 @@ func TestAddresses(t *testing.T) {
 	if err != nil || next != "10.31.10.21" {
 		t.Fatalf("next free = %q, %v (want .21, .20 is in use)", next, err)
 	}
-	if got := l.last("OPTIONS", "/rpc/ip_find_free_address").Query; got.Get("subnet_id") == "" || got.Get("max_find") != "1" {
+	if got := l.last("OPTIONS", "/rpc/ip_find_free_address").Query; got.Get("subnet_id") == "" || got.Get("max_find") != "4" {
 		t.Fatalf("free address search = %v", got)
 	}
-	a, err := c.Reserve(ctx, subnet, "web-dev-app001.corp.example")
+	a, err := c.Reserve(ctx, subnet, "web-dev-app001.corp.example", "dep_1")
 	if err != nil || a.IP != "10.31.10.21" || a.ID == "" {
 		t.Fatalf("reserve = %+v, %v", a, err)
 	}
 	add := l.last("POST", "/rest/ip_add").Query
 	want := url.Values{"site_id": {add.Get("site_id")}, "hostaddr": {"10.31.10.21"}, "name": {"web-dev-app001.corp.example"},
-		"ip_class_parameters": {"rvav_managed=1"}, "add_flag": {"new_only"}}
+		"ip_class_parameters": {"rvav_managed=1&rvav_owner=dep_1"}, "add_flag": {"new_only"}}
 	if add.Encode() != want.Encode() || add.Get("site_id") == "" {
 		t.Fatalf("ip_add = %v", add)
 	}
-	again, err := c.Reserve(ctx, subnet, "web-dev-app001.corp.example")
+	again, err := c.Reserve(ctx, subnet, "web-dev-app001.corp.example", "dep_1")
 	if err != nil || again != a {
 		t.Fatalf("reserving the same host twice gave %+v then %+v (%v)", a, again, err)
+	}
+	// The name reserved for another deployment, or by someone else, is not taken over.
+	if _, err := c.Reserve(ctx, subnet, "web-dev-app001.corp.example", "dep_2"); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("the name reserved for another deployment = %v", err)
+	}
+	if _, err := c.call(ctx, "POST", "ip_add", url.Values{"site_id": {add.Get("site_id")}, "hostaddr": {"10.31.10.90"},
+		"name": {"legacy.corp.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Reserve(ctx, subnet, "legacy.corp.example", "dep_1"); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("an address rvav did not reserve = %v", err)
 	}
 
 	// An address taken between the search and the add is skipped.
@@ -121,23 +132,26 @@ func TestAddresses(t *testing.T) {
 		}
 		return false
 	})
-	b, err := c.Reserve(ctx, subnet, "web-dev-app002.corp.example")
+	b, err := c.Reserve(ctx, subnet, "web-dev-app002.corp.example", "dep_2")
 	if err != nil || b.IP != "10.31.10.23" {
 		t.Fatalf("reserve after a race = %+v, %v", b, err)
 	}
 
-	if err := c.RenameAddress(ctx, Address{IP: a.IP, Subnet: subnet.CIDR}, "web-dev-api001.corp.example"); err != nil {
+	if err := c.RenameAddress(ctx, Address{IP: a.IP, Subnet: subnet.CIDR, Hostname: a.Hostname}, "web-dev-api001.corp.example"); err != nil {
 		t.Fatal(err)
 	}
 	if got := l.last("PUT", "/rest/ip_add").Query; got.Encode() != (url.Values{"ip_id": {a.ID}, "name": {"web-dev-api001.corp.example"},
 		"add_flag": {"edit_only"}}).Encode() {
 		t.Fatalf("rename = %v", got)
 	}
-	if renamed, _ := c.Reserve(ctx, subnet, "web-dev-api001.corp.example"); renamed.IP != a.IP {
+	if renamed, _ := c.Reserve(ctx, subnet, "web-dev-api001.corp.example", "dep_1"); renamed.IP != a.IP {
 		t.Fatalf("after renaming, the new name has %s", renamed.IP)
 	}
 	if err := c.RenameAddress(ctx, Address{IP: "10.31.10.200", Subnet: subnet.CIDR}, "x"); err == nil {
 		t.Fatal("renamed an address EfficientIP doesn't have")
+	}
+	if err := c.RenameAddress(ctx, Address{IP: "10.31.10.90", Subnet: subnet.CIDR, Hostname: "web-dev-app003.corp.example"}, "x"); err == nil {
+		t.Fatal("renamed an address that has another name")
 	}
 	if err := c.Release(ctx, a); err != nil {
 		t.Fatal(err)
@@ -148,7 +162,14 @@ func TestAddresses(t *testing.T) {
 	if err := c.Release(ctx, a); err != nil {
 		t.Fatalf("releasing twice: %v", err)
 	}
-	if err := c.Release(ctx, Address{IP: b.IP, Subnet: subnet.CIDR}); err != nil {
+	// Without its ID, an address is released only when it still has its name.
+	if err := c.Release(ctx, Address{IP: b.IP, Subnet: subnet.CIDR, Hostname: "web-dev-app009.corp.example"}); err != nil {
+		t.Fatalf("release of an IP someone else has now: %v", err)
+	}
+	if got := l.last("DELETE", "/rest/ip_delete").Query; got.Get("ip_id") != a.ID {
+		t.Fatalf("released an address with another name: %v", got)
+	}
+	if err := c.Release(ctx, Address{IP: b.IP, Subnet: subnet.CIDR, Hostname: b.Hostname}); err != nil {
 		t.Fatalf("release without an ID: %v", err)
 	}
 	if next, _ := c.NextFree(ctx, subnet); next != "10.31.10.21" {
@@ -181,13 +202,23 @@ func TestSubnetLookup(t *testing.T) {
 		t.Fatalf("with the space set: %v", err)
 	}
 
+	// A stored ID that now names another subnet is not trusted.
 	small, _ := l.fake.AddSubnet("lab", "10.0.0.0/30", "tiny", map[string]string{"gateway": "10.0.0.1"})
-	l.fake.FirstHost = 1
-	if _, err := c.Reserve(ctx, Subnet{ID: small}, "a"); err != nil {
-		t.Fatal(err)
+	if ip, err := spaced.NextFree(ctx, Subnet{ID: small, CIDR: subnet.CIDR}); err != nil || ip != "10.31.10.20" {
+		t.Fatalf("a stale subnet ID = %s, %v", ip, err)
 	}
-	if _, err := c.Reserve(ctx, Subnet{ID: small}, "b"); !errors.Is(err, ErrSubnetFull) {
+
+	// SOLIDserver may offer the gateway; it is never reserved.
+	l.fake.FirstHost = 1
+	tiny := Subnet{ID: small, CIDR: "10.0.0.0/30", Gateway: "10.0.0.1"}
+	if a, err := c.Reserve(ctx, tiny, "a", "dep_1"); err != nil || a.IP != "10.0.0.2" {
+		t.Fatalf("reserve next to the gateway = %+v, %v", a, err)
+	}
+	if _, err := c.Reserve(ctx, tiny, "b", "dep_1"); !errors.Is(err, ErrSubnetFull) {
 		t.Fatalf("full subnet = %v", err)
+	}
+	if ip, err := spaced.NextFree(ctx, subnet); err != nil || ip != "10.31.10.2" {
+		t.Fatalf("next free from .1 with the gateway on .1 = %s, %v", ip, err)
 	}
 }
 
@@ -226,17 +257,54 @@ func TestRecords(t *testing.T) {
 	if ok, err := c.NameExists(ctx, "web-dev-app009.corp.example"); ok || err != nil {
 		t.Fatalf("a free name exists = %v, %v", ok, err)
 	}
+	// The PTR is pointed to a new name in place.
+	moved, err := c.UpdateRecord(ctx, ptr, "web-dev-api001.corp.example")
+	if err != nil || moved.ID != ptr.ID || moved.Value != "web-dev-api001.corp.example" {
+		t.Fatalf("update PTR = %+v, %v", moved, err)
+	}
+	if got := l.last("PUT", "/rest/dns_rr_add").Query; got.Encode() != (url.Values{"rr_id": {ptr.ID},
+		"value1": {"web-dev-api001.corp.example"}, "add_flag": {"edit_only"}}).Encode() {
+		t.Fatalf("PTR update = %v", got)
+	}
+	if again, err := c.UpdateRecord(ctx, ptr, "web-dev-api001.corp.example"); err != nil || again.ID != ptr.ID {
+		t.Fatalf("the same update again = %+v, %v", again, err)
+	}
+	ptr = moved
+
+	// A deleted record stays listed while SOLIDserver waits for the DNS
+	// server; it counts as gone.
 	if err := c.DeleteRecord(ctx, a); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.DeleteRecord(ctx, a); err != nil {
 		t.Fatalf("deleting twice: %v", err)
 	}
+	if rows, _ := c.call(ctx, "GET", "dns_rr_list", list("rr_id="+quote(a.ID), 1)); len(rows) != 1 || !pendingDelete(rows[0]) {
+		t.Fatalf("the record being deleted = %v", rows)
+	}
+	if ok, _ := c.NameExists(ctx, "web-dev-app001.corp.example"); ok {
+		t.Fatal("a record being deleted makes its name taken")
+	}
+	if _, rec, _ := c.Existing(ctx, nil, []string{a.ID}); rec[a.ID] {
+		t.Fatal("a record being deleted exists")
+	}
+	if back, err := c.CreateRecord(ctx, Record{FQDN: a.FQDN, Type: "A", Value: a.Value}); err != nil || back.ID == a.ID {
+		t.Fatalf("the name again while its record is being deleted = %+v, %v", back, err)
+	} else if err := c.DeleteRecord(ctx, back); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.DeleteRecord(ctx, Record{FQDN: ptr.FQDN, Type: "PTR", Value: ptr.Value}); err != nil {
 		t.Fatalf("delete without an ID: %v", err)
 	}
 	if ok, _ := c.NameExists(ctx, "web-dev-app001.corp.example"); ok {
 		t.Fatal("the name still exists after deleting its record")
+	}
+	// A name IPAM has without DNS is taken too.
+	if _, err := c.Reserve(ctx, subnet, "db-dev-001.corp.example", "dep_1"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := c.NameExists(ctx, "db-dev-001.corp.example"); !ok || err != nil {
+		t.Fatalf("a name only IPAM has = %v, %v", ok, err)
 	}
 	if _, err := c.CreateRecord(ctx, Record{FQDN: "x.other.example", Type: "A", Value: "10.0.0.1"}); err == nil ||
 		!strings.Contains(err.Error(), "no zone on ns1.corp.example holds x.other.example") {
@@ -294,7 +362,7 @@ func TestWhere(t *testing.T) {
 	r := row{"rr_full_name": "o'hara.corp.example", "rr_type": "CNAME", "dns_name": "ns1"}
 	for where, want := range map[string]bool{
 		"rr_full_name='o''hara.corp.example'":                                     true,
-		"rr_full_name='O''HARA.corp.example' and dns_name=ns1":                    true,
+		"rr_full_name='O''HARA.corp.example' and dns_name=ns1":                    false,
 		"rr_full_name like '%.corp.example' and (rr_type='A' or rr_type='CNAME')": true,
 		"rr_type='A' or rr_type='AAAA'":                                           false,
 		"(rr_type='A' or rr_type='CNAME') and dns_name!='ns1'":                    false,

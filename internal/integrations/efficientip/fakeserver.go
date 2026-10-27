@@ -21,8 +21,10 @@ import (
 // HTTPClient calls, with the same parameters, mandatory checks, add_flag
 // rules and result shapes (every field a string, 204 when empty, errors as
 // errno and errmsg). Subnets and DNS zones are added with AddSubnet and
-// AddZone. Addresses below FirstHost, the subnet's gateway and those InUse
-// reports are never offered as free.
+// AddZone. Addresses below FirstHost and those InUse reports are never
+// offered as free; like SOLIDserver, it knows nothing of the gateway class
+// parameter. A deleted DNS record stays listed, with delayed_delete_time
+// set, for DeleteDelay, as while SOLIDserver waits for the DNS server.
 type FakeServer struct {
 	// Credentials accepted, as native headers or basic authentication; or
 	// an API token.
@@ -30,8 +32,10 @@ type FakeServer struct {
 	TokenID, TokenSecret string
 	FirstHost            int
 	InUse                func(ctx context.Context, cidr string) ([]string, error)
+	DeleteDelay          time.Duration
 
 	mu        sync.Mutex
+	idBase    int
 	seq       int
 	sites     map[string]string // IPAM space name -> ID
 	servers   map[string]string // DNS server name -> ID
@@ -39,6 +43,7 @@ type FakeServer struct {
 	addresses []row
 	zones     []row
 	records   []row
+	deleting  map[string]time.Time // record ID -> when it was deleted
 }
 
 // What the development stack's fake uses.
@@ -59,12 +64,20 @@ const (
 )
 
 func NewFakeServer() *FakeServer {
-	return &FakeServer{Username: FakeUser, Password: FakePassword, FirstHost: 20, sites: map[string]string{}, servers: map[string]string{}}
+	return &FakeServer{Username: FakeUser, Password: FakePassword, FirstHost: 20, DeleteDelay: 2 * time.Second,
+		idBase: 100, sites: map[string]string{}, servers: map[string]string{}, deleting: map[string]time.Time{}}
+}
+
+// UniqueIDs makes the fake's object IDs start from the time, so a fake
+// started again (it keeps its state in memory) never reuses an ID rvav
+// has recorded, as SOLIDserver never does. Call it before adding anything.
+func (f *FakeServer) UniqueIDs() {
+	f.idBase = int(time.Now().Unix()) * 1000
 }
 
 func (f *FakeServer) id() string {
 	f.seq++
-	return strconv.Itoa(100 + f.seq)
+	return strconv.Itoa(f.idBase + f.seq)
 }
 
 func (f *FakeServer) site(name string) string {
@@ -236,6 +249,7 @@ func (f *FakeServer) authenticated(r *http.Request) bool {
 }
 
 func (f *FakeServer) serve(ctx context.Context, method, path string, q url.Values) ([]row, *fakeError) {
+	f.purge()
 	switch method + " " + path {
 	case "OPTIONS /rpc/ip_find_free_address":
 		return f.findFree(ctx, q)
@@ -253,6 +267,8 @@ func (f *FakeServer) serve(ctx context.Context, method, path string, q url.Value
 		return listRows(f.records, q)
 	case "POST /rest/dns_rr_add":
 		return f.addRecord(q)
+	case "PUT /rest/dns_rr_add":
+		return f.editRecord(q)
 	case "DELETE /rest/dns_rr_delete":
 		return f.deleteRecord(q)
 	}
@@ -316,8 +332,7 @@ func (f *FakeServer) findFree(ctx context.Context, q url.Values) ([]row, *fakeEr
 	if err != nil || n < 1 {
 		n = 1
 	}
-	params, _ := url.ParseQuery(s["subnet_class_parameters"])
-	taken := map[string]bool{params.Get("gateway"): true}
+	taken := map[string]bool{}
 	for _, a := range f.addresses {
 		if a["subnet_id"] == s["subnet_id"] {
 			taken[a["hostaddr"]] = true
@@ -402,7 +417,7 @@ func (f *FakeServer) addAddress(method string, q url.Values) ([]row, *fakeError)
 		return nil, failf(http.StatusBadRequest, "-1", "no subnet holds %s in this space", ip)
 	}
 	a := row{"ip_id": f.id(), "hostaddr": ip.String(), "name": q.Get("name"), "subnet_id": subnet["subnet_id"],
-		"subnet_name": subnet["subnet_name"], "subnet_start_hostaddr": subnet["start_hostaddr"], "subnet_prefix": subnet["subnet_prefix"],
+		"subnet_name": subnet["subnet_name"], "subnet_start_hostaddr": subnet["start_hostaddr"], "subnet_size": subnet["subnet_size"],
 		"site_id": subnet["site_id"], "site_name": subnet["site_name"],
 		"ip_class_parameters": q.Get("ip_class_parameters"), "mac_addr": q.Get("mac_addr")}
 	f.addresses = append(f.addresses, a)
@@ -441,7 +456,7 @@ func (f *FakeServer) addRecord(q url.Values) ([]row, *fakeError) {
 		return nil, failf(http.StatusBadRequest, "-1", "no zone on %s holds %s", server, name)
 	}
 	for _, r := range f.records {
-		if r["rr_full_name"] == name && r["rr_type"] == typ && r["dns_name"] == zone["dns_name"] && sameValue(r["value1"], value) {
+		if r["rr_full_name"] == name && r["rr_type"] == typ && r["dns_name"] == zone["dns_name"] && sameValue(r["value1"], value) && !pendingDelete(r) {
 			if q.Get("add_flag") == "new_only" {
 				return nil, failf(http.StatusBadRequest, "-1", "%s record %s already exists", typ, name)
 			}
@@ -456,12 +471,47 @@ func (f *FakeServer) addRecord(q url.Values) ([]row, *fakeError) {
 	return []row{{"ret_oid": r["rr_id"]}}, nil
 }
 
-func (f *FakeServer) deleteRecord(q url.Values) ([]row, *fakeError) {
-	for i, r := range f.records {
-		if r["rr_id"] == q.Get("rr_id") {
-			f.records = slices.Delete(f.records, i, i+1)
-			return []row{{"ret_oid": r["rr_id"]}}, nil
+func (f *FakeServer) record(id string) row {
+	for _, r := range f.records {
+		if r["rr_id"] == id && !pendingDelete(r) {
+			return r
 		}
 	}
-	return nil, failf(http.StatusBadRequest, "-1", "record not found")
+	return nil
+}
+
+// editRecord changes a record's value (add_flag edit_only, by rr_id).
+func (f *FakeServer) editRecord(q url.Values) ([]row, *fakeError) {
+	r := f.record(q.Get("rr_id"))
+	if r == nil {
+		return nil, failf(http.StatusBadRequest, "-1", "record %s not found", q.Get("rr_id"))
+	}
+	if v := q.Get("value1"); v != "" {
+		r["value1"] = v
+	}
+	if q.Has("rr_class_parameters") {
+		r["rr_class_parameters"] = q.Get("rr_class_parameters")
+	}
+	return []row{{"ret_oid": r["rr_id"]}}, nil
+}
+
+// deleteRecord marks the record deleted; purge drops it after DeleteDelay.
+func (f *FakeServer) deleteRecord(q url.Values) ([]row, *fakeError) {
+	r := f.record(q.Get("rr_id"))
+	if r == nil {
+		return nil, failf(http.StatusBadRequest, "-1", "record not found")
+	}
+	now := time.Now()
+	r["delayed_delete_time"] = strconv.FormatInt(now.Unix(), 10)
+	f.deleting[r["rr_id"]] = now
+	return []row{{"ret_oid": r["rr_id"]}}, nil
+}
+
+func (f *FakeServer) purge() {
+	for id, at := range f.deleting {
+		if time.Since(at) >= f.DeleteDelay {
+			f.records = slices.DeleteFunc(f.records, func(r row) bool { return r["rr_id"] == id })
+			delete(f.deleting, id)
+		}
+	}
 }

@@ -8,7 +8,9 @@ import (
 
 // The fake server's reading of SOLIDserver's WHERE parameter: comparisons
 // (=, !=, like with %) of a field with a quoted or bare value, joined by
-// and, or and parentheses. Enough for the clauses rvav sends.
+// and, or and parentheses. Enough for the clauses rvav sends. Comparisons
+// are case-sensitive, so a mis-cased name in rvav's settings fails here as
+// it would on SOLIDserver.
 
 type cond func(row) bool
 
@@ -112,11 +114,11 @@ func (p *whereParser) atom() (cond, error) {
 	}
 	switch op {
 	case "=":
-		return func(r row) bool { return strings.EqualFold(r[field], value) }, nil
+		return func(r row) bool { return r[field] == value }, nil
 	case "!=":
-		return func(r row) bool { return !strings.EqualFold(r[field], value) }, nil
+		return func(r row) bool { return r[field] != value }, nil
 	}
-	re, err := regexp.Compile("(?is)^" + strings.ReplaceAll(regexp.QuoteMeta(value), "%", ".*") + "$")
+	re, err := regexp.Compile("(?s)^" + strings.ReplaceAll(regexp.QuoteMeta(value), "%", ".*") + "$")
 	if err != nil {
 		return nil, err
 	}

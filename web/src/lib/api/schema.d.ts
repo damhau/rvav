@@ -632,6 +632,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ansible/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Ansible inventory of rvav's VMs
+         * @description In the format of `ansible-inventory --list`, for the `rvav.platform.rvav`
+         *     inventory plugin AWX uses: every VM of a deployment that is not
+         *     deleted, `ansible_host` its reserved address, groups `rvav`,
+         *     `project_<code>`, `env_<key>`, `item_<slug>` and `os_<family>`, and
+         *     host variables `rvav_deployment_id`, `rvav_deployment`,
+         *     `rvav_deployment_status`, `rvav_project`, `rvav_environment`,
+         *     `rvav_item`, `rvav_owner`, `rvav_fqdn`, `rvav_moref`,
+         *     `rvav_power_state` and `rvav_os_family`. For an API token of a user
+         *     with the auditor (or admin) role.
+         */
+        get: operations["getAnsibleInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/ipam/reconcile": {
         parameters: {
             query?: never;
@@ -727,6 +755,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description `_meta.hostvars`, `all.children`, and one object per group with its `hosts`. */
+        AnsibleInventory: {
+            _meta: {
+                hostvars: {
+                    [key: string]: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            all: {
+                children: string[];
+            };
+        } & {
+            [key: string]: unknown;
+        };
         AwxTemplateList: {
             items: components["schemas"]["AwxTemplate"][];
         };
@@ -775,7 +818,10 @@ export interface components {
             efficientip_id: string;
             ip: string;
             name: string;
-            /** @description The subnet's name in EfficientIP. */
+            /**
+             * @description The subnet, as a CIDR (its name when EfficientIP doesn't give its range).
+             * @example 10.31.10.0/24
+             */
             subnet: string;
         };
         IpamOrphanRecord: {
@@ -2735,6 +2781,28 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    getAnsibleInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnsibleInventory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     reconcileIpam: {

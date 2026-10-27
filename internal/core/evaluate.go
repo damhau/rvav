@@ -125,6 +125,9 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		return nil, err
 	}
 	ev.Errors = append(ev.Errors, fieldErrs...)
+	if err := s.evaluateZones(ctx, ev, strict); err != nil {
+		return nil, err
+	}
 
 	ev.Count = 1
 	if d.Count != nil {
@@ -168,6 +171,38 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		return nil, err
 	}
 	return ev, nil
+}
+
+// evaluateZones checks inputs picked from dns.zones against the zones of
+// rvav's DNS server: the picker alone doesn't stop another value. On submit
+// a zone that can't be checked is an error; in the preview it is skipped.
+func (s *Service) evaluateZones(ctx context.Context, ev *Evaluation, strict bool) error {
+	var ui api.UiSchema
+	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
+		return err
+	}
+	var zones []string
+	for name, f := range ui.Fields {
+		zone, _ := ev.Inputs[name].(string)
+		src := f.ValueSource
+		if zone == "" || src == nil || src.Kind != api.Builtin || src.Name == nil || *src.Name != "dns.zones" {
+			continue
+		}
+		if zones == nil {
+			list, err := s.dnsZones(ctx)
+			if err != nil {
+				if strict {
+					return err
+				}
+				return nil
+			}
+			zones = list
+		}
+		if !slices.Contains(zones, zone) {
+			ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not a zone of rvav's DNS server.", zone)))
+		}
+	}
+	return nil
 }
 
 func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) error {

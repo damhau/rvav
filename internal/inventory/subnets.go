@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,23 +34,24 @@ func (s *SubnetSync) Run(ctx context.Context) error {
 	}
 }
 
-// SyncOnce reads the subnets and replaces the synced network mappings. An
-// empty answer changes nothing: losing every mapping at once is more likely
-// a permission change than the network.
+// SyncOnce reads the subnets and replaces the synced network mappings.
+// Networks whose subnets have a problem keep their mapping until it is
+// fixed. An answer that maps no network changes nothing: losing every
+// mapping at once is more likely a permission change than the network.
 func (s *SubnetSync) SyncOnce(ctx context.Context) error {
 	subnets, err := s.IPAM.Subnets(ctx)
 	if err != nil {
 		return err
 	}
-	if len(subnets) == 0 {
-		s.Log.Warn("EfficientIP returned no subnets; network mappings left as they are")
-		return nil
-	}
-	found, problems := Mappings(subnets)
+	found, held, problems := Mappings(subnets)
 	for _, p := range problems {
 		s.Log.Warn("EfficientIP subnet not mapped", "reason", p)
 	}
-	synced, removed, err := s.Store.SyncNetworkSubnets(ctx, found)
+	if len(found) == 0 {
+		s.Log.Warn("EfficientIP subnets map no network; network mappings left as they are", "subnets", len(subnets))
+		return nil
+	}
+	synced, removed, err := s.Store.SyncNetworkSubnets(ctx, found, held)
 	if err != nil {
 		return err
 	}
@@ -60,8 +62,9 @@ func (s *SubnetSync) SyncOnce(ctx context.Context) error {
 // Mappings are the network mappings the subnets' class parameters
 // describe: vsphere_network (one network, or several separated by commas),
 // gateway, domain and dns_servers. A network claimed by two subnets is left
-// out, and so is a subnet without a gateway or a DNS zone.
-func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, problems []string) {
+// out, and so is a subnet without a gateway or a DNS zone; those networks
+// are held: their mapping stays as it is.
+func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, held, problems []string) {
 	byNetwork := map[string][]store.NetworkSubnet{}
 	var order []string
 	for _, sn := range subnets {
@@ -73,9 +76,11 @@ func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, pr
 		switch {
 		case gateway == "":
 			problems = append(problems, fmt.Sprintf("subnet %s (%s) has no %s class parameter", sn.CIDR, sn.Name, efficientip.ParamGateway))
+			held = append(held, networks...)
 			continue
 		case zone == "":
 			problems = append(problems, fmt.Sprintf("subnet %s (%s) has no %s class parameter", sn.CIDR, sn.Name, efficientip.ParamZone))
+			held = append(held, networks...)
 			continue
 		}
 		for _, n := range networks {
@@ -93,11 +98,13 @@ func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, pr
 				cidrs[i] = c.Subnet
 			}
 			problems = append(problems, fmt.Sprintf("network %s is claimed by several subnets (%s)", n, strings.Join(cidrs, ", ")))
+			held = append(held, n)
 			continue
 		}
 		found = append(found, byNetwork[n][0])
 	}
-	return found, problems
+	found = slices.DeleteFunc(found, func(n store.NetworkSubnet) bool { return slices.Contains(held, n.Network) })
+	return found, held, problems
 }
 
 func splitList(s string) []string {

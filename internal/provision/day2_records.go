@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -51,12 +52,14 @@ func (a *Activities) renameAddress(ctx context.Context, in OpInput) (string, err
 			Subnet   string `json:"subnet"`
 			ID       string `json:"efficientip_id"`
 			Hostname string `json:"hostname"`
+			FQDN     string `json:"fqdn"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
 		if p.Hostname != oldName && p.Hostname != argStr(in.Op.Args, "name") {
 			continue
 		}
-		if err := a.IPAM.RenameAddress(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet}, fqdn); err != nil {
+		addr := efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)}
+		if err := a.IPAM.RenameAddress(ctx, addr, fqdn); err != nil {
 			return "", fmt.Errorf("EfficientIP: %w", err)
 		}
 		return p.Address + " is now " + fqdn, nil
@@ -64,8 +67,25 @@ func (a *Activities) renameAddress(ctx context.Context, in OpInput) (string, err
 	return "No address to rename", nil
 }
 
-// renameDNS replaces the A record of the old name and points the PTR
-// record to the new one. Records already renamed are left alone.
+// checkName makes sure, just before the rename, that DNS and IPAM don't
+// have the new name: it was checked when the action was asked for, but an
+// approval may have taken days.
+func (a *Activities) checkName(ctx context.Context, in OpInput) (string, error) {
+	fqdn := argStr(in.Op.Args, "fqdn")
+	taken, err := a.IPAM.NameExists(ctx, fqdn)
+	if err != nil {
+		return "", fmt.Errorf("EfficientIP: %w", err)
+	}
+	if taken {
+		return "", permanent("%s is already in DNS or IPAM", fqdn)
+	}
+	return fqdn + " is free", nil
+}
+
+// renameDNS adds the A record of the new name before deleting the old one,
+// so the VM keeps a name when the new record can't be made, and points the
+// PTR record to the new name in place. Records already renamed are left
+// alone.
 func (a *Activities) renameDNS(ctx context.Context, in OpInput) (string, error) {
 	oldFQDN, fqdn := argStr(in.Op.Args, "old_fqdn"), argStr(in.Op.Args, "fqdn")
 	records, err := a.deploymentResources(ctx, in.DeploymentID, "dns.record")
@@ -84,10 +104,16 @@ func (a *Activities) renameDNS(ctx context.Context, in OpInput) (string, error) 
 		default:
 			continue
 		}
-		if err := a.IPAM.DeleteRecord(ctx, efficientip.Record{ID: p.ID, FQDN: p.FQDN, Type: p.Type, Value: p.Value}); err != nil {
-			return "", fmt.Errorf("EfficientIP DNS: %w", err)
+		old := efficientip.Record{ID: p.ID, FQDN: p.FQDN, Type: p.Type, Value: p.Value, Zone: p.Zone}
+		var created efficientip.Record
+		if p.Type == "PTR" {
+			created, err = a.IPAM.UpdateRecord(ctx, old, next.Value)
+		} else {
+			created, err = a.IPAM.CreateRecord(ctx, efficientip.Record{FQDN: next.FQDN, Type: next.Type, Value: next.Value, Zone: next.Zone})
+			if err == nil {
+				err = a.IPAM.DeleteRecord(ctx, old)
+			}
 		}
-		created, err := a.IPAM.CreateRecord(ctx, efficientip.Record{FQDN: next.FQDN, Type: next.Type, Value: next.Value, Zone: next.Zone})
 		if err != nil {
 			return "", fmt.Errorf("EfficientIP DNS: %w", err)
 		}

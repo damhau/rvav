@@ -473,7 +473,7 @@ func TestDay2Lifecycle(t *testing.T) {
 		if !contains(names, "A web-dev-api001"+domain) {
 			t.Fatalf("resources after rename = %v", names)
 		}
-		if got, _ := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "web-dev-api001"+domain); got.IP != dep.PrimaryAddress.Ip {
+		if got, _ := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "web-dev-api001"+domain, dep.Id); got.IP != dep.PrimaryAddress.Ip {
 			t.Fatalf("the address is not named web-dev-api001%s in EfficientIP: %+v", domain, got)
 		}
 		if ok, _ := h.acts.IPAM.NameExists(ctx, "web-dev-api001"+domain); !ok {

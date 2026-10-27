@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +67,11 @@ type Options struct {
 // TagParam is the class parameter set on every address and record rvav
 // creates, so the reconcile report can tell them apart.
 const TagParam = "rvav_managed"
+
+// OwnerParam is the class parameter naming what an address was reserved
+// for (rvav's deployment), so a retried reservation takes back its own
+// address and never one of the same name reserved by anyone else.
+const OwnerParam = "rvav_owner"
 
 var tag = url.Values{TagParam: {"1"}}.Encode()
 
@@ -125,7 +131,10 @@ func New(o Options) (*HTTPClient, error) {
 	if o.Insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for lab SOLIDservers
 	}
-	return &HTTPClient{opts: o, base: u, http: &http.Client{Transport: tr, Timeout: 30 * time.Second},
+	// Redirects are not followed: the native sign-in headers would go along
+	// to whatever host the redirect names.
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &HTTPClient{opts: o, base: u, http: &http.Client{Transport: tr, Timeout: 30 * time.Second, CheckRedirect: noRedirect},
 		now: time.Now, subnets: map[string]subnetRef{}}, nil
 }
 
@@ -249,53 +258,61 @@ func list(where string, limit int) url.Values {
 
 type subnetRef struct{ ID, Site string }
 
-// subnet finds the subnet's ID and IPAM space, by ID or else by its start
-// address and size among terminal subnets.
+// subnet finds the subnet's ID and IPAM space: by ID when it is known and
+// still has the subnet's range, else by its start address and size among
+// terminal subnets.
 func (c *HTTPClient) subnet(ctx context.Context, s Subnet) (subnetRef, error) {
-	key := s.ID
-	if key == "" {
-		key = s.CIDR
-	}
+	key := s.ID + " " + s.CIDR
 	c.mu.Lock()
 	ref, ok := c.subnets[key]
 	c.mu.Unlock()
 	if ok {
 		return ref, nil
 	}
-	var where string
 	var prefix netip.Prefix
-	if s.ID != "" {
-		where = "subnet_id=" + quote(s.ID)
-	} else {
+	if s.CIDR != "" {
 		var err error
 		if prefix, err = netip.ParsePrefix(s.CIDR); err != nil {
 			return subnetRef{}, fmt.Errorf("subnet %q: %w", s.CIDR, err)
 		}
-		where = "start_hostaddr=" + quote(prefix.Masked().Addr().String()) + " and is_terminal='1'"
+		prefix = prefix.Masked()
+	}
+	inRange := func(r row) bool {
+		return r["start_hostaddr"] == prefix.Addr().String() && prefixLen(r) == prefix.Bits()
+	}
+	var found []subnetRef
+	if s.ID != "" {
+		rows, err := c.call(ctx, http.MethodGet, "ip_block_subnet_list", list("subnet_id="+quote(s.ID), 1))
+		if err != nil {
+			return subnetRef{}, err
+		}
+		if len(rows) > 0 && (s.CIDR == "" || inRange(rows[0])) {
+			found = append(found, subnetRef{ID: rows[0]["subnet_id"], Site: rows[0]["site_id"]})
+		}
+	}
+	if len(found) == 0 && s.CIDR != "" {
+		where := "start_hostaddr=" + quote(prefix.Addr().String()) + " and is_terminal='1'"
 		if c.opts.Space != "" {
 			where += " and site_name=" + quote(c.opts.Space)
 		}
-	}
-	rows, err := c.call(ctx, http.MethodGet, "ip_block_subnet_list", list(where, 10))
-	if err != nil {
-		return subnetRef{}, err
-	}
-	var found []subnetRef
-	for _, r := range rows {
-		if s.ID == "" && prefixLen(r) != prefix.Bits() {
-			continue
+		rows, err := c.call(ctx, http.MethodGet, "ip_block_subnet_list", list(where, 10))
+		if err != nil {
+			return subnetRef{}, err
 		}
-		found = append(found, subnetRef{ID: r["subnet_id"], Site: r["site_id"]})
+		for _, r := range rows {
+			if inRange(r) {
+				found = append(found, subnetRef{ID: r["subnet_id"], Site: r["site_id"]})
+			}
+		}
 	}
 	switch {
 	case len(found) == 0:
-		return subnetRef{}, fmt.Errorf("%s: %w", key, errUnknownSubnet)
+		return subnetRef{}, fmt.Errorf("%s: %w", strings.TrimSpace(key), errUnknownSubnet)
 	case len(found) > 1:
-		return subnetRef{}, fmt.Errorf("subnet %s is in several IPAM spaces; set the space rvav uses", key)
+		return subnetRef{}, fmt.Errorf("subnet %s is in several IPAM spaces; set the space rvav uses", s.CIDR)
 	}
 	c.mu.Lock()
 	c.subnets[key] = found[0]
-	c.subnets[found[0].ID] = found[0]
 	c.mu.Unlock()
 	return found[0], nil
 }
@@ -313,15 +330,28 @@ func prefixLen(r row) int {
 	return 32 - (bits.Len64(size) - 1)
 }
 
-func (c *HTTPClient) free(ctx context.Context, ref subnetRef, n int) ([]string, error) {
+// free asks for up to n free addresses. SOLIDserver knows nothing of the
+// gateway rvav reads from the subnet's class parameters, so it may offer
+// it (and the network and broadcast addresses) when they are not
+// registered: they are left out.
+func (c *HTTPClient) free(ctx context.Context, s Subnet, ref subnetRef, n int) ([]string, error) {
 	rows, err := c.call(ctx, http.MethodOptions, "ip_find_free_address",
-		url.Values{"subnet_id": {ref.ID}, "max_find": {strconv.Itoa(n)}})
+		url.Values{"subnet_id": {ref.ID}, "max_find": {strconv.Itoa(n + 3)}})
 	if err != nil {
 		return nil, err
 	}
+	skip := map[string]bool{s.Gateway: true}
+	if p, err := netip.ParsePrefix(s.CIDR); err == nil && p.Bits() < 31 {
+		p = p.Masked()
+		last := p.Addr()
+		for next := last.Next(); p.Contains(next); next = next.Next() {
+			last = next
+		}
+		skip[p.Addr().String()], skip[last.String()] = true, true
+	}
 	var out []string
 	for _, r := range rows {
-		if ip := r["hostaddr"]; ip != "" {
+		if ip := r["hostaddr"]; ip != "" && !skip[ip] && len(out) < n {
 			out = append(out, ip)
 		}
 	}
@@ -336,17 +366,18 @@ func (c *HTTPClient) NextFree(ctx context.Context, s Subnet) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	free, err := c.free(ctx, ref, 1)
+	free, err := c.free(ctx, s, ref, 1)
 	if err != nil {
 		return "", err
 	}
 	return free[0], nil
 }
 
-// Reserve returns the address already named hostname in the subnet, or
-// adds the first free one. An address taken between the search and the
-// add is skipped.
-func (c *HTTPClient) Reserve(ctx context.Context, s Subnet, hostname string) (Address, error) {
+// Reserve returns the address named hostname in the subnet that was
+// reserved for owner, or adds the first free one. An address of that name
+// reserved by anyone else is ErrNameTaken. An address taken between the
+// search and the add is skipped.
+func (c *HTTPClient) Reserve(ctx context.Context, s Subnet, hostname, owner string) (Address, error) {
 	ref, err := c.subnet(ctx, s)
 	if err != nil {
 		return Address{}, err
@@ -357,17 +388,22 @@ func (c *HTTPClient) Reserve(ctx context.Context, s Subnet, hostname string) (Ad
 		return Address{}, err
 	}
 	if len(existing) > 0 {
+		params, _ := url.ParseQuery(existing[0]["ip_class_parameters"])
+		if params.Get(TagParam) != "1" || params.Get(OwnerParam) != owner {
+			return Address{}, fmt.Errorf("%s (%s): %w", hostname, existing[0]["hostaddr"], ErrNameTaken)
+		}
 		return Address{ID: existing[0]["ip_id"], IP: existing[0]["hostaddr"], Subnet: s.CIDR, Hostname: hostname}, nil
 	}
+	classParams := url.Values{TagParam: {"1"}, OwnerParam: {owner}}.Encode()
 	var last error
 	for range 2 {
-		free, err := c.free(ctx, ref, 5)
+		free, err := c.free(ctx, s, ref, 5)
 		if err != nil {
 			return Address{}, err
 		}
 		for _, ip := range free {
 			res, err := c.call(ctx, http.MethodPost, "ip_add", url.Values{"site_id": {ref.Site}, "hostaddr": {ip},
-				"name": {hostname}, "ip_class_parameters": {tag}, "add_flag": {"new_only"}})
+				"name": {hostname}, "ip_class_parameters": {classParams}, "add_flag": {"new_only"}})
 			if refused(err) {
 				last = err
 				continue
@@ -388,15 +424,29 @@ func first(rows []row, key string) string {
 	return rows[0][key]
 }
 
-// gone reports whether the object with this ID no longer exists.
-func (c *HTTPClient) gone(ctx context.Context, service, key, id string) (bool, error) {
-	rows, err := c.call(ctx, http.MethodGet, service, list(key+"="+quote(id), 1))
-	return len(rows) == 0, err
+// pendingDelete reports whether SOLIDserver has the DNS record queued for
+// deletion: it stays listed, with delayed_delete_time set, until the DNS
+// server has dropped it.
+func pendingDelete(r row) bool {
+	t := r["delayed_delete_time"]
+	return t != "" && t != "0"
 }
 
-// addressID is the address's ID: its own, or found by subnet and IP ("" when
-// EfficientIP doesn't have it).
-func (c *HTTPClient) addressID(ctx context.Context, a Address) (string, error) {
+func live(rows []row) []row {
+	return slices.DeleteFunc(rows, pendingDelete)
+}
+
+// gone reports whether the object with this ID no longer exists (or is
+// being deleted).
+func (c *HTTPClient) gone(ctx context.Context, service, key, id string) (bool, error) {
+	rows, err := c.call(ctx, http.MethodGet, service, list(key+"="+quote(id), 1))
+	return len(live(rows)) == 0, err
+}
+
+// addressID is the address's ID: its own, or found by subnet and IP when
+// it still has one of the names ("" when EfficientIP doesn't have it, or
+// the IP now belongs to another host).
+func (c *HTTPClient) addressID(ctx context.Context, a Address, names ...string) (string, error) {
 	if a.ID != "" {
 		return a.ID, nil
 	}
@@ -409,9 +459,17 @@ func (c *HTTPClient) addressID(ctx context.Context, a Address) (string, error) {
 	}
 	rows, err := c.call(ctx, http.MethodGet, "ip_address_list",
 		list("subnet_id="+quote(ref.ID)+" and hostaddr="+quote(a.IP), 1))
-	return first(rows, "ip_id"), err
+	if err != nil || len(rows) == 0 {
+		return "", err
+	}
+	if !slices.ContainsFunc(append(names, a.Hostname), func(n string) bool { return n != "" && sameValue(n, rows[0]["name"]) }) {
+		return "", nil
+	}
+	return rows[0]["ip_id"], nil
 }
 
+// Release deletes the address. Without its ID, it is found by IP and
+// released only when it still has the name rvav gave it.
 func (c *HTTPClient) Release(ctx context.Context, a Address) error {
 	id, err := c.addressID(ctx, a)
 	if err != nil || id == "" {
@@ -428,7 +486,7 @@ func (c *HTTPClient) Release(ctx context.Context, a Address) error {
 
 // RenameAddress gives the address a new name.
 func (c *HTTPClient) RenameAddress(ctx context.Context, a Address, hostname string) error {
-	id, err := c.addressID(ctx, a)
+	id, err := c.addressID(ctx, a, hostname)
 	if err != nil {
 		return err
 	}
@@ -451,7 +509,8 @@ func (c *HTTPClient) records(ctx context.Context, name, typ string) ([]row, erro
 	if c.opts.DNSView != "" {
 		where += " and dnsview_name=" + quote(c.opts.DNSView)
 	}
-	return c.call(ctx, http.MethodGet, "dns_rr_list", list(where, 20))
+	rows, err := c.call(ctx, http.MethodGet, "dns_rr_list", list(where, 20))
+	return live(rows), err
 }
 
 // CreateRecord adopts a record with the same name, type and value (one
@@ -487,6 +546,36 @@ func (c *HTTPClient) CreateRecord(ctx context.Context, r Record) (Record, error)
 	return r, nil
 }
 
+// UpdateRecord points the record (found by ID, or else by its value) to a
+// new value in place. A record of the name and type that already has the
+// value is adopted; when there is none to change, it is created.
+func (c *HTTPClient) UpdateRecord(ctx context.Context, r Record, value string) (Record, error) {
+	rows, err := c.records(ctx, r.FQDN, r.Type)
+	if err != nil {
+		return Record{}, err
+	}
+	var current row
+	for _, existing := range rows {
+		if sameValue(existing["value1"], value) {
+			r.ID, r.Value = existing["rr_id"], value
+			return r, nil
+		}
+		if r.ID != "" && existing["rr_id"] == r.ID || r.ID == "" && sameValue(existing["value1"], r.Value) {
+			current = existing
+		}
+	}
+	if current == nil {
+		r.ID, r.Value = "", value
+		return c.CreateRecord(ctx, r)
+	}
+	if _, err := c.call(ctx, http.MethodPut, "dns_rr_add",
+		url.Values{"rr_id": {current["rr_id"]}, "value1": {value}, "add_flag": {"edit_only"}}); err != nil {
+		return Record{}, err
+	}
+	r.ID, r.Value = current["rr_id"], value
+	return r, nil
+}
+
 func (c *HTTPClient) DeleteRecord(ctx context.Context, r Record) error {
 	id := r.ID
 	if id == "" {
@@ -513,27 +602,37 @@ func (c *HTTPClient) DeleteRecord(ctx context.Context, r Record) error {
 }
 
 // NameExists reports whether DNS has an A, AAAA or CNAME record for the
-// name, on any server.
+// name, on any server, or an IPAM address has it as its name.
 func (c *HTTPClient) NameExists(ctx context.Context, name string) (bool, error) {
 	rows, err := c.call(ctx, http.MethodGet, "dns_rr_list",
-		list("rr_full_name="+quote(fqdn(name))+" and (rr_type='A' or rr_type='AAAA' or rr_type='CNAME')", 1))
+		list("rr_full_name="+quote(fqdn(name))+" and (rr_type='A' or rr_type='AAAA' or rr_type='CNAME')", 20))
+	if err != nil {
+		return false, err
+	}
+	if len(live(rows)) > 0 {
+		return true, nil
+	}
+	rows, err = c.call(ctx, http.MethodGet, "ip_address_list", list("name="+quote(fqdn(name)), 1))
 	return len(rows) > 0, err
 }
 
-// pages calls a list service page after page.
+// pages calls a list service page after page, until a page is empty (the
+// server may cap a page below the limit asked for).
 func (c *HTTPClient) pages(ctx context.Context, service, where string) ([]row, error) {
-	const size = 500
+	const size, most = 500, 200_000
 	var out []row
-	for offset := 0; ; offset += size {
+	for {
 		q := list(where, size)
-		q.Set("offset", strconv.Itoa(offset))
+		q.Set("offset", strconv.Itoa(len(out)))
 		rows, err := c.call(ctx, http.MethodGet, service, q)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, rows...)
-		if len(rows) < size {
+		if len(rows) == 0 {
 			return out, nil
+		}
+		if out = append(out, rows...); len(out) > most {
+			return nil, fmt.Errorf("%s: more than %d results", service, most)
 		}
 	}
 }
@@ -594,8 +693,8 @@ func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
 			continue
 		}
 		subnet := r["subnet_name"]
-		if start, bits := r["subnet_start_hostaddr"], r["subnet_prefix"]; start != "" && bits != "" {
-			subnet = start + "/" + bits
+		if bits := prefixLen(r); r["subnet_start_hostaddr"] != "" && bits >= 0 {
+			subnet = r["subnet_start_hostaddr"] + "/" + strconv.Itoa(bits)
 		}
 		addresses = append(addresses, Address{ID: r["ip_id"], IP: r["hostaddr"], Subnet: subnet, Hostname: r["name"]})
 	}
@@ -604,7 +703,7 @@ func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
 		return nil, nil, err
 	}
 	var records []Record
-	for _, r := range rows {
+	for _, r := range live(rows) {
 		if isTagged(r["rr_class_parameters"]) {
 			records = append(records, Record{ID: r["rr_id"], FQDN: r["rr_full_name"], Type: r["rr_type"], Value: r["value1"], Zone: r["dnszone_name"]})
 		}
@@ -634,7 +733,7 @@ func (c *HTTPClient) existing(ctx context.Context, service, key string, ids []st
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range rows {
+		for _, r := range live(rows) {
 			out[r[key]] = true
 		}
 	}

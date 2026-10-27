@@ -122,8 +122,8 @@ const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficien
 
 // SyncNetworkSubnets replaces the mappings found in EfficientIP with these:
 // rows set by hand are kept, and get the subnet's ID when their CIDR is
-// the one found; synced rows no longer found are removed.
-func (s *Store) SyncNetworkSubnets(ctx context.Context, found []NetworkSubnet) (synced, removed int, err error) {
+// the one found; synced rows neither found nor held are removed.
+func (s *Store) SyncNetworkSubnets(ctx context.Context, found []NetworkSubnet, held []string) (synced, removed int, err error) {
 	err = s.Tx(ctx, func(tx pgx.Tx) error {
 		networks := make([]string, len(found))
 		for i, n := range found {
@@ -144,7 +144,8 @@ func (s *Store) SyncNetworkSubnets(ctx context.Context, found []NetworkSubnet) (
 				}
 			}
 		}
-		tag, err := tx.Exec(ctx, `delete from network_subnets where source = 'efficientip' and not (network = any($1))`, networks)
+		tag, err := tx.Exec(ctx, `delete from network_subnets where source = 'efficientip' and not (network = any($1))
+			and not (network = any($2))`, networks, append([]string{}, held...))
 		removed = int(tag.RowsAffected())
 		return err
 	})

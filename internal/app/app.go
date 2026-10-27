@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/damhau/rvav/internal/awxcatalog"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	tlog "go.temporal.io/sdk/log"
 
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/awxcatalog"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/events"
@@ -58,12 +61,15 @@ func (a *App) awxCatalog() *awxcatalog.Sync {
 // network mappings, which never offers an address rvav has recorded.
 func NewFakeEfficientIP(ctx context.Context, st *store.Store) (*efficientip.FakeServer, error) {
 	fake := efficientip.NewFakeServer()
+	fake.UniqueIDs()
 	fake.InUse = st.IPAddressesInUse
 	networks, err := st.NetworkSubnets(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, n := range networks {
+	// In a fixed order, so subnet IDs are the same each time the fake starts.
+	for _, network := range slices.Sorted(maps.Keys(networks)) {
+		n := networks[network]
 		if err := fake.AddNetwork(efficientip.FakeNetwork{Network: n.Network, CIDR: n.Subnet, Gateway: n.Gateway,
 			Zone: n.DNSZone, DNSServers: n.DNSServers}); err != nil {
 			return nil, err
@@ -101,6 +107,9 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Space: cfg.IPAM.Space,
 			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView}); err != nil {
 			return nil, err
+		}
+		if strings.HasPrefix(cfg.IPAM.URL, "http://") {
+			log.Warn("RVAV_EFFICIENTIP_URL is not HTTPS: rvav's SOLIDserver credentials are sent in clear")
 		}
 	} else {
 		return nil, errors.New("set RVAV_EFFICIENTIP_URL, or RVAV_FAKE_EFFICIENTIP=1 for development")

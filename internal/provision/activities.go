@@ -127,6 +127,9 @@ func (a *Activities) update(ctx context.Context, requestID, projectID, key strin
 func (a *Activities) run(ctx context.Context, requestID, projectID, key string, fn func() (title, detail string, err error)) error {
 	a.update(ctx, requestID, projectID, key, store.StepUpdate{Status: "running"})
 	title, detail, err := fn()
+	if errors.Is(err, store.ErrTaken) {
+		err = temporal.NewNonRetryableApplicationError(err.Error(), "Permanent", err)
+	}
 	if err != nil {
 		msg := errMessage(err)
 		a.update(ctx, requestID, projectID, key, store.StepUpdate{Status: "failed", Error: &msg})
@@ -302,9 +305,12 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			ip = p.Address
 			return "Reserved " + ip, "Subnet " + in.VM.Subnet, nil
 		}
-		addr, err := a.IPAM.Reserve(ctx, a.subnet(in.VM), cmp.Or(in.VM.FQDN, in.VM.Name))
+		addr, err := a.IPAM.Reserve(ctx, a.subnet(in.VM), cmp.Or(in.VM.FQDN, in.VM.Name), in.VM.DeploymentID)
 		if errors.Is(err, efficientip.ErrSubnetFull) {
 			return "", "", permanent("Subnet %s has no free address", in.VM.Subnet)
+		}
+		if errors.Is(err, efficientip.ErrNameTaken) {
+			return "", "", permanent("EfficientIP: %v; rvav did not reserve it for this deployment", err)
 		}
 		if err != nil {
 			return "", "", fmt.Errorf("EfficientIP: %w", err)
@@ -838,12 +844,14 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 		}
 	case "ipam.address":
 		var p struct {
-			Address string `json:"address"`
-			Subnet  string `json:"subnet"`
-			ID      string `json:"efficientip_id"`
+			Address  string `json:"address"`
+			Subnet   string `json:"subnet"`
+			ID       string `json:"efficientip_id"`
+			Hostname string `json:"hostname"`
+			FQDN     string `json:"fqdn"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
-		err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet})
+		err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)})
 		what = "released " + p.Address
 	}
 	if err != nil {

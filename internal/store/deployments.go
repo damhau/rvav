@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -150,14 +151,21 @@ const resourceCols = `id, deployment_id, request_id, type, name, external_id, sy
 
 // UpsertResource creates a resource or replaces its properties, keyed by type
 // and external ID.
+// UpsertResource records an external object, or updates it when the
+// deployment already has it. An object another deployment has is ErrTaken:
+// it is never moved.
 func (s *Store) UpsertResource(ctx context.Context, db DB, r Resource) (Resource, error) {
 	rows, _ := db.Query(ctx, `insert into resources (id, deployment_id, request_id, type, name, external_id, sync_state, properties)
 		values ($1,$2,$3,$4,$5,$6,$7,$8)
 		on conflict (type, external_id) do update set name = excluded.name, properties = excluded.properties,
 		       sync_state = excluded.sync_state, updated_at = now()
+		where resources.deployment_id = excluded.deployment_id
 		returning `+resourceCols,
 		r.ID, r.DeploymentID, r.RequestID, r.Type, r.Name, r.ExternalID, orDefault(r.SyncState, "in_sync"), jsonOr(r.Properties, "{}"))
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Resource])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return res, fmt.Errorf("%s %s: %w", r.Type, r.Name, ErrTaken)
+	}
 	return res, err
 }
 

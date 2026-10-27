@@ -1090,7 +1090,7 @@ components:
         efficientip_id: { type: string }
         ip: { type: string }
         name: { type: string }
-        subnet: { type: string, description: The subnet's name in EfficientIP. }
+        subnet: { type: string, description: "The subnet, as a CIDR (its name when EfficientIP doesn't give its range).", example: 10.31.10.0/24 }
     IpamOrphanRecord:
       type: object
       required: [efficientip_id, fqdn, type, value]

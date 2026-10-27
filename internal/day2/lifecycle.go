@@ -35,7 +35,11 @@ func init() {
 				fqdn = name + "." + domain
 			}
 			args := map[string]any{"name": name, "old_name": t.ResourceName, "fqdn": fqdn, "old_fqdn": old}
-			ops := []Op{vcenter("vsphere.rename", "Rename "+t.ResourceName+" to "+name+" in vCenter", "rename_vm", args)}
+			var ops []Op
+			if old != "" {
+				ops = append(ops, Op{Key: "dns.check", Title: "Check " + fqdn + " is free", System: "efficientip", Op: "check_name", Args: args})
+			}
+			ops = append(ops, vcenter("vsphere.rename", "Rename "+t.ResourceName+" to "+name+" in vCenter", "rename_vm", args))
 			if old != "" {
 				ops = append(ops, Op{Key: "ipam.rename", Title: "Rename the address in EfficientIP", Detail: old + " → " + fqdn,
 					System: "efficientip", Op: "rename_address", Args: args},

@@ -135,7 +135,7 @@ the default.
 - At provision: find the next free IP in the subnet linked to the chosen network,
   reserve it (with hostname, MAC address once known, and rvav metadata as class
   parameters), then create DNS A and PTR records.
-- At rename: update the DNS records.
+- At rename: rename the address and update the DNS records.
 - At delete: delete the DNS records and release the IP.
 - Form pickers: subnets, free IPs, DNS zones; async validation that a hostname or
   IP is free.
@@ -151,23 +151,30 @@ development stack.
 ```go
 type Client interface {
     NextFree(ctx context.Context, s Subnet) (string, error)
-    Reserve(ctx context.Context, s Subnet, hostname string) (Address, error)
+    Reserve(ctx context.Context, s Subnet, hostname, owner string) (Address, error)
     Release(ctx context.Context, a Address) error
+    RenameAddress(ctx context.Context, a Address, hostname string) error
     CreateRecord(ctx context.Context, r Record) (Record, error)
+    UpdateRecord(ctx context.Context, r Record, value string) (Record, error)
     DeleteRecord(ctx context.Context, r Record) error
     NameExists(ctx context.Context, fqdn string) (bool, error)
+    Subnets(ctx context.Context) ([]SubnetInfo, error)
+    Zones(ctx context.Context) ([]string, error)
+    Managed(ctx context.Context) ([]Address, []Record, error)
+    Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
 }
 ```
 
 ### Notes
-- Race safety: the reservation looks for the hostname first and skips an
+- Race safety: the reservation looks for the hostname first, takes back
+  only an address rvav reserved for the same deployment, and skips an
   address taken between the search and the add, so activity retries are
   idempotent.
 - The mapping between vSphere networks and EfficientIP subnets comes from the
   subnet class parameters `vsphere_network`, `gateway`, `domain` and
   `dns_servers`, read by the sync service; mappings set by an administrator
   win (ADR-0015).
-- VM names are checked free in DNS as well as in vCenter.
+- VM names are checked free in DNS and IPAM as well as in vCenter.
 
 ## Identity (OIDC)
 

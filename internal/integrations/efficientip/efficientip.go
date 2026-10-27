@@ -40,16 +40,23 @@ type SubnetInfo struct {
 
 var ErrSubnetFull = errors.New("no free address in subnet")
 
-// Client is what rvav needs from IPAM and DNS. Reserve and CreateRecord are
-// idempotent: calling them again for the same hostname returns what exists.
-// Release and DeleteRecord succeed when the object is already gone.
+// ErrNameTaken is an address of the name that rvav did not reserve for
+// this owner.
+var ErrNameTaken = errors.New("the name already has an address in EfficientIP")
+
+// Client is what rvav needs from IPAM and DNS. Reserve, CreateRecord and
+// UpdateRecord are idempotent: calling them again returns what exists
+// (Reserve only what it reserved for the same owner). Release and
+// DeleteRecord succeed when the object is already gone.
 type Client interface {
 	NextFree(ctx context.Context, s Subnet) (string, error)
-	Reserve(ctx context.Context, s Subnet, hostname string) (Address, error)
+	Reserve(ctx context.Context, s Subnet, hostname, owner string) (Address, error)
 	Release(ctx context.Context, a Address) error
 	RenameAddress(ctx context.Context, a Address, hostname string) error
 	CreateRecord(ctx context.Context, r Record) (Record, error)
+	UpdateRecord(ctx context.Context, r Record, value string) (Record, error)
 	DeleteRecord(ctx context.Context, r Record) error
+	// NameExists reports whether DNS or IPAM has the name.
 	NameExists(ctx context.Context, fqdn string) (bool, error)
 	// Subnets lists the terminal subnets of rvav's space (all spaces when
 	// none is set).
