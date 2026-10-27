@@ -95,7 +95,7 @@ test("build a small form in the designer", async ({ page }) => {
   await page.getByRole("option", { name: "Dropdown", exact: true }).click();
   await props.getByRole("textbox", { name: "Name" }).fill("group");
   await props.getByRole("textbox", { name: "Name" }).press("Enter");
-  await props.getByRole("textbox", { name: "Label" }).fill("Owning group");
+  await props.getByRole("textbox", { name: "Label", exact: true }).fill("Owning group");
   await props.getByRole("combobox", { name: "Value source" }).click();
   await page.getByRole("option", { name: "CEL expression" }).click();
   await props.getByRole("textbox", { name: "Options" }).fill("user.groups");
@@ -113,7 +113,7 @@ test("build a small form in the designer", async ({ page }) => {
   await page.getByRole("option", { name: "Text", exact: true }).click();
   await props.getByRole("textbox", { name: "Name" }).fill("reason");
   await props.getByRole("textbox", { name: "Name" }).press("Enter");
-  await props.getByRole("textbox", { name: "Label" }).fill("Why production");
+  await props.getByRole("textbox", { name: "Label", exact: true }).fill("Why production");
   const shown = props.getByRole("textbox", { name: "Shown when" });
   await shown.fill('environment == "prd" &&');
   await shown.press("Enter");
@@ -137,5 +137,95 @@ test("build a small form in the designer", async ({ page }) => {
   const yaml = page.getByRole("textbox", { name: "Definition of Team share 1.0" });
   await expect(yaml).toContainText("fields:");
   await expect(yaml).toContainText('visible: environment == "prd"');
+  expect(errors).toEqual([]);
+});
+
+// S8's acceptance scenario on the mocks (S8.9): built with a REST dropdown,
+// previewed as a member, published, changed into 1.1 and rolled back.
+test("an Ubuntu item from draft to roll back", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("button", { name: "New secret" }).click();
+  const secret = page.getByRole("dialog", { name: "New secret" });
+  await secret.getByRole("textbox", { name: "Name" }).fill("cmdb");
+  await secret.getByLabel("Value").fill("cmdb-token");
+  await secret.getByRole("button", { name: "Store" }).click();
+  await expect(page.getByText("cmdb stored")).toBeVisible();
+
+  await page.getByRole("button", { name: "New item" }).click();
+  const dialog = page.getByRole("dialog", { name: "New item" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu web");
+  await dialog.getByRole("textbox", { name: "Slug" }).fill("ubuntu-web");
+  await dialog.getByRole("textbox", { name: "Summary" }).fill("Ubuntu with nginx and a backup policy.");
+  await dialog.getByRole("button", { name: "Create" }).click();
+
+  // A dropdown from the CMDB, tested as a member of Web Platform.
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  const fields = page.getByRole("region", { name: "Fields" });
+  const props = page.getByRole("region", { name: "Properties" });
+  const preview = page.getByRole("region", { name: "Preview" });
+  const status = page.getByRole("status").filter({ hasText: /^Draft / });
+  await fields.getByRole("combobox", { name: "Add a field" }).click();
+  await page.getByRole("option", { name: "Dropdown", exact: true }).click();
+  await props.getByRole("textbox", { name: "Name" }).fill("backup");
+  await props.getByRole("textbox", { name: "Name" }).press("Enter");
+  await props.getByRole("textbox", { name: "Label", exact: true }).fill("Backup policy");
+  await props.getByRole("combobox", { name: "Value source" }).click();
+  await page.getByRole("option", { name: "REST service" }).click();
+  const url = props.getByRole("textbox", { name: "URL" });
+  await url.fill("https://cmdb.corp.example/policies?for=${inputs.name}");
+  await url.press("Enter");
+  await props.getByRole("textbox", { name: "Secret" }).fill("cmdb");
+  await props.getByRole("textbox", { name: "Secret" }).press("Enter");
+  await expect(status).toHaveText("Draft 1.0: saved");
+  await preview.getByRole("combobox", { name: "Preview as" }).click();
+  await page.getByRole("option", { name: "Thomas Nguyen (member)" }).click();
+  await props.getByRole("button", { name: "Test the source" }).click();
+  await expect(props.getByRole("status")).toContainText("2 options: Service 01, Service 02");
+  await expect(preview.getByRole("combobox", { name: "Backup policy" })).toBeVisible();
+
+  // Open to Web Platform, published as 1.0: members get it.
+  await page.getByRole("tab", { name: "Entitlements" }).click();
+  await page.getByRole("radio", { name: /Chosen projects/ }).check();
+  await page.getByRole("checkbox", { name: "Web Platform" }).click();
+  await page.getByRole("button", { name: "Save entitlements" }).click();
+  await expect(page.getByText("Entitlements saved")).toBeVisible();
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText("1.0 published")).toBeVisible();
+  await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+  await expect(page.getByRole("region", { name: "Secrets" }).getByRole("row", { name: /cmdb/ })).toContainText(
+    "ubuntu-web",
+  );
+  // In-app navigation: a reload would start the mock backend afresh.
+  const requestForm = async (label: string, version: string) => {
+    await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+    await expect(page.getByText(`v${version}`, { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Ubuntu web" }).click();
+    await expect(page.getByRole("combobox", { name: label })).toBeVisible();
+  };
+  const backToItem = async () => {
+    await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+    await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "Ubuntu web" }).click();
+  };
+  await requestForm("Backup policy", "1.0");
+
+  // 1.1 renames the field; rolled back, members get 1.0 again.
+  await backToItem();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText("Draft 1.1 made from the published version")).toBeVisible();
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  await fields.getByRole("button", { name: /^Backup policy/ }).click();
+  await props.getByRole("textbox", { name: "Label", exact: true }).fill("Backup schedule");
+  await expect(status).toHaveText("Draft 1.1: saved");
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText("1.1 published")).toBeVisible();
+  await requestForm("Backup schedule", "1.1");
+  await backToItem();
+  await page.getByRole("button", { name: "Roll back to 1.0" }).click();
+  await expect(page.getByText("Rolled back to 1.0")).toBeVisible();
+  await requestForm("Backup policy", "1.0");
   expect(errors).toEqual([]);
 });

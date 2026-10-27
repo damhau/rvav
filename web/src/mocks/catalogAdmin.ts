@@ -13,6 +13,7 @@ type Version = S["CatalogItemVersionDetail"];
 type Definition = S["CatalogVersionDefinition"];
 
 interface AdminState {
+  secrets: S["Secret"][];
   versions: Record<string, Version[]>; // by item ID, newest first
   allProjects: Set<string>;
   sortOrder: Record<string, number>;
@@ -74,6 +75,7 @@ function state(db: Db): AdminState {
       ];
     }
     d.catalogAdmin = {
+      secrets: [],
       versions,
       allProjects: new Set(db.items.filter((i) => i.source.kind === "awx").map((i) => i.id)),
       sortOrder: Object.fromEntries(db.categories.map((c, i) => [c.key, i * 10])),
@@ -650,6 +652,49 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/catalog/icons`, () => HttpResponse.json({ items: iconSet })),
+    http.get(`${base}/admin/secrets`, async () => {
+      await wait();
+      const st = state(db);
+      const usedBy = (name: string) =>
+        db.items
+          .filter((i) =>
+            (st.versions[i.id] ?? []).some((v) =>
+              Object.values(v.definition.ui_schema.fields).some((f) => f.value_source?.params?.secret === name),
+            ),
+          )
+          .map((i) => i.slug);
+      return HttpResponse.json({ items: st.secrets.map((x) => ({ ...x, used_by: usedBy(x.name) })) });
+    }),
+    http.post(`${base}/admin/secrets`, async ({ request }) => {
+      await wait();
+      const w = (await request.json()) as S["SecretWrite"];
+      const st = state(db);
+      if (st.secrets.some((x) => x.name === w.name)) return problem(409, "Conflict", undefined, `${w.name} exists.`);
+      const { value: _, ...rest } = w;
+      const secret: S["Secret"] = { ...rest, description: w.description ?? "", created_at: now(), updated_at: now() };
+      st.secrets.push(secret);
+      return HttpResponse.json(secret, { status: 201 });
+    }),
+    http.put(`${base}/admin/secrets/:name`, async ({ params, request }) => {
+      await wait();
+      const w = (await request.json()) as S["SecretWrite"];
+      const st = state(db);
+      const { value: _, ...rest } = w;
+      const secret: S["Secret"] = {
+        ...rest,
+        description: w.description ?? "",
+        created_at: st.secrets.find((x) => x.name === params.name)?.created_at ?? now(),
+        updated_at: now(),
+      };
+      st.secrets = [...st.secrets.filter((x) => x.name !== params.name), secret];
+      return HttpResponse.json(secret);
+    }),
+    http.delete(`${base}/admin/secrets/:name`, async ({ params }) => {
+      await wait();
+      const st = state(db);
+      st.secrets = st.secrets.filter((x) => x.name !== params.name);
+      return new HttpResponse(null, { status: 204 });
+    }),
     http.get(`${base}/admin/catalog/preview-users`, async ({ request }) => {
       await wait();
       const project = db.projects.find((p) => p.id === new URL(request.url).searchParams.get("project_id"));
@@ -657,6 +702,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const items = (previewMembers[project.code] ?? []).map((m) => ({
         id: m.id,
         name: db.users.find((u) => u.id === m.id)?.name ?? m.id,
+        email: db.users.find((u) => u.id === m.id)?.email ?? "",
         role: m.role,
       }));
       return HttpResponse.json({ items });

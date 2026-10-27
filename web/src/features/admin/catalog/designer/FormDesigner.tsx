@@ -112,7 +112,11 @@ function Preview({
             onChange={(v) => setCtx((c) => ({ ...c, asUserId: v === "me" ? "" : v }))}
             options={[
               { value: "me", label: "Myself" },
-              ...(users.data?.items ?? []).map((u) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+              ...(users.data?.items ?? []).map((u) => ({
+                value: u.id,
+                label: `${u.name} (${u.role})`,
+                ...(u.email ? { meta: u.email } : {}),
+              })),
             ]}
           />
         </Field>

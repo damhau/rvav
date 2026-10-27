@@ -1184,10 +1184,11 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, name, role]
+                      required: [id, name, email, role]
                       properties:
                         id: { type: string }
                         name: { type: string }
+                        email: { type: string, description: "Tells apart people with the same name." }
                         role: { type: string, examples: [member] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

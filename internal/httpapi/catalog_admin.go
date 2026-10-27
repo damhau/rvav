@@ -133,13 +133,17 @@ func (s *Server) PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Reques
 func (s *Server) ListPreviewUsers(w http.ResponseWriter, r *http.Request, params api.ListPreviewUsersParams) {
 	users, roles, err := s.Core.PreviewUsers(r.Context(), principal(r), params.ProjectId)
 	type user struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-		Role string `json:"role"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		Role  string `json:"role"`
 	}
 	items := make([]user, len(users))
 	for i, u := range users {
 		items[i] = user{ID: u.Id, Name: u.Name, Role: roles[i]}
+		if u.Email != nil {
+			items[i].Email = string(*u.Email)
+		}
 	}
 	s.reply(w, r, http.StatusOK, map[string]any{"items": items}, err)
 }

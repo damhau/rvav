@@ -1,0 +1,6 @@
+{
+  "policies": [
+    { "id": "bk-daily", "name": "Daily", "retention": "14 days" },
+    { "id": "bk-weekly", "name": "Weekly", "retention": "8 weeks" }
+  ]
+}

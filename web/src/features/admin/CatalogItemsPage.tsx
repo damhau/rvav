@@ -5,6 +5,7 @@ import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
 import { CategoriesPanel } from "@/features/admin/catalog/CategoriesPanel";
 import { ItemsPanel } from "@/features/admin/catalog/ItemsPanel";
+import { SecretsPanel } from "@/features/admin/catalog/SecretsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -145,6 +146,7 @@ export function CatalogItemsPage() {
       />
       <ItemsPanel />
       <CategoriesPanel />
+      <SecretsPanel />
       <AwxTemplatesPanel />
     </Page>
   );

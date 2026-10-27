@@ -4007,6 +4007,8 @@ export interface operations {
                         items: {
                             id: string;
                             name: string;
+                            /** @description Tells apart people with the same name. */
+                            email: string;
                             /** @example member */
                             role: string;
                         }[];

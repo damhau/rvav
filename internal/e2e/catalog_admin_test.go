@@ -491,3 +491,125 @@ func TestDesignerPreview(t *testing.T) {
 		h.json("GET", "/api/v1/admin/catalog/preview-users?project_id="+web, "tnguyen", nil, 403, nil)
 	})
 }
+
+// TestCatalogAdminAcceptance is S8's acceptance scenario: a catalog admin
+// builds an Ubuntu item with a dropdown from a REST service, previews it as
+// a member of Web Platform, publishes 1.0, which a member requests, changes
+// it into 1.1 and rolls back; the deployment keeps 1.0 throughout (S8.9).
+func TestCatalogAdminAcceptance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin, member = "prj_web", "lmartin", "tnguyen"
+		cmdb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer backup-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"policies": [{"id": "bk-daily-%[1]s", "name": "Daily (%[1]s)", "retention": "14 days"},
+				{"id": "bk-weekly-%[1]s", "name": "Weekly (%[1]s)", "retention": "8 weeks"}]}`, r.URL.Query().Get("role"))
+		}))
+		defer cmdb.Close()
+		h.svc.REST.Hosts = []string{strings.TrimPrefix(cmdb.URL, "http://")}
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "backup", Kind: api.SecretWriteKindToken, Value: new("backup-token")}, 201, nil)
+
+		// Built from the RHEL item's form, with a backup policy from the REST service.
+		var rhel api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server", admin, nil, 200, &rhel)
+		var published api.CatalogItemVersionDetail
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/versions/"+rhel.PublishedVersion.Id, admin, nil, 200, &published)
+		def := published.Definition
+		def.FormSchema["properties"].(map[string]any)["backup"] = map[string]any{"type": "string"}
+		def.FormSchema["required"] = append(def.FormSchema["required"].([]any), "backup")
+		def.UiSchema.Fields["backup"] = api.UiField{Widget: api.UiWidgetSelect, Label: "Backup policy", DependsOn: &[]string{"role"},
+			ValueSource: &api.ValueSource{Kind: api.Rest, Params: &map[string]any{"url": cmdb.URL + "/policies?role=${inputs.role}",
+				"secret": "backup", "items": "$.policies", "value": "$.id", "label": "$.name", "meta": "$.retention"}}}
+		def.UiSchema.Layout.Sections[0].Fields = append(def.UiSchema.Layout.Sections[0].Fields, "backup")
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "ubuntu-web", Name: "Ubuntu 24.04 web server",
+			Summary: "Ubuntu with nginx and a backup policy.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
+		v1 := item.DraftVersion.Id
+		h.json("PUT", "/api/v1/admin/catalog/items/ubuntu-web/entitlements", admin, api.CatalogEntitlements{ProjectIds: []string{web}}, 200, nil)
+
+		// Previewed as a member of Web Platform before anyone can request it.
+		h.json("GET", "/api/v1/catalog/items/ubuntu-web?project_id="+web, member, nil, 404, nil)
+		var preview api.DesignerPreview
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-web/versions/"+v1+"/preview", admin, api.DesignerPreviewQuery{ProjectId: web,
+			AsUserId: new(seed.UserID(member)), Inputs: map[string]any{"role": "app"}}, 200, &preview)
+		if !preview.Fields["backup"].Visible || !slices.ContainsFunc(preview.Errors, func(e api.FieldError) bool { return e.Field == "/inputs/backup" }) {
+			t.Fatalf("preview as a member = %+v", preview)
+		}
+		values := func(user, version string, as *string) api.FieldValues {
+			t.Helper()
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", user, api.FieldValuesQuery{VersionId: version, ProjectId: web, Field: "backup",
+				Environment: new(api.EnvironmentKey("dev")), Inputs: map[string]any{"role": "app"}, AsUserId: as}, 200, &out)
+			return out
+		}
+		if got := values(admin, v1, new(seed.UserID(member))); got.Options == nil || len(*got.Options) != 2 ||
+			(*got.Options)[0].Value != "bk-daily-app" || deref((*got.Options)[0].Meta) != "14 days" {
+			t.Fatalf("backup policies in the preview = %+v", got.Options)
+		}
+
+		// 1.0 published: Web Platform may request it, Data Engineering may not.
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-web/versions/"+v1+"/publish", admin,
+			api.CatalogItemVersionPublish{Changelog: new("First version.")}, 200, nil)
+		h.json("GET", "/api/v1/catalog/items/ubuntu-web?project_id=prj_data", "sbrunner", nil, 404, nil)
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/ubuntu-web/form?project_id="+web, member, nil, 200, &form)
+		if form.VersionId != v1 {
+			t.Fatalf("the form's version = %s, want 1.0", form.VersionId)
+		}
+		if got := values(member, v1, nil); got.Options == nil || len(*got.Options) != 2 {
+			t.Fatalf("backup policies for the member = %+v", got.Options)
+		}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", member, api.RequestDraft{CatalogItemId: item.Id, VersionId: v1, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+				"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}, "backup": "bk-daily-app"}}, 202, &req,
+			"Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		deploymentVersion := func() string {
+			t.Helper()
+			var v string
+			if err := h.store.Pool.QueryRow(ctx, `select version_id from deployments where created_by_request_id = $1`, req.Id).Scan(&v); err != nil {
+				t.Fatal(err)
+			}
+			return v
+		}
+		if v := deploymentVersion(); v != v1 {
+			t.Fatalf("the deployment's version = %s, want 1.0", v)
+		}
+
+		// 1.1 renames the field; members get 1.1, the deployment keeps 1.0.
+		var v2 api.CatalogItemVersionDetail
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-web/versions", admin, api.CatalogItemVersionCreate{}, 201, &v2)
+		changed := v2.Definition
+		backup := changed.UiSchema.Fields["backup"]
+		backup.Label = "Backup schedule"
+		changed.UiSchema.Fields["backup"] = backup
+		h.json("PUT", "/api/v1/admin/catalog/items/ubuntu-web/versions/"+v2.Id, admin,
+			api.CatalogItemVersionUpdate{Definition: changed, Changelog: new("Backup schedule.")}, 200, nil)
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-web/versions/"+v2.Id+"/publish", admin, nil, 200, &item)
+		h.json("GET", "/api/v1/catalog/items/ubuntu-web/form?project_id="+web, member, nil, 200, &form)
+		if form.VersionId != v2.Id || form.UiSchema.Fields["backup"].Label != "Backup schedule" || stateOf(item, v1) != "deprecated" {
+			t.Fatalf("after 1.1: form %s, item %+v", form.VersionId, item.Versions)
+		}
+		if v := deploymentVersion(); v != v1 {
+			t.Fatalf("after 1.1, the deployment's version = %s", v)
+		}
+
+		// Rolled back to 1.0.
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-web/versions/"+v1+"/publish", admin, nil, 200, &item)
+		h.json("GET", "/api/v1/catalog/items/ubuntu-web/form?project_id="+web, member, nil, 200, &form)
+		if form.VersionId != v1 || form.UiSchema.Fields["backup"].Label != "Backup policy" || stateOf(item, v2.Id) != "deprecated" {
+			t.Fatalf("after rolling back: form %s, item %+v", form.VersionId, item.Versions)
+		}
+		if v := deploymentVersion(); v != v1 || versionOf(item, v1).Deployments != 1 {
+			t.Fatalf("after rolling back, the deployment's version = %s", v)
+		}
+	})
+}
