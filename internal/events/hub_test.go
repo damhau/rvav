@@ -12,6 +12,7 @@ func TestFilterMatches(t *testing.T) {
 	reqEvent := store.Event{ID: 1, ProjectID: &web, Topics: []string{"requests", "request:req_1"}}
 	finEvent := store.Event{ID: 2, ProjectID: &fin, Topics: []string{"requests", "request:req_2"}}
 	note := store.Event{ID: 3, Topics: []string{"notifications", "user:usr_lmartin"}}
+	approval := store.Event{ID: 4, Topics: []string{"approvals", "user:usr_mkeller", "user:usr_cdubois"}}
 	seesWeb := func(p string) bool { return p == web }
 
 	cases := []struct {
@@ -27,6 +28,9 @@ func TestFilterMatches(t *testing.T) {
 		{"deployments topic does not get requests", Filter{Topics: []string{"deployments"}, CanSeeProject: seesWeb}, reqEvent, false},
 		{"own notification", Filter{Topics: []string{"notifications"}, UserID: "usr_lmartin"}, note, true},
 		{"someone else's notification", Filter{Topics: []string{"notifications"}, UserID: "usr_tnguyen"}, note, false},
+		{"approval for me", Filter{Topics: []string{"approvals"}, UserID: "usr_mkeller"}, approval, true},
+		{"approval for someone else", Filter{Topics: []string{"approvals"}, UserID: "usr_lmartin"}, approval, false},
+		{"an approval is not a notification", Filter{Topics: []string{"notifications"}, UserID: "usr_mkeller"}, approval, false},
 	}
 	for _, c := range cases {
 		if got := c.filter.Matches(c.event); got != c.want {

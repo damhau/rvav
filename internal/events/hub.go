@@ -25,7 +25,7 @@ type Hub struct {
 // Filter decides which events a subscriber receives.
 type Filter struct {
 	// Topics as sent by the client: requests, deployments, notifications,
-	// request:<id>, deployment:<id>.
+	// approvals, request:<id>, deployment:<id>.
 	Topics []string
 	// ProjectID limits requests and deployments topics to one project.
 	ProjectID string
@@ -76,7 +76,11 @@ func (f Filter) Matches(e store.Event) bool {
 	for _, t := range f.Topics {
 		switch {
 		case t == "notifications":
-			if has("user:" + f.UserID) {
+			if has("notifications") && has("user:"+f.UserID) {
+				return true
+			}
+		case t == "approvals":
+			if has("approvals") && has("user:"+f.UserID) {
 				return true
 			}
 		case t == "requests" || t == "deployments":

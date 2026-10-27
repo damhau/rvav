@@ -31,6 +31,8 @@ type Principal struct {
 	GlobalRoles []string
 	// ProjectRoles maps project ID to the caller's strongest role there.
 	ProjectRoles map[string]string
+	// Groups are the caller's OIDC groups (approvers may be a group).
+	Groups []string
 }
 
 func (p *Principal) HasGlobal(role string) bool { return slices.Contains(p.GlobalRoles, role) }
@@ -77,9 +79,23 @@ func (p *Principal) VisibleProjects() []string {
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
 
+// ForUser builds the principal of a stored user with the groups seen in their
+// last token, for acting on their behalf (re-evaluating their request).
+func ForUser(ctx context.Context, s *store.Store, userID string) (*Principal, error) {
+	u, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.UserGroups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return build(ctx, s, u, groups)
+}
+
 // build combines a user's own roles with those granted by OIDC groups.
 func build(ctx context.Context, s *store.Store, u store.User, groups []string) (*Principal, error) {
-	p := &Principal{User: u, GlobalRoles: append([]string{}, u.GlobalRoles...), ProjectRoles: map[string]string{}}
+	p := &Principal{User: u, GlobalRoles: append([]string{}, u.GlobalRoles...), ProjectRoles: map[string]string{}, Groups: groups}
 	members, err := s.Memberships(ctx, u.ID)
 	if err != nil {
 		return nil, err
@@ -130,7 +146,11 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, s, u, nil)
+	groups, err := s.UserGroups(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	return build(ctx, s, u, groups)
 }
 
 // OIDC validates access tokens issued by the organisation's identity provider.
@@ -273,6 +293,10 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Kept so approvals know a group's members before they sign in again.
+	if err := o.Store.SetUserGroups(ctx, u.ID, groups); err != nil {
+		return nil, err
+	}
 	return build(ctx, o.Store, u, groups)
 }
 
@@ -309,7 +333,11 @@ func (d *Dev) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, d.Store, u, nil)
+	groups, err := d.Store.UserGroups(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	return build(ctx, d.Store, u, groups)
 }
 
 type ctxKey struct{}

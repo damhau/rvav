@@ -88,13 +88,18 @@ installation.
 
 ## Approvals
 
-Slice 1 has no approvals API. Production requests wait for approval; decide
-them from the command line:
+Production requests wait for the Infrastructure leads (`mkeller`), who see
+them in the approvals inbox, or through the API:
 
 ```sh
-go run ./cmd/rvav approve REQ-10002 -by mkeller -comment "OK for Black Friday"
-go run ./cmd/rvav approve REQ-10003 -reject -comment "Use tst first"
+curl -s -H 'X-Rvav-Dev-User: mkeller' localhost:8080/api/v1/approvals
+curl -s -X POST -H 'X-Rvav-Dev-User: mkeller' -H 'Content-Type: application/json' \
+  localhost:8080/api/v1/approvals/<id>/decision -d '{"decision":"approve","comment":"OK for Black Friday"}'
 ```
+
+A level times out after 48 hours and escalates to the head of infrastructure
+(`cdubois`), then rejects after 48 more. An infrastructure lead's own
+production VM below 32 GB approves itself. See ADR-0011.
 
 ## Trying it
 

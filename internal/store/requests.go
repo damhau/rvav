@@ -183,3 +183,13 @@ func nonNil(s []string) []string {
 	}
 	return s
 }
+
+// ReplaceInputs stores the inputs and plan of a request that an approver
+// changed, and the inputs on the deployments it is creating.
+func (s *Store) ReplaceInputs(ctx context.Context, db DB, id string, inputs, plan json.RawMessage) error {
+	if _, err := db.Exec(ctx, `update requests set inputs = $2, plan = $3 where id = $1`, id, inputs, plan); err != nil {
+		return err
+	}
+	_, err := db.Exec(ctx, `update deployments set inputs = $2 where created_by_request_id = $1`, id, inputs)
+	return err
+}

@@ -13,16 +13,18 @@ import (
 // Plan is everything the workflow needs, computed when the request is
 // submitted and stored on the request.
 type Plan struct {
-	Kind             string          `json:"kind"`
-	ApprovalRequired bool            `json:"approval_required"`
-	Quota            map[string]int  `json:"quota"`
-	VMs              []VMUnit        `json:"vms,omitempty"`
-	PostConfig       []Job           `json:"post_config,omitempty"`
-	AWX              *Job            `json:"awx,omitempty"`
-	Guest            blueprint.Guest `json:"guest"`
-	Rollback         bool            `json:"rollback_on_failure"`
-	ExtraVars        map[string]any  `json:"extra_vars,omitempty"`
-	Context          map[string]any  `json:"context,omitempty"`
+	Kind             string `json:"kind"`
+	ApprovalRequired bool   `json:"approval_required"`
+	// AutoApproved names policies that matched but approved by themselves.
+	AutoApproved []string        `json:"auto_approved,omitempty"`
+	Quota        map[string]int  `json:"quota"`
+	VMs          []VMUnit        `json:"vms,omitempty"`
+	PostConfig   []Job           `json:"post_config,omitempty"`
+	AWX          *Job            `json:"awx,omitempty"`
+	Guest        blueprint.Guest `json:"guest"`
+	Rollback     bool            `json:"rollback_on_failure"`
+	ExtraVars    map[string]any  `json:"extra_vars,omitempty"`
+	Context      map[string]any  `json:"context,omitempty"`
 }
 
 // VMUnit is one VM and the deployment it belongs to.
@@ -96,9 +98,13 @@ func (p Plan) vmTitle(title string, vm VMUnit) string {
 // Steps lists the top-level steps of the plan in order.
 func (p Plan) Steps(environment string) []StepDef {
 	steps := []StepDef{{Key: KeySubmit, Title: "Submitted", System: "rvav", Status: "done"}}
-	if p.ApprovalRequired {
+	switch {
+	case p.ApprovalRequired:
 		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Waiting for approval", System: "policy", Status: "running"})
-	} else {
+	case len(p.AutoApproved) > 0:
+		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Approved automatically",
+			Detail: strings.Join(p.AutoApproved, ", ") + " approve requests like this one by themselves", System: "policy", Status: "done"})
+	default:
 		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Approval not required",
 			Detail: "No approval policy applies in " + environment, System: "policy", Status: "done"})
 	}

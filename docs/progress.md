@@ -40,11 +40,11 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 ## S3 Approvals
 
 - [x] S3.1 Spec: approvals waiting for me, detail, approve or reject with a comment, approve with edited inputs (within field limits), delegate, approval history on a request. Design in [ADR-0011](adr/0011-approvals.md); handlers answer 501 until S3.4
-- [ ] S3.2 Policies: several levels, any or all approvers per level, CEL conditions, auto-approve rules, timeout with auto-approve, auto-reject or escalation
-- [ ] S3.3 Workflow waits for the decision signal; timeouts use Temporal timers
-- [ ] S3.4 API, audit entries and live events
+- [x] S3.2 Policies: several levels, any or all approvers per level, CEL conditions, auto-approve rules (`auto_approve`, for example an infrastructure lead's own production VM), timeout with auto-approve, auto-reject or escalation; levels with the same approvers are merged across policies; migration `00002_approvals.sql`
+- [x] S3.3 Workflow opens each level, waits for its `approval` signal or a Temporal timer, re-reads the level every 5 minutes in case a signal is lost, and loads the plan again after approval
+- [x] S3.4 API, audit entries (`audit_events`, read in S9) and live events (`approval.updated` on the `approvals` topic, to each approver); group membership stored from tokens; approver edits re-evaluate the request as its requester
 - [ ] S3.5 UI: approvals inbox and detail, approval step in the timeline, sidebar badge; mocks and Playwright
-- [ ] S3.6 Replace the `rvav approve` command; end-to-end test of the acceptance scenario
+- [x] S3.6 `rvav approve` removed; `TestApprovals` runs the acceptance scenario on a real Temporal dev server (48 GB VM lowered to 32 GB and approved, two levels, mode all, delegation, escalation then rejection, auto-approval, rejection, cancel)
 - [ ] S3.7 Slice review, docs and roadmap status
 
 ## S4 Day-2 actions

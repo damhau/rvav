@@ -33,6 +33,20 @@ var users = []user{
 	{"tnguyen", "Thomas Nguyen", "thomas.nguyen@corp.example", "Developer", []string{"user"}},
 	{"sbrunner", "Sophie Brunner", "sophie.brunner@corp.example", "DBA", []string{"user"}},
 	{"afavre", "Alain Favre", "alain.favre@corp.example", "Network engineer", []string{"user"}},
+	{"cdubois", "Claire Dubois", "claire.dubois@corp.example", "Head of infrastructure", []string{"user"}},
+}
+
+// userGroups are the OIDC groups seeded users are in, as in the Keycloak
+// realm (deploy/keycloak), so dev authentication sees the same approvers.
+var userGroups = []struct{ user, group string }{
+	{"lmartin", "rvav-web-admins"},
+	{"mkeller", "rvav-admins"},
+	{"mkeller", "rvav-infra-leads"},
+	{"tnguyen", "rvav-web"},
+	{"sbrunner", "rvav-data"},
+	{"afavre", "rvav-core"},
+	{"afavre", "rvav-network"},
+	{"cdubois", "rvav-infra-heads"},
 }
 
 // UserID returns the ID of a seeded user, for example UserID("lmartin").
@@ -164,6 +178,12 @@ func Run(ctx context.Context, s *store.Store) error {
 				return err
 			}
 		}
+		for _, g := range userGroups {
+			if err := exec(`insert into user_groups (user_id, group_name) values ($1,$2) on conflict do nothing`,
+				UserID(g.user), g.group); err != nil {
+				return err
+			}
+		}
 		for _, n := range subnets {
 			if err := exec(`insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers) values ($1,$2,$3,'corp.example',$4)
 				on conflict (network) do update set subnet = excluded.subnet, gateway = excluded.gateway`,
@@ -194,26 +214,32 @@ func Run(ctx context.Context, s *store.Store) error {
 func ptr[T any](v T) *T { return &v }
 
 func seedPolicies(exec func(string, ...any) error) error {
-	leads := j([]map[string]any{{"name": "Infrastructure leads", "group": "rvav-infra-leads", "approvers": []string{UserID("mkeller")}, "mode": "any"}})
+	// Infrastructure leads have two days; then the head of infrastructure is
+	// asked too, for two more days, before the request is rejected.
+	leads := j([]map[string]any{{"name": "Infrastructure leads", "group": "rvav-infra-leads", "approvers": []string{UserID("mkeller")},
+		"mode": "any", "timeout": "48h", "on_timeout": "escalate",
+		"escalate_to": map[string]any{"group": "rvav-infra-heads", "approvers": []string{UserID("cdubois")}}}})
 	network := j([]map[string]any{
-		{"name": "Network engineers", "approvers": []string{UserID("afavre")}, "mode": "any"},
+		{"name": "Network engineers", "group": "rvav-network", "approvers": []string{UserID("afavre")}, "mode": "any"},
 		{"name": "Network security", "approvers": []string{UserID("mkeller")}, "mode": "any"},
 	})
 	policies := []struct {
 		id, name, reason, condition, itemType string
 		levels                                []byte
 		priority                              int
+		autoApprove                           *string
 	}{
-		{"pol_prd_vm", "Production VMs", "Production VMs need sign-off", `environment == "prd"`, "vm_blueprint", leads, 100},
-		{"pol_prd_big_vm", "Large production VMs", "Production VM above 32 GB RAM", `environment == "prd" && vm.memory_gb > 32`, "vm_blueprint", leads, 50},
-		{"pol_prd_db", "Production databases", "Production database clusters always need approval", `item.category == "databases" && environment == "prd"`, "composite", leads, 100},
-		{"pol_fw", "Firewall flows", "Firewall changes are reviewed by network security", `true`, "awx_workflow", network, 100},
+		{"pol_prd_vm", "Production VMs", "Production VMs need sign-off", `environment == "prd"`, "vm_blueprint", leads, 100,
+			ptr(`"rvav-infra-leads" in user.groups`)},
+		{"pol_prd_big_vm", "Large production VMs", "Production VM above 32 GB RAM", `environment == "prd" && vm.memory_gb > 32`, "vm_blueprint", leads, 50, nil},
+		{"pol_prd_db", "Production databases", "Production database clusters always need approval", `item.category == "databases" && environment == "prd"`, "composite", leads, 100, nil},
+		{"pol_fw", "Firewall flows", "Firewall changes are reviewed by network security", `true`, "awx_workflow", network, 100, nil},
 	}
 	for _, p := range policies {
-		if err := exec(`insert into approval_policies (id, name, reason, condition, item_type, levels, priority) values ($1,$2,$3,$4,$5,$6,$7)
+		if err := exec(`insert into approval_policies (id, name, reason, condition, item_type, levels, priority, auto_approve) values ($1,$2,$3,$4,$5,$6,$7,$8)
 			on conflict (id) do update set name = excluded.name, reason = excluded.reason, condition = excluded.condition,
-			item_type = excluded.item_type, levels = excluded.levels, priority = excluded.priority`,
-			p.id, p.name, p.reason, p.condition, p.itemType, p.levels, p.priority); err != nil {
+			item_type = excluded.item_type, levels = excluded.levels, priority = excluded.priority, auto_approve = excluded.auto_approve`,
+			p.id, p.name, p.reason, p.condition, p.itemType, p.levels, p.priority, p.autoApprove); err != nil {
 			return err
 		}
 	}

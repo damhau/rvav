@@ -124,6 +124,8 @@ type ApprovalPolicy struct {
 	ProjectID *string         `db:"project_id"`
 	Levels    json.RawMessage `db:"levels"`
 	Priority  int             `db:"priority"`
+	// AutoApprove is CEL: when true the policy is satisfied without anyone.
+	AutoApprove *string `db:"auto_approve"`
 }
 
 type Request struct {

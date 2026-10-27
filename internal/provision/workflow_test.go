@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -12,11 +13,29 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 )
 
-func vmPlan(approval bool) Info {
-	return Info{RequestID: "req_1", Number: "REQ-1", ProjectID: "prj_web", Status: map[bool]string{true: "pending_approval", false: "queued"}[approval],
+func vmPlan(approval bool, levels ...string) Info {
+	info := Info{RequestID: "req_1", Number: "REQ-1", ProjectID: "prj_web", Status: map[bool]string{true: "pending_approval", false: "queued"}[approval],
 		Plan: Plan{Kind: blueprint.KindVM, ApprovalRequired: approval,
-			VMs:        []VMUnit{{DeploymentID: "dep_1", Name: "web-dev-app001", Subnet: "10.31.10.0/24"}},
+			VMs:        []VMUnit{{DeploymentID: "dep_1", Name: "web-dev-app001", Subnet: "10.31.10.0/24", MemoryGB: 48}},
 			PostConfig: []Job{{Key: "linux-baseline", Template: "linux-baseline"}}}}
+	if approval && len(levels) == 0 {
+		levels = []string{"apr_1"}
+	}
+	info.Approvals = levels
+	return info
+}
+
+// approved is the plan after the approval, as LoadPlan returns it again.
+func approved(memoryGB int) Info {
+	info := vmPlan(false)
+	info.Plan.VMs[0].MemoryGB = memoryGB
+	return info
+}
+
+func signal(env *testsuite.TestWorkflowEnvironment, id, outcome string, after time.Duration) {
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApproval, ApprovalSignal{ApprovalID: id, Outcome: outcome})
+	}, after)
 }
 
 func newEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
@@ -67,10 +86,108 @@ func TestProvisionRejected(t *testing.T) {
 	env := newEnv(t)
 	var a *Activities
 	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true), nil)
-	env.OnActivity(a.RecordDecision, mock.Anything, "req_1", Decision{Approved: false, By: "usr_mkeller", Comment: "Use dev"}).Return(nil)
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SignalDecision, Decision{Approved: false, By: "usr_mkeller", Comment: "Use dev"})
-	}, 2*time.Hour)
+	env.OnActivity(a.OpenApproval, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil).Maybe()
+	env.OnActivity(a.FinishApprovals, mock.Anything, "req_1").Return(false, nil)
+	signal(env, "apr_1", "rejected", 2*time.Hour)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// After approval the workflow loads the plan again: an approver may have
+// lowered the RAM.
+func TestProvisionApprovedUsesTheNewPlan(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true), nil).Once()
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(approved(32), nil).Once()
+	env.OnActivity(a.OpenApproval, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil).Maybe()
+	env.OnActivity(a.FinishApprovals, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.ReserveIP, mock.Anything, mock.Anything).Return("10.31.10.20", nil)
+	env.OnActivity(a.CreateDNS, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.CloneVM, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.VM.MemoryGB == 32 })).Return("vm-42", nil)
+	env.OnActivity(a.Customize, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Return(nil)
+	env.OnActivity(a.RunJob, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+	signal(env, "apr_1", "approved", time.Hour)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Levels run one after the other; a signal for another level is ignored.
+func TestProvisionTwoLevels(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	var opened []string
+	track := func(args mock.Arguments) { opened = append(opened, args.String(1)) }
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true, "apr_1", "apr_2"), nil).Once()
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(approved(48), nil).Once()
+	env.OnActivity(a.OpenApproval, mock.Anything, mock.Anything).Run(track).Return(LevelState{Status: "pending"}, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, mock.Anything).Return(LevelState{Status: "pending"}, nil).Maybe()
+	env.OnActivity(a.FinishApprovals, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(false, nil)
+	signal(env, "apr_2", "approved", 30*time.Minute) // not open yet: ignored
+	signal(env, "apr_1", "approved", time.Hour)
+	signal(env, "apr_2", "approved", 3*time.Hour)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 2 || opened[0] != "apr_1" || opened[1] != "apr_2" {
+		t.Fatalf("opened = %v", opened)
+	}
+}
+
+// No answer: the level escalates once, then the request is rejected.
+func TestProvisionTimeoutEscalatesThenRejects(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	start := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
+	env.SetStartTime(start)
+	due1, due2 := start.Add(48*time.Hour), start.Add(96*time.Hour)
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true), nil)
+	// The level as the database holds it.
+	level := LevelState{Status: "pending", DueAt: &due1}
+	env.OnActivity(a.OpenApproval, mock.Anything, "apr_1").Return(level, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, "apr_1").Return(func(context.Context, string) (LevelState, error) {
+		return level, nil
+	}).Maybe()
+	env.OnActivity(a.ApprovalTimedOut, mock.Anything, "apr_1").Return(func(context.Context, string) (LevelState, error) {
+		if *level.DueAt == due1 {
+			level.DueAt = &due2 // escalated
+		} else {
+			level = LevelState{Status: "rejected"}
+		}
+		return level, nil
+	}).Times(2)
+	env.OnActivity(a.FinishApprovals, mock.Anything, "req_1").Return(false, nil)
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if now := env.Now(); now.Before(due2) {
+		t.Fatalf("rejected at %s, before the escalation timed out (%s)", now, due2)
+	}
+}
+
+// A lost signal is caught when the level is read again.
+func TestProvisionFindsADecisionWithoutItsSignal(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true), nil).Once()
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(approved(48), nil).Once()
+	env.OnActivity(a.OpenApproval, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, "apr_1").Return(LevelState{Status: "approved"}, nil).Once()
+	env.OnActivity(a.FinishApprovals, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(false, nil)
 	env.ExecuteWorkflow(Provision, "req_1")
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatal(err)
@@ -133,6 +250,8 @@ func TestProvisionCancelledWhileWaitingForApproval(t *testing.T) {
 	env := newEnv(t)
 	var a *Activities
 	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(vmPlan(true), nil)
+	env.OnActivity(a.OpenApproval, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil)
+	env.OnActivity(a.ApprovalState, mock.Anything, "apr_1").Return(LevelState{Status: "pending"}, nil).Maybe()
 	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "cancelled"}).Return(nil)
 	env.RegisterDelayedCallback(env.CancelWorkflow, time.Hour)
 	env.ExecuteWorkflow(Provision, "req_1")

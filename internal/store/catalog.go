@@ -103,7 +103,7 @@ func (s *Store) SetFavourite(ctx context.Context, userID, itemID string, on bool
 
 // ApprovalPolicies returns enabled policies that apply to an item type in a project.
 func (s *Store) ApprovalPolicies(ctx context.Context, projectID, itemType string) ([]ApprovalPolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, name, reason, condition, item_type, project_id, levels, priority
+	rows, _ := s.Pool.Query(ctx, `select id, name, reason, condition, item_type, project_id, levels, priority, auto_approve
 		from approval_policies
 		where enabled and (item_type is null or item_type = $2) and (project_id is null or project_id = $1)
 		order by priority, id`, projectID, itemType)

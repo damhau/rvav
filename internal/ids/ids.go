@@ -22,6 +22,7 @@ const (
 	Policy     = "pol"
 	Placement  = "plc"
 	Token      = "tok"
+	Approval   = "apr"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

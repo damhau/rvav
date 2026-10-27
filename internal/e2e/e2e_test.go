@@ -81,11 +81,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// recorder stands in for Temporal: the test runs each started workflow itself.
+// recorder stands in for Temporal: the test runs each started workflow
+// itself, and delivers approval signals with deliver.
 type recorder struct {
 	mu        sync.Mutex
 	started   []string
 	cancelled []string
+	signals   []provision.ApprovalSignal
 	startErr  error // returned by Start, to act as an unreachable Temporal
 }
 
@@ -106,7 +108,23 @@ func (r *recorder) Cancel(_ context.Context, id string) error {
 	return nil
 }
 
-func (r *recorder) Decide(context.Context, string, bool, string, string) error { return nil }
+func (r *recorder) Approval(_ context.Context, _, approvalID, outcome string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.signals = append(r.signals, provision.ApprovalSignal{ApprovalID: approvalID, Outcome: outcome})
+	return nil
+}
+
+// deliver sends the approval signals sent so far to a test workflow.
+func (r *recorder) deliver(env *testsuite.TestWorkflowEnvironment) {
+	r.mu.Lock()
+	sigs := r.signals
+	r.signals = nil
+	r.mu.Unlock()
+	for _, sig := range sigs {
+		env.SignalWorkflow(provision.SignalApproval, sig)
+	}
+}
 
 type harness struct {
 	t     *testing.T
@@ -437,7 +455,15 @@ func TestSlice1EndToEnd(t *testing.T) {
 		}
 		h.runWorkflow(prdReq.Id, func(env *testsuite.TestWorkflowEnvironment) {
 			env.RegisterDelayedCallback(func() {
-				env.SignalWorkflow(provision.SignalDecision, provision.Decision{Approved: true, By: seed.UserID("mkeller"), Comment: "OK for Black Friday"})
+				var inbox api.ApprovalPage
+				h.json("GET", "/api/v1/approvals", "mkeller", nil, 200, &inbox)
+				if inbox.Total != 1 || inbox.Items[0].Request.Id != prdReq.Id {
+					t.Errorf("mkeller's inbox = %+v", inbox)
+					return
+				}
+				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", "mkeller",
+					api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove, Comment: strPtr("OK for Black Friday")}, 200, nil)
+				h.wf.deliver(env)
 			}, time.Hour)
 		})
 		h.json("GET", "/api/v1/requests/"+prdReq.Id, "tnguyen", nil, 200, &prdReq)

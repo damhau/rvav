@@ -110,6 +110,19 @@ func (p *Publisher) Notify(ctx context.Context, userID, title, body, level, link
 	p.insert(ctx, "notification", nil, []string{"notifications", "user:" + userID}, data)
 }
 
+// Approval tells each of the given users that an approval they may decide
+// changed. Only IDs are sent: clients refetch with their own permissions.
+func (p *Publisher) Approval(ctx context.Context, userIDs []string, approvalID, requestID, status string) {
+	if len(userIDs) == 0 {
+		return
+	}
+	topics := []string{"approvals"}
+	for _, id := range userIDs {
+		topics = append(topics, "user:"+id)
+	}
+	p.insert(ctx, "approval.updated", nil, topics, map[string]any{"approval_id": approvalID, "request_id": requestID, "status": status})
+}
+
 // Encode returns the JSON for an event as sent to clients, with its ID set.
 func Encode(e store.Event) ([]byte, error) {
 	var m map[string]any

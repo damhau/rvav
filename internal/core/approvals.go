@@ -1,0 +1,667 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/present"
+	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/store"
+)
+
+// Approvals (ADR-0011): the inbox, one level with what an approver needs,
+// deciding and delegating. The workflow opens levels and applies timeouts;
+// here decisions are recorded and the workflow is told when a level ends.
+
+// level is a loaded approval level with its request and who may decide.
+type loadedLevel struct {
+	lv        store.Approval
+	req       store.RequestRow
+	count     int
+	delegates []store.ApprovalDelegate
+}
+
+func (l loadedLevel) isApprover(p *auth.Principal) bool {
+	if slices.Contains(l.lv.NamedApprovers(), p.User.ID) {
+		return true
+	}
+	for _, g := range l.lv.Groups() {
+		if slices.Contains(p.Groups, g) {
+			return true
+		}
+	}
+	return slices.ContainsFunc(l.delegates, func(d store.ApprovalDelegate) bool { return d.UserID == p.User.ID })
+}
+
+func (l loadedLevel) canDecide(p *auth.Principal, votes []store.ApprovalVote) bool {
+	return l.lv.Status == "pending" && l.isApprover(p) && l.req.RequesterID != p.User.ID &&
+		!slices.ContainsFunc(votes, func(v store.ApprovalVote) bool { return v.UserID == p.User.ID })
+}
+
+// load finds a level the principal may see: approvers, people who can see
+// the request, admins and auditors.
+func (s *Service) loadLevel(ctx context.Context, p *auth.Principal, id string) (loadedLevel, error) {
+	lv, err := s.Store.GetApproval(ctx, s.Store.Pool, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return loadedLevel{}, ErrNotFound
+	}
+	if err != nil {
+		return loadedLevel{}, err
+	}
+	l, err := s.levelContext(ctx, lv)
+	if err != nil {
+		return l, err
+	}
+	if !l.isApprover(p) && !CanSeeRequest(p, l.req) && !p.SeesEverything() {
+		return l, ErrNotFound
+	}
+	return l, nil
+}
+
+func (s *Service) levelContext(ctx context.Context, lv store.Approval) (loadedLevel, error) {
+	r, err := s.Store.GetRequest(ctx, lv.RequestID)
+	if err != nil {
+		return loadedLevel{}, err
+	}
+	all, err := s.Store.ApprovalsForRequest(ctx, r.ID)
+	if err != nil {
+		return loadedLevel{}, err
+	}
+	dels, err := s.Store.Delegates(ctx, []string{lv.ID})
+	if err != nil {
+		return loadedLevel{}, err
+	}
+	return loadedLevel{lv: lv, req: r, count: len(all), delegates: dels[lv.ID]}, nil
+}
+
+// ListApprovals is the inbox: levels the caller may decide, or every level
+// for admins and auditors with view=all.
+func (s *Service) ListApprovals(ctx context.Context, p *auth.Principal, params api.ListApprovalsParams) (api.ApprovalPage, error) {
+	all := params.View != nil && *params.View == api.ListApprovalsParamsViewAll
+	if all && !p.SeesEverything() {
+		return api.ApprovalPage{}, fmt.Errorf("%w: only administrators and auditors can see every approval", ErrForbidden)
+	}
+	statuses := []string{"pending"}
+	if params.Status != nil && len(*params.Status) > 0 {
+		statuses = nil
+		for _, st := range *params.Status {
+			statuses = append(statuses, string(st))
+		}
+	}
+	limit := 50
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	var after *store.Cursor
+	if params.Cursor != nil {
+		c, err := store.DecodeCursor(*params.Cursor)
+		if err != nil {
+			return api.ApprovalPage{}, &BadRequestError{Msg: "The cursor is not valid. Start again from the first page."}
+		}
+		after = c
+	}
+	page, total, err := s.Store.ListApprovals(ctx, store.ApprovalFilter{All: all, ViewerID: p.User.ID, Groups: p.Groups,
+		Statuses: statuses, Limit: limit, After: after})
+	if err != nil {
+		return api.ApprovalPage{}, err
+	}
+	ids := make([]string, len(page.Items))
+	for i, lv := range page.Items {
+		ids[i] = lv.ID
+	}
+	votes, err := s.Store.Votes(ctx, s.Store.Pool, ids)
+	if err != nil {
+		return api.ApprovalPage{}, err
+	}
+	out := api.ApprovalPage{Items: []api.ApprovalSummary{}, Total: total}
+	for _, lv := range page.Items {
+		l, err := s.levelContext(ctx, lv)
+		if err != nil {
+			return out, err
+		}
+		out.Items = append(out.Items, summary(l, l.canDecide(p, votes[lv.ID])))
+	}
+	if page.Next != nil {
+		out.NextCursor = present.Ptr(page.Next.Encode())
+	}
+	return out, nil
+}
+
+// GetApproval returns one level with the facts, editable inputs and votes.
+func (s *Service) GetApproval(ctx context.Context, p *auth.Principal, id string) (api.Approval, error) {
+	l, err := s.loadLevel(ctx, p, id)
+	if err != nil {
+		return api.Approval{}, err
+	}
+	return s.detail(ctx, p, l)
+}
+
+// RequestApprovals is the approval history of a request.
+func (s *Service) RequestApprovals(ctx context.Context, p *auth.Principal, idOrNumber string) ([]api.Approval, error) {
+	r, err := s.Store.GetRequest(ctx, idOrNumber)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && !CanSeeRequest(p, r) && !p.SeesEverything()) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	levels, err := s.Store.ApprovalsForRequest(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := []api.Approval{}
+	for _, lv := range levels {
+		l, err := s.levelContext(ctx, lv)
+		if err != nil {
+			return nil, err
+		}
+		a, err := s.detail(ctx, p, l)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+type inputChange struct {
+	Field string `json:"field"`
+	Label string `json:"label"`
+	From  any    `json:"from"`
+	To    any    `json:"to"`
+}
+
+// DecideApproval records an approver's decision. With mode any it decides
+// the level; with mode all the level is approved once every named approver
+// approved. Edited inputs re-evaluate the request and replace its plan.
+func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id string, d api.ApprovalDecision) (api.Approval, error) {
+	l, err := s.loadLevel(ctx, p, id)
+	if err != nil {
+		return api.Approval{}, err
+	}
+	if l.lv.Status != "pending" {
+		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be decided now.", l.lv.Status)}
+	}
+	if !l.isApprover(p) {
+		return api.Approval{}, fmt.Errorf("%w: you are not an approver of this level", ErrForbidden)
+	}
+	if l.req.RequesterID == p.User.ID {
+		return api.Approval{}, fmt.Errorf("%w: you can't approve your own request", ErrForbidden)
+	}
+	approve := d.Decision == api.ApprovalDecisionDecisionApprove
+	if !approve && d.Decision != api.ApprovalDecisionDecisionReject {
+		return api.Approval{}, &BadRequestError{Msg: "decision must be approve or reject."}
+	}
+	comment := ""
+	if d.Comment != nil {
+		comment = strings.TrimSpace(*d.Comment)
+	}
+	if !approve && comment == "" {
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/comment", "required",
+			"Say why you reject it: the requester sees this comment.")}}
+	}
+
+	var changes []inputChange
+	var newInputs, newPlan json.RawMessage
+	if d.Inputs != nil && len(*d.Inputs) > 0 {
+		if !approve {
+			return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_allowed",
+				"Inputs can only be changed when approving.")}}
+		}
+		changes, newInputs, newPlan, err = s.applyEdits(ctx, l, *d.Inputs)
+		if err != nil {
+			return api.Approval{}, err
+		}
+	}
+
+	var decided bool
+	var status, outcome string
+	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		lv, err := s.Store.LockApproval(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if lv.Status != "pending" {
+			return &ConflictError{Msg: fmt.Sprintf("This level was %s meanwhile.", lv.Status)}
+		}
+		changeJSON, _ := json.Marshal(nonNilSlice(changes))
+		vote := store.ApprovalVote{ApprovalID: id, UserID: p.User.ID, Decision: string(d.Decision), Comment: comment, Changes: changeJSON}
+		if err := s.Store.InsertVote(ctx, tx, vote); err != nil {
+			if store.IsUniqueViolation(err) {
+				return &ConflictError{Msg: "You have already decided on this level."}
+			}
+			return err
+		}
+		if len(changes) > 0 {
+			if err := s.Store.ReplaceInputs(ctx, tx, l.req.ID, newInputs, newPlan); err != nil {
+				return err
+			}
+			if err := s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "request.inputs_changed",
+				TargetType: "request", TargetID: l.req.ID, ProjectID: &l.req.ProjectID,
+				Detail: map[string]any{"approval": id, "changes": changes}}); err != nil {
+				return err
+			}
+		}
+		votes, err := s.Store.Votes(ctx, tx, []string{id})
+		if err != nil {
+			return err
+		}
+		switch {
+		case !approve:
+			decided, status, outcome = true, "rejected", "Rejected by "+p.User.Name
+		case lv.Mode == "all":
+			var names []string
+			done := true
+			for _, uid := range lv.NamedApprovers() {
+				if uid == l.req.RequesterID {
+					continue
+				}
+				i := slices.IndexFunc(votes[id], func(v store.ApprovalVote) bool { return v.UserID == uid && v.Decision == "approve" })
+				if i < 0 {
+					done = false
+					break
+				}
+				names = append(names, votes[id][i].UserName)
+			}
+			if done {
+				decided, status, outcome = true, "approved", "Approved by "+joinNames(names)
+			}
+		default:
+			decided, status, outcome = true, "approved", "Approved by "+p.User.Name
+		}
+		if decided {
+			ok, err := s.Store.FinishApproval(ctx, tx, id, status, outcome)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return &ConflictError{Msg: "This level was decided meanwhile."}
+			}
+		}
+		action := "approval.voted"
+		if decided {
+			action = "approval." + status
+		}
+		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: action, TargetType: "approval",
+			TargetID: id, ProjectID: &l.req.ProjectID,
+			Detail: map[string]any{"request": l.req.Number, "decision": d.Decision, "comment": comment}})
+	})
+	if err != nil {
+		return api.Approval{}, err
+	}
+	if decided {
+		// If the signal is lost, the workflow still finds the decision when it
+		// checks the level again (see provision.awaitApprovals).
+		if err := s.Workflows.Approval(ctx, l.req.ID, id, status); err != nil {
+			s.Log.Warn("signal approval", "request", l.req.Number, "approval", id, "err", err)
+		}
+	}
+	s.publishApproval(ctx, l)
+	if len(changes) > 0 {
+		s.publishRequest(ctx, l.req.ID)
+	}
+	return s.GetApproval(ctx, p, id)
+}
+
+// applyEdits checks approver changes against the form and evaluates the
+// request again as its requester, keeping its names and deployments.
+func (s *Service) applyEdits(ctx context.Context, l loadedLevel, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, error) {
+	version, err := s.Store.GetVersion(ctx, l.req.VersionID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var ui api.UiSchema
+	_ = json.Unmarshal(version.UISchema, &ui)
+	inputs := map[string]any{}
+	_ = json.Unmarshal(l.req.Inputs, &inputs)
+	var changes []inputChange
+	var errs []api.FieldError
+	for _, field := range sortedKeys(edits) {
+		f, ok := ui.Fields[field]
+		if !ok || f.ApproverEditable == nil || !*f.ApproverEditable {
+			errs = append(errs, fieldErr("/inputs/"+field, "not_editable", "Approvers can't change this input."))
+			continue
+		}
+		if !reflect.DeepEqual(inputs[field], edits[field]) {
+			changes = append(changes, inputChange{Field: field, Label: f.Label, From: inputs[field], To: edits[field]})
+			inputs[field] = edits[field]
+		}
+	}
+	if len(errs) > 0 {
+		return nil, nil, nil, &ValidationError{Errors: errs}
+	}
+	if len(changes) == 0 {
+		return nil, nil, nil, nil
+	}
+	requester, err := auth.ForUser(ctx, s.Store, l.req.RequesterID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	draft := api.RequestDraft{CatalogItemId: l.req.ItemID, VersionId: l.req.VersionID, ProjectId: l.req.ProjectID,
+		Environment: api.EnvironmentKey(l.req.Environment), Inputs: inputs, Count: present.Ptr(l.req.Count),
+		Justification: present.Ptr(l.req.Justification)}
+	if l.req.LeaseDays != nil {
+		draft.LeaseDays = l.req.LeaseDays
+	}
+	ev, err := s.Evaluate(ctx, requester, draft, true)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(ev.Errors) > 0 {
+		return nil, nil, nil, &ValidationError{Errors: ev.Errors}
+	}
+	var plan provision.Plan
+	if err := json.Unmarshal(l.req.Plan, &plan); err != nil {
+		return nil, nil, nil, err
+	}
+	switch ev.Blueprint.Kind {
+	case blueprint.KindVM:
+		for i, vm := range plan.VMs {
+			plan.VMs[i] = vmUnit(ev, vm.DeploymentID, vm.Name)
+		}
+		if plan.PostConfig, err = postConfigJobs(ev, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
+			return nil, nil, nil, err
+		}
+	case blueprint.KindAWX:
+		plan.ExtraVars = ev.Inputs
+	}
+	plan.Quota = ev.QuotaAdd
+	newInputs, _ := json.Marshal(ev.Inputs)
+	newPlan, _ := json.Marshal(plan)
+	return changes, newInputs, newPlan, nil
+}
+
+// DelegateApproval lets another user decide this level.
+func (s *Service) DelegateApproval(ctx context.Context, p *auth.Principal, id string, d api.ApprovalDelegation) (api.Approval, error) {
+	l, err := s.loadLevel(ctx, p, id)
+	if err != nil {
+		return api.Approval{}, err
+	}
+	if l.lv.Status != "pending" {
+		return api.Approval{}, &ConflictError{Msg: fmt.Sprintf("This level is %s; it can't be delegated now.", l.lv.Status)}
+	}
+	if !l.isApprover(p) {
+		return api.Approval{}, fmt.Errorf("%w: only an approver of this level can delegate it", ErrForbidden)
+	}
+	to, err := s.Store.GetUser(ctx, d.UserId)
+	if errors.Is(err, store.ErrNotFound) {
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/user_id", "not_found", "There is no user with this ID.")}}
+	}
+	if err != nil {
+		return api.Approval{}, err
+	}
+	if to.ID == l.req.RequesterID {
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/user_id", "requester",
+			"The requester can't approve their own request.")}}
+	}
+	comment := ""
+	if d.Comment != nil {
+		comment = strings.TrimSpace(*d.Comment)
+	}
+	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.Store.InsertDelegate(ctx, tx, store.ApprovalDelegate{ApprovalID: id, UserID: to.ID, DelegatedBy: p.User.ID, Comment: comment}); err != nil {
+			return err
+		}
+		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "approval.delegated", TargetType: "approval",
+			TargetID: id, ProjectID: &l.req.ProjectID, Detail: map[string]any{"to": to.ID, "comment": comment}})
+	})
+	if err != nil {
+		return api.Approval{}, err
+	}
+	s.Events.Notify(ctx, to.ID, "Approval delegated to you: "+l.req.Title, p.User.Name+": "+comment, "warning", "/approvals/"+id)
+	l.delegates = append(l.delegates, store.ApprovalDelegate{UserID: to.ID})
+	s.publishApproval(ctx, l)
+	return s.GetApproval(ctx, p, id)
+}
+
+// approverIDs lists who may decide a level, without the requester.
+func (s *Service) approverIDs(ctx context.Context, l loadedLevel) []string {
+	ids := l.lv.NamedApprovers()
+	if groups := l.lv.Groups(); len(groups) > 0 {
+		if members, err := s.Store.GroupMembers(ctx, groups); err == nil {
+			ids = append(ids, members...)
+		}
+	}
+	for _, d := range l.delegates {
+		ids = append(ids, d.UserID)
+	}
+	var out []string
+	for _, id := range ids {
+		if id != l.req.RequesterID && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (s *Service) publishApproval(ctx context.Context, l loadedLevel) {
+	if s.Events == nil {
+		return
+	}
+	lv, err := s.Store.GetApproval(ctx, s.Store.Pool, l.lv.ID)
+	if err != nil {
+		return
+	}
+	s.Events.Approval(ctx, s.approverIDs(ctx, l), lv.ID, lv.RequestID, lv.Status)
+}
+
+func summary(l loadedLevel, canDecide bool) api.ApprovalSummary {
+	r, lv := l.req, l.lv
+	out := api.ApprovalSummary{Id: lv.ID, Project: present.ProjectRef(r.ProjectID, r.ProjectCode, r.ProjectName),
+		Environment: api.EnvironmentKey(r.Environment), Requester: present.UserRef(r.RequesterID, r.RequesterName, r.RequesterEmail),
+		SubmittedAt: r.SubmittedAt, Reasons: nonNilSlice(lv.Reasons), Status: api.ApprovalStatus(lv.Status),
+		DueAt: lv.DueAt, Overdue: lv.DueAt != nil && time.Now().After(*lv.DueAt), Escalated: present.Ptr(lv.Escalated),
+		CanDecide: canDecide}
+	out.Request.Id, out.Request.Number, out.Request.Title, out.Request.Status = r.ID, r.Number, r.Title, api.RequestStatus(r.Status)
+	out.Level.Index, out.Level.Count, out.Level.Name = lv.Seq, l.count, lv.Name
+	return out
+}
+
+func (s *Service) detail(ctx context.Context, p *auth.Principal, l loadedLevel) (api.Approval, error) {
+	votes, err := s.Store.Votes(ctx, s.Store.Pool, []string{l.lv.ID})
+	if err != nil {
+		return api.Approval{}, err
+	}
+	canDecide := l.canDecide(p, votes[l.lv.ID])
+	sum := summary(l, canDecide)
+	a := api.Approval{Id: sum.Id, Request: sum.Request, Project: sum.Project, Environment: sum.Environment,
+		Requester: sum.Requester, SubmittedAt: sum.SubmittedAt, Level: sum.Level, Reasons: sum.Reasons,
+		Status: sum.Status, DueAt: sum.DueAt, Overdue: sum.Overdue, Escalated: sum.Escalated, CanDecide: canDecide,
+		Rules: nonNilSlice(l.lv.Rules), Mode: api.ApprovalMode(l.lv.Mode), Group: l.lv.GroupName,
+		DecidedAt: l.lv.DecidedAt, Outcome: l.lv.Outcome, Votes: []api.ApprovalVote{}, Delegates: []api.UserRef{},
+		Approvers: []api.UserRef{}, EditableFields: []api.ApprovalEditableField{}}
+	if l.req.Justification != "" {
+		a.Justification = present.Ptr(l.req.Justification)
+	}
+	if l.lv.OnTimeout != nil {
+		a.OnTimeout = present.Ptr(api.ApprovalOnTimeout(*l.lv.OnTimeout))
+	}
+	users, err := s.Store.FindUsers(ctx, append(s.approverIDs(ctx, l), l.lv.EscalateIDs...))
+	if err != nil {
+		return a, err
+	}
+	for _, id := range s.approverIDs(ctx, l) {
+		if u, ok := users[id]; ok {
+			a.Approvers = append(a.Approvers, present.UserRef(u.ID, u.Name, u.Email))
+		}
+	}
+	if len(l.lv.EscalateIDs) > 0 {
+		esc := []api.UserRef{}
+		for _, id := range l.lv.EscalateIDs {
+			if u, ok := users[id]; ok {
+				esc = append(esc, present.UserRef(u.ID, u.Name, u.Email))
+			}
+		}
+		a.EscalateTo = &esc
+	}
+	for _, d := range l.delegates {
+		a.Delegates = append(a.Delegates, present.UserRef(d.UserID, d.UserName, d.UserEmail))
+	}
+	for _, v := range votes[l.lv.ID] {
+		av := api.ApprovalVote{User: present.UserRef(v.UserID, v.UserName, v.UserEmail),
+			Decision: api.ApprovalVoteDecision(v.Decision), DecidedAt: v.DecidedAt}
+		if v.Comment != "" {
+			av.Comment = present.Ptr(v.Comment)
+		}
+		_ = json.Unmarshal(v.Changes, &av.Changes)
+		if av.Changes == nil {
+			av.Changes = []struct {
+				Field string      `json:"field"`
+				From  interface{} `json:"from"`
+				Label string      `json:"label"`
+				To    interface{} `json:"to"`
+			}{}
+		}
+		a.Votes = append(a.Votes, av)
+	}
+	a.Facts, err = s.facts(ctx, l)
+	if err != nil {
+		return a, err
+	}
+	if canDecide {
+		if a.EditableFields, err = s.editableFields(ctx, l); err != nil {
+			return a, err
+		}
+	}
+	return a, nil
+}
+
+type fact = struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// facts sums up what the request will create, for the approver.
+func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
+	var plan provision.Plan
+	_ = json.Unmarshal(l.req.Plan, &plan)
+	out := []fact{}
+	switch {
+	case len(plan.VMs) > 0:
+		vm := plan.VMs[0]
+		size := fmt.Sprintf("%d vCPU · %d GB · %d GB", vm.VCPU, vm.MemoryGB, vm.DiskGB)
+		if len(plan.VMs) > 1 {
+			size = fmt.Sprintf("%d × %s", len(plan.VMs), size)
+		}
+		out = append(out, fact{"Size", size})
+		names := make([]string, len(plan.VMs))
+		for i, v := range plan.VMs {
+			names[i] = v.Name
+		}
+		out = append(out, fact{"Names", strings.Join(names, ", ")},
+			fact{"Placement", vm.Cluster + " · " + vm.Datastore},
+			fact{"Network", vm.Network + " · " + vm.Subnet})
+		if len(plan.PostConfig) > 0 {
+			jobs := make([]string, len(plan.PostConfig))
+			for i, j := range plan.PostConfig {
+				jobs[i] = j.Key
+			}
+			out = append(out, fact{"After boot", strings.Join(jobs, ", ")})
+		}
+	case plan.AWX != nil:
+		out = append(out, fact{"AWX template", plan.AWX.Template})
+	}
+	if l.req.LeaseDays != nil {
+		out = append(out, fact{"Lease", fmt.Sprintf("%d days", *l.req.LeaseDays)})
+	}
+	if plan.Quota["vcpu"] > 0 || plan.Quota["memory_gb"] > 0 {
+		limits, err := s.Store.QuotaLimits(ctx, l.req.ProjectID, "")
+		if err != nil {
+			return out, err
+		}
+		used, err := s.Store.QuotaUsed(ctx, l.req.ProjectID, "")
+		if err != nil {
+			return out, err
+		}
+		reserved, err := s.Store.QuotaReserved(ctx, l.req.ProjectID, "")
+		if err != nil {
+			return out, err
+		}
+		var parts []string
+		for _, q := range limits {
+			if q.Limit == nil || (q.Resource != "vcpu" && q.Resource != "memory_gb") {
+				continue
+			}
+			after := used[q.Resource] + reserved[q.Resource] + plan.Quota[q.Resource]
+			unit := " vCPU"
+			if q.Resource == "memory_gb" {
+				unit = " GB"
+			}
+			parts = append(parts, fmt.Sprintf("%d / %d%s", after, *q.Limit, unit))
+		}
+		if len(parts) > 0 {
+			out = append(out, fact{"Project quota after", strings.Join(parts, " · ")})
+		}
+	}
+	return out, nil
+}
+
+// editableFields lists the inputs approvers may change, with their limits.
+func (s *Service) editableFields(ctx context.Context, l loadedLevel) ([]api.ApprovalEditableField, error) {
+	version, err := s.Store.GetVersion(ctx, l.req.VersionID)
+	if err != nil {
+		return nil, err
+	}
+	var ui api.UiSchema
+	_ = json.Unmarshal(version.UISchema, &ui)
+	var schema struct {
+		Properties map[string]struct {
+			Minimum *float32 `json:"minimum"`
+			Maximum *float32 `json:"maximum"`
+		} `json:"properties"`
+	}
+	_ = json.Unmarshal(version.FormSchema, &schema)
+	inputs := map[string]any{}
+	_ = json.Unmarshal(l.req.Inputs, &inputs)
+	out := []api.ApprovalEditableField{}
+	for _, name := range sortedKeys(ui.Fields) {
+		f := ui.Fields[name]
+		if f.ApproverEditable == nil || !*f.ApproverEditable {
+			continue
+		}
+		ef := api.ApprovalEditableField{Field: name, Label: f.Label, Value: inputs[name], Options: f.Options}
+		if p, ok := schema.Properties[name]; ok {
+			ef.Minimum, ef.Maximum = p.Minimum, p.Maximum
+		}
+		out = append(out, ef)
+	}
+	return out, nil
+}
+
+func joinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
+}
+
+func nonNilSlice[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}

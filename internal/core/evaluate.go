@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -39,11 +40,15 @@ type Evaluation struct {
 	Names      []string
 	Addresses  []string
 	Approval   api.ApprovalPreview
-	QuotaAdd   map[string]int
-	Quota      []api.QuotaImpact
-	Lease      LeaseInfo
-	OnBehalfOf *store.User
-	Errors     []api.FieldError
+	// Chain is the approval levels to pass, merged across policies.
+	Chain []ChainLevel
+	// AutoApproved names the matching policies whose auto_approve held.
+	AutoApproved []string
+	QuotaAdd     map[string]int
+	Quota        []api.QuotaImpact
+	Lease        LeaseInfo
+	OnBehalfOf   *store.User
+	Errors       []api.FieldError
 }
 
 type LeaseInfo struct {
@@ -259,15 +264,78 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"project":     map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name},
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
 		"vm":          map[string]any{"vcpu": ev.VM.VCPU, "memory_gb": ev.VM.MemoryGB, "disk_gb": ev.VM.DiskGB, "count": ev.Count},
-		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles},
+		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles, "groups": nonNilStrings(p.Groups)},
 	}
 }
 
+// level is one level of an approval policy, as stored in its levels JSON.
 type level struct {
 	Name      string   `json:"name"`
 	Group     string   `json:"group"`
 	Approvers []string `json:"approvers"`
 	Mode      string   `json:"mode"`
+	// Timeout is a Go duration such as "48h"; empty for none.
+	Timeout    string `json:"timeout"`
+	OnTimeout  string `json:"on_timeout"`
+	EscalateTo *struct {
+		Group     string   `json:"group"`
+		Approvers []string `json:"approvers"`
+	} `json:"escalate_to"`
+}
+
+// ChainLevel is one level a request must pass, possibly from several
+// policies (ADR-0011).
+type ChainLevel struct {
+	Name          string
+	Group         string
+	Approvers     []string
+	Mode          string
+	PolicyIDs     []string
+	Reasons       []string
+	Rules         []string
+	Timeout       time.Duration
+	OnTimeout     string
+	EscalateGroup string
+	EscalateIDs   []string
+}
+
+// addLevel merges a policy level into the chain: levels with the same
+// approvers become one, keeping every reason, the stricter mode and the
+// shorter timeout.
+func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLevel {
+	timeout, _ := time.ParseDuration(l.Timeout)
+	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Mode: orDefault(l.Mode, "any"),
+		PolicyIDs: []string{pol.ID}, Reasons: []string{pol.Reason}, Rules: []string{pol.Condition}}
+	if timeout > 0 {
+		in.Timeout, in.OnTimeout = timeout, orDefault(l.OnTimeout, "reject")
+		if l.EscalateTo != nil {
+			in.EscalateGroup, in.EscalateIDs = l.EscalateTo.Group, l.EscalateTo.Approvers
+		}
+	}
+	key := func(c ChainLevel) string {
+		ids := slices.Clone(c.Approvers)
+		slices.Sort(ids)
+		return c.Group + "|" + strings.Join(ids, ",")
+	}
+	for i := range chain {
+		c := &chain[i]
+		if key(*c) != key(in) {
+			continue
+		}
+		c.PolicyIDs = append(c.PolicyIDs, pol.ID)
+		if !slices.Contains(c.Reasons, pol.Reason) {
+			c.Reasons = append(c.Reasons, pol.Reason)
+		}
+		c.Rules = append(c.Rules, pol.Condition)
+		if in.Mode == "all" {
+			c.Mode = "all"
+		}
+		if in.Timeout > 0 && (c.Timeout == 0 || in.Timeout < c.Timeout) {
+			c.Timeout, c.OnTimeout, c.EscalateGroup, c.EscalateIDs = in.Timeout, in.OnTimeout, in.EscalateGroup, in.EscalateIDs
+		}
+		return chain
+	}
+	return append(chain, in)
 }
 
 func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {
@@ -286,6 +354,7 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		PolicyId string `json:"policy_id"`
 		Reason   string `json:"reason"`
 	}{}}
+	ev.Chain, ev.AutoApproved = nil, nil
 	for _, pol := range policies {
 		match, err := policy.Bool(pol.Condition, vars)
 		if err != nil {
@@ -298,11 +367,19 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		if !match {
 			continue
 		}
+		if pol.AutoApprove != nil && *pol.AutoApprove != "" {
+			// An expression that fails to evaluate approves nothing.
+			if auto, err := policy.Bool(*pol.AutoApprove, vars); err == nil && auto {
+				ev.AutoApproved = append(ev.AutoApproved, pol.Name)
+				continue
+			}
+		}
 		var levels []level
 		_ = json.Unmarshal(pol.Levels, &levels)
 		var ids []string
 		for _, l := range levels {
 			ids = append(ids, l.Approvers...)
+			ev.Chain = addLevel(ev.Chain, pol, l)
 		}
 		users, err := s.Store.FindUsers(ctx, ids)
 		if err != nil {
@@ -336,7 +413,7 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		}
 		ev.Approval.Policies = append(ev.Approval.Policies, entry)
 	}
-	ev.Approval.Required = len(ev.Approval.Policies) > 0
+	ev.Approval.Required = len(ev.Chain) > 0
 	return nil
 }
 
@@ -477,4 +554,11 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 		}{DefaultDays: ev.Lease.DefaultDays, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
 	}
 	return out
+}
+
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

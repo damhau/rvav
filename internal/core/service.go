@@ -17,7 +17,8 @@ import (
 type Workflows interface {
 	Start(ctx context.Context, requestID string) error
 	Cancel(ctx context.Context, requestID string) error
-	Decide(ctx context.Context, requestID string, approved bool, by, comment string) error
+	// Approval signals that an approval level was decided (approved or rejected).
+	Approval(ctx context.Context, requestID, approvalID, outcome string) error
 }
 
 type Service struct {

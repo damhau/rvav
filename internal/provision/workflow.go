@@ -10,8 +10,14 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 )
 
-// SignalDecision carries an approval decision to a waiting workflow.
-const SignalDecision = "decision"
+// SignalApproval tells a waiting workflow that an approval level was decided.
+const SignalApproval = "approval"
+
+// ApprovalSignal names the level and how it ended: approved or rejected.
+type ApprovalSignal struct {
+	ApprovalID string `json:"approval_id"`
+	Outcome    string `json:"outcome"`
+}
 
 // activityOptions: external calls are retried with backoff; errors marked
 // Permanent (bad configuration, full subnet, failed AWX job) are not.
@@ -46,23 +52,19 @@ func Provision(ctx workflow.Context, requestID string) error {
 	}
 
 	if info.Plan.ApprovalRequired && info.Status == "pending_approval" {
-		var d Decision
-		cancelled := false
-		sel := workflow.NewSelector(ctx)
-		sel.AddReceive(workflow.GetSignalChannel(ctx, SignalDecision), func(c workflow.ReceiveChannel, _ bool) { c.Receive(ctx, &d) })
-		sel.AddReceive(ctx.Done(), func(workflow.ReceiveChannel, bool) { cancelled = true })
-		sel.Select(ctx)
-		if cancelled {
+		approved, cancelled, err := awaitApprovals(ctx, info)
+		if cancelled || temporal.IsCanceledError(err) {
 			return finishCancelled(ctx, info, false)
 		}
-		if err := workflow.ExecuteActivity(ctx, a.RecordDecision, requestID, d).Get(ctx, nil); err != nil {
+		if err != nil || !approved {
+			return err
+		}
+		// Approvers may have changed inputs: provision what the request says now.
+		if err := workflow.ExecuteActivity(ctx, a.LoadPlan, requestID).Get(ctx, &info); err != nil {
 			if temporal.IsCanceledError(err) {
 				return finishCancelled(ctx, info, false)
 			}
 			return err
-		}
-		if !d.Approved {
-			return nil
 		}
 	}
 
@@ -100,6 +102,62 @@ func Provision(ctx workflow.Context, requestID string) error {
 		return workflow.ExecuteActivity(ctx, a.Finish, FinishInput{RequestID: requestID, ProjectID: info.ProjectID,
 			Outcome: "failed", StepKey: failedStep, Message: errMessage(err)}).Get(ctx, nil)
 	}
+}
+
+// approvalRecheck is how often a waiting level is read again from the
+// database, in case a decision signal was lost.
+const approvalRecheck = 5 * time.Minute
+
+// awaitApprovals runs the approval levels in order. Each waits for its
+// decision signal or its timeout; the database holds the decisions, and
+// FinishApprovals records the outcome on the request.
+func awaitApprovals(ctx workflow.Context, info Info) (approved, cancelled bool, err error) {
+	var a *Activities
+	signals := workflow.GetSignalChannel(ctx, SignalApproval)
+	for _, id := range info.Approvals {
+		var st LevelState
+		if err := workflow.ExecuteActivity(ctx, a.OpenApproval, id).Get(ctx, &st); err != nil {
+			return false, false, err
+		}
+		for st.Status == "pending" {
+			tctx, cancelTimer := workflow.WithCancel(ctx)
+			wait, due, fired := approvalRecheck, false, false
+			if st.DueAt != nil {
+				if d := st.DueAt.Sub(workflow.Now(ctx)); d <= wait {
+					wait, due = max(d, time.Millisecond), true
+				}
+			}
+			sel := workflow.NewSelector(ctx)
+			sel.AddReceive(signals, func(c workflow.ReceiveChannel, _ bool) {
+				var sig ApprovalSignal
+				c.Receive(ctx, &sig)
+				if sig.ApprovalID == id {
+					st.Status = sig.Outcome
+				}
+			})
+			sel.AddReceive(ctx.Done(), func(workflow.ReceiveChannel, bool) { cancelled = true })
+			sel.AddFuture(workflow.NewTimer(tctx, wait), func(workflow.Future) { fired = true })
+			sel.Select(ctx)
+			cancelTimer()
+			if cancelled {
+				return false, true, nil
+			}
+			if fired {
+				next := a.ApprovalState
+				if due {
+					next = a.ApprovalTimedOut
+				}
+				if err := workflow.ExecuteActivity(ctx, next, id).Get(ctx, &st); err != nil {
+					return false, false, err
+				}
+			}
+		}
+		if st.Status != "approved" {
+			break
+		}
+	}
+	err = workflow.ExecuteActivity(ctx, a.FinishApprovals, info.RequestID).Get(ctx, &approved)
+	return approved, false, err
 }
 
 // finishCancelled rolls back (when something may have been created) and

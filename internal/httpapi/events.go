@@ -30,12 +30,12 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		t = strings.TrimSpace(t)
 		switch {
 		case t == "":
-		case t == "requests", t == "deployments", t == "notifications",
+		case t == "requests", t == "deployments", t == "notifications", t == "approvals",
 			strings.HasPrefix(t, "request:"), strings.HasPrefix(t, "deployment:"):
 			topics = append(topics, t)
 		default:
 			s.problem(w, r, http.StatusBadRequest, "bad-request", "Unknown topic",
-				fmt.Sprintf("%q is not a topic. Use requests, deployments, notifications, request:<id> or deployment:<id>.", t), nil)
+				fmt.Sprintf("%q is not a topic. Use requests, deployments, notifications, approvals, request:<id> or deployment:<id>.", t), nil)
 			return
 		}
 	}

@@ -1,7 +1,7 @@
 # Backend layout
 
 One binary, `cmd/rvav`, runs every process (`api`, `worker`, `sync`, `dev`,
-`migrate`, `seed`, `approve`, `vcsim-bootstrap`). `cmd/rvav-vcsim` runs the
+`migrate`, `seed`, `vcsim-bootstrap`, `healthcheck`). `cmd/rvav-vcsim` runs the
 vCenter simulator with the GVA layout for local work.
 
 | Package | What it does |
@@ -11,7 +11,7 @@ vCenter simulator with the GVA layout for local work.
 | `auth` | OIDC access tokens, API tokens (`rvav_pat_`), dev mode; the `Principal` |
 | `blueprint` | Catalog item blueprints and their CEL bindings |
 | `config` | `RVAV_*` environment variables |
-| `core` | Business rules: draft evaluation (schema, placement, naming, approval, quota, lease), form value sources, submit, cancel |
+| `core` | Business rules: draft evaluation (schema, placement, naming, approval, quota, lease), form value sources, submit, cancel, approvals (inbox, decide, delegate) |
 | `e2e` | End-to-end tests (`make test-e2e`): slice 1 in Temporal's test environment, and requests through a real Temporal dev server; they start their own PostgreSQL and are skipped with `-short` |
 | `events` | Event outbox publisher and the SSE hub (Postgres LISTEN/NOTIFY) |
 | `httpapi` | HTTP handlers on the generated `ServerInterface`, problems, middleware |
@@ -32,10 +32,13 @@ vCenter simulator with the GVA layout for local work.
 ## How a request runs
 
 1. `POST /requests/preview` and `POST /requests` share `core.Evaluate`.
-   Submit stores the request with its plan, the pending top-level steps and
-   the deployments, then starts the `Provision` workflow.
-2. The workflow waits for the `decision` signal when approval is required,
-   sleeps until `scheduled_at`, then runs: reserve IP and create DNS
+   Submit stores the request with its plan, the pending top-level steps, the
+   deployments and its approval levels (ADR-0011), then starts the
+   `Provision` workflow.
+2. When approval is required, the workflow opens each level in turn and
+   waits for its `approval` signal (sent by `POST /approvals/{id}/decision`)
+   or its timeout, then loads the plan again (approvers may have changed
+   inputs). It sleeps until `scheduled_at`, then runs: reserve IP and create DNS
    (EfficientIP), clone, customize and power on (vCenter), refresh the AWX
    inventory and run one AWX job per post-config template.
 3. Each activity records its own step. AWX tasks become child steps and the
@@ -46,7 +49,6 @@ vCenter simulator with the GVA layout for local work.
 
 ## Known gaps in slice 1
 
-- Approvals have no API yet; use `rvav approve`.
 - The EfficientIP HTTP client follows SOLIDserver REST service names but has
   not been checked against a real SOLIDserver; see the TODO in
   `integrations/efficientip/client.go`. The fake is used everywhere so far.

@@ -36,8 +36,9 @@ func (t *Temporal) Cancel(ctx context.Context, requestID string) error {
 	return err
 }
 
-func (t *Temporal) Decide(ctx context.Context, requestID string, approved bool, by, comment string) error {
-	return t.Client.SignalWorkflow(ctx, WorkflowID(requestID), "", SignalDecision, Decision{Approved: approved, By: by, Comment: comment})
+// Approval tells the request's workflow that an approval level was decided.
+func (t *Temporal) Approval(ctx context.Context, requestID, approvalID, outcome string) error {
+	return t.Client.SignalWorkflow(ctx, WorkflowID(requestID), "", SignalApproval, ApprovalSignal{ApprovalID: approvalID, Outcome: outcome})
 }
 
 // NewWorker registers the workflow and activities on the task queue.

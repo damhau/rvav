@@ -20,7 +20,6 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/provision"
-	"github.com/damhau/rvav/internal/seed"
 )
 
 // TestThroughTemporal runs requests through a real Temporal server, the CLI
@@ -92,9 +91,9 @@ func TestThroughTemporal(t *testing.T) {
 		// Production waits for approval; the decision arrives as a signal.
 		prd := submit("tnguyen", draft("prd", "front", prdInputs()))
 		h.waitStatus(prd.Id, "tnguyen", api.RequestStatusPendingApproval)
-		if err := h.svc.Decide(ctx, prd.Id, true, seed.UserID("mkeller"), "OK for Black Friday"); err != nil {
-			t.Fatal(err)
-		}
+		inbox := h.waitInbox("mkeller", 1)
+		h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", "mkeller",
+			api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove, Comment: strPtr("OK for Black Friday")}, 200, nil)
 		h.waitStatus(prd.Id, "tnguyen", api.RequestStatusSucceeded)
 
 		// Cancelling a request that waits for approval ends its workflow.
@@ -148,6 +147,24 @@ func startTemporal(t *testing.T) *testsuite.DevServer {
 	}
 	t.Cleanup(func() { _ = ts.Stop() })
 	return ts
+}
+
+// waitInbox polls a user's approvals until n are pending: the workflow opens
+// a level shortly after the request is submitted.
+func (h *harness) waitInbox(user string, n int) api.ApprovalPage {
+	h.t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		var inbox api.ApprovalPage
+		h.json("GET", "/api/v1/approvals", user, nil, 200, &inbox)
+		if inbox.Total == n {
+			return inbox
+		}
+		if time.Now().After(deadline) {
+			h.t.Fatalf("%s has %d approvals waiting, want %d", user, inbox.Total, n)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // waitStatus polls the request until it has the wanted status.

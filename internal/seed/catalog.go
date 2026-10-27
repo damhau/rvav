@@ -79,7 +79,7 @@ func vmItem(template, osFamily, required string, post []option, defaultPost []st
 				"help":         "From the naming policy {project}-{environment}-{role}{seq:03}. Checked free in vCenter.",
 				"value_source": map[string]any{"kind": "builtin", "name": "naming.preview"},
 				"depends_on":   []string{"$environment", "role"}},
-			"size": map[string]any{"widget": "radio_cards", "label": "Size", "options": options(
+			"size": map[string]any{"widget": "radio_cards", "label": "Size", "approver_editable": true, "options": options(
 				option{"S", "Small", "2 vCPU · 4 GB · 60 GB"},
 				option{"M", "Medium", "4 vCPU · 16 GB · 80 GB"},
 				option{"L", "Large", "8 vCPU · 32 GB · 120 GB"},

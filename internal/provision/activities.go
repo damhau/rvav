@@ -45,12 +45,15 @@ type Info struct {
 	Status      string     `json:"status"`
 	ScheduledAt *time.Time `json:"scheduled_at"`
 	Plan        Plan       `json:"plan"`
+	// Approvals are the request's approval levels, in the order they run.
+	Approvals []string `json:"approvals,omitempty"`
 }
 
-type Decision struct {
-	Approved bool   `json:"approved"`
-	By       string `json:"by"`
-	Comment  string `json:"comment"`
+// LevelState is an approval level after it was opened or timed out.
+type LevelState struct {
+	// Status is pending, approved or rejected.
+	Status string     `json:"status"`
+	DueAt  *time.Time `json:"due_at"`
 }
 
 type VMInput struct {
@@ -158,42 +161,14 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 	if err := json.Unmarshal(r.Plan, &info.Plan); err != nil {
 		return info, permanent("request %s has no valid plan: %v", r.Number, err)
 	}
-	return info, nil
-}
-
-// RecordDecision applies an approval or rejection to the policy step.
-func (a *Activities) RecordDecision(ctx context.Context, requestID string, d Decision) error {
-	r, err := a.Store.GetRequest(ctx, requestID)
+	levels, err := a.Store.ApprovalsForRequest(ctx, r.ID)
 	if err != nil {
-		return err
+		return info, err
 	}
-	by := d.By
-	if u, err := a.Store.GetUser(ctx, d.By); err == nil {
-		by = u.Name
+	for _, l := range levels {
+		info.Approvals = append(info.Approvals, l.ID)
 	}
-	title := "Approved by " + by
-	status, reqStatus := "done", "queued"
-	if !d.Approved {
-		title, status, reqStatus = "Rejected by "+by, "failed", "rejected"
-	}
-	u := store.StepUpdate{Status: status, Title: &title}
-	if d.Comment != "" {
-		c := "“" + d.Comment + "”"
-		u.Detail = &c
-	}
-	if _, err := a.Store.UpdateStep(ctx, a.Store.Pool, requestID, KeyPolicy, u); err != nil {
-		return err
-	}
-	if err := a.Store.SetRequestStatus(ctx, a.Store.Pool, requestID, reqStatus); err != nil {
-		return err
-	}
-	if !d.Approved {
-		_ = a.Store.MarkRemainingSteps(ctx, a.Store.Pool, requestID, "cancelled")
-		_ = a.Store.SetDeploymentsStatusForRequest(ctx, a.Store.Pool, requestID, "deleted")
-		a.Events.Notify(ctx, r.RequesterID, "Rejected: "+r.Title, d.Comment, "error", "/requests/"+r.Number)
-	}
-	a.publishAll(ctx, r.ProjectID, requestID)
-	return nil
+	return info, nil
 }
 
 func (a *Activities) publishAll(ctx context.Context, projectID, requestID string) {
