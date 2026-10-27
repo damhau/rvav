@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,6 +73,13 @@ var quotaOrder = []string{"vcpu", "memory_gb", "storage_gb", "vm_count"}
 // errors; everything the user can fix is collected in Evaluation.Errors.
 // strict is set on submit: unresolved policy expressions then require approval.
 func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict bool) (*Evaluation, error) {
+	return s.evaluate(ctx, p, d, strict, false)
+}
+
+// evaluate is Evaluate; with ofRequest, the draft is a submitted request's,
+// checked again (an approver's edits) on the version it was made with, even
+// if another is published or the item was withdrawn since (ADR-0019).
+func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest bool) (*Evaluation, error) {
 	ev := &Evaluation{Inputs: map[string]any{}}
 	for k, v := range d.Inputs {
 		ev.Inputs[k] = v
@@ -103,16 +111,25 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if err != nil {
 		return nil, err
 	}
-	if ok, err := s.Store.IsEntitled(ctx, ev.Item.ID, ev.Project.ID); err != nil {
-		return nil, err
-	} else if !ok || ev.Item.PublishedVersionID == nil {
-		return nil, ErrNotFound
-	}
-	if d.VersionId != *ev.Item.PublishedVersionID {
-		add("/version_id", "stale_version", "This form is out of date. Reload it to get the current version.")
-	}
-	if ev.Version, err = s.Store.GetVersion(ctx, *ev.Item.PublishedVersionID); err != nil {
-		return nil, err
+	if ofRequest {
+		if ev.Version, err = s.Store.GetVersion(ctx, d.VersionId); err != nil {
+			return nil, err
+		}
+		if ev.Version.ItemID != ev.Item.ID {
+			return nil, ErrNotFound
+		}
+	} else {
+		if ok, err := s.Store.IsEntitled(ctx, ev.Item.ID, ev.Project.ID); err != nil {
+			return nil, err
+		} else if !ok || ev.Item.PublishedVersionID == nil {
+			return nil, ErrNotFound
+		}
+		if d.VersionId != *ev.Item.PublishedVersionID {
+			add("/version_id", "stale_version", "This form is out of date. Reload it to get the current version.")
+		}
+		if ev.Version, err = s.Store.GetVersion(ctx, *ev.Item.PublishedVersionID); err != nil {
+			return nil, err
+		}
 	}
 	if ev.Blueprint, err = blueprint.Parse(ev.Version.Blueprint); err != nil {
 		return nil, err
@@ -124,11 +141,16 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 
 	// Rules first: computed values are inputs like any other.
 	ev.Fields = fieldStates(ev.Version.FormSchema, ev.Version.UISchema, formVars(ev.Inputs, ev.Project, ev.Env.Key, p))
-	ruleErrs := applyStates(ev.Fields, ev.Inputs)
+	var ui api.UiSchema
+	_ = json.Unmarshal(ev.Version.UISchema, &ui)
+	var initial map[string]any
+	_ = json.Unmarshal(ev.Version.InitialValues, &initial)
+	ruleErrs := applyStates(ev.Fields, ui, initial, ev.Inputs)
 	fieldErrs, err := validateInputs(ev.Version.ID, ev.Version.FormSchema, ev.Inputs)
 	if err != nil {
 		return nil, err
 	}
+	fieldErrs = hiddenErrors(ev.Fields, fieldErrs)
 	for _, e := range ruleErrs {
 		if !slices.ContainsFunc(fieldErrs, func(f api.FieldError) bool { return f.Field == e.Field }) {
 			fieldErrs = append(fieldErrs, e)
@@ -193,9 +215,16 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 		return err
 	}
 	for name, f := range ui.Fields {
-		value, _ := ev.Inputs[name].(string)
 		src := f.ValueSource
-		if value == "" || src == nil || src.Kind != api.Builtin || src.Name == nil {
+		if src == nil || src.Kind != api.Builtin || src.Name == nil {
+			continue
+		}
+		values, ok := pickedValues(ev.Inputs[name])
+		if !ok {
+			ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("Choose %s from its list.", f.Label)))
+			continue
+		}
+		if len(values) == 0 {
 			continue
 		}
 		var allowed []string
@@ -214,11 +243,54 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 			}
 			continue
 		}
-		if !slices.Contains(allowed, value) {
-			ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
+		for _, value := range values {
+			if !slices.Contains(allowed, value) {
+				ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
+				break
+			}
 		}
 	}
 	return nil
+}
+
+// pickedValues are the values of a picker's input, whatever its schema's
+// type: a string, a number or a list of them (AWX IDs travel as either).
+// Anything else can't have been picked (ok is false).
+func pickedValues(v any) (values []string, ok bool) {
+	one := func(x any) (string, bool) {
+		switch x := x.(type) {
+		case string:
+			return x, true
+		case float64:
+			return strconv.FormatFloat(x, 'f', -1, 64), true
+		case json.Number:
+			return x.String(), true
+		}
+		return "", false
+	}
+	switch x := v.(type) {
+	case nil:
+		return nil, true
+	case []any:
+		for _, e := range x {
+			s, ok := one(e)
+			if !ok {
+				return nil, false
+			}
+			values = append(values, s)
+		}
+		return values, true
+	case []string:
+		return x, true
+	}
+	s, ok := one(v)
+	if !ok {
+		return nil, false
+	}
+	if s == "" {
+		return nil, true
+	}
+	return []string{s}, true
 }
 
 func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) error {

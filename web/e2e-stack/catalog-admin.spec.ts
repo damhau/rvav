@@ -9,7 +9,7 @@ import { signIn } from "./auth";
 //
 //   docker run -d --rm --name rvav-cmdb --network rvav_default \
 //     -v "$PWD/deploy/cmdb:/usr/share/nginx/html:ro" nginx:1.27-alpine
-//   RVAV_REST_SOURCE_HOSTS=rvav-cmdb make up
+//   RVAV_REST_SOURCE_HOSTS=http://rvav-cmdb make up
 test.skip(!process.env.RVAV_STACK_CMDB, "needs the cmdb container (set RVAV_STACK_CMDB=1)");
 
 test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ page }) => {

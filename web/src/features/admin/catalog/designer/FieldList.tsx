@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, CircleAlert } from "lucide-react";
+import { useState } from "react";
 import { Panel } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
@@ -10,6 +11,23 @@ import { addField, addSection, moveField, moveSection, widgetLabels, type Def, t
 export type Selection = { kind: "field"; name: string } | { kind: "section"; key: string } | null;
 
 const widgetOptions = Object.entries(widgetLabels).map(([value, label]) => ({ value, label }));
+
+/** Focuses an element once React has drawn the change (a move or a removal remounts it). */
+export function focusLater(...ids: string[]) {
+  requestAnimationFrame(() => {
+    for (const id of ids) {
+      const el = document.getElementById(id) as HTMLButtonElement | null;
+      if (el && !el.disabled) return el.focus();
+    }
+  });
+}
+
+/** Where a field is, said for a screen reader. */
+function position(def: Def, name: string): string {
+  const sections = def.ui_schema.layout.sections;
+  const s = sections.find((x) => x.fields.includes(name));
+  return s ? `position ${s.fields.indexOf(name) + 1} of ${s.fields.length} in ${s.title || s.key}` : "no section";
+}
 
 function ProblemMark({ label }: { label: string }) {
   return <CircleAlert className="size-3.5 shrink-0 text-bad" aria-label={label} role="img" />;
@@ -35,16 +53,33 @@ export function FieldList({
     selection?.kind === "section"
       ? selection.key
       : sections.find((s) => selection?.kind === "field" && s.fields.includes(selection.name))?.key;
+  const [announcement, setAnnouncement] = useState("");
+  const move = (name: string, label: string, delta: -1 | 1) => {
+    const next = moveField(def, name, delta);
+    onChange(next);
+    setAnnouncement(`${label} moved to ${position(next, name)}.`);
+    const [ahead, back] = delta < 0 ? ["up", "down"] : ["down", "up"];
+    focusLater(`designer-${ahead}-${name}`, `designer-${back}-${name}`, `designer-field-${name}`);
+  };
+  const shift = (key: string, title: string, delta: -1 | 1) => {
+    const next = moveSection(def, key, delta);
+    onChange(next);
+    const i = next.ui_schema.layout.sections.findIndex((x) => x.key === key);
+    setAnnouncement(`Section ${title} moved to position ${i + 1} of ${next.ui_schema.layout.sections.length}.`);
+    const [ahead, back] = delta < 0 ? ["up", "down"] : ["down", "up"];
+    focusLater(`designer-section-${ahead}-${key}`, `designer-section-${back}-${key}`, `designer-section-${key}`);
+  };
   const isFirst = (si: number, i: number) => si === 0 && i === 0;
   const isLast = (si: number, i: number) => si === sections.length - 1 && i === sections[si]!.fields.length - 1;
 
-  const fieldRow = (name: string, move?: { si: number; i: number }) => {
+  const fieldRow = (name: string, at?: { si: number; i: number }) => {
     const ui = def.ui_schema.fields[name];
     const label = ui?.label || name;
     const selected = selection?.kind === "field" && selection.name === name;
     return (
       <li key={name} className={cn("flex items-center gap-0.5 pr-1", selected && "bg-accent-soft")}>
         <button
+          id={`designer-field-${name}`}
           type="button"
           aria-pressed={selected}
           onClick={() => onSelect({ kind: "field", name })}
@@ -58,23 +93,25 @@ export function FieldList({
           </span>
           {problems.fields[name] && <ProblemMark label={`${label} has problems`} />}
         </button>
-        {move && (
+        {at && (
           <>
             <Button
+              id={`designer-up-${name}`}
               size="icon"
               variant="ghost"
               aria-label={`Move ${label} up`}
-              disabled={isFirst(move.si, move.i)}
-              onClick={() => onChange(moveField(def, name, -1))}
+              disabled={isFirst(at.si, at.i)}
+              onClick={() => move(name, label, -1)}
             >
               <ArrowUp className="size-3.5" />
             </Button>
             <Button
+              id={`designer-down-${name}`}
               size="icon"
               variant="ghost"
               aria-label={`Move ${label} down`}
-              disabled={isLast(move.si, move.i)}
-              onClick={() => onChange(moveField(def, name, 1))}
+              disabled={isLast(at.si, at.i)}
+              onClick={() => move(name, label, 1)}
             >
               <ArrowDown className="size-3.5" />
             </Button>
@@ -86,13 +123,17 @@ export function FieldList({
 
   return (
     <Panel title="Fields" flush>
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       <div className="flex flex-col">
         {sections.map((s, si) => {
           const selected = selection?.kind === "section" && selection.key === s.key;
           return (
-            <div key={`${si}-${s.key}`} role="group" aria-label={`Section ${s.title}`} className="border-b border-line">
+            <div key={s.key} role="group" aria-label={`Section ${s.title}`} className="border-b border-line">
               <div className={cn("flex items-center gap-0.5 pr-1", selected ? "bg-accent-soft" : "bg-sunken")}>
                 <button
+                  id={`designer-section-${s.key}`}
                   type="button"
                   aria-pressed={selected}
                   onClick={() => onSelect({ kind: "section", key: s.key })}
@@ -102,20 +143,22 @@ export function FieldList({
                   {problems.sections[si] && <ProblemMark label={`Section ${s.title} has problems`} />}
                 </button>
                 <Button
+                  id={`designer-section-up-${s.key}`}
                   size="icon"
                   variant="ghost"
                   aria-label={`Move section ${s.title} up`}
                   disabled={si === 0}
-                  onClick={() => onChange(moveSection(def, s.key, -1))}
+                  onClick={() => shift(s.key, s.title, -1)}
                 >
                   <ArrowUp className="size-3.5" />
                 </Button>
                 <Button
+                  id={`designer-section-down-${s.key}`}
                   size="icon"
                   variant="ghost"
                   aria-label={`Move section ${s.title} down`}
                   disabled={si === sections.length - 1}
-                  onClick={() => onChange(moveSection(def, s.key, 1))}
+                  onClick={() => shift(s.key, s.title, 1)}
                 >
                   <ArrowDown className="size-3.5" />
                 </Button>
@@ -149,6 +192,7 @@ export function FieldList({
             />
           </Field>
           <Button
+            id="designer-add-section"
             size="sm"
             onClick={() => {
               const added = addSection(def);

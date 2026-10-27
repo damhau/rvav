@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { celCheck } from "./cel";
-import { fieldStates, validateInputs } from "./logic";
+import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
 type S = components["schemas"];
@@ -24,16 +24,28 @@ const builtinSources = [
   "ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
 ]; // prettier-ignore
 
-/** Who may be previewed as, per project, with their groups (as the server's seed). */
-const previewMembers: Record<string, { id: string; role: string; groups: string[] }[]> = {
+/** Who may be previewed as, per project (as the server's seed). */
+const previewMembers: Record<string, { id: string; role: string }[]> = {
   web: [
-    { id: "usr_lmartin", role: "project-admin", groups: ["rvav-web-admins", "rvav-catalog-admins"] },
-    { id: "usr_tnguyen", role: "member", groups: ["rvav-web"] },
+    { id: "usr_lmartin", role: "project-admin" },
+    { id: "usr_tnguyen", role: "member" },
   ],
-  data: [{ id: "usr_sbrunner", role: "project-admin", groups: ["rvav-data"] }],
-  fin: [{ id: "usr_sbrunner", role: "member", groups: ["rvav-fin"] }],
-  core: [{ id: "usr_afavre", role: "project-admin", groups: ["rvav-core", "rvav-network"] }],
+  data: [{ id: "usr_sbrunner", role: "project-admin" }],
+  fin: [{ id: "usr_sbrunner", role: "member" }],
+  core: [{ id: "usr_afavre", role: "project-admin" }],
 };
+
+/** The server's answer to a preview as someone outside the project. */
+export function notMember(db: Db, userId: string) {
+  const name = db.users.find((u) => u.id === userId)?.name ?? userId;
+  return problem(422, "Some inputs need attention", [
+    {
+      field: "/as_user_id",
+      code: "not_member",
+      message: `${name} is not a member of this project: preview as one of its members.`,
+    },
+  ]);
+}
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
@@ -65,6 +77,7 @@ function state(db: Db): AdminState {
           created_at: item.version.published_at ?? now(),
           published_at: item.version.published_at ?? now(),
           deployments: db.deployments.filter((x) => x.catalog_item.id === item.id).length,
+          revision: 1,
           definition: {
             form_schema: form?.schema ?? { type: "object", properties: {} },
             ui_schema: form?.ui_schema ?? { layout: { kind: "page", sections: [] }, fields: {} },
@@ -212,6 +225,38 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         code: "no_ui_field",
         message: `"${name}" has no UI field, so nobody could fill it in.`,
       });
+  const required = (def.form_schema as { required?: string[] }).required ?? [];
+  required.forEach((name, i) => {
+    if (!(name in props))
+      errors.push({
+        field: `${prefix}/form_schema/required/${i}`,
+        code: "unknown_input",
+        message: `${name} is required but is not an input of the form's schema, so no request could pass.`,
+      });
+  });
+  const keys = new Set<string>();
+  def.ui_schema.layout.sections.forEach((sec, i) => {
+    if (!sec.key.trim())
+      errors.push({
+        field: `${prefix}/ui_schema/layout/sections/${i}/key`,
+        code: "required",
+        message: "Give the section a key.",
+      });
+    if (keys.has(sec.key))
+      errors.push({
+        field: `${prefix}/ui_schema/layout/sections/${i}/key`,
+        code: "duplicate",
+        message: `Another section has the key "${sec.key}".`,
+      });
+    keys.add(sec.key);
+  });
+  for (const name of Object.keys(def.initial_values ?? {}))
+    if (!(name in props))
+      errors.push({
+        field: `${prefix}/initial_values/${name}`,
+        code: "unknown_input",
+        message: `"${name}" is not an input of the form's schema.`,
+      });
   return errors;
 }
 
@@ -293,8 +338,8 @@ export function designerForm(db: Db, versionId: string, projectCode: string, asU
       initial_values: v.definition.initial_values,
     };
     const userId = asUserId ?? db.me.user.id;
-    const member = previewMembers[projectCode]?.find((m) => m.id === userId);
-    return { item, form, user: { id: userId, roles: [], groups: member?.groups ?? [] } };
+    const member = previewMembers[projectCode]?.some((m) => m.id === userId) ?? false;
+    return { item, form, member, user: { id: userId, roles: [], groups: userGroups[userId] ?? [] } };
   }
   return undefined;
 }
@@ -363,6 +408,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
           changelog: "",
           created_at: now(),
           deployments: 0,
+          revision: 1,
           definition: def,
         },
       ];
@@ -419,6 +465,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         created_at: now(),
         created_by: { id: db.me.user.id, name: db.me.user.name },
         deployments: 0,
+        revision: 1,
         definition: structuredClone(c.definition ?? from!.definition),
       };
       versions.unshift(v);
@@ -440,7 +487,15 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const u = (await request.json()) as S["CatalogItemVersionUpdate"];
       const errors = check(u.definition, "/definition");
       if (errors.length) return problem(422, "Some inputs need attention", errors);
+      if (u.base_revision !== undefined && u.base_revision !== v.revision)
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          "This draft was saved elsewhere since you opened it: reload it to see those changes.",
+        );
       v.definition = u.definition;
+      v.revision += 1;
       if (u.number) v.number = u.number;
       if (u.changelog !== undefined) v.changelog = u.changelog;
       return HttpResponse.json(v);
@@ -579,6 +634,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
           changelog: last.changelog ?? "",
           created_at: now(),
           deployments: 0,
+          revision: 1,
           definition: def(last),
         });
         return HttpResponse.json({ item_id: item.id, created: false, versions: existing.map(summary) });
@@ -600,6 +656,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
           changelog: v.changelog ?? "",
           created_at: now(),
           deployments: 0,
+          revision: 1,
           definition: def(v),
         })) // prettier-ignore
         .reverse();
@@ -718,27 +775,15 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ]);
       const found = designerForm(db, String(params.vid), project.code, q.as_user_id);
       if (!found) return problem(404, "Not found");
+      if (!found.member) return notMember(db, found.user.id);
       const env = q.environment ?? "dev";
       const fields = fieldStates(found.form, q.inputs, {
         environment: env,
         project: { id: project.id, code: project.code, name: project.name },
         user: found.user,
       });
-      const errors = validateInputs(db, found.item, q.inputs, found.form);
-      for (const [name, st] of Object.entries(fields)) {
-        const v = q.inputs[name];
-        if (
-          st.visible &&
-          st.required &&
-          (v === undefined || v === "") &&
-          !errors.some((e) => e.field === `/inputs/${name}`)
-        )
-          errors.push({
-            field: `/inputs/${name}`,
-            code: "required",
-            message: `${found.form.ui_schema.fields[name]?.label ?? name} is required.`,
-          });
-      }
+      const inputs = { ...q.inputs };
+      const errors = applyStates(found.form, fields, inputs, (x) => validateInputs(db, found.item, x, found.form));
       return HttpResponse.json({ form: found.form, fields, errors } satisfies S["DesignerPreview"]);
     }),
   ];

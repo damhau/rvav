@@ -19,7 +19,9 @@ export function fromYaml(text: string): { def?: CatalogVersionDefinition; proble
   if (!def || missing.length > 0) {
     return { problems: [{ line: 1, message: `The definition needs ${missing.join(", ")}.` }] };
   }
-  return { def: { initial_values: {}, ...def } as CatalogVersionDefinition, problems: [] };
+  // The definition's own order, as the server and toYaml have it.
+  const { form_schema, ui_schema, initial_values, blueprint, ...rest } = def as CatalogVersionDefinition;
+  return { def: { form_schema, ui_schema, initial_values: initial_values ?? {}, blueprint, ...rest }, problems: [] };
 }
 
 /** The line of the node a server pointer (under prefix) names, or the deepest on its way. */

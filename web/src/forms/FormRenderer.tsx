@@ -43,14 +43,18 @@ export interface FieldState {
   computed?: unknown;
 }
 
-/** A field's state: the server's rule results, else the schema's defaults. */
+/**
+ * A field's state: the server's rule results, else the schema's defaults. A
+ * field with a visible rule stays hidden until the server has said, rather
+ * than show and then vanish.
+ */
 export function fieldState(name: string, ui: UiField, schema: Schema, states?: FieldStates): FieldState {
   const server = states?.[name];
   if (server) {
     return { visible: server.visible, required: server.required, readOnly: server.read_only, computed: server.value };
   }
   return {
-    visible: true,
+    visible: !ui.rules?.visible,
     required: schema.required?.includes(name) ?? false,
     readOnly: Boolean(schema.properties?.[name]?.readOnly) || Boolean(ui.rules?.value),
   };

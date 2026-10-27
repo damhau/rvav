@@ -43,6 +43,8 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 			errs = append(errs, fieldErr(ptr+"/params/url", "required", "Give the URL the options come from."))
 		} else if u, err := url.Parse(fill(str("url"), nil, urlEscape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Give an http or https URL."))
+		} else if !fixedOrigin(str("url")) {
+			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Inputs may fill the URL's path and query, not its scheme, host or port."))
 		}
 		if m := strings.ToUpper(str("method")); m != "" && m != http.MethodGet && m != http.MethodPost {
 			errs = append(errs, fieldErr(ptr+"/params/method", "invalid", "GET or POST."))
@@ -143,12 +145,24 @@ type restEntry struct {
 	until time.Time
 }
 
+// Forget empties the cache, for example when a secret changes.
+func (r *RESTSources) Forget() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	clear(r.cache)
+}
+
 func NewRESTSources(hosts []string) *RESTSources {
 	return &RESTSources{Hosts: hosts, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
-// Allowed says whether a URL's host may be called.
+// Allowed says whether a URL's host may be called: over https, or over
+// plain http when the host is listed as http://host (a development
+// stand-in; a secret would travel in clear).
 func (r *RESTSources) Allowed(u *url.URL) bool {
 	if r == nil || (u.Scheme != "https" && u.Scheme != "http") {
 		return false
@@ -156,6 +170,12 @@ func (r *RESTSources) Allowed(u *url.URL) bool {
 	host, hostPort := strings.ToLower(u.Hostname()), strings.ToLower(u.Host)
 	for _, h := range r.Hosts {
 		h = strings.ToLower(strings.TrimSpace(h))
+		if plain, ok := strings.CutPrefix(h, "http://"); ok {
+			h = plain
+		} else if u.Scheme == "http" {
+			continue
+		}
+		h = strings.TrimPrefix(h, "https://")
 		switch {
 		case h == "":
 		case strings.HasPrefix(h, "*."):
@@ -170,6 +190,22 @@ func (r *RESTSources) Allowed(u *url.URL) bool {
 }
 
 var inputRef = regexp.MustCompile(`\$\{inputs\.([a-zA-Z0-9_]+)\}`)
+
+// fixedOrigin says whether inputs leave a URL template's scheme, host and
+// port alone: they may fill its path and query only, so a form can't send
+// a request, or a secret, anywhere else.
+func fixedOrigin(tpl string) bool {
+	ref := strings.Index(tpl, "${")
+	if ref < 0 {
+		return true
+	}
+	scheme := strings.Index(tpl, "://")
+	if scheme < 0 || ref < scheme+3 {
+		return false
+	}
+	end := strings.IndexAny(tpl[scheme+3:], "/?#")
+	return end >= 0 && ref >= scheme+3+end
+}
 
 // fill puts inputs into a template, each escaped by esc (empty when absent).
 func fill(tpl string, inputs map[string]any, esc func(string) string) string {
@@ -193,6 +229,14 @@ func jsonEscape(s string) string {
 func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any,
 	secret func(name string) (store.Secret, string, error)) ([]api.Option, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
+	if !fixedOrigin(p("url")) {
+		return nil, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
+	}
+	for _, m := range inputRef.FindAllStringSubmatch(p("url"), -1) {
+		if v := fmt.Sprint(inputs[m[1]]); v == "." || v == ".." {
+			return nil, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", m[1], v)}
+		}
+	}
 	target := fill(p("url"), inputs, urlEscape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(u) {
@@ -204,7 +248,8 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	if n, ok := params["cache_seconds"].(float64); ok {
 		cacheSeconds = min(max(int(n), 0), 3600)
 	}
-	key := method + " " + target + "\n" + body + "\n" + p("secret")
+	// The mapping is in the key too: two fields may read one answer differently.
+	key := strings.Join([]string{method + " " + target, body, p("secret"), p("items"), p("value"), p("label"), p("meta")}, "\n")
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Now().Before(e.until) {
 		r.mu.Unlock()

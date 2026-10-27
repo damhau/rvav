@@ -133,9 +133,17 @@ func TestApprovals(t *testing.T) {
 		decide("mkeller", lvl, api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove,
 			Inputs: &map[string]any{"size": "XXL"}}, 422)
 
+		// Meanwhile the item is withdrawn: the request keeps its version, and
+		// Marc's edit is checked on it (S8 review).
+		var rhel api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server", "lmartin", nil, 200, &rhel)
+		withdrawn := "/api/v1/admin/catalog/items/rhel9-server/versions/" + rhel.PublishedVersion.Id
+		h.json("POST", withdrawn+"/deprecate", "lmartin", nil, 200, nil)
+
 		// Marc lowers RAM to 32 GB and approves.
 		done := decide("mkeller", lvl, api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove,
 			Comment: strPtr("32 GB is enough for the JVM; page cache can wait."), Inputs: &map[string]any{"size": "L"}}, 200)
+		h.json("POST", withdrawn+"/publish", "lmartin", nil, 200, nil)
 		if done.Status != api.ApprovalStatusApproved || done.Outcome == nil || *done.Outcome != "Approved by Marc Keller" ||
 			len(done.Votes) != 1 || len(done.Votes[0].Changes) != 1 || done.Votes[0].Changes[0].To != "L" {
 			t.Fatalf("decided level = %+v", done)

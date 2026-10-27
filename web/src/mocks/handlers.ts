@@ -27,7 +27,7 @@ import {
 } from "./approvals";
 import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
-import { catalogAdminHandlers, designerForm } from "./catalogAdmin";
+import { catalogAdminHandlers, designerForm, notMember } from "./catalogAdmin";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
@@ -470,6 +470,7 @@ export const handlers = [
     // The form designer resolves any version, as the user it previews as.
     const designer =
       body.as_user_id && project ? designerForm(db, body.version_id, project.code, body.as_user_id) : undefined;
+    if (designer && !designer.member) return notMember(db, designer.user.id);
     const item = designer?.item ?? db.items.find((i) => i.version.id === body.version_id);
     if (!item || !project) return notFound("Form");
     const env = body.environment ?? project.environments[0] ?? "dev";

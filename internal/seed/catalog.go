@@ -277,6 +277,14 @@ func catalogItems() []item {
 	return items
 }
 
+// untouched is true while no catalog admin has changed the item (every
+// change of theirs is audited): the seed keeps its items current until then,
+// and leaves them alone after.
+func untouched(item string) string {
+	return `not exists (select 1 from audit_events a where a.target_type = 'catalog_item' and a.target_id = ` + item +
+		` and a.action like 'catalog.%')`
+}
+
 func seedCatalog(exec func(string, ...any) error) error {
 	for i, c := range []struct{ key, name string }{
 		{"compute", "Compute"}, {"databases", "Databases"}, {"network", "Network"}, {"security", "Security"}, {"identity", "Identity"},
@@ -300,7 +308,8 @@ func seedCatalog(exec func(string, ...any) error) error {
 			description_md = excluded.description_md, category = excluded.category, type = excluded.type,
 			icon = excluded.icon, tags = excluded.tags, featured = excluded.featured, source_kind = excluded.source_kind,
 			awx_template_name = excluded.awx_template_name, published_version_id = excluded.published_version_id
-			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.id and v.id <> $13)`,
+			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.id and v.id <> $13)
+			  and `+untouched("excluded.id"),
 			itemID, it.slug, it.name, it.summary, it.description, it.category, it.typ, it.icon, nonNil(it.tags),
 			it.featured, source, awxName, versionID); err != nil {
 			return err
@@ -310,13 +319,14 @@ func seedCatalog(exec func(string, ...any) error) error {
 			values ($1,$2,$3,'published',$4,$5,$6,$7, now())
 			on conflict (id) do update set number = excluded.number, form_schema = excluded.form_schema,
 			ui_schema = excluded.ui_schema, initial_values = excluded.initial_values, blueprint = excluded.blueprint
-			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.item_id and v.id <> excluded.id)`,
+			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.item_id and v.id <> excluded.id)
+			  and `+untouched("excluded.item_id"),
 			versionID, itemID, it.version, j(it.schema), j(it.ui), j(it.initial), j(it.blueprint)); err != nil {
 			return err
 		}
 		for _, p := range it.projects {
-			if err := exec(`insert into catalog_entitlements (item_id, project_id) values ($1,$2) on conflict do nothing`,
-				itemID, ProjectID(p)); err != nil {
+			if err := exec(`insert into catalog_entitlements (item_id, project_id) select $1::text, $2::text
+				where `+untouched("$1::text")+` on conflict do nothing`, itemID, ProjectID(p)); err != nil {
 				return err
 			}
 		}

@@ -22,7 +22,14 @@ See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
 R1 (slices 6 to 9) is under way, item by item in
-[progress-r1.md](progress-r1.md). S7 EfficientIP is built: the client
+[progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. S8
+catalog administration is built and accepted on the compose stack
+([ADR-0019](adr/0019-catalog-administration.md)): catalog admins create
+items, publish versions and roll back (deployments keep theirs), open items
+to projects, export and import them as YAML, and build forms in a designer
+with a live preview as a chosen user; value sources call REST services
+(allowed hosts only, secrets encrypted in PostgreSQL) or compute with CEL,
+and form rules are evaluated on the server. S7 EfficientIP is built: the client
 follows EfficientIP's own library and runs everywhere against a fake
 SOLIDserver speaking the same API ([ADR-0015](adr/0015-efficientip-client.md)),
 network mappings come from subnet class parameters, renames reach
@@ -34,7 +41,7 @@ from their surveys, changed surveys flagged
 `rvav.platform` inventory plugin, and jobs on rvav's VMs run on that
 inventory ([ADR-0017](adr/0017-awx-inventory.md)); templates with the day2
 label become day-2 actions bound to resource types and a condition
-([ADR-0018](adr/0018-awx-day2-actions.md)). S8 and S9 come next. The work
+([ADR-0018](adr/0018-awx-day2-actions.md)). S9 comes next. The work
 left, slice by slice, is in [GitHub milestones and issues](https://github.com/damhau/rvav/milestones).
 
 Verified so far:
@@ -43,15 +50,20 @@ Verified so far:
   Temporal's test environment and through a real Temporal dev server, OIDC
   token checks against a fake provider, day-2 actions against vcsim and the
   console proxy against a fake ESXi WebSocket, the lease and quota
-  acceptance scenario through a real Temporal server; web typecheck, lint, 48 unit
-  tests, build and Playwright on mock data (day-2 menus, dialogs and bulk
-  actions included).
+  acceptance scenario through a real Temporal server, the catalog
+  administration acceptance scenario with a fake REST service; web
+  typecheck, lint, unit tests, build and Playwright on mock data (day-2
+  menus, dialogs and bulk actions, the catalog admin pages and the form
+  designer included).
 - The Docker Compose stack, run locally: it starts in order with health
   checks, `deploy/smoke.sh` gets a request to succeeded through the real
   Temporal server, and `pnpm e2e:stack` requests a VM in the browser,
   follows it to Ready and powers it off from its menu, with dev
   authentication and with Keycloak sign-in (groups mapped to project roles);
-  the housekeeping schedule runs every 15 minutes there.
+  the housekeeping schedule runs every 15 minutes there. With a stand-in
+  CMDB on the stack's network (`deploy/cmdb`), `pnpm e2e:stack` also builds
+  an item from YAML with a REST dropdown, publishes, requests, changes and
+  rolls it back in the browser.
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the
@@ -62,8 +74,6 @@ organisation's.
 ### Open items found in slice 1
 - EfficientIP client: endpoints confirmed against EfficientIP's own library (S7); a real SOLIDserver still has to confirm them.
 - Inventory sync polls; switch to property collector updates (S13).
-- Value sources REST and CEL (S8) are not implemented yet; using an `awx.*` picker as a launch's inventory or credential waits for the form designer (S8).
-- Per-field rule results in the preview, descriptions on checklist options (S8).
 - Accessibility audit (S14), Storybook.
 
 ## Plan

@@ -3,7 +3,7 @@
 // YAML, its details and the projects that may request it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
@@ -16,10 +16,11 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { AdminCatalogItem, CatalogItemVersion } from "@/lib/api/types";
+import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
+import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
 import { FormDesigner } from "./designer/FormDesigner";
 import type { LineProblem } from "./YamlEditor";
 
@@ -100,6 +101,13 @@ function CompareDialog({ item, onClose }: { item: AdminCatalogItem; onClose: () 
 function VersionsTab({ item }: { item: AdminCatalogItem }) {
   const refresh = useRefresh(item.id);
   const [comparing, setComparing] = useState(false);
+  // The designer's working copy: publishing waits until the server has it.
+  const copy = useDraftCopy(item.draft_version?.id);
+  const unsaved = copy?.dirty
+    ? copy.state === "saving"
+      ? "The designer is still saving the draft."
+      : "The designer has changes the server refused or couldn't save: see the Form designer tab."
+    : undefined;
   const act = useMutation({
     mutationFn: async ({
       v,
@@ -132,6 +140,7 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
     },
     onSuccess: (_, { v, action }) => {
       if (action === "export") return;
+      if (v.state === "draft") closeDraft(v.id); // published or discarded: no draft to edit any more
       refresh();
       const done = {
         publish: v.state === "deprecated" ? `Rolled back to ${v.number}` : `${v.number} published`,
@@ -206,10 +215,24 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
               <td className="border-b border-line px-4 py-2 text-right align-top whitespace-nowrap">
                 {v.state === "draft" && (
                   <>
-                    <Button size="sm" variant="primary" onClick={() => act.mutate({ v, action: "publish" })}>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={act.isPending || Boolean(unsaved)}
+                      title={unsaved}
+                      onClick={() => act.mutate({ v, action: "publish" })}
+                    >
                       Publish
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => act.mutate({ v, action: "discard" })}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={act.isPending}
+                      onClick={() =>
+                        window.confirm(`Discard draft ${v.number}? Its changes are lost.`) &&
+                        act.mutate({ v, action: "discard" })
+                      }
+                    >
                       Discard
                     </Button>
                   </>
@@ -217,6 +240,7 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
                 {v.state === "deprecated" && (
                   <Button
                     size="sm"
+                    disabled={act.isPending}
                     onClick={() => act.mutate({ v, action: "publish" })}
                     aria-label={`Roll back to ${v.number}`}
                   >
@@ -224,7 +248,16 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
                   </Button>
                 )}
                 {v.state === "published" && (
-                  <Button size="sm" variant="danger" onClick={() => act.mutate({ v, action: "deprecate" })}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={act.isPending}
+                    onClick={() =>
+                      window.confirm(
+                        `Withdraw ${item.name}? Nobody can request it until a version is published again; deployments keep theirs.`,
+                      ) && act.mutate({ v, action: "deprecate" })
+                    }
+                  >
                     Withdraw
                   </Button>
                 )}
@@ -246,17 +279,36 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
   );
 }
 
-function DefinitionTab({ item }: { item: AdminCatalogItem }) {
+function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (dirty: boolean) => void }) {
+  const qc = useQueryClient();
   const shown = item.draft_version ?? item.published_version ?? item.versions[0];
-  const version = useQuery({ ...q.catalogVersion(item.id, shown?.id ?? ""), enabled: Boolean(shown) });
+  const version = useQuery({
+    ...q.catalogVersion(item.id, shown?.id ?? ""),
+    enabled: Boolean(shown),
+    refetchOnMount: "always",
+  });
   const refresh = useRefresh(item.id);
+  // The designer's changes the server hasn't taken (with its problems) are shown, not lost.
+  const copy = useDraftCopy(shown?.state === "draft" ? shown.id : undefined);
+  const pending = copy?.dirty ? copy : undefined;
   const [text, setText] = useState("");
   const [problems, setProblems] = useState<LineProblem[]>([]);
-  const original = useMemo(() => (version.data ? toYaml(version.data.definition) : ""), [version.data]);
+  const original = useMemo(
+    () => (pending ? toYaml(pending.def) : version.data ? toYaml(version.data.definition) : ""),
+    [pending, version.data],
+  );
   useEffect(() => {
     setText(original);
-    setProblems([]);
-  }, [original]);
+    setProblems(pending ? problemsOnLines(original, pending.problems) : []);
+  }, [original, pending]);
+  const dirty = text !== original || Boolean(pending);
+  useEffect(() => onDirty(text !== original), [text, original, onDirty]);
+  useEffect(() => {
+    if (text === original) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [text, original]);
   const editable = shown?.state === "draft";
   const save = useMutation({
     mutationFn: () => {
@@ -265,11 +317,18 @@ function DefinitionTab({ item }: { item: AdminCatalogItem }) {
       return call(
         api.PUT("/admin/catalog/items/{itemId}/versions/{versionId}", {
           params: { path: { itemId: item.id, versionId: shown!.id } },
-          body: { definition: parsed.def },
+          body: { definition: parsed.def, base_revision: pending?.revision ?? version.data?.revision },
         }),
       );
     },
-    onSuccess: () => {
+    onSuccess: (v) => {
+      const key = keys.catalogAdmin.version(item.id, v.id);
+      qc.setQueryData(key, v);
+      // What the cache now holds (it keeps its own copy when the content is the
+      // same): the text shown is what is stored, without YAML comments.
+      const stored = qc.getQueryData<CatalogItemVersionDetail>(key) ?? v;
+      resetDraft(v.id, stored.definition, v.revision); // the designer opens what was saved
+      setText(toYaml(stored.definition));
       setProblems([]);
       refresh();
       toast.success(`Draft ${shown!.number} saved`);
@@ -277,7 +336,10 @@ function DefinitionTab({ item }: { item: AdminCatalogItem }) {
     onError: (e) => {
       if (e instanceof YamlProblems) setProblems(e.problems);
       else if (isApiError(e) && e.fieldErrors.length) setProblems(problemsOnLines(text, e.fieldErrors));
-      else toastError(e, "Saving failed");
+      else if (isApiError(e) && e.status === 409) {
+        toastError(e, "Saving failed");
+        void version.refetch();
+      } else toastError(e, "Saving failed");
     },
   });
   if (!shown) return null;
@@ -290,12 +352,7 @@ function DefinitionTab({ item }: { item: AdminCatalogItem }) {
             <Button size="sm" variant="ghost" disabled={text === original} onClick={() => setText(original)}>
               Undo changes
             </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={text === original || save.isPending}
-              onClick={() => save.mutate()}
-            >
+            <Button size="sm" variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? "Saving…" : "Save draft"}
             </Button>
           </div>
@@ -304,6 +361,11 @@ function DefinitionTab({ item }: { item: AdminCatalogItem }) {
     >
       {!editable && (
         <p className="mb-2 text-xs text-muted">Published and earlier versions never change: make a draft to edit.</p>
+      )}
+      {pending && (
+        <p role="note" className="mb-2 text-xs text-warn">
+          This shows the designer's changes, which the server hasn't saved yet; fix them here and save.
+        </p>
       )}
       {version.isPending && <Skeleton className="h-64" />}
       {version.isError && <ErrorState error={version.error} onRetry={() => void version.refetch()} />}
@@ -409,13 +471,24 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
         <fieldset className="md:col-span-2">
           <legend className="mb-1.5 text-xs font-medium">Icon</legend>
           <div role="radiogroup" aria-label="Icon" className="flex flex-wrap gap-1.5">
-            {Object.keys(icons).map((name) => (
+            {Object.keys(icons).map((name, i, names) => (
               <button
                 key={name}
+                id={`icon-${name}`}
                 type="button"
                 role="radio"
                 aria-checked={d.icon === name}
                 aria-label={name}
+                // One tab stop; arrow keys choose, as in a radio group.
+                tabIndex={d.icon === name || (!(d.icon in icons) && i === 0) ? 0 : -1}
+                onKeyDown={(e) => {
+                  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+                  if (!step) return;
+                  e.preventDefault();
+                  const next = names[(i + step + names.length) % names.length]!;
+                  set("icon", next);
+                  document.getElementById(`icon-${next}`)?.focus();
+                }}
                 onClick={() => set("icon", name)}
                 className={cn("rounded-md p-0.5", d.icon === name ? "ring-2 ring-accent" : "hover:bg-sunken")}
               >
@@ -502,6 +575,11 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
 
 export function CatalogItemPage({ itemId }: { itemId: string }) {
   const item = useQuery(q.adminCatalogItem(itemId));
+  const [tab, setTab] = useState("versions");
+  const yamlDirty = useRef(false);
+  const onYamlDirty = useCallback((dirty: boolean) => {
+    yamlDirty.current = dirty;
+  }, []);
   if (item.isPending) {
     return (
       <Page>
@@ -545,7 +623,19 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
           </>
         }
       />
-      <Tabs defaultValue="versions">
+      <Tabs
+        value={tab}
+        onValueChange={(next) => {
+          if (
+            tab === "definition" &&
+            yamlDirty.current &&
+            !window.confirm("Leave the YAML without saving your changes?")
+          )
+            return;
+          yamlDirty.current = false;
+          setTab(next);
+        }}
+      >
         <TabsList aria-label="Item sections">
           <TabsTrigger value="versions">Versions</TabsTrigger>
           <TabsTrigger value="designer">Form designer</TabsTrigger>
@@ -560,7 +650,7 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
           <FormDesigner item={it} />
         </TabsContent>
         <TabsContent value="definition" className="pt-4">
-          <DefinitionTab item={it} />
+          <DefinitionTab item={it} onDirty={onYamlDirty} />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <DetailsTab key={it.id + it.name + it.icon} item={it} />

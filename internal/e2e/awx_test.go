@@ -483,6 +483,29 @@ func TestAWXLaunchSettingsFromTheForm(t *testing.T) {
 			return req
 		}
 		submit(map[string]any{"role": "app", "inventory": "999", "machine": "4"}, 422) // not an inventory of the organisation
+
+		// Whatever the inputs' types, every picked value is checked (S8 review).
+		loose := def
+		loose.FormSchema = map[string]any{"type": "object", "required": []any{"role"}, "properties": map[string]any{
+			"role": map[string]any{"type": "string"}, "inventory": map[string]any{"type": "integer"},
+			"machine": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}}
+		var looseItem api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "pg-role-loose", Name: "PostgreSQL role (loose)",
+			Summary: "A role.", Category: "compute", Type: api.AwxJobTemplate, Definition: &loose}, 201, &looseItem)
+		h.json("POST", "/api/v1/admin/catalog/items/pg-role-loose/versions/"+looseItem.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/pg-role-loose/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		for _, inputs := range []map[string]any{
+			{"role": "app", "inventory": 999, "machine": []any{"4"}},
+			{"role": "app", "inventory": 3, "machine": []any{"4", "777"}},
+		} {
+			var problem struct{ Errors []api.FieldError }
+			h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: looseItem.Id, VersionId: looseItem.DraftVersion.Id,
+				ProjectId: web, Environment: "dev", Inputs: inputs}, 422, &problem, "Idempotency-Key", uuid.NewString())
+			if !slices.ContainsFunc(problem.Errors, func(e api.FieldError) bool { return deref(e.Code) == "not_allowed" }) {
+				t.Fatalf("%v: errors = %+v", inputs, problem.Errors)
+			}
+		}
+
 		req := submit(map[string]any{"role": "app", "inventory": "3", "machine": "4"}, 202)
 		h.runWorkflow(req.Id, nil)
 		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)

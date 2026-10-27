@@ -69,12 +69,16 @@ func (s *set) program(expr string) (cel.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("program %q: %w", expr, err)
 	}
-	if s.cache == nil {
+	// Expressions come from versions and from every designer save: past
+	// this many, start again rather than grow without end.
+	if s.cache == nil || len(s.cache) >= maxPrograms {
 		s.cache = map[string]cel.Program{}
 	}
 	s.cache[expr] = p
 	return p, nil
 }
+
+const maxPrograms = 2000
 
 func (s *set) eval(expr string, vars Vars) (any, error) {
 	p, err := s.program(expr)

@@ -264,18 +264,28 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
   return edit(def, (d, p) => {
     const ui = d.ui_schema.fields[name];
     if (!ui) return;
+    const before = widgetSource[ui.widget];
     ui.widget = widget;
     const schema = schemaFor(widget);
     const current = p[name];
     if (!schema) {
+      // No input any more: nothing to require either.
       delete p[name];
       delete d.initial_values[name];
+      const fs = d.form_schema as { required?: string[] };
+      if (fs.required) fs.required = fs.required.filter((r) => r !== name);
+      if (fs.required?.length === 0) delete fs.required;
     } else if (!current || current.type !== schema.type) {
       p[name] = schema;
       delete d.initial_values[name];
     }
+    // A widget's own source follows the widget; a source the author chose stays.
     const source = widgetSource[widget];
-    if (source && !ui.value_source) ui.value_source = { kind: "builtin", name: source };
+    const own = ui.value_source?.kind === "builtin" && ui.value_source.name === before;
+    if (own || !ui.value_source) {
+      if (source) ui.value_source = { kind: "builtin", name: source };
+      else if (own) delete ui.value_source;
+    }
   });
 }
 

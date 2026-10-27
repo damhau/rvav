@@ -278,10 +278,62 @@ export function approvalFor(db: Db, item: StoredItem, env: EnvironmentKey, input
   return { required: policies.length > 0, policies, typical_wait_seconds: policies.length ? 7200 : null };
 }
 
+/** The OIDC groups of the mock users, as in the server's seed: rules see them as user.groups. */
+export const userGroups: Record<string, string[]> = {
+  usr_lmartin: ["rvav-web-admins", "rvav-catalog-admins"],
+  usr_mkeller: ["rvav-admins", "rvav-infra-leads"],
+  usr_tnguyen: ["rvav-web"],
+  usr_sbrunner: ["rvav-data"],
+  usr_afavre: ["rvav-core", "rvav-network"],
+  usr_cdubois: ["rvav-infra-heads"],
+};
+
+/**
+ * What the server's applyStates does with the rule results: a hidden input
+ * is dropped, a read-only one is its computed or initial value, a computed
+ * value that failed and an empty field a rule requires are errors. Schema
+ * errors about hidden fields are dropped.
+ */
+export function applyStates(
+  form: RequestForm | undefined,
+  states: Record<string, FieldState>,
+  inputs: Inputs,
+  validate: (inputs: Inputs) => FieldError[],
+): FieldError[] {
+  const errors: FieldError[] = [];
+  for (const [name, st] of Object.entries(states)) {
+    const add = (code: string, message: string) => {
+      if (!errors.some((e) => e.field === `/inputs/${name}`)) errors.push({ field: `/inputs/${name}`, code, message });
+    };
+    if (!st.visible) {
+      delete inputs[name];
+      continue;
+    }
+    if (st.value !== undefined && st.value !== null) inputs[name] = st.value;
+    else if (form?.ui_schema.fields[name]?.rules?.value)
+      add("rule_failed", `This value couldn't be computed: ${st.error ?? ""}.`);
+    else if (st.read_only) {
+      if (name in (form?.initial_values ?? {})) inputs[name] = form!.initial_values[name];
+      else delete inputs[name];
+    }
+    const v = inputs[name];
+    if (st.required && (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)))
+      add("required", `${form?.ui_schema.fields[name]?.label ?? name} is required.`);
+  }
+  // Then the schema, on the inputs the rules left; hidden fields aren't checked.
+  const hidden = (e: FieldError) => states[e.field.replace(/^\/inputs\//, "").split("/")[0]!]?.visible === false;
+  return [...validate(inputs).filter((e) => !hidden(e) && !errors.some((x) => x.field === e.field)), ...errors];
+}
+
 export function preview(db: Db, item: StoredItem, project: Project, draft: RequestDraft): RequestPreview {
-  const inputs = draft.inputs;
+  const inputs = { ...draft.inputs };
   const count = draft.count ?? 1;
-  const errors = validateInputs(db, item, inputs);
+  const fields = fieldStates(db.forms[item.id], inputs, {
+    environment: draft.environment,
+    project: { id: project.id, code: project.code, name: project.name },
+    user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
+  });
+  const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   if (!project.environments.includes(draft.environment)) {
     errors.push({
       field: "/environment",
@@ -326,10 +378,7 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
   return {
     valid: errors.length === 0,
     errors,
-    fields: fieldStates(db.forms[item.id], inputs, {
-      environment: draft.environment,
-      project: { id: project.id, code: project.code },
-    }),
+    fields,
     names,
     addresses: next ? [next.ip] : [],
     placement:

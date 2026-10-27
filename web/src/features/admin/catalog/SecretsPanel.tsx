@@ -102,7 +102,7 @@ function SecretDialog({ existing, onClose }: { existing?: Secret; onClose: () =>
             <Input
               id="secret-value"
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
               value={w.value}
               onChange={(e) => set("value")(e.target.value)}
             />

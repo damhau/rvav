@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Catalog administration (ADR-0019): items in any state, their versions,
@@ -15,6 +16,10 @@ import (
 var (
 	// ErrDraftExists: an item has at most one draft.
 	ErrDraftExists = errors.New("the item already has a draft")
+	// ErrNumberTaken: an item's versions have different numbers.
+	ErrNumberTaken = errors.New("the item has a version with this number")
+	// ErrVersionChanged: the draft was saved since the revision given.
+	ErrVersionChanged = errors.New("the version changed since it was read")
 	// ErrVersionState: the version is not in a state that allows this.
 	ErrVersionState = errors.New("not allowed in the version's state")
 	// ErrInUse: something still refers to it.
@@ -96,9 +101,10 @@ type VersionRow struct {
 	PublishedAt   *time.Time `db:"published_at"`
 	DeprecatedAt  *time.Time `db:"deprecated_at"`
 	Deployments   int        `db:"deployments"`
+	Revision      int        `db:"revision"`
 }
 
-const versionRowSelect = `select v.id, v.item_id, v.number, v.state, v.changelog, v.created_at, v.created_by,
+const versionRowSelect = `select v.id, v.item_id, v.number, v.state, v.changelog, v.created_at, v.created_by, v.revision,
 	u.name as created_by_name, v.published_at, v.deprecated_at,
 	(select count(*) from deployments d where d.version_id = v.id and d.status <> 'deleted')::int as deployments
 	from catalog_item_versions v left join users u on u.id = v.created_by`
@@ -165,13 +171,23 @@ func insertDraft(ctx context.Context, tx pgx.Tx, v NewVersion) error {
 	return err
 }
 
-// CreateDraft adds a draft to an item (ErrDraftExists when it has one).
+// CreateDraft adds a draft to an item (ErrDraftExists when it has one,
+// ErrNumberTaken when a version has its number).
 func (s *Store) CreateDraft(ctx context.Context, v NewVersion) error {
-	err := s.Tx(ctx, func(tx pgx.Tx) error { return insertDraft(ctx, tx, v) })
-	if IsUniqueViolation(err) {
-		return ErrDraftExists
+	return versionConflict(s.Tx(ctx, func(tx pgx.Tx) error { return insertDraft(ctx, tx, v) }))
+}
+
+// versionConflict names the rule a version broke: one draft per item, or
+// one number per version.
+func versionConflict(err error) error {
+	var pg *pgconn.PgError
+	if !errors.As(err, &pg) || pg.Code != "23505" {
+		return err
 	}
-	return err
+	if pg.ConstraintName == "catalog_item_versions_item_id_number_key" {
+		return ErrNumberTaken
+	}
+	return ErrDraftExists
 }
 
 // ItemUpdate changes an item's metadata; nil fields stay as they are.
@@ -221,16 +237,27 @@ func (s *Store) DeleteItem(ctx context.Context, id string) error {
 }
 
 // SaveDraft replaces a draft's definition, and its number and changelog
-// when given (ErrVersionState when the version is not a draft).
-func (s *Store) SaveDraft(ctx context.Context, versionID string, number, changelog *string, def VersionDef) error {
-	tag, err := s.Pool.Exec(ctx, `update catalog_item_versions set form_schema = $2, ui_schema = $3, initial_values = $4,
-		blueprint = $5, number = coalesce($6, number), changelog = coalesce($7, changelog)
-		where id = $1 and state = 'draft'`, versionID, def.FormSchema, def.UISchema, jsonOr(def.InitialValues, "{}"),
-		jsonOr(def.Blueprint, "{}"), number, changelog)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrVersionState
+// when given, and returns its new revision. ErrVersionState when the
+// version is not a draft, ErrVersionChanged when base is given and the
+// draft was saved since, ErrNumberTaken when another version has the number.
+func (s *Store) SaveDraft(ctx context.Context, versionID string, number, changelog *string, def VersionDef, base *int) (int, error) {
+	var revision int
+	err := s.Pool.QueryRow(ctx, `update catalog_item_versions set form_schema = $2, ui_schema = $3, initial_values = $4,
+		blueprint = $5, number = coalesce($6, number), changelog = coalesce($7, changelog), revision = revision + 1
+		where id = $1 and state = 'draft' and ($8::int is null or revision = $8) returning revision`,
+		versionID, def.FormSchema, def.UISchema, jsonOr(def.InitialValues, "{}"), jsonOr(def.Blueprint, "{}"),
+		number, changelog, base).Scan(&revision)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var state string
+		if err := s.Pool.QueryRow(ctx, `select state from catalog_item_versions where id = $1`, versionID).Scan(&state); err != nil {
+			return 0, notFound(err)
+		}
+		if state != "draft" {
+			return 0, ErrVersionState
+		}
+		return 0, ErrVersionChanged
 	}
-	return err
+	return revision, versionConflict(err)
 }
 
 // DeleteDraft discards a draft (ErrVersionState when it is not one).
@@ -244,14 +271,17 @@ func (s *Store) DeleteDraft(ctx context.Context, versionID string) error {
 
 // PublishVersion makes a draft or a deprecated version the published one;
 // the version published until now is deprecated. A changelog, when given,
-// replaces a draft's.
-func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, changelog *string) error {
+// replaces a draft's. The version must still be at the revision the caller
+// checked (ErrVersionChanged otherwise).
+func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, changelog *string, revision int) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `select 1 from catalog_items where id = $1 for update`, itemID); err != nil {
 			return err
 		}
 		var state string
-		err := tx.QueryRow(ctx, `select state from catalog_item_versions where id = $1 and item_id = $2`, versionID, itemID).Scan(&state)
+		var current int
+		err := tx.QueryRow(ctx, `select state, revision from catalog_item_versions where id = $1 and item_id = $2 for update`,
+			versionID, itemID).Scan(&state, &current)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -260,6 +290,9 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		}
 		if state == "published" {
 			return ErrVersionState
+		}
+		if current != revision {
+			return ErrVersionChanged
 		}
 		if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
 			where item_id = $1 and state = 'published'`, itemID); err != nil {
@@ -278,6 +311,10 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 // DeprecateVersion withdraws the published version: the item has none left.
 func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
+		// The item first, as PublishVersion locks it: the other order deadlocks.
+		if _, err := tx.Exec(ctx, `select 1 from catalog_items where id = $1 for update`, itemID); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
 			where id = $1 and item_id = $2 and state = 'published'`, versionID, itemID)
 		if err != nil {
@@ -383,9 +420,10 @@ func (s *Store) ImportItem(ctx context.Context, it NewItem, versions []ImportVer
 		}
 		for _, v := range versions {
 			v.ItemID = it.ID
+			// clock_timestamp: the versions are newer in the YAML's order, as listing them expects.
 			if _, err := tx.Exec(ctx, `insert into catalog_item_versions (id, item_id, number, state, form_schema, ui_schema,
-				initial_values, blueprint, changelog, created_by, deprecated_at)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, case when $4 = 'deprecated' then now() end)`,
+				initial_values, blueprint, changelog, created_by, deprecated_at, created_at)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, case when $4 = 'deprecated' then now() end, clock_timestamp())`,
 				v.ID, v.ItemID, v.Number, v.State, v.Def.FormSchema, v.Def.UISchema, jsonOr(v.Def.InitialValues, "{}"),
 				jsonOr(v.Def.Blueprint, "{}"), v.Changelog, v.CreatedBy); err != nil {
 				return err

@@ -56,6 +56,7 @@ infrastructure is in the
 
 | Decision | Choice | Where |
 |---|---|---|
+| Catalog administration | Catalog admins and administrators only; versions draft, published, deprecated (republishing is the rollback); entitlements to every project or chosen ones; built-in icons only; YAML import never publishes; `rest` sources only to allowed hosts, with secrets encrypted in PostgreSQL; rule results computed on the server; the designer previews as a chosen user | ADR-0019 |
 | AWX day-2 actions | Templates with the `day2` label; administrators choose types, a CEL condition and whether they are offered; the day-2 policies decide who | ADR-0018 |
 | AWX inventory | AWX reads rvav's VMs through the `rvav.platform` plugin; rvav launches jobs on its VMs on that inventory, so those templates prompt for an inventory | ADR-0017 |
 | AWX in the catalog | Templates with the catalog label are published to every project; surveys become forms; a changed survey is flagged, the form stays | ADR-0016 |

@@ -50,14 +50,18 @@ web/
 │  │  │     └─ audit.tsx
 │  │  ├─ requests/$requestId.tsx
 │  │  ├─ approvals/index.tsx
-│  │  └─ admin/...
+│  │  └─ admin/
+│  │     ├─ catalog-items/
+│  │     │  ├─ index.tsx       # items, categories, secrets, AWX templates
+│  │     │  └─ $itemId.tsx     # an item: versions, designer, YAML, details, entitlements
+│  │     └─ ...
 │  ├─ features/                # domain modules (UI + hooks + queries)
 │  │  ├─ catalog/
 │  │  ├─ deployments/
 │  │  ├─ requests/             # timeline components, SSE subscription
 │  │  ├─ approvals/
 │  │  ├─ day2/                 # action registry, dialogs
-│  │  └─ admin/form-designer/
+│  │  └─ admin/catalog/        # catalog administration; designer/ is the form designer
 │  ├─ components/
 │  │  ├─ ui/                   # shadcn/ui primitives (generated, then owned)
 │  │  └─ common/               # app-level building blocks: DataTable, PageHeader,
@@ -198,18 +202,67 @@ the designer preview.
   changes and the options load again (with a loading state on the field, not on
   the whole form).
 - **Rules** (visible, required, read-only, computed value) are CEL expressions
-  evaluated by the server and returned with the form state. Optionally a WASM
-  CEL evaluator runs in the browser for instant feedback.
+  evaluated by the server: the request preview returns each field's results
+  (`fields`) and the renderer shows them (`fieldStates`). The browser doesn't
+  evaluate CEL; the mock backend has a small evaluator of its own
+  (`mocks/cel.ts`) so the UI runs without a server.
 - Validation: ajv on the client for instant feedback; the server is the final
   authority, and its errors map back onto the fields.
 - Layout: sections, columns, tabs and wizard steps; a review step shows the
   summary panel (name preview, quota, approval path).
 - Draft auto-save (debounced) for long forms.
 
+## Catalog administration and the form designer
+
+Catalog admins and administrators build items under **Catalog items**
+([ADR-0019](adr/0019-catalog-administration.md)):
+
+- The list page: items with filters, **New item** (it starts as a draft
+  1.0) and **Import YAML**; categories; stored secrets for REST value
+  sources (values are write-only); the templates imported from AWX.
+- An item's page, in tabs: **Versions** (publish a draft, roll back to a
+  deprecated version, withdraw the published one, discard, export as YAML,
+  compare two versions), **Form designer**, **Definition** (the version as
+  YAML), **Details** (icon from rvav's own set) and **Entitlements**.
+- The **Definition** tab is a CodeMirror 6 editor, loaded only when opened.
+  A YAML parse error, or a 422 from the server with JSON pointers under
+  `/definition`, shows on its line (`definitionYaml.ts` walks the YAML
+  document to the pointer's node). Published and deprecated versions are
+  read only; leaving the tab with unsaved YAML asks first.
+- The **form designer** has three panes: the fields by section (add from
+  any widget, move fields and sections with buttons, so by keyboard), a
+  live preview, and the selected field's or section's properties (label,
+  widget, required, limits, options, initial value, value source and what
+  it depends on, the four CEL rules, handling flags). Its edits are pure
+  functions over the definition (`designer/model.ts`) that keep the JSON
+  Schema, UI schema and initial values in step.
+- The designer edits a **working copy** of the draft
+  (`designer/draftStore.ts`), kept outside React so it outlives the tab.
+  Every change is saved after a 600 ms pause, one save at a time, each
+  sending the revision it started from; leaving the tab saves what is
+  pending, and leaving the page with unsaved changes asks first. The
+  server checks the whole definition on each save, and its problems show
+  under the label, rule or source they are about, with a mark on the field
+  in the list; anything else (the blueprint) is listed above the panes. A
+  copy the server refused stays, problems included: the Definition tab
+  shows it with the problems on their lines, and Publish waits until the
+  server has it. A 409 (the draft changed elsewhere, or was published or
+  discarded) stops saving until the admin loads the other changes or saves
+  theirs over them.
+- The preview is the server's: `POST …/versions/{id}/preview` gives the
+  form, the rule results and the problems a request with these inputs
+  would have, as a chosen project member (`as_user_id`) in a chosen
+  project and environment; the fields' value sources resolve through
+  `/forms/values` with the same `as_user_id`. **Test the source** calls the
+  selected field's source with the preview's inputs. Previews are as
+  members of the chosen project.
+- A field with a `visible` rule stays hidden in a request form until the
+  server's results arrive, rather than show and then vanish.
+
 ## Performance budget
 
 - Initial JS under 200 kB gzipped for the app shell; routes and heavy widgets
-  (Monaco, charts, the form designer) are split and lazy-loaded.
+  (the CodeMirror YAML editor, charts) are split and lazy-loaded.
 - Largest contentful paint under 1.5 s on a typical corporate network; route
   transitions under 100 ms when prefetched.
 - Lists of 10,000+ rows are virtualised.

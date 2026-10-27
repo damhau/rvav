@@ -35,7 +35,8 @@ func (s *Service) adminItem(ctx context.Context, p *auth.Principal, idOrSlug str
 
 func presentVersion(v store.VersionRow) api.CatalogItemVersion {
 	out := api.CatalogItemVersion{Id: v.ID, Number: v.Number, State: api.CatalogItemVersionState(v.State), Changelog: v.Changelog,
-		CreatedAt: v.CreatedAt, PublishedAt: v.PublishedAt, DeprecatedAt: v.DeprecatedAt, Deployments: v.Deployments}
+		CreatedAt: v.CreatedAt, PublishedAt: v.PublishedAt, DeprecatedAt: v.DeprecatedAt, Deployments: v.Deployments,
+		Revision: v.Revision}
 	if v.CreatedBy != nil {
 		out.CreatedBy = &api.UserRef{Id: *v.CreatedBy, Name: deref(v.CreatedByName)}
 	}
@@ -251,7 +252,7 @@ func presentVersionDetail(v store.ItemVersion, row store.VersionRow) (api.Catalo
 	pv := presentVersion(row)
 	out := api.CatalogItemVersionDetail{Id: pv.Id, Number: pv.Number, State: api.CatalogItemVersionDetailState(pv.State),
 		Changelog: pv.Changelog, CreatedAt: pv.CreatedAt, CreatedBy: pv.CreatedBy, PublishedAt: pv.PublishedAt,
-		DeprecatedAt: pv.DeprecatedAt, Deployments: pv.Deployments}
+		DeprecatedAt: pv.DeprecatedAt, Deployments: pv.Deployments, Revision: pv.Revision}
 	def, err := apiDef(v)
 	out.Definition = def
 	return out, err
@@ -299,7 +300,12 @@ func (s *Service) CreateCatalogItemVersion(ctx context.Context, p *auth.Principa
 	default:
 		def = starterDefinition(it.Type, it.Name)
 	}
-	if errs := checkDefinition(it.Type, def, "/definition", false); len(errs) > 0 {
+	errs := checkDefinition(it.Type, def, "/definition", false)
+	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	if err != nil {
+		return api.CatalogItemVersionDetail{}, err
+	}
+	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.CatalogItemVersionDetail{}, &ValidationError{Errors: errs}
 	}
 	versions, err := s.Store.ItemVersions(ctx, it.ID)
@@ -314,6 +320,8 @@ func (s *Service) CreateCatalogItemVersion(ctx context.Context, p *auth.Principa
 		CreatedBy: p.User.ID, Def: storeDef(def)}
 	if err := s.Store.CreateDraft(ctx, v); errors.Is(err, store.ErrDraftExists) {
 		return api.CatalogItemVersionDetail{}, &ConflictError{Msg: it.Name + " already has a draft: change it, or discard it first."}
+	} else if errors.Is(err, store.ErrNumberTaken) {
+		return api.CatalogItemVersionDetail{}, numberTaken(number)
 	} else if err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
@@ -338,9 +346,15 @@ func (s *Service) UpdateCatalogItemVersion(ctx context.Context, p *auth.Principa
 	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.CatalogItemVersionDetail{}, &ValidationError{Errors: errs}
 	}
-	if err := s.Store.SaveDraft(ctx, versionID, u.Number, u.Changelog, storeDef(u.Definition)); errors.Is(err, store.ErrVersionState) {
+	_, err = s.Store.SaveDraft(ctx, versionID, u.Number, u.Changelog, storeDef(u.Definition), u.BaseRevision)
+	switch {
+	case errors.Is(err, store.ErrVersionState):
 		return api.CatalogItemVersionDetail{}, &ConflictError{Msg: "Only a draft can change: make a draft from this version."}
-	} else if err != nil {
+	case errors.Is(err, store.ErrVersionChanged):
+		return api.CatalogItemVersionDetail{}, &ConflictError{Msg: "This draft was saved elsewhere since you opened it: reload it to see those changes."}
+	case errors.Is(err, store.ErrNumberTaken):
+		return api.CatalogItemVersionDetail{}, numberTaken(deref(u.Number))
+	case err != nil:
 		return api.CatalogItemVersionDetail{}, err
 	}
 	s.auditCatalog(ctx, p, "catalog.version.save", it.ID, map[string]any{"version_id": versionID})
@@ -387,8 +401,11 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if errs = append(errs, refs...); len(errs) > 0 {
 		return api.AdminCatalogItem{}, &ValidationError{Errors: errs}
 	}
-	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog); errors.Is(err, store.ErrVersionState) {
+	// The revision checked above must be the one published.
+	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog, row.Revision); errors.Is(err, store.ErrVersionState) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Version " + row.Number + " is already published."}
+	} else if errors.Is(err, store.ErrVersionChanged) {
+		return api.AdminCatalogItem{}, &ConflictError{Msg: "Draft " + row.Number + " was saved while it was being published: publish it again."}
 	} else if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
@@ -498,22 +515,42 @@ func apiDef(v store.ItemVersion) (api.CatalogVersionDefinition, error) {
 
 // nextNumber is the number after the newest version's: "3.2" gives "3.3",
 // "AWX #47" gives "AWX #47.1".
+func numberTaken(number string) error {
+	return &ValidationError{Errors: []api.FieldError{fieldErr("/number", "taken", "The item already has a version "+number+".")}}
+}
+
+// nextNumber follows the highest major.minor number (3.2 gives 3.3),
+// skipping numbers in use.
 func nextNumber(versions []store.VersionRow) string {
 	if len(versions) == 0 {
 		return "1.0"
 	}
-	last := versions[0].Number
-	if major, minor, ok := strings.Cut(last, "."); ok {
-		if n, err := strconv.Atoi(minor); err == nil {
-			if _, err := strconv.Atoi(major); err == nil {
-				return major + "." + strconv.Itoa(n+1)
+	taken := map[string]bool{}
+	bestMajor, bestMinor, found := 0, 0, false
+	for _, v := range versions {
+		taken[v.Number] = true
+		major, minor, ok := strings.Cut(v.Number, ".")
+		if !ok {
+			major, minor = v.Number, "0"
+		}
+		ma, err1 := strconv.Atoi(major)
+		mi, err2 := strconv.Atoi(minor)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		if !found || ma > bestMajor || ma == bestMajor && mi > bestMinor {
+			bestMajor, bestMinor, found = ma, mi, true
+		}
+	}
+	if found {
+		for n := bestMinor + 1; ; n++ {
+			if next := strconv.Itoa(bestMajor) + "." + strconv.Itoa(n); !taken[next] {
+				return next
 			}
 		}
 	}
-	if n, err := strconv.Atoi(last); err == nil {
-		return strconv.Itoa(n) + ".1"
-	}
-	for i := 1; ; i++ { // a number that doesn't parse: AWX #47.1, .2, ...
+	last := versions[0].Number
+	for i := 1; ; i++ { // no number parses: AWX #47.1, .2, ...
 		next := last + "." + strconv.Itoa(i)
 		if !slices.ContainsFunc(versions, func(v store.VersionRow) bool { return v.Number == next }) {
 			return next
@@ -542,6 +579,13 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, prefix str
 	props, _ := d.FormSchema["properties"].(map[string]any)
 	if d.FormSchema["type"] != "object" {
 		add("/form_schema/type", "invalid", `The form's schema must be of type "object".`)
+	}
+	required, _ := d.FormSchema["required"].([]any)
+	for i, r := range required {
+		if name, _ := r.(string); props[name] == nil {
+			add(fmt.Sprintf("/form_schema/required/%d", i), "unknown_input",
+				fmt.Sprintf("%v is required but is not an input of the form's schema, so no request could pass.", r))
+		}
 	}
 	placed := map[string]string{}
 	for i, sec := range d.UiSchema.Layout.Sections {

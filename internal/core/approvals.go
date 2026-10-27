@@ -408,13 +408,12 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	if req.LeaseDays != nil {
 		draft.LeaseDays = req.LeaseDays
 	}
-	ev, err := s.Evaluate(ctx, requester, draft, true)
+	// The request keeps the version it was submitted with, even if the item
+	// was republished or withdrawn since.
+	ev, err := s.evaluate(ctx, requester, draft, true, true)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	// The request keeps the version it was submitted with, even if the item
-	// was republished since.
-	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool { return e.Code != nil && *e.Code == "stale_version" })
 	if len(ev.Errors) > 0 {
 		return nil, nil, nil, nil, &ValidationError{Errors: ev.Errors}
 	}

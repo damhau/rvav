@@ -66,7 +66,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	// The form designer resolves any version, as the user it previews as.
 	designer := q.AsUserId != nil
 	if designer {
-		as, err := s.previewPrincipal(ctx, p, q.AsUserId)
+		as, err := s.previewPrincipal(ctx, p, q.AsUserId, q.ProjectId)
 		if err != nil {
 			return out, err
 		}

@@ -42,6 +42,18 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 - Import and export of catalog items as YAML (GitOps-friendly), with an optional
   Git sync later.
 
+**Built (S8, [ADR-0019](adr/0019-catalog-administration.md)):** catalog
+admins and administrators create items, open them to every project (those
+made later too) or to chosen projects, and manage categories and the icon
+(from rvav's own set, no upload). Versions are draft, published or
+deprecated: one draft and one published version per item at most;
+publishing a deprecated version again rolls back; withdrawing the published
+version takes the item out of the catalog; deployments and requests keep
+their version. Two versions compare change by change. Items export to YAML
+(one version or all) and import as a new item or a new draft, never
+published by the import, with problems on their YAML line. Not built yet:
+entitlements to groups or users rather than projects, and a Git sync.
+
 ## 3. Custom forms
 
 A form is a **JSON Schema** (data contract) plus a **UI schema** (presentation and
@@ -69,6 +81,28 @@ Markdown or info block, and resource pickers:
 - **Layout**: sections, columns, tabs, multi-step wizard with a review step.
 - **Computed fields**: for example the VM name preview from the naming policy.
 - Every form is validated again on the server. The client is only for UX.
+
+**Built (S8):**
+- The form designer: fields by section, a live preview as a chosen project
+  member, and the selected field's properties; every change saves the draft
+  and the server's problems show where they are
+  ([frontend.md](frontend.md#catalog-administration-and-the-form-designer)).
+  The YAML view edits anything the designer doesn't.
+- Value sources: the built-in ones, `rest` (a URL template with escaped
+  inputs, GET or POST, a stored secret as bearer, basic or header, JSONPath
+  mapping, cached; only hosts in `RVAV_REST_SOURCE_HOSTS`, no redirects,
+  5 s and 1 MB at most) and `cel` (options or a value over the inputs,
+  project, user and environment). Dependencies re-resolve a field when the
+  inputs it depends on change.
+- Rules are evaluated on the server, in the preview and again on submit:
+  a computed value becomes the input, and a field a rule makes required is
+  checked.
+- For AWX items, the form can choose the launch's inventory and credentials
+  (inputs picked from `awx.inventories` and `awx.credentials`), which the
+  template must prompt for.
+
+Not built yet: tabs and wizard steps (forms render as sections), file upload, async
+server-side validation rules, and the group and AWX host pickers.
 
 ## 4. Requesting
 

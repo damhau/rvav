@@ -2,6 +2,8 @@ package core
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/policy"
@@ -64,20 +66,54 @@ func fieldStates(formSchema, uiSchema json.RawMessage, vars policy.Vars) api.Fie
 	return out
 }
 
-// applyStates puts computed values into the inputs, and says which visible
-// fields a rule makes required but are empty.
-func applyStates(states api.FieldStates, inputs map[string]any) []api.FieldError {
+// applyStates makes the inputs what the rules say, in the preview and on
+// submit alike: a hidden field's input is dropped; a read-only field gets
+// its computed value, else its initial value, never the requester's; a
+// computed value that fails is an error, as is an empty field a rule makes
+// required. It returns those errors.
+func applyStates(states api.FieldStates, ui api.UiSchema, initial map[string]any, inputs map[string]any) []api.FieldError {
 	var errs []api.FieldError
 	for _, name := range sortedKeys(states) {
 		st := states[name]
-		if st.Value != nil {
+		rules := ui.Fields[name].Rules
+		switch {
+		case !st.Visible:
+			delete(inputs, name)
+			continue
+		case st.Value != nil:
 			inputs[name] = st.Value
+		case rules != nil && rules.Value != nil && *rules.Value != "":
+			msg := "This value couldn't be computed"
+			if st.Error != nil {
+				msg += ": " + *st.Error
+			}
+			errs = append(errs, fieldErr("/inputs/"+name, "rule_failed", msg+"."))
+		case st.ReadOnly:
+			if v, ok := initial[name]; ok {
+				inputs[name] = v
+			} else {
+				delete(inputs, name)
+			}
 		}
-		if st.Visible && st.Required && empty(inputs[name]) {
+		if st.Required && empty(inputs[name]) {
 			errs = append(errs, fieldErr("/inputs/"+name, "required", "This field is required."))
 		}
 	}
 	return errs
+}
+
+// hiddenErrors drops schema errors about fields a rule hides: their inputs
+// are not sent.
+func hiddenErrors(states api.FieldStates, errs []api.FieldError) []api.FieldError {
+	return slices.DeleteFunc(errs, func(e api.FieldError) bool {
+		name, ok := strings.CutPrefix(e.Field, "/inputs/")
+		if !ok {
+			return false
+		}
+		name, _, _ = strings.Cut(name, "/")
+		st, known := states[name]
+		return known && !st.Visible
+	})
 }
 
 func empty(v any) bool {

@@ -1769,10 +1769,16 @@ components:
         created_at: { type: string, format: date-time }
     CatalogItemVersion:
       type: object
-      required: [id, number, state, changelog, created_at, deployments]
+      required: [id, number, state, changelog, created_at, deployments, revision]
       properties:
         id: { type: string }
         number: { type: string, examples: ["1.1"] }
+        revision:
+          type: integer
+          description: |
+            Goes up each time a draft is saved. A save that names the
+            revision it started from (`base_revision`) is refused with 409
+            when the draft changed since.
         state: { type: string, enum: [draft, published, deprecated] }
         changelog: { type: string }
         created_at: { type: string, format: date-time }
@@ -1856,6 +1862,9 @@ components:
         definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
         number: { type: string, maxLength: 20 }
         changelog: { type: string, maxLength: 2000 }
+        base_revision:
+          type: integer
+          description: The revision this save started from; 409 when the draft changed since.
     CatalogItemVersionPublish:
       type: object
       additionalProperties: false

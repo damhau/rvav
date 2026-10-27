@@ -5,9 +5,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { isApiError } from "@/lib/api/client";
-import type { FieldValues, UiWidget, ValueSource } from "@/lib/api/types";
+import type { FieldStates, FieldValues, UiWidget, ValueSource } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import type { Selection } from "./FieldList";
+import { focusLater, type Selection } from "./FieldList";
 import {
   builtinSources,
   choiceWidgets,
@@ -313,6 +313,7 @@ function FieldProperties({
   onChange,
   onSelect,
   problems,
+  ruleError,
   test,
 }: {
   def: Def;
@@ -320,6 +321,8 @@ function FieldProperties({
   onChange: (d: Def) => void;
   onSelect: (s: Selection) => void;
   problems: Problem[];
+  /** A rule that failed in the preview. */
+  ruleError?: string;
   test: SourceTest;
 }) {
   const ui = def.ui_schema.fields[name];
@@ -353,6 +356,7 @@ function FieldProperties({
             setNameError("");
             onChange(renameField(def, name, to));
             onSelect({ kind: "field", name: to });
+            focusLater("prop-name");
           }}
         />
       </Field>
@@ -488,6 +492,11 @@ function FieldProperties({
         <p className="text-xs font-medium">
           Rules <span className="font-normal text-faint">(CEL over inputs, environment, project and user)</span>
         </p>
+        {ruleError && (
+          <p role="note" className="text-xs text-warn">
+            In the preview, a rule failed and its default was used: {ruleError}
+          </p>
+        )}
         {rules.map((r) => {
           const id = `prop-rule-${r.key}`;
           const list = at(`rules/${r.key}`);
@@ -532,8 +541,13 @@ function FieldProperties({
           size="sm"
           variant="danger"
           onClick={() => {
+            // The next field (or the one before) is selected, and focus goes to it in the list.
+            const fields = section?.fields ?? [];
+            const i = fields.indexOf(name);
+            const neighbour = fields[i + 1] ?? fields[i - 1];
             onChange(removeField(def, name));
-            onSelect(null);
+            onSelect(neighbour ? { kind: "field", name: neighbour } : null);
+            focusLater(neighbour ? `designer-field-${neighbour}` : "designer-add-field");
           }}
         >
           Remove {ui.label || name}
@@ -574,6 +588,7 @@ function SectionProperties({
   onSelect: (s: Selection) => void;
   problems: Problem[];
 }) {
+  const [keyError, setKeyError] = useState("");
   const s = def.ui_schema.layout.sections.find((x) => x.key === sectionKey);
   if (!s) return null;
   return (
@@ -586,15 +601,20 @@ function SectionProperties({
           onChange={(e) => onChange(updateSection(def, s.key, { title: e.target.value }))}
         />
       </Field>
-      <Field label="Key" htmlFor="section-key">
+      <Field label="Key" htmlFor="section-key" hint={keyError || undefined}>
         <CommitInput
           id="section-key"
           className={mono}
           value={s.key}
+          invalid={Boolean(keyError)}
           onCommit={(k) => {
-            if (!k || def.ui_schema.layout.sections.some((x) => x.key === k)) return;
+            if (!k.trim()) return setKeyError("Give the section a key.");
+            if (def.ui_schema.layout.sections.some((x) => x.key === k))
+              return setKeyError(`Another section has the key "${k}".`);
+            setKeyError("");
             onChange(updateSection(def, s.key, { key: k }));
             onSelect({ kind: "section", key: k });
+            focusLater("section-key");
           }}
         />
       </Field>
@@ -622,6 +642,7 @@ function SectionProperties({
           onClick={() => {
             onChange(removeSection(def, s.key));
             onSelect(null);
+            focusLater("designer-add-section");
           }}
         >
           Remove section
@@ -637,6 +658,7 @@ export function Properties({
   onSelect,
   onChange,
   problems,
+  states,
   test,
 }: {
   def: Def;
@@ -644,6 +666,8 @@ export function Properties({
   onSelect: (s: Selection) => void;
   onChange: (d: Def) => void;
   problems: Problems;
+  /** The preview's rule results. */
+  states?: FieldStates;
   test: SourceTest;
 }) {
   const sectionIndex =
@@ -659,6 +683,7 @@ export function Properties({
           onChange={onChange}
           onSelect={onSelect}
           problems={problems.fields[selection.name] ?? []}
+          ruleError={states?.[selection.name]?.error}
           test={test}
         />
       )}

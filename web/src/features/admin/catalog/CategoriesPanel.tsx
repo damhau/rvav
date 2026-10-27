@@ -17,7 +17,11 @@ function Row({ c }: { c: AdminCatalogCategory }) {
   const qc = useQueryClient();
   const [name, setName] = useState(c.name);
   const [order, setOrder] = useState(String(c.sort_order ?? 0));
-  const refresh = () => void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+  // The catalog's own category list (cached for minutes) changes too.
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+    void qc.invalidateQueries({ queryKey: keys.catalog.all });
+  };
   const save = useMutation({
     mutationFn: () =>
       call(
@@ -55,7 +59,13 @@ function Row({ c }: { c: AdminCatalogCategory }) {
       </td>
       <td className="border-b border-line px-3 py-1.5 text-xs text-muted">{c.items ?? 0}</td>
       <td className="border-b border-line px-4 py-1.5 text-right whitespace-nowrap">
-        <Button size="sm" variant="ghost" disabled={!changed || save.isPending} onClick={() => save.mutate()}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!changed || save.isPending}
+          onClick={() => save.mutate()}
+          aria-label={`Save ${c.key}`}
+        >
           Save
         </Button>
         <Button
@@ -82,6 +92,7 @@ export function CategoriesPanel() {
     mutationFn: () => call(api.POST("/admin/catalog/categories", { body: { key, name } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+      void qc.invalidateQueries({ queryKey: keys.catalog.all });
       toast.success(`${name} added`);
       setKey("");
       setName("");

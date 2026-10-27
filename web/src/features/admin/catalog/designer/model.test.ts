@@ -64,6 +64,15 @@ describe("form designer model", () => {
     def = setWidget(def, "text", "toggle");
     expect((def.form_schema.properties as Record<string, unknown>).text).toEqual({ type: "boolean" });
     expect(def.initial_values).toEqual({});
+    def = setRequired(def, "text", true);
+    def = setWidget(def, "text", "info");
+    expect(def.form_schema.required).toBeUndefined();
+    let picker = addField(empty, "vsphere_cluster").def;
+    picker = setWidget(picker, "cluster", "vsphere_datastore");
+    expect(picker.ui_schema.fields.cluster?.value_source).toEqual({ kind: "builtin", name: "vsphere.datastores" });
+    picker = setWidget(picker, "cluster", "select");
+    expect(picker.ui_schema.fields.cluster?.value_source).toBeUndefined();
+    def = setWidget(def, "text", "toggle");
     def = setRule(def, "text", "visible", 'environment == "prd"');
     def = setRule(def, "text", "visible", " ");
     expect(def.ui_schema.fields.text!.rules).toBeUndefined();

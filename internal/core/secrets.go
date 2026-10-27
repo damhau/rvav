@@ -106,6 +106,7 @@ func (s *Service) PutSecret(ctx context.Context, p *auth.Principal, name string,
 	if create {
 		action = "secret.create"
 	}
+	s.REST.Forget()                                                        // answers fetched with the old value
 	s.auditCatalog(ctx, p, action, name, map[string]any{"kind": row.Kind}) // never the value
 	v, err := s.Store.GetSecret(ctx, name)
 	if err != nil {
@@ -131,6 +132,7 @@ func (s *Service) DeleteSecret(ctx context.Context, p *auth.Principal, name stri
 	} else if err != nil {
 		return err
 	}
+	s.REST.Forget()
 	s.auditCatalog(ctx, p, "secret.delete", name, nil)
 	return nil
 }

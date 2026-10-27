@@ -4,7 +4,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { yaml } from "@codemirror/lang-yaml";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { lintGutter, setDiagnostics, type Diagnostic } from "@codemirror/lint";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 
@@ -63,11 +63,15 @@ export default function YamlEditor({ value, onChange, problems = [], readOnly, l
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly, label]);
 
+  // A value from outside (loaded, reset) is not an edit: Ctrl+Z doesn't undo it.
   useEffect(() => {
     const v = view.current;
     if (v && v.state.doc.toString() !== value)
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
-  }, [value]);
+      v.dispatch({
+        changes: { from: 0, to: v.state.doc.length, insert: value },
+        annotations: Transaction.addToHistory.of(false),
+      });
+  }, [value, readOnly, label]);
 
   useEffect(() => {
     const v = view.current;
@@ -80,7 +84,8 @@ export default function YamlEditor({ value, onChange, problems = [], readOnly, l
         return { from: line.from, to: line.to, severity: "error", message: p.message };
       });
     v.dispatch(setDiagnostics(v.state, diagnostics));
-  }, [problems]);
+    // Again when the view is made anew (readOnly or label changed).
+  }, [problems, readOnly, label]);
 
   return <div ref={host} className="h-[min(70vh,640px)] overflow-hidden rounded-md border border-line-strong" />;
 }

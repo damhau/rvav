@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -336,7 +337,7 @@ func TestValueSourcesRESTAndCEL(t *testing.T) {
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/ui_schema/fields/service/value_source/params/url" {
 			t.Fatalf("a host not allowed = %+v", problem.Errors)
 		}
-		h.svc.REST.Hosts = []string{host}
+		h.svc.REST.Hosts = []string{"http://" + host} // a plain http test server
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", admin, create, 201, &item)
 		h.json("DELETE", "/api/v1/admin/secrets/cmdb", admin, nil, 409, nil) // in use
@@ -513,7 +514,7 @@ func TestCatalogAdminAcceptance(t *testing.T) {
 				{"id": "bk-weekly-%[1]s", "name": "Weekly (%[1]s)", "retention": "8 weeks"}]}`, r.URL.Query().Get("role"))
 		}))
 		defer cmdb.Close()
-		h.svc.REST.Hosts = []string{strings.TrimPrefix(cmdb.URL, "http://")}
+		h.svc.REST.Hosts = []string{cmdb.URL} // http://host:port: plain http allowed for it
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "backup", Kind: api.SecretWriteKindToken, Value: new("backup-token")}, 201, nil)
 
 		// Built from the RHEL item's form, with a backup policy from the REST service.
@@ -610,6 +611,130 @@ func TestCatalogAdminAcceptance(t *testing.T) {
 		}
 		if v := deploymentVersion(); v != v1 || versionOf(item, v1).Deployments != 1 {
 			t.Fatalf("after rolling back, the deployment's version = %s", v)
+		}
+	})
+}
+
+// TestCatalogReviewFixes covers what the review of S8 found: imported
+// versions keep their order and numbers follow the highest; a save based on
+// an older revision, a number in use or a required name that isn't an input
+// is refused; previews are as members of the project only; on submit, the
+// rules decide hidden, read-only and computed inputs; the seed leaves items
+// an admin changed alone.
+func TestCatalogReviewFixes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin = "prj_web", "lmartin"
+		def := map[string]any{
+			"form_schema": map[string]any{"type": "object", "required": []any{"name"}, "properties": map[string]any{
+				"name": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"},
+				"label": map[string]any{"type": "string"}, "tier": map[string]any{"type": "string", "readOnly": true}}},
+			"ui_schema": map[string]any{"layout": map[string]any{"kind": "page", "sections": []any{
+				map[string]any{"key": "main", "title": "Note", "fields": []any{"name", "reason", "label", "tier"}}}},
+				"fields": map[string]any{
+					"name":   map[string]any{"widget": "text", "label": "Name"},
+					"reason": map[string]any{"widget": "text", "label": "Why production", "rules": map[string]any{"visible": `environment == "prd"`}},
+					"label":  map[string]any{"widget": "text", "label": "Label", "rules": map[string]any{"value": `project.code + "-" + inputs.name`}},
+					"tier":   map[string]any{"widget": "text", "label": "Tier"},
+				}},
+			"initial_values": map[string]any{"tier": "bronze"},
+			"blueprint":      map[string]any{"kind": "awx", "awx": map[string]any{"title": "Note", "job_template": "pg-create-role"}},
+		}
+		var versions []any
+		for _, n := range []string{"1.0", "1.1", "1.2", "1.3"} {
+			v := map[string]any{"number": n}
+			for k, x := range def {
+				v[k] = x
+			}
+			versions = append(versions, v)
+		}
+		doc, _ := json.Marshal(map[string]any{"apiVersion": "rvav.dev/v1", "kind": "CatalogItem", "versions": versions,
+			"metadata": map[string]any{"slug": "note", "name": "Note", "summary": "A note.", "category": "compute",
+				"type": "awx_job_template", "icon": "terminal"}})
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(doc), 200, nil, "Content-Type", "application/yaml")
+
+		// Imported versions keep the YAML's order, in the item and in its export.
+		var item api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/note", admin, nil, 200, &item)
+		numbers := []string{}
+		for _, v := range item.Versions {
+			numbers = append(numbers, v.Number)
+		}
+		if fmt.Sprint(numbers) != "[1.3 1.2 1.1 1.0]" || item.DraftVersion == nil || item.DraftVersion.Number != "1.3" {
+			t.Fatalf("imported versions = %v, draft %+v", numbers, item.DraftVersion)
+		}
+		_, exported, _ := h.do("GET", "/api/v1/admin/catalog/items/note/export", admin, nil)
+		if i, j := strings.Index(string(exported), "number: \"1.0\""), strings.Index(string(exported), "number: \"1.3\""); i < 0 || j < i {
+			t.Fatalf("export order:\n%s", exported)
+		}
+
+		// Saves: on the revision they started from, with a number of their own, with required names that are inputs.
+		draft := "/api/v1/admin/catalog/items/note/versions/" + item.DraftVersion.Id
+		var v api.CatalogItemVersionDetail
+		h.json("GET", draft, admin, nil, 200, &v)
+		base := v.Revision
+		h.json("PUT", draft, admin, api.CatalogItemVersionUpdate{Definition: v.Definition, BaseRevision: &base}, 200, &v)
+		if v.Revision != base+1 {
+			t.Fatalf("revision after a save = %d, want %d", v.Revision, base+1)
+		}
+		h.json("PUT", draft, admin, api.CatalogItemVersionUpdate{Definition: v.Definition, BaseRevision: &base}, 409, nil)
+		var problem struct{ Errors []api.FieldError }
+		h.json("PUT", draft, admin, api.CatalogItemVersionUpdate{Definition: v.Definition, Number: new("1.0")}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/number" {
+			t.Fatalf("a number in use = %+v", problem.Errors)
+		}
+		ghost := v.Definition
+		ghost.FormSchema = map[string]any{"type": "object", "required": []any{"name", "ghost"}, "properties": v.Definition.FormSchema["properties"]}
+		h.json("PUT", draft, admin, api.CatalogItemVersionUpdate{Definition: ghost}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/form_schema/required/1" {
+			t.Fatalf("a required name that isn't an input = %+v", problem.Errors)
+		}
+
+		// Published; the next draft follows the highest number.
+		h.json("POST", draft+"/publish", admin, nil, 200, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/note/versions", admin, api.CatalogItemVersionCreate{}, 201, &v)
+		if v.Number != "1.4" {
+			t.Fatalf("next number = %s", v.Number)
+		}
+
+		// Previews are as members of the project.
+		preview := "/api/v1/admin/catalog/items/note/versions/" + v.Id + "/preview"
+		h.json("POST", preview, admin, api.DesignerPreviewQuery{ProjectId: web, AsUserId: new(seed.UserID("sbrunner")), Inputs: map[string]any{}}, 422, &problem)
+		h.json("POST", preview, admin, api.DesignerPreviewQuery{ProjectId: "prj_data", Inputs: map[string]any{}}, 422, &problem)
+		if problem.Errors[0].Field != "/as_user_id" {
+			t.Fatalf("previewing where I'm not a member = %+v", problem.Errors)
+		}
+
+		// On submit, the rules decide: hidden inputs dropped, read-only ones their initial value, computed ones computed.
+		h.json("PUT", "/api/v1/admin/catalog/items/note/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.PublishedVersion.Id,
+			ProjectId: web, Environment: "dev", Inputs: map[string]any{"name": "orders", "reason": "sneaked in", "tier": "gold", "label": "mine"}},
+			202, &req, "Idempotency-Key", uuid.NewString())
+		var stored map[string]any
+		if err := h.store.Pool.QueryRow(ctx, `select inputs from requests where id = $1`, req.Id).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if _, hidden := stored["reason"]; hidden || stored["tier"] != "bronze" || stored["label"] != "web-orders" {
+			t.Fatalf("stored inputs = %v", stored)
+		}
+
+		// The seed leaves items an admin changed alone.
+		var tls api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/tls-cert", admin, nil, 200, &tls)
+		h.json("POST", "/api/v1/admin/catalog/items/tls-cert/versions/"+tls.PublishedVersion.Id+"/deprecate", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/db-user/entitlements", admin, api.CatalogEntitlements{ProjectIds: []string{web}}, 200, nil)
+		if err := seed.Run(ctx, h.store); err != nil {
+			t.Fatal(err)
+		}
+		var tlsAfter, dbUser api.AdminCatalogItem // fresh: decoding leaves fields the answer omits
+		h.json("GET", "/api/v1/admin/catalog/items/tls-cert", admin, nil, 200, &tlsAfter)
+		h.json("GET", "/api/v1/admin/catalog/items/db-user", admin, nil, 200, &dbUser)
+		if tlsAfter.PublishedVersion != nil || dbUser.Entitlements.AllProjects || fmt.Sprint(dbUser.Entitlements.ProjectIds) != "["+web+"]" {
+			t.Fatalf("after the seed ran again: tls-cert published %+v, db-user open to %+v", tlsAfter.PublishedVersion, dbUser.Entitlements)
 		}
 	})
 }

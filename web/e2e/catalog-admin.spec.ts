@@ -229,3 +229,54 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await requestForm("Backup policy", "1.0");
   expect(errors).toEqual([]);
 });
+
+// From the review of S8: the designer's working copy outlives its tab.
+test("designer changes survive tab switches, saved or refused", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  const fields = page.getByRole("region", { name: "Fields" });
+  const props = page.getByRole("region", { name: "Properties" });
+  const status = page.getByRole("status").filter({ hasText: /^Draft 3\.3/ });
+
+  // A change, then straight to another tab: it is saved, and there when coming back.
+  await props.getByRole("textbox", { name: "Label", exact: true }).fill("Service role");
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  await expect(props.getByRole("textbox", { name: "Label", exact: true })).toHaveValue("Service role");
+  await expect(status).toHaveText("Draft 3.3: saved");
+
+  // A rule the server refuses: kept, Publish waits, the YAML shows it on its line.
+  const shown = props.getByRole("textbox", { name: "Shown when" });
+  await shown.fill("((");
+  await shown.press("Enter");
+  await expect(status).toContainText("not saved, 1 problem to fix");
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await expect(page.getByRole("button", { name: "Publish" })).toBeDisabled();
+  await page.getByRole("tab", { name: "Definition" }).click();
+  await expect(page.getByRole("note")).toContainText("the designer's changes");
+  await expect(page.getByRole("list", { name: "Problems in the definition" })).toContainText(
+    /Line \d+: .*not valid CEL/,
+  );
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  await expect(props.getByRole("textbox", { name: "Shown when" })).toHaveValue("((");
+  await expect(props.getByText(/This rule is not valid CEL/)).toBeVisible();
+  await props.getByRole("textbox", { name: "Shown when" }).fill("");
+  await props.getByRole("textbox", { name: "Shown when" }).press("Enter");
+  await expect(status).toHaveText("Draft 3.3: saved");
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await expect(page.getByRole("button", { name: "Publish" })).toBeEnabled();
+
+  // Moves by keyboard keep the focus on the moved field, and say where it went.
+  await page.getByRole("tab", { name: "Form designer" }).click();
+  await fields.getByRole("button", { name: "Move VM name up" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(fields.getByText("VM name moved to position 1 of 2 in Basics.")).toBeAttached();
+  const focused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+  expect(focused).toBe("Move VM name down");
+  expect(errors).toEqual([]);
+});

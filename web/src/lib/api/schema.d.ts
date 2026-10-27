@@ -1300,6 +1300,12 @@ export interface components {
             id: string;
             /** @example 1.1 */
             number: string;
+            /**
+             * @description Goes up each time a draft is saved. A save that names the
+             *     revision it started from (`base_revision`) is refused with 409
+             *     when the draft changed since.
+             */
+            revision: number;
             /** @enum {string} */
             state: "draft" | "published" | "deprecated";
             changelog: string;
@@ -1366,6 +1372,8 @@ export interface components {
             definition: components["schemas"]["CatalogVersionDefinition"];
             number?: string;
             changelog?: string;
+            /** @description The revision this save started from; 409 when the draft changed since. */
+            base_revision?: number;
         };
         CatalogItemVersionPublish: {
             /** @description Replaces a draft's changelog. */

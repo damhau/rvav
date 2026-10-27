@@ -22,6 +22,21 @@ var (
 	printer     = message.NewPrinter(language.English)
 )
 
+// newCompiler compiles form schemas, which catalog admins write: a $ref may
+// point inside the schema only, never to a file or a URL (the default
+// loader reads local files).
+func newCompiler() *jsonschema.Compiler {
+	c := jsonschema.NewCompiler()
+	c.UseLoader(noLoader{})
+	return c
+}
+
+type noLoader struct{}
+
+func (noLoader) Load(url string) (any, error) {
+	return nil, fmt.Errorf("a form schema can't load %s: refer to its own definitions ($defs) only", url)
+}
+
 func compileSchema(versionID string, raw json.RawMessage) (*jsonschema.Schema, error) {
 	schemaMu.Lock()
 	defer schemaMu.Unlock()
@@ -32,7 +47,7 @@ func compileSchema(versionID string, raw json.RawMessage) (*jsonschema.Schema, e
 	if err != nil {
 		return nil, fmt.Errorf("form schema of %s: %w", versionID, err)
 	}
-	c := jsonschema.NewCompiler()
+	c := newCompiler()
 	url := "urn:rvav:form:" + versionID
 	if err := c.AddResource(url, doc); err != nil {
 		return nil, err
@@ -52,7 +67,7 @@ func compileSchemaUncached(raw json.RawMessage) (*jsonschema.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := jsonschema.NewCompiler()
+	c := newCompiler()
 	if err := c.AddResource("urn:rvav:form:draft", doc); err != nil {
 		return nil, err
 	}
