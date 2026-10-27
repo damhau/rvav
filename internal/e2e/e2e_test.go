@@ -38,12 +38,12 @@ import (
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/app"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/awx"
-	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/pgtest"
@@ -237,8 +237,16 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 		t.Fatalf("sync: %v", err)
 	}
 
-	ipam := efficientip.NewFake()
-	ipam.InUse = st.IPAddressesInUse
+	fakeIPAM, err := app.NewFakeEfficientIP(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipamSrv := httptest.NewServer(fakeIPAM)
+	t.Cleanup(ipamSrv.Close)
+	ipam, err := fakeIPAM.Client(ipamSrv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeAWX := awx.NewFake(20*time.Millisecond, "")
 	wf := &recorder{}
 	svc := &core.Service{Store: st, IPAM: ipam, Workflows: wf, Events: pub, Log: log}

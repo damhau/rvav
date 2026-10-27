@@ -30,7 +30,12 @@ x-rvav-env: &rvav-env
   RVAV_VCENTER_USERNAME: user
   RVAV_VCENTER_PASSWORD: pass
   RVAV_VCENTER_INSECURE: "1"
-  RVAV_FAKE_EFFICIENTIP: "1"
+  # The efficientip service is a fake SOLIDserver; rvav talks to it with the
+  # real client.
+  RVAV_EFFICIENTIP_URL: http://efficientip:8080
+  RVAV_EFFICIENTIP_USERNAME: rvav
+  RVAV_EFFICIENTIP_PASSWORD: rvav
+  RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
   RVAV_FAKE_AWX: "1"
   RVAV_FAKE_AWX_FAIL_TASK: ${RVAV_FAKE_AWX_FAIL_TASK:-}
 
@@ -113,6 +118,19 @@ services:
     restart: on-failure
     depends_on: [vcsim]
 
+  # A fake SOLIDserver with the subnets of the seeded network mappings.
+  efficientip:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["fake-efficientip"]
+    environment: *rvav-env
+    restart: on-failure
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "rvav", "healthcheck"]
+      interval: 2s
+      retries: 30
+
   api:
     build: { context: .., dockerfile: Dockerfile }
     command: ["api"]
@@ -120,6 +138,7 @@ services:
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_API_PORT:-8080}:8080"]
     depends_on:
       migrate: { condition: service_completed_successfully }
+      efficientip: { condition: service_healthy }
       temporal: { condition: service_healthy }
     healthcheck:
       # With Keycloak sign-in, ready once Keycloak answers too.
@@ -134,6 +153,7 @@ services:
     restart: on-failure
     depends_on:
       migrate: { condition: service_completed_successfully }
+      efficientip: { condition: service_healthy }
       vcsim-bootstrap: { condition: service_completed_successfully }
       temporal: { condition: service_healthy }
 
@@ -144,6 +164,7 @@ services:
     restart: on-failure
     depends_on:
       migrate: { condition: service_completed_successfully }
+      efficientip: { condition: service_healthy }
       vcsim-bootstrap: { condition: service_completed_successfully }
 
   # The web app, served by nginx, which proxies /api to the api service.

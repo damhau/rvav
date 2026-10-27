@@ -32,6 +32,7 @@ Usage:
   rvav migrate [-seed]     apply database migrations, optionally load seed data
   rvav seed                load or refresh the example organisation and catalog
   rvav vcsim-bootstrap     create the GVA inventory in vcsim (development)
+  rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
@@ -62,8 +63,8 @@ func run(ctx context.Context, cmd string, args []string) error {
 	if cmd == "healthcheck" {
 		return healthcheck(ctx)
 	}
-	// migrate, seed and vcsim-bootstrap work without auth settings.
-	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" {
+	// migrate, seed, vcsim-bootstrap and fake-efficientip work without auth settings.
+	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -103,6 +104,25 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		log.Info("GVA inventory created", "vcenter", cfg.VCenter.URL)
+		return nil
+	}
+
+	if cmd == "fake-efficientip" {
+		st, err := store.Open(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		fake, err := app.NewFakeEfficientIP(ctx, st)
+		if err != nil {
+			return err
+		}
+		url, err := fake.Start(ctx, cfg.HTTPAddr)
+		if err != nil {
+			return err
+		}
+		log.Warn("serving a fake SOLIDserver; no real addresses or DNS records are created", "url", url)
+		<-ctx.Done()
 		return nil
 	}
 

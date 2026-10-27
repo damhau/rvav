@@ -42,6 +42,26 @@ type App struct {
 	tcOnce sync.Once
 	tc     client.Client
 	tcErr  error
+
+	stopFake context.CancelFunc
+}
+
+// NewFakeEfficientIP is a fake SOLIDserver holding the subnets of rvav's
+// network mappings, which never offers an address rvav has recorded.
+func NewFakeEfficientIP(ctx context.Context, st *store.Store) (*efficientip.FakeServer, error) {
+	fake := efficientip.NewFakeServer()
+	fake.InUse = st.IPAddressesInUse
+	networks, err := st.NetworkSubnets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range networks {
+		if err := fake.AddNetwork(efficientip.FakeNetwork{Network: n.Network, CIDR: n.Subnet, Gateway: n.Gateway,
+			Zone: n.DNSZone, DNSServers: n.DNSServers}); err != nil {
+			return nil, err
+		}
+	}
+	return fake, nil
 }
 
 // Open connects to the database and builds the EfficientIP and AWX clients
@@ -54,10 +74,20 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 	a := &App{Cfg: cfg, Log: log, Store: st, Events: &events.Publisher{Store: st, Logger: log}}
 
 	if cfg.IPAM.Fake {
-		f := efficientip.NewFake()
-		f.InUse = st.IPAddressesInUse
-		a.IPAM = f
-		log.Warn("using the fake EfficientIP (RVAV_FAKE_EFFICIENTIP=1); no real addresses or DNS records are created")
+		fake, err := NewFakeEfficientIP(ctx, st)
+		if err != nil {
+			return nil, err
+		}
+		fctx, stop := context.WithCancel(context.WithoutCancel(ctx))
+		a.stopFake = stop
+		url, err := fake.Start(fctx, "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		if a.IPAM, err = fake.Client(url); err != nil {
+			return nil, err
+		}
+		log.Warn("using a fake SOLIDserver in this process (RVAV_FAKE_EFFICIENTIP=1); no real addresses or DNS records are created")
 	} else if cfg.IPAM.URL != "" {
 		if a.IPAM, err = efficientip.New(efficientip.Options{URL: cfg.IPAM.URL, Auth: efficientip.Auth(cfg.IPAM.Auth),
 			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Space: cfg.IPAM.Space,
@@ -82,6 +112,9 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 }
 
 func (a *App) Close() {
+	if a.stopFake != nil {
+		a.stopFake()
+	}
 	if a.tc != nil {
 		a.tc.Close()
 	}

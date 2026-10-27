@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // FakeServer is an in-memory SOLIDserver answering the REST services
@@ -39,8 +41,25 @@ type FakeServer struct {
 	records   []row
 }
 
+// What the development stack's fake uses.
+const (
+	FakeUser      = "rvav"
+	FakePassword  = "rvav"
+	FakeSpace     = "rvav-lab"
+	FakeDNSServer = "ns1.corp.example"
+)
+
+// The subnet class parameters rvav reads: the vSphere network the subnet
+// is on, its gateway, DNS zone and DNS servers (see ADR-0015).
+const (
+	ParamNetwork    = "vsphere_network"
+	ParamGateway    = "gateway"
+	ParamZone       = "domain"
+	ParamDNSServers = "dns_servers"
+)
+
 func NewFakeServer() *FakeServer {
-	return &FakeServer{FirstHost: 20, sites: map[string]string{}, servers: map[string]string{}}
+	return &FakeServer{Username: FakeUser, Password: FakePassword, FirstHost: 20, sites: map[string]string{}, servers: map[string]string{}}
 }
 
 func (f *FakeServer) id() string {
@@ -111,6 +130,46 @@ func (f *FakeServer) AddZone(server, zone string) {
 		"dns_id": f.servers[server], "dnszone_type": "master", "dnszone_is_reverse": reverse, "dnsview_name": ""})
 }
 
+// FakeNetwork is a vSphere network and the subnet it is on.
+type FakeNetwork struct {
+	Network, CIDR, Gateway, Zone string
+	DNSServers                   []string
+}
+
+// AddNetwork adds the network's subnet to FakeSpace, with the class
+// parameters rvav reads, and its forward and reverse zones on
+// FakeDNSServer.
+func (f *FakeServer) AddNetwork(n FakeNetwork) error {
+	if _, err := f.AddSubnet(FakeSpace, n.CIDR, n.Network, map[string]string{ParamNetwork: n.Network,
+		ParamGateway: n.Gateway, ParamZone: n.Zone, ParamDNSServers: strings.Join(n.DNSServers, ",")}); err != nil {
+		return err
+	}
+	f.AddZone(FakeDNSServer, n.Zone)
+	f.AddZone(FakeDNSServer, "in-addr.arpa")
+	return nil
+}
+
+// Start serves the fake on addr ("127.0.0.1:0" for any free port) until
+// ctx ends, and returns its URL.
+func (f *FakeServer) Start(ctx context.Context, addr string) (string, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return "", err
+	}
+	srv := &http.Server{Handler: f, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+	}()
+	return "http://" + ln.Addr().String(), nil
+}
+
+// Client returns a client signed in to the fake at url.
+func (f *FakeServer) Client(url string) (*HTTPClient, error) {
+	return New(Options{URL: url, Username: f.Username, Password: f.Password, DNSServer: FakeDNSServer})
+}
+
 type fakeError struct {
 	status int
 	errno  string
@@ -122,6 +181,10 @@ func failf(status int, errno, format string, args ...any) *fakeError {
 }
 
 func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/readyz" { // for the container probe; not a SOLIDserver service
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if !f.authenticated(r) {
 		w.WriteHeader(http.StatusUnauthorized)

@@ -17,7 +17,7 @@ vCenter simulator with the GVA layout for local work.
 | `httpapi` | HTTP handlers on the generated `ServerInterface`, problems, middleware |
 | `ids` | Prefixed ULIDs |
 | `integrations/vsphere` | govmomi driver: clone, customize, power, wait for IP, destroy, inventory; vcsim bootstrap |
-| `integrations/efficientip` | IPAM and DNS client and in-memory fake |
+| `integrations/efficientip` | SOLIDserver REST client (ADR-0015) and `FakeServer`, a fake SOLIDserver over HTTP |
 | `integrations/awx` | AWX `/api/v2` client and a fake that plays jobs |
 | `inventory` | vCenter inventory sync into the cache tables and VM resource state |
 | `naming` | Naming templates such as `{project}-{environment}-{inputs.role}{seq:03}` |
