@@ -64,6 +64,19 @@ type TemplateFilter struct {
 	Labels       []string
 }
 
+// Inventory is an AWX inventory; Kind is "" or "smart".
+type Inventory struct {
+	ID         int
+	Name, Kind string
+}
+
+// Credential is an AWX credential; Kind is its type's kind (ssh, vault,
+// net, cloud, ...) and Type its type's name.
+type Credential struct {
+	ID               int
+	Name, Kind, Type string
+}
+
 // WorkflowNode is a node of a workflow job, and the job it ran.
 type WorkflowNode struct {
 	ID       int
@@ -92,6 +105,11 @@ type Client interface {
 	UpdateInventorySource(ctx context.Context, sourceID int) (int, error)
 	// InventoryOfSource returns the ID of the inventory a source fills.
 	InventoryOfSource(ctx context.Context, sourceID int) (int, error)
+	// Inventories lists an organisation's inventories (all when empty).
+	Inventories(ctx context.Context, organization string) ([]Inventory, error)
+	// Credentials lists an organisation's credentials, of one kind when
+	// kind is set.
+	Credentials(ctx context.Context, organization, kind string) ([]Credential, error)
 	GetInventoryUpdate(ctx context.Context, id int) (Job, error)
 }
 

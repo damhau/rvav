@@ -117,6 +117,22 @@ func TestContractTemplates(t *testing.T) {
 	}
 }
 
+func TestContractInventoriesAndCredentials(t *testing.T) {
+	c, ctx := contractClient(t)
+	inventories, err := c.Inventories(ctx, "rvav-test")
+	if err != nil || !slices.ContainsFunc(inventories, func(i Inventory) bool { return i.Name == "rvav-test-localhost" && i.ID != 0 }) {
+		t.Fatalf("inventories = %+v, %v", inventories, err)
+	}
+	all, err := c.Credentials(ctx, "rvav-test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloud, err := c.Credentials(ctx, "rvav-test", "cloud")
+	if err != nil || len(cloud) > len(all) || slices.ContainsFunc(cloud, func(c Credential) bool { return c.Kind != "cloud" }) {
+		t.Fatalf("cloud credentials = %+v (of %+v), %v", cloud, all, err)
+	}
+}
+
 func TestContractJobs(t *testing.T) {
 	c, ctx := contractClient(t)
 

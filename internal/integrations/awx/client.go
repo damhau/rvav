@@ -2,6 +2,7 @@ package awx
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -270,6 +271,82 @@ func (c *HTTPClient) InventoryOfSource(ctx context.Context, sourceID int) (int, 
 		return 0, err
 	}
 	return res.Inventory, nil
+}
+
+// list reads every page of a list (200 objects a page, 50 pages at most)
+// into add.
+func (c *HTTPClient) list(ctx context.Context, path string, q url.Values, add func(raw json.RawMessage) error) error {
+	q.Set("page_size", "200")
+	for page := 1; page <= 50; page++ {
+		q.Set("page", fmt.Sprint(page))
+		var res struct {
+			Next    *string           `json:"next"`
+			Results []json.RawMessage `json:"results"`
+		}
+		if err := c.do(ctx, http.MethodGet, path, q, nil, &res); err != nil {
+			return err
+		}
+		for _, r := range res.Results {
+			if err := add(r); err != nil {
+				return err
+			}
+		}
+		if res.Next == nil {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (c *HTTPClient) Inventories(ctx context.Context, organization string) ([]Inventory, error) {
+	q := url.Values{"order_by": {"name"}}
+	if organization != "" {
+		q.Set("organization__name", organization)
+	}
+	out := []Inventory{}
+	err := c.list(ctx, "/inventories/", q, func(raw json.RawMessage) error {
+		var i Inventory
+		if err := json.Unmarshal(raw, &struct {
+			ID   *int    `json:"id"`
+			Name *string `json:"name"`
+			Kind *string `json:"kind"`
+		}{&i.ID, &i.Name, &i.Kind}); err != nil {
+			return err
+		}
+		out = append(out, i)
+		return nil
+	})
+	return out, err
+}
+
+func (c *HTTPClient) Credentials(ctx context.Context, organization, kind string) ([]Credential, error) {
+	q := url.Values{"order_by": {"name"}}
+	if organization != "" {
+		q.Set("organization__name", organization)
+	}
+	if kind != "" {
+		q.Set("credential_type__kind", kind)
+	}
+	out := []Credential{}
+	err := c.list(ctx, "/credentials/", q, func(raw json.RawMessage) error {
+		var r struct {
+			ID      int    `json:"id"`
+			Name    string `json:"name"`
+			Kind    string `json:"kind"`
+			Summary struct {
+				Type struct {
+					Name string `json:"name"`
+					Kind string `json:"kind"`
+				} `json:"credential_type"`
+			} `json:"summary_fields"`
+		}
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return err
+		}
+		out = append(out, Credential{ID: r.ID, Name: r.Name, Kind: cmp.Or(r.Summary.Type.Kind, r.Kind), Type: r.Summary.Type.Name})
+		return nil
+	})
+	return out, err
 }
 
 func (c *HTTPClient) GetInventoryUpdate(ctx context.Context, id int) (Job, error) {

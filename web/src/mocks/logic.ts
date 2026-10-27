@@ -101,6 +101,22 @@ export function resolveField(
       );
     case "dns.zones":
       return withDefault(dnsZones.map((z) => ({ value: z, label: z })));
+    case "awx.inventories":
+      return withDefault([
+        { value: "1", label: "Demo inventory" },
+        { value: "2", label: "rvav" },
+        { value: "3", label: "Linux servers", meta: "Smart inventory" },
+      ]);
+    case "awx.credentials":
+      return withDefault(
+        [
+          { value: "4", label: "Linux machine", meta: "Machine", kind: "ssh" },
+          { value: "5", label: "Network devices", meta: "Network", kind: "net" },
+          { value: "6", label: "Secrets vault", meta: "Vault", kind: "vault" },
+        ]
+          .filter((c) => !params.kind || c.kind === params.kind)
+          .map(({ value, label, meta }) => ({ value, label, meta })),
+      );
     case "ipam.next_free_address": {
       const next = params.network ? nextFreeIp(db, params.network) : null;
       return {

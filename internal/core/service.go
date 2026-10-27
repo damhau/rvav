@@ -10,6 +10,7 @@ import (
 
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/events"
+	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
@@ -40,6 +41,10 @@ type Service struct {
 	ConsoleAccount func(ctx context.Context) (CloneTicketer, error)
 	// AWXCatalog imports AWX templates into the catalog (ADR-0016).
 	AWXCatalog *awxcatalog.Sync
+	// AWX and its organisation give the awx.inventories and
+	// awx.credentials pickers.
+	AWX             awx.Client
+	AWXOrganization string
 }
 
 // ConsoleSource is what the web console needs from vCenter.

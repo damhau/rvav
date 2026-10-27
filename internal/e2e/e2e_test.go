@@ -251,7 +251,7 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	}
 	fakeAWX := awx.NewFake(20*time.Millisecond, "")
 	wf := &recorder{}
-	svc := &core.Service{Store: st, IPAM: ipam, Workflows: wf, Events: pub, Log: log}
+	svc := &core.Service{Store: st, IPAM: ipam, Workflows: wf, Events: pub, Log: log, AWX: fakeAWX}
 	hub := events.NewHub(st, log)
 	hctx, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)

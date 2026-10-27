@@ -224,6 +224,16 @@ func (f *Fake) UpdateInventorySource(_ context.Context, _ int) (int, error) {
 // FakeInventory is the inventory the fake's inventory sources fill.
 const FakeInventory = 2
 
+func (f *Fake) Inventories(context.Context, string) ([]Inventory, error) {
+	return []Inventory{{ID: 1, Name: "Demo inventory"}, {ID: FakeInventory, Name: "rvav"}, {ID: 3, Name: "Linux servers", Kind: "smart"}}, nil
+}
+
+func (f *Fake) Credentials(_ context.Context, _, kind string) ([]Credential, error) {
+	all := []Credential{{ID: 4, Name: "Linux machine", Kind: "ssh", Type: "Machine"}, {ID: 5, Name: "Network devices", Kind: "net", Type: "Network"},
+		{ID: 6, Name: "Secrets vault", Kind: "vault", Type: "Vault"}}
+	return slices.DeleteFunc(all, func(c Credential) bool { return kind != "" && c.Kind != kind }), nil
+}
+
 func (f *Fake) InventoryOfSource(context.Context, int) (int, error) { return FakeInventory, nil }
 
 // LaunchedInventory returns the inventory a job was launched against (0:

@@ -295,3 +295,37 @@ func TestAWXDay2Action(t *testing.T) {
 		d.run("tnguyen", key, nil, 422)
 	})
 }
+
+// TestAWXValueSources: the awx.inventories and awx.credentials pickers list
+// what the AWX organisation has, credentials of one kind when asked.
+func TestAWXValueSources(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web = "prj_web"
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/dns-record/form?project_id="+web, "lmartin", nil, 200, &form)
+		if _, err := h.store.Pool.Exec(ctx, `update catalog_item_versions set ui_schema = jsonb_set(jsonb_set(ui_schema,
+			'{fields,inventory}', '{"widget": "select", "label": "Inventory", "value_source": {"kind": "builtin", "name": "awx.inventories"}}'),
+			'{fields,machine}', '{"widget": "select", "label": "Machine credential", "value_source": {"kind": "builtin", "name": "awx.credentials", "params": {"kind": "ssh"}}}')
+			where id = $1`, form.VersionId); err != nil {
+			t.Fatal(err)
+		}
+		values := func(field string) []api.Option {
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", "lmartin", api.FieldValuesQuery{VersionId: form.VersionId, ProjectId: web, Field: field}, 200, &out)
+			if out.Options == nil {
+				t.Fatalf("%s has no options", field)
+			}
+			return *out.Options
+		}
+		if inv := values("inventory"); len(inv) != 3 || inv[1].Value != "2" || inv[1].Label != "rvav" || deref(inv[2].Meta) != "Smart inventory" {
+			t.Fatalf("awx.inventories = %+v", inv)
+		}
+		if cred := values("machine"); len(cred) != 1 || cred[0].Value != "4" || cred[0].Label != "Linux machine" || deref(cred[0].Meta) != "Machine" {
+			t.Fatalf("awx.credentials of kind ssh = %+v", cred)
+		}
+	})
+}

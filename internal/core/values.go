@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
@@ -272,6 +273,35 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 			opts = append(opts, option(sn.Subnet, label, "Gateway "+sn.Gateway))
 		}
 		sort.Slice(opts, func(i, j int) bool { return opts[i].Value < opts[j].Value })
+		out.Options = &opts
+		cache(60)
+
+	case "awx.inventories", "awx.credentials":
+		if s.AWX == nil {
+			return out, &UpstreamError{System: "AWX", Err: errors.New("no AWX is configured")}
+		}
+		opts := []api.Option{}
+		if *src.Name == "awx.inventories" {
+			list, err := s.AWX.Inventories(ctx, s.AWXOrganization)
+			if err != nil {
+				return out, &UpstreamError{System: "AWX", Err: err}
+			}
+			for _, i := range list {
+				meta := ""
+				if i.Kind == "smart" {
+					meta = "Smart inventory"
+				}
+				opts = append(opts, option(strconv.Itoa(i.ID), i.Name, meta))
+			}
+		} else {
+			list, err := s.AWX.Credentials(ctx, s.AWXOrganization, params["kind"])
+			if err != nil {
+				return out, &UpstreamError{System: "AWX", Err: err}
+			}
+			for _, c := range list {
+				opts = append(opts, option(strconv.Itoa(c.ID), c.Name, c.Type))
+			}
+		}
 		out.Options = &opts
 		cache(60)
 

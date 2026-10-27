@@ -201,7 +201,7 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
-		AWXCatalog: a.awxCatalog()}
+		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}
