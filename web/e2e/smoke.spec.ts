@@ -30,14 +30,16 @@ test("request a RHEL 9 server from the catalog and follow it to Ready", async ({
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
   await expect(page.getByRole("heading", { name: /RHEL 9 server · web-dev-api005/ })).toBeVisible();
   const steps = page.getByRole("region", { name: "Steps" });
-  await expect(steps.getByText(/Reserved 10\.31\.10\.\d+/)).toBeVisible();
-  await expect(steps.getByText(/Cloned from tpl-rhel9\.4-2026\.10/)).toBeVisible();
+  // The mock runs the steps on timers: slower on CI runners.
+  await expect(steps.getByText(/Reserved 10\.31\.10\.\d+/)).toBeVisible({ timeout: 15_000 });
+  await expect(steps.getByText(/Cloned from tpl-rhel9\.4-2026\.10/)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("log", { name: /Output of AWX job/ })).toContainText("changed: [web-dev-api005]");
   await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("link", { name: "Open deployment" }).click();
   await expect(page.getByRole("heading", { name: "web-dev-api" })).toBeVisible();
-  await expect(page.getByText("web-dev-api005", { exact: true })).toBeVisible();
+  // In the resources table (the Actions panel names the VM too, once loaded).
+  await expect(page.getByRole("table").getByText("web-dev-api005", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Deployments" }).first().click();
   await expect(page.getByRole("link", { name: "web-dev-api", exact: true })).toHaveCount(2);
