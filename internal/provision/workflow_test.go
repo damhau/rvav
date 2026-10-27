@@ -3,6 +3,8 @@ package provision
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/day2"
 )
 
 func vmPlan(approval bool, levels ...string) Info {
@@ -316,5 +319,48 @@ func TestErrMessage(t *testing.T) {
 	}
 	if got := errMessage(errors.New("plain")); got != "plain" {
 		t.Fatalf("errMessage = %q", got)
+	}
+}
+
+func TestDay2RunsOpsThenFinishes(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	info := Info{RequestID: "req_2", ProjectID: "prj_web", Status: "queued", Plan: Plan{Kind: "day2", Day2: &Day2{
+		Action: "resize", DeploymentID: "dep_1", ResourceID: "res_1", Moref: "vm-42", After: "ready",
+		Ops: []day2.Op{{Key: "vsphere.shutdown_guest", Op: "shutdown_guest"}, {Key: "vsphere.reconfigure", Op: "reconfigure"}, {Key: "vsphere.power_on", Op: "power_on"}},
+	}}}
+	var ran []string
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_2").Return(info, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_2").Return(true, nil)
+	env.OnActivity(a.RunOp, mock.Anything, mock.MatchedBy(func(in OpInput) bool { return in.Moref == "vm-42" && in.ResourceID == "res_1" })).
+		Run(func(args mock.Arguments) { ran = append(ran, args.Get(1).(OpInput).Op.Op) }).Return(nil)
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_2", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+	env.ExecuteWorkflow(Provision, "req_2")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if len(ran) != 3 || ran[0] != "shutdown_guest" || ran[2] != "power_on" {
+		t.Fatalf("ops = %v", ran)
+	}
+	if steps := info.Plan.Steps("Development"); len(steps) != 6 || steps[5].Title != "Done" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+type fakeHousekeeper struct{ calls int }
+
+func (f *fakeHousekeeper) ExpireSnapshots(context.Context, time.Time) ([]string, error) {
+	f.calls++
+	return []string{"req_9"}, nil
+}
+
+func TestHousekeepingExpiresSnapshots(t *testing.T) {
+	var s testsuite.WorkflowTestSuite
+	env := s.NewTestWorkflowEnvironment()
+	fake := &fakeHousekeeper{}
+	env.RegisterActivity(&Activities{Housekeeper: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	env.ExecuteWorkflow(Housekeeping)
+	if err := env.GetWorkflowError(); err != nil || fake.calls != 1 {
+		t.Fatalf("housekeeping: %v, %d calls", err, fake.calls)
 	}
 }

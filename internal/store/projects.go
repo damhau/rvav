@@ -7,12 +7,12 @@ import (
 )
 
 func (s *Store) ListEnvironments(ctx context.Context) ([]Environment, error) {
-	rows, _ := s.Pool.Query(ctx, `select key, name, production, sort_order from environments order by sort_order, key`)
+	rows, _ := s.Pool.Query(ctx, `select key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days from environments order by sort_order, key`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Environment])
 }
 
 func (s *Store) GetEnvironment(ctx context.Context, key string) (Environment, error) {
-	rows, _ := s.Pool.Query(ctx, `select key, name, production, sort_order from environments where key = $1`, key)
+	rows, _ := s.Pool.Query(ctx, `select key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days from environments where key = $1`, key)
 	e, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Environment])
 	return e, notFound(err)
 }

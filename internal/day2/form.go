@@ -8,21 +8,26 @@ import (
 
 // field is one input of an action form.
 type field struct {
-	name   string
-	schema map[string]any
-	ui     api.UiField
-	value  any
+	name     string
+	schema   map[string]any
+	ui       api.UiField
+	value    any
+	optional bool
 }
 
-// form builds a one-section form; every field is required.
+// form builds a one-section form; fields are required unless optional.
 func form(title string, fields ...field) *api.ActionForm {
 	props := map[string]any{}
 	names := make([]string, len(fields))
+	required := []string{}
 	ui := api.UiSchema{Fields: map[string]api.UiField{}}
 	initial := map[string]any{}
 	for i, f := range fields {
 		props[f.name] = f.schema
 		names[i] = f.name
+		if !f.optional {
+			required = append(required, f.name)
+		}
 		ui.Fields[f.name] = f.ui
 		if f.value != nil {
 			initial[f.name] = f.value
@@ -31,7 +36,7 @@ func form(title string, fields ...field) *api.ActionForm {
 	ui.Layout.Kind = api.Page
 	ui.Layout.Sections = []api.UiSection{{Key: "action", Title: title, Fields: names}}
 	return &api.ActionForm{
-		Schema: map[string]any{"type": "object", "required": names, "properties": props,
+		Schema: map[string]any{"type": "object", "required": required, "properties": props,
 			"additionalProperties": false},
 		UiSchema:      ui,
 		InitialValues: initial,
@@ -62,12 +67,21 @@ func choice(name, label string, options []api.Option, value string) field {
 
 func toggle(name, label, help string) field {
 	return field{name: name, schema: map[string]any{"type": "boolean"},
-		ui: api.UiField{Label: label, Help: &help, Widget: api.UiWidgetToggle}, value: false}
+		ui: api.UiField{Label: label, Help: &help, Widget: api.UiWidgetToggle}, value: false, optional: true}
 }
 
-func text(name, label string, maxLength int) field {
-	return field{name: name, schema: map[string]any{"type": "string", "minLength": 1, "maxLength": maxLength},
+func text(name, label string, maxLength int, value string) field {
+	f := field{name: name, schema: map[string]any{"type": "string", "minLength": 1, "maxLength": maxLength},
 		ui: api.UiField{Label: label, Widget: api.UiWidgetText}}
+	if value != "" {
+		f.value = value
+	}
+	return f
+}
+
+func textarea(name, label string, maxLength int) field {
+	return field{name: name, schema: map[string]any{"type": "string", "maxLength": maxLength},
+		ui: api.UiField{Label: label, Widget: api.UiWidgetTextarea}, optional: true}
 }
 
 func intInput(inputs map[string]any, name string) int {

@@ -66,9 +66,17 @@ func targets(resources []store.Resource) []day2.Target {
 	return out
 }
 
-// choices are what the project's placement rules allow the target.
+// choices are what the project's placement rules and the environment allow the target.
 func (s *Service) choices(ctx context.Context, d store.DeploymentRow, t day2.Target) (day2.Choices, error) {
 	var c day2.Choices
+	env, err := s.Store.GetEnvironment(ctx, d.Environment)
+	if err != nil {
+		return c, err
+	}
+	c.Environment, c.SnapshotMaxCount = env.Name, env.SnapshotMaxCount
+	if env.SnapshotMaxAgeDays != nil {
+		c.SnapshotMaxAgeDays = *env.SnapshotMaxAgeDays
+	}
 	if t.VM.Cluster == nil {
 		return c, nil
 	}
@@ -209,11 +217,6 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return store.RequestRow{}, &ValidationError{Errors: errs}
 		}
 	}
-	env, err := s.Store.GetEnvironment(ctx, d.Environment)
-	if err != nil {
-		return store.RequestRow{}, err
-	}
-
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: d.VersionID, ProjectID: d.ProjectID,
 		Environment: d.Environment, Title: a.Name + " · " + target.ResourceName, Status: "queued",
@@ -254,7 +257,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 		now := time.Now().UTC()
 		var steps []store.Step
-		for i, sd := range plan.Steps(env.Name) {
+		for i, sd := range plan.Steps(c.Environment) {
 			st := store.Step{ID: ids.New(ids.Step), RequestID: req.ID, Position: i, Key: sd.Key, Title: sd.Title,
 				Detail: sd.Detail, System: &sd.System, Status: sd.Status}
 			if sd.Status != "pending" {

@@ -120,12 +120,15 @@ func Run(ctx context.Context, s *store.Store) error {
 			return nil
 		}
 		for i, e := range []struct {
-			key, name string
-			prod      bool
-		}{{"dev", "Development", false}, {"tst", "Test", false}, {"prd", "Production", true}} {
-			if err := exec(`insert into environments (key, name, production, sort_order) values ($1,$2,$3,$4)
-				on conflict (key) do update set name = excluded.name, production = excluded.production, sort_order = excluded.sort_order`,
-				e.key, e.name, e.prod, i); err != nil {
+			key, name          string
+			prod               bool
+			snapshots, maxDays int
+		}{{"dev", "Development", false, 3, 7}, {"tst", "Test", false, 3, 7}, {"prd", "Production", true, 2, 3}} {
+			if err := exec(`insert into environments (key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days)
+				values ($1,$2,$3,$4,$5,$6)
+				on conflict (key) do update set name = excluded.name, production = excluded.production, sort_order = excluded.sort_order,
+				snapshot_max_count = excluded.snapshot_max_count, snapshot_max_age_days = excluded.snapshot_max_age_days`,
+				e.key, e.name, e.prod, i, e.snapshots, e.maxDays); err != nil {
 				return err
 			}
 		}

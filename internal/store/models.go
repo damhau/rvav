@@ -19,6 +19,10 @@ type Environment struct {
 	Name       string `db:"name"`
 	Production bool   `db:"production"`
 	SortOrder  int    `db:"sort_order"`
+	// Snapshot retention: at most SnapshotMaxCount per VM, deleted after
+	// SnapshotMaxAgeDays (nil: kept).
+	SnapshotMaxCount   int  `db:"snapshot_max_count"`
+	SnapshotMaxAgeDays *int `db:"snapshot_max_age_days"`
 }
 
 type Project struct {

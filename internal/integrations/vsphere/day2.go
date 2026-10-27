@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
@@ -269,10 +269,15 @@ func (cl *Client) SetNICNetwork(ctx context.Context, moref, label, network strin
 	return vm.EditDevice(ctx, dev)
 }
 
-// CreateSnapshot takes a snapshot, with the memory when asked.
+// CreateSnapshot takes a snapshot, with the memory when asked. One with
+// the same name already there is taken as done (names are unique per VM in
+// rvav).
 func (cl *Client) CreateSnapshot(ctx context.Context, moref, name, description string, memory bool) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
+		return err
+	}
+	if found, err := snapshotExists(ctx, vm, name); err != nil || found {
 		return err
 	}
 	task, err := vm.CreateSnapshot(ctx, name, description, memory, false)
@@ -282,11 +287,36 @@ func (cl *Client) CreateSnapshot(ctx context.Context, moref, name, description s
 	return task.Wait(ctx)
 }
 
+func snapshotExists(ctx context.Context, vm *object.VirtualMachine, name string) (bool, error) {
+	var o mo.VirtualMachine
+	if err := vm.Properties(ctx, vm.Reference(), []string{"snapshot"}, &o); err != nil {
+		return false, err
+	}
+	if o.Snapshot == nil {
+		return false, nil
+	}
+	var walk func([]types.VirtualMachineSnapshotTree) bool
+	walk = func(list []types.VirtualMachineSnapshotTree) bool {
+		for _, s := range list {
+			if s.Name == name || walk(s.ChildSnapshotList) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(o.Snapshot.RootSnapshotList), nil
+}
+
 // RevertSnapshot goes back to a snapshot.
 func (cl *Client) RevertSnapshot(ctx context.Context, moref, name string) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return err
+	}
+	if found, err := snapshotExists(ctx, vm, name); err != nil {
+		return err
+	} else if !found {
+		return &Refused{Msg: "The VM has no snapshot named " + name + "."}
 	}
 	task, err := vm.RevertToSnapshot(ctx, name, true)
 	if err != nil {
@@ -301,12 +331,12 @@ func (cl *Client) DeleteSnapshot(ctx context.Context, moref, name string) error 
 	if err != nil {
 		return err
 	}
+	if found, err := snapshotExists(ctx, vm, name); err != nil || !found {
+		return err
+	}
 	consolidate := true
 	task, err := vm.RemoveSnapshot(ctx, name, false, &consolidate)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil
-		}
 		return err
 	}
 	return task.Wait(ctx)

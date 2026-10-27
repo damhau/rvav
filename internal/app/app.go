@@ -192,9 +192,14 @@ func (a *App) RunWorker(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Retention and lease policies start requests of their own.
+	acts.Housekeeper = a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
 	w := provision.NewWorker(tc, a.Cfg.Temporal.TaskQueue, acts)
 	if err := w.Start(); err != nil {
 		return err
+	}
+	if err := provision.EnsureHousekeeping(ctx, tc, a.Cfg.Temporal.TaskQueue); err != nil {
+		a.Log.Warn("housekeeping schedule", "err", err)
 	}
 	a.Log.Info("worker started", "task_queue", a.Cfg.Temporal.TaskQueue)
 	<-ctx.Done()

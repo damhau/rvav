@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
@@ -300,6 +301,90 @@ func TestDay2Configuration(t *testing.T) {
 		d.succeed("tnguyen", "nic_remove", map[string]any{"nic": second})
 		if n := len(d.vm().Nics); n != 1 {
 			t.Fatalf("%d nics after remove", n)
+		}
+	}, model)
+}
+
+// TestDay2Snapshots takes, reverts and deletes snapshots within the
+// environment's retention, and lets rvav delete the expired ones.
+func TestDay2Snapshots(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		d := buildVM(h, model)
+		snapshots := func() []string {
+			var names []string
+			if s := d.vm().Snapshots; s != nil {
+				for _, x := range *s {
+					names = append(names, x.Name)
+				}
+			}
+			return names
+		}
+
+		a := d.actions("tnguyen")
+		if a["snapshot_revert"].Enabled || a["snapshot_delete"].Enabled {
+			t.Fatalf("revert and delete without snapshots = %+v", a)
+		}
+		create := a["snapshot_create"]
+		if !create.Enabled || create.Form == nil || create.Form.InitialValues["name"] == nil ||
+			deref(create.Form.UiSchema.Fields["name"].Help) != "rvav deletes snapshots after 7 days in Development." {
+			t.Fatalf("snapshot_create = %+v", create)
+		}
+		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "before-patch", "description": "Before the July patches"})
+		d.run("tnguyen", "snapshot_create", map[string]any{"name": "before-patch"}, 422)
+		if got := snapshots(); len(got) != 1 || got[0] != "before-patch" {
+			t.Fatalf("snapshots = %v", got)
+		}
+		if e := d.actions("tnguyen")["disk_extend"]; e.Enabled {
+			t.Fatalf("disk_extend with a snapshot = %+v", e)
+		}
+		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "before-upgrade", "memory": true})
+		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "third"})
+		// Development keeps at most three.
+		if c := d.actions("tnguyen")["snapshot_create"]; c.Enabled || deref(c.DisabledReason) != "The VM has 3 snapshots, the most Development allows. Delete one first." {
+			t.Fatalf("a fourth snapshot = %+v", c)
+		}
+		d.run("tnguyen", "snapshot_create", map[string]any{"name": "fourth"}, 409)
+
+		r := d.succeed("tnguyen", "snapshot_revert", map[string]any{"snapshot": "before-upgrade"})
+		if r.Title != "Revert to a snapshot · "+r.Resource.Name {
+			t.Fatalf("revert request = %+v", r)
+		}
+		d.run("tnguyen", "snapshot_delete", map[string]any{"snapshot": "nope"}, 422)
+		d.succeed("tnguyen", "snapshot_delete", map[string]any{"snapshot": "third"})
+		if got := snapshots(); len(got) != 2 {
+			t.Fatalf("snapshots after delete = %v", got)
+		}
+
+		// A week later, rvav deletes them, oldest first, one per round. (vcsim
+		// can't remove the current snapshot at the root of the tree, so a
+		// fresh one comes first.)
+		later := time.Now().Add(8 * 24 * time.Hour)
+		for i, left := range []string{"before-upgrade", "fresh"} {
+			if i == 1 {
+				d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "fresh"})
+			}
+			started, err := h.svc.ExpireSnapshots(ctx, later)
+			if err != nil || len(started) != 1 {
+				t.Fatalf("expire: %v, %v", started, err)
+			}
+			var req api.Request
+			h.json("GET", "/api/v1/requests/"+started[0], "tnguyen", nil, 200, &req)
+			if req.Requester.Name != "rvav" || req.Action.Key != "snapshot_delete" || deref(req.Justification) != "Snapshots are kept 7 days in Development." {
+				t.Fatalf("expiry request = %+v", req)
+			}
+			h.runWorkflow(req.Id, nil)
+			h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+			if got := snapshots(); len(got) != 1 || got[0] != left {
+				t.Fatalf("snapshots after expiry = %v, want %s", got, left)
+			}
+		}
+		if started, err := h.svc.ExpireSnapshots(ctx, time.Now().Add(6*24*time.Hour)); err != nil || len(started) != 0 {
+			t.Fatalf("nothing left to expire: %v, %v", started, err)
 		}
 	}, model)
 }

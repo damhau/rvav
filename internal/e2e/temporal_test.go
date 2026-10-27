@@ -43,6 +43,20 @@ func TestThroughTemporal(t *testing.T) {
 		}
 		defer w.Stop()
 
+		// The housekeeping schedule is created once, whoever starts first.
+		for range 2 {
+			if err := provision.EnsureHousekeeping(ctx, tc, taskQueue); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sched, err := tc.ScheduleClient().GetHandle(ctx, provision.HousekeepingSchedule).Describe(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if every := sched.Schedule.Spec.Intervals[0].Every; every != provision.HousekeepingEvery {
+			t.Fatalf("housekeeping every %s", every)
+		}
+
 		const web = "prj_web"
 		var item api.CatalogItem
 		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "lmartin", nil, 200, &item)

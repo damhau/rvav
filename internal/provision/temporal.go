@@ -45,6 +45,7 @@ func (t *Temporal) Approval(ctx context.Context, requestID, approvalID, outcome 
 func NewWorker(c client.Client, taskQueue string, a *Activities) worker.Worker {
 	w := worker.New(c, taskQueue, worker.Options{})
 	w.RegisterWorkflow(Provision)
+	w.RegisterWorkflow(Housekeeping)
 	w.RegisterActivity(a)
 	return w
 }

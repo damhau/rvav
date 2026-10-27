@@ -65,6 +65,14 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "", v.SetNICNetwork(ctx, in.Moref, argStr(args, "nic"), argStr(args, "network"))
 	case "remove_nic":
 		return "", v.RemoveNIC(ctx, in.Moref, argStr(args, "nic"))
+	case "create_snapshot":
+		return "", heartbeatWhile(ctx, func() error {
+			return v.CreateSnapshot(ctx, in.Moref, argStr(args, "name"), argStr(args, "description"), args["memory"] == true)
+		})
+	case "revert_snapshot":
+		return "", heartbeatWhile(ctx, func() error { return v.RevertSnapshot(ctx, in.Moref, argStr(args, "name")) })
+	case "delete_snapshot":
+		return "", heartbeatWhile(ctx, func() error { return v.DeleteSnapshot(ctx, in.Moref, argStr(args, "name")) })
 	case "power_on":
 		return "", v.PowerOn(ctx, in.Moref)
 	case "power_off":

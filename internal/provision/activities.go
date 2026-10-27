@@ -37,6 +37,8 @@ type Activities struct {
 	IPTimeout time.Duration
 	// ShutdownTimeout bounds the wait for a guest OS to shut down.
 	ShutdownTimeout time.Duration
+	// Housekeeper applies retention and lease policies (the core service).
+	Housekeeper Housekeeper
 }
 
 // Info is what the workflow loads first.

@@ -27,10 +27,16 @@ type Target struct {
 	VM           api.VmProperties
 }
 
-// Choices are what the project's placement allows the target, for forms.
+// Choices are what the project and environment allow the target, for forms.
 type Choices struct {
 	// Networks the VM may be connected to.
 	Networks []string
+	// Environment is the deployment's environment name, for messages.
+	Environment string
+	// SnapshotMaxCount and SnapshotMaxAgeDays are the snapshot retention
+	// (age 0: kept until deleted).
+	SnapshotMaxCount   int
+	SnapshotMaxAgeDays int
 }
 
 // Op is one step of a day-2 request. The workflow runs Op with Args.

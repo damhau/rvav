@@ -40,6 +40,15 @@ The seed allows members to operate their VMs, asks approval to delete in
 production, and lets only owners and project admins delete or change
 ownership.
 
+### Snapshot retention
+Each environment sets how many snapshots a VM may have (`snapshot_create`
+is unavailable beyond it) and after how many days rvav deletes them. A
+Temporal schedule starts the short `Housekeeping` workflow every 15
+minutes; it starts an ordinary `snapshot_delete` request for the oldest
+expired snapshot of each VM, requested by the system user `rvav`, so the
+deletion has a timeline, an audit entry and a place in the deployment's
+history. Lease expiry (S5) joins the same workflow.
+
 ### Retry and roll back
 A failed request can be retried from its failed step: completed steps are
 skipped (activities are idempotent), the failed and later steps run again.
