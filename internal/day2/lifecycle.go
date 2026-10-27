@@ -74,6 +74,15 @@ func init() {
 		},
 	})
 	register(&Action{
+		Key: "console", Name: "Open the console", Group: GroupAccess, Types: []string{vmType}, Direct: true,
+		Unavailable: func(t Target, c Choices) string {
+			if t.VM.PowerState != api.On {
+				return "The VM is powered off."
+			}
+			return ""
+		},
+	})
+	register(&Action{
 		Key: "change_owner", Name: "Change owner", Group: GroupAccess, Types: []string{DeploymentType},
 		Unavailable: func(t Target, c Choices) string {
 			for _, m := range c.Members {
@@ -170,4 +179,3 @@ func deref(s *string) string {
 	}
 	return *s
 }
-

@@ -712,6 +712,19 @@ export const handlers = [
     return json<S["DeploymentPage"]>(page(items, url));
   }),
 
+  http.post<{ deploymentId: string; resourceId: string }>(
+    `${base}/deployments/:deploymentId/resources/:resourceId/console`,
+    async ({ params }) => {
+      await wait();
+      const dep = db.deployments.find((d) => d.id === params.deploymentId);
+      const vm = dep?.resources.find((r) => r.id === params.resourceId && r.type === "vsphere.vm");
+      if (!dep || !vm || vm.type !== "vsphere.vm") return notFound("VM");
+      if (vm.vm.power_state !== "on") return problem(409, "conflict", "The VM is powered off.", "Power it on first.");
+      // No WMKS client in the mock: VMRC only, as without RVAV_WMKS_SDK_URLS.
+      return json<S["ConsoleSession"]>({ vmrc_url: `vmrc://clone:mock-ticket@${vm.vm.vcenter}/?moid=${vm.vm.moref}` });
+    },
+  ),
+
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId`, async ({ params }) => {
     await wait();
     const d = db.deployments.find((x) => x.id === params.deploymentId && myProjectIds().has(x.project.id));

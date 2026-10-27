@@ -35,9 +35,8 @@ type App struct {
 	AWX    awx.Client
 	Events *events.Publisher
 
-	vcOnce sync.Once
-	vc     vsphere.Driver
-	vcErr  error
+	vcMu sync.Mutex
+	vc   vsphere.Driver
 
 	tcOnce sync.Once
 	tc     client.Client
@@ -86,17 +85,24 @@ func (a *App) Close() {
 	a.Store.Close()
 }
 
-// VCenter connects to vCenter once.
+// VCenter connects to vCenter, once it succeeds; a failure is tried again
+// on the next call.
 func (a *App) VCenter(ctx context.Context) (vsphere.Driver, error) {
-	a.vcOnce.Do(func() {
-		if a.Cfg.VCenter.URL == "" {
-			a.vcErr = errors.New("RVAV_VCENTER_URL is not set")
-			return
-		}
-		a.vc, a.vcErr = vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.VCenter.Username,
-			a.Cfg.VCenter.Password, a.Cfg.VCenter.Insecure)
-	})
-	return a.vc, a.vcErr
+	a.vcMu.Lock()
+	defer a.vcMu.Unlock()
+	if a.vc != nil {
+		return a.vc, nil
+	}
+	if a.Cfg.VCenter.URL == "" {
+		return nil, errors.New("RVAV_VCENTER_URL is not set")
+	}
+	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.VCenter.Username,
+		a.Cfg.VCenter.Password, a.Cfg.VCenter.Insecure)
+	if err != nil {
+		return nil, err
+	}
+	a.vc = vc
+	return vc, nil
 }
 
 // Temporal returns a Temporal client. It connects on first use, so the API
@@ -136,7 +142,8 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 
 // Core builds the business service with the given workflow engine.
 func (a *App) Core(w core.Workflows) *core.Service {
-	return &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log}
+	return &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
+		VCenter: func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) }}
 }
 
 // RunAPI serves HTTP until ctx is done.
@@ -155,6 +162,7 @@ func (a *App) RunAPI(ctx context.Context) error {
 	srv := &httpapi.Server{
 		Store: a.Store, Core: a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue}),
 		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
+		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
 	}
 	httpSrv := &http.Server{Addr: a.Cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)

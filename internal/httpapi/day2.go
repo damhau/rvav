@@ -8,12 +8,7 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// Day-2 actions, retry and rollback (ADR-0013). The console is specified
-// and answers 501 until it is built.
-
-func (s *Server) day2NotYet(w http.ResponseWriter, r *http.Request) {
-	s.problem(w, r, http.StatusNotImplemented, "not-implemented", "Not available yet", "The web console is being built.", nil)
-}
+// Day-2 actions, retry and rollback (ADR-0013). The console is in console.go.
 
 func (s *Server) ListDeploymentActions(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath) {
 	items, err := s.Core.Actions(r.Context(), principal(r), deploymentID)
@@ -57,14 +52,6 @@ func (s *Server) ListDeploymentHistory(w http.ResponseWriter, r *http.Request, d
 		out.Items[i] = present.Request(row, s.secretFields(r, row.VersionID))
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) OpenConsole(w http.ResponseWriter, r *http.Request, _ api.DeploymentIdPath, _ string) {
-	s.day2NotYet(w, r)
-}
-
-func (s *Server) ConsoleStream(w http.ResponseWriter, r *http.Request, _ string) {
-	s.day2NotYet(w, r)
 }
 
 func (s *Server) RetryRequest(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath) {

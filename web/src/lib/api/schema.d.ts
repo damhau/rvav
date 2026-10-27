@@ -1244,12 +1244,15 @@ export interface components {
             vmrc_url: string;
             /** @description Present when the web console is configured. */
             web?: {
-                /** @description WebSocket URL on rvav. */
+                /**
+                 * @description Path of the console's WebSocket on rvav; open it with `wss://` on the same host.
+                 * @example /api/v1/console/Zm9v
+                 */
                 url: string;
                 /** Format: date-time */
                 expires_at: string;
-                /** @description Where the browser loads VMware's WMKS client. */
-                sdk_url: string;
+                /** @description Scripts of VMware's HTML console client (WMKS) to load, in order, for example jQuery, jQuery UI and `wmks.min.js`. */
+                sdk_urls: string[];
             };
         };
         /** @enum {string} */

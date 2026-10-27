@@ -29,9 +29,16 @@ rvav if browsers can't reach the hosts.
     ESXi ticket URL. The browser only ever talks to rvav.
 - The web app offers **Open in VMRC** everywhere, and **Open web console**
   when the organisation provides the WMKS client: rvav does not bundle
-  VMware's SDK; its URL is configured with `RVAV_WMKS_SDK_URL` (for example
-  the copy served by vCenter).
-- Tickets are never stored; tokens expire after one minute or one use.
+  VMware's SDK; its scripts (jQuery, jQuery UI, `wmks.min.js`) are
+  configured, in load order, with `RVAV_WMKS_SDK_URLS` (for example the
+  copies served by vCenter).
+- Tickets are never stored in the database; tokens live in the API
+  process and expire after one minute or one use (several API replicas need
+  sticky sessions for the WebSocket until tokens move to the database).
+- rvav checks the ESXi host's certificate against the thumbprints vCenter
+  returns with the ticket, and refuses WebSockets opened from other sites.
+- The `console` action is in the actions list and decided by day-2 policies
+  like the others, but it is not a request: opening it is an audit entry.
 
 ## Consequences
 - VMRC works wherever the network allows it; the web console works wherever

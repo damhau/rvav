@@ -137,7 +137,7 @@ type Driver interface {
 	UnmountISO(ctx context.Context, moref string) error
 	CloneTicket(ctx context.Context) (string, error)
 	Host() string
-	WebMKSTicket(ctx context.Context, moref string) (*types.VirtualMachineTicket, error)
+	WebMKSTicket(ctx context.Context, moref string) (*WebMKS, error)
 }
 
 // Client implements Driver for one vCenter.

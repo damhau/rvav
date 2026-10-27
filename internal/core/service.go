@@ -10,6 +10,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -29,6 +30,15 @@ type Service struct {
 	Workflows Workflows
 	Events    *events.Publisher
 	Log       *slog.Logger
+	// VCenter opens consoles (ADR-0012); it may connect on first use.
+	VCenter func(ctx context.Context) (ConsoleSource, error)
+}
+
+// ConsoleSource is what consoles need from vCenter.
+type ConsoleSource interface {
+	CloneTicket(ctx context.Context) (string, error)
+	Host() string
+	WebMKSTicket(ctx context.Context, moref string) (*vsphere.WebMKS, error)
 }
 
 // visibleProject loads a project the principal may see.

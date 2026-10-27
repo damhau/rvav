@@ -18,6 +18,7 @@ test-e2e: ## End-to-end tests on their own PostgreSQL, or on RVAV_TEST_DATABASE_
 	$(GO) test ./internal/e2e/ -count=1 -v
 
 vet:
+	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(GO) vet ./...
 
 gen: ## Regenerate internal/api from api/openapi.yaml

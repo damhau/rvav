@@ -24,6 +24,11 @@ type Config struct {
 	AWX      AWXConfig
 
 	SyncInterval time.Duration
+
+	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
+	// order (RVAV_WMKS_SDK_URLS, comma-separated). Without them the console
+	// is offered through VMRC only (ADR-0012).
+	WMKSSDKURLs []string
 }
 
 type AuthConfig struct {
@@ -82,6 +87,7 @@ func Load() (Config, error) {
 		DatabaseURL: env("RVAV_DATABASE_URL", "postgres://rvav:rvav@localhost:5432/rvav?sslmode=disable"),
 		LogLevel:    env("RVAV_LOG_LEVEL", "info"),
 		CORSOrigins: list("RVAV_CORS_ORIGINS"),
+		WMKSSDKURLs: list("RVAV_WMKS_SDK_URLS"),
 		Auth: AuthConfig{
 			Mode:             env("RVAV_AUTH_MODE", "oidc"),
 			OIDCIssuer:       env("RVAV_OIDC_ISSUER", ""),

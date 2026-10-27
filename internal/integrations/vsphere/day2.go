@@ -428,13 +428,50 @@ func (cl *Client) CloneTicket(ctx context.Context) (string, error) {
 }
 
 // Host returns the vCenter host name, for VMRC links.
-func (cl *Client) Host() string { return cl.url.Hostname() }
+func (cl *Client) Host() string {
+	if cl.url != nil {
+		return cl.url.Hostname()
+	}
+	if cl.c != nil {
+		return cl.c.URL().Hostname()
+	}
+	return ""
+}
 
-// WebMKSTicket returns where and how the HTML console connects (ADR-0012).
-func (cl *Client) WebMKSTicket(ctx context.Context, moref string) (*types.VirtualMachineTicket, error) {
+// WebMKS is where the HTML console of a VM connects: a WebSocket URL on
+// its ESXi host, valid once, and the host's certificate thumbprints.
+type WebMKS struct {
+	URL         string
+	Thumbprints []string
+}
+
+// WebMKSTicket asks vCenter for a WebMKS ticket (ADR-0012).
+func (cl *Client) WebMKSTicket(ctx context.Context, moref string) (*WebMKS, error) {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return nil, err
 	}
-	return vm.AcquireTicket(ctx, string(types.VirtualMachineTicketTypeWebmks))
+	t, err := vm.AcquireTicket(ctx, string(types.VirtualMachineTicketTypeWebmks))
+	if err != nil {
+		return nil, err
+	}
+	out := &WebMKS{URL: t.Url}
+	host := t.Host
+	if host == "" {
+		host = cl.Host()
+	}
+	if out.URL == "" {
+		port := t.Port
+		if port == 0 {
+			port = 443
+		}
+		out.URL = fmt.Sprintf("wss://%s:%d/ticket/%s", host, port, t.Ticket)
+	}
+	if t.SslThumbprint != "" {
+		out.Thumbprints = append(out.Thumbprints, t.SslThumbprint)
+	}
+	for _, c := range t.CertThumbprintList {
+		out.Thumbprints = append(out.Thumbprints, c.Thumbprint)
+	}
+	return out, nil
 }

@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"slices"
@@ -36,8 +38,14 @@ type Server struct {
 	CORSOrigins []string
 	// Heartbeat is the SSE keep-alive interval (15 s when zero).
 	Heartbeat time.Duration
+	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
+	// order; none means only VMRC links (ADR-0012). ConsoleInsecure skips
+	// the ESXi certificate check when vCenter gives no thumbprint.
+	WMKSSDKURLs     []string
+	ConsoleInsecure bool
 
-	secrets sync.Map // version ID -> map[string]bool
+	secrets  sync.Map // version ID -> map[string]bool
+	consoles consoleTokens
 }
 
 var _ api.ServerInterface = (*Server)(nil)
@@ -116,6 +124,16 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Hijack lets the console proxy take over the connection.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijacking is not supported")
+	}
+	w.status = http.StatusSwitchingProtocols
+	return hj.Hijack()
+}
+
 // Flush lets the event stream push data through the logging wrapper.
 func (w *statusWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
@@ -157,6 +175,11 @@ func (s *Server) cors(next http.Handler) http.Handler {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The console's WebSocket carries its own single-use token (ADR-0012).
+		if strings.HasPrefix(r.URL.Path, "/api/v1/console/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		p, err := s.Auth.Authenticate(r)
 		if err != nil {
 			if errors.Is(err, auth.ErrProviderUnavailable) {

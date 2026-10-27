@@ -53,6 +53,22 @@ test("command palette finds a VM by IP address", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "web-prd-front" })).toBeVisible();
 });
 
+test("open a VM's console: VMRC, as no web console client is set up", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByPlaceholder("Search VMs, IPs, requests, or type a command").fill("10.21.10.37");
+  await page.getByRole("option", { name: /web-prd-front/ }).click();
+  await expect(page.getByRole("heading", { name: "web-prd-front" })).toBeVisible();
+  await page
+    .getByRole("link", { name: /Open the console of/ })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { name: /^Console · / })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open in VMRC" })).toBeEnabled();
+  await expect(page.getByText(/The web console is not set up here/)).toBeVisible();
+});
+
 for (const theme of ["light", "dark"] as const) {
   test(`screenshots (${theme})`, async ({ page }) => {
     await page.goto("/");

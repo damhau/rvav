@@ -177,6 +177,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
 			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
 	}
+	if a.Direct {
+		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "direct_action",
+			a.Name+" is not a request: use its own endpoint.")}}
+	}
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {
 		return store.RequestRow{}, err

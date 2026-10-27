@@ -32,7 +32,7 @@ function Usage({ label, pct, on }: { label: string; pct?: number; on: boolean })
   );
 }
 
-function VmTable({ vms }: { vms: VmResource[] }) {
+function VmTable({ deploymentId, vms }: { deploymentId: string; vms: VmResource[] }) {
   if (vms.length === 0) {
     return (
       <p className="px-4 py-6 text-xs text-muted">No VMs yet. They appear here as soon as vCenter creates them.</p>
@@ -99,11 +99,27 @@ function VmTable({ vms }: { vms: VmResource[] }) {
                         <Power />
                       </Button>
                     </Slice2>
-                    <Slice2>
-                      <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
-                        <SquareTerminal />
-                      </Button>
-                    </Slice2>
+                    {on ? (
+                      <Tip content="Console">
+                        <Button size="icon" asChild>
+                          <Link
+                            to="/deployments/$deploymentId/console/$resourceId"
+                            params={{ deploymentId, resourceId: id }}
+                            aria-label={`Open the console of ${name}`}
+                          >
+                            <SquareTerminal />
+                          </Link>
+                        </Button>
+                      </Tip>
+                    ) : (
+                      <Tip content="The VM is powered off">
+                        <span>
+                          <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
+                            <SquareTerminal />
+                          </Button>
+                        </span>
+                      </Tip>
+                    )}
                     <Slice2>
                       <Button size="icon" aria-label={`More actions for ${name}`} disabled>
                         <Ellipsis />
@@ -191,7 +207,7 @@ function Overview({ d }: { d: DeploymentDetail }) {
           flush
           actions={<span className="text-[11px] text-faint">Live from vCenter</span>}
         >
-          <VmTable vms={vms} />
+          <VmTable deploymentId={d.id} vms={vms} />
         </Panel>
         <Panel
           title="Actions"

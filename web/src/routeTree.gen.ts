@@ -19,6 +19,7 @@ import { Route as DeploymentsDeploymentIdRouteImport } from "./routes/deployment
 import { Route as RequestsIndexRouteImport } from "./routes/requests/index"
 import { Route as RequestsRequestIdRouteImport } from "./routes/requests/$requestId"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
+import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -70,6 +71,12 @@ const CatalogItemIdRequestRoute = CatalogItemIdRequestRouteImport.update({
   path: "/catalog/$itemId/request",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeploymentsDeploymentIdConsoleResourceIdRoute =
+  DeploymentsDeploymentIdConsoleResourceIdRouteImport.update({
+    id: "/deployments/$deploymentId_/console/$resourceId",
+    path: "/deployments/$deploymentId/console/$resourceId",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByFullPath {
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesByTo {
   "/deployments": typeof DeploymentsIndexRoute
   "/requests": typeof RequestsIndexRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +116,7 @@ export interface FileRoutesById {
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | "/deployments/"
     | "/requests/"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | "/deployments"
     | "/requests"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId/console/$resourceId"
   id:
     | "__root__"
     | "/"
@@ -145,6 +157,7 @@ export interface FileRouteTypes {
     | "/deployments/"
     | "/requests/"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +171,7 @@ export interface RootRouteChildren {
   DeploymentsIndexRoute: typeof DeploymentsIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
+  DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 
 declare module "@tanstack/react-router" {
@@ -232,6 +246,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CatalogItemIdRequestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/deployments/$deploymentId_/console/$resourceId": {
+      id: "/deployments/$deploymentId_/console/$resourceId"
+      path: "/deployments/$deploymentId/console/$resourceId"
+      fullPath: "/deployments/$deploymentId/console/$resourceId"
+      preLoaderRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,6 +267,8 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsIndexRoute: DeploymentsIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
+  DeploymentsDeploymentIdConsoleResourceIdRoute:
+    DeploymentsDeploymentIdConsoleResourceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

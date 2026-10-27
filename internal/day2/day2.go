@@ -92,6 +92,9 @@ type Action struct {
 	During, After string
 	// OnFailed: the action may run on a failed deployment.
 	OnFailed bool
+	// Direct actions are not requests: the UI calls their own endpoint
+	// (the console), and only the policy decides.
+	Direct bool
 }
 
 func (a *Action) AppliesTo(typ string) bool { return slices.Contains(a.Types, typ) }

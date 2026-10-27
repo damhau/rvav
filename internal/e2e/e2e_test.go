@@ -84,9 +84,9 @@ func TestMain(m *testing.M) {
 // recorder stands in for Temporal: the test runs each started workflow
 // itself, and delivers approval signals with deliver.
 type recorder struct {
-	mu        sync.Mutex
-	started   []string
-	cancelled []string
+	mu         sync.Mutex
+	started    []string
+	cancelled  []string
 	signals    []provision.ApprovalSignal
 	rolledBack []string
 	startErr   error // returned by Start, to act as an unreachable Temporal
@@ -139,6 +139,7 @@ type harness struct {
 	ctx   context.Context
 	store *store.Store
 	srv   *httptest.Server
+	api   *httpapi.Server
 	acts  *provision.Activities
 	svc   *core.Service
 	hub   *events.Hub
@@ -246,13 +247,14 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	t.Cleanup(cancel)
 	go hub.Run(hctx)
 
-	srv := httptest.NewServer((&httpapi.Server{Store: st, Core: svc, Hub: hub, Log: log, AuthMode: "dev",
-		Auth: &auth.Dev{Store: st, DefaultUser: "lmartin"}, Heartbeat: time.Second}).Handler())
+	apiSrv := &httpapi.Server{Store: st, Core: svc, Hub: hub, Log: log, AuthMode: "dev",
+		Auth: &auth.Dev{Store: st, DefaultUser: "lmartin"}, Heartbeat: time.Second}
+	srv := httptest.NewServer(apiSrv.Handler())
 	t.Cleanup(srv.Close)
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
 		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second}
-	return &harness{t: t, ctx: ctx, store: st, srv: srv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX}
+	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX}
 }
 
 func TestSlice1EndToEnd(t *testing.T) {

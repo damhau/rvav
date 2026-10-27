@@ -1786,11 +1786,17 @@ components:
         web:
           type: object
           description: Present when the web console is configured.
-          required: [url, expires_at, sdk_url]
+          required: [url, expires_at, sdk_urls]
           properties:
-            url: { type: string, description: WebSocket URL on rvav. }
+            url:
+              type: string
+              description: Path of the console's WebSocket on rvav; open it with `wss://` on the same host.
+              examples: [/api/v1/console/Zm9v]
             expires_at: { type: string, format: date-time }
-            sdk_url: { type: string, description: Where the browser loads VMware's WMKS client. }
+            sdk_urls:
+              type: array
+              description: Scripts of VMware's HTML console client (WMKS) to load, in order, for example jQuery, jQuery UI and `wmks.min.js`.
+              items: { type: string }
 
     StepStatus:
       type: string
