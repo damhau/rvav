@@ -73,6 +73,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "", v.RemoveNIC(ctx, in.Moref, argStr(args, "nic"))
 	case "rename_vm":
 		return "", v.Rename(ctx, in.Moref, argStr(args, "name"))
+	case "rename_address":
+		return a.renameAddress(ctx, in)
 	case "rename_dns":
 		return a.renameDNS(ctx, in)
 	case "rename_records":

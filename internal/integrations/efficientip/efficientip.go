@@ -47,6 +47,7 @@ type Client interface {
 	NextFree(ctx context.Context, s Subnet) (string, error)
 	Reserve(ctx context.Context, s Subnet, hostname string) (Address, error)
 	Release(ctx context.Context, a Address) error
+	RenameAddress(ctx context.Context, a Address, hostname string) error
 	CreateRecord(ctx context.Context, r Record) (Record, error)
 	DeleteRecord(ctx context.Context, r Record) error
 	NameExists(ctx context.Context, fqdn string) (bool, error)

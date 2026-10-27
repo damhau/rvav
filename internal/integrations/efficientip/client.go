@@ -394,29 +394,48 @@ func (c *HTTPClient) gone(ctx context.Context, service, key, id string) (bool, e
 	return len(rows) == 0, err
 }
 
-func (c *HTTPClient) Release(ctx context.Context, a Address) error {
-	id := a.ID
-	if id == "" {
-		ref, err := c.subnet(ctx, Subnet{CIDR: a.Subnet})
-		if errors.Is(err, errUnknownSubnet) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		rows, err := c.call(ctx, http.MethodGet, "ip_address_list",
-			list("subnet_id="+quote(ref.ID)+" and hostaddr="+quote(a.IP), 1))
-		if err != nil || len(rows) == 0 {
-			return err
-		}
-		id = rows[0]["ip_id"]
+// addressID is the address's ID: its own, or found by subnet and IP ("" when
+// EfficientIP doesn't have it).
+func (c *HTTPClient) addressID(ctx context.Context, a Address) (string, error) {
+	if a.ID != "" {
+		return a.ID, nil
 	}
-	_, err := c.call(ctx, http.MethodDelete, "ip_delete", url.Values{"ip_id": {id}})
+	ref, err := c.subnet(ctx, Subnet{CIDR: a.Subnet})
+	if errors.Is(err, errUnknownSubnet) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	rows, err := c.call(ctx, http.MethodGet, "ip_address_list",
+		list("subnet_id="+quote(ref.ID)+" and hostaddr="+quote(a.IP), 1))
+	return first(rows, "ip_id"), err
+}
+
+func (c *HTTPClient) Release(ctx context.Context, a Address) error {
+	id, err := c.addressID(ctx, a)
+	if err != nil || id == "" {
+		return err
+	}
+	_, err = c.call(ctx, http.MethodDelete, "ip_delete", url.Values{"ip_id": {id}})
 	if refused(err) {
 		if gone, gerr := c.gone(ctx, "ip_address_list", "ip_id", id); gerr == nil && gone {
 			return nil
 		}
 	}
+	return err
+}
+
+// RenameAddress gives the address a new name.
+func (c *HTTPClient) RenameAddress(ctx context.Context, a Address, hostname string) error {
+	id, err := c.addressID(ctx, a)
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		return fmt.Errorf("%s is not in EfficientIP", a.IP)
+	}
+	_, err = c.call(ctx, http.MethodPut, "ip_add", url.Values{"ip_id": {id}, "name": {hostname}, "add_flag": {"edit_only"}})
 	return err
 }
 

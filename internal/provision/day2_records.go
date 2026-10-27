@@ -37,6 +37,33 @@ type dnsProps struct {
 	ID    string `json:"efficientip_id"`
 }
 
+// renameAddress renames the VM's address in EfficientIP, under the FQDN as
+// when it was reserved.
+func (a *Activities) renameAddress(ctx context.Context, in OpInput) (string, error) {
+	oldName, fqdn := argStr(in.Op.Args, "old_name"), argStr(in.Op.Args, "fqdn")
+	addresses, err := a.deploymentResources(ctx, in.DeploymentID, "ipam.address")
+	if err != nil {
+		return "", err
+	}
+	for _, r := range addresses {
+		var p struct {
+			Address  string `json:"address"`
+			Subnet   string `json:"subnet"`
+			ID       string `json:"efficientip_id"`
+			Hostname string `json:"hostname"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		if p.Hostname != oldName && p.Hostname != argStr(in.Op.Args, "name") {
+			continue
+		}
+		if err := a.IPAM.RenameAddress(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet}, fqdn); err != nil {
+			return "", fmt.Errorf("EfficientIP: %w", err)
+		}
+		return p.Address + " is now " + fqdn, nil
+	}
+	return "No address to rename", nil
+}
+
 // renameDNS replaces the A record of the old name and points the PTR
 // record to the new one. Records already renamed are left alone.
 func (a *Activities) renameDNS(ctx context.Context, in OpInput) (string, error) {

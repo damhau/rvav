@@ -17,7 +17,7 @@ func init() {
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			name := text("name", "New name", 63, t.ResourceName)
 			name.schema["pattern"] = NamePattern
-			help := "Renames the VM in vCenter and its DNS records. The guest's own hostname does not change."
+			help := "Renames the VM in vCenter, its address in EfficientIP and its DNS records. The guest's own hostname does not change."
 			name.ui.Help = &help
 			return form("Name", name)
 		},
@@ -37,8 +37,10 @@ func init() {
 			args := map[string]any{"name": name, "old_name": t.ResourceName, "fqdn": fqdn, "old_fqdn": old}
 			ops := []Op{vcenter("vsphere.rename", "Rename "+t.ResourceName+" to "+name+" in vCenter", "rename_vm", args)}
 			if old != "" {
-				ops = append(ops, Op{Key: "dns.rename", Title: "Replace the A and PTR records", Detail: old + " → " + fqdn,
-					System: "efficientip", Op: "rename_dns", Args: args})
+				ops = append(ops, Op{Key: "ipam.rename", Title: "Rename the address in EfficientIP", Detail: old + " → " + fqdn,
+					System: "efficientip", Op: "rename_address", Args: args},
+					Op{Key: "dns.rename", Title: "Replace the A and PTR records", Detail: old + " → " + fqdn,
+						System: "efficientip", Op: "rename_dns", Args: args})
 			}
 			return append(ops, Op{Key: "rvav.rename", Title: "Record the new name", System: "rvav", Op: "rename_records", Args: args})
 		},

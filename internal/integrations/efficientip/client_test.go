@@ -126,6 +126,19 @@ func TestAddresses(t *testing.T) {
 		t.Fatalf("reserve after a race = %+v, %v", b, err)
 	}
 
+	if err := c.RenameAddress(ctx, Address{IP: a.IP, Subnet: subnet.CIDR}, "web-dev-api001.corp.example"); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.last("PUT", "/rest/ip_add").Query; got.Encode() != (url.Values{"ip_id": {a.ID}, "name": {"web-dev-api001.corp.example"},
+		"add_flag": {"edit_only"}}).Encode() {
+		t.Fatalf("rename = %v", got)
+	}
+	if renamed, _ := c.Reserve(ctx, subnet, "web-dev-api001.corp.example"); renamed.IP != a.IP {
+		t.Fatalf("after renaming, the new name has %s", renamed.IP)
+	}
+	if err := c.RenameAddress(ctx, Address{IP: "10.31.10.200", Subnet: subnet.CIDR}, "x"); err == nil {
+		t.Fatal("renamed an address EfficientIP doesn't have")
+	}
 	if err := c.Release(ctx, a); err != nil {
 		t.Fatal(err)
 	}
