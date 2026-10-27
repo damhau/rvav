@@ -59,7 +59,7 @@
       "emailVerified": true,
       "attributes": { "title": ["Platform engineer"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
-      "groups": ["/rvav-web-admins"]
+      "groups": ["/rvav-web-admins", "/rvav-catalog-admins"]
     },
     {
       "username": "marc",

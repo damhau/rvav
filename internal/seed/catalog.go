@@ -286,7 +286,8 @@ func seedCatalog(exec func(string, ...any) error) error {
 			on conflict (id) do update set name = excluded.name, summary = excluded.summary,
 			description_md = excluded.description_md, category = excluded.category, type = excluded.type,
 			icon = excluded.icon, tags = excluded.tags, featured = excluded.featured, source_kind = excluded.source_kind,
-			awx_template_name = excluded.awx_template_name, published_version_id = excluded.published_version_id`,
+			awx_template_name = excluded.awx_template_name, published_version_id = excluded.published_version_id
+			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.id and v.id <> $13)`,
 			itemID, it.slug, it.name, it.summary, it.description, it.category, it.typ, it.icon, nonNil(it.tags),
 			it.featured, source, awxName, versionID); err != nil {
 			return err
@@ -295,7 +296,8 @@ func seedCatalog(exec func(string, ...any) error) error {
 			initial_values, blueprint, published_at)
 			values ($1,$2,$3,'published',$4,$5,$6,$7, now())
 			on conflict (id) do update set number = excluded.number, form_schema = excluded.form_schema,
-			ui_schema = excluded.ui_schema, initial_values = excluded.initial_values, blueprint = excluded.blueprint`,
+			ui_schema = excluded.ui_schema, initial_values = excluded.initial_values, blueprint = excluded.blueprint
+			where not exists (select 1 from catalog_item_versions v where v.item_id = excluded.item_id and v.id <> excluded.id)`,
 			versionID, itemID, it.version, j(it.schema), j(it.ui), j(it.initial), j(it.blueprint)); err != nil {
 			return err
 		}

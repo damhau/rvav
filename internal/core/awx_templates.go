@@ -13,6 +13,10 @@ import (
 
 func canAdminCatalog(p *auth.Principal) bool { return p.IsAdmin() || p.HasGlobal("catalog-admin") }
 
+// CanAdminCatalog: administrators and catalog admins build items, and see
+// their drafts and earlier versions (ADR-0019).
+func CanAdminCatalog(p *auth.Principal) bool { return canAdminCatalog(p) }
+
 // AWXTemplates lists the imported AWX templates with what changed in their
 // surveys since their items' forms were made (ADR-0016).
 func (s *Service) AWXTemplates(ctx context.Context, p *auth.Principal) (api.AwxTemplateList, error) {

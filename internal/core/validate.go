@@ -45,6 +45,20 @@ func compileSchema(versionID string, raw json.RawMessage) (*jsonschema.Schema, e
 	return s, nil
 }
 
+// compileSchemaUncached compiles a form schema being edited (not cached:
+// drafts change).
+func compileSchemaUncached(raw json.RawMessage) (*jsonschema.Schema, error) {
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("urn:rvav:form:draft", doc); err != nil {
+		return nil, err
+	}
+	return c.Compile("urn:rvav:form:draft")
+}
+
 // validateInputs checks inputs against the form's JSON Schema and returns
 // one error per problem, with fields as JSON pointers under /inputs.
 func validateInputs(versionID string, schema json.RawMessage, inputs map[string]any) ([]api.FieldError, error) {

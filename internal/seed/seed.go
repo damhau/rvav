@@ -42,6 +42,7 @@ var users = []user{
 // realm (deploy/keycloak), so dev authentication sees the same approvers.
 var userGroups = []struct{ user, group string }{
 	{"lmartin", "rvav-web-admins"},
+	{"lmartin", "rvav-catalog-admins"},
 	{"mkeller", "rvav-admins"},
 	{"mkeller", "rvav-infra-leads"},
 	{"tnguyen", "rvav-web"},

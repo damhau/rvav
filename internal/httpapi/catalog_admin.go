@@ -4,12 +4,29 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/store"
 )
+
+// reply writes v with status, or the error.
+func (s *Server) reply(w http.ResponseWriter, r *http.Request, status int, v any, err error) {
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, status, v)
+}
+
+// replyEmpty answers 204, or the error.
+func (s *Server) replyEmpty(w http.ResponseWriter, r *http.Request, err error) {
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // Catalog administration (S8, ADR-0019). Handlers answer 501 until they are
 // built.
-
-var _ = api.ItemIdPath("")
 
 // notBuilt answers 501 for an operation in the spec that is not built yet.
 func (s *Server) notBuilt(w http.ResponseWriter, r *http.Request) {
@@ -18,45 +35,88 @@ func (s *Server) notBuilt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListAdminCatalogItems(w http.ResponseWriter, r *http.Request, params api.ListAdminCatalogItemsParams) {
-	s.notBuilt(w, r)
+	after, err := cursorOf(params.Cursor)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	f := store.AdminItemFilter{Search: deref(params.Q), Category: deref(params.Category), Limit: limitOf(params.Limit), After: after}
+	if params.Source != nil {
+		f.Source = string(*params.Source)
+	}
+	if params.State != nil {
+		f.State = string(*params.State)
+	}
+	page, err := s.Core.AdminCatalogItems(r.Context(), principal(r), f)
+	s.reply(w, r, http.StatusOK, page, err)
 }
 
-func (s *Server) CreateCatalogItem(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) CreateCatalogItem(w http.ResponseWriter, r *http.Request) {
+	var c api.CatalogItemCreate
+	if !s.decode(w, r, &c) {
+		return
+	}
+	it, err := s.Core.CreateCatalogItem(r.Context(), principal(r), c)
+	s.reply(w, r, http.StatusCreated, it, err)
+}
 
 func (s *Server) GetAdminCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	it, err := s.Core.AdminCatalogItem(r.Context(), principal(r), itemID)
+	s.reply(w, r, http.StatusOK, it, err)
 }
 
 func (s *Server) UpdateCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	var u api.CatalogItemUpdate
+	if !s.decode(w, r, &u) {
+		return
+	}
+	it, err := s.Core.UpdateCatalogItem(r.Context(), principal(r), itemID, u)
+	s.reply(w, r, http.StatusOK, it, err)
 }
 
 func (s *Server) DeleteCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteCatalogItem(r.Context(), principal(r), itemID))
 }
 
 func (s *Server) CreateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
-	s.notBuilt(w, r)
+	var c api.CatalogItemVersionCreate
+	if !s.decode(w, r, &c) {
+		return
+	}
+	v, err := s.Core.CreateCatalogItemVersion(r.Context(), principal(r), itemID, c)
+	s.reply(w, r, http.StatusCreated, v, err)
 }
 
 func (s *Server) GetCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	v, err := s.Core.CatalogItemVersion(r.Context(), principal(r), itemID, versionID)
+	s.reply(w, r, http.StatusOK, v, err)
 }
 
 func (s *Server) UpdateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	var u api.CatalogItemVersionUpdate
+	if !s.decode(w, r, &u) {
+		return
+	}
+	v, err := s.Core.UpdateCatalogItemVersion(r.Context(), principal(r), itemID, versionID, u)
+	s.reply(w, r, http.StatusOK, v, err)
 }
 
 func (s *Server) DeleteCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteCatalogItemVersion(r.Context(), principal(r), itemID, versionID))
 }
 
 func (s *Server) PublishCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	var body api.CatalogItemVersionPublish
+	if r.ContentLength > 0 && !s.decode(w, r, &body) {
+		return
+	}
+	it, err := s.Core.PublishCatalogItemVersion(r.Context(), principal(r), itemID, versionID, body.Changelog)
+	s.reply(w, r, http.StatusOK, it, err)
 }
 
 func (s *Server) DeprecateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	s.notBuilt(w, r)
+	it, err := s.Core.DeprecateCatalogItemVersion(r.Context(), principal(r), itemID, versionID)
+	s.reply(w, r, http.StatusOK, it, err)
 }
 
 func (s *Server) PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
@@ -64,7 +124,8 @@ func (s *Server) PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) CompareCatalogItemVersions(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, params api.CompareCatalogItemVersionsParams) {
-	s.notBuilt(w, r)
+	diff, err := s.Core.CompareCatalogItemVersions(r.Context(), principal(r), itemID, params.From, params.To)
+	s.reply(w, r, http.StatusOK, diff, err)
 }
 
 func (s *Server) GetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {

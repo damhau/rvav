@@ -79,6 +79,9 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	} else if !ok {
 		return out, ErrNotFound
 	}
+	if ver.State != "published" && !canAdminCatalog(p) {
+		return out, ErrNotFound // drafts and earlier versions are for catalog admins
+	}
 	var ui api.UiSchema
 	if err := json.Unmarshal(ver.UISchema, &ui); err != nil {
 		return out, err

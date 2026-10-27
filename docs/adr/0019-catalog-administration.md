@@ -58,8 +58,10 @@ whole:
 - CEL rules and value sources compile, and the value sources are known;
 - the blueprint parses for the item's type.
 
+A draft may be incomplete: the template it clones or launches can still be
+empty. Publishing checks again, and also that the draft is complete.
 Problems come back as 422 with pointers under `/definition`, so the
-designer can show each one on its field. Publishing checks again.
+designer can show each one on its field.
 
 ### Items from AWX
 Items made by the AWX sync are versions like any other: a catalog admin

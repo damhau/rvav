@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -116,7 +117,8 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 		versionID = *params.VersionId
 	}
 	ver, err := s.Store.GetVersion(r.Context(), versionID)
-	if err == nil && ver.ItemID != it.ID {
+	// Drafts and earlier versions are for catalog admins (ADR-0019).
+	if err == nil && (ver.ItemID != it.ID || versionID != *it.PublishedVersionID && !core.CanAdminCatalog(principal(r))) {
 		err = store.ErrNotFound
 	}
 	if err != nil {
