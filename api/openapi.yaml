@@ -36,6 +36,8 @@ tags:
     description: Live updates over Server-Sent Events.
   - name: admin
     description: Checks and settings for administrators.
+  - name: catalog-admin
+    description: Building and publishing catalog items (catalog admins and administrators).
   - name: ansible
     description: What AWX reads from rvav.
 
@@ -911,6 +913,531 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/catalog/items:
+    get:
+      tags: [catalog-admin]
+      operationId: listAdminCatalogItems
+      summary: Every catalog item, in any state, for catalog admins
+      description: Catalog admins and administrators (ADR-0019).
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: source
+          in: query
+          schema: { type: string, enum: [native, awx] }
+        - name: state
+          in: query
+          description: "`published`: requestable now; `unpublished`: no published version."
+          schema: { type: string, enum: [published, unpublished] }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItemPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [catalog-admin]
+      operationId: createCatalogItem
+      summary: Create an item with a first draft version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/items/{itemId}:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: getAdminCatalogItem
+      summary: One item, with its versions and entitlements
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [catalog-admin]
+      operationId: updateCatalogItem
+      summary: Change an item's name, summary, description, category, icon, tags or slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [catalog-admin]
+      operationId: deleteCatalogItem
+      summary: Delete an item that was never requested
+      description: An item with requests is unpublished (deprecate its version) instead; deleting it is refused with 409.
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/items/{itemId}/versions:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: createCatalogItemVersion
+      summary: Start a draft, as a copy of a version or from a definition
+      description: An item has at most one draft; a second one is refused with 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemVersionCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItemVersionDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/items/{itemId}/versions/{versionId}:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+      - { $ref: "#/components/parameters/VersionIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: getCatalogItemVersion
+      summary: One version with its definition
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItemVersionDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog-admin]
+      operationId: updateCatalogItemVersion
+      summary: Save a draft
+      description: |
+        Only drafts change. The definition is checked as a whole: the JSON
+        Schema compiles, every UI field is an input of the schema and every
+        section names existing fields, CEL rules and value sources are
+        valid, and the blueprint parses for the item's type. Problems are
+        422 with pointers under `/definition`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemVersionUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItemVersionDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [catalog-admin]
+      operationId: deleteCatalogItemVersion
+      summary: Discard a draft
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/items/{itemId}/versions/{versionId}/publish:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+      - { $ref: "#/components/parameters/VersionIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: publishCatalogItemVersion
+      summary: Publish a draft, or publish an older version again (roll back)
+      description: |
+        The version becomes the one users request; the version published
+        until now is deprecated. Deployments and requests already made keep
+        their version.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemVersionPublish" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/items/{itemId}/versions/{versionId}/deprecate:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+      - { $ref: "#/components/parameters/VersionIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: deprecateCatalogItemVersion
+      summary: Withdraw the published version; the item can no longer be requested
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/items/{itemId}/versions/{versionId}/preview:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+      - { $ref: "#/components/parameters/VersionIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: previewCatalogItemVersion
+      summary: The form of any version as a chosen user and project would get it
+      description: |
+        For the form designer: initial values, rule results and the
+        evaluation's errors, as `as_user_id` (default: the caller) in the
+        project, whatever the version's state or the item's entitlements.
+        Value sources of the version are resolved through `/forms/values`
+        with the same `as_user_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DesignerPreviewQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DesignerPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/catalog/items/{itemId}/compare:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: compareCatalogItemVersions
+      summary: What changed between two versions
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogVersionDiff" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/catalog/items/{itemId}/entitlements:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: getCatalogItemEntitlements
+      summary: The projects that may request an item
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog-admin]
+      operationId: setCatalogItemEntitlements
+      summary: Open an item to every project, or to chosen projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/items/{itemId}/export:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: exportCatalogItem
+      summary: The item as YAML, with one version or all of them
+      parameters:
+        - name: version_id
+          in: query
+          description: One version. All of them when absent.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/catalog/import:
+    post:
+      tags: [catalog-admin]
+      operationId: importCatalogItem
+      summary: Import an item from YAML, as a new item or as a new draft of one
+      description: |
+        The YAML of `export`. Without `item_id`, the item is created (its
+        slug must be free) with its versions as drafts and deprecated
+        versions, nothing published. With `item_id`, the YAML's last
+        version becomes that item's draft. Problems are 422 with the YAML
+        line in the message.
+      parameters:
+        - name: item_id
+          in: query
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema: { type: string }
+      responses:
+        "200":
+          description: Imported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/categories:
+    get:
+      tags: [catalog-admin]
+      operationId: listAdminCatalogCategories
+      summary: Every category, with its number of items
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogCategoryList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [catalog-admin]
+      operationId: createCatalogCategory
+      summary: Add a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCatalogCategory" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/categories/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [catalog-admin]
+      operationId: updateCatalogCategory
+      summary: Rename or reorder a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCatalogCategoryUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [catalog-admin]
+      operationId: deleteCatalogCategory
+      summary: Remove an empty category
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/icons:
+    get:
+      tags: [catalog-admin]
+      operationId: listCatalogIcons
+      summary: The icons an item may have
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { type: string, examples: [server] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/secrets:
+    get:
+      tags: [catalog-admin]
+      operationId: listSecrets
+      summary: Stored secrets, without their values
+      description: Catalog admins and administrators. Value sources refer to secrets by name (ADR-0019).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [catalog-admin]
+      operationId: createSecret
+      summary: Store a secret, encrypted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SecretWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Secret" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/secrets/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      tags: [catalog-admin]
+      operationId: updateSecret
+      summary: Replace a secret's value
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SecretWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Secret" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [catalog-admin]
+      operationId: deleteSecret
+      summary: Delete a secret no value source uses
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /events:
     get:
       tags: [events]
@@ -975,6 +1502,12 @@ components:
       in: path
       required: true
       description: Catalog item ID or slug.
+      schema: { type: string }
+    VersionIdPath:
+      name: versionId
+      in: path
+      required: true
+      description: Catalog item version ID.
       schema: { type: string }
     DeploymentIdPath:
       name: deploymentId
@@ -1161,6 +1694,275 @@ components:
           items: { type: string, enum: [vsphere.vm, deployment] }
         condition: { type: string, maxLength: 2000 }
         enabled: { type: boolean }
+    # ── Catalog administration (ADR-0019) ─────────────────────────────────
+    AdminCatalogItemPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/AdminCatalogItem" }
+    AdminCatalogItem:
+      type: object
+      required: [id, slug, name, summary, description_md, category, type, icon, tags, featured, source, versions, entitlements, requested, created_at]
+      properties:
+        id: { type: string }
+        slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,62}$" }
+        name: { type: string }
+        summary: { type: string }
+        description_md: { type: string }
+        category: { type: string }
+        type: { $ref: "#/components/schemas/CatalogItemType" }
+        icon: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        featured: { type: boolean }
+        source:
+          type: object
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [native, awx] }
+            awx_template_id: { type: integer }
+            awx_template_name: { type: string }
+        published_version: { $ref: "#/components/schemas/CatalogItemVersion" }
+        draft_version: { $ref: "#/components/schemas/CatalogItemVersion" }
+        versions:
+          type: array
+          description: Every version, newest first.
+          items: { $ref: "#/components/schemas/CatalogItemVersion" }
+        entitlements: { $ref: "#/components/schemas/CatalogEntitlements" }
+        requested:
+          type: boolean
+          description: Requests were made from it, so it can't be deleted.
+        created_at: { type: string, format: date-time }
+    CatalogItemVersion:
+      type: object
+      required: [id, number, state, changelog, created_at, deployments]
+      properties:
+        id: { type: string }
+        number: { type: string, examples: ["1.1"] }
+        state: { type: string, enum: [draft, published, deprecated] }
+        changelog: { type: string }
+        created_at: { type: string, format: date-time }
+        created_by: { $ref: "#/components/schemas/UserRef" }
+        published_at: { type: string, format: date-time }
+        deprecated_at: { type: string, format: date-time }
+        deployments:
+          type: integer
+          description: Deployments made from this version and not deleted.
+    CatalogItemVersionDetail:
+      allOf:
+        - $ref: "#/components/schemas/CatalogItemVersion"
+        - type: object
+          required: [definition]
+          properties:
+            definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
+    CatalogVersionDefinition:
+      type: object
+      required: [form_schema, ui_schema, initial_values, blueprint]
+      properties:
+        form_schema:
+          type: object
+          description: JSON Schema (draft 2020-12) of the inputs.
+          additionalProperties: true
+        ui_schema: { $ref: "#/components/schemas/UiSchema" }
+        initial_values:
+          type: object
+          additionalProperties: true
+        blueprint:
+          type: object
+          description: What the request builds or runs, for the item's type (docs/service-catalog.md).
+          additionalProperties: true
+    CatalogItemCreate:
+      type: object
+      required: [slug, name, summary, category, type]
+      additionalProperties: false
+      properties:
+        slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,62}$" }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        summary: { type: string, minLength: 1, maxLength: 200 }
+        description_md: { type: string, maxLength: 20000 }
+        category: { type: string }
+        type:
+          $ref: "#/components/schemas/CatalogItemType"
+          description: "`composite` comes with S10."
+        icon: { type: string, description: "One of `/admin/catalog/icons`." }
+        tags:
+          type: array
+          items: { type: string, maxLength: 40 }
+        featured: { type: boolean }
+        definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
+    CatalogItemUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,62}$" }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        summary: { type: string, minLength: 1, maxLength: 200 }
+        description_md: { type: string, maxLength: 20000 }
+        category: { type: string }
+        icon: { type: string }
+        tags:
+          type: array
+          items: { type: string, maxLength: 40 }
+        featured: { type: boolean }
+    CatalogItemVersionCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        from_version_id:
+          type: string
+          description: Copy this version's definition. The published version when neither this nor `definition` is given.
+        definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
+        number: { type: string, maxLength: 20, description: "Default: the next number after the newest version's." }
+        changelog: { type: string, maxLength: 2000 }
+    CatalogItemVersionUpdate:
+      type: object
+      required: [definition]
+      additionalProperties: false
+      properties:
+        definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
+        number: { type: string, maxLength: 20 }
+        changelog: { type: string, maxLength: 2000 }
+    CatalogItemVersionPublish:
+      type: object
+      additionalProperties: false
+      properties:
+        changelog: { type: string, maxLength: 2000, description: Replaces a draft's changelog. }
+    CatalogVersionDiff:
+      type: object
+      required: [from, to, changes]
+      properties:
+        from: { $ref: "#/components/schemas/CatalogItemVersion" }
+        to: { $ref: "#/components/schemas/CatalogItemVersion" }
+        changes:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogVersionChange" }
+    CatalogVersionChange:
+      type: object
+      required: [area, path, change, summary]
+      properties:
+        area: { type: string, enum: [form_schema, ui_schema, initial_values, blueprint] }
+        path: { type: string, description: JSON pointer in the area., examples: [/properties/size/enum] }
+        change: { type: string, enum: [added, removed, changed] }
+        summary: { type: string, examples: ["size: XL added"] }
+        from: { description: The old value. }
+        to: { description: The new value. }
+    CatalogEntitlements:
+      type: object
+      required: [all_projects, project_ids]
+      properties:
+        all_projects:
+          type: boolean
+          description: Open to every project, those made later included.
+        project_ids:
+          type: array
+          description: The projects it is open to when not all of them.
+          items: { type: string }
+    CatalogImportResult:
+      type: object
+      required: [item_id, created, versions]
+      properties:
+        item_id: { type: string }
+        created: { type: boolean, description: A new item was made. }
+        versions:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogItemVersion" }
+    AdminCatalogCategoryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminCatalogCategory" }
+    AdminCatalogCategory:
+      type: object
+      required: [key, name]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9-]{1,30}$" }
+        name: { type: string, minLength: 1, maxLength: 60 }
+        sort_order: { type: integer }
+        items: { type: integer, readOnly: true, description: Items in the category. }
+    AdminCatalogCategoryUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        sort_order: { type: integer }
+    DesignerPreviewQuery:
+      type: object
+      required: [project_id, inputs]
+      properties:
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        as_user_id:
+          type: string
+          description: Preview as this user (their roles and groups in the project). Default the caller.
+        inputs:
+          type: object
+          additionalProperties: true
+    DesignerPreview:
+      type: object
+      required: [form, fields, errors]
+      properties:
+        form: { $ref: "#/components/schemas/RequestForm" }
+        fields: { $ref: "#/components/schemas/FieldStates" }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+    FieldStates:
+      type: object
+      description: |
+        Each input's rule results (UiRules) for the current inputs, as the
+        server evaluated them; the form shows them instead of evaluating
+        CEL itself.
+      additionalProperties: { $ref: "#/components/schemas/FieldState" }
+    FieldState:
+      type: object
+      required: [visible, required, read_only]
+      properties:
+        visible: { type: boolean }
+        required: { type: boolean }
+        read_only: { type: boolean }
+        value: { description: The value a `value` rule computed. }
+        error: { type: string, description: "A rule that could not be evaluated (for the designer)." }
+    SecretList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Secret" }
+    Secret:
+      type: object
+      required: [name, kind, description, created_at, updated_at]
+      description: A stored secret. Its value is never returned.
+      properties:
+        name: { type: string, pattern: "^[a-z][a-z0-9-]{1,62}$" }
+        kind: { type: string, enum: [token, basic, header] }
+        description: { type: string }
+        username: { type: string, description: For `basic`. }
+        header: { type: string, description: "For `header`: the header's name." }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        used_by:
+          type: array
+          description: Items whose versions use it.
+          items: { type: string }
+    SecretWrite:
+      type: object
+      required: [name, kind, value]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: "^[a-z][a-z0-9-]{1,62}$" }
+        kind: { type: string, enum: [token, basic, header] }
+        description: { type: string, maxLength: 200 }
+        username: { type: string }
+        header: { type: string }
+        value: { type: string, minLength: 1, writeOnly: true }
     IpamReconcile:
       type: object
       required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]
@@ -1553,8 +2355,8 @@ components:
       type: object
       description: |
         CEL expressions over `inputs`, `project`, `user` and `environment`.
-        The server evaluates them on preview and submit; the UI may evaluate
-        them too for instant feedback.
+        The server evaluates them on preview and submit and returns the
+        results in `fields`; the UI shows those.
       properties:
         visible: { type: string, examples: ['inputs.environment != "prd"'] }
         required: { type: string }
@@ -1580,7 +2382,12 @@ components:
           examples: [vsphere.datastores]
         params:
           type: object
-          description: Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
+          description: |
+            Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
+            For `rest`: `url` (a host of RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
+            `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
+            and `meta` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
+            expression giving a list of strings or of {value, label, meta}) or `value`.
           additionalProperties: true
 
     Option:
@@ -1592,6 +2399,9 @@ components:
         meta:
           type: string
           description: Secondary text, for example `18.4 TB free`.
+        description:
+          type: string
+          description: A longer explanation, shown under the option (checklists, radio cards).
         disabled: { type: boolean }
         disabled_reason: { type: string }
 
@@ -1615,6 +2425,11 @@ components:
         search:
           type: string
           description: Text typed in a searchable select.
+        as_user_id:
+          type: string
+          description: |
+            Catalog admins only: resolve as this user would (the form
+            designer's "preview as"), for any version of any item.
 
     FieldValues:
       type: object
@@ -1672,6 +2487,7 @@ components:
       required: [valid, errors, quota, approval]
       properties:
         valid: { type: boolean }
+        fields: { $ref: "#/components/schemas/FieldStates" }
         errors:
           type: array
           items: { $ref: "#/components/schemas/FieldError" }

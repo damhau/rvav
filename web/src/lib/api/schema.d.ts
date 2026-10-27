@@ -769,6 +769,365 @@ export interface paths {
         patch: operations["updateAwxAction"];
         trace?: never;
     };
+    "/admin/catalog/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every catalog item, in any state, for catalog admins
+         * @description Catalog admins and administrators (ADR-0019).
+         */
+        get: operations["listAdminCatalogItems"];
+        put?: never;
+        /** Create an item with a first draft version */
+        post: operations["createCatalogItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        /** One item, with its versions and entitlements */
+        get: operations["getAdminCatalogItem"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an item that was never requested
+         * @description An item with requests is unpublished (deprecate its version) instead; deleting it is refused with 409.
+         */
+        delete: operations["deleteCatalogItem"];
+        options?: never;
+        head?: never;
+        /** Change an item's name, summary, description, category, icon, tags or slug */
+        patch: operations["updateCatalogItem"];
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a draft, as a copy of a version or from a definition
+         * @description An item has at most one draft; a second one is refused with 409.
+         */
+        post: operations["createCatalogItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        /** One version with its definition */
+        get: operations["getCatalogItemVersion"];
+        /**
+         * Save a draft
+         * @description Only drafts change. The definition is checked as a whole: the JSON
+         *     Schema compiles, every UI field is an input of the schema and every
+         *     section names existing fields, CEL rules and value sources are
+         *     valid, and the blueprint parses for the item's type. Problems are
+         *     422 with pointers under `/definition`.
+         */
+        put: operations["updateCatalogItemVersion"];
+        post?: never;
+        /** Discard a draft */
+        delete: operations["deleteCatalogItemVersion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a draft, or publish an older version again (roll back)
+         * @description The version becomes the one users request; the version published
+         *     until now is deprecated. Deployments and requests already made keep
+         *     their version.
+         */
+        post: operations["publishCatalogItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/versions/{versionId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the published version; the item can no longer be requested */
+        post: operations["deprecateCatalogItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/versions/{versionId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The form of any version as a chosen user and project would get it
+         * @description For the form designer: initial values, rule results and the
+         *     evaluation's errors, as `as_user_id` (default: the caller) in the
+         *     project, whatever the version's state or the item's entitlements.
+         *     Value sources of the version are resolved through `/forms/values`
+         *     with the same `as_user_id`.
+         */
+        post: operations["previewCatalogItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        /** What changed between two versions */
+        get: operations["compareCatalogItemVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/entitlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        /** The projects that may request an item */
+        get: operations["getCatalogItemEntitlements"];
+        /** Open an item to every project, or to chosen projects */
+        put: operations["setCatalogItemEntitlements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        /** The item as YAML, with one version or all of them */
+        get: operations["exportCatalogItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import an item from YAML, as a new item or as a new draft of one
+         * @description The YAML of `export`. Without `item_id`, the item is created (its
+         *     slug must be free) with its versions as drafts and deprecated
+         *     versions, nothing published. With `item_id`, the YAML's last
+         *     version becomes that item's draft. Problems are 422 with the YAML
+         *     line in the message.
+         */
+        post: operations["importCatalogItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every category, with its number of items */
+        get: operations["listAdminCatalogCategories"];
+        put?: never;
+        /** Add a category */
+        post: operations["createCatalogCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/categories/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an empty category */
+        delete: operations["deleteCatalogCategory"];
+        options?: never;
+        head?: never;
+        /** Rename or reorder a category */
+        patch: operations["updateCatalogCategory"];
+        trace?: never;
+    };
+    "/admin/catalog/icons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The icons an item may have */
+        get: operations["listCatalogIcons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stored secrets, without their values
+         * @description Catalog admins and administrators. Value sources refer to secrets by name (ADR-0019).
+         */
+        get: operations["listSecrets"];
+        put?: never;
+        /** Store a secret, encrypted */
+        post: operations["createSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a secret's value */
+        put: operations["updateSecret"];
+        post?: never;
+        /** Delete a secret no value source uses */
+        delete: operations["deleteSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -889,6 +1248,219 @@ export interface components {
             types?: ("vsphere.vm" | "deployment")[];
             condition?: string;
             enabled?: boolean;
+        };
+        AdminCatalogItemPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["AdminCatalogItem"][];
+        };
+        AdminCatalogItem: {
+            id: string;
+            slug: string;
+            name: string;
+            summary: string;
+            description_md: string;
+            category: string;
+            type: components["schemas"]["CatalogItemType"];
+            icon: string;
+            tags: string[];
+            featured: boolean;
+            source: {
+                /** @enum {string} */
+                kind: "native" | "awx";
+                awx_template_id?: number;
+                awx_template_name?: string;
+            };
+            published_version?: components["schemas"]["CatalogItemVersion"];
+            draft_version?: components["schemas"]["CatalogItemVersion"];
+            /** @description Every version, newest first. */
+            versions: components["schemas"]["CatalogItemVersion"][];
+            entitlements: components["schemas"]["CatalogEntitlements"];
+            /** @description Requests were made from it, so it can't be deleted. */
+            requested: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CatalogItemVersion: {
+            id: string;
+            /** @example 1.1 */
+            number: string;
+            /** @enum {string} */
+            state: "draft" | "published" | "deprecated";
+            changelog: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            published_at?: string;
+            /** Format: date-time */
+            deprecated_at?: string;
+            /** @description Deployments made from this version and not deleted. */
+            deployments: number;
+        };
+        CatalogItemVersionDetail: components["schemas"]["CatalogItemVersion"] & {
+            definition: components["schemas"]["CatalogVersionDefinition"];
+        };
+        CatalogVersionDefinition: {
+            /** @description JSON Schema (draft 2020-12) of the inputs. */
+            form_schema: {
+                [key: string]: unknown;
+            };
+            ui_schema: components["schemas"]["UiSchema"];
+            initial_values: {
+                [key: string]: unknown;
+            };
+            /** @description What the request builds or runs, for the item's type (docs/service-catalog.md). */
+            blueprint: {
+                [key: string]: unknown;
+            };
+        };
+        CatalogItemCreate: {
+            slug: string;
+            name: string;
+            summary: string;
+            description_md?: string;
+            category: string;
+            /** @description `composite` comes with S10. */
+            type: components["schemas"]["CatalogItemType"];
+            /** @description One of `/admin/catalog/icons`. */
+            icon?: string;
+            tags?: string[];
+            featured?: boolean;
+            definition?: components["schemas"]["CatalogVersionDefinition"];
+        };
+        CatalogItemUpdate: {
+            slug?: string;
+            name?: string;
+            summary?: string;
+            description_md?: string;
+            category?: string;
+            icon?: string;
+            tags?: string[];
+            featured?: boolean;
+        };
+        CatalogItemVersionCreate: {
+            /** @description Copy this version's definition. The published version when neither this nor `definition` is given. */
+            from_version_id?: string;
+            definition?: components["schemas"]["CatalogVersionDefinition"];
+            /** @description Default: the next number after the newest version's. */
+            number?: string;
+            changelog?: string;
+        };
+        CatalogItemVersionUpdate: {
+            definition: components["schemas"]["CatalogVersionDefinition"];
+            number?: string;
+            changelog?: string;
+        };
+        CatalogItemVersionPublish: {
+            /** @description Replaces a draft's changelog. */
+            changelog?: string;
+        };
+        CatalogVersionDiff: {
+            from: components["schemas"]["CatalogItemVersion"];
+            to: components["schemas"]["CatalogItemVersion"];
+            changes: components["schemas"]["CatalogVersionChange"][];
+        };
+        CatalogVersionChange: {
+            /** @enum {string} */
+            area: "form_schema" | "ui_schema" | "initial_values" | "blueprint";
+            /**
+             * @description JSON pointer in the area.
+             * @example /properties/size/enum
+             */
+            path: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            /** @example size: XL added */
+            summary: string;
+            /** @description The old value. */
+            from?: unknown;
+            /** @description The new value. */
+            to?: unknown;
+        };
+        CatalogEntitlements: {
+            /** @description Open to every project, those made later included. */
+            all_projects: boolean;
+            /** @description The projects it is open to when not all of them. */
+            project_ids: string[];
+        };
+        CatalogImportResult: {
+            item_id: string;
+            /** @description A new item was made. */
+            created: boolean;
+            versions: components["schemas"]["CatalogItemVersion"][];
+        };
+        AdminCatalogCategoryList: {
+            items: components["schemas"]["AdminCatalogCategory"][];
+        };
+        AdminCatalogCategory: {
+            key: string;
+            name: string;
+            sort_order?: number;
+            /** @description Items in the category. */
+            readonly items?: number;
+        };
+        AdminCatalogCategoryUpdate: {
+            name?: string;
+            sort_order?: number;
+        };
+        DesignerPreviewQuery: {
+            project_id: string;
+            environment?: components["schemas"]["EnvironmentKey"];
+            /** @description Preview as this user (their roles and groups in the project). Default the caller. */
+            as_user_id?: string;
+            inputs: {
+                [key: string]: unknown;
+            };
+        };
+        DesignerPreview: {
+            form: components["schemas"]["RequestForm"];
+            fields: components["schemas"]["FieldStates"];
+            errors: components["schemas"]["FieldError"][];
+        };
+        /**
+         * @description Each input's rule results (UiRules) for the current inputs, as the
+         *     server evaluated them; the form shows them instead of evaluating
+         *     CEL itself.
+         */
+        FieldStates: {
+            [key: string]: components["schemas"]["FieldState"];
+        };
+        FieldState: {
+            visible: boolean;
+            required: boolean;
+            read_only: boolean;
+            /** @description The value a `value` rule computed. */
+            value?: unknown;
+            /** @description A rule that could not be evaluated (for the designer). */
+            error?: string;
+        };
+        SecretList: {
+            items: components["schemas"]["Secret"][];
+        };
+        /** @description A stored secret. Its value is never returned. */
+        Secret: {
+            name: string;
+            /** @enum {string} */
+            kind: "token" | "basic" | "header";
+            description: string;
+            /** @description For `basic`. */
+            username?: string;
+            /** @description For `header`: the header's name. */
+            header?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Items whose versions use it. */
+            used_by?: string[];
+        };
+        SecretWrite: {
+            name: string;
+            /** @enum {string} */
+            kind: "token" | "basic" | "header";
+            description?: string;
+            username?: string;
+            header?: string;
+            value: string;
         };
         IpamReconcile: {
             /** Format: date-time */
@@ -1129,8 +1701,8 @@ export interface components {
         };
         /**
          * @description CEL expressions over `inputs`, `project`, `user` and `environment`.
-         *     The server evaluates them on preview and submit; the UI may evaluate
-         *     them too for instant feedback.
+         *     The server evaluates them on preview and submit and returns the
+         *     results in `fields`; the UI shows those.
          */
         UiRules: {
             /** @example inputs.environment != "prd" */
@@ -1151,7 +1723,13 @@ export interface components {
              * @example vsphere.datastores
              */
             name?: string;
-            /** @description Source parameters. String values may reference inputs, for example `${inputs.cluster}`. */
+            /**
+             * @description Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
+             *     For `rest`: `url` (a host of RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
+             *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
+             *     and `meta` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
+             *     expression giving a list of strings or of {value, label, meta}) or `value`.
+             */
             params?: {
                 [key: string]: unknown;
             };
@@ -1161,6 +1739,8 @@ export interface components {
             label: string;
             /** @description Secondary text, for example `18.4 TB free`. */
             meta?: string;
+            /** @description A longer explanation, shown under the option (checklists, radio cards). */
+            description?: string;
             disabled?: boolean;
             disabled_reason?: string;
         };
@@ -1181,6 +1761,11 @@ export interface components {
             };
             /** @description Text typed in a searchable select. */
             search?: string;
+            /**
+             * @description Catalog admins only: resolve as this user would (the form
+             *     designer's "preview as"), for any version of any item.
+             */
+            as_user_id?: string;
         };
         FieldValues: {
             field: string;
@@ -1219,6 +1804,7 @@ export interface components {
         };
         RequestPreview: {
             valid: boolean;
+            fields?: components["schemas"]["FieldStates"];
             errors: components["schemas"]["FieldError"][];
             /** @description VM names the naming policy would give, one per VM. */
             names?: string[];
@@ -1937,6 +2523,8 @@ export interface components {
         ProjectIdQueryRequired: string;
         /** @description Catalog item ID or slug. */
         ItemIdPath: string;
+        /** @description Catalog item version ID. */
+        VersionIdPath: string;
         DeploymentIdPath: string;
         ApprovalIdPath: string;
         /** @description Request ID or number (for example `REQ-10491`). */
@@ -3014,6 +3602,742 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listAdminCatalogItems: {
+        parameters: {
+            query?: {
+                /** @description Free-text search. */
+                q?: components["parameters"]["Search"];
+                category?: string;
+                source?: "native" | "awx";
+                /** @description `published`: requestable now; `unpublished`: no published version. */
+                state?: "published" | "unpublished";
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItemPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createCatalogItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getAdminCatalogItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCatalogItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateCatalogItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    createCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogItemVersionDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogItemVersionDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemVersionUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogItemVersionDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemVersionPublish"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deprecateCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCatalogItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+                /** @description Catalog item version ID. */
+                versionId: components["parameters"]["VersionIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesignerPreviewQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignerPreview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    compareCatalogItemVersions: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogVersionDiff"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCatalogItemEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setCatalogItemEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogEntitlements"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    exportCatalogItem: {
+        parameters: {
+            query?: {
+                /** @description One version. All of them when absent. */
+                version_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importCatalogItem: {
+        parameters: {
+            query?: {
+                item_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/yaml": string;
+            };
+        };
+        responses: {
+            /** @description Imported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogImportResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listAdminCatalogCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogCategoryList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createCatalogCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCatalogCategory"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogCategory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteCatalogCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateCatalogCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCatalogCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogCategory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listCatalogIcons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: string[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listSecrets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     streamEvents: {

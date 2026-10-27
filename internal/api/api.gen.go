@@ -23,6 +23,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AdminCatalogItemSourceKind.
+const (
+	AdminCatalogItemSourceKindAwx    AdminCatalogItemSourceKind = "awx"
+	AdminCatalogItemSourceKindNative AdminCatalogItemSourceKind = "native"
+)
+
+// Valid indicates whether the value is a known member of the AdminCatalogItemSourceKind enum.
+func (e AdminCatalogItemSourceKind) Valid() bool {
+	switch e {
+	case AdminCatalogItemSourceKindAwx:
+		return true
+	case AdminCatalogItemSourceKindNative:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ApprovalMode.
 const (
 	ApprovalModeAll ApprovalMode = "all"
@@ -239,6 +257,93 @@ func (e CatalogItemType) Valid() bool {
 	case Composite:
 		return true
 	case VmBlueprint:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogItemVersionState.
+const (
+	CatalogItemVersionStateDeprecated CatalogItemVersionState = "deprecated"
+	CatalogItemVersionStateDraft      CatalogItemVersionState = "draft"
+	CatalogItemVersionStatePublished  CatalogItemVersionState = "published"
+)
+
+// Valid indicates whether the value is a known member of the CatalogItemVersionState enum.
+func (e CatalogItemVersionState) Valid() bool {
+	switch e {
+	case CatalogItemVersionStateDeprecated:
+		return true
+	case CatalogItemVersionStateDraft:
+		return true
+	case CatalogItemVersionStatePublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogItemVersionDetailState.
+const (
+	CatalogItemVersionDetailStateDeprecated CatalogItemVersionDetailState = "deprecated"
+	CatalogItemVersionDetailStateDraft      CatalogItemVersionDetailState = "draft"
+	CatalogItemVersionDetailStatePublished  CatalogItemVersionDetailState = "published"
+)
+
+// Valid indicates whether the value is a known member of the CatalogItemVersionDetailState enum.
+func (e CatalogItemVersionDetailState) Valid() bool {
+	switch e {
+	case CatalogItemVersionDetailStateDeprecated:
+		return true
+	case CatalogItemVersionDetailStateDraft:
+		return true
+	case CatalogItemVersionDetailStatePublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogVersionChangeArea.
+const (
+	CatalogVersionChangeAreaBlueprint     CatalogVersionChangeArea = "blueprint"
+	CatalogVersionChangeAreaFormSchema    CatalogVersionChangeArea = "form_schema"
+	CatalogVersionChangeAreaInitialValues CatalogVersionChangeArea = "initial_values"
+	CatalogVersionChangeAreaUiSchema      CatalogVersionChangeArea = "ui_schema"
+)
+
+// Valid indicates whether the value is a known member of the CatalogVersionChangeArea enum.
+func (e CatalogVersionChangeArea) Valid() bool {
+	switch e {
+	case CatalogVersionChangeAreaBlueprint:
+		return true
+	case CatalogVersionChangeAreaFormSchema:
+		return true
+	case CatalogVersionChangeAreaInitialValues:
+		return true
+	case CatalogVersionChangeAreaUiSchema:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogVersionChangeChange.
+const (
+	CatalogVersionChangeChangeAdded   CatalogVersionChangeChange = "added"
+	CatalogVersionChangeChangeChanged CatalogVersionChangeChange = "changed"
+	CatalogVersionChangeChangeRemoved CatalogVersionChangeChange = "removed"
+)
+
+// Valid indicates whether the value is a known member of the CatalogVersionChangeChange enum.
+func (e CatalogVersionChangeChange) Valid() bool {
+	switch e {
+	case CatalogVersionChangeChangeAdded:
+		return true
+	case CatalogVersionChangeChangeChanged:
+		return true
+	case CatalogVersionChangeChangeRemoved:
 		return true
 	default:
 		return false
@@ -608,6 +713,48 @@ func (e RequestStatus) Valid() bool {
 	}
 }
 
+// Defines values for SecretKind.
+const (
+	SecretKindBasic  SecretKind = "basic"
+	SecretKindHeader SecretKind = "header"
+	SecretKindToken  SecretKind = "token"
+)
+
+// Valid indicates whether the value is a known member of the SecretKind enum.
+func (e SecretKind) Valid() bool {
+	switch e {
+	case SecretKindBasic:
+		return true
+	case SecretKindHeader:
+		return true
+	case SecretKindToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SecretWriteKind.
+const (
+	SecretWriteKindBasic  SecretWriteKind = "basic"
+	SecretWriteKindHeader SecretWriteKind = "header"
+	SecretWriteKindToken  SecretWriteKind = "token"
+)
+
+// Valid indicates whether the value is a known member of the SecretWriteKind enum.
+func (e SecretWriteKind) Valid() bool {
+	switch e {
+	case SecretWriteKindBasic:
+		return true
+	case SecretWriteKindHeader:
+		return true
+	case SecretWriteKindToken:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StepExternalRefKind.
 const (
 	StepExternalRefKindAwxInventoryUpdate StepExternalRefKind = "awx_inventory_update"
@@ -908,6 +1055,42 @@ func (e VmPropertiesPowerState) Valid() bool {
 	}
 }
 
+// Defines values for ListAdminCatalogItemsParamsSource.
+const (
+	ListAdminCatalogItemsParamsSourceAwx    ListAdminCatalogItemsParamsSource = "awx"
+	ListAdminCatalogItemsParamsSourceNative ListAdminCatalogItemsParamsSource = "native"
+)
+
+// Valid indicates whether the value is a known member of the ListAdminCatalogItemsParamsSource enum.
+func (e ListAdminCatalogItemsParamsSource) Valid() bool {
+	switch e {
+	case ListAdminCatalogItemsParamsSourceAwx:
+		return true
+	case ListAdminCatalogItemsParamsSourceNative:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAdminCatalogItemsParamsState.
+const (
+	ListAdminCatalogItemsParamsStatePublished   ListAdminCatalogItemsParamsState = "published"
+	ListAdminCatalogItemsParamsStateUnpublished ListAdminCatalogItemsParamsState = "unpublished"
+)
+
+// Valid indicates whether the value is a known member of the ListAdminCatalogItemsParamsState enum.
+func (e ListAdminCatalogItemsParamsState) Valid() bool {
+	switch e {
+	case ListAdminCatalogItemsParamsStatePublished:
+		return true
+	case ListAdminCatalogItemsParamsStateUnpublished:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListApprovalsParamsView.
 const (
 	ListApprovalsParamsViewAll  ListApprovalsParamsView = "all"
@@ -963,6 +1146,66 @@ type ActionForm struct {
 	// Schema JSON Schema of `inputs`.
 	Schema   map[string]interface{} `json:"schema"`
 	UiSchema UiSchema               `json:"ui_schema"`
+}
+
+// AdminCatalogCategory defines model for AdminCatalogCategory.
+type AdminCatalogCategory struct {
+	// Items Items in the category.
+	Items     *int   `json:"items,omitempty"`
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	SortOrder *int   `json:"sort_order,omitempty"`
+}
+
+// AdminCatalogCategoryList defines model for AdminCatalogCategoryList.
+type AdminCatalogCategoryList struct {
+	Items []AdminCatalogCategory `json:"items"`
+}
+
+// AdminCatalogCategoryUpdate defines model for AdminCatalogCategoryUpdate.
+type AdminCatalogCategoryUpdate struct {
+	Name      *string `json:"name,omitempty"`
+	SortOrder *int    `json:"sort_order,omitempty"`
+}
+
+// AdminCatalogItem defines model for AdminCatalogItem.
+type AdminCatalogItem struct {
+	Category         string              `json:"category"`
+	CreatedAt        time.Time           `json:"created_at"`
+	DescriptionMd    string              `json:"description_md"`
+	DraftVersion     *CatalogItemVersion `json:"draft_version,omitempty"`
+	Entitlements     CatalogEntitlements `json:"entitlements"`
+	Featured         bool                `json:"featured"`
+	Icon             string              `json:"icon"`
+	Id               string              `json:"id"`
+	Name             string              `json:"name"`
+	PublishedVersion *CatalogItemVersion `json:"published_version,omitempty"`
+
+	// Requested Requests were made from it, so it can't be deleted.
+	Requested bool   `json:"requested"`
+	Slug      string `json:"slug"`
+	Source    struct {
+		AwxTemplateId   *int                       `json:"awx_template_id,omitempty"`
+		AwxTemplateName *string                    `json:"awx_template_name,omitempty"`
+		Kind            AdminCatalogItemSourceKind `json:"kind"`
+	} `json:"source"`
+	Summary string          `json:"summary"`
+	Tags    []string        `json:"tags"`
+	Type    CatalogItemType `json:"type"`
+
+	// Versions Every version, newest first.
+	Versions []CatalogItemVersion `json:"versions"`
+}
+
+// AdminCatalogItemSourceKind defines model for AdminCatalogItem.Source.Kind.
+type AdminCatalogItemSourceKind string
+
+// AdminCatalogItemPage defines model for AdminCatalogItemPage.
+type AdminCatalogItemPage struct {
+	Items []AdminCatalogItem `json:"items"`
+
+	// NextCursor Null on the last page.
+	NextCursor *string `json:"next_cursor,omitempty"`
 }
 
 // AnsibleInventory `_meta.hostvars`, `all.children`, and one object per group with its `hosts`.
@@ -1311,6 +1554,23 @@ type CatalogCategory struct {
 	Name      string `json:"name"`
 }
 
+// CatalogEntitlements defines model for CatalogEntitlements.
+type CatalogEntitlements struct {
+	// AllProjects Open to every project, those made later included.
+	AllProjects bool `json:"all_projects"`
+
+	// ProjectIds The projects it is open to when not all of them.
+	ProjectIds []string `json:"project_ids"`
+}
+
+// CatalogImportResult defines model for CatalogImportResult.
+type CatalogImportResult struct {
+	// Created A new item was made.
+	Created  bool                 `json:"created"`
+	ItemId   string               `json:"item_id"`
+	Versions []CatalogItemVersion `json:"versions"`
+}
+
 // CatalogItem defines model for CatalogItem.
 type CatalogItem struct {
 	// Approval Shown on catalog cards. `conditional` means some inputs (for example a
@@ -1349,6 +1609,24 @@ type CatalogItem struct {
 // CatalogItemSourceKind defines model for CatalogItem.Source.Kind.
 type CatalogItemSourceKind string
 
+// CatalogItemCreate defines model for CatalogItemCreate.
+type CatalogItemCreate struct {
+	Category      string                    `json:"category"`
+	Definition    *CatalogVersionDefinition `json:"definition,omitempty"`
+	DescriptionMd *string                   `json:"description_md,omitempty"`
+	Featured      *bool                     `json:"featured,omitempty"`
+
+	// Icon One of `/admin/catalog/icons`.
+	Icon    *string   `json:"icon,omitempty"`
+	Name    string    `json:"name"`
+	Slug    string    `json:"slug"`
+	Summary string    `json:"summary"`
+	Tags    *[]string `json:"tags,omitempty"`
+
+	// Type `composite` comes with S10.
+	Type CatalogItemType `json:"type"`
+}
+
 // CatalogItemPage defines model for CatalogItemPage.
 type CatalogItemPage struct {
 	Items []CatalogItem `json:"items"`
@@ -1360,6 +1638,77 @@ type CatalogItemPage struct {
 // CatalogItemType defines model for CatalogItemType.
 type CatalogItemType string
 
+// CatalogItemUpdate defines model for CatalogItemUpdate.
+type CatalogItemUpdate struct {
+	Category      *string   `json:"category,omitempty"`
+	DescriptionMd *string   `json:"description_md,omitempty"`
+	Featured      *bool     `json:"featured,omitempty"`
+	Icon          *string   `json:"icon,omitempty"`
+	Name          *string   `json:"name,omitempty"`
+	Slug          *string   `json:"slug,omitempty"`
+	Summary       *string   `json:"summary,omitempty"`
+	Tags          *[]string `json:"tags,omitempty"`
+}
+
+// CatalogItemVersion defines model for CatalogItemVersion.
+type CatalogItemVersion struct {
+	Changelog string    `json:"changelog"`
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy *UserRef  `json:"created_by,omitempty"`
+
+	// Deployments Deployments made from this version and not deleted.
+	Deployments  int        `json:"deployments"`
+	DeprecatedAt *time.Time `json:"deprecated_at,omitempty"`
+	Id           string     `json:"id"`
+
+	// Number Examples: 1.1
+	Number      string                  `json:"number"`
+	PublishedAt *time.Time              `json:"published_at,omitempty"`
+	State       CatalogItemVersionState `json:"state"`
+}
+
+// CatalogItemVersionState defines model for CatalogItemVersion.State.
+type CatalogItemVersionState string
+
+// CatalogItemVersionCreate defines model for CatalogItemVersionCreate.
+type CatalogItemVersionCreate struct {
+	Changelog  *string                   `json:"changelog,omitempty"`
+	Definition *CatalogVersionDefinition `json:"definition,omitempty"`
+
+	// FromVersionId Copy this version's definition. The published version when neither this nor `definition` is given.
+	FromVersionId *string `json:"from_version_id,omitempty"`
+
+	// Number Default: the next number after the newest version's.
+	Number *string `json:"number,omitempty"`
+}
+
+// CatalogItemVersionDetail defines model for CatalogItemVersionDetail.
+type CatalogItemVersionDetail struct {
+	Changelog  string                   `json:"changelog"`
+	CreatedAt  time.Time                `json:"created_at"`
+	CreatedBy  *UserRef                 `json:"created_by,omitempty"`
+	Definition CatalogVersionDefinition `json:"definition"`
+
+	// Deployments Deployments made from this version and not deleted.
+	Deployments  int        `json:"deployments"`
+	DeprecatedAt *time.Time `json:"deprecated_at,omitempty"`
+	Id           string     `json:"id"`
+
+	// Number Examples: 1.1
+	Number      string                        `json:"number"`
+	PublishedAt *time.Time                    `json:"published_at,omitempty"`
+	State       CatalogItemVersionDetailState `json:"state"`
+}
+
+// CatalogItemVersionDetailState defines model for CatalogItemVersionDetail.State.
+type CatalogItemVersionDetailState string
+
+// CatalogItemVersionPublish defines model for CatalogItemVersionPublish.
+type CatalogItemVersionPublish struct {
+	// Changelog Replaces a draft's changelog.
+	Changelog *string `json:"changelog,omitempty"`
+}
+
 // CatalogItemVersionRef defines model for CatalogItemVersionRef.
 type CatalogItemVersionRef struct {
 	Id string `json:"id"`
@@ -1367,6 +1716,57 @@ type CatalogItemVersionRef struct {
 	// Number Display version, for example `3.2`, or `AWX
 	Number      string     `json:"number"`
 	PublishedAt *time.Time `json:"published_at,omitempty"`
+}
+
+// CatalogItemVersionUpdate defines model for CatalogItemVersionUpdate.
+type CatalogItemVersionUpdate struct {
+	Changelog  *string                  `json:"changelog,omitempty"`
+	Definition CatalogVersionDefinition `json:"definition"`
+	Number     *string                  `json:"number,omitempty"`
+}
+
+// CatalogVersionChange defines model for CatalogVersionChange.
+type CatalogVersionChange struct {
+	Area   CatalogVersionChangeArea   `json:"area"`
+	Change CatalogVersionChangeChange `json:"change"`
+
+	// From The old value.
+	From interface{} `json:"from,omitempty"`
+
+	// Path JSON pointer in the area.
+	//
+	// Examples: /properties/size/enum
+	Path string `json:"path"`
+
+	// Summary Examples: size: XL added
+	Summary string `json:"summary"`
+
+	// To The new value.
+	To interface{} `json:"to,omitempty"`
+}
+
+// CatalogVersionChangeArea defines model for CatalogVersionChange.Area.
+type CatalogVersionChangeArea string
+
+// CatalogVersionChangeChange defines model for CatalogVersionChange.Change.
+type CatalogVersionChangeChange string
+
+// CatalogVersionDefinition defines model for CatalogVersionDefinition.
+type CatalogVersionDefinition struct {
+	// Blueprint What the request builds or runs, for the item's type (docs/service-catalog.md).
+	Blueprint map[string]interface{} `json:"blueprint"`
+
+	// FormSchema JSON Schema (draft 2020-12) of the inputs.
+	FormSchema    map[string]interface{} `json:"form_schema"`
+	InitialValues map[string]interface{} `json:"initial_values"`
+	UiSchema      UiSchema               `json:"ui_schema"`
+}
+
+// CatalogVersionDiff defines model for CatalogVersionDiff.
+type CatalogVersionDiff struct {
+	Changes []CatalogVersionChange `json:"changes"`
+	From    CatalogItemVersion     `json:"from"`
+	To      CatalogItemVersion     `json:"to"`
 }
 
 // ConsoleSession defines model for ConsoleSession.
@@ -1531,6 +1931,28 @@ type DeploymentUpdatedEvent struct {
 	Type interface{} `json:"type"`
 }
 
+// DesignerPreview defines model for DesignerPreview.
+type DesignerPreview struct {
+	Errors []FieldError `json:"errors"`
+
+	// Fields Each input's rule results (UiRules) for the current inputs, as the
+	// server evaluated them; the form shows them instead of evaluating
+	// CEL itself.
+	Fields FieldStates `json:"fields"`
+	Form   RequestForm `json:"form"`
+}
+
+// DesignerPreviewQuery defines model for DesignerPreviewQuery.
+type DesignerPreviewQuery struct {
+	// AsUserId Preview as this user (their roles and groups in the project). Default the caller.
+	AsUserId *string `json:"as_user_id,omitempty"`
+
+	// Environment Examples: dev, tst, prd
+	Environment *EnvironmentKey        `json:"environment,omitempty"`
+	Inputs      map[string]interface{} `json:"inputs"`
+	ProjectId   string                 `json:"project_id"`
+}
+
 // DnsRecordResource defines model for DnsRecordResource.
 type DnsRecordResource struct {
 	Fqdn       string                      `json:"fqdn"`
@@ -1591,6 +2013,23 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
+// FieldState defines model for FieldState.
+type FieldState struct {
+	// Error A rule that could not be evaluated (for the designer).
+	Error    *string `json:"error,omitempty"`
+	ReadOnly bool    `json:"read_only"`
+	Required bool    `json:"required"`
+
+	// Value The value a `value` rule computed.
+	Value   interface{} `json:"value,omitempty"`
+	Visible bool        `json:"visible"`
+}
+
+// FieldStates Each input's rule results (UiRules) for the current inputs, as the
+// server evaluated them; the form shows them instead of evaluating
+// CEL itself.
+type FieldStates map[string]FieldState
+
 // FieldValues defines model for FieldValues.
 type FieldValues struct {
 	// CacheSeconds How long the client may reuse this answer for the same inputs.
@@ -1607,6 +2046,10 @@ type FieldValues struct {
 
 // FieldValuesQuery defines model for FieldValuesQuery.
 type FieldValuesQuery struct {
+	// AsUserId Catalog admins only: resolve as this user would (the form
+	// designer's "preview as"), for any version of any item.
+	AsUserId *string `json:"as_user_id,omitempty"`
+
 	// Environment Target environment of the draft. Sources such as `vsphere.clusters`,
 	// `vsphere.networks` and `naming.preview` depend on it. A field whose
 	// `depends_on` lists `$environment` must be re-resolved when it changes.
@@ -1781,6 +2224,8 @@ type NotificationEventDataLevel string
 
 // Option defines model for Option.
 type Option struct {
+	// Description A longer explanation, shown under the option (checklists, radio cards).
+	Description    *string `json:"description,omitempty"`
 	Disabled       *bool   `json:"disabled,omitempty"`
 	DisabledReason *string `json:"disabled_reason,omitempty"`
 	Label          string  `json:"label"`
@@ -2025,7 +2470,12 @@ type RequestPreview struct {
 	Addresses *[]string       `json:"addresses,omitempty"`
 	Approval  ApprovalPreview `json:"approval"`
 	Errors    []FieldError    `json:"errors"`
-	Lease     *struct {
+
+	// Fields Each input's rule results (UiRules) for the current inputs, as the
+	// server evaluated them; the form shows them instead of evaluating
+	// CEL itself.
+	Fields *FieldStates `json:"fields,omitempty"`
+	Lease  *struct {
 		DefaultDays *int       `json:"default_days,omitempty"`
 		ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 		MaxDays     *int       `json:"max_days,omitempty"`
@@ -2100,6 +2550,45 @@ type ResourceUpdatedEvent struct {
 	Type interface{} `json:"type"`
 }
 
+// Secret A stored secret. Its value is never returned.
+type Secret struct {
+	CreatedAt   time.Time `json:"created_at"`
+	Description string    `json:"description"`
+
+	// Header For `header`: the header's name.
+	Header    *string    `json:"header,omitempty"`
+	Kind      SecretKind `json:"kind"`
+	Name      string     `json:"name"`
+	UpdatedAt time.Time  `json:"updated_at"`
+
+	// UsedBy Items whose versions use it.
+	UsedBy *[]string `json:"used_by,omitempty"`
+
+	// Username For `basic`.
+	Username *string `json:"username,omitempty"`
+}
+
+// SecretKind defines model for Secret.Kind.
+type SecretKind string
+
+// SecretList defines model for SecretList.
+type SecretList struct {
+	Items []Secret `json:"items"`
+}
+
+// SecretWrite defines model for SecretWrite.
+type SecretWrite struct {
+	Description *string         `json:"description,omitempty"`
+	Header      *string         `json:"header,omitempty"`
+	Kind        SecretWriteKind `json:"kind"`
+	Name        string          `json:"name"`
+	Username    *string         `json:"username,omitempty"`
+	Value       *string         `json:"value,omitempty"`
+}
+
+// SecretWriteKind defines model for SecretWrite.Kind.
+type SecretWriteKind string
+
 // Step defines model for Step.
 type Step struct {
 	// Children For AWX jobs, one child per task.
@@ -2158,8 +2647,8 @@ type UiField struct {
 	Placeholder *string   `json:"placeholder,omitempty"`
 
 	// Rules CEL expressions over `inputs`, `project`, `user` and `environment`.
-	// The server evaluates them on preview and submit; the UI may evaluate
-	// them too for instant feedback.
+	// The server evaluates them on preview and submit and returns the
+	// results in `fields`; the UI shows those.
 	Rules *UiRules `json:"rules,omitempty"`
 
 	// Secret Stored encrypted, never returned by the API, passed to AWX only at launch.
@@ -2169,8 +2658,8 @@ type UiField struct {
 }
 
 // UiRules CEL expressions over `inputs`, `project`, `user` and `environment`.
-// The server evaluates them on preview and submit; the UI may evaluate
-// them too for instant feedback.
+// The server evaluates them on preview and submit and returns the
+// results in `fields`; the UI shows those.
 type UiRules struct {
 	ReadOnly *string `json:"read_only,omitempty"`
 	Required *string `json:"required,omitempty"`
@@ -2230,6 +2719,10 @@ type ValueSource struct {
 	Name *string `json:"name,omitempty"`
 
 	// Params Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
+	// For `rest`: `url` (a host of RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
+	// `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
+	// and `meta` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
+	// expression giving a list of strings or of {value, label, meta}) or `value`.
 	Params *map[string]interface{} `json:"params,omitempty"`
 }
 
@@ -2345,6 +2838,9 @@ type RequestIdPath = string
 // Search defines model for Search.
 type Search = string
 
+// VersionIdPath defines model for VersionIdPath.
+type VersionIdPath = string
+
 // BadRequest RFC 9457 problem details.
 type BadRequest = Problem
 
@@ -2365,6 +2861,44 @@ type UpstreamError = Problem
 
 // ValidationFailed RFC 9457 problem details.
 type ValidationFailed = Problem
+
+// ImportCatalogItemParams defines parameters for ImportCatalogItem.
+type ImportCatalogItemParams struct {
+	ItemId *string `form:"item_id,omitempty" json:"item_id,omitempty"`
+}
+
+// ListAdminCatalogItemsParams defines parameters for ListAdminCatalogItems.
+type ListAdminCatalogItemsParams struct {
+	// Q Free-text search.
+	Q        *Search                            `form:"q,omitempty" json:"q,omitempty"`
+	Category *string                            `form:"category,omitempty" json:"category,omitempty"`
+	Source   *ListAdminCatalogItemsParamsSource `form:"source,omitempty" json:"source,omitempty"`
+
+	// State `published`: requestable now; `unpublished`: no published version.
+	State *ListAdminCatalogItemsParamsState `form:"state,omitempty" json:"state,omitempty"`
+	Limit *Limit                            `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` from the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListAdminCatalogItemsParamsSource defines parameters for ListAdminCatalogItems.
+type ListAdminCatalogItemsParamsSource string
+
+// ListAdminCatalogItemsParamsState defines parameters for ListAdminCatalogItems.
+type ListAdminCatalogItemsParamsState string
+
+// CompareCatalogItemVersionsParams defines parameters for CompareCatalogItemVersions.
+type CompareCatalogItemVersionsParams struct {
+	From string `form:"from" json:"from"`
+	To   string `form:"to" json:"to"`
+}
+
+// ExportCatalogItemParams defines parameters for ExportCatalogItem.
+type ExportCatalogItemParams struct {
+	// VersionId One version. All of them when absent.
+	VersionId *string `form:"version_id,omitempty" json:"version_id,omitempty"`
+}
 
 // ListApprovalsParams defines parameters for ListApprovals.
 type ListApprovalsParams struct {
@@ -2514,6 +3048,39 @@ type GetStepLogParams struct {
 
 // UpdateAwxActionJSONRequestBody defines body for UpdateAwxAction for application/json ContentType.
 type UpdateAwxActionJSONRequestBody = AwxActionUpdate
+
+// CreateCatalogCategoryJSONRequestBody defines body for CreateCatalogCategory for application/json ContentType.
+type CreateCatalogCategoryJSONRequestBody = AdminCatalogCategory
+
+// UpdateCatalogCategoryJSONRequestBody defines body for UpdateCatalogCategory for application/json ContentType.
+type UpdateCatalogCategoryJSONRequestBody = AdminCatalogCategoryUpdate
+
+// CreateCatalogItemJSONRequestBody defines body for CreateCatalogItem for application/json ContentType.
+type CreateCatalogItemJSONRequestBody = CatalogItemCreate
+
+// UpdateCatalogItemJSONRequestBody defines body for UpdateCatalogItem for application/json ContentType.
+type UpdateCatalogItemJSONRequestBody = CatalogItemUpdate
+
+// SetCatalogItemEntitlementsJSONRequestBody defines body for SetCatalogItemEntitlements for application/json ContentType.
+type SetCatalogItemEntitlementsJSONRequestBody = CatalogEntitlements
+
+// CreateCatalogItemVersionJSONRequestBody defines body for CreateCatalogItemVersion for application/json ContentType.
+type CreateCatalogItemVersionJSONRequestBody = CatalogItemVersionCreate
+
+// UpdateCatalogItemVersionJSONRequestBody defines body for UpdateCatalogItemVersion for application/json ContentType.
+type UpdateCatalogItemVersionJSONRequestBody = CatalogItemVersionUpdate
+
+// PreviewCatalogItemVersionJSONRequestBody defines body for PreviewCatalogItemVersion for application/json ContentType.
+type PreviewCatalogItemVersionJSONRequestBody = DesignerPreviewQuery
+
+// PublishCatalogItemVersionJSONRequestBody defines body for PublishCatalogItemVersion for application/json ContentType.
+type PublishCatalogItemVersionJSONRequestBody = CatalogItemVersionPublish
+
+// CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
+type CreateSecretJSONRequestBody = SecretWrite
+
+// UpdateSecretJSONRequestBody defines body for UpdateSecret for application/json ContentType.
+type UpdateSecretJSONRequestBody = SecretWrite
 
 // DecideApprovalJSONRequestBody defines body for DecideApproval for application/json ContentType.
 type DecideApprovalJSONRequestBody = ApprovalDecision
@@ -3018,9 +3585,87 @@ type ServerInterface interface {
 	// SyncAwxTemplates Import the AWX templates now, instead of waiting for the next sync
 	// (POST /admin/awx/templates/sync)
 	SyncAwxTemplates(w http.ResponseWriter, r *http.Request)
+	// ListAdminCatalogCategories Every category, with its number of items
+	// (GET /admin/catalog/categories)
+	ListAdminCatalogCategories(w http.ResponseWriter, r *http.Request)
+	// CreateCatalogCategory Add a category
+	// (POST /admin/catalog/categories)
+	CreateCatalogCategory(w http.ResponseWriter, r *http.Request)
+	// DeleteCatalogCategory Remove an empty category
+	// (DELETE /admin/catalog/categories/{key})
+	DeleteCatalogCategory(w http.ResponseWriter, r *http.Request, key string)
+	// UpdateCatalogCategory Rename or reorder a category
+	// (PATCH /admin/catalog/categories/{key})
+	UpdateCatalogCategory(w http.ResponseWriter, r *http.Request, key string)
+	// ListCatalogIcons The icons an item may have
+	// (GET /admin/catalog/icons)
+	ListCatalogIcons(w http.ResponseWriter, r *http.Request)
+	// ImportCatalogItem Import an item from YAML, as a new item or as a new draft of one
+	// (POST /admin/catalog/import)
+	ImportCatalogItem(w http.ResponseWriter, r *http.Request, params ImportCatalogItemParams)
+	// ListAdminCatalogItems Every catalog item, in any state, for catalog admins
+	// (GET /admin/catalog/items)
+	ListAdminCatalogItems(w http.ResponseWriter, r *http.Request, params ListAdminCatalogItemsParams)
+	// CreateCatalogItem Create an item with a first draft version
+	// (POST /admin/catalog/items)
+	CreateCatalogItem(w http.ResponseWriter, r *http.Request)
+	// DeleteCatalogItem Delete an item that was never requested
+	// (DELETE /admin/catalog/items/{itemId})
+	DeleteCatalogItem(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// GetAdminCatalogItem One item, with its versions and entitlements
+	// (GET /admin/catalog/items/{itemId})
+	GetAdminCatalogItem(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// UpdateCatalogItem Change an item's name, summary, description, category, icon, tags or slug
+	// (PATCH /admin/catalog/items/{itemId})
+	UpdateCatalogItem(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// CompareCatalogItemVersions What changed between two versions
+	// (GET /admin/catalog/items/{itemId}/compare)
+	CompareCatalogItemVersions(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, params CompareCatalogItemVersionsParams)
+	// GetCatalogItemEntitlements The projects that may request an item
+	// (GET /admin/catalog/items/{itemId}/entitlements)
+	GetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// SetCatalogItemEntitlements Open an item to every project, or to chosen projects
+	// (PUT /admin/catalog/items/{itemId}/entitlements)
+	SetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// ExportCatalogItem The item as YAML, with one version or all of them
+	// (GET /admin/catalog/items/{itemId}/export)
+	ExportCatalogItem(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, params ExportCatalogItemParams)
+	// CreateCatalogItemVersion Start a draft, as a copy of a version or from a definition
+	// (POST /admin/catalog/items/{itemId}/versions)
+	CreateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath)
+	// DeleteCatalogItemVersion Discard a draft
+	// (DELETE /admin/catalog/items/{itemId}/versions/{versionId})
+	DeleteCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
+	// GetCatalogItemVersion One version with its definition
+	// (GET /admin/catalog/items/{itemId}/versions/{versionId})
+	GetCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
+	// UpdateCatalogItemVersion Save a draft
+	// (PUT /admin/catalog/items/{itemId}/versions/{versionId})
+	UpdateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
+	// DeprecateCatalogItemVersion Withdraw the published version; the item can no longer be requested
+	// (POST /admin/catalog/items/{itemId}/versions/{versionId}/deprecate)
+	DeprecateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
+	// PreviewCatalogItemVersion The form of any version as a chosen user and project would get it
+	// (POST /admin/catalog/items/{itemId}/versions/{versionId}/preview)
+	PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
+	// PublishCatalogItemVersion Publish a draft, or publish an older version again (roll back)
+	// (POST /admin/catalog/items/{itemId}/versions/{versionId}/publish)
+	PublishCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemId ItemIdPath, versionId VersionIdPath)
 	// ReconcileIpam Compare EfficientIP with what rvav recorded
 	// (GET /admin/ipam/reconcile)
 	ReconcileIpam(w http.ResponseWriter, r *http.Request)
+	// ListSecrets Stored secrets, without their values
+	// (GET /admin/secrets)
+	ListSecrets(w http.ResponseWriter, r *http.Request)
+	// CreateSecret Store a secret, encrypted
+	// (POST /admin/secrets)
+	CreateSecret(w http.ResponseWriter, r *http.Request)
+	// DeleteSecret Delete a secret no value source uses
+	// (DELETE /admin/secrets/{name})
+	DeleteSecret(w http.ResponseWriter, r *http.Request, name string)
+	// UpdateSecret Replace a secret's value
+	// (PUT /admin/secrets/{name})
+	UpdateSecret(w http.ResponseWriter, r *http.Request, name string)
 	// GetAnsibleInventory The Ansible inventory of rvav's VMs
 	// (GET /ansible/inventory)
 	GetAnsibleInventory(w http.ResponseWriter, r *http.Request)
@@ -3205,11 +3850,793 @@ func (siw *ServerInterfaceWrapper) SyncAwxTemplates(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListAdminCatalogCategories operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminCatalogCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminCatalogCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCatalogCategory operation middleware
+func (siw *ServerInterfaceWrapper) CreateCatalogCategory(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCatalogCategory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCatalogCategory operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCatalogCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCatalogCategory(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCatalogCategory operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCatalogCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCatalogCategory(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCatalogIcons operation middleware
+func (siw *ServerInterfaceWrapper) ListCatalogIcons(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCatalogIcons(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) ImportCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportCatalogItemParams
+
+	// ------------- Optional query parameter "item_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "item_id", r.URL.Query(), &params.ItemId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "item_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportCatalogItem(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAdminCatalogItems operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminCatalogItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminCatalogItemsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "category" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "category", r.URL.Query(), &params.Category, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "category"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "category", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminCatalogItems(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) CreateCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCatalogItem(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCatalogItem(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminCatalogItem(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCatalogItem(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompareCatalogItemVersions operation middleware
+func (siw *ServerInterfaceWrapper) CompareCatalogItemVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompareCatalogItemVersionsParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompareCatalogItemVersions(w, r, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCatalogItemEntitlements operation middleware
+func (siw *ServerInterfaceWrapper) GetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCatalogItemEntitlements(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetCatalogItemEntitlements operation middleware
+func (siw *ServerInterfaceWrapper) SetCatalogItemEntitlements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetCatalogItemEntitlements(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportCatalogItem operation middleware
+func (siw *ServerInterfaceWrapper) ExportCatalogItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportCatalogItemParams
+
+	// ------------- Optional query parameter "version_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version_id", r.URL.Query(), &params.VersionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "version_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportCatalogItem(w, r, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) CreateCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCatalogItemVersion(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeprecateCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) DeprecateCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeprecateCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) PreviewCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishCatalogItemVersion operation middleware
+func (siw *ServerInterfaceWrapper) PublishCatalogItemVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "versionId" -------------
+	var versionId VersionIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "versionId", r.PathValue("versionId"), &versionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "versionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishCatalogItemVersion(w, r, itemId, versionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReconcileIpam operation middleware
 func (siw *ServerInterfaceWrapper) ReconcileIpam(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReconcileIpam(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSecrets operation middleware
+func (siw *ServerInterfaceWrapper) ListSecrets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSecrets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSecret operation middleware
+func (siw *ServerInterfaceWrapper) CreateSecret(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSecret(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSecret operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSecret(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSecret operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSecret(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4794,6 +6221,32 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/awx/templates/sync", wrapper.SyncAwxTemplates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/awx/actions", wrapper.ListAwxActions)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/admin/awx/actions/{key}", wrapper.UpdateAwxAction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items", wrapper.ListAdminCatalogItems)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/items", wrapper.CreateCatalogItem)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/catalog/items/{itemId}", wrapper.DeleteCatalogItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items/{itemId}", wrapper.GetAdminCatalogItem)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/admin/catalog/items/{itemId}", wrapper.UpdateCatalogItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions", wrapper.CreateCatalogItemVersion)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}", wrapper.DeleteCatalogItemVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}", wrapper.GetCatalogItemVersion)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}", wrapper.UpdateCatalogItemVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}/publish", wrapper.PublishCatalogItemVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", wrapper.DeprecateCatalogItemVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/items/{itemId}/versions/{versionId}/preview", wrapper.PreviewCatalogItemVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items/{itemId}/compare", wrapper.CompareCatalogItemVersions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items/{itemId}/entitlements", wrapper.GetCatalogItemEntitlements)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/catalog/items/{itemId}/entitlements", wrapper.SetCatalogItemEntitlements)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/items/{itemId}/export", wrapper.ExportCatalogItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/import", wrapper.ImportCatalogItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/categories", wrapper.ListAdminCatalogCategories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/catalog/categories", wrapper.CreateCatalogCategory)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/catalog/categories/{key}", wrapper.DeleteCatalogCategory)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/admin/catalog/categories/{key}", wrapper.UpdateCatalogCategory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/catalog/icons", wrapper.ListCatalogIcons)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/secrets", wrapper.ListSecrets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/secrets", wrapper.CreateSecret)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/secrets/{name}", wrapper.DeleteSecret)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/secrets/{name}", wrapper.UpdateSecret)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/events", wrapper.StreamEvents)
 
 	return m
@@ -4804,260 +6257,319 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7L3rctw4sjD4KtjaE2F7lyrJ7u6ZaXXMD7XlntEZ30byZWJb3ioUiapCiwQ4AFhytcMR+2sfYB9hX+L7",
-	"/z3KeZIvMgGQIAnWRRfbM3EiHGEVSdwSiUTe89MolUUpBRNGj44/jUqqaMEMU/jrpCyVXNH8LHtNzRKe",
-	"cDE6HpXwIxkJWrDR8YjWH42SkWL/rLhi2ejYqIolI50uWUGhpVmX8LU2iovF6PPnZPS0UloqeJcxnSpe",
-	"Gi6h+zdLRqaCfTSTFL+YkrmSBTFLRkrFVlxWmpR0wcajxM7nnxVT62ZCttVo8+CnrMzlumDCbFxcFny2",
-	"5/LOMlaU0jCRrv/G1v1lnpA050yYgwUTTFHDMvL27dnpmJwzo9ZcLMg1N0tctqYFI1dsTajIyExma6KY",
-	"qZTQlwJeS8UXXNCcKKZLKTT7qd0K+6Ek4/M5U0yYVhfk+6Mfx5fib2ytCVXQoDRkLhV58j1Zykrp8aXw",
-	"gF4ymjHVQCdY4gGscROA5lIV1IyOR1XFAZQRgBlWNJvRBtZTamguF4QbVpCzUyIV0Xm1qFGgvWsce9pz",
-	"v57zgpsaDTo4lePLsIOMzWmVm9HxD0fJqKAfeVEVo+MnR/CLC/vrcb1MLgxbMIUDvVbyN5ZuxrvSf7Pn",
-	"Iuq+/47zH1iN632CG7F7d+f1RHbodp9ZQ8dMm6HNd6/dvouqmDFFHgKOso+0KHNGpufP/n7w+Oj7Hx9P",
-	"Hw3ghPJj7Dm3C0ZVGpnUL4qxA8M+GqLxiyFq9M8WiAv68TkTC7N0qNId73My8ocYKfDPNHOrh1+pFIYJ",
-	"/JOWZc5TCpM5LJWc5az4P3/TMLNPwXD/odh8dDz63w8bKn9o3+rD17aVHbRPgR28CNekoDmcXpaNgGpL",
-	"Mc95+sXnk1YKaZc21DCSSaaJkIbQPJfXxCy5TgA5qCC8IUqW+lFNFKs0y+KEEBb1i1QznmVMfPFV0Txn",
-	"ivBgMSwjRpJM4qJgci+l+UVWIvuSc3sp4RKoRIZQhbmtuOaznMHcTD1xmN5bQSuzlIr/zr7oFF9wreGW",
-	"lIpwsaI5B7hdMYFzKrVRjBbPlJLqS05q9ZQJw1RCns3nPIXr/ew1zPDk/T9IxjO7y0JfMwVP7RXMMkBb",
-	"hlP9nIzewVJwer9Qnn9ZmL4SDOZVSMUIF2VlLE/g4DsmF4yRKc5UT8dIHl2nyC2mOGmpCvhVKlkyZbil",
-	"Y1xww2k+WdG8sk9olnH4nuavgy8tPXZUUc7gOhl9DgnopmbttfznxauX5AIbEjknU7ue6XgU6b/ik91g",
-	"95bbHkefP4fXyK9+hmFXSXfVHyIjnwg8VmdixYSRar3fGqeTghk6XkptVlTpaUKmNM/H6ZLnmWJimiDH",
-	"KGFXcURSMkUWSlalpYXcaDKF1hYu7T3Dvvtb6Qcbnumem9t50AFsPVwMejTP+xP0q4e/uWGFjlzsdV9U",
-	"KbruDVp38WHb9CyQ7Eyi++ukI4RKnr+aj45/3YxivsVFVRRUwfXUXaCVuJyM1kaIt5opTa6XkhR0TTKW",
-	"8oyRh8CKZAkpGHBOGk4DkHCLB5oxQbQkc6ostmQsZwtqmLaclAfgxlOhmTpn8z5Yk5GdQjahpiUEZNSw",
-	"A8MLVp/GX/3eJCNRATCxsZtKaytvOBOWcUNnOZvMOcuzCOzOLMFrbjeEYbqkYsHI9ZIJYgHPxWJMnhWl",
-	"WZNK5ExrMk2pmNiVTncGmt/nZ25ev8C0ohPXKc2pYRMjbw6HX11/AXTnNDURMLxfUkOueZ6TGSOpYtQA",
-	"7nBBKJmza5JzwTR5qPnvLCFlTlNWMGESIpi5luoqIf+spKGEzg1TbQxqI3FOZyyPnkyklnFmPDx5tgP/",
-	"+YdhwlIDEhG+v+BXZ6dPPVFcSs3qc9IcofFGNP2t0obP3aUc12c4bpqpB5ooRrUU474MnIwKmbF+B1Mq",
-	"1tNjJONe2eLmpcdI8KfHhK2YWhM86MTTB1JU2vhfMB4TIJX+OqJi3SNZzSSkmMDJlBUe2bqN7QalJwRw",
-	"g5ijBEDxYROIZGVSWUTW9lfk3hnJ2YrlhIkMkK0l2tlzwjIyW5MXVKXkbwwO5xQ50+YtrYwsqOFwdNfH",
-	"REjPZ8FFxwX5/k9kOd28j6rKmY7v39Nnz0kqhb3VgEZQQwpq0qWfbk2TkfheU2FwWRkzlOetY7DlJkpG",
-	"K7kPxfNk5J00bOu9Zlfoj36fJibB3eKw0c8npMb9w/YhuOpOWcq1Owmdm1kWhWNj2yC+YMJ4yaI+KqAJ",
-	"s1OHVxbrAJJtGfoogsFZMINB/I2hvuUR9+PBXrJrYhk8RISph+DEA3dKLHSJFPk6wn529qie/CZ24tTu",
-	"xTYobwdVpZkChc1Wcus/3DSr9lXWm9jcP3ZnW+Mx5L+z6F4MXxC1tq1+Z3VCo8+B7i3yTuKWRU74iZO7",
-	"7TY6+iOqwqll7fbtfLG/st3GTra/2YbVG/jJuAd9C7pkh0vP78VfefSgLeW1IFKQ1ClUU6oyuEVq4kbz",
-	"KSkYFZpoWdRSYEvbRi9FqWRWobxHmFhxJQWg3CNiFF8sGOph6quqlDlP12MCy2QfKUghFGQPfSlqAXi2",
-	"JtNDd/L1Iar52fXUqp79CRZwx42SUTBVvMWu6VpHMciD4jVdsN35b/j6TMxlhPGut38vytww8j2EMNLQ",
-	"vL9LL62KU85rIGp724C+A2jknOeGKVB5CVAaoTlEk4fwSvOMzagiM5ot2KPxKKqCDlHLrsXPZTNpf203",
-	"pn+0cY957PZ84efdxgcO54wLYu0XGVPwF1eWD9BEVWIT74gftTZig4R0W8GhYcqcxt/xT7txU1YN3KZ5",
-	"Z2KuqDaqSk2lGMkZzWIY3NmoZlG7MLt+3N6E7HGM0/xkZJnT/ja+zikXBzkVi4oumONhO5za64YovHtB",
-	"6EyuGPnuCfnLz+T85MV0PNq2wGZmbvr1dBK/5busXAVmCvduJmXOqKfJwCNOrik3E82AmMSwlmU8pGGG",
-	"FwwXa5ZMsxqFCbLZyL9Sbch3RySjax1ymf7U1WxmZ83130lzhjaR9QtDTRWZ8BTWw8VieozKRKpyztxp",
-	"8tplJ4qTNTNjMi2ZyOz3rqVlY4lnP0J5wX0Bc7StGkYxqxkq/DOlIgX2PNtIkD1F7LMutRwdk0uZWTpo",
-	"B/K5m4dVp8I8UG/uVi7kdYB2ARZkFXMqid4gIpBHYNs1kZUZk5dVnlstADdkSQGkxIlJMDbXHr4w4J56",
-	"juAK3UannjWfgsU1UA8M4PvAOcf1xXjHynGOG2yYwCdn7GMfeo/9ESFzrrSxQESWfWNvd0ci7bwStwzX",
-	"c+w4wbnNKhYHmbNj7qBHh8/crWEpld6RcurAp6G+DvckprtLlKoxIXYYmjhyOJY59krX9GcTaJzN0hEr",
-	"mBE3+Q46HUv67ei+UT1mbB9rYXGP+323JXQILrSrZgU3Zhdl5sb1+d1oEK1NAcJVdUb157ZBt3o5DU4n",
-	"IRnddJe8LWHm2bOVNy3txB/j5z9TzSIMckZjFgN/iw7zHLjcodc3268o82Tn0BpxI3rZB2h/0ybwdRpX",
-	"FnS9YbBBYuEQYaW7uoOTkMVA3UfK+MrdbE57D/ZrWTLBsqS+wqVyeukMlCRzZlKw5YzDzUV9UMQ2Aq02",
-	"K79r9aEfYpgRryX63qYBeeuP8g7EVjJjc6nYeLOQb+RQc1QtbxeRcQbYzy5MY6A0iaqTsr2O/S1UUJXe",
-	"g5hFdDSjYOzW1JN686M04fqjtd/GeAInb8d82EAxyj6WimkYseGHM7o+eOJEf7KiioNeSJOHU8W0rFTK",
-	"psmlmDbudWC6dOQQ/gzoIfyEhU0fWbc2ai9FUB9I9OPIULEGvJliwJxxTYyqmLPRONU4vnX6hIDN8LMZ",
-	"Sz2Z04Lna/LnP5MHORfVxwfR/WkBIKbJMawogR97oEnwEmTdk/f/iGr9mQDgZBHLRL0+0kBKxznaIasW",
-	"TAlQ9oF2eqykYT10pVZsvR8vsZAiwpyDf4OQJJdiwRSyx9yggp4bkkttnIw0Y/lPbouar90uxpd1xdbx",
-	"NVkEs8jwQIOnzzGZ0uuP4ylaMU17J4ARHHf2Hj7mQhua5weFFNxIWPMBXTBh9hDlsQPSdECGO9Brke5J",
-	"R/watuIaTG4TkvlP3S27sa+z035PAb8OT4YMh9yA7gZ03S208iRwpUs8iKsCiZPH6Si0uph3TZXgYhEZ",
-	"+TmtRLokmhkQUzXgnUVtgtc8mmzUiq5ISsUDQyrNCNWo5TT7IT9YOOe5vI7JDR1afMXWjRojnG57K5pf",
-	"o6B7D+NA2Tlq6EQACnceQ9TaSN2f86gYsJ9e03e21dxku9s4IcuDDltc5jTXLNl0I223cQT0tU9g/KEO",
-	"uvmT9eH1Px8P4GYbYjfB8IKLM9v+cQSSMaC9CchBGya3p8vwJyyHaNNSYrW0CYYVgxQkDZ20C5oxe9Nw",
-	"EyVI2NWglrKQGZ/zmlhGtDSwNNS6OTbVjbMbWR0c19KNieszvk77TTOunYvmImU1EB+gNbBA7n0AFAFY",
-	"3ajgmBpcMOjlwLVhYlJKZY6JM3yRP/zww3c/kP/6f/8/8t2TP/7hj+hhrGjJJkCkFQgTNAMx4aEj2o8A",
-	"+3ancre4pu7gdvnXIvNtWu7IfUDHO/jU3uobEXJPAu6IlPvubkHMXXDGU2rYQsbUunjUa9Vif8sdk7fr",
-	"Kd100wZDbZgqUN1hPcWuqgY0sYLsGCy8F7aCb4A9HY82SxOTIotZz9RVJq/j3kJzupKV4mZAjTln1FSD",
-	"dhCexgSYs1QKy0rWQsLbMwLfwrGzLjdVmUuaHV9WR0ffpTzD/9nUmQ/SShtZkIt3f4kT/Wyfja4VNXoC",
-	"lH7y3dEE7CtxJIJ4INxTagxTsJj/+1d68PvRwY8f3P8HHz49Tv7w5PN/xGZm5cAIUlx/nHSoW3/s1keD",
-	"i7niIgtZBUENR3UAvf64XbeNrWM4rRtrypbwkmRk6ELv4xfbqMA2HYjgVL2BzwMzW1YpdFPZamrzH3rv",
-	"VG9Q01WaMq3nVe49gzbb15LRiimvedlx0u9si5hKxWoIAbVqEuPhHRz8xCv+8FQ1U0gamhIe1xrbtpCo",
-	"r+S4EMzgxrfCh/ZK3jgsqrnkYjLLK1YqjgpvOD+/ydkkkIXgUXCP4jQ1AC/GSMf3cn9zRxszT7kuc7om",
-	"bjc7Bprvxk+8D+L7f8QoSlnNcq6Xt7YXuOlFcUUKLXN2YbVv/QWvCpVOKhVxMXlVMqHJuxfXVDFyzgpp",
-	"GHG9jQmGoBApUpY4sg6evwUXlWE6Stev2Sxi+VJMM2Gs1RTO9DWbkdQOAiqgVIo5X1RO99OeOftYcsX0",
-	"Xkyozq5gsREac4F/o+e7XfIDTf765sXzejY2FJc8fP/ibxePiAGJiVqvZ3ROaW/9bxgNmbj/4YIEjdP0",
-	"urjS44KL8W96T/tcdIcgFtITQzfNB5q8Z7MLmV4xA0pBYHZ/QuMAyHMY0TG91vr48HAKr+sg4KXUpqv9",
-	"OqQlP1w9PnRdH/5fxY+r7ZcQzDQJNyeA+tZYiRobB1DZKJnfoTHKdGjOklFlZoxaCxvw2dvXi293MORM",
-	"686n5IqxUvttE8yqq2GTxmRqx/UedgXXmmWEwSI0uWaKkUzJsmTZMVHWrINWklO6fjKknQ+Z1vabwCK9",
-	"n6l4yHlm2HXFDxXbWDzlsZiwgmntLrjotCZGToLGHZkSIm8BxpX2ju7QBo6ua9M+s/Dpuxe1HnjzrvuZ",
-	"xZaTMeuVwFfhzEPXEq5R3TQZcqV6v1zDcbVCqqoEeKl07pY3drZcE5orRrM1KeW1NQXM5+PpaF8l19wF",
-	"5W2UaprwveFYial3s5diSpYSvJobm4wmM5peWW9O0Ij421yThyen5wdHR4//9Ch0K8I1jRyGLBz/N0pG",
-	"WtBSL6VBf/R6PPiBrOAoGeV8ztJ1mse5ASdOhtQOh5rI+TzofmKDW5xn+wBnEdP5v5bX1mwRbeFNSoOq",
-	"EP8BIAFN4VYSPxHgXu1d60Dp6Pf1Eq6nRo+4JYLBj30DydnueKhlDlE94GRjpwIo1Kmi84hGgtaE64bu",
-	"9r3BevE221XAnU3ZDBY343p+0QXXOxLzYkNudMKjWoZ9RWAv1+7AKYZySpQU22iuvZgq32a2nmzx07iV",
-	"F9ugmxrVW8XP58wyAMMwlNdiLxehUnEQ8SY0yxTTuG1SMMePdFwg/pkNIHe5w66VsX0KQhfy3IpSN3JJ",
-	"281xpsHkwNVpLdIJNN8K+4u1SC+M0x/eTvJORiuvuosqWVaFnrhrcCJF7Juo9OSEdu8lNeRz1Tq0oQRv",
-	"cad1eDxeBjPuTa8FxM0U5BSDxHZnepuWMVH/BiFMzvnHCxuwUDBku/MOYf+pYsaHMVHFiGIY+mkDNy5H",
-	"//X//P/1v8tRPMbek+Dd9RDnrsV2JYRdczhGXCPRQO4rqVZaW3dzzUrvzAZiDoYoA+5a3gDZx1EyQo81",
-	"+2hu80o4vsc+wz8H3Lab0e7PY3BfoDU+eQFvdEOvPFii0OcslSqrcW7n1fkWAwscvB8UjjfpSqkno2R0",
-	"cnIC/71+cz5KRk9fnrx4tsFBIoCE0GPb66Yw6mT0uxSxF3Gg4fzbsx0OPwNQPmuzAW1oONZ8P94gyoPX",
-	"7tFR0KDWZlijh6/j5scmsi2m0IpFvVmKuOSLZc4XS2Mtws5yAoqhSlcQk0xSqtSawBxTw1Tt9x2zCG/i",
-	"04MJ+nXGrpcOGDvgy9gKhnVeyHjsO3YTbzQBm8mPcZNJTQYyDlAquKDGptspaFnCR4F+oj6cW4xqLRKT",
-	"xE73VirR6aLR+wzxI6HqKRkJGUoX8SYvg298O39d5nKxxS/+uVx0G2nDyq3e9KzsNtsCE9eyA5Da6XFr",
-	"a/tdvznoznYB5udarbt+iYfYItHnJGCnd4gjaE3gc7JTmwZaOzaoN2Xb9wOItn2YCDS3Nerj2bYW0XO0",
-	"rVF70z74s/2zE746Av0e0mNMB3JBC3TMABJ5cfGMTHk2jbssuvttB8nX3UsDXhMYj17nAuv6ksWCzS4w",
-	"jp0UFGJXGYGPOio6PwVwT3Z+OfAnEOmJoVeYfGmKuVAm7GPKWMYGVln70EfSV5USPXoIFy45Qh0N4gKz",
-	"O5M6tE8PC1ZItZ4sZlOfqQY+gy07cIk2ABhxU86wWnbA4X6TthQh/65O+tXVk6RLNmwYhtQg4LhmhRJr",
-	"oIG4CMUqzWyUn0vx4aPONK0j1uOXex3C29vvarFgGuBqkwTYOPzGctUKzwe9LEOoYm48711nc6Rt3OLe",
-	"myAlwf3kFvhFKgL9VE0iA2RKnJwE5vUlHEZAXEhs5EPv0bDJS1qMMRPvXDHmtSHTodiLLQhQpyRtY8Gt",
-	"1EYDhwcF2iFl/83SfDx1GIBefQhsHRVzgySosQ3XA+lErT1jXVrukbqkokiENMtd5pNeb05LsZNWM/g2",
-	"aadq9Qd5g7rzrDyxm3/n8lGgYustj/kkirwchGc1E8x02dvHR+Mnj8ePj8ZHh0++30l2QlT3cxkQhfzr",
-	"etS4AHRW0sIlp+xje8PPDq0o+GJQn7kDYDpCEwbrXLPZQcZWB7Qsj44ej1OpyrF/v7fSPOkZWFswTEJx",
-	"dKudNRwq6QCpD5L6vh/UdMMevFLlkoqTBr86dGc7DKMq3I3Owx4ZY07D8C4BWkvJ07PTc/KQGxe2gddM",
-	"mDE0k0yDdXDBVwyTNCoqXDaPZj8fH42/a5B8G4Q7y8XFBS5NA/gcQtIqSG4EyEElSI1CDZZG6dxuKeF6",
-	"a3TKiy1aC7tIWJ5IeR6NmmTplVX97sz5FlTQBbSx+BcLmDnxrwhvbz96coBzx8T18ufHcX7GD2KPWWSI",
-	"05cXxL28+SANLYsE/DRnUxPILYSp0cJxWuEHOydRColohNuRiJFt4O7cb5swDPceQHXPvs9rLdyWNKM1",
-	"XsUQpr+/kYX3ZttsWAzTn7OoTGfVv3pzToxmq+v8kLZdlqCzGFIqtIwQ6yF0o1wYtuW27BxUgzcUftw4",
-	"R1gnDzBkzH/qzphrP1kbQOxSoNKUkZIpLm8+1zjUmnwhnYnUqctt65sOu540hvWWQwV4OUzMkomJXW/j",
-	"3+BUW+sJxMtGuSL20TABXKKeFDSS4ONZ/R5XhaYxlMkKesWQosjK1CHtW/x0g8EqzQY8q3GHaq/vDnGj",
-	"a01mzFwzJiwOYD7w+ZxQ41HDZ7QFM8cQDf040D9c20i6tHFoLQXD5eLUMS1hd83oMwjdWQf6VgKa7dmA",
-	"AoSKHl65eLqsxFU051+Je9xfhArlWG1YiWFgcy7QNxUBJKRN+W1zu+LZTmXBYprpZIQfbci95b3cO8I8",
-	"t7ITSWUOXtBiQVzqayIrU1am5RgEKVOs5tbWG5FXdfh6Fhqw9BUvS/yrEopRKzBZawUt4/48kbAiLpir",
-	"KuFio4/imGLYRzOQ34XAu4ScvLw4Q2WRJooVcsWy7c5mNiL0o9ktqxcI43I+12zASL7pHWz+TqKi/7Du",
-	"rj1w0qCbR4fY3F/EohRzOaP5RMl8IHySZgUXjTn+wP+mVcaNVCOXIGGXeGEn4+qoHQffhLmkwNcceKRj",
-	"l4jOJQFe8lLbvNg2w67r9FKgrxZMjmujqJFKk4dU+/d23o+woZu6fQ/KFUiMfCkavZyWBQPKApljMZWB",
-	"JSbMl96Jn7ObZSmSOdu1BXzaxYzGewJ72gVl69Q/Hf2mnBF81UQa8YwJww0CecXbFro7TZDRwsIAUWLL",
-	"6Wvg7zFTDtYjiUqiW7J41SI4OCmAPOc9JV2A4SgZ2QIT0UyrXFz1N+ikLG2iTiPRe7mraq6zdTa1d6L7",
-	"tU/qJ/utX9cuGXlaxrr97f6vyrhXtXfi3dnFd5/0ta6sQjcFMqjBqVq7q6QF7Md/Gn9P3vxM5oqxOJR3",
-	"lJDtZ352MQDXri49mAQl2QbYXSma0C1foW2IjY0FuPvKJP0KUL88JT9+/8Mfiat44vJq637cSFb7UvVA",
-	"ZG0eO0tzgdEoQtUwcYhI2Q4JrTp6ZKkUy22o29lpQmiupXcYmP7jwBkjD86yaV3OjVg+aEz+XkmDbsNG",
-	"El2VpVRxtXDj+BdhYgaOY3O0uil+3p6fOdI8X/sEtH4foE0HV5fGlBCCAqqFccZWvkqNPkRr2MEma1j8",
-	"/HbywLXg+yGORv5m3NG9K7wj+6y1NpOUCTOQEa+TEGiTW2yEFQlMGtratNxt5FKAgdhIjNxZb9I3kXQx",
-	"t1hPPBewmxG+xQ/0nVM7e9Zabpzoug6/kgueG/1W/ncBwuxqUF5KZVA0IFiKjNsw664B95rNpvAO/jgo",
-	"VXYwV1KYoyN7t25w0flj3EVnP2fz2JWc2iIAg5r2EDvaXogNH4xGYpfU0TLAUT4EyBs9K0qaxsIIsswp",
-	"Ifs0jQE3bguRhHNYUpVhrO08nn7ldmlXkYzpOIOQ+1qSG9QfKrCkbRoaoRK6wnplSa/yT0bKvNJEMc1U",
-	"W/Qc8pCu5+B6TTyYm/XF9rw9pTCsNy0ru9nW/QCJtlR0weyPVT83Q2f733rfg41G4t0IV2/TIo7127QZ",
-	"N0StGgGGlIKVwE/CXRrCEtzMiEaF5eh+7flwq3mnqk7giGkiVSWA/yczsIdDUT+n94lrOO4YJ6GuQool",
-	"FGagM+Ma3crjqex2R9EaJLtInxvN8XHh1mo+hvUa50PZdGk6nBUwTFdn73m3b7BDET42EsPWjVvbNVzt",
-	"DehmKfHNd8g00bibxtb/RcKbbph4Ynv2hoGI3mS0IfLEef9MrJPmcCzQwNr3l4B3Cwrq+RJE0K7+hFCH",
-	"gx7vXOjhQFqaoOc9I4hvd6t6J70hEG8KGr6BfnOD71oE4J543qya3ZCTwQ2ckS46boB3FKLTC6wcTGGz",
-	"gz/t3+DTVnaNkCjVSqOhEmQztqT5fCLne4XtyUXc2SNrhzyE8rAvwbLlHsIehquk3Dhr/P75y8NLekN0",
-	"8cB5T+oiBu4BkYL175/bCw6D9wcsKavymx4jbagyt2h8k/T1N0n9Pqj5/qVVuPyvz56THwlyNIr8z//R",
-	"9tH643ST298dZjiqc+7jAY+oXAbDI2+Qw74+phu4q4Fg8nAaQ85G9UVee/s+TgYLLFnFVooVFRtHFiNd",
-	"5UtXb84X999WyeJ2IdB3FA0fq/hlZFOhcLcaemjwHjCMv/TJCur6FWvigJ14n2ho7nJyB19hhXPt8mD2",
-	"YRkVgbqXQb/iLaSUdMGr8wrrhaBnwpi8ZMxlqGjpI4iCNEexk7XNe7dDunpBA8qQnFqPfW0YhXwd6ANA",
-	"Thr/gDkRqABNiDZgal/SEpMxYc2U3VOY7uP72z02yQZv4PYx3uAT7E7qXRT87vh1WFTCAmFpXoFCwldY",
-	"bFzZEfu4tvlfwMzqFhFlbDaRi9vWFn+YAakiT46eHB08fvKoVWsca9452r6ydd2ZJnRBAT3gDpaCOI97",
-	"XIMllHdVonw/HBnAjZsWNg+5wH4amTpIeXrc2H8dlo7JNKPrJ7aSlZOYJfjEB8KMTyjzXTuhjO8VjX7r",
-	"J1HeshvudY/m3K3eGlsrn+wo0HTqmXjpJhx/F2NqGMF4y8omUBUVckFblyLUSq0oz8FsOia/YMESs2SF",
-	"S1q2YBiv91wuphYd1rJS1o5opz8Odu4r2Q3c6LeyG/gVDJVR3OAs/BICROaKMXL2mtTfOX/yJRfGlpcl",
-	"50471vh8eQEAGWe9X2a6fVPi+pXdtbk1H3JbxZuikxV2wNtwx4SCMbEh9BHc5MvXO2Fo44kUsrGZyCxr",
-	"YiOvPId0Las8Q8f/BN0NS6bIuxf77Vpdlj3CQOeVHrRkUkO1kSquXZnLPBto6Gq/b4mJ6JOwHrjQQrwz",
-	"yoT2onhEHN8lj539rkZYP4stGa/aMmJo+bIlEid164BtxM5ZhX84zbz31mFZ27WxX1TRfry5wmIv+Pke",
-	"b7eS1krR1iUVT0y29aLbmmkIvtl68e11z+lYl9udhmJR6V8sGUrvGuov6+ZpUEKb3qakDkFo11CQfC+h",
-	"StKODxuMoegGGiZhSY2BVu+K0Bh1q5QDra62xXt057o1dUAPKi2wx+Pt97ao3Cx51/7R9j54bHOeq2je",
-	"g3skS9sjLHe1cjab1CvR345PrDvcjfh0sm/ctoZgo/J1HvJtnxJqQyMI7hBoZ85eE8VKqZxddvWUCVtQ",
-	"LxldODrcDX/jeaaYiKsyIdPnb3KmLbuC3yLTYqi+2tltyRL3/h2+zZ1vS9LpqdVfTgnXZGqv1rhGlX00",
-	"TAnwCWbzuF7dwt976vnviV5rw1yuWfCjxQgUG82w0ynu1gRwmdA7CdCDR1zAiQD3Cos/QB+td9oEIB78",
-	"XBWO5k5aMbmTwZjcOhF1zR1Xio92qkuA1q0Y9t/OZLakeoLpdPaobBytGOfyeWD4S8RnEW8m51cAeTv8",
-	"jZPmUuADqBX3m5z5PwHS0yHXy/u2TsBZCVM1ameH9ygEjpe+nPi6wYdRK2x8sOrEfuZq6yrQtxZ4itFs",
-	"YQw5gpX0GegWi+ysb5HAn838cHPD9XVQmeJzw7LpcVjJyVFDOMOaZwwDZMdk6kIqp8dBOOtcViK7FE0j",
-	"V16ydsWfwM0Ik7cDRSMzm6m+5b/4ZBaxDN9MTVjGEY2jvvr4iUavUbscqx5FTWSCahYuMEDTolFS6wfq",
-	"cJOBSukM9kNPotVibN7I66XU/vIhih0opmW+Ys6fFU3SD7RLneKNkyIjqsrZnuoI9rGUGhOD12QwcgP4",
-	"ugtONyK1qSuQevoNl1a2Bsk7JXVXcQAsWV7u6eEfZHXpkSHDU5djRo/J2UJI5XU1U4TQxJVHhSsLFV/J",
-	"bTPDoDZgOSy94z5s1yqf42dAcViqWNT8gWthIlXrEoOCBQPFt2KmUsIyGwj712cJKSmmvjcSt8JGPYHt",
-	"BCp8xfchhM622WLCmYtaILjm2YKZ7Ut8b7/rUjrXfFPUhAdP392/VR9X2wK53j7QrnmLRW5tKYmw/O34",
-	"UgRWBAZgQCsCqk+j9oOffPZBIAa+waXABkZKvPps/IIhc8YyyNpuaVevgEBmY4WHghw6lQIi4SgdaHjz",
-	"Db635hGkD2TGUlkwTWDMA9RkRm1eHENGu84kzgkmgBr53/5MLkelyi5HcX+3yA5e1OaVSJHrDSasbVhl",
-	"yfrnJM6o2kgQ2Dwwcq44KL5LpjzhvmLr5uTgs6DW69QOEnfmyelaVmY4Pre+bukCa9bx3+kAV6htDYvd",
-	"dblv+QXbrUKoYx7rEbbWEHGrqusdxw+jHz7inJ9XhdAt74AngYn/+20W/m3RHkNlmJuMVNqGiHczke5+",
-	"CQ5Vy9uRb2uzbBvB+L6mmx5ZMFDZxitTxWjoOaJzboO1jVwssG+buGqUjIoqN7z+pdkCjqjVctKMy0lK",
-	"beIKzIeRc22s+OukYOb5Zop1Eq/YeuLD2EBGXiiejepbKfEhkN5S3OiPJl733TxpNN7NM6/Mbp4EVan8",
-	"I6cMbx40wpZTeEdFr98tG9uS49zvVDF0RUGFceNUU5d031hI1nuH9fCdFU58riUR++ReQkUGPb7C63gr",
-	"PZpVPDfc5hxGTEhbd25/Zn2VxNT1MT0ORTncfB2Kd/X2a6xG7x87DGh96nGg9dBigW2MIqTde/xmIHde",
-	"QqagPAVEsO1sFXKLC9x2D48adNAurWSYna9fyL6/pCjMSqposa+zqWXZsSkDEI7JBXbonTJsUsY5UwyT",
-	"wMQSU/7HJ3dHu234HLuzdi14+K543Y2E39HClZbVpgoD8Boc7GkWC9x8/VaTlAoyY6687vWSN5WFvBt/",
-	"NFr4alOISUpLmnKD8TLRaW22y9ViSIgOf6Uqgzvmijze7u9ve0haE9kltmKDRXAw4dcCzTVSb3hZq65r",
-	"hUatBhDSTJpflbgS8jqeABykvgF3axu4O6kqnrUoIz6IEUYt4yrBs4tXhBd0wUgBONUk/n56enD+6gXJ",
-	"FFpxWwfhVzHXB1zLD0QtWX7w4/j7MddyOpCJFcOoBjHyBb6/EU66rosBjCuk04O2SExx8P2fnjz+Y5wY",
-	"83QTjvNyIFfXVm4nit4vLYUmNKOlYYrEvcgLmu5pru4cDP/hToFGmHuph7s2S7utO1XpkolsQFPVRPcM",
-	"0yf/zUZqcoMaP9uY2t14AGcOCiawC9xMUNE+kuvD+fq0Ef/vFU+v0KDh0iw5BVwC15BiVvczk5VxSVue",
-	"HBGXZbivlweaX6YhwB1H25ySodcaEXLP8p49gKya2PLWaUu7GTq30nF7arskLlQAh0jaJrfh3RiSB399",
-	"uRMev47vPCls12YWWIABYltr2bU4hAH72qqIGsGtvFspbtaoELATmjGqYgUlTgR5dXb6lNjKdMTIKybI",
-	"w/98/+ZR49Yo1YIKrlHQf6D7WW6SSyEV+Dpi7fqT12e+m1KxOf9IpvB8UlIzmT6yJeLqmniWD8RVI4G3",
-	"s6xXtTQG/Bs+O6Gor7HLecrIY+877cc/rueYeK9amzQaHWMSYpw6iqe1z2ZyKbybGZwDbf36vIbV8omJ",
-	"z14OrCN0N5fgDR5UGrKZli5F6IqPHdmUTHV1nzF5zleMWAOYJlTBRQu6sOmhraUJDPKleCqRr0a928Oz",
-	"U52QSnAYpKQLLhCAicuEnsCSi1IaJtJ1QnLoz3b1iFDFLoUF3Mze8VOonXr+7OT0xbNxkdnBXkpnHOSa",
-	"aITrmpnjOi+cTlohoDqxHvIWrr4UiE0olVwKB9UwwRROFnSlqRSGCeMzeDsU8DXARxcsnx/43SmlMtS6",
-	"6rtSv6sLPEnWIoD9dTCq1g0cjzw+BPEex6Oj8ePxkVVyM0FLPjoefYePMD3BEk/LIc77kF5/PKSN6mgx",
-	"lBq3qRMp570TYydKCfIBRM4vxfT83cm7ycn7f0xOnr45e/Vy8vzk52fPL6bkofUbfpQQMLywzDYNPIsf",
-	"6EvRlKI8JoymSyyy2dob24wbbXN91+dYV2rF1nBavV+lM2bAabMbWYnMZZaE2wblq06SsEuRLqXUbExO",
-	"Ws/tNgLNwlWfZZiYTpuT648nDoTJyCeEQXA+OTpyJNJ4j4qyzF0cyOFvLi/Rbj7j9SgwpKUYnXLRf4Mt",
-	"//7o8VBP9dQO3wpamaVU/HeW2UbfbW/0i1QznmXMeuc12NwuIyrnc6asXad1mLxyqM4fh2S8j4WHn67Y",
-	"+rPzXXPCLF5VHNYI6Ou1GMdOTdbcG1YybsAZ3tVWhteG5vlBIQUHUV4sDugirq/5bKvt2DTw7S23TjL1",
-	"djRxVD+7zGB3u912OLvh7aV+/hLY9pUxDVp8v73FS2l+AVMvNnjyZHuDdzbSA6rpWnt1G6efIgFwsVFU",
-	"IBF2lIfXOJ4Qnx0cI6rAgobxIvP5VmSvz8uORDddSs0E2BhadBfomSW6nmT+4VFiSSYQSLQnEW5YQQqa",
-	"uSx+3KBd2SyZwvlbklnb1zUXKSO+HVBjpLDXVNs+HsKY10tqfItHNvWiS2KnHVMPPVtL4aXQDPkJPSZP",
-	"wzvTkmO6K4l9U4PsftHej/Ntk1leOO+wuuyMuz93R71DWyLq06h0epg22MEt4xsCe/s8NOmhcRFfjhr9",
-	"cLQDcXlbaqMYLVyoRGsbz3DjageHZklYYTwISbymHLlwH8MJemrivFWGdxhU2ocqTJMfpS5NWns4g2EG",
-	"+jAt/JLqgD/LqdaNhvlSTNuJ6ac2uY2QYQyYvAa+3mY/7+ibczY3ZLa+FJRYlyFQhTliQlvT81OjvZ5h",
-	"xEsxnMmevJTgU7MAou3I1ZichGldgGZdikYjh+YteGFV5nopry2VZ9fQwsqgGrgbt6jxpWhziTbGJ0LH",
-	"6uIFkIP+Pk9Tu1LC176/b31iwCGBKtYvjIC3EApAFkNYNnQ0bBbrw5ZDUvRcnFmxweqJMEzUtT2o25KD",
-	"AzB/TpP6ZOJBGMMxhnZj+DW9FE2DMq8W3PIQlQ4q7f/x0bFTfr17AWO18BsPE9eXQkhDZswmZXKJ/P2k",
-	"JqBBnyJ++oRL/ugkBGvFazs5tGL5COLL6ujouzSVGcO/0HeSiZV7fsXWzWOMN7XPIUNP88LQhXsOnxBD",
-	"/TurHJhK7V7PacHzpkc4zi1nLzfBSctdG6fbeQyjdr90nsP+Te2n41uHLjr+I5hv/QND0OtfYBBpGqOm",
-	"rum70co1rfXELs95BNn+rdvQpXhYe4N47zvrRcOBsqgrBi5EfVe5qffIsrZyEGSZfjQmv1j1U6N5QnzB",
-	"wOqaQrsk1kBvicttjUH0EVr0F2ZcavezwMZ9f/d7d6xviK8CxsLNr3EzBPDCdj7QUKwiJCv2S09YvOZo",
-	"kKBMwRb854ILNiUPnTvLIwIExJVnKJkgmEq5lencJhZNOTDcZsngllQYhWiVW8DD43/aHnOUP7hBLh2o",
-	"xAITulnGsMAM50itLoVEtt+eG6YTV6jDj74mKwkNpRgTO3Ga51M3W6RUl8IvGVFe1LkbEN+IVDUSDmEe",
-	"cvM12JKolP9PrEJXi/kwk1Eo19duQSMAbODP637SPI9q4j8NJDEASE2dS/PUFnAqc0wROqe5Zkl0VrUj",
-	"dTOvnRyv/OIb9/CuuUWbNer24DYZDFdq4Hb4HBMZ7vDhU5sYGnQb93fUfZQxXUR5j9cWzAToGgHjtDY2",
-	"qwYiOingcqjUAlk8QYwsH/1EEGtrHgy//koymEfcHnduzy2eQ3tuvUNgERIP37xLPg4/+T/Pss8BLekT",
-	"7SZg9d538M6J9F56nBbcXwlWa+ktvUoCFpAK95IpT5Gk24UB4PfIzpaDc1LvzmtqljYgcGD3DmFgn/np",
-	"lqMktWje2QV0xQ5W7XTyCJng7kgckV45WbnO9zS+FOcYuwwobEFGSSqLggnUDnGrc8cgLSM7bQmUePIX",
-	"AReLpPaVDiMbXJY7z+r0AiSA0XIRD9ZyhLlW9U/hYDAH7xud2ZQsNbdTjC/Fe/i7kBkjU7iogusMWjYp",
-	"VkXKHKNtb9Aabkuq/UJY9hOhYk1sTDco1+xfmAgpco+dIoRb5/EelMCu+1OPU19aC7yBFLypYd0oY2rc",
-	"x/N+tP28/0yzIFj6m9UoH/24vcFTKeY5T81dqaAt7DEa1GLi3hfJoWcFvzAposTxUi2CZKcCp4nYrKfu",
-	"gY8q6NEzrl17H2rQPYC2gy92BHG4b/YQ1gZRAXEmDpD/fag6h+o5A3bBSkEoPDshq8G2DafMadjhf7ZA",
-	"T+BBVg2kHGfseNp8vS/b4fKQnmVYlvvcY9yt+ffbpFhqr2p941RLd8hbtrWFNbgbxYhoUknCbEJBGxwz",
-	"a25DAOmq3fo9Grht7yBBDaxt+3+GH97V1idxETn12xGKoxH5N9YWP0t2JEaRbN7RK6EB8QNN5nQlK8WN",
-	"CyWNzKH+IraAICnQVrhd2Nrt/2pScwDWIcH5zo4HDOQOgl5S5X1watRPSM2Tl3WYbpNMdodjcfgJ/tsi",
-	"ygZL/mYI445b9I1Jxmmwp9EN2he8Z7h7gagb393D5tTW5Yn7W32ORTZ/CQ54Z4u+j9QSwzYZarJBpwk2",
-	"ENqQkUdfBdR2UsCnos0jSInZI3N3vwvJqKwi5+gky/aD7EmWObjSXDGarb8+XE+yrAaqkXuBdBNuupS3",
-	"Q+QnzIx7h5dzB9pElyyFzM+egI5JqHSGtfZo7NAdGUv5Grnl75MGhkD7F/ML69l8Ql9oMrfmNcRBB+eE",
-	"2PNhJFFMuLBZh4HQRt8JYZVCy5wdfkKj3udBM9LbcqFoxhBp3rPZhUyvmBOksSWxMjTSpKksmXhqO7aW",
-	"SVs3V4qU9cVo9+EFmt+7JOTx0eP+XC6uuUnRq6JU0shU5vrG+p57lzJv6n3gwgtGx79+6CLONZsRt28P",
-	"dLMb6If/kdd2N/Ls4h8cjd0B4gRe8zH0ifi44vZu9HLtEQBArHCgTULKafDd7cggkr/7NJw1U93DdLbL",
-	"hNrZ1Pec1fZijr05dSzEBXgUAP2xGomz06ELAL0VbiLh2ToBPrvujM1tNH3Tz25xUfsIX9GNl8oM2HHx",
-	"i8aO634e9MPVktFB61d7afaD3rMPN1nMNyUfNrh/v+LhaRDV4xK5tHmyQVrWITqHn5ofWwTBZszRF4Hg",
-	"qc1X+G3JcA20Gk1uHUt1qwsk3Idb3SOdLd0aNvQMLW51OT0w1MLuMV3bbq0TesftRVXoRS/k9aV4aENI",
-	"mtgrkbXCeh5omzLTFvG/Xq5BUhzyOmkw4I6idW6jRj2l6ycnu+Xf2V2D+hfwBWKu4qSFENpEMXDAbQT6",
-	"C30VNO+WWNRNuYFe7QjYzhsegS3U+jTA4S22rad40YBp3MsKck4g44UrfoGztBn70SMLlRUuJq12VwDn",
-	"Yibq8DVfY0df2c+gsBf5BYMsAetzfsWcGRpHjPoRV6KLynuzbmdNJCVyLR/ux3gGWG6rRO1kM3ty14Jq",
-	"7JCcpCkrjUfn/7ZR72lOuwOH7vNKdMI5b8hVHC657rhzbyL7f3Vf73tYvilOMCywEsHul3fjI3cnqhVX",
-	"7tjx60gtfZRZSOzvk7RvwZ/6ejn85P+Ex066399toj+DJMqTNYPtx5EN3VTnmL4Tbqp3L86fYpJrb9TB",
-	"XBsEkyQTw0FRYd2B69Iz12x2KdyKMU5GijlfVBjfSInmYpGzg0qzRtNB3p4/t6Wy/BV2KQouKgMR03CT",
-	"NdkQp6nXQ4XX3091wIbPxoNew1CMKHbhvWr0WfcpIXhNmE0D+i8Y97rvDXBrQg4bgzj3QHuNWB3c8uTR",
-	"RqIe6Fw2K6iehR9+RYY9mMc35/MQwohkbM5dJt92bC15GIbfZWyVEKNRbZmFe+WzifiNWnW2qLMAwYhF",
-	"EMyIOlPyWmNhgdmYPIM45IuLZ8RVcMZ4wimE95ApdjtFn+9LgT8wRYMV5KYZNdS+JFjGb/rMfj5jubx+",
-	"1CrZp5nINKGXYrpkVJkZo2Zq04I4l8/HP9SJhcgrgZRHCDRzQ9NLMX1OtTnAAQ7OTqdW358yvmLWuxgj",
-	"n7nW4CDK5z4uC5P0yjxD+epStCYzVQziNKe1uJrmHOajl1g3SrE51lYDSQE0ZBwThFwK9Juw4A5lYq5t",
-	"RU6rWNaMYaU2zURUOLB6/GeruEK3l+m3oAeawUc2XqTkqT4mU39/w0YFRxd+CtkUMnXJEb2X1JQ8rP+O",
-	"x7I8cnpOe6m4YMpLoat0Saiuxz12kWWZjymTKpxH9/U4mLALPwsnjeBC52ILwWlTSdPlaIw6xSAsds4u",
-	"4SeQBCMnLVjdTAkZUbHjbJeMWouUm24Lh29pHjTso7HH/sCe7N2vUJxBVOgSNtLJHkzX7R1QvnaOIU0u",
-	"8BweXMAo9SHwlM2RMkvX0IR32JQ+HVABAArX3Ay0ccZArC2gvJe747Xa2eET67FuFQDog0/t9xhQ5bIU",
-	"Nan7p4451i3y5vP021QOtmfy0FdAaOLVUpouWRLGyGImoqRduS65FOfPLt4k5Omz55bUOpVcWH/3gSZ1",
-	"cTpbACAh2uqAHXm/FHY9huZXzo4tNXN1VnQQdKCZ7ZorEiRLjQdH4zoxD/c7uyn3o5IIRnBn6st684Yr",
-	"3MAQfCm9xBcypzayv91nfxQe6DoBmSu4AMQ+baWgj9jd4QAXbJNR4cW9igov7tEEg4efLwTLDrhAk2Di",
-	"jtAilzOaY2SlDsspk4KBf6te8jIkdz5BnINXzddt4rZf+4/+pXUkbhX3ayrzoOryam43QFf8kOZ5k51v",
-	"LlWHI9/Advufh59KzwJsNKK9rt2W7xuq35jhrO+vHUDyxh4NgfoothOHdRHULfuB5U+38eGB+Aa1JMbk",
-	"VcFNU7vfVcW/hjgFHHfIP2DIj2Ef94V7PZcIjbf6ro/l7ZAIJ+WiD22CQJhgk93jeinzeheI1XeRNqjv",
-	"CfO8ULGRYp/7j75x7512Ld77dJOpI1W3ucr8e4YS3L+BoMPQOV3/NneRGpvxcESlLWdtcuJIBoZDF/Xr",
-	"0nlaoSixWZo0Qf4mZ7XF2Oa+RVFJeMMsHmFXotFKVn5ZdYSzdYhCs6uvGXkprDAD3+BKsp9cKlygBAvF",
-	"tBP6pvUpPfzk/oL7QRtWQhIYrwHyGorx/+GUU1EhyBqcHUS/VZuum943a9ZNnHIEB38u7TgRj9rz5z5s",
-	"HiImVQ30YZLx+Ru3GH+FeMoLzBbdeEjEz3t4mR26+ijDOpdTyBStXTpfHIiUVGBi4VZyALgojsmqnqBP",
-	"E30pFkwwq9J0xZyQMBCOZehtloA6mwQY5pJA4YEpNRnVkLwmyB7n82v5/AQ0r+eBeeIMz3OS8fmcqbae",
-	"nV4KmAQxFNy0nbmrYFQYXrBHMSrw2gKoIQPfxim++xvKIcJAWLPDkzF5iin5prjRvvYe7vR0/C37cLTO",
-	"ib/ZwPBtrzWR2eSCaGOA1E1oG8ikdY6TlbOb2zzsa8TDHQ5XcAftEPwyuv9N/sakxY1kat8L99zDOsKz",
-	"t7iBWJqwQU4+TI711aydTc6BOzN1PrdpxhwFxJp6NueYqsRPhBWlWVunBCEb6ozBf4xlLPsqKPNm2c07",
-	"pG2CC7e5SVj6wCc/0XeUdGhn9LLllff3VukOMMSWn9T5PKTC0sRZhelamyQ9dYFnQo2NMyInPruq/+5S",
-	"aCNLn7oXhO20Usqag1iJBFHJPNcESp3WZNE5DyVNIQprCQljXh9obIntrJ0jylzjHAcp3xdhUu0ccpe8",
-	"u+WI+G/hU9IJNYfFNoelNp373GlSkaZQ2B4326Fixjr93Q++Q8lz77smgYlD7zXFyBUrXeFel7G4xlx4",
-	"hhntPHbDyqzsOo7Yuoxaeyz5Ooh47s4mzvDfFQGtn6nbKo+EuGKfCV+HG7kvEjqSc394eIoR9dpVitNJ",
-	"K083YN3Z6yBTdkgs4SVkXtO4xrBUj8shHEFKt5yvjJcyzwEvEbD/pmj5VmTSJS706IeZ9DSX4X3pd3NP",
-	"tETN0y58JlK5r8ljwgTukL98I8sDmwoLQQCMJvvI0gpeW3YzqIxh+Y8lzzPFxNf2kyaGFyzngiWEggHR",
-	"KMaAzdRuh76kqIJjHn6C/+BnLheb5EjYwudYc2KjgQvWOsU6u3I+18xMm+QZKOXLCjajEldQtZYqA1zk",
-	"0WAULHYRjyM9CkqDH/VLg/etCi9sUfEgQxTsw2CaIrQSxYd+fHR0FBQp/+HoKJxMpE75vRoBnsvFUwDo",
-	"tyR+V6asjBWfAL0S4v3+XH2d3+QM4/kyWRmbfIFwkSpUy9E8X9/LSYj751v03zNasp02oKlH+OsH2Gpr",
-	"urBTrFQ+Oh4d0pIfrh4jA+AW1kXP90vpLRC+IB9eHCg3o1+lHDezrh0++njunRWS0HIZFAwMeqmNmP1e",
-	"MJUZmt90mDht3MpDBmJZpO15q/Sg45m5qt1/rCde0BV+GOnooilQWMeZtCsV2o69nWbcswzq4em1EzvT",
-	"WqZPai7fP9FWoxv03sj6/e7fw67V0635NLyKsJAhhrG2CqWOYyG8sb5bPpCYPrPvBRl0xlYD/Ty1RjVY",
-	"qK/YFPFZCRcML4YWCycazrBLSoIlMoKmLo3+5w+f/9cA",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
