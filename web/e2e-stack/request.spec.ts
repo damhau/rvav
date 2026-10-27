@@ -4,7 +4,8 @@ import { signIn } from "./auth";
 // The whole path for real: the browser, nginx, the API, Temporal, the
 // worker, vcsim and the fakes for EfficientIP and AWX. Works with dev
 // authentication and with Keycloak.
-test("a RHEL 9 server requested in the browser reaches Ready", async ({ page }) => {
+test("a RHEL 9 server requested in the browser reaches Ready, then powers off", async ({ page }) => {
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   // A role of its own, so the test can run again on the same stack.
@@ -28,5 +29,18 @@ test("a RHEL 9 server requested in the browser reaches Ready", async ({ page }) 
   await page.getByRole("link", { name: "Open deployment" }).click();
   // The VM name shows in its resource row and again once its details load.
   await expect(page.getByText(`web-dev-${role}001`, { exact: true }).first()).toBeVisible();
+
+  // A day-2 action on it: power off from the VM's menu, through Temporal and vcsim.
+  const vm = `web-dev-${role}001`;
+  await page.getByRole("button", { name: `More actions for ${vm}` }).click();
+  await page.getByRole("menuitem", { name: /^Power off/ }).click();
+  const dialog = page.getByRole("dialog", { name: `Power off · ${vm}` });
+  await dialog.getByRole("button", { name: "Power off" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(/vm-\d+ · off/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("navigation", { name: "Deployment sections" }).getByRole("link", { name: "History" }).click();
+  const history = page.getByRole("region", { name: "History" });
+  await expect(history.getByRole("link", { name: "Power off" })).toBeVisible();
+  await expect(history.getByRole("link", { name: "Created" })).toBeVisible();
   expect(errors).toEqual([]);
 });
