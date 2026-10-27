@@ -78,7 +78,7 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			if err := s.Store.LockDeployment(ctx, tx, *r.DeploymentID); err != nil {
 				return err
 			}
-			active, err := s.Store.ActiveDeploymentRequest(ctx, tx, *r.DeploymentID)
+			active, err := s.Store.ActiveDeploymentRequest(ctx, tx, *r.DeploymentID, deref(r.ResourceID), r.ID)
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Ellipsis, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { EmptyState, Page, PageHeader } from "@/components/common/page";
@@ -12,6 +12,8 @@ import type { Deployment, DeploymentStatus } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentFilters } from "@/lib/query";
 import { cn, daysUntil, leaseLabel } from "@/lib/utils";
+import { RowActions } from "./actions";
+import { BulkDialog, bulkActions } from "./bulk";
 
 export interface DeploymentsSearch {
   status?: string;
@@ -77,7 +79,7 @@ function Lease({ expiresAt }: { expiresAt: string | null }) {
 }
 
 const Slice2 = ({ children }: { children: React.ReactNode }) => (
-  <Tip content="Coming in slice 2">
+  <Tip content="Adopting existing VMs comes later">
     <span>{children}</span>
   </Tip>
 );
@@ -87,6 +89,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const navigate = useNavigate({ from: "/deployments/" });
   const [text, setText] = useState(search.q ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<(typeof bulkActions)[number] | null>(null);
   const status = statusFilters.find((f) => f.key === (search.status ?? "all")) ?? statusFilters[0]!;
   const envs = (search.env ?? "").split(",").filter(Boolean);
   const list = useInfiniteQuery(
@@ -211,12 +214,15 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
             {visibleSelected.length} deployment{visibleSelected.length === 1 ? "" : "s"} selected
           </span>
           <span className="flex-1" />
-          {["Power on", "Shut down guest", "Extend lease", "Run AWX action…"].map((a) => (
-            <Slice2 key={a}>
-              <Button size="sm" disabled>
-                {a}
-              </Button>
-            </Slice2>
+          {bulkActions.map((b) => (
+            <Button
+              key={b.key}
+              size="sm"
+              variant={b.key === "delete" ? "danger" : undefined}
+              onClick={() => setBulk(b)}
+            >
+              {b.label}
+            </Button>
           ))}
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             Clear
@@ -329,11 +335,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
                       <Lease expiresAt={d.lease.expires_at} />
                     </td>
                     <td className="border-b border-line py-2.5 pr-3.5 text-right">
-                      <Slice2>
-                        <Button variant="ghost" size="icon" aria-label={`Actions for ${d.name}`} disabled>
-                          <Ellipsis />
-                        </Button>
-                      </Slice2>
+                      <RowActions deployment={d} />
                     </td>
                   </tr>
                 );
@@ -348,6 +350,16 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         </Button>
       )}
       <p className="text-xs text-faint">Power state and addresses come from vCenter and update live.</p>
+      {bulk && (
+        <BulkDialog
+          bulk={bulk}
+          deployments={visibleSelected}
+          onClose={(done) => {
+            setBulk(null);
+            if (done) setSelected(new Set());
+          }}
+        />
+      )}
     </Page>
   );
 }

@@ -328,6 +328,10 @@ export function createDb(now = Date.now()): Db {
           folder: `/GVA/vm/rvav/${s.name.split("-")[0]}/${s.env}`,
           template: tpl.name,
           snapshot_count: s.snapshots ?? 0,
+          snapshots: Array.from({ length: s.snapshots ?? 0 }, (_, i) => ({
+            name: `Before change ${i + 1}`,
+            created_at: ago(60 * 24 * (i + 1)),
+          })),
           usage: on
             ? { cpu_pct: s.cpuPct ?? 8 + (moref % 40), memory_pct: s.memPct ?? 30 + (moref % 40), sampled_at: ago(0) }
             : { cpu_pct: 0, memory_pct: 0, sampled_at: ago(0) },

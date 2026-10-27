@@ -66,6 +66,8 @@ export const keys = {
     lists: () => ["deployments", "list"] as const,
     list: (f: DeploymentFilters) => ["deployments", "list", f] as const,
     detail: (id: string) => ["deployments", "detail", id] as const,
+    actions: (id: string) => ["deployments", "actions", id] as const,
+    history: (id: string) => ["deployments", "history", id] as const,
   },
 };
 
@@ -235,5 +237,22 @@ export const q = {
       queryKey: keys.deployments.detail(id),
       queryFn: ({ signal }) =>
         call(api.GET("/deployments/{deploymentId}", { params: { path: { deploymentId: id } }, signal })),
+    }),
+  deploymentActions: (id: string) =>
+    queryOptions({
+      queryKey: keys.deployments.actions(id),
+      queryFn: ({ signal }) =>
+        call(api.GET("/deployments/{deploymentId}/actions", { params: { path: { deploymentId: id } }, signal })),
+    }),
+  deploymentHistory: (id: string) =>
+    queryOptions({
+      queryKey: keys.deployments.history(id),
+      queryFn: ({ signal }) =>
+        call(
+          api.GET("/deployments/{deploymentId}/history", {
+            params: { path: { deploymentId: id }, query: { limit: 50 } },
+            signal,
+          }),
+        ),
     }),
 };

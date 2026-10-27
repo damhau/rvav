@@ -18,8 +18,10 @@ catalog item and version, its own steps, approvals (ADR-0011), live events and
 audit entries. The request workflow runs it like any request (approval,
 schedule, cancel, outcome); its plan holds the action's operations instead of
 VMs to build, each one a step, and each refreshes the VM from vCenter. While
-it runs the deployment is `updating`; one request runs on a deployment at a
-time. The deployment's history is its requests: the one that created it and
+it runs the deployment is `updating`. One request runs on a VM at a time;
+actions on different VMs run side by side, and the creating request and
+actions on the whole deployment (owner, project, delete) wait for, and
+block, everything else on it. The deployment's history is its requests: the one that created it and
 every action since. `kind: provision` is what slice 1 built.
 
 ### The actions

@@ -1,23 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Camera, Ellipsis, Plus, Power, RefreshCw, SquareTerminal } from "lucide-react";
+import { Plus, Power, RefreshCw, SquareTerminal } from "lucide-react";
+import { useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { Page, Panel } from "@/components/common/page";
-import { DeploymentStatusBadge, EnvBadge, PowerDot } from "@/components/common/status";
+import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Tip } from "@/components/ui/tooltip";
-import type { DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
-import { cn, fullDate, leaseLabel } from "@/lib/utils";
+import type { Day2Action, DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
+import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
+import { ActionDialog, ActionsMenu, runsDirectly, useRunAction } from "./actions";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
 
-const Slice2 = ({ children }: { children: React.ReactNode }) => (
-  <Tip content="Coming in slice 2">
+const Later = ({ children, what }: { children: React.ReactNode; what: string }) => (
+  <Tip content={what}>
     <span>{children}</span>
   </Tip>
 );
+
+type Pick = (a: Day2Action) => void;
+
+/** The quick power button: power on when off, shut down (or power off) when on. */
+function powerAction(actions: Day2Action[], on: boolean) {
+  const by = (k: string) => actions.find((a) => a.key === k);
+  if (!on) return by("power_on");
+  const shutdown = by("shutdown_guest");
+  return shutdown?.enabled ? shutdown : (by("power_off") ?? shutdown);
+}
 
 function Usage({ label, pct, on }: { label: string; pct?: number; on: boolean }) {
   const v = on && pct !== undefined ? Math.round(pct) : null;
@@ -32,7 +44,17 @@ function Usage({ label, pct, on }: { label: string; pct?: number; on: boolean })
   );
 }
 
-function VmTable({ deploymentId, vms }: { deploymentId: string; vms: VmResource[] }) {
+function VmTable({
+  deploymentId,
+  vms,
+  actions,
+  onPick,
+}: {
+  deploymentId: string;
+  vms: VmResource[];
+  actions: Day2Action[];
+  onPick: Pick;
+}) {
   if (vms.length === 0) {
     return (
       <p className="px-4 py-6 text-xs text-muted">No VMs yet. They appear here as soon as vCenter creates them.</p>
@@ -65,6 +87,8 @@ function VmTable({ deploymentId, vms }: { deploymentId: string; vms: VmResource[
             const on = vm.power_state === "on";
             const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
             const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
+            const mine = actions.filter((a) => a.resource_id === id);
+            const powerBtn = powerAction(mine, on);
             return (
               <tr key={id} className="hover:bg-sunken">
                 <td className="border-b border-line px-4 py-2.5">
@@ -94,11 +118,18 @@ function VmTable({ deploymentId, vms }: { deploymentId: string; vms: VmResource[
                 </td>
                 <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
                   <span className="inline-flex gap-1">
-                    <Slice2>
-                      <Button size="icon" aria-label={on ? `Shut down ${name}` : `Power on ${name}`} disabled>
-                        <Power />
-                      </Button>
-                    </Slice2>
+                    <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? "Power")}>
+                      <span>
+                        <Button
+                          size="icon"
+                          aria-label={`${powerBtn?.name ?? "Power"} ${name}`}
+                          disabled={!powerBtn?.enabled}
+                          onClick={() => powerBtn && onPick(powerBtn)}
+                        >
+                          <Power />
+                        </Button>
+                      </span>
+                    </Tip>
                     {on ? (
                       <Tip content="Console">
                         <Button size="icon" asChild>
@@ -120,11 +151,12 @@ function VmTable({ deploymentId, vms }: { deploymentId: string; vms: VmResource[
                         </span>
                       </Tip>
                     )}
-                    <Slice2>
-                      <Button size="icon" aria-label={`More actions for ${name}`} disabled>
-                        <Ellipsis />
-                      </Button>
-                    </Slice2>
+                    <ActionsMenu
+                      actions={mine}
+                      label={`More actions for ${name}`}
+                      onPick={onPick}
+                      consoleLink={{ deploymentId, resourceId: id }}
+                    />
                   </span>
                 </td>
               </tr>
@@ -195,7 +227,53 @@ function toYaml(value: unknown, indent = 0): string {
   return String(value);
 }
 
-function Overview({ d }: { d: DeploymentDetail }) {
+const tileHint: Record<string, string> = {
+  resize: "CPU and memory, hot-add aware",
+  disk_add: "Thin, on the VM's datastore",
+  snapshot_create: "Kept as long as the environment allows",
+  change_owner: "Hand it to another member of the project",
+  change_project: "The new project's quota and placement are checked",
+  delete: "Releases its IP addresses and DNS records too",
+};
+
+function ActionTiles({ actions, onPick }: { actions: Day2Action[]; onPick: Pick }) {
+  if (actions.length === 0) return <p className="px-4 py-6 text-xs text-muted">No actions apply here.</p>;
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-px bg-line">
+      {actions.map((a) => (
+        <button
+          key={`${a.key}-${a.resource_id ?? ""}`}
+          type="button"
+          disabled={!a.enabled}
+          onClick={() => onPick(a)}
+          className="flex w-full flex-col items-start gap-0.5 bg-surface px-4 py-2.5 text-left hover:bg-sunken disabled:cursor-not-allowed disabled:hover:bg-surface"
+        >
+          <span
+            className={cn(
+              "font-medium",
+              !a.enabled && "text-muted",
+              a.key === "delete" && (a.enabled ? "text-bad" : "text-bad/60"),
+            )}
+          >
+            {a.name}
+            {a.resource_id && (
+              <span className="ml-1.5 font-mono text-[11px] font-normal text-faint">{a.resource_name}</span>
+            )}
+          </span>
+          <span className="text-[11px] text-faint">
+            {!a.enabled
+              ? a.disabled_reason
+              : a.approval.required
+                ? `Needs approval: ${a.approval.reasons.join("; ")}`
+                : tileHint[a.key]}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const ips = d.resources.filter((r): r is IpAddressResource => r.type === "ipam.address");
   const dns = d.resources.filter((r): r is DnsRecordResource => r.type === "dns.record");
@@ -207,39 +285,23 @@ function Overview({ d }: { d: DeploymentDetail }) {
           flush
           actions={<span className="text-[11px] text-faint">Live from vCenter</span>}
         >
-          <VmTable deploymentId={d.id} vms={vms} />
+          <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} />
         </Panel>
         <Panel
           title="Actions"
           flush
-          actions={<span className="text-[11px] text-faint">Day-2 actions come in slice 2</span>}
+          actions={<span className="text-[11px] text-faint">More in each VM&apos;s menu</span>}
         >
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-px bg-line">
-            {[
-              ["Resize", "CPU and memory, hot-add aware"],
-              ["Add or extend disk", vms[0]?.vm.disks[0]?.datastore ?? "on the current datastore"],
-              ["Snapshots", "Kept 72 h in production"],
-              ["Install monitoring agent", "AWX · monitoring-agent"],
-              ["Renew TLS certificate", "AWX · pki-renew-deploy"],
-              [
-                "Delete deployment",
-                d.environment === "prd" ? "Needs approval in production" : "Releases IP and DNS too",
-              ],
-            ].map(([title, hint]) => (
-              <Slice2 key={title}>
-                <button
-                  type="button"
-                  disabled
-                  className="flex w-full flex-col items-start gap-0.5 bg-surface px-4 py-2.5 text-left disabled:cursor-not-allowed"
-                >
-                  <span className={cn("font-medium text-muted", title === "Delete deployment" && "text-bad/70")}>
-                    {title}
-                  </span>
-                  <span className="text-[11px] text-faint">{hint}</span>
-                </button>
-              </Slice2>
-            ))}
-          </div>
+          <ActionTiles
+            actions={actions.filter(
+              (a) =>
+                (a.resource_id === null || a.resource_id === undefined
+                  ? a.key in tileHint
+                  : a.resource_id === vms[0]?.id && ["resize", "disk_add", "snapshot_create"].includes(a.key)) &&
+                a.key !== "console",
+            )}
+            onPick={onPick}
+          />
         </Panel>
       </div>
       <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
@@ -261,8 +323,55 @@ function Overview({ d }: { d: DeploymentDetail }) {
   );
 }
 
+function History({ deploymentId }: { deploymentId: string }) {
+  const history = useQuery(q.deploymentHistory(deploymentId));
+  if (history.isError) return <ErrorState error={history.error} onRetry={() => void history.refetch()} />;
+  if (!history.data) return <SkeletonRows rows={3} cols={3} />;
+  if (history.data.items.length === 0) return <p className="text-xs text-muted">Nothing has run on it yet.</p>;
+  return (
+    <ol className="flex flex-col">
+      {history.data.items.map((r) => (
+        <li
+          key={r.id}
+          className="grid grid-cols-[110px_minmax(0,1fr)_auto] items-baseline gap-3 border-b border-line py-2 last:border-0"
+        >
+          <span className="tnum text-faint">
+            <Time iso={r.submitted_at} />
+          </span>
+          <span className="min-w-0">
+            <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium">
+              {r.kind === "day2" ? (r.action?.name ?? r.title) : "Created"}
+            </Link>
+            <span className="text-muted">
+              {" "}
+              · {r.kind === "day2"
+                ? (r.resource?.name ?? "deployment")
+                : `${r.catalog_item.name} ${r.version.number}`}{" "}
+              · {r.requester.name} · <span className="font-mono text-[11px]">{r.number}</span>
+            </span>
+            {r.error && <span className="block text-[11px] text-bad">{r.error.message}</span>}
+          </span>
+          <RequestStatusBadge status={r.status} />
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: string; tab: DeploymentTab }) {
   const dep = useQuery(q.deployment(deploymentId));
+  const actionsQ = useQuery(q.deploymentActions(deploymentId));
+  const actions = actionsQ.data?.items ?? [];
+  const [picked, setPicked] = useState<Day2Action | null>(null);
+  const run = useRunAction(deploymentId);
+  const pick: Pick = (a) => {
+    if (runsDirectly(a)) {
+      const draft = { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} };
+      run.mutate({ draft, key: newIdempotencyKey() });
+      return;
+    }
+    setPicked(a);
+  };
   if (dep.isError) {
     return (
       <Page>
@@ -298,21 +407,16 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Slice2>
-              <Button disabled>
-                <Camera /> Snapshot all
-              </Button>
-            </Slice2>
-            <Slice2>
+            <Later what="AWX actions come with the AWX integration">
               <Button disabled>
                 <RefreshCw /> Patch now <span className="font-mono text-[10px] text-faint">AWX</span>
               </Button>
-            </Slice2>
-            <Slice2>
+            </Later>
+            <Later what="Scaling out comes later">
               <Button disabled>
                 <Plus /> Add VM
               </Button>
-            </Slice2>
+            </Later>
           </div>
         </div>
         {d && (
@@ -364,29 +468,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         </div>
       ) : tab === "history" ? (
         <Panel title="History">
-          <ol className="flex flex-col">
-            <li className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-1">
-              <span className="tnum text-faint">
-                <Time iso={d.created_at} />
-              </span>
-              <span>
-                <b className="font-medium">Created</b>
-                {d.created_by_request_id && (
-                  <>
-                    {" "}
-                    by{" "}
-                    <Link to="/requests/$requestId" params={{ requestId: d.created_by_request_id }}>
-                      {d.created_by_request_id}
-                    </Link>
-                  </>
-                )}{" "}
-                · {d.catalog_item.name} {d.version.number}
-              </span>
-            </li>
-          </ol>
-          <p className="mt-3 text-xs text-faint">
-            Day-2 runs and their timelines appear here once day-2 actions arrive in slice 2.
-          </p>
+          <History deploymentId={deploymentId} />
         </Panel>
       ) : tab === "inputs" ? (
         <Panel title="Inputs" flush>
@@ -399,8 +481,9 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           </pre>
         </Panel>
       ) : (
-        <Overview d={d} />
+        <Overview d={d} actions={actions} onPick={pick} />
       )}
+      {d && picked && <ActionDialog deployment={d} action={picked} onClose={() => setPicked(null)} />}
     </Page>
   );
 }

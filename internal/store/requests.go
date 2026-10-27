@@ -112,18 +112,33 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 }
 
 // ActiveDeploymentRequest returns the number of a request that has not
-// finished on the deployment, the one that created it or an action, or "".
-// Lock the deployment row first (LockDeployment) to make it a reliable check.
-func (s *Store) ActiveDeploymentRequest(ctx context.Context, db DB, deploymentID string) (string, error) {
+// finished on the deployment and is in the way of an action on resourceID,
+// or "". Actions on different VMs run side by side; the request that
+// created the deployment and actions on the whole deployment are in the way
+// of everything, and resourceID "" (a whole-deployment action) waits for
+// any request. except leaves one request out. Lock the deployment row first
+// (LockDeployment) to make it a reliable check.
+func (s *Store) ActiveDeploymentRequest(ctx context.Context, db DB, deploymentID, resourceID, except string) (string, error) {
 	var number string
 	err := db.QueryRow(ctx, `select r.number from requests r
 		where (r.deployment_id = $1 or r.id = (select created_by_request_id from deployments where id = $1))
 		  and r.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')
-		order by r.submitted_at limit 1`, deploymentID).Scan(&number)
+		  and ($2 = '' or r.resource_id is null or r.resource_id = $2)
+		  and r.id <> $3
+		order by r.submitted_at limit 1`, deploymentID, resourceID, except).Scan(&number)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
 	return number, err
+}
+
+// OtherRunningOnDeployment reports whether a day-2 request other than
+// except is running on the deployment.
+func (s *Store) OtherRunningOnDeployment(ctx context.Context, db DB, deploymentID, except string) (bool, error) {
+	var n int
+	err := db.QueryRow(ctx, `select count(*) from requests where deployment_id = $1 and id <> $2
+		and status in ('running', 'cancelling')`, deploymentID, except).Scan(&n)
+	return n > 0, err
 }
 
 // LockDeployment locks a deployment row until the transaction ends.

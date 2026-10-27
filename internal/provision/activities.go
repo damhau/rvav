@@ -659,11 +659,19 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	db := a.Store.Pool
 	if r.DeploymentID != nil {
 		// A day-2 request: the deployment it acted on goes back to ready,
-		// or to what the action made of it.
+		// or to what the action made of it, unless an action on another VM
+		// still runs.
 		var plan Plan
 		_ = json.Unmarshal(r.Plan, &plan)
-		if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, day2Status(plan, in.Outcome, r.StartedAt != nil)); err != nil {
+		status := day2Status(plan, in.Outcome, r.StartedAt != nil)
+		other, err := a.Store.OtherRunningOnDeployment(ctx, db, *r.DeploymentID, r.ID)
+		if err != nil {
 			return err
+		}
+		if !other || status != "ready" {
+			if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, status); err != nil {
+				return err
+			}
 		}
 	}
 	switch in.Outcome {

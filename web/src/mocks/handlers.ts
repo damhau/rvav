@@ -25,6 +25,7 @@ import {
   vote,
   type StoredApproval,
 } from "./approvals";
+import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
@@ -177,6 +178,18 @@ function publishApproval(a: StoredApproval) {
 /** Every level approved: the request is planned again with its inputs and starts. */
 function provisionApproved(stored: StoredRequest, outcome: string, detail: string) {
   const r = stored.request;
+  if (r.kind === "day2") {
+    const policy = stored.steps.find((s) => s.key === "policy.approval");
+    if (policy)
+      Object.assign(policy, { title: outcome, detail, status: "done", finished_at: new Date().toISOString() });
+    const d = db.deployments.find((x) => x.id === r.deployment_id);
+    if (d) d.status = r.action?.key === "delete" ? "deleting" : "updating";
+    r.status = "running";
+    r.started_at = new Date().toISOString();
+    publishRequest(stored);
+    start(r.id);
+    return;
+  }
   const item = itemByKey(r.catalog_item.id);
   const project = db.projects.find((p) => p.id === r.project.id);
   if (!item || !project) return;
@@ -488,6 +501,59 @@ export const handlers = [
     },
   ),
 
+  http.post<{ requestId: string }>(`${base}/requests/:requestId/retry`, async ({ params }) => {
+    await wait();
+    const r = requestByKey(params.requestId);
+    if (!r || !visibleRequest(r.request)) return notFound("Request");
+    if (r.request.status !== "failed")
+      return problem(
+        409,
+        "conflict",
+        `${r.request.number} is ${r.request.status}; only failed requests can be retried.`,
+      );
+    // The failed step and the ones after it run again.
+    for (const step of r.steps) {
+      if (step.status === "failed" || step.status === "cancelled" || step.status === "skipped") {
+        Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined });
+        step.children.forEach((c) => Object.assign(c, { status: "pending", started_at: null, finished_at: null }));
+      }
+    }
+    Object.assign(r.request, { status: "running", error: null, finished_at: null });
+    const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
+    if (d && r.request.kind !== "day2") d.status = "provisioning";
+    publishRequest(r);
+    start(r.request.id);
+    return json<S["Request"]>(r.request, { status: 202 });
+  }),
+
+  http.post<{ requestId: string }>(`${base}/requests/:requestId/rollback`, async ({ params }) => {
+    await wait();
+    const r = requestByKey(params.requestId);
+    if (!r || !visibleRequest(r.request)) return notFound("Request");
+    if (r.request.status !== "failed" || r.request.kind === "day2")
+      return problem(409, "conflict", `${r.request.number} has nothing to roll back.`);
+    const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
+    if (!d || d.status === "deleted") return problem(409, "conflict", `${r.request.number} has nothing to roll back.`);
+    const at = new Date().toISOString();
+    const done = d.resources.map((x) => (x.type === "vsphere.vm" ? `deleted VM ${x.name}` : `released ${x.name}`));
+    d.resources = [];
+    d.status = "deleted";
+    r.steps.push({
+      id: `stp_rb_${r.request.id}`,
+      key: "rollback",
+      title: "Rolled back",
+      detail: done.join(", "),
+      system: "rvav",
+      status: "done",
+      children: [],
+      has_log: false,
+      started_at: at,
+      finished_at: at,
+    });
+    publishRequest(r);
+    return json<S["Request"]>(r.request, { status: 202 });
+  }),
+
   http.post<{ requestId: string }>(`${base}/requests/:requestId/cancel`, async ({ params }) => {
     await wait();
     const r = requestByKey(params.requestId);
@@ -710,6 +776,62 @@ export const handlers = [
       })
       .map(summarize);
     return json<S["DeploymentPage"]>(page(items, url));
+  }),
+
+  http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId/actions`, async ({ params }) => {
+    await wait();
+    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    if (!dep) return notFound("Deployment");
+    return json<Ok<"/deployments/{deploymentId}/actions", "get">>({ items: actionsFor(db, dep) });
+  }),
+
+  http.post<{ deploymentId: string }>(`${base}/deployments/:deploymentId/actions`, async ({ params, request }) => {
+    await wait();
+    const key = request.headers.get("Idempotency-Key");
+    if (!key) return problem(400, "bad-request", "Idempotency-Key header is required");
+    const raw = await request.text();
+    const seen = db.idempotency.get(key);
+    if (seen) return json(seen.response, { status: seen.status });
+    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    if (!dep) return notFound("Deployment");
+    const res = runAction(db, dep, JSON.parse(raw) as S["Day2Draft"], newRequestNumber());
+    if (res.error) {
+      const e = res.error;
+      return problem(
+        e.status,
+        e.status === 422 ? "validation" : e.status === 403 ? "forbidden" : "conflict",
+        e.title,
+        e.detail,
+        e.field ? [{ field: e.field, message: e.title }] : undefined,
+      );
+    }
+    const stored = res.stored!;
+    db.requests.unshift(stored);
+    if (res.approval) {
+      const levels = openLevels(db, stored.request, res.approval, null, () => `apr_${(db.seq.id++).toString(36)}`);
+      db.approvals.push(...levels);
+      levels.forEach(publishApproval);
+    }
+    publishRequest(stored);
+    if (!res.approval) start(stored.request.id);
+    db.idempotency.set(key, { body: raw, status: 202, response: structuredClone(stored.request) });
+    return json<S["Request"]>(stored.request, { status: 202 });
+  }),
+
+  http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId/history`, async ({ params, request }) => {
+    await wait();
+    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    if (!dep) return notFound("Deployment");
+    const items = db.requests
+      .map((r) => r.request)
+      .filter(
+        (r) =>
+          r.deployment_ids?.includes(dep.id) ||
+          r.id === dep.created_by_request_id ||
+          r.number === dep.created_by_request_id,
+      )
+      .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at));
+    return json<S["RequestPage"]>(page(items, new URL(request.url)));
   }),
 
   http.post<{ deploymentId: string; resourceId: string }>(

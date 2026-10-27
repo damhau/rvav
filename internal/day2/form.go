@@ -34,7 +34,8 @@ func form(title string, fields ...field) *api.ActionForm {
 		}
 	}
 	ui.Layout.Kind = api.Page
-	ui.Layout.Sections = []api.UiSection{{Key: "action", Title: title, Fields: names}}
+	one := 1
+	ui.Layout.Sections = []api.UiSection{{Key: "action", Title: title, Fields: names, Columns: &one}}
 	return &api.ActionForm{
 		Schema: map[string]any{"type": "object", "required": required, "properties": props,
 			"additionalProperties": false},

@@ -154,8 +154,10 @@ func TestDay2Actions(t *testing.T) {
 		if len(steps.Items) != 4 || steps.Items[2].Title != "Power off "+off.Resource.Name {
 			t.Fatalf("power off steps = %+v", steps.Items)
 		}
-		// One action at a time on a deployment.
+		// One action at a time on a VM; actions on the whole deployment wait too.
 		run("lmartin", "reset", 409)
+		h.json("POST", "/api/v1/deployments/"+dep+"/actions", "lmartin", api.Day2Draft{Action: "change_owner",
+			Inputs: map[string]any{"owner": "usr_lmartin"}}, 409, nil, "Idempotency-Key", uuid.NewString())
 		h.runWorkflow(off.Id, nil)
 		done := h.waitStatus(off.Id, "tnguyen", api.RequestStatusSucceeded)
 		if done.Progress.Done != 4 {

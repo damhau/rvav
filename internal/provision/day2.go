@@ -183,7 +183,7 @@ func day2Status(plan Plan, outcome string, started bool) string {
 		return d.After
 	case d.After == "deleted" && started && outcome != "succeeded":
 		return "failed"
-	case d.Before != "":
+	case d.Before == "failed":
 		return d.Before
 	}
 	return "ready"

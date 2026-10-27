@@ -50,6 +50,7 @@ export type SyncState = S["SyncState"];
 export type Resource = S["Resource"];
 export type VmResource = S["VmResource"];
 export type ConsoleSession = S["ConsoleSession"];
+export type ActionForm = S["ActionForm"];
 export type Day2Action = S["Day2Action"];
 export type Day2Draft = S["Day2Draft"];
 export type VmProperties = S["VmProperties"];

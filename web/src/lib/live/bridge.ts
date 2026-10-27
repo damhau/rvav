@@ -102,6 +102,9 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       // Approved, rejected or cancelled: its approval history changed too.
       if (before && before.status !== r.status)
         void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(r.id) });
+      // A day-2 request started or ended: the deployment's history changed.
+      if (r.deployment_id && before?.status !== r.status)
+        void qc.invalidateQueries({ queryKey: keys.deployments.history(r.deployment_id) });
       break;
     }
     case "request.step": {
@@ -116,12 +119,19 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       break;
     case "deployment.updated": {
       const d: Deployment = event.data;
+      const before = qc.getQueryData<DeploymentDetail>(keys.deployments.detail(d.id));
       patch<DeploymentDetail>(qc, keys.deployments.detail(d.id), (old) => ({ ...old, ...d }));
       patchLists(qc, keys.deployments.lists(), d);
+      // What may run, and what ran, follow the deployment's state.
+      void qc.invalidateQueries({ queryKey: keys.deployments.actions(d.id) });
+      void qc.invalidateQueries({ queryKey: keys.deployments.history(d.id) });
+      // Deleted resources arrive only as a status change: read them again.
+      if (before && before.status !== d.status) void qc.invalidateQueries({ queryKey: keys.deployments.detail(d.id) });
       break;
     }
     case "resource.updated": {
       const { deployment_id, resource } = event.data;
+      void qc.invalidateQueries({ queryKey: keys.deployments.actions(deployment_id) });
       patch<DeploymentDetail>(qc, keys.deployments.detail(deployment_id), (old) => {
         const exists = old.resources.some((r) => r.id === resource.id);
         return {

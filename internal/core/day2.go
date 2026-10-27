@@ -33,11 +33,14 @@ func (s *Service) visibleDeployment(ctx context.Context, p *auth.Principal, id s
 }
 
 // deploymentBusy says why the action can't start on the deployment now ("" when it can).
-func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action) string {
+// active is the request in its way, if any; actions on other VMs may run.
+func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action, onVM bool) string {
 	switch {
+	case active != "" && onVM:
+		return active + " is still running on this VM."
 	case active != "":
 		return active + " is still running on this deployment."
-	case d.Status == "ready", d.Status == "failed" && a.OnFailed:
+	case d.Status == "ready", d.Status == "failed" && a.OnFailed, d.Status == "updating" && onVM:
 		return ""
 	case d.Status == "deleted":
 		return "The deployment was deleted."
@@ -102,16 +105,16 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 	if err != nil {
 		return nil, err
 	}
-	active, err := s.Store.ActiveDeploymentRequest(ctx, s.Store.Pool, d.ID)
-	if err != nil {
-		return nil, err
-	}
 	j, err := s.judge(ctx, p, d)
 	if err != nil {
 		return nil, err
 	}
 	out := []api.Day2Action{}
+	active := map[string]string{}
 	for _, t := range targets(d, resources) {
+		if active[t.ResourceID], err = s.Store.ActiveDeploymentRequest(ctx, s.Store.Pool, d.ID, t.ResourceID, ""); err != nil {
+			return nil, err
+		}
 		c, err := s.choices(ctx, p, d, t)
 		if err != nil {
 			return nil, err
@@ -121,7 +124,7 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 				continue
 			}
 			dec := j.decide(a, t, nil)
-			reason := deploymentBusy(d, active, a)
+			reason := deploymentBusy(d, active[t.ResourceID], a, t.ResourceID != "")
 			if reason == "" {
 				reason = dec.Denied
 			}
@@ -276,14 +279,14 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
 			return err
 		}
-		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, d.ID)
+		active, err := s.Store.ActiveDeploymentRequest(ctx, tx, d.ID, target.ResourceID, "")
 		if err != nil {
 			return err
 		}
 		if d, err = s.Store.GetDeployment(ctx, d.ID); err != nil {
 			return err
 		}
-		if reason := deploymentBusy(d, active, a); reason != "" {
+		if reason := deploymentBusy(d, active, a, target.ResourceID != ""); reason != "" {
 			return &ConflictError{Msg: reason}
 		}
 		if req.Number, err = s.Store.NextRequestNumber(ctx, tx); err != nil {

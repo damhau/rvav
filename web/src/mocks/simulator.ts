@@ -11,6 +11,7 @@ import type {
   Step,
   VmResource,
 } from "@/lib/api/types";
+import { completeDay2Step, day2Finished } from "./day2";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
 import { reserveIp, summarize, vmNames } from "./logic";
@@ -222,6 +223,13 @@ function complete(r: StoredRequest, s: Step) {
   s.status = "done";
   s.finished_at = now();
   if (!d) return;
+  if (r.request.kind === "day2") {
+    if (completeDay2Step(d, s)) {
+      publishDeployment(r, d);
+      d.resources.forEach((res) => publishResource(r, d, res));
+    }
+    return;
+  }
   const host = hosts.get(r.request.id) ?? `${d.name}001`;
   switch (s.key) {
     case "ipam.reserve": {
@@ -408,6 +416,24 @@ function finish(r: StoredRequest) {
   r.request.finished_at = now();
   publishRequest(r);
   const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
+  if (r.request.kind === "day2") {
+    if (d) {
+      day2Finished(db, d, r.request);
+      publishDeployment(r, d);
+    }
+    publish(r, {
+      type: "notification",
+      data: {
+        id: newId("ntf"),
+        title: `Done: ${r.request.title}`,
+        body: r.request.number,
+        level: "success",
+        link: `/requests/${r.request.number}`,
+      },
+    } as Omit<LiveEvent, "id" | "at">);
+    timers.delete(r.request.id);
+    return;
+  }
   const vm = d ? vmOf(d) : undefined;
   publish(r, {
     type: "notification",
