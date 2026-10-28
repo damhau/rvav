@@ -1145,6 +1145,665 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * People rvav knows, by name or email, for pickers
+         * @description Everyone who has signed in at least once (or was seeded). Any signed-in
+         *     user may search: approvers delegate to people outside their projects.
+         */
+        get: operations["searchUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every project, archived ones on request, with member counts */
+        get: operations["listAdminProjects"];
+        put?: never;
+        /** Create a project (administrators) */
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects/{projectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        /** A project with its settings */
+        get: operations["getAdminProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a project, or archive it (administrators)
+         * @description An archived project can't request anything new; its deployments,
+         *     leases and day-2 actions go on. Unarchiving gives it back.
+         */
+        patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/projects/{projectId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        /** A project's members, direct and through OIDC groups */
+        get: operations["listProjectMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+                userId: components["parameters"]["UserIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Add a member or change their role (project admins and administrators) */
+        put: operations["setProjectMember"];
+        post?: never;
+        /**
+         * Remove a direct member (project admins and administrators)
+         * @description A project keeps at least one project admin. Members through a group are removed from the group mapping.
+         */
+        delete: operations["removeProjectMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/group-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** OIDC groups mapped to project and global roles */
+        get: operations["listGroupMappings"];
+        put?: never;
+        /** Map an OIDC group to a role, in a project or globally */
+        post: operations["createGroupMapping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/group-mappings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a group mapping
+         * @description The last mapping that makes anyone an administrator can't be removed.
+         */
+        delete: operations["deleteGroupMapping"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Environments with their settings and use */
+        get: operations["listAdminEnvironments"];
+        put?: never;
+        /** Add an environment */
+        post: operations["createEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/environments/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an environment nothing uses */
+        delete: operations["deleteEnvironment"];
+        options?: never;
+        head?: never;
+        /** Rename, reorder or flag an environment; its snapshot retention */
+        patch: operations["updateEnvironment"];
+        trace?: never;
+    };
+    "/admin/placement-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Placement rules, of a project or all */
+        get: operations["listPlacementRules"];
+        put?: never;
+        /** Add a placement rule for a project and environment */
+        post: operations["createPlacementRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/placement-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a placement rule */
+        put: operations["updatePlacementRule"];
+        post?: never;
+        /** Remove a placement rule */
+        delete: operations["deletePlacementRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/placement-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a project and environment can use now
+         * @description The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+         */
+        get: operations["previewPlacement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/network-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** vSphere networks and their subnets, set by hand or from EfficientIP */
+        get: operations["listNetworkMappings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/network-mappings/{network}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                network: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a network's subnet by hand; it wins over EfficientIP's */
+        put: operations["setNetworkMapping"];
+        post?: never;
+        /** Remove a mapping set by hand (EfficientIP's comes back at the next sync) */
+        delete: operations["deleteNetworkMapping"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Templates offered to projects (vRA image mappings) */
+        get: operations["listVmTemplates"];
+        put?: never;
+        /** Offer a template */
+        post: operations["createVmTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/templates/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a template or who it is offered to */
+        put: operations["updateVmTemplate"];
+        post?: never;
+        /** Stop offering a template */
+        delete: operations["deleteVmTemplate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/sizes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Size presets offered to projects (vRA flavour mappings) */
+        get: operations["listSizePresets"];
+        put?: never;
+        /** Add a size preset */
+        post: operations["createSizePreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/sizes/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a size preset or who it is offered to */
+        put: operations["updateSizePreset"];
+        post?: never;
+        /** Remove a size preset */
+        delete: operations["deleteSizePreset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/naming-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Naming policies and where they apply */
+        get: operations["listNamingPolicies"];
+        put?: never;
+        /** Add a naming policy */
+        post: operations["createNamingPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/naming-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a naming policy; names already given are never given again */
+        put: operations["updateNamingPolicy"];
+        post?: never;
+        /** Remove a naming policy */
+        delete: operations["deleteNamingPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/naming-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The next names a template would give, checked against vCenter, DNS and rvav */
+        post: operations["previewNaming"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects/{projectId}/quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        /** A project's quota limits, per environment or for all */
+        get: operations["getProjectQuotas"];
+        /** Replace a project's quota limits */
+        put: operations["setProjectQuotas"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/lease-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lease policies per environment, and projects' overrides */
+        get: operations["listLeasePolicies"];
+        /** Set an environment's lease policy, or a project's override of it */
+        put: operations["setLeasePolicy"];
+        post?: never;
+        /** Remove a project's override (an environment's own policy stays) */
+        delete: operations["deleteLeasePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/approval-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Approval policies, in the order they are tried */
+        get: operations["listApprovalPolicies"];
+        put?: never;
+        /** Add an approval policy */
+        post: operations["createApprovalPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/approval-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an approval policy */
+        put: operations["updateApprovalPolicy"];
+        post?: never;
+        /** Remove an approval policy (approvals it started go on) */
+        delete: operations["deleteApprovalPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/day2-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Day-2 policies, in the order they are tried */
+        get: operations["listDay2Policies"];
+        put?: never;
+        /** Add a day-2 policy */
+        post: operations["createDay2Policy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/day2-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a day-2 policy */
+        put: operations["updateDay2Policy"];
+        post?: never;
+        /** Remove a day-2 policy */
+        delete: operations["deleteDay2Policy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/policies/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Which policies decide for a project, environment, item or action, and why */
+        post: operations["explainPolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vCenter, AWX and EfficientIP connections (secrets never returned) */
+        get: operations["getIntegrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/integrations/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["parameters"]["IntegrationKindPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a connection's settings
+         * @description Fields set by environment variables can't be changed here (ADR-0020).
+         *     rvav's processes use saved settings after they restart; the answer
+         *     says when a restart is needed.
+         */
+        put: operations["setIntegration"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/integrations/{kind}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["parameters"]["IntegrationKindPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a connection, with the saved settings or the ones given */
+        post: operations["testIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's API tokens (everyone's for administrators with all=true) */
+        get: operations["listApiTokens"];
+        put?: never;
+        /** Create an API token; its value is shown once */
+        post: operations["createApiToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a token (one's own, or anyone's for administrators) */
+        delete: operations["revokeApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audit log, newest first
+         * @description Administrators and auditors see everything; project admins see their projects' events.
+         */
+        get: operations["listAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -2241,8 +2900,7 @@ export interface components {
              * @description When the deployment will be deleted, once its lease expired.
              */
             deletes_at?: string | null;
-            /** @enum {string} */
-            expiry_action?: "power_off_then_delete" | "delete" | "notify_only";
+            expiry_action?: components["schemas"]["LeaseExpiryAction"];
         };
         /**
          * @description `drifted`: changed in vCenter outside rvav. `missing`: no longer found
@@ -2482,6 +3140,505 @@ export interface components {
              */
             type: "heartbeat" | "resync";
         };
+        UserList: {
+            items: components["schemas"]["UserRef"][];
+        };
+        AdminProject: components["schemas"]["Project"] & {
+            archived: boolean;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Members, direct or through a group. */
+            members: number;
+            /** @description Deployments not deleted. */
+            deployments: number;
+        };
+        AdminProjectList: {
+            items: components["schemas"]["AdminProject"][];
+        };
+        AdminProjectCreate: {
+            /** @description In VM names; it can't change later. */
+            code: string;
+            name: string;
+            description?: string;
+            cost_center?: string;
+            environments: components["schemas"]["EnvironmentKey"][];
+            /** @description Users made project admins of it. */
+            project_admins?: string[];
+        };
+        AdminProjectUpdate: {
+            name?: string;
+            description?: string;
+            cost_center?: string;
+            environments?: components["schemas"]["EnvironmentKey"][];
+            archived?: boolean;
+        };
+        ProjectMember: {
+            user: components["schemas"]["UserRef"];
+            role: components["schemas"]["ProjectRole"];
+            /** @description A member of the project itself (else only through groups). */
+            direct: boolean;
+            direct_role?: components["schemas"]["ProjectRole"];
+            /** @description OIDC groups that make them a member, at their last sign-in. */
+            groups: string[];
+        };
+        ProjectMemberList: {
+            items: components["schemas"]["ProjectMember"][];
+        };
+        ProjectMemberWrite: {
+            role: components["schemas"]["ProjectRole"];
+        };
+        GroupMapping: {
+            id: string;
+            oidc_group: string;
+            project?: components["schemas"]["ProjectRef"] | null;
+            /** @description A project role with a project (project-admin, member, viewer); a global role without (admin, catalog-admin, auditor). */
+            role: string;
+            /** @description Users in the group at their last sign-in. */
+            users?: number;
+        };
+        GroupMappingList: {
+            items: components["schemas"]["GroupMapping"][];
+        };
+        GroupMappingWrite: {
+            oidc_group: string;
+            project_id?: string;
+            /** @description project-admin, member or viewer with a project; admin, catalog-admin or auditor without. */
+            role: string;
+        };
+        AdminEnvironment: components["schemas"]["Environment"] & {
+            /** @description Snapshots kept per VM. */
+            snapshot_max_count: number;
+            /** @description Snapshots older are deleted; null keeps them. */
+            snapshot_max_age_days?: number | null;
+            /** @description Projects that deploy to it. */
+            readonly projects?: number;
+            /** @description Deployments in it, not deleted. */
+            readonly deployments?: number;
+        };
+        AdminEnvironmentList: {
+            items: components["schemas"]["AdminEnvironment"][];
+        };
+        AdminEnvironmentUpdate: {
+            name?: string;
+            production?: boolean;
+            order?: number;
+            snapshot_max_count?: number;
+            snapshot_max_age_days?: number | null;
+        };
+        PlacementRule: {
+            id: string;
+            project: components["schemas"]["ProjectRef"];
+            environment: components["schemas"]["EnvironmentKey"];
+            /** @description Lower first. */
+            priority: number;
+            /** @description Cluster or resource pool names; `*` matches any text (GVA-DEV-*). */
+            clusters: string[];
+            datastores: string[];
+            networks: string[];
+            /** @example /GVA/vm/rvav/web/dev */
+            folder: string;
+            /** @description vSphere tags (`category/tag`) a cluster must carry, all of them. */
+            cluster_tags: string[];
+            datastore_tags: string[];
+        };
+        PlacementRuleWrite: {
+            project_id: string;
+            environment: components["schemas"]["EnvironmentKey"];
+            /** @default 100 */
+            priority: number;
+            clusters: string[];
+            datastores: string[];
+            networks: string[];
+            folder: string;
+            cluster_tags?: string[];
+            datastore_tags?: string[];
+        };
+        PlacementRuleList: {
+            items: components["schemas"]["PlacementRule"][];
+        };
+        PlacementPreview: {
+            clusters: {
+                name: string;
+                hosts?: number;
+            }[];
+            datastores: {
+                name: string;
+                free_gb?: number;
+            }[];
+            networks: {
+                name: string;
+                subnet?: string;
+                dns_zone?: string;
+                /** @enum {string} */
+                source?: "manual" | "efficientip";
+            }[];
+            folder: string;
+            /** @description What stops a request here, for example a network with no subnet. */
+            problems: string[];
+        };
+        NetworkMapping: {
+            network: string;
+            /** @example 10.31.10.0/24 */
+            subnet: string;
+            gateway: string;
+            dns_zone: string;
+            dns_servers: string[];
+            /** @enum {string} */
+            source: "manual" | "efficientip";
+            /** @description The subnet's name in EfficientIP. */
+            subnet_name?: string;
+            /** Format: date-time */
+            synced_at?: string;
+        };
+        NetworkMappingWrite: {
+            subnet: string;
+            gateway: string;
+            dns_zone: string;
+            dns_servers?: string[];
+        };
+        NetworkMappingList: {
+            items: components["schemas"]["NetworkMapping"][];
+        };
+        /** @description Where something is offered; a null project or environment means all. */
+        Offer: {
+            project_id?: string | null;
+            environment?: components["schemas"]["EnvironmentKey"] | null;
+        };
+        VmTemplate: {
+            key: string;
+            /** @example RHEL 9.4 */
+            label: string;
+            /** @description A template's name in vCenter, or `library:<library>/<item>` for a content library item. */
+            vcenter_template: string;
+            /** @enum {string} */
+            os_family: "linux" | "windows";
+            /** @description A vCenter customization specification's name; empty for rvav's own (hostname and network). */
+            customization: string;
+            description: string;
+            offers: components["schemas"]["Offer"][];
+            /** @description vCenter has it now. */
+            readonly in_inventory: boolean;
+        };
+        VmTemplateWrite: {
+            key: string;
+            label: string;
+            vcenter_template: string;
+            /** @enum {string} */
+            os_family: "linux" | "windows";
+            customization?: string;
+            description?: string;
+            offers?: components["schemas"]["Offer"][];
+        };
+        VmTemplateList: {
+            items: components["schemas"]["VmTemplate"][];
+        };
+        SizePreset: {
+            /** @example M */
+            key: string;
+            /** @example Medium */
+            label: string;
+            vcpu: number;
+            memory_gb: number;
+            disk_gb: number;
+            offers: components["schemas"]["Offer"][];
+        };
+        SizePresetWrite: {
+            key: string;
+            label: string;
+            vcpu: number;
+            memory_gb: number;
+            disk_gb: number;
+            offers?: components["schemas"]["Offer"][];
+        };
+        SizePresetList: {
+            items: components["schemas"]["SizePreset"][];
+        };
+        NamingPolicy: {
+            id: string;
+            name: string;
+            /**
+             * @description `{project}`, `{environment}`, `{role}` (an input), `{seq:03}` (the
+             *     counter, zero-padded) and any input as `{inputs.x}`.
+             * @example {project}-{environment}-{role}{seq:03}
+             */
+            template: string;
+            /**
+             * @description One counter per name prefix (web-dev-app), or one for everything the policy names.
+             * @enum {string}
+             */
+            counter: "prefix" | "policy";
+            /** @description Where it applies; the most specific one wins (project and environment, project, environment, all). */
+            offers: components["schemas"]["Offer"][];
+        };
+        NamingPolicyWrite: {
+            name: string;
+            template: string;
+            /**
+             * @default prefix
+             * @enum {string}
+             */
+            counter: "prefix" | "policy";
+            offers?: components["schemas"]["Offer"][];
+        };
+        NamingPolicyList: {
+            items: components["schemas"]["NamingPolicy"][];
+        };
+        NamingPreviewQuery: {
+            template: string;
+            /**
+             * @default prefix
+             * @enum {string}
+             */
+            counter: "prefix" | "policy";
+            /** @description The policy being edited, for its counter. */
+            policy_id?: string;
+            project_id: string;
+            environment: components["schemas"]["EnvironmentKey"];
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** @default 3 */
+            count: number;
+        };
+        NamingPreview: {
+            /** @description The next names, nothing reserved. */
+            names: string[];
+            /** @description Names passed over because they are taken. */
+            skipped: {
+                name: string;
+                /** @enum {string} */
+                taken_in: "vcenter" | "dns" | "rvav";
+            }[];
+            problem?: string;
+        };
+        QuotaLimit: {
+            /** @description An environment's key, or empty for the project as a whole. */
+            environment: string;
+            resource: components["schemas"]["QuotaResource"];
+            /** @description Null for no limit. */
+            limit: number | null;
+            /** @enum {string} */
+            enforcement: "hard" | "soft";
+        };
+        QuotaLimitList: {
+            items: components["schemas"]["QuotaLimit"][];
+        };
+        LeasePolicy: {
+            environment: components["schemas"]["EnvironmentKey"];
+            /** @description A project's override of the environment's policy; null for the environment's own. */
+            project_id?: string | null;
+            /** @description Null for no lease. */
+            default_days?: number | null;
+            max_days?: number | null;
+            max_extensions: number;
+            grace_days: number;
+            expiry_action: components["schemas"]["LeaseExpiryAction"];
+        };
+        /**
+         * @description At the end of a lease: power off, then delete after the grace period; delete; or only tell the owner.
+         * @enum {string}
+         */
+        LeaseExpiryAction: "power_off_then_delete" | "delete" | "notify_only";
+        LeasePolicyList: {
+            items: components["schemas"]["LeasePolicy"][];
+        };
+        ApprovalLevel: {
+            name: string;
+            /** @description An OIDC group whose members approve. */
+            group?: string;
+            /** @description User IDs. */
+            approvers?: string[];
+            /**
+             * @default any
+             * @enum {string}
+             */
+            mode: "any" | "all";
+            /**
+             * @description A Go duration, for example 48h; empty for none.
+             * @example 48h
+             */
+            timeout?: string;
+            /** @enum {string} */
+            on_timeout?: "escalate" | "approve" | "reject";
+            escalate_to?: {
+                group?: string;
+                approvers?: string[];
+            };
+        };
+        ApprovalPolicyWrite: {
+            name: string;
+            /** @description What the requester is told. */
+            reason?: string;
+            /** @description CEL over inputs, environment, project, item, vm, user and quota. */
+            condition: string;
+            item_type?: components["schemas"]["CatalogItemType"] | null;
+            project_id?: string | null;
+            levels: components["schemas"]["ApprovalLevel"][];
+            /** @default 100 */
+            priority: number;
+            /** @default true */
+            enabled: boolean;
+            /** @description CEL; when true the policy is met without anyone. */
+            auto_approve?: string | null;
+        };
+        ApprovalPolicy: components["schemas"]["ApprovalPolicyWrite"] & {
+            id: string;
+        };
+        ApprovalPolicyList: {
+            items: components["schemas"]["ApprovalPolicy"][];
+        };
+        Day2PolicyWrite: {
+            name: string;
+            reason?: string;
+            /** @default 100 */
+            priority: number;
+            /** @description Action keys or patterns (delete, snapshot_*, awx.*, *). */
+            actions?: string[];
+            /** @description owner, viewer, member, project-admin, admin; empty for anyone. */
+            roles?: string[];
+            /** @default true */
+            condition: string;
+            /** @enum {string} */
+            effect: "allow" | "deny" | "approval";
+            levels?: components["schemas"]["ApprovalLevel"][];
+            project_id?: string | null;
+            /** @default true */
+            enabled: boolean;
+        };
+        Day2Policy: components["schemas"]["Day2PolicyWrite"] & {
+            id: string;
+        };
+        Day2PolicyList: {
+            items: components["schemas"]["Day2Policy"][];
+        };
+        PolicyExplainQuery: {
+            project_id: string;
+            environment: components["schemas"]["EnvironmentKey"];
+            /** @description A catalog item, for approval policies. */
+            item_id?: string;
+            /** @description A day-2 action key, for day-2 policies. */
+            action?: string;
+            /** @description Sample inputs for the conditions. */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** @description Whose roles the day-2 policies see; default the caller. */
+            as_user_id?: string;
+        };
+        PolicyDecision: {
+            /** @description The policy that decides, by name; null when none applies. */
+            decided_by: string | null;
+            /** @description What it means here, in words. */
+            outcome?: string;
+            considered: {
+                id: string;
+                name: string;
+                applies: boolean;
+                why: string;
+            }[];
+        };
+        PolicyExplanation: {
+            approval?: components["schemas"]["PolicyDecision"];
+            day2?: components["schemas"]["PolicyDecision"];
+            lease: components["schemas"]["PolicyDecision"];
+            naming: components["schemas"]["PolicyDecision"];
+            quota: components["schemas"]["QuotaUsage"][];
+        };
+        /** @enum {string} */
+        IntegrationKind: "vcenter" | "awx" | "efficientip";
+        Integration: {
+            kind: components["schemas"]["IntegrationKind"];
+            configured: boolean;
+            /**
+             * @description vcenter: url, username, insecure, name. awx: url, organization,
+             *     catalog_labels, action_labels, inventory_source_id, insecure.
+             *     efficientip: url, username, dns_server, instance_id, insecure.
+             */
+            settings: {
+                [key: string]: unknown;
+            };
+            /** @description The password or token is stored (it is never returned). */
+            secret_set: boolean;
+            /** @description Settings an environment variable sets, which win and can't be changed here. */
+            locked: string[];
+            /** @description Saved settings differ from what rvav's processes started with. */
+            restart_needed: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+            updated_by?: components["schemas"]["UserRef"];
+        };
+        IntegrationList: {
+            items: components["schemas"]["Integration"][];
+        };
+        IntegrationWrite: {
+            settings: {
+                [key: string]: unknown;
+            };
+            /** @description The password or token; omit to keep the stored one. */
+            secret?: string;
+        };
+        IntegrationTest: {
+            ok: boolean;
+            checks: {
+                /** @example Sign in */
+                name: string;
+                ok: boolean;
+                message: string;
+            }[];
+        };
+        ApiToken: {
+            id: string;
+            name: string;
+            /**
+             * @description all acts as the user; inventory only reads the Ansible inventory.
+             * @enum {string}
+             */
+            scope: "all" | "inventory";
+            user: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            last_used_at?: string;
+        };
+        ApiTokenCreate: {
+            name: string;
+            /**
+             * @default all
+             * @enum {string}
+             */
+            scope: "all" | "inventory";
+            /** Format: date-time */
+            expires_at?: string;
+        };
+        ApiTokenCreated: components["schemas"]["ApiToken"] & {
+            /** @description Shown this once. */
+            token: string;
+        };
+        ApiTokenList: {
+            items: components["schemas"]["ApiToken"][];
+        };
+        AuditEvent: {
+            id: string;
+            /** Format: date-time */
+            at: string;
+            /** @description Null when rvav itself acted (a timeout, an auto-approval). */
+            actor?: components["schemas"]["UserRef"] | null;
+            /** @example catalog.version.publish */
+            action: string;
+            target_type: string;
+            target_id: string;
+            project?: components["schemas"]["ProjectRef"] | null;
+            detail: {
+                [key: string]: unknown;
+            };
+        };
+        AuditEventPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["AuditEvent"][];
+        };
     };
     responses: {
         /** @description The request is malformed */
@@ -2560,6 +3717,10 @@ export interface components {
         ApprovalIdPath: string;
         /** @description Request ID or number (for example `REQ-10491`). */
         RequestIdPath: string;
+        UserIdPath: string;
+        IdPath: string;
+        KeyPath: string;
+        IntegrationKindPath: components["schemas"]["IntegrationKind"];
         /** @description Free-text search. */
         Search: string;
         Limit: number;
@@ -4402,6 +5563,1489 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    searchUsers: {
+        parameters: {
+            query?: {
+                /** @description Free-text search. */
+                q?: components["parameters"]["Search"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listAdminProjects: {
+        parameters: {
+            query?: {
+                /** @description Free-text search. */
+                q?: components["parameters"]["Search"];
+                /** @description Archived projects too. */
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProjectList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProject"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getAdminProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProject"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProject"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listProjectMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemberList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+                userId: components["parameters"]["UserIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMemberWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMember"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+                userId: components["parameters"]["UserIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listGroupMappings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMappingList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGroupMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMappingWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMapping"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteGroupMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAdminEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEnvironmentList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminEnvironment"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEnvironment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminEnvironmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEnvironment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listPlacementRules: {
+        parameters: {
+            query?: {
+                project_id?: components["parameters"]["ProjectIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementRuleList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPlacementRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlacementRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementRule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updatePlacementRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlacementRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementRule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deletePlacementRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewPlacement: {
+        parameters: {
+            query: {
+                project_id: components["parameters"]["ProjectIdQueryRequired"];
+                environment: components["schemas"]["EnvironmentKey"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementPreview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listNetworkMappings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMappingList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setNetworkMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                network: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkMappingWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMapping"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteNetworkMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                network: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVmTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmTemplateList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createVmTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VmTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateVmTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VmTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteVmTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSizePresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizePresetList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createSizePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SizePresetWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizePreset"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateSizePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SizePresetWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizePreset"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteSizePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listNamingPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamingPolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNamingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamingPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamingPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateNamingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamingPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamingPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteNamingPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewNaming: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamingPreviewQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamingPreview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getProjectQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotaLimitList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProjectQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotaLimitList"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotaLimitList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listLeasePolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeasePolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setLeasePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeasePolicy"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeasePolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteLeasePolicy: {
+        parameters: {
+            query: {
+                environment: components["schemas"]["EnvironmentKey"];
+                project_id: components["parameters"]["ProjectIdQueryRequired"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listApprovalPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listDay2Policies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2PolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDay2Policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2PolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2Policy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateDay2Policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2PolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2Policy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteDay2Policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    explainPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyExplainQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyExplanation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["parameters"]["IntegrationKindPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    testIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["parameters"]["IntegrationKindPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IntegrationWrite"];
+            };
+        };
+        responses: {
+            /** @description The checks, passed or not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listApiTokens: {
+        parameters: {
+            query?: {
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenCreated"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    revokeApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Free-text search. */
+                q?: components["parameters"]["Search"];
+                /** @description A user ID. */
+                actor?: string;
+                /** @description An action or a prefix ending in `.`, for example `catalog.`. */
+                action?: string;
+                project_id?: components["parameters"]["ProjectIdQuery"];
+                from?: string;
+                to?: string;
+                /** @description csv answers every matching event as a CSV file. */
+                format?: "json" | "csv";
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventPage"];
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     streamEvents: {

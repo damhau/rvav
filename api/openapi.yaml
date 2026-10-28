@@ -1467,6 +1467,1000 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  # ── Administration (S9, ADR-0020) ─────────────────────────────────────
+  /users:
+    get:
+      tags: [identity]
+      operationId: searchUsers
+      summary: People rvav knows, by name or email, for pickers
+      description: |
+        Everyone who has signed in at least once (or was seeded). Any signed-in
+        user may search: approvers delegate to people outside their projects.
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/projects:
+    get:
+      tags: [admin]
+      operationId: listAdminProjects
+      summary: Every project, archived ones on request, with member counts
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - name: archived
+          in: query
+          description: Archived projects too.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProjectList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createProject
+      summary: Create a project (administrators)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProjectCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProject" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/projects/{projectId}:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [admin]
+      operationId: getAdminProject
+      summary: A project with its settings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProject" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [admin]
+      operationId: updateProject
+      summary: Change a project, or archive it (administrators)
+      description: |
+        An archived project can't request anything new; its deployments,
+        leases and day-2 actions go on. Unarchiving gives it back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProjectUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProject" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /projects/{projectId}/members:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [projects]
+      operationId: listProjectMembers
+      summary: A project's members, direct and through OIDC groups
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectMemberList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /projects/{projectId}/members/{userId}:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+      - { $ref: "#/components/parameters/UserIdPath" }
+    put:
+      tags: [projects]
+      operationId: setProjectMember
+      summary: Add a member or change their role (project admins and administrators)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectMemberWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectMember" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [projects]
+      operationId: removeProjectMember
+      summary: Remove a direct member (project admins and administrators)
+      description: A project keeps at least one project admin. Members through a group are removed from the group mapping.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/group-mappings:
+    get:
+      tags: [admin]
+      operationId: listGroupMappings
+      summary: OIDC groups mapped to project and global roles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupMappingList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createGroupMapping
+      summary: Map an OIDC group to a role, in a project or globally
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupMappingWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupMapping" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/group-mappings/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    delete:
+      tags: [admin]
+      operationId: deleteGroupMapping
+      summary: Remove a group mapping
+      description: The last mapping that makes anyone an administrator can't be removed.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/environments:
+    post:
+      tags: [admin]
+      operationId: createEnvironment
+      summary: Add an environment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminEnvironment" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminEnvironment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [admin]
+      operationId: listAdminEnvironments
+      summary: Environments with their settings and use
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminEnvironmentList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/environments/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    patch:
+      tags: [admin]
+      operationId: updateEnvironment
+      summary: Rename, reorder or flag an environment; its snapshot retention
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminEnvironmentUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminEnvironment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteEnvironment
+      summary: Remove an environment nothing uses
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/placement-rules:
+    get:
+      tags: [admin]
+      operationId: listPlacementRules
+      summary: Placement rules, of a project or all
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacementRuleList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createPlacementRule
+      summary: Add a placement rule for a project and environment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlacementRuleWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacementRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/placement-rules/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updatePlacementRule
+      summary: Change a placement rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlacementRuleWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacementRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deletePlacementRule
+      summary: Remove a placement rule
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/placement-preview:
+    get:
+      tags: [admin]
+      operationId: previewPlacement
+      summary: What a project and environment can use now
+      description: The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+        - name: environment
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/EnvironmentKey" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacementPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/network-mappings:
+    get:
+      tags: [admin]
+      operationId: listNetworkMappings
+      summary: vSphere networks and their subnets, set by hand or from EfficientIP
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkMappingList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/network-mappings/{network}:
+    parameters:
+      - name: network
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      tags: [admin]
+      operationId: setNetworkMapping
+      summary: Set a network's subnet by hand; it wins over EfficientIP's
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkMappingWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkMapping" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteNetworkMapping
+      summary: Remove a mapping set by hand (EfficientIP's comes back at the next sync)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/templates:
+    get:
+      tags: [admin]
+      operationId: listVmTemplates
+      summary: Templates offered to projects (vRA image mappings)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VmTemplateList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createVmTemplate
+      summary: Offer a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VmTemplateWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VmTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/templates/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    put:
+      tags: [admin]
+      operationId: updateVmTemplate
+      summary: Change a template or who it is offered to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VmTemplateWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VmTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteVmTemplate
+      summary: Stop offering a template
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/sizes:
+    get:
+      tags: [admin]
+      operationId: listSizePresets
+      summary: Size presets offered to projects (vRA flavour mappings)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SizePresetList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createSizePreset
+      summary: Add a size preset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SizePresetWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SizePreset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/sizes/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    put:
+      tags: [admin]
+      operationId: updateSizePreset
+      summary: Change a size preset or who it is offered to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SizePresetWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SizePreset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteSizePreset
+      summary: Remove a size preset
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/naming-policies:
+    get:
+      tags: [admin]
+      operationId: listNamingPolicies
+      summary: Naming policies and where they apply
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NamingPolicyList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createNamingPolicy
+      summary: Add a naming policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NamingPolicyWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NamingPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/naming-policies/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateNamingPolicy
+      summary: Change a naming policy; names already given are never given again
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NamingPolicyWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NamingPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteNamingPolicy
+      summary: Remove a naming policy
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/naming-preview:
+    post:
+      tags: [admin]
+      operationId: previewNaming
+      summary: The next names a template would give, checked against vCenter, DNS and rvav
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NamingPreviewQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NamingPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/projects/{projectId}/quotas:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [admin]
+      operationId: getProjectQuotas
+      summary: A project's quota limits, per environment or for all
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaLimitList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: setProjectQuotas
+      summary: Replace a project's quota limits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuotaLimitList" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaLimitList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/lease-policies:
+    get:
+      tags: [admin]
+      operationId: listLeasePolicies
+      summary: Lease policies per environment, and projects' overrides
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeasePolicyList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      operationId: setLeasePolicy
+      summary: Set an environment's lease policy, or a project's override of it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeasePolicy" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeasePolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteLeasePolicy
+      summary: Remove a project's override (an environment's own policy stays)
+      parameters:
+        - name: environment
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/EnvironmentKey" }
+        - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/approval-policies:
+    get:
+      tags: [admin]
+      operationId: listApprovalPolicies
+      summary: Approval policies, in the order they are tried
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalPolicyList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createApprovalPolicy
+      summary: Add an approval policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalPolicyWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/approval-policies/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateApprovalPolicy
+      summary: Change an approval policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalPolicyWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteApprovalPolicy
+      summary: Remove an approval policy (approvals it started go on)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/day2-policies:
+    get:
+      tags: [admin]
+      operationId: listDay2Policies
+      summary: Day-2 policies, in the order they are tried
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2PolicyList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createDay2Policy
+      summary: Add a day-2 policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2PolicyWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2Policy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/day2-policies/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateDay2Policy
+      summary: Change a day-2 policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2PolicyWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2Policy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteDay2Policy
+      summary: Remove a day-2 policy
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/policies/explain:
+    post:
+      tags: [admin]
+      operationId: explainPolicies
+      summary: Which policies decide for a project, environment, item or action, and why
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PolicyExplainQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PolicyExplanation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/integrations:
+    get:
+      tags: [admin]
+      operationId: getIntegrations
+      summary: The vCenter, AWX and EfficientIP connections (secrets never returned)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntegrationList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/integrations/{kind}:
+    parameters:
+      - { $ref: "#/components/parameters/IntegrationKindPath" }
+    put:
+      tags: [admin]
+      operationId: setIntegration
+      summary: Save a connection's settings
+      description: |
+        Fields set by environment variables can't be changed here (ADR-0020).
+        rvav's processes use saved settings after they restart; the answer
+        says when a restart is needed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IntegrationWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Integration" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/integrations/{kind}/test:
+    parameters:
+      - { $ref: "#/components/parameters/IntegrationKindPath" }
+    post:
+      tags: [admin]
+      operationId: testIntegration
+      summary: Test a connection, with the saved settings or the ones given
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IntegrationWrite" }
+      responses:
+        "200":
+          description: The checks, passed or not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntegrationTest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /tokens:
+    get:
+      tags: [identity]
+      operationId: listApiTokens
+      summary: The caller's API tokens (everyone's for administrators with all=true)
+      parameters:
+        - name: all
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiTokenList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [identity]
+      operationId: createApiToken
+      summary: Create an API token; its value is shown once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApiTokenCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiTokenCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /tokens/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    delete:
+      tags: [identity]
+      operationId: revokeApiToken
+      summary: Revoke a token (one's own, or anyone's for administrators)
+      responses:
+        "204": { description: Revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /audit:
+    get:
+      tags: [admin]
+      operationId: listAuditEvents
+      summary: The audit log, newest first
+      description: Administrators and auditors see everything; project admins see their projects' events.
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - name: actor
+          in: query
+          description: A user ID.
+          schema: { type: string }
+        - name: action
+          in: query
+          description: An action or a prefix ending in `.`, for example `catalog.`.
+          schema: { type: string }
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: format
+          in: query
+          description: csv answers every matching event as a CSV file.
+          schema: { type: string, enum: [json, csv], default: json }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditEventPage" }
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /events:
     get:
       tags: [events]
@@ -1554,6 +2548,26 @@ components:
       required: true
       description: Request ID or number (for example `REQ-10491`).
       schema: { type: string }
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    KeyPath:
+      name: key
+      in: path
+      required: true
+      schema: { type: string }
+    IntegrationKindPath:
+      name: kind
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/IntegrationKind" }
     Search:
       name: q
       in: query
@@ -3080,9 +4094,7 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the deployment will be deleted, once its lease expired.
-        expiry_action:
-          type: string
-          enum: [power_off_then_delete, delete, notify_only]
+        expiry_action: { $ref: "#/components/schemas/LeaseExpiryAction" }
 
     SyncState:
       type: string
@@ -3368,3 +4380,680 @@ components:
           required: [type]
           properties:
             type: { type: string, enum: [heartbeat, resync] }
+
+    # ── Administration (S9, ADR-0020) ─────────────────────────────────────
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UserRef" }
+    AdminProject:
+      allOf:
+        - $ref: "#/components/schemas/Project"
+        - type: object
+          required: [archived, created_at, members, deployments]
+          properties:
+            archived: { type: boolean }
+            archived_at: { type: string, format: date-time }
+            created_at: { type: string, format: date-time }
+            members: { type: integer, description: "Members, direct or through a group." }
+            deployments: { type: integer, description: Deployments not deleted. }
+    AdminProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminProject" }
+    AdminProjectCreate:
+      type: object
+      required: [code, name, environments]
+      additionalProperties: false
+      properties:
+        code: { type: string, pattern: "^[a-z][a-z0-9]{1,7}$", description: In VM names; it can't change later. }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        cost_center: { type: string, maxLength: 40 }
+        environments:
+          type: array
+          items: { $ref: "#/components/schemas/EnvironmentKey" }
+        project_admins:
+          type: array
+          description: Users made project admins of it.
+          items: { type: string }
+    AdminProjectUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        cost_center: { type: string, maxLength: 40 }
+        environments:
+          type: array
+          items: { $ref: "#/components/schemas/EnvironmentKey" }
+        archived: { type: boolean }
+    ProjectMember:
+      type: object
+      required: [user, role, direct, groups]
+      properties:
+        user: { $ref: "#/components/schemas/UserRef" }
+        role: { $ref: "#/components/schemas/ProjectRole" }
+        direct:
+          type: boolean
+          description: A member of the project itself (else only through groups).
+        direct_role:
+          $ref: "#/components/schemas/ProjectRole"
+        groups:
+          type: array
+          description: OIDC groups that make them a member, at their last sign-in.
+          items: { type: string }
+    ProjectMemberList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectMember" }
+    ProjectMemberWrite:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role: { $ref: "#/components/schemas/ProjectRole" }
+    GroupMapping:
+      type: object
+      required: [id, oidc_group, role]
+      properties:
+        id: { type: string }
+        oidc_group: { type: string }
+        project:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        role:
+          type: string
+          description: "A project role with a project (project-admin, member, viewer); a global role without (admin, catalog-admin, auditor)."
+        users:
+          type: integer
+          description: Users in the group at their last sign-in.
+    GroupMappingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GroupMapping" }
+    GroupMappingWrite:
+      type: object
+      required: [oidc_group, role]
+      additionalProperties: false
+      properties:
+        oidc_group: { type: string, minLength: 1, maxLength: 200 }
+        project_id: { type: string }
+        role: { type: string, description: "project-admin, member or viewer with a project; admin, catalog-admin or auditor without." }
+    AdminEnvironment:
+      allOf:
+        - $ref: "#/components/schemas/Environment"
+        - type: object
+          required: [snapshot_max_count]
+          properties:
+            snapshot_max_count: { type: integer, minimum: 0, description: Snapshots kept per VM. }
+            snapshot_max_age_days:
+              type: [integer, "null"]
+              minimum: 1
+              description: Snapshots older are deleted; null keeps them.
+            projects: { type: integer, readOnly: true, description: Projects that deploy to it. }
+            deployments: { type: integer, readOnly: true, description: "Deployments in it, not deleted." }
+    AdminEnvironmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminEnvironment" }
+    AdminEnvironmentUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 40 }
+        production: { type: boolean }
+        order: { type: integer }
+        snapshot_max_count: { type: integer, minimum: 0 }
+        snapshot_max_age_days: { type: [integer, "null"], minimum: 1 }
+    PlacementRule:
+      type: object
+      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags]
+      properties:
+        id: { type: string }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        priority: { type: integer, description: Lower first. }
+        clusters:
+          type: array
+          description: Cluster or resource pool names; `*` matches any text (GVA-DEV-*).
+          items: { type: string }
+        datastores:
+          type: array
+          items: { type: string }
+        networks:
+          type: array
+          items: { type: string }
+        folder: { type: string, examples: [/GVA/vm/rvav/web/dev] }
+        cluster_tags:
+          type: array
+          description: vSphere tags (`category/tag`) a cluster must carry, all of them.
+          items: { type: string }
+        datastore_tags:
+          type: array
+          items: { type: string }
+    PlacementRuleWrite:
+      type: object
+      required: [project_id, environment, clusters, datastores, networks, folder]
+      additionalProperties: false
+      properties:
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        priority: { type: integer, default: 100 }
+        clusters: { type: array, items: { type: string } }
+        datastores: { type: array, items: { type: string } }
+        networks: { type: array, items: { type: string } }
+        folder: { type: string }
+        cluster_tags: { type: array, items: { type: string } }
+        datastore_tags: { type: array, items: { type: string } }
+    PlacementRuleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PlacementRule" }
+    PlacementPreview:
+      type: object
+      required: [clusters, datastores, networks, folder, problems]
+      properties:
+        clusters:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              hosts: { type: integer }
+        datastores:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              free_gb: { type: integer }
+        networks:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              subnet: { type: string }
+              dns_zone: { type: string }
+              source: { type: string, enum: [manual, efficientip] }
+        folder: { type: string }
+        problems:
+          type: array
+          description: What stops a request here, for example a network with no subnet.
+          items: { type: string }
+    NetworkMapping:
+      type: object
+      required: [network, subnet, gateway, dns_zone, dns_servers, source]
+      properties:
+        network: { type: string }
+        subnet: { type: string, examples: [10.31.10.0/24] }
+        gateway: { type: string }
+        dns_zone: { type: string }
+        dns_servers: { type: array, items: { type: string } }
+        source: { type: string, enum: [manual, efficientip] }
+        subnet_name: { type: string, description: The subnet's name in EfficientIP. }
+        synced_at: { type: string, format: date-time }
+    NetworkMappingWrite:
+      type: object
+      required: [subnet, gateway, dns_zone]
+      additionalProperties: false
+      properties:
+        subnet: { type: string }
+        gateway: { type: string }
+        dns_zone: { type: string }
+        dns_servers: { type: array, items: { type: string } }
+    NetworkMappingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NetworkMapping" }
+    Offer:
+      type: object
+      description: Where something is offered; a null project or environment means all.
+      properties:
+        project_id: { type: [string, "null"] }
+        environment:
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+    VmTemplate:
+      type: object
+      required: [key, label, vcenter_template, os_family, customization, description, offers, in_inventory]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
+        label: { type: string, examples: [RHEL 9.4] }
+        vcenter_template:
+          type: string
+          description: A template's name in vCenter, or `library:<library>/<item>` for a content library item.
+        os_family: { type: string, enum: [linux, windows] }
+        customization:
+          type: string
+          description: A vCenter customization specification's name; empty for rvav's own (hostname and network).
+        description: { type: string }
+        offers:
+          type: array
+          items: { $ref: "#/components/schemas/Offer" }
+        in_inventory: { type: boolean, readOnly: true, description: vCenter has it now. }
+    VmTemplateWrite:
+      type: object
+      required: [key, label, vcenter_template, os_family]
+      additionalProperties: false
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        vcenter_template: { type: string, minLength: 1 }
+        os_family: { type: string, enum: [linux, windows] }
+        customization: { type: string }
+        description: { type: string, maxLength: 500 }
+        offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
+    VmTemplateList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VmTemplate" }
+    SizePreset:
+      type: object
+      required: [key, label, vcpu, memory_gb, disk_gb, offers]
+      properties:
+        key: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,15}$", examples: [M] }
+        label: { type: string, examples: [Medium] }
+        vcpu: { type: integer, minimum: 1, maximum: 128 }
+        memory_gb: { type: integer, minimum: 1, maximum: 2048 }
+        disk_gb: { type: integer, minimum: 1, maximum: 65536 }
+        offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
+    SizePresetWrite:
+      type: object
+      required: [key, label, vcpu, memory_gb, disk_gb]
+      additionalProperties: false
+      properties:
+        key: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,15}$" }
+        label: { type: string, minLength: 1, maxLength: 40 }
+        vcpu: { type: integer, minimum: 1, maximum: 128 }
+        memory_gb: { type: integer, minimum: 1, maximum: 2048 }
+        disk_gb: { type: integer, minimum: 1, maximum: 65536 }
+        offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
+    SizePresetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SizePreset" }
+    NamingPolicy:
+      type: object
+      required: [id, name, template, counter, offers]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        template:
+          type: string
+          description: |
+            `{project}`, `{environment}`, `{role}` (an input), `{seq:03}` (the
+            counter, zero-padded) and any input as `{inputs.x}`.
+          examples: ["{project}-{environment}-{role}{seq:03}"]
+        counter:
+          type: string
+          enum: [prefix, policy]
+          description: One counter per name prefix (web-dev-app), or one for everything the policy names.
+        offers:
+          type: array
+          description: Where it applies; the most specific one wins (project and environment, project, environment, all).
+          items: { $ref: "#/components/schemas/Offer" }
+    NamingPolicyWrite:
+      type: object
+      required: [name, template]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        template: { type: string, minLength: 1, maxLength: 120 }
+        counter: { type: string, enum: [prefix, policy], default: prefix }
+        offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
+    NamingPolicyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NamingPolicy" }
+    NamingPreviewQuery:
+      type: object
+      required: [template, project_id, environment]
+      additionalProperties: false
+      properties:
+        template: { type: string }
+        counter: { type: string, enum: [prefix, policy], default: prefix }
+        policy_id: { type: string, description: "The policy being edited, for its counter." }
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        inputs: { type: object, additionalProperties: true }
+        count: { type: integer, minimum: 1, maximum: 10, default: 3 }
+    NamingPreview:
+      type: object
+      required: [names, skipped]
+      properties:
+        names:
+          type: array
+          description: The next names, nothing reserved.
+          items: { type: string }
+        skipped:
+          type: array
+          description: Names passed over because they are taken.
+          items:
+            type: object
+            required: [name, taken_in]
+            properties:
+              name: { type: string }
+              taken_in: { type: string, enum: [vcenter, dns, rvav] }
+        problem: { type: string }
+    QuotaLimit:
+      type: object
+      required: [environment, resource, limit, enforcement]
+      properties:
+        environment:
+          type: string
+          description: An environment's key, or empty for the project as a whole.
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        limit: { type: [integer, "null"], minimum: 0, description: Null for no limit. }
+        enforcement: { type: string, enum: [hard, soft] }
+    QuotaLimitList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/QuotaLimit" }
+    LeasePolicy:
+      type: object
+      required: [environment, max_extensions, grace_days, expiry_action]
+      properties:
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        project_id:
+          type: [string, "null"]
+          description: A project's override of the environment's policy; null for the environment's own.
+        default_days: { type: [integer, "null"], minimum: 1, description: Null for no lease. }
+        max_days: { type: [integer, "null"], minimum: 1 }
+        max_extensions: { type: integer, minimum: 0 }
+        grace_days: { type: integer, minimum: 0 }
+        expiry_action: { $ref: "#/components/schemas/LeaseExpiryAction" }
+    LeaseExpiryAction:
+      type: string
+      description: "At the end of a lease: power off, then delete after the grace period; delete; or only tell the owner."
+      enum: [power_off_then_delete, delete, notify_only]
+    LeasePolicyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/LeasePolicy" }
+    ApprovalLevel:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        group: { type: string, description: An OIDC group whose members approve. }
+        approvers: { type: array, items: { type: string }, description: User IDs. }
+        mode: { type: string, enum: [any, all], default: any }
+        timeout: { type: string, description: "A Go duration, for example 48h; empty for none.", examples: [48h] }
+        on_timeout: { type: string, enum: [escalate, approve, reject] }
+        escalate_to:
+          type: object
+          properties:
+            group: { type: string }
+            approvers: { type: array, items: { type: string } }
+    ApprovalPolicyWrite:
+      type: object
+      required: [name, condition, levels]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        reason: { type: string, description: What the requester is told. }
+        condition: { type: string, description: "CEL over inputs, environment, project, item, vm, user and quota." }
+        item_type:
+          oneOf:
+            - $ref: "#/components/schemas/CatalogItemType"
+            - type: "null"
+        project_id: { type: [string, "null"] }
+        levels: { type: array, items: { $ref: "#/components/schemas/ApprovalLevel" } }
+        priority: { type: integer, default: 100 }
+        enabled: { type: boolean, default: true }
+        auto_approve: { type: [string, "null"], description: CEL; when true the policy is met without anyone. }
+    ApprovalPolicy:
+      allOf:
+        - $ref: "#/components/schemas/ApprovalPolicyWrite"
+        - type: object
+          required: [id, priority, enabled, reason]
+          properties:
+            id: { type: string }
+    ApprovalPolicyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ApprovalPolicy" }
+    Day2PolicyWrite:
+      type: object
+      required: [name, effect]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        reason: { type: string }
+        priority: { type: integer, default: 100 }
+        actions:
+          type: array
+          description: Action keys or patterns (delete, snapshot_*, awx.*, *).
+          items: { type: string }
+        roles:
+          type: array
+          description: owner, viewer, member, project-admin, admin; empty for anyone.
+          items: { type: string }
+        condition: { type: string, default: "true" }
+        effect: { type: string, enum: [allow, deny, approval] }
+        levels: { type: array, items: { $ref: "#/components/schemas/ApprovalLevel" } }
+        project_id: { type: [string, "null"] }
+        enabled: { type: boolean, default: true }
+    Day2Policy:
+      allOf:
+        - $ref: "#/components/schemas/Day2PolicyWrite"
+        - type: object
+          required: [id, priority, actions, roles, condition, enabled, reason]
+          properties:
+            id: { type: string }
+    Day2PolicyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Day2Policy" }
+    PolicyExplainQuery:
+      type: object
+      required: [project_id, environment]
+      additionalProperties: false
+      properties:
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        item_id: { type: string, description: "A catalog item, for approval policies." }
+        action: { type: string, description: "A day-2 action key, for day-2 policies." }
+        inputs: { type: object, additionalProperties: true, description: Sample inputs for the conditions. }
+        as_user_id: { type: string, description: Whose roles the day-2 policies see; default the caller. }
+    PolicyDecision:
+      type: object
+      required: [decided_by, considered]
+      properties:
+        decided_by:
+          type: [string, "null"]
+          description: The policy that decides, by name; null when none applies.
+        outcome: { type: string, description: "What it means here, in words." }
+        considered:
+          type: array
+          items:
+            type: object
+            required: [id, name, applies, why]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              applies: { type: boolean }
+              why: { type: string }
+    PolicyExplanation:
+      type: object
+      required: [lease, quota, naming]
+      properties:
+        approval: { $ref: "#/components/schemas/PolicyDecision" }
+        day2: { $ref: "#/components/schemas/PolicyDecision" }
+        lease: { $ref: "#/components/schemas/PolicyDecision" }
+        naming: { $ref: "#/components/schemas/PolicyDecision" }
+        quota:
+          type: array
+          items: { $ref: "#/components/schemas/QuotaUsage" }
+    IntegrationKind:
+      type: string
+      enum: [vcenter, awx, efficientip]
+    Integration:
+      type: object
+      required: [kind, configured, settings, secret_set, locked, restart_needed]
+      properties:
+        kind: { $ref: "#/components/schemas/IntegrationKind" }
+        configured: { type: boolean }
+        settings:
+          type: object
+          additionalProperties: true
+          description: |
+            vcenter: url, username, insecure, name. awx: url, organization,
+            catalog_labels, action_labels, inventory_source_id, insecure.
+            efficientip: url, username, dns_server, instance_id, insecure.
+        secret_set:
+          type: boolean
+          description: The password or token is stored (it is never returned).
+        locked:
+          type: array
+          description: Settings an environment variable sets, which win and can't be changed here.
+          items: { type: string }
+        restart_needed:
+          type: boolean
+          description: Saved settings differ from what rvav's processes started with.
+        updated_at: { type: string, format: date-time }
+        updated_by: { $ref: "#/components/schemas/UserRef" }
+    IntegrationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Integration" }
+    IntegrationWrite:
+      type: object
+      required: [settings]
+      additionalProperties: false
+      properties:
+        settings: { type: object, additionalProperties: true }
+        secret:
+          type: string
+          writeOnly: true
+          description: The password or token; omit to keep the stored one.
+    IntegrationTest:
+      type: object
+      required: [ok, checks]
+      properties:
+        ok: { type: boolean }
+        checks:
+          type: array
+          items:
+            type: object
+            required: [name, ok, message]
+            properties:
+              name: { type: string, examples: [Sign in] }
+              ok: { type: boolean }
+              message: { type: string }
+    ApiToken:
+      type: object
+      required: [id, name, scope, user, created_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        scope:
+          type: string
+          enum: [all, inventory]
+          description: all acts as the user; inventory only reads the Ansible inventory.
+        user: { $ref: "#/components/schemas/UserRef" }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time }
+    ApiTokenCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        scope: { type: string, enum: [all, inventory], default: all }
+        expires_at: { type: string, format: date-time }
+    ApiTokenCreated:
+      allOf:
+        - $ref: "#/components/schemas/ApiToken"
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: Shown this once. }
+    ApiTokenList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ApiToken" }
+    AuditEvent:
+      type: object
+      required: [id, at, action, target_type, target_id, detail]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        actor:
+          oneOf:
+            - $ref: "#/components/schemas/UserRef"
+            - type: "null"
+          description: Null when rvav itself acted (a timeout, an auto-approval).
+        action: { type: string, examples: [catalog.version.publish] }
+        target_type: { type: string }
+        target_id: { type: string }
+        project:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        detail: { type: object, additionalProperties: true }
+    AuditEventPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/AuditEvent" }
