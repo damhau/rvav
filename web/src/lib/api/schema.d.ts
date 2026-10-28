@@ -21,6 +21,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's notifications, newest first */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark notifications read, the ones given or all of them */
+        post: operations["markNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The channels the caller chose per kind, and which can reach them */
+        get: operations["getNotificationPreferences"];
+        /** Choose the channels per kind and the language of what is sent */
+        put: operations["setNotificationPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notification-preferences/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send the caller a test message on a channel, now */
+        post: operations["testNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/teams/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Microsoft Teams' calls to rvav's bot (Approve and Reject on a card)
+         * @description Authenticated by the Bot Framework token in `Authorization`, not by
+         *     an rvav token (ADR-0023). An `invoke` activity named
+         *     `adaptiveCard/action` decides an approval as the user the card was
+         *     sent to and answers with the card updated; other activities are
+         *     acknowledged.
+         */
+        post: operations["teamsMessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/slack/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack's calls when someone presses Approve or Reject, or sends the reject dialog
+         * @description Authenticated by Slack's `X-Slack-Signature` over the body and
+         *     `X-Slack-Request-Timestamp`, not by an rvav token (ADR-0023).
+         */
+        post: operations["slackInteractions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/environments": {
         parameters: {
             query?: never;
@@ -3741,8 +3855,97 @@ export interface components {
             /** @description Held by requests not done yet. */
             reserved: number;
         };
+        /**
+         * @description What a notification is about (ADR-0023).
+         * @enum {string}
+         */
+        NotificationKind: "request_submitted" | "approval_needed" | "request_approved" | "request_rejected" | "request_succeeded" | "request_failed" | "request_rolled_back" | "lease_expiring" | "lease_expired" | "owner_changed";
+        /**
+         * @description In the app is always on; the others are chosen per kind.
+         * @enum {string}
+         */
+        NotificationChannel: "in_app" | "email" | "teams" | "slack";
+        Notification: {
+            id: string;
+            kind: components["schemas"]["NotificationKind"];
+            /** @example Approval needed: RHEL 9 server web-prd-front01 */
+            title: string;
+            body?: string;
+            /** @enum {string} */
+            level: "info" | "success" | "warning" | "error";
+            /** @description The page in rvav it is about, for example /approvals/apr_123. */
+            link?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            read_at?: string;
+        };
+        NotificationPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["Notification"][];
+            /** @description How many of the caller's are unread. */
+            unread: number;
+        };
+        NotificationsRead: {
+            ids?: string[];
+            /** @description Every notification of the caller. */
+            all?: boolean;
+        };
+        NotificationCount: {
+            unread: number;
+        };
+        NotificationRule: {
+            kind: components["schemas"]["NotificationKind"];
+            /** @description The channels besides the app. */
+            channels: components["schemas"]["NotificationChannel"][];
+        };
+        NotificationPreferencesWrite: {
+            /**
+             * @description The language of what is sent.
+             * @enum {string}
+             */
+            locale: "en" | "fr";
+            /** @description One per kind; a kind left out keeps the defaults. */
+            rules: components["schemas"]["NotificationRule"][];
+        };
+        NotificationPreferences: {
+            /** @enum {string} */
+            locale: "en" | "fr";
+            /** @description Every kind, with the caller's choice or the defaults. */
+            rules: (components["schemas"]["NotificationRule"] & {
+                /** @description The defaults, not the caller's choice. */
+                default: boolean;
+            })[];
+            /** @description Each channel besides the app, and whether it can reach the caller. */
+            channels: {
+                channel: components["schemas"]["NotificationChannel"];
+                available: boolean;
+                /** @description Where it goes: the email address, or the Teams or Slack user. */
+                address?: string;
+                /** @description Why it can't reach the caller. */
+                reason?: string;
+            }[];
+        };
+        /** @description A Bot Framework activity (only the fields rvav reads are listed). */
+        BotActivity: {
+            /** @example invoke */
+            type?: string;
+            /** @example adaptiveCard/action */
+            name?: string;
+            serviceUrl?: string;
+            from?: {
+                id?: string;
+                aadObjectId?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            value?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /** @enum {string} */
-        IntegrationKind: "vcenter" | "awx" | "efficientip";
+        IntegrationKind: "vcenter" | "awx" | "efficientip" | "smtp" | "teams" | "slack";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
@@ -3750,12 +3953,18 @@ export interface components {
              * @description vcenter: url, username, insecure, name. awx: url, organization,
              *     catalog_labels, action_labels, inventory_source_id, insecure.
              *     efficientip: url, username, dns_server, instance_id, insecure.
+             *     smtp: host, port, tls (starttls, tls, none), from, username.
+             *     teams: app_id, tenant_id. slack: (none besides its secrets).
+             *     The secret is the SMTP password, the Teams app's client secret
+             *     or the Slack bot token.
              */
             settings: {
                 [key: string]: unknown;
             };
             /** @description The password or token is stored (it is never returned). */
             secret_set: boolean;
+            /** @description Slack only, its signing secret is stored. */
+            signing_secret_set?: boolean;
             /** @description Settings an environment variable sets, which win and can't be changed here. */
             locked: string[];
             /** @description Saved settings differ from what rvav's processes started with. */
@@ -3773,6 +3982,8 @@ export interface components {
             };
             /** @description The password or token; omit to keep the stored one. */
             secret?: string;
+            /** @description Slack only, the app's signing secret; omit to keep the stored one. */
+            signing_secret?: string;
         };
         IntegrationTest: {
             ok: boolean;
@@ -4156,6 +4367,198 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                /** @description Only those not read yet. */
+                unread?: boolean;
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationsRead"];
+            };
+        };
+        responses: {
+            /** @description How many are left unread */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationCount"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    testNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: components["schemas"]["NotificationChannel"];
+                };
+            };
+        };
+        responses: {
+            /** @description Sent, or why not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationCheck"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    teamsMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotActivity"];
+            };
+        };
+        responses: {
+            /** @description The invoke response (an Adaptive Card) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Acknowledged */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    slackInteractions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description The interaction, as JSON. */
+                    payload: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Done; for a dialog, its errors when the comment is missing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             401: components["responses"]["Unauthorized"];

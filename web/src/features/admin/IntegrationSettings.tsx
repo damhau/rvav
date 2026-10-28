@@ -90,6 +90,31 @@ const fields: Record<Kind, { title: string; secret: Setting; settings: Setting[]
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_EFFICIENTIP_INSECURE", type: "bool" },
     ],
   },
+  // Notification channels (S11, ADR-0023).
+  smtp: {
+    title: "Email",
+    secret: { name: "password", label: "Password", env: "RVAV_SMTP_PASSWORD", type: "string" },
+    settings: [
+      { name: "host", label: "SMTP server", env: "RVAV_SMTP_HOST", type: "string" },
+      { name: "port", label: "Port", env: "RVAV_SMTP_PORT", type: "int" },
+      { name: "tls", label: "TLS", env: "RVAV_SMTP_TLS", type: "string", hint: "starttls, tls or none" },
+      { name: "from", label: "From", env: "RVAV_SMTP_FROM", type: "string", hint: "rvav <rvav@corp.example>" },
+      { name: "username", label: "User", env: "RVAV_SMTP_USERNAME", type: "string" },
+    ],
+  },
+  teams: {
+    title: "Microsoft Teams",
+    secret: { name: "app_password", label: "Client secret", env: "RVAV_TEAMS_APP_PASSWORD", type: "string" },
+    settings: [
+      { name: "app_id", label: "Bot app ID", env: "RVAV_TEAMS_APP_ID", type: "string" },
+      { name: "tenant_id", label: "Tenant ID", env: "RVAV_TEAMS_TENANT_ID", type: "string" },
+    ],
+  },
+  slack: {
+    title: "Slack",
+    secret: { name: "bot_token", label: "Bot token", env: "RVAV_SLACK_BOT_TOKEN", type: "string" },
+    settings: [],
+  },
 };
 
 const text = (v: unknown, type: Setting["type"]) =>

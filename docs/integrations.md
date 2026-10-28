@@ -250,8 +250,19 @@ def verify(secret: bytes, header: str, body: bytes, tolerance: int = 300) -> boo
     return hmac.compare_digest(want, sig)
 ```
 
-## Notifications
+## Notifications (ADR-0023)
 
-- Email (SMTP), Slack (bot with interactive approval buttons), Microsoft Teams
-  (Adaptive Cards through a webhook or bot).
-- Templates per event type, user preferences per channel.
+Notifications are kept in the app's notification centre and sent on the
+channels each user chooses per kind ([ADR-0023](adr/0023-notifications.md)).
+Templates exist per kind and per language (English, French).
+
+- **Email (SMTP):** plain text and HTML, with links into rvav.
+- **Microsoft Teams:** an Azure bot. It sends Adaptive Cards, and
+  approvers press Approve or Reject on the card. Teams' calls come with a
+  Bot Framework token.
+- **Slack:** a Slack app. It sends Block Kit messages, and approvers press
+  Approve or Reject; rejecting asks for a comment. Slack's calls are signed
+  with the app's signing secret.
+
+The channels are set like the other integrations (Administration →
+Integrations, or `RVAV_SMTP_*`, `RVAV_TEAMS_*`, `RVAV_SLACK_*`).

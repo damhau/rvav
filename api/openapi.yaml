@@ -40,6 +40,8 @@ tags:
     description: Building and publishing catalog items (catalog admins and administrators).
   - name: ansible
     description: What AWX reads from rvav.
+  - name: notifications
+    description: What concerns the caller, in the app and on their channels (ADR-0023).
 
 paths:
   /me:
@@ -53,6 +55,152 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /me/notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      summary: The caller's notifications, newest first
+      parameters:
+        - name: unread
+          in: query
+          description: Only those not read yet.
+          schema: { type: boolean, default: false }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /me/notifications/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationsRead
+      summary: Mark notifications read, the ones given or all of them
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationsRead" }
+      responses:
+        "200":
+          description: How many are left unread
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationCount" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/notification-preferences:
+    get:
+      tags: [notifications]
+      operationId: getNotificationPreferences
+      summary: The channels the caller chose per kind, and which can reach them
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreferences" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [notifications]
+      operationId: setNotificationPreferences
+      summary: Choose the channels per kind and the language of what is sent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationPreferencesWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreferences" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/notification-preferences/test:
+    post:
+      tags: [notifications]
+      operationId: testNotificationChannel
+      summary: Send the caller a test message on a channel, now
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              additionalProperties: false
+              properties:
+                channel: { $ref: "#/components/schemas/NotificationChannel" }
+      responses:
+        "200":
+          description: Sent, or why not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntegrationCheck" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /integrations/teams/messages:
+    post:
+      tags: [notifications]
+      operationId: teamsMessages
+      summary: Microsoft Teams' calls to rvav's bot (Approve and Reject on a card)
+      description: |
+        Authenticated by the Bot Framework token in `Authorization`, not by
+        an rvav token (ADR-0023). An `invoke` activity named
+        `adaptiveCard/action` decides an approval as the user the card was
+        sent to and answers with the card updated; other activities are
+        acknowledged.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BotActivity" }
+      responses:
+        "200":
+          description: The invoke response (an Adaptive Card)
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "202":
+          description: Acknowledged
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /integrations/slack/interactions:
+    post:
+      tags: [notifications]
+      operationId: slackInteractions
+      summary: Slack's calls when someone presses Approve or Reject, or sends the reject dialog
+      description: |
+        Authenticated by Slack's `X-Slack-Signature` over the body and
+        `X-Slack-Request-Timestamp`, not by an rvav token (ADR-0023).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [payload]
+              properties:
+                payload: { type: string, description: "The interaction, as JSON." }
+      responses:
+        "200":
+          description: Done; for a dialog, its errors when the comment is missing
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /environments:
@@ -5201,9 +5349,121 @@ components:
         enforcement: { type: string, enum: [hard, soft] }
         used: { type: integer }
         reserved: { type: integer, description: Held by requests not done yet. }
+    NotificationKind:
+      type: string
+      description: What a notification is about (ADR-0023).
+      enum: [request_submitted, approval_needed, request_approved, request_rejected, request_succeeded,
+        request_failed, request_rolled_back, lease_expiring, lease_expired, owner_changed]
+      x-enum-varnames: [KindRequestSubmitted, KindApprovalNeeded, KindRequestApproved, KindRequestRejected,
+        KindRequestSucceeded, KindRequestFailed, KindRequestRolledBack, KindLeaseExpiring, KindLeaseExpired,
+        KindOwnerChanged]
+    NotificationChannel:
+      type: string
+      description: In the app is always on; the others are chosen per kind.
+      enum: [in_app, email, teams, slack]
+      x-enum-varnames: [ChannelInApp, ChannelEmail, ChannelTeams, ChannelSlack]
+    Notification:
+      type: object
+      required: [id, kind, title, level, created_at]
+      properties:
+        id: { type: string }
+        kind: { $ref: "#/components/schemas/NotificationKind" }
+        title: { type: string, examples: ["Approval needed: RHEL 9 server web-prd-front01"] }
+        body: { type: string }
+        level:
+          type: string
+          enum: [info, success, warning, error]
+          x-enum-varnames: [LevelInfo, LevelSuccess, LevelWarning, LevelError]
+        link: { type: string, description: "The page in rvav it is about, for example /approvals/apr_123." }
+        created_at: { type: string, format: date-time }
+        read_at: { type: string, format: date-time }
+    NotificationPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items, unread]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Notification" }
+            unread: { type: integer, description: How many of the caller's are unread. }
+    NotificationsRead:
+      type: object
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          maxItems: 200
+          items: { type: string }
+        all: { type: boolean, description: Every notification of the caller. }
+    NotificationCount:
+      type: object
+      required: [unread]
+      properties:
+        unread: { type: integer }
+    NotificationRule:
+      type: object
+      required: [kind, channels]
+      properties:
+        kind: { $ref: "#/components/schemas/NotificationKind" }
+        channels:
+          type: array
+          description: The channels besides the app.
+          items: { $ref: "#/components/schemas/NotificationChannel" }
+    NotificationPreferencesWrite:
+      type: object
+      required: [locale, rules]
+      additionalProperties: false
+      properties:
+        locale: { type: string, enum: [en, fr], description: The language of what is sent. }
+        rules:
+          type: array
+          description: One per kind; a kind left out keeps the defaults.
+          items: { $ref: "#/components/schemas/NotificationRule" }
+    NotificationPreferences:
+      type: object
+      required: [locale, rules, channels]
+      properties:
+        locale: { type: string, enum: [en, fr] }
+        rules:
+          type: array
+          description: Every kind, with the caller's choice or the defaults.
+          items:
+            allOf:
+              - $ref: "#/components/schemas/NotificationRule"
+              - type: object
+                required: [default]
+                properties:
+                  default: { type: boolean, description: "The defaults, not the caller's choice." }
+        channels:
+          type: array
+          description: Each channel besides the app, and whether it can reach the caller.
+          items:
+            type: object
+            required: [channel, available]
+            properties:
+              channel: { $ref: "#/components/schemas/NotificationChannel" }
+              available: { type: boolean }
+              address: { type: string, description: "Where it goes: the email address, or the Teams or Slack user." }
+              reason: { type: string, description: Why it can't reach the caller. }
+    BotActivity:
+      type: object
+      description: A Bot Framework activity (only the fields rvav reads are listed).
+      additionalProperties: true
+      properties:
+        type: { type: string, examples: [invoke] }
+        name: { type: string, examples: [adaptiveCard/action] }
+        serviceUrl: { type: string }
+        from:
+          type: object
+          additionalProperties: true
+          properties:
+            id: { type: string }
+            aadObjectId: { type: string }
+        value: { type: object, additionalProperties: true }
     IntegrationKind:
       type: string
-      enum: [vcenter, awx, efficientip]
+      enum: [vcenter, awx, efficientip, smtp, teams, slack]
     Integration:
       type: object
       required: [kind, configured, settings, secret_set, locked, restart_needed]
@@ -5217,9 +5477,16 @@ components:
             vcenter: url, username, insecure, name. awx: url, organization,
             catalog_labels, action_labels, inventory_source_id, insecure.
             efficientip: url, username, dns_server, instance_id, insecure.
+            smtp: host, port, tls (starttls, tls, none), from, username.
+            teams: app_id, tenant_id. slack: (none besides its secrets).
+            The secret is the SMTP password, the Teams app's client secret
+            or the Slack bot token.
         secret_set:
           type: boolean
           description: The password or token is stored (it is never returned).
+        signing_secret_set:
+          type: boolean
+          description: Slack only, its signing secret is stored.
         locked:
           type: array
           description: Settings an environment variable sets, which win and can't be changed here.
@@ -5246,6 +5513,10 @@ components:
           type: string
           writeOnly: true
           description: The password or token; omit to keep the stored one.
+        signing_secret:
+          type: string
+          writeOnly: true
+          description: Slack only, the app's signing secret; omit to keep the stored one.
     IntegrationTest:
       type: object
       required: [ok, checks]
