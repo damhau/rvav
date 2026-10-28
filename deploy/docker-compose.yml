@@ -17,6 +17,8 @@ name: rvav
 x-rvav-env: &rvav-env
   RVAV_DATABASE_URL: postgres://rvav:rvav@postgres:5432/rvav?sslmode=disable
   RVAV_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
+  # Who dev sign-in is (a seeded user: lmartin, mkeller for an administrator, tnguyen, ...).
+  RVAV_DEV_USER: ${RVAV_DEV_USER:-lmartin}
   # A development stack: dev authentication is allowed unless set to "" here.
   RVAV_ALLOW_DEV_AUTH: ${RVAV_ALLOW_DEV_AUTH-1}
   # Tokens carry the issuer the browser sees; the API discovers Keycloak
