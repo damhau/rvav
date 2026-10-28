@@ -255,7 +255,8 @@ func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
-		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision}
+		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision,
+		Dispatcher: a.Dispatcher()}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}
@@ -319,7 +320,8 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 		return nil, err
 	}
 	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
-		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log}, nil
+		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
+		Subscriptions: a.Dispatcher()}, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.
@@ -351,9 +353,11 @@ func (a *App) RunWorker(ctx context.Context) error {
 
 // Dispatcher delivers integration events to subscriptions.
 func (a *App) Dispatcher() *dispatch.Dispatcher {
-	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: dispatch.Targets{
-		Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets)},
-	}}
+	t := dispatch.Targets{Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets)}}
+	if a.AWX != nil {
+		t.AWX = &dispatch.AWX{Client: a.AWX}
+	}
+	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: t}
 }
 
 // RunSync runs the inventory sync until ctx is done.

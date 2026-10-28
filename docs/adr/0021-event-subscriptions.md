@@ -71,7 +71,9 @@ the change it describes (the request inserted, the request marked running,
 the request finished, the reminder sent). A dispatcher in rvav's worker
 process reads new events, finds the enabled subscriptions to their topic
 whose condition is true, and makes one **run** per subscription and event
-(unique on both, so a crash between the two never doubles it). Each run is
+(unique on both, so a crash between the two never doubles it). A
+subscription gets the events that happen once it exists, never earlier
+ones. Each run is
 delivered at least once: on failure it is retried with back-off (10 s,
 30 s, 1 min, 5 min, then every 15 min) for 24 hours, then marked failed.
 Runs keep the payload, every attempt's status, answer (first 4 KB) and
@@ -129,6 +131,11 @@ action or deletes. Each answers one of:
   can't be made doesn't pass) or `continue`. A blocking webhook is tried
   once more within its timeout, not retried for hours.
 - A blocking run is recorded like the others, linked to the request step.
+  A request stopped by a check changed nothing: a day-2 deployment keeps
+  its status, and the request can be retried once the check would pass.
+- Workflows that started before blocking subscriptions existed don't run
+  them (`workflow.GetVersion`), so upgrading rvav doesn't break requests in
+  flight.
 
 ## Consequences
 - What happens before and after provisioning is configured, not coded,

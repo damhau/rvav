@@ -69,7 +69,8 @@ func (w *Webhook) client() *http.Client {
 	return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func (w *Webhook) Deliver(ctx context.Context, sub store.Subscription, event json.RawMessage, blocking bool) Result {
+func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {
+	sub, event := d.Sub, d.Event
 	var t struct {
 		Webhook *WebhookTarget `json:"webhook"`
 	}
@@ -114,7 +115,7 @@ func (w *Webhook) Deliver(ctx context.Context, sub store.Subscription, event jso
 		res.Err = fmt.Sprintf("%s answered %d", u.Host, resp.StatusCode)
 		return res
 	}
-	if blocking {
+	if d.Blocking {
 		return answer(res)
 	}
 	return res

@@ -38,9 +38,19 @@ type Result struct {
 // MaxResponse is how much of an answer a run keeps.
 const MaxResponse = 4096
 
+// Delivery is one attempt to make.
+type Delivery struct {
+	Sub      store.Subscription
+	Event    json.RawMessage
+	Blocking bool
+	// LastJobID is the AWX job an earlier attempt launched: it is followed
+	// rather than launched again.
+	LastJobID int
+}
+
 // Target delivers events to one kind of target.
 type Target interface {
-	Deliver(ctx context.Context, sub store.Subscription, event json.RawMessage, blocking bool) Result
+	Deliver(ctx context.Context, d Delivery) Result
 }
 
 // Targets are the kinds of target rvav has; a nil one is not available.
@@ -157,7 +167,8 @@ func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 		done := make([]string, 0, len(events))
 		for _, ev := range events {
 			for _, sub := range subs {
-				if sub.Topic != ev.Topic {
+				// A subscription gets the events that happened once it existed.
+				if sub.Topic != ev.Topic || sub.CreatedAt.After(ev.CreatedAt) {
 					continue
 				}
 				run := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: sub.ID, EventID: ev.ID, Status: "queued",
@@ -218,7 +229,7 @@ func (d *Dispatcher) deliver(ctx context.Context) (int, error) {
 
 func (d *Dispatcher) attemptRun(ctx context.Context, r store.ClaimedRun) {
 	start := d.now()
-	res := d.Attempt(ctx, r.Subscription, r.Payload, false)
+	res := d.Attempt(ctx, Delivery{Sub: r.Subscription, Event: r.Payload, LastJobID: deref(r.LastJobID)})
 	u := store.RunUpdate{Status: "delivered"}
 	if !res.OK {
 		reason := res.Err
@@ -236,12 +247,19 @@ func (d *Dispatcher) attemptRun(ctx context.Context, r store.ClaimedRun) {
 }
 
 // Attempt delivers an event to a subscription's target once.
-func (d *Dispatcher) Attempt(ctx context.Context, sub store.Subscription, payload json.RawMessage, blocking bool) Result {
-	tg, err := d.Targets.For(sub)
+func (d *Dispatcher) Attempt(ctx context.Context, dl Delivery) Result {
+	tg, err := d.Targets.For(dl.Sub)
 	if err != nil {
 		return Result{Err: err.Error()}
 	}
-	return tg.Deliver(ctx, sub, payload, blocking)
+	return tg.Deliver(ctx, dl)
+}
+
+func deref(n *int) int {
+	if n == nil {
+		return 0
+	}
+	return *n
 }
 
 // AttemptRow is how an attempt is kept.

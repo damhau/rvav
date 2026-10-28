@@ -108,11 +108,12 @@ type IntegrationEvent struct {
 	Topic     string          `db:"topic"`
 	RequestID *string         `db:"request_id"`
 	Payload   json.RawMessage `db:"payload"`
+	CreatedAt time.Time       `db:"created_at"`
 }
 
 // UndispatchedEvents locks the oldest events no run was made for yet.
 func (s *Store) UndispatchedEvents(ctx context.Context, tx pgx.Tx, limit int) ([]IntegrationEvent, error) {
-	rows, _ := tx.Query(ctx, `select id, topic, request_id, payload from integration_events
+	rows, _ := tx.Query(ctx, `select id, topic, request_id, payload, created_at from integration_events
 		where dispatched_at is null order by seq limit $1 for update skip locked`, limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IntegrationEvent])
 }
@@ -175,6 +176,8 @@ type ClaimedRun struct {
 	SubscriptionRun
 	Subscription Subscription
 	Payload      json.RawMessage
+	// LastJobID is the AWX job its last attempt launched.
+	LastJobID *int
 }
 
 // ClaimRuns takes runs due for an attempt at the given time, and those a
@@ -196,7 +199,8 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 	if err != nil || len(ids) == 0 {
 		return nil, err
 	}
-	rows, _ = s.Pool.Query(ctx, `select `+runCols+`, e.payload, `+prefixed("s", subscriptionCols)+runFrom+`
+	rows, _ = s.Pool.Query(ctx, `select `+runCols+`, e.payload, `+prefixed("s", subscriptionCols)+`,
+			(select a.job_id from subscription_attempts a where a.run_id = r.id and a.job_id is not null order by a.id desc limit 1)`+runFrom+`
 		join subscriptions s on s.id = r.subscription_id where r.id = any($1)`, ids)
 	defer rows.Close()
 	var out []ClaimedRun
@@ -206,7 +210,8 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.EventID, &c.Topic, &c.Status, &c.Blocking, &c.Test, &c.RequestID,
 			&c.RequestNumber, &c.StepID, &c.Attempts, &c.NextAttemptAt, &c.Outcome, &c.Reason, &c.Properties, &c.CreatedAt,
 			&c.FinishedAt, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic, &sub.Condition, &sub.Blocking,
-			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt,
+			&c.LastJobID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -363,4 +368,36 @@ func splitCols(cols string) []string {
 		out = append(out, cur)
 	}
 	return out
+}
+
+// LatestEvent is the newest event of a topic about a request.
+func (s *Store) LatestEvent(ctx context.Context, requestID, topic string) (IntegrationEvent, error) {
+	rows, _ := s.Pool.Query(ctx, `select id, topic, request_id, payload, created_at from integration_events
+		where request_id = $1 and topic = $2 order by seq desc limit 1`, requestID, topic)
+	ev, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IntegrationEvent])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ev, ErrNotFound
+	}
+	return ev, err
+}
+
+// RequestProperties are the properties of a request's deployments, merged.
+func (s *Store) RequestProperties(ctx context.Context, requestID string) (map[string]string, error) {
+	out := map[string]string{}
+	rows, err := s.Pool.Query(ctx, `select properties from deployments
+		where created_by_request_id = $1 or id = (select deployment_id from requests where id = $1)`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m map[string]string
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out, rows.Err()
 }

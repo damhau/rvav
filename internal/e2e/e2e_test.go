@@ -43,6 +43,7 @@ import (
 	"github.com/damhau/rvav/internal/app"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -151,6 +152,14 @@ type harness struct {
 	wf    *recorder
 	awx   *awx.Fake
 	ipam  *efficientip.FakeServer
+}
+
+// allowWebhooks lets subscriptions post to a test server.
+func (h *harness) allowWebhooks(serverURL string) {
+	host := "http://" + strings.TrimPrefix(serverURL, "http://")
+	h.svc.Config.WebhookHosts = append(h.svc.Config.WebhookHosts, host)
+	wh := h.svc.Dispatcher.Targets.Webhook.(*dispatch.Webhook)
+	wh.Hosts = append(wh.Hosts, host)
 }
 
 func (h *harness) do(method, path, user string, body any, headers ...string) (int, []byte, http.Header) {
@@ -271,6 +280,11 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
 		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second}
+	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
+	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
+		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},
+		AWX:     &dispatch.AWX{Client: fakeAWX, Poll: 20 * time.Millisecond}}}
+	svc.Dispatcher, acts.Subscriptions = disp, disp
 	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX, ipam: fakeIPAM}
 }
 

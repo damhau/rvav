@@ -189,3 +189,24 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 		where id = $1`, requestID)
 	return err
 }
+
+// InsertStepBeforePending adds a top-level step just before the first one
+// still pending (a step added while the request runs, such as the checks of
+// blocking subscriptions); an existing one is set running again.
+func (s *Store) InsertStepBeforePending(ctx context.Context, db DB, requestID, key, title, detail, system string) (Step, error) {
+	if _, err := db.Exec(ctx, `with at as (
+			select coalesce(min(position), (select count(*) from request_steps where request_id = $1 and parent_id is null)) as p
+			from request_steps where request_id = $1 and parent_id is null and status = 'pending')
+		update request_steps set position = position + 1
+		where request_id = $1 and parent_id is null and position >= (select p from at)
+			and not exists (select 1 from request_steps where request_id = $1 and key = $2)`, requestID, key); err != nil {
+		return Step{}, err
+	}
+	rows, _ := db.Query(ctx, `insert into request_steps (id, request_id, position, key, title, detail, system, status, started_at)
+		select $3, $1, coalesce((select min(position) - 1 from request_steps where request_id = $1 and parent_id is null and status = 'pending'),
+			(select count(*) from request_steps where request_id = $1 and parent_id is null)), $2, $4, $5, $6, 'running', now()
+		on conflict (request_id, key) do update set status = 'running', error = null, finished_at = null
+		returning `+stepCols, requestID, key, ids.New(ids.Step), title, detail, system)
+	st, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Step])
+	return st, notFound(err)
+}

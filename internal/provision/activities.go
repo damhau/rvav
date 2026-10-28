@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 
+	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -46,6 +47,8 @@ type Activities struct {
 	ShutdownTimeout time.Duration
 	// Housekeeper applies retention and lease policies (the core service).
 	Housekeeper Housekeeper
+	// Subscriptions delivers to blocking subscriptions (ADR-0021).
+	Subscriptions *dispatch.Dispatcher
 	// Now is the housekeeping clock (time.Now when nil); tests move it on.
 	Now func() time.Time
 }
@@ -113,6 +116,9 @@ type FinishInput struct {
 	Outcome   string `json:"outcome"` // succeeded, failed, cancelled
 	StepKey   string `json:"step_key,omitempty"`
 	Message   string `json:"message,omitempty"`
+	// Untouched: the request stopped before changing anything (a blocking
+	// subscription said no), so a day-2 deployment keeps its status.
+	Untouched bool `json:"untouched,omitempty"`
 }
 
 // permanent marks errors that retrying cannot fix.
@@ -541,6 +547,22 @@ func (a *Activities) RefreshInventory(ctx context.Context, requestID, projectID 
 // copies the output to the step log.
 func (a *Activities) RunJob(ctx context.Context, in JobInput) error {
 	a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "running"})
+	// Properties blocking subscriptions set (ADR-0021) reach the job in rvav.properties.
+	if ctxVars, ok := in.ExtraVars["rvav"].(map[string]any); ok {
+		if props, err := a.Store.RequestProperties(ctx, in.RequestID); err == nil && len(props) > 0 {
+			withProps := make(map[string]any, len(ctxVars)+1)
+			for k, v := range ctxVars {
+				withProps[k] = v
+			}
+			withProps["properties"] = props
+			extra := make(map[string]any, len(in.ExtraVars))
+			for k, v := range in.ExtraVars {
+				extra[k] = v
+			}
+			extra["rvav"] = withProps
+			in.ExtraVars = extra
+		}
+	}
 	err := a.runJob(ctx, in)
 	if err != nil {
 		msg := errMessage(err)
@@ -870,7 +892,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			// finishing together at least one sees the other done.
 			var plan Plan
 			_ = json.Unmarshal(r.Plan, &plan)
-			status := day2Status(plan, in.Outcome, r.StartedAt != nil)
+			status := day2Status(plan, in.Outcome, r.StartedAt != nil && !in.Untouched)
 			other, err := a.Store.OtherRunningOnDeployment(ctx, db, *r.DeploymentID, r.ID)
 			if err != nil {
 				return err

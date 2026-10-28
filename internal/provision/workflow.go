@@ -102,6 +102,22 @@ func Provision(ctx workflow.Context, requestID string) error {
 		return nil
 	}
 
+	// Blocking subscriptions (ADR-0021) may stop the request before it
+	// builds anything; versioned for workflows that started without them.
+	if workflow.GetVersion(ctx, "blocking-subscriptions", workflow.DefaultVersion, 1) == 1 && !info.done(KeyChecks) {
+		stepKey, reason, err := runChecks(ctx, info)
+		switch {
+		case temporal.IsCanceledError(err) || errors.Is(ctx.Err(), workflow.ErrCanceled):
+			return finishCancelled(ctx, info, false)
+		case err != nil:
+			reason = errMessage(err)
+			fallthrough
+		case reason != "":
+			return workflow.ExecuteActivity(ctx, a.Finish, FinishInput{RequestID: requestID, ProjectID: info.ProjectID,
+				Outcome: "failed", StepKey: stepKey, Message: reason, Untouched: true}).Get(ctx, nil)
+		}
+	}
+
 	failedStep, err := runPlan(ctx, info)
 	switch {
 	case err == nil:
@@ -205,6 +221,35 @@ func finishCancelled(ctx workflow.Context, info Info, rollback bool) error {
 		}
 	}
 	return workflow.ExecuteActivity(dctx, a.Finish, FinishInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Outcome: "cancelled"}).Get(dctx, nil)
+}
+
+// runChecks asks the blocking subscriptions that apply, in priority order:
+// the first that stops the request ends the checks, with the step and why.
+func runChecks(ctx workflow.Context, info Info) (stepKey, reason string, err error) {
+	var a *Activities
+	var subs []BlockingSub
+	if err := workflow.ExecuteActivity(ctx, a.BlockingSubscriptions, info.RequestID).Get(ctx, &subs); err != nil {
+		return KeyChecks, "", err
+	}
+	if len(subs) == 0 {
+		return "", "", nil
+	}
+	for _, b := range subs {
+		// Its own timeout, twice (a fast failure is tried once more); not
+		// retried by Temporal, which would ask the target again.
+		o := activityOptions
+		o.StartToCloseTimeout = 2*time.Duration(b.Timeout)*time.Second + 30*time.Second
+		o.HeartbeatTimeout = 0
+		o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+		var out CheckOutcome
+		if err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, o), a.RunBlockingSubscription, info.RequestID, b).Get(ctx, &out); err != nil {
+			return checkKey(b.ID), "", err
+		}
+		if out.Stop {
+			return out.StepKey, out.Reason, nil
+		}
+	}
+	return "", "", workflow.ExecuteActivity(ctx, a.FinishChecks, info.RequestID, info.ProjectID).Get(ctx, nil)
 }
 
 // runPlan executes the steps and returns the key of the step that failed.

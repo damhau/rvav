@@ -10,6 +10,7 @@ import (
 
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
@@ -55,6 +56,9 @@ type Service struct {
 	// settings applied; SettingsRevision is theirs (ADR-0020).
 	Config           config.Config
 	SettingsRevision int64
+	// Dispatcher delivers events to subscriptions: their test runs here
+	// (ADR-0021).
+	Dispatcher *dispatch.Dispatcher
 }
 
 // ConsoleSource is what the web console needs from vCenter.

@@ -45,6 +45,9 @@ func newEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	var s testsuite.WorkflowTestSuite
 	env := s.NewTestWorkflowEnvironment()
 	env.RegisterActivity(&Activities{})
+	// No blocking subscriptions unless a test says otherwise.
+	var a *Activities
+	env.OnActivity(a.BlockingSubscriptions, mock.Anything, mock.Anything).Return([]BlockingSub(nil), nil).Maybe()
 	t.Cleanup(func() { env.AssertExpectations(t) })
 	return env
 }
