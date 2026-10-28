@@ -211,6 +211,46 @@ const selects = (patterns: string[], want: string[], name: string) =>
   want.every((t) => (tags[name] ?? []).includes(t)) &&
   (patterns.length > 0 || want.length > 0);
 
+/** Whether a project's placement rules in an environment allow a cluster, datastore or network, as the server's. */
+export function placed(
+  db: Db,
+  projectId: string,
+  env: string,
+  kind: "cluster" | "datastore" | "network",
+  name: string,
+) {
+  return state(db).rules.some(
+    (r) =>
+      r.project.id === projectId &&
+      r.environment === env &&
+      (kind === "cluster"
+        ? selects(r.clusters, r.cluster_tags, name)
+        : kind === "datastore"
+          ? selects(r.datastores, r.datastore_tags, name)
+          : r.networks.some((pat) => glob(pat, name))),
+  );
+}
+
+/** The VM folder of a project's first placement rule in an environment. */
+export function placementFolder(db: Db, projectId: string, env: string): string | undefined {
+  return state(db)
+    .rules.filter((r) => r.project.id === projectId && r.environment === env)
+    .sort((a, b) => a.priority - b.priority)[0]?.folder;
+}
+
+/** The naming policy offered to a project in an environment, the most specific winning. */
+export function namingTemplate(db: Db, projectId: string, env: string): string | undefined {
+  let best: { template: string; score: number } | undefined;
+  for (const n of state(db).naming) {
+    for (const o of n.offers) {
+      if ((o.project_id && o.project_id !== projectId) || (o.environment && o.environment !== env)) continue;
+      const score = (o.project_id ? 2 : 0) + (o.environment ? 1 : 0);
+      if (!best || score > best.score) best = { template: n.template, score };
+    }
+  }
+  return best?.template;
+}
+
 export function administrationHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const st = () => state(db);
   const project = (id: string) => db.projects.find((p) => p.id === id || p.code === id);
@@ -286,6 +326,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       };
       st().extra[p.id] = { created_at: now() };
       st().members[p.id] = (c.project_admins ?? []).map((u) => ({ userId: u, role: "project-admin" }));
+      if (c.project_admins?.includes(db.me.user.id))
+        db.me.projects.push({ project: { id: p.id, code: p.code, name: p.name }, role: "project-admin" });
       st().quotas[p.id] = [];
       audited(db, "project.create", "project", p.id, { code: p.code });
       return HttpResponse.json(adminProject(p), { status: 201 });
@@ -328,6 +370,12 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         );
       if (m) m.role = role;
       else list.push({ userId: String(params.userId), role });
+      if (params.userId === db.me.user.id) {
+        const mine = db.me.projects.find((x) => x.project.id === id);
+        const pr = project(id)!;
+        if (mine) mine.role = role;
+        else db.me.projects.push({ project: { id: pr.id, code: pr.code, name: pr.name }, role });
+      }
       audited(db, "member.set", "project", id, { user_id: params.userId, role });
       return HttpResponse.json(members(id).find((x) => x.user.id === params.userId));
     }),
@@ -345,6 +393,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           "The project would have no project admin: make someone else one first.",
         );
       list.splice(list.indexOf(m), 1);
+      if (params.userId === db.me.user.id) db.me.projects = db.me.projects.filter((x) => x.project.id !== id);
       audited(db, "member.remove", "project", id, { user_id: params.userId });
       return new HttpResponse(null, { status: 204 });
     }),
@@ -715,6 +764,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       });
       if (errors.length) return invalid(errors);
       st().quotas[p.id] = items;
+      // The project's own limits are what requests are checked against here.
+      const limits = (db.quota[p.id] ??= {
+        limits: { vcpu: null, memory_gb: null, storage_gb: null, vm_count: null },
+        used: { vcpu: 0, memory_gb: 0, storage_gb: 0, vm_count: 0 },
+      }).limits;
+      for (const r of ["vcpu", "memory_gb", "storage_gb", "vm_count"] as const)
+        limits[r] = items.find((q) => !q.environment && q.resource === r)?.limit ?? null;
       audited(db, "policy.quota.set", "project", p.id);
       return HttpResponse.json({ items });
     }),

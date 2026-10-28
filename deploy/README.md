@@ -40,7 +40,15 @@ cd web && pnpm e2e:stack        # the browser: request a RHEL 9 server and follo
 ```
 
 `smoke.sh` reads `RVAV_API_PORT`; `pnpm e2e:stack` reads `RVAV_WEB_URL`
-(default `http://localhost:3000`).
+(default `http://localhost:3000`). Besides the request, `pnpm e2e:stack`
+sets a new project up in the browser as an administrator (Marc, through the
+`X-Rvav-Dev-User` header, or signed in as `marc` with Keycloak): members,
+placement by vCenter tag, a quota, its naming policy, a template and the
+catalog entitlement, then requests a VM in it (`e2e-stack/project-setup.spec.ts`).
+`RVAV_STACK_CMDB=1` adds the catalog administration flow, which needs the
+cmdb container. Each run leaves its VMs; on a stack used for a long time,
+Web Platform's quota may need raising (Administration → Projects → Web
+Platform → Quotas).
 
 The stack uses a fake SOLIDserver (the `efficientip` service, which rvav
 reaches with its real EfficientIP client) and the fake AWX. The fake

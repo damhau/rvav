@@ -20,6 +20,7 @@ import type { components } from "@/lib/api/schema";
 
 type FieldState = components["schemas"]["FieldState"];
 import { toText } from "@/lib/utils";
+import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
@@ -53,13 +54,21 @@ export function reserveIp(db: Db, network: string) {
 }
 
 export function vmNames(db: Db, project: Project, env: EnvironmentKey, role: string, count: number): string[] {
-  // Like the naming policy's {seq:03} counter: continue after the highest number in use.
-  const base = `${project.code}-${env}-${role || "app"}`;
-  const pattern = new RegExp(`^${base}(\\d{3})$`);
+  // The naming policy offered here, or the blueprint's; its counter continues after the highest number in use.
+  const template = namingTemplate(db, project.id, env) ?? "{project}-{environment}-{role}{seq:03}";
+  const counter = /\{seq(?::(\d+))?\}$/.exec(template);
+  const width = Number(counter?.[1] ?? 1);
+  const base = template
+    .slice(0, counter?.index ?? template.length)
+    .replaceAll("{project}", project.code)
+    .replaceAll("{environment}", env)
+    .replaceAll("{inputs.role}", role || "app")
+    .replaceAll("{role}", role || "app");
+  const pattern = new RegExp(`^${base}(\\d{${width},})$`);
   const highest = db.deployments
     .flatMap((d) => d.resources.map((r) => pattern.exec(r.name)?.[1]))
     .reduce((max, seq) => (seq ? Math.max(max, Number(seq)) : max), 0);
-  return Array.from({ length: count }, (_, i) => `${base}${String(highest + 1 + i).padStart(3, "0")}`);
+  return Array.from({ length: count }, (_, i) => `${base}${String(highest + 1 + i).padStart(width, "0")}`);
 }
 
 function withDefaultOptions(field: string, inputs: Inputs, options: Option[]): FieldValues {
@@ -109,20 +118,24 @@ export function resolveField(
     case "vsphere.clusters":
       return withDefault(
         clusters
-          .filter((c) => c.env === env)
+          .filter((c) => c.env === env && placed(db, project.id, env, "cluster", c.name))
           .map((c) => ({ value: c.name, label: c.name, meta: `${c.hosts} hosts · ${c.cpuFreePct}% CPU free` })),
       );
     case "vsphere.datastores":
       return withDefault(
-        (datastores[params.cluster ?? ""] ?? []).map((d) => ({
-          value: d.name,
-          label: d.name,
-          meta: `${d.freeTb} TB free`,
-        })),
+        (datastores[params.cluster ?? ""] ?? [])
+          .filter((d) => placed(db, project.id, env, "datastore", d.name))
+          .map((d) => ({
+            value: d.name,
+            label: d.name,
+            meta: `${d.freeTb} TB free`,
+          })),
       );
     case "vsphere.networks":
       return withDefault(
-        networks.filter((n) => n.env === env).map((n) => ({ value: n.name, label: n.name, meta: n.subnet })),
+        networks
+          .filter((n) => n.env === env && placed(db, project.id, env, "network", n.name))
+          .map((n) => ({ value: n.name, label: n.name, meta: n.subnet })),
       );
     case "ipam.subnets":
       return withDefault(
@@ -404,7 +417,8 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
                 ? inputs.cluster
                 : clusters.find((c) => c.env === draft.environment)?.name,
             datastore: typeof inputs.datastore === "string" ? inputs.datastore : undefined,
-            folder: `/GVA/vm/rvav/${project.code}/${draft.environment}`,
+            folder:
+              placementFolder(db, project.id, draft.environment) ?? `/GVA/vm/rvav/${project.code}/${draft.environment}`,
             network: network || undefined,
             subnet: next?.subnet,
           }
