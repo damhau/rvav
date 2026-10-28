@@ -13,7 +13,6 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
-	"github.com/damhau/rvav/internal/provision"
 )
 
 // TestCompositeItems: a composite item builds a VM, then creates a database
@@ -28,35 +27,7 @@ func TestCompositeItems(t *testing.T) {
 		h := setup(t, ctx, c)
 		const admin = "mkeller"
 		var problem struct{ Errors []api.FieldError }
-		fields := []string{"role", "size", "cluster", "datastore", "network", "database", "role_name"}
-		props := map[string]any{}
-		ui := map[string]api.UiField{}
-		for _, f := range fields {
-			props[f] = map[string]any{"type": "string", "minLength": 1}
-			ui[f] = api.UiField{Widget: api.UiWidgetText, Label: f}
-		}
-		def := api.CatalogVersionDefinition{
-			FormSchema:    map[string]any{"type": "object", "required": fields, "properties": props},
-			UiSchema:      api.UiSchema{Fields: ui},
-			InitialValues: map[string]any{},
-			Blueprint: map[string]any{"kind": "composite", "rollback_on_failure": true, "steps": []any{
-				map[string]any{"key": "vm", "title": "The VM", "item": "rhel9-server", "with": map[string]any{
-					"role": "inputs.role", "size": "inputs.size", "cluster": "inputs.cluster", "datastore": "inputs.datastore",
-					"network": "inputs.network", "post_config": []any{"linux-baseline"}}},
-				map[string]any{"parallel": []any{
-					map[string]any{"key": "db_user", "title": "Database user", "item": "db-user",
-						"with": map[string]any{"database": "inputs.database", "role_name": "inputs.role_name",
-							"privileges": `"read"`, "host": "steps.vm.fqdn"},
-						"undo": map[string]any{"job_template": "idm-hbac-group", "with": map[string]any{"role_name": "inputs.role_name"}}},
-					map[string]any{"key": "monitoring", "awx": map[string]any{"job_template": "monitoring-agent", "title": "Monitoring"},
-						"with": map[string]any{"target": "steps.vm.fqdn"}},
-				}},
-				map[string]any{"key": "dba_notice", "awx": map[string]any{"job_template": "role-nginx", "title": "Tell the DBAs"},
-					"when": `inputs.database == "ledger"`},
-			}},
-		}
-		def.UiSchema.Layout.Kind = api.Page
-		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "VM and database user", Fields: fields}}
+		def := vmWithDBUser()
 
 		// Checked when saved: keys, references to earlier steps, CEL.
 		bad := def
@@ -155,8 +126,43 @@ func TestCompositeItems(t *testing.T) {
 		h.json("POST", "/api/v1/requests", "sbrunner", api.RequestDraft{CatalogItemId: pg.Id, VersionId: pg.Version.Id,
 			ProjectId: "prj_data", Environment: "dev", Inputs: map[string]any{"name": "ledger"}}, 422, &problem,
 			"Idempotency-Key", uuid.NewString())
-		_ = provision.KeyStep
 	})
+}
+
+// vmWithDBUser is a composite: a VM, then its database user (undone by a
+// job) and monitoring at the same time, then a step only for the ledger
+// database.
+func vmWithDBUser() api.CatalogVersionDefinition {
+	fields := []string{"role", "size", "cluster", "datastore", "network", "database", "role_name"}
+	props := map[string]any{}
+	ui := map[string]api.UiField{}
+	for _, f := range fields {
+		props[f] = map[string]any{"type": "string", "minLength": 1}
+		ui[f] = api.UiField{Widget: api.UiWidgetText, Label: f}
+	}
+	def := api.CatalogVersionDefinition{
+		FormSchema:    map[string]any{"type": "object", "required": fields, "properties": props},
+		UiSchema:      api.UiSchema{Fields: ui},
+		InitialValues: map[string]any{},
+		Blueprint: map[string]any{"kind": "composite", "rollback_on_failure": true, "steps": []any{
+			map[string]any{"key": "vm", "title": "The VM", "item": "rhel9-server", "with": map[string]any{
+				"role": "inputs.role", "size": "inputs.size", "cluster": "inputs.cluster", "datastore": "inputs.datastore",
+				"network": "inputs.network", "post_config": []any{"linux-baseline"}}},
+			map[string]any{"parallel": []any{
+				map[string]any{"key": "db_user", "title": "Database user", "item": "db-user",
+					"with": map[string]any{"database": "inputs.database", "role_name": "inputs.role_name",
+						"privileges": `"read"`, "host": "steps.vm.fqdn"},
+					"undo": map[string]any{"job_template": "idm-hbac-group", "with": map[string]any{"role_name": "inputs.role_name"}}},
+				map[string]any{"key": "monitoring", "awx": map[string]any{"job_template": "monitoring-agent", "title": "Monitoring"},
+					"with": map[string]any{"target": "steps.vm.fqdn"}},
+			}},
+			map[string]any{"key": "dba_notice", "awx": map[string]any{"job_template": "role-nginx", "title": "Tell the DBAs"},
+				"when": `inputs.database == "ledger"`},
+		}},
+	}
+	def.UiSchema.Layout.Kind = api.Page
+	def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "VM and database user", Fields: fields}}
+	return def
 }
 
 func keysOf(m map[string]api.Step) []string {

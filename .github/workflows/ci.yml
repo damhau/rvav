@@ -28,7 +28,9 @@ jobs:
       - run: make vet
       - run: make gen-check
       - run: make test
-      - name: End-to-end tests (embedded PostgreSQL, vcsim)
+      # The S10 acceptance test runs the Python example worker (uv).
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: End-to-end tests (embedded PostgreSQL, vcsim, a Temporal dev server)
         run: make test-e2e
 
   ansible:
