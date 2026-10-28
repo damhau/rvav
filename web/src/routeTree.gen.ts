@@ -19,6 +19,7 @@ import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-action
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
+import { Route as AdminWorkflowsRouteImport } from "./routes/admin/workflows"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
 import { Route as DeploymentsIndexRouteImport } from "./routes/deployments/index"
 import { Route as DeploymentsDeploymentIdRouteImport } from "./routes/deployments/$deploymentId"
@@ -28,6 +29,8 @@ import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catal
 import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
 import { Route as AdminProjectsIndexRouteImport } from "./routes/admin/projects/index"
 import { Route as AdminProjectsProjectIdRouteImport } from "./routes/admin/projects/$projectId"
+import { Route as AdminSubscriptionsIndexRouteImport } from "./routes/admin/subscriptions/index"
+import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/admin/subscriptions/$subscriptionId"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
@@ -81,6 +84,11 @@ const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   path: "/admin/policies",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminWorkflowsRoute = AdminWorkflowsRouteImport.update({
+  id: "/admin/workflows",
+  path: "/admin/workflows",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CatalogIndexRoute = CatalogIndexRouteImport.update({
   id: "/catalog/",
   path: "/catalog/",
@@ -126,6 +134,17 @@ const AdminProjectsProjectIdRoute = AdminProjectsProjectIdRouteImport.update({
   path: "/admin/projects/$projectId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminSubscriptionsIndexRoute = AdminSubscriptionsIndexRouteImport.update({
+  id: "/admin/subscriptions/",
+  path: "/admin/subscriptions/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSubscriptionsSubscriptionIdRoute =
+  AdminSubscriptionsSubscriptionIdRouteImport.update({
+    id: "/admin/subscriptions/$subscriptionId",
+    path: "/admin/subscriptions/$subscriptionId",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const CatalogItemIdRequestRoute = CatalogItemIdRequestRouteImport.update({
   id: "/catalog/$itemId/request",
   path: "/catalog/$itemId/request",
@@ -149,6 +168,7 @@ export interface FileRoutesByFullPath {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/workflows": typeof AdminWorkflowsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog/": typeof CatalogIndexRoute
@@ -156,9 +176,11 @@ export interface FileRoutesByFullPath {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
+  "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesByTo {
@@ -172,6 +194,7 @@ export interface FileRoutesByTo {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/workflows": typeof AdminWorkflowsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog": typeof CatalogIndexRoute
@@ -179,9 +202,11 @@ export interface FileRoutesByTo {
   "/requests": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
+  "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesById {
@@ -196,6 +221,7 @@ export interface FileRoutesById {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/workflows": typeof AdminWorkflowsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
   "/catalog/": typeof CatalogIndexRoute
@@ -203,9 +229,11 @@ export interface FileRoutesById {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
+  "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRouteTypes {
@@ -221,6 +249,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/integrations"
     | "/admin/policies"
+    | "/admin/workflows"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog/"
@@ -228,9 +257,11 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
     | "/admin/projects/"
+    | "/admin/subscriptions/"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -244,6 +275,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/integrations"
     | "/admin/policies"
+    | "/admin/workflows"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog"
@@ -251,9 +283,11 @@ export interface FileRouteTypes {
     | "/requests"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items"
     | "/admin/projects"
+    | "/admin/subscriptions"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
     | "__root__"
@@ -267,6 +301,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/integrations"
     | "/admin/policies"
+    | "/admin/workflows"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
     | "/catalog/"
@@ -274,9 +309,11 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
     | "/admin/projects/"
+    | "/admin/subscriptions/"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
 }
@@ -291,6 +328,7 @@ export interface RootRouteChildren {
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
+  AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
@@ -298,9 +336,11 @@ export interface RootRouteChildren {
   RequestsIndexRoute: typeof RequestsIndexRoute
   AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
   AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
+  AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
   AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
+  AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 
@@ -376,6 +416,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminPoliciesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/workflows": {
+      id: "/admin/workflows"
+      path: "/admin/workflows"
+      fullPath: "/admin/workflows"
+      preLoaderRoute: typeof AdminWorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/catalog/": {
       id: "/catalog/"
       path: "/catalog"
@@ -439,6 +486,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminProjectsProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/subscriptions/": {
+      id: "/admin/subscriptions/"
+      path: "/admin/subscriptions"
+      fullPath: "/admin/subscriptions/"
+      preLoaderRoute: typeof AdminSubscriptionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/subscriptions/$subscriptionId": {
+      id: "/admin/subscriptions/$subscriptionId"
+      path: "/admin/subscriptions/$subscriptionId"
+      fullPath: "/admin/subscriptions/$subscriptionId"
+      preLoaderRoute: typeof AdminSubscriptionsSubscriptionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/catalog/$itemId/request": {
       id: "/catalog/$itemId/request"
       path: "/catalog/$itemId/request"
@@ -467,6 +528,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
+  AdminWorkflowsRoute: AdminWorkflowsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
   RequestsRequestIdRoute: RequestsRequestIdRoute,
   CatalogIndexRoute: CatalogIndexRoute,
@@ -474,9 +536,11 @@ const rootRouteChildren: RootRouteChildren = {
   RequestsIndexRoute: RequestsIndexRoute,
   AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
   AdminProjectsProjectIdRoute: AdminProjectsProjectIdRoute,
+  AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
+  AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,
 }

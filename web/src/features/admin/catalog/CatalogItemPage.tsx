@@ -19,6 +19,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
+import { CompositeOutline } from "./CompositeOutline";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
 import { FormDesigner } from "./designer/FormDesigner";
@@ -390,6 +391,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
           ))}
         </ul>
       )}
+      {item.type === "composite" && <CompositeOutline text={text} />}
     </Panel>
   );
 }

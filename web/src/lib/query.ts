@@ -1,5 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, call } from "./api/client";
+import type { components } from "./api/schema";
 import type {
   ApprovalStatus,
   AuditEventPage,
@@ -150,6 +151,44 @@ export const adm = {
     get(["admin", "approval-policies"], (signal) => call(api.GET("/admin/approval-policies", { signal }))),
   day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),
   integrations: () => get(["admin", "integrations"], (signal) => call(api.GET("/admin/integrations", { signal }))),
+  // Events, subscriptions and custom workflows (S10, ADR-0021 and ADR-0022).
+  eventTopics: () =>
+    queryOptions({
+      queryKey: ["admin", "event-topics"],
+      queryFn: ({ signal }) => call(api.GET("/admin/event-topics", { signal })),
+      staleTime: Infinity,
+    }),
+  subscriptions: () => get(["admin", "subscriptions"], (signal) => call(api.GET("/admin/subscriptions", { signal }))),
+  subscription: (id: string) =>
+    get(["admin", "subscription", id], (signal) =>
+      call(api.GET("/admin/subscriptions/{id}", { params: { path: { id } }, signal })),
+    ),
+  subscriptionRuns: (id: string, status: string) =>
+    infiniteQueryOptions({
+      queryKey: ["admin", "subscription-runs", id, status],
+      queryFn: async ({ signal, pageParam }) =>
+        call(
+          api.GET("/admin/subscriptions/{id}/runs", {
+            params: {
+              path: { id },
+              query: {
+                status: status === "any" ? undefined : (status as components["schemas"]["SubscriptionRunStatus"]),
+                cursor: pageParam,
+                limit: 50,
+              },
+            },
+            signal,
+          }),
+        ),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (last) => last.next_cursor ?? undefined,
+    }),
+  subscriptionRun: (id: string) =>
+    get(["admin", "subscription-run", id], (signal) =>
+      call(api.GET("/admin/subscription-runs/{id}", { params: { path: { id } }, signal })),
+    ),
+  workflows: () => get(["admin", "workflows"], (signal) => call(api.GET("/admin/workflows", { signal }))),
+  secrets: () => get(["admin", "secrets"], (signal) => call(api.GET("/admin/secrets", { signal }))),
   users: (search: string) =>
     get(["users", search], (signal) =>
       call(api.GET("/users", { params: { query: { q: search, limit: 20 } }, signal })),

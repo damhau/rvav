@@ -112,10 +112,12 @@ function NewItemDialog({ onClose }: { onClose: () => void }) {
                 id="new-item-type"
                 value={form.type}
                 onChange={set("type")}
-                options={(["vm_blueprint", "awx_job_template", "awx_workflow"] as const).map((t) => ({
-                  value: t,
-                  label: itemTypeLabel[t],
-                }))}
+                options={(["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const).map(
+                  (t) => ({
+                    value: t,
+                    label: itemTypeLabel[t],
+                  }),
+                )}
               />
             </Field>
           </div>

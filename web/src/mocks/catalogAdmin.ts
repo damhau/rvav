@@ -4,6 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
+import { readComposite } from "@/features/admin/catalog/composite";
 import { celCheck } from "./cel";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
@@ -58,6 +59,8 @@ const iconSet = [
 ]; // prettier-ignore
 
 function blueprintFor(item: StoredItem): Record<string, unknown> {
+  if (item.type === "composite") return { kind: "composite", rollback_on_failure: true, steps: [] };
+  if (item.type === "workflow") return { kind: "workflow", workflow: "" };
   return item.type === "vm_blueprint"
     ? { kind: "vm", template: "tpl-rhel9.4-2026.10", guest: { os_family: "linux", domain: "corp.example" } }
     : { kind: "awx", awx: { title: item.name, job_template: item.source.awx_template_name ?? item.slug } };
@@ -89,7 +92,15 @@ function state(db: Db): AdminState {
       ];
     }
     d.catalogAdmin = {
-      secrets: [],
+      secrets: [
+        {
+          name: "webhook-signing",
+          kind: "token",
+          description: "Signs rvav's webhooks to the CMDB and ServiceNow.",
+          created_at: now(),
+          updated_at: now(),
+        },
+      ],
       versions,
       allProjects: new Set(db.items.filter((i) => i.source.kind === "awx").map((i) => i.id)),
       sortOrder: Object.fromEntries(db.categories.map((c, i) => [c.key, i * 10])),
@@ -258,6 +269,28 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         code: "unknown_input",
         message: `"${name}" is not an input of the form's schema.`,
       });
+  if (def.blueprint.kind === "composite") {
+    errors.push(...readComposite(def.blueprint, `${prefix}/blueprint`).problems);
+    // CEL, as the server checks it.
+    const steps = (Array.isArray(def.blueprint.steps) ? def.blueprint.steps : []) as Record<string, unknown>[];
+    steps.forEach((st, g) => {
+      const list = Array.isArray(st.parallel) ? (st.parallel as Record<string, unknown>[]) : [st];
+      list.forEach((x, j) => {
+        const at = `${prefix}/blueprint/steps/${g}${Array.isArray(st.parallel) ? `/parallel/${j}` : ""}`;
+        const exprs: [string, unknown][] = [
+          [`${at}/when`, x.when],
+          ...Object.entries((x.with as Record<string, unknown> | undefined) ?? {}).map(([k, v]): [string, unknown] => [
+            `${at}/with/${k}`,
+            v,
+          ]),
+        ];
+        for (const [field, e] of exprs) {
+          const problem = typeof e === "string" && e ? celCheck(e) : null;
+          if (problem) errors.push({ field, code: "invalid", message: `Not valid CEL: ${problem}` });
+        }
+      });
+    });
+  }
   return errors;
 }
 
