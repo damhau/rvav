@@ -259,6 +259,41 @@ Catalog admins and administrators build items under **Catalog items**
 - A field with a `visible` rule stays hidden in a request form until the
   server's results arrive, rather than show and then vanish.
 
+## Administration
+
+The other administration pages ([ADR-0020](adr/0020-administration.md))
+are in `features/admin/governance/`. The sidebar shows each person the
+ones they may use; auditors see them read only.
+
+- **Projects**: the projects (search, archived ones on request, **New
+  project** with its environments and first project admins), the
+  environments (production or not, snapshots kept, removable while unused)
+  and the OIDC group mappings (a global role, or a role in one project).
+  Project admins see their own projects only.
+- A **project's page**, in tabs: **Members** (add someone found by name or
+  email, change a direct role, remove; roles from a group show the group),
+  **Placement** (the rules for an environment, by cluster and datastore
+  name patterns or vCenter tags, and a preview of the clusters,
+  datastores, networks with their subnets, and folder a request would get,
+  with what would stop it), **Quotas** (limits for the project or one
+  environment, refused or sent to approval when passed, saved as a whole)
+  and **Details** (archive, or put back in use).
+- **Policies**, in tabs: approval and day-2 policies (moved up and down
+  to order them; a condition that isn't valid CEL is refused when saved,
+  under its field), lease policies (an environment's, and projects'
+  overrides), naming policies (template, counter, where offered, and a
+  preview of the next names with the ones skipped because they are taken)
+  and **What applies here**, which says which policy decides the approval,
+  day-2 action, lease and naming for a project and environment, with the
+  quota lines.
+- **Templates and networks**: VM templates and sizes, with where each is
+  offered (projects and environments), and the network mappings, from
+  EfficientIP or by hand.
+
+Dialogs opened from a page's state give focus back to the button that
+opened them on close (`components/ui/dialog.tsx`); Radix only does that
+for a `DialogTrigger`.
+
 ## Performance budget
 
 - Initial JS under 200 kB gzipped for the app shell; routes and heavy widgets

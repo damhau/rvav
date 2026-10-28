@@ -109,6 +109,53 @@ export const keys = {
 
 const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
 
+const get = <T>(key: readonly unknown[], fn: (signal: AbortSignal) => Promise<T>) =>
+  queryOptions({ queryKey: key, queryFn: ({ signal }) => fn(signal) });
+
+/** Administration (S9, ADR-0020). */
+export const adm = {
+  projects: (search: string, archived: boolean) =>
+    get(["admin", "projects", search, archived], (signal) =>
+      call(api.GET("/admin/projects", { params: { query: { q: search || undefined, archived } }, signal })),
+    ),
+  project: (id: string) =>
+    get(["admin", "project", id], (signal) =>
+      call(api.GET("/admin/projects/{projectId}", { params: { path: { projectId: id } }, signal })),
+    ),
+  members: (id: string) =>
+    get(["admin", "members", id], (signal) =>
+      call(api.GET("/projects/{projectId}/members", { params: { path: { projectId: id } }, signal })),
+    ),
+  groupMappings: () => get(["admin", "group-mappings"], (signal) => call(api.GET("/admin/group-mappings", { signal }))),
+  environments: () => get(["admin", "environments"], (signal) => call(api.GET("/admin/environments", { signal }))),
+  placementRules: (projectId: string) =>
+    get(["admin", "placement-rules", projectId], (signal) =>
+      call(api.GET("/admin/placement-rules", { params: { query: { project_id: projectId } }, signal })),
+    ),
+  placementPreview: (projectId: string, environment: string) =>
+    get(["admin", "placement-preview", projectId, environment], (signal) =>
+      call(api.GET("/admin/placement-preview", { params: { query: { project_id: projectId, environment } }, signal })),
+    ),
+  networkMappings: () =>
+    get(["admin", "network-mappings"], (signal) => call(api.GET("/admin/network-mappings", { signal }))),
+  templates: () => get(["admin", "templates"], (signal) => call(api.GET("/admin/templates", { signal }))),
+  sizes: () => get(["admin", "sizes"], (signal) => call(api.GET("/admin/sizes", { signal }))),
+  naming: () => get(["admin", "naming"], (signal) => call(api.GET("/admin/naming-policies", { signal }))),
+  quotas: (projectId: string) =>
+    get(["admin", "quotas", projectId], (signal) =>
+      call(api.GET("/admin/projects/{projectId}/quotas", { params: { path: { projectId } }, signal })),
+    ),
+  leases: () => get(["admin", "leases"], (signal) => call(api.GET("/admin/lease-policies", { signal }))),
+  approvals: () =>
+    get(["admin", "approval-policies"], (signal) => call(api.GET("/admin/approval-policies", { signal }))),
+  day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),
+  integrations: () => get(["admin", "integrations"], (signal) => call(api.GET("/admin/integrations", { signal }))),
+  users: (search: string) =>
+    get(["users", search], (signal) =>
+      call(api.GET("/users", { params: { query: { q: search, limit: 20 } }, signal })),
+    ),
+};
+
 export const q = {
   tokens: (all: boolean) =>
     queryOptions({

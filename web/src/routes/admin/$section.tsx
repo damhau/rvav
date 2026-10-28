@@ -4,8 +4,6 @@ import { NotInSlice } from "@/features/NotInSlice";
 const titles: Record<string, string> = {
   "catalog-items": "Catalog items",
   "day2-actions": "Day-2 actions",
-  policies: "Policies",
-  projects: "Projects",
   integrations: "Integrations",
   audit: "Audit log",
 };

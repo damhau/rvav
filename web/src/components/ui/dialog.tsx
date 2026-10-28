@@ -12,8 +12,12 @@ export function DialogContent({
   title,
   description,
   children,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof D.Content> & { title: string; description?: React.ReactNode }) {
+  // Radix gives focus back to a DialogTrigger only; dialogs opened from state
+  // give it back to whatever opened them.
+  const [opener] = React.useState(() => document.activeElement as HTMLElement | null);
   return (
     <D.Portal>
       <D.Overlay className="fixed inset-0 z-40 bg-black/40" />
@@ -22,6 +26,13 @@ export function DialogContent({
           "fixed top-[12vh] left-1/2 z-50 w-[min(480px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-line bg-surface shadow-pop",
           className,
         )}
+        onCloseAutoFocus={(e) => {
+          onCloseAutoFocus?.(e);
+          if (!e.defaultPrevented && opener?.isConnected && opener !== document.body) {
+            e.preventDefault();
+            opener.focus();
+          }
+        }}
         {...props}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
