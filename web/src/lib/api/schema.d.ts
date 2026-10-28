@@ -1747,6 +1747,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/event-topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The topics subscriptions can use, with a sample event of each (ADR-0021) */
+        get: operations["listEventTopics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event subscriptions, by topic and priority (administrators and auditors) */
+        get: operations["listSubscriptions"];
+        put?: never;
+        /** Subscribe a webhook, an AWX template or a custom workflow to a topic */
+        post: operations["createSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** One subscription */
+        get: operations["getSubscription"];
+        /** Change a subscription (runs already made keep their payload) */
+        put: operations["updateSubscription"];
+        post?: never;
+        /** Remove a subscription (its run history goes with it) */
+        delete: operations["deleteSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscriptions/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deliver the topic's sample event to the target now, once, and say what it answered */
+        post: operations["testSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscriptions/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** A subscription's runs, newest first */
+        get: operations["listSubscriptionRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscription-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** One run, with its payload and every attempt */
+        get: operations["getSubscriptionRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/subscription-runs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deliver a failed run again (not blocking runs, which belonged to their request) */
+        post: operations["retrySubscriptionRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Registered custom workflows (ADR-0022) */
+        get: operations["listWorkflows"];
+        put?: never;
+        /** Register a custom Temporal workflow */
+        post: operations["registerWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/workflows/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        /** One registration, with how many runs are not ended */
+        get: operations["getWorkflow"];
+        /** Change a registration (its name stays) */
+        put: operations["updateWorkflow"];
+        post?: never;
+        /** Remove a registration nothing uses (else disable it) */
+        delete: operations["deleteWorkflow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -2001,7 +2172,7 @@ export interface components {
             summary: string;
             description_md?: string;
             category: string;
-            /** @description `composite` comes with S10. */
+            /** @description `composite` and `workflow` items are defined in their blueprint (ADR-0022). */
             type: components["schemas"]["CatalogItemType"];
             /** @description One of `/admin/catalog/icons`. */
             icon?: string;
@@ -2286,7 +2457,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        CatalogItemType: "vm_blueprint" | "awx_job_template" | "awx_workflow" | "composite";
+        CatalogItemType: "vm_blueprint" | "awx_job_template" | "awx_workflow" | "composite" | "workflow";
         CatalogCategory: {
             key: string;
             name: string;
@@ -3663,6 +3834,211 @@ export interface components {
         };
         AuditEventPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["AuditEvent"][];
+        };
+        /** @enum {string} */
+        EventTopicKey: "request.submitted" | "provisioning.pre" | "provisioning.post" | "day2.pre" | "day2.post" | "delete.pre" | "delete.post" | "lease.expiring" | "lease.expired";
+        EventTopic: {
+            key: components["schemas"]["EventTopicKey"];
+            description: string;
+            /** @description Whether blocking subscriptions are allowed (the `.pre` topics). */
+            may_block: boolean;
+            sample: components["schemas"]["IntegrationEvent"];
+        };
+        EventTopicList: {
+            items: components["schemas"]["EventTopic"][];
+        };
+        /**
+         * @description What subscribers receive (`rvav.event.v1`). Within v1, fields are only
+         *     added: receivers ignore those they don't know. Webhooks get it as the
+         *     body, signed in `X-Rvav-Signature`; AWX templates as the extra
+         *     variable `rvav_event`; custom workflows in their context's `event`.
+         */
+        IntegrationEvent: {
+            /** @description Stable across retries: receivers ignore an ID they already have. */
+            id: string;
+            topic: components["schemas"]["EventTopicKey"];
+            /** @example rvav.event.v1 */
+            contract: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @description request, item, project, environment, requester, owner, deployment, resources, inputs, vm and lease; null where they don't apply. */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Exactly one of `webhook`, `awx` and `workflow`. */
+        SubscriptionTarget: {
+            webhook?: {
+                /** @description An https URL on a host in RVAV_WEBHOOK_HOSTS. */
+                url: string;
+                /** @description The stored secret (`/admin/secrets`) the body is signed with. */
+                secret: string;
+            };
+            awx?: {
+                /** @description The job template's AWX ID. */
+                template_id?: number;
+                /** @description Its name, when no ID is given. */
+                job_template?: string;
+            };
+            workflow?: {
+                /** @description A registered custom workflow allowed as a subscription target. */
+                key: string;
+            };
+        };
+        /**
+         * @description What a blocking subscription does when its target fails or doesn't answer in time.
+         * @enum {string}
+         */
+        SubscriptionOnFailure: "stop_request" | "continue_request";
+        SubscriptionWrite: {
+            name: string;
+            description?: string;
+            topic: components["schemas"]["EventTopicKey"];
+            /**
+             * @description A CEL expression over the event's data (`environment` is the key, `production` a boolean); empty: every event.
+             * @example environment == "prd" && item.slug == "rhel9-server"
+             */
+            condition?: string;
+            /**
+             * @description Only on `.pre` topics: the request waits for the answer and may be stopped.
+             * @default false
+             */
+            blocking: boolean;
+            on_failure?: components["schemas"]["SubscriptionOnFailure"];
+            /**
+             * @description Lower first.
+             * @default 100
+             */
+            priority: number;
+            /** @default 30 */
+            timeout_seconds: number;
+            /** @default true */
+            enabled: boolean;
+            target: components["schemas"]["SubscriptionTarget"];
+        };
+        Subscription: components["schemas"]["SubscriptionWrite"] & {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** @description Its runs of the last 30 days, by status. */
+            runs: {
+                delivered: number;
+                failed: number;
+                pending: number;
+            };
+            /** Format: date-time */
+            last_run_at?: string;
+        };
+        SubscriptionList: {
+            items: components["schemas"]["Subscription"][];
+        };
+        /**
+         * @description `queued` waits for its next attempt; `blocked` is a blocking run that stopped its request.
+         * @enum {string}
+         */
+        SubscriptionRunStatus: "queued" | "delivering" | "delivered" | "failed" | "blocked";
+        SubscriptionRun: {
+            id: string;
+            subscription_id: string;
+            event_id: string;
+            topic: components["schemas"]["EventTopicKey"];
+            status: components["schemas"]["SubscriptionRunStatus"];
+            blocking: boolean;
+            /** @description Made with Test. */
+            test: boolean;
+            /** @description The request it belongs to (blocking runs, and runs of request events). */
+            request?: {
+                id: string;
+                number: string;
+            };
+            attempts: number;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            /** @description A blocking run's answer: continue or stop. */
+            outcome?: string;
+            /** @description Why it stopped the request, or why it failed. */
+            reason?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        SubscriptionRunAttempt: {
+            /** Format: date-time */
+            at: string;
+            ok: boolean;
+            /** @description The webhook's HTTP status. */
+            status_code?: number;
+            /** @description The AWX job launched. */
+            job_id?: number;
+            /** @description The custom workflow's Temporal ID. */
+            workflow_id?: string;
+            /** @description What came back, its first 4 KB. */
+            response?: string;
+            error?: string;
+            duration_ms: number;
+        };
+        SubscriptionRunDetail: components["schemas"]["SubscriptionRun"] & {
+            payload: components["schemas"]["IntegrationEvent"];
+            /** @description Properties a blocking run set on the deployment. */
+            properties?: {
+                [key: string]: string;
+            };
+            history: components["schemas"]["SubscriptionRunAttempt"][];
+        };
+        SubscriptionRunPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["SubscriptionRun"][];
+        };
+        /** @enum {string} */
+        WorkflowUsage: "catalog_item" | "day2_action" | "subscription_target" | "composite_step";
+        /** @description How it is offered as the day-2 action `wf.<key>`. */
+        WorkflowDay2: {
+            /** @example Decommission */
+            name: string;
+            types: ("vsphere.vm" | "deployment")[];
+            /** @description CEL over the day-2 policy variables; empty: everywhere. */
+            condition?: string;
+            /** @default false */
+            offered: boolean;
+        };
+        WorkflowRegistrationWrite: {
+            /** @description Its name in rvav, set when registering (ignored on update). */
+            key?: string;
+            title: string;
+            description?: string;
+            /**
+             * @description The Temporal workflow type, ending with its major version.
+             * @example decommission.v1
+             */
+            workflow_type: string;
+            task_queue: string;
+            /** @description JSON Schema of its inputs: the form when people start it. */
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            /** @default 2592000 */
+            timeout_seconds: number;
+            /** @description The projects that may use it; empty for all. */
+            project_ids?: string[];
+            usages: components["schemas"]["WorkflowUsage"][];
+            day2?: components["schemas"]["WorkflowDay2"];
+            /** @default true */
+            enabled: boolean;
+        };
+        WorkflowRegistration: components["schemas"]["WorkflowRegistrationWrite"] & {
+            /** @description Its runs not ended. */
+            running: number;
+            /** @description What uses it: items, subscriptions and composite steps. */
+            used_by: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        WorkflowRegistrationList: {
+            items: components["schemas"]["WorkflowRegistration"][];
         };
     };
     responses: {
@@ -6960,6 +7336,391 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listEventTopics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The topics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventTopicList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listSubscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriptions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscription */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run (a test run, kept in the history) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRunDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSubscriptionRuns: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["SubscriptionRunStatus"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of runs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRunPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSubscriptionRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRunDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    retrySubscriptionRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, waiting to be delivered again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRun"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listWorkflows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The registrations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRegistrationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    registerWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowRegistrationWrite"];
+            };
+        };
+        responses: {
+            /** @description Registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRegistration"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The registration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRegistration"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowRegistrationWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRegistration"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listApiTokens: {

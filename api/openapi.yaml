@@ -2373,6 +2373,252 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/event-topics:
+    get:
+      tags: [admin]
+      operationId: listEventTopics
+      summary: The topics subscriptions can use, with a sample event of each (ADR-0021)
+      responses:
+        "200":
+          description: The topics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventTopicList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/subscriptions:
+    get:
+      tags: [admin]
+      operationId: listSubscriptions
+      summary: Event subscriptions, by topic and priority (administrators and auditors)
+      responses:
+        "200":
+          description: The subscriptions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createSubscription
+      summary: Subscribe a webhook, an AWX template or a custom workflow to a topic
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/subscriptions/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: getSubscription
+      summary: One subscription
+      responses:
+        "200":
+          description: The subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateSubscription
+      summary: Change a subscription (runs already made keep their payload)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteSubscription
+      summary: Remove a subscription (its run history goes with it)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subscriptions/{id}/test:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    post:
+      tags: [admin]
+      operationId: testSubscription
+      summary: Deliver the topic's sample event to the target now, once, and say what it answered
+      responses:
+        "200":
+          description: The run (a test run, kept in the history)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionRunDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subscriptions/{id}/runs:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: listSubscriptionRuns
+      summary: A subscription's runs, newest first
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/SubscriptionRunStatus" }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: A page of runs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionRunPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subscription-runs/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: getSubscriptionRun
+      summary: One run, with its payload and every attempt
+      responses:
+        "200":
+          description: The run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionRunDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subscription-runs/{id}/retry:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    post:
+      tags: [admin]
+      operationId: retrySubscriptionRun
+      summary: Deliver a failed run again (not blocking runs, which belonged to their request)
+      responses:
+        "200":
+          description: The run, waiting to be delivered again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/workflows:
+    get:
+      tags: [admin]
+      operationId: listWorkflows
+      summary: Registered custom workflows (ADR-0022)
+      responses:
+        "200":
+          description: The registrations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowRegistrationList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: registerWorkflow
+      summary: Register a custom Temporal workflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowRegistrationWrite" }
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowRegistration" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/workflows/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    get:
+      tags: [admin]
+      operationId: getWorkflow
+      summary: One registration, with how many runs are not ended
+      responses:
+        "200":
+          description: The registration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowRegistration" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateWorkflow
+      summary: Change a registration (its name stays)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkflowRegistrationWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowRegistration" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteWorkflow
+      summary: Remove a registration nothing uses (else disable it)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tokens:
     get:
       tags: [identity]
@@ -2837,7 +3083,7 @@ components:
         category: { type: string }
         type:
           $ref: "#/components/schemas/CatalogItemType"
-          description: "`composite` comes with S10."
+          description: "`composite` and `workflow` items are defined in their blueprint (ADR-0022)."
         icon: { type: string, description: "One of `/admin/catalog/icons`." }
         tags:
           type: array
@@ -3234,7 +3480,7 @@ components:
     # ── Catalog ───────────────────────────────────────────────────────────
     CatalogItemType:
       type: string
-      enum: [vm_blueprint, awx_job_template, awx_workflow, composite]
+      enum: [vm_blueprint, awx_job_template, awx_workflow, composite, workflow]
 
     CatalogCategory:
       type: object
@@ -5079,3 +5325,244 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/AuditEvent" }
+
+    # ── Events and subscriptions (ADR-0021) ──
+    EventTopicKey:
+      type: string
+      enum: [request.submitted, provisioning.pre, provisioning.post, day2.pre, day2.post, delete.pre, delete.post, lease.expiring, lease.expired]
+    EventTopic:
+      type: object
+      required: [key, description, may_block, sample]
+      properties:
+        key: { $ref: "#/components/schemas/EventTopicKey" }
+        description: { type: string }
+        may_block: { type: boolean, description: Whether blocking subscriptions are allowed (the `.pre` topics). }
+        sample: { $ref: "#/components/schemas/IntegrationEvent" }
+    EventTopicList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EventTopic" }
+    IntegrationEvent:
+      type: object
+      description: |
+        What subscribers receive (`rvav.event.v1`). Within v1, fields are only
+        added: receivers ignore those they don't know. Webhooks get it as the
+        body, signed in `X-Rvav-Signature`; AWX templates as the extra
+        variable `rvav_event`; custom workflows in their context's `event`.
+      required: [id, topic, contract, occurred_at, data]
+      properties:
+        id: { type: string, description: "Stable across retries: receivers ignore an ID they already have." }
+        topic: { $ref: "#/components/schemas/EventTopicKey" }
+        contract: { type: string, examples: [rvav.event.v1] }
+        occurred_at: { type: string, format: date-time }
+        data:
+          type: object
+          description: "request, item, project, environment, requester, owner, deployment, resources, inputs, vm and lease; null where they don't apply."
+          additionalProperties: true
+    SubscriptionTarget:
+      type: object
+      description: Exactly one of `webhook`, `awx` and `workflow`.
+      additionalProperties: false
+      properties:
+        webhook:
+          type: object
+          required: [url, secret]
+          additionalProperties: false
+          properties:
+            url: { type: string, description: "An https URL on a host in RVAV_WEBHOOK_HOSTS." }
+            secret: { type: string, description: "The stored secret (`/admin/secrets`) the body is signed with." }
+        awx:
+          type: object
+          additionalProperties: false
+          properties:
+            template_id: { type: integer, description: The job template's AWX ID. }
+            job_template: { type: string, description: "Its name, when no ID is given." }
+        workflow:
+          type: object
+          required: [key]
+          additionalProperties: false
+          properties:
+            key: { type: string, description: "A registered custom workflow allowed as a subscription target." }
+    SubscriptionOnFailure:
+      type: string
+      description: "What a blocking subscription does when its target fails or doesn't answer in time."
+      enum: [stop_request, continue_request]
+    SubscriptionWrite:
+      type: object
+      required: [name, topic, target]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        topic: { $ref: "#/components/schemas/EventTopicKey" }
+        condition:
+          type: string
+          description: "A CEL expression over the event's data (`environment` is the key, `production` a boolean); empty: every event."
+          examples: ['environment == "prd" && item.slug == "rhel9-server"']
+        blocking: { type: boolean, default: false, description: "Only on `.pre` topics: the request waits for the answer and may be stopped." }
+        on_failure: { $ref: "#/components/schemas/SubscriptionOnFailure" }
+        priority: { type: integer, default: 100, description: Lower first. }
+        timeout_seconds: { type: integer, minimum: 1, maximum: 3600, default: 30 }
+        enabled: { type: boolean, default: true }
+        target: { $ref: "#/components/schemas/SubscriptionTarget" }
+    Subscription:
+      allOf:
+        - $ref: "#/components/schemas/SubscriptionWrite"
+        - type: object
+          required: [id, condition, blocking, on_failure, priority, timeout_seconds, enabled, created_at, runs]
+          properties:
+            id: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+            runs:
+              type: object
+              description: Its runs of the last 30 days, by status.
+              required: [delivered, failed, pending]
+              properties:
+                delivered: { type: integer }
+                failed: { type: integer }
+                pending: { type: integer }
+            last_run_at: { type: string, format: date-time }
+    SubscriptionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Subscription" }
+    SubscriptionRunStatus:
+      type: string
+      description: "`queued` waits for its next attempt; `blocked` is a blocking run that stopped its request."
+      enum: [queued, delivering, delivered, failed, blocked]
+    SubscriptionRun:
+      type: object
+      required: [id, subscription_id, event_id, topic, status, blocking, test, attempts, created_at]
+      properties:
+        id: { type: string }
+        subscription_id: { type: string }
+        event_id: { type: string }
+        topic: { $ref: "#/components/schemas/EventTopicKey" }
+        status: { $ref: "#/components/schemas/SubscriptionRunStatus" }
+        blocking: { type: boolean }
+        test: { type: boolean, description: Made with Test. }
+        request:
+          type: object
+          description: The request it belongs to (blocking runs, and runs of request events).
+          required: [id, number]
+          properties:
+            id: { type: string }
+            number: { type: string }
+        attempts: { type: integer }
+        next_attempt_at: { type: string, format: date-time }
+        outcome: { type: string, description: "A blocking run's answer: continue or stop." }
+        reason: { type: string, description: "Why it stopped the request, or why it failed." }
+        created_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+    SubscriptionRunAttempt:
+      type: object
+      required: [at, ok, duration_ms]
+      properties:
+        at: { type: string, format: date-time }
+        ok: { type: boolean }
+        status_code: { type: integer, description: The webhook's HTTP status. }
+        job_id: { type: integer, description: The AWX job launched. }
+        workflow_id: { type: string, description: The custom workflow's Temporal ID. }
+        response: { type: string, description: "What came back, its first 4 KB." }
+        error: { type: string }
+        duration_ms: { type: integer }
+    SubscriptionRunDetail:
+      allOf:
+        - $ref: "#/components/schemas/SubscriptionRun"
+        - type: object
+          required: [payload, history]
+          properties:
+            payload: { $ref: "#/components/schemas/IntegrationEvent" }
+            properties:
+              type: object
+              description: Properties a blocking run set on the deployment.
+              additionalProperties: { type: string }
+            history:
+              type: array
+              items: { $ref: "#/components/schemas/SubscriptionRunAttempt" }
+    SubscriptionRunPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/SubscriptionRun" }
+
+    # ── Custom workflows (ADR-0022) ──
+    WorkflowUsage:
+      type: string
+      enum: [catalog_item, day2_action, subscription_target, composite_step]
+    WorkflowDay2:
+      type: object
+      description: "How it is offered as the day-2 action `wf.<key>`."
+      required: [name, types]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80, examples: [Decommission] }
+        types:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [vsphere.vm, deployment] }
+        condition: { type: string, description: "CEL over the day-2 policy variables; empty: everywhere." }
+        offered: { type: boolean, default: false }
+    WorkflowRegistrationWrite:
+      type: object
+      required: [title, workflow_type, task_queue, usages]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,40}$"
+          description: "Its name in rvav, set when registering (ignored on update)."
+        title: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 2000 }
+        workflow_type:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_.-]*\\.v[0-9]+$"
+          description: "The Temporal workflow type, ending with its major version."
+          examples: [decommission.v1]
+        task_queue: { type: string, minLength: 1 }
+        input_schema:
+          type: object
+          description: "JSON Schema of its inputs: the form when people start it."
+          additionalProperties: true
+        timeout_seconds: { type: integer, minimum: 60, default: 2592000 }
+        project_ids:
+          type: array
+          description: The projects that may use it; empty for all.
+          items: { type: string }
+        usages:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/WorkflowUsage" }
+        day2: { $ref: "#/components/schemas/WorkflowDay2" }
+        enabled: { type: boolean, default: true }
+    WorkflowRegistration:
+      allOf:
+        - $ref: "#/components/schemas/WorkflowRegistrationWrite"
+        - type: object
+          required: [key, input_schema, timeout_seconds, project_ids, enabled, running, used_by, created_at]
+          properties:
+            running: { type: integer, description: Its runs not ended. }
+            used_by:
+              type: array
+              description: "What uses it: items, subscriptions and composite steps."
+              items: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    WorkflowRegistrationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WorkflowRegistration" }

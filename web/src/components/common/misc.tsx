@@ -78,6 +78,7 @@ export const itemTypeLabel: Record<CatalogItemType, string> = {
   awx_job_template: "AWX job template",
   awx_workflow: "AWX workflow",
   composite: "Composite",
+  workflow: "Custom workflow",
 };
 
 export function Time({ iso, className }: { iso: string; className?: string }) {
