@@ -39,6 +39,14 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
       - run: make test-ansible
 
+  python:
+    name: Custom workflow helpers (Python)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: make test-python
+
   spec:
     name: API spec
     runs-on: ubuntu-24.04

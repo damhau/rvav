@@ -5,7 +5,7 @@ COMPOSE := docker compose -f deploy/docker-compose.yml
 
 .PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec web-check up down vcsim
 
-check: gen-check lint-spec vet test test-e2e test-ansible web-check ## Everything CI checks; must pass before every push
+check: gen-check lint-spec vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
 
 build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
@@ -22,8 +22,12 @@ test-ansible: ## The rvav.platform collection: it builds, and its inventory plug
 		--output-path "$$ANSIBLE_HOME" ansible_collections/rvav/platform
 	uv run --frozen --project ansible -- pytest -q -p no:cacheprovider ansible/ansible_collections/rvav/platform/tests
 
+test-python: ## Custom workflow helpers and the decommission example, on Temporal's time-skipping test server (uv)
+	uv run --frozen --project sdk/python -- pytest -q -p no:cacheprovider sdk/python/tests
+	cd examples/decommission && uv run --frozen -- pytest -q -p no:cacheprovider tests
+
 vet:
-	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	@out=$$(gofmt -l cmd internal pkg); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(GO) vet ./...
 
 gen: ## Regenerate internal/api from api/openapi.yaml
