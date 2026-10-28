@@ -21,8 +21,12 @@ environment, [ADR-0014](adr/0014-leases-and-quotas.md)).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
-R1 (slices 6 to 9) is built, item by item in
-[progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. S9
+R1 (slices 6 to 9) is built and accepted on the lab stack, item by item
+in [progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. Its
+demo script is [demo-r1.md](demo-r1.md), and the report for the go/no-go
+is [release-r1.md](release-r1.md): what remains needs real infrastructure
+(the [Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9)).
+S9
 projects, placement and governance is built and accepted on the compose
 stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
 project up from the UI (members and OIDC group mappings, placement by name
