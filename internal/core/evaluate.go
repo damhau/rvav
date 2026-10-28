@@ -38,6 +38,9 @@ type Evaluation struct {
 	Subnet     *store.NetworkSubnet
 	Naming     *naming.Template
 	NamePrefix string
+	// CounterKey is the name counter VM names advance: the prefix, or the
+	// naming policy's own counter.
+	CounterKey string
 	Names      []string
 	// names is what was learned about names, kept for Submit.
 	names     *nameCheck
@@ -364,34 +367,22 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 		add("", "template_missing", fmt.Sprintf("Template %s was not found in vCenter. Ask a catalog admin to check this item.", plan.Template))
 	}
 
-	tpl, err := naming.Parse(ev.Blueprint.Naming)
+	spec, err := s.namingFor(ctx, ev.Project.ID, ev.Env.Key, ev.Blueprint.Naming)
 	if err != nil {
 		return err
 	}
-	ev.Naming = &tpl
-	prefix, err := tpl.Prefix(naming.Values(ev.Project.Code, ev.Env.Key, ev.Inputs))
+	ev.Naming = &spec.Template
+	prefix, err := spec.Template.Prefix(naming.Values(ev.Project.Code, ev.Env.Key, ev.Inputs))
 	if err != nil {
 		return nil // inputs used by the name are still missing; the schema reports them
 	}
-	ev.NamePrefix = prefix
-	taken, err := s.Store.InventoryVMNames(ctx, prefix)
-	if err != nil {
-		return err
-	}
-	next, err := s.Store.PeekName(ctx, prefix)
-	if err != nil {
-		return err
-	}
-	ev.names = &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken}
+	ev.NamePrefix, ev.CounterKey = prefix, spec.counterKey(prefix)
+	zone := ""
 	if ev.Subnet != nil {
-		ev.names.zone = ev.Subnet.DNSZone
+		zone = ev.Subnet.DNSZone
 	}
-	for len(ev.Names) < ev.Count {
-		name := tpl.Name(prefix, next)
-		next++
-		if !ev.names.taken(name) {
-			ev.Names = append(ev.Names, name)
-		}
+	if ev.Names, _, ev.names, err = s.peekNames(ctx, spec, prefix, zone, ev.Count); err != nil {
+		return err
 	}
 	if err := ev.names.err; err != nil {
 		if strict {

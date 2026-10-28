@@ -74,13 +74,17 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			if err != nil {
 				return err
 			}
-			names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, zone: ev.Subnet.DNSZone}
+			ours, err := s.Store.DeploymentNames(ctx, ev.NamePrefix)
+			if err != nil {
+				return err
+			}
+			names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: ev.Subnet.DNSZone}
 			if ev.names != nil {
 				names.dns = ev.names.dns
 			}
 			order := optionOrder(ev.Version.UISchema, "post_config")
 			for i := 0; i < ev.Count; i++ {
-				seq, err := s.Store.NextName(ctx, tx, ev.NamePrefix, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
+				seq, err := s.Store.NextName(ctx, tx, ev.CounterKey, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
 				if err != nil {
 					return err
 				}

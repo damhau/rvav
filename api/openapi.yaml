@@ -4774,13 +4774,14 @@ components:
         skipped:
           type: array
           description: Names passed over because they are taken.
-          items:
-            type: object
-            required: [name, taken_in]
-            properties:
-              name: { type: string }
-              taken_in: { type: string, enum: [vcenter, dns, rvav] }
+          items: { $ref: "#/components/schemas/NamingSkipped" }
         problem: { type: string }
+    NamingSkipped:
+      type: object
+      required: [name, taken_in]
+      properties:
+        name: { type: string }
+        taken_in: { type: string, enum: [vcenter, dns, rvav] }
     QuotaLimit:
       type: object
       required: [environment, resource, limit, enforcement]

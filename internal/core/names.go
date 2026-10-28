@@ -19,33 +19,42 @@ type nameCheck struct {
 	ctx     context.Context
 	ipam    efficientip.Client
 	vcenter map[string]bool
-	zone    string
-	dns     map[string]bool
-	err     error
+	// rvav holds the names of every deployment rvav made, deleted ones too:
+	// a name is never given twice (ADR-0020).
+	rvav map[string]bool
+	zone string
+	dns  map[string]bool
+	err  error
 }
 
-func (c *nameCheck) taken(name string) bool {
+func (c *nameCheck) taken(name string) bool { return c.takenIn(name) != "" }
+
+// takenIn says where a name is taken: vcenter, rvav or dns ("" when free).
+func (c *nameCheck) takenIn(name string) string {
 	if c.vcenter[name] {
-		return true
+		return "vcenter"
+	}
+	if c.rvav[name] {
+		return "rvav"
 	}
 	if c.ipam == nil || c.zone == "" || c.err != nil {
-		return false
+		return ""
 	}
 	if taken, ok := c.dns[name]; ok {
-		return taken
+		return map[bool]string{true: "dns"}[taken]
 	}
 	if len(c.dns) >= maxDNSChecks {
 		c.err = &ConflictError{Msg: fmt.Sprintf("The next %d names are all in DNS under %s. Ask an administrator to look at the naming rule.", maxDNSChecks, c.zone)}
-		return false
+		return ""
 	}
 	exists, err := c.ipam.NameExists(c.ctx, name+"."+c.zone)
 	if err != nil {
 		c.err = &UpstreamError{System: "EfficientIP", Err: err}
-		return false
+		return ""
 	}
 	if c.dns == nil {
 		c.dns = map[string]bool{}
 	}
 	c.dns[name] = exists
-	return exists
+	return map[bool]string{true: "dns"}[exists]
 }

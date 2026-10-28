@@ -89,5 +89,9 @@ func Values(projectCode, environment string, inputs map[string]any) map[string]s
 			vals["inputs."+k] = s
 		}
 	}
+	// {role} is short for {inputs.role}.
+	if role, ok := vals["inputs.role"]; ok {
+		vals["role"] = role
+	}
 	return vals
 }

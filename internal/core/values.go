@@ -300,35 +300,30 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		if err != nil {
 			return out, err
 		}
-		tpl, err := naming.Parse(bp.Naming)
+		spec, err := s.namingFor(ctx, proj.ID, env, bp.Naming)
 		if err != nil {
 			return out, err
 		}
-		prefix, err := tpl.Prefix(naming.Values(proj.Code, env, q.Inputs))
+		prefix, err := spec.Template.Prefix(naming.Values(proj.Code, env, q.Inputs))
 		if err != nil {
 			return out, nil // the inputs the name needs are not filled in yet
 		}
-		taken, err := s.Store.InventoryVMNames(ctx, prefix)
-		if err != nil {
-			return out, err
-		}
-		next, err := s.Store.PeekName(ctx, prefix)
-		if err != nil {
-			return out, err
-		}
-		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken}
+		zone := ""
 		if network, _ := q.Inputs["network"].(string); network != "" {
 			if sn, err := s.Store.NetworkSubnet(ctx, network); err == nil {
-				names.zone = sn.DNSZone
+				zone = sn.DNSZone
 			}
 		}
-		for names.taken(tpl.Name(prefix, next)) {
-			next++
+		next, _, names, err := s.peekNames(ctx, spec, prefix, zone, 1)
+		if err != nil {
+			return out, err
 		}
 		if names.err != nil {
 			s.Log.Warn("checking VM names in DNS", "err", names.err)
 		}
-		out.Value = tpl.Name(prefix, next)
+		if len(next) > 0 {
+			out.Value = next[0]
+		}
 		cache(5)
 
 	case "ipam.subnets":

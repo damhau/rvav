@@ -3417,12 +3417,13 @@ export interface components {
             /** @description The next names, nothing reserved. */
             names: string[];
             /** @description Names passed over because they are taken. */
-            skipped: {
-                name: string;
-                /** @enum {string} */
-                taken_in: "vcenter" | "dns" | "rvav";
-            }[];
+            skipped: components["schemas"]["NamingSkipped"][];
             problem?: string;
+        };
+        NamingSkipped: {
+            name: string;
+            /** @enum {string} */
+            taken_in: "vcenter" | "dns" | "rvav";
         };
         QuotaLimit: {
             /** @description An environment's key, or empty for the project as a whole. */

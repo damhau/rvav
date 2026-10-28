@@ -110,23 +110,39 @@ func (s *Server) SetLeasePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListNamingPolicies(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.NamingPolicies(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.NamingPolicyList{Items: items}, err)
 }
 
 func (s *Server) CreateNamingPolicy(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.NamingPolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveNamingPolicy(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteNamingPolicy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteNamingPolicy(r.Context(), principal(r), id))
 }
 
 func (s *Server) UpdateNamingPolicy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	var b api.NamingPolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveNamingPolicy(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) PreviewNaming(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var q api.NamingPreviewQuery
+	if !s.decode(w, r, &q) {
+		return
+	}
+	out, err := s.Core.PreviewNaming(r.Context(), principal(r), q)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListNetworkMappings(w http.ResponseWriter, r *http.Request) {

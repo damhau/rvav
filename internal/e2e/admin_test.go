@@ -348,3 +348,76 @@ func TestTemplatesAndSizes(t *testing.T) {
 		}
 	})
 }
+
+// TestNamingPolicies: the most specific naming policy offered wins over the
+// blueprint's template, counters are per prefix or per policy, and a name
+// rvav gave once is never given again (S9.5, ADR-0020).
+func TestNamingPolicies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, web = "mkeller", "prj_web"
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "No counter", Template: "{project}-{role}"}, 422, &problem)
+		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "Underscores", Template: "{project}_{role}{seq:02}"}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/template" {
+			t.Fatalf("an invalid host name = %+v", problem.Errors)
+		}
+		var short, global api.NamingPolicy
+		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "Short", Template: "{project}{environment}{role}{seq:02}",
+			Offers: &[]api.Offer{{ProjectId: new(web)}}}, 201, &short)
+		policy := api.NamingPolicyWriteCounterPolicy
+		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "Everyone", Template: "{project}-{role}-{seq:04}",
+			Counter: &policy, Offers: &[]api.Offer{{}}}, 201, &global)
+
+		var preview api.NamingPreview
+		h.json("POST", "/api/v1/admin/naming-preview", admin, api.NamingPreviewQuery{Template: short.Template, ProjectId: web,
+			Environment: "dev", Inputs: &map[string]any{"role": "api"}, Count: new(2)}, 200, &preview)
+		if fmt.Sprint(preview.Names) != "[webdevapi01 webdevapi02]" {
+			t.Fatalf("preview = %+v", preview)
+		}
+
+		// Requests: Web Platform gets its own policy, Data Engineering the one for everyone.
+		var rhel api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, "tnguyen", nil, 200, &rhel)
+		inputs := map[string]any{"role": "api", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+			"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}
+		submit := func() string {
+			t.Helper()
+			var req api.Request
+			h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: rhel.Id, VersionId: rhel.Version.Id, ProjectId: web,
+				Environment: "dev", Inputs: inputs}, 202, &req, "Idempotency-Key", uuid.NewString())
+			var name string
+			if err := h.store.Pool.QueryRow(ctx, `select name from deployments where created_by_request_id = $1`, req.Id).Scan(&name); err != nil {
+				t.Fatal(err)
+			}
+			return name
+		}
+		if name := submit(); name != "webdevapi01" {
+			t.Fatalf("first name = %s", name)
+		}
+		// Even with its counter back at zero, a name rvav gave is not given again.
+		if _, err := h.store.Pool.Exec(ctx, `delete from name_counters where prefix = 'webdevapi'`); err != nil {
+			t.Fatal(err)
+		}
+		if name := submit(); name != "webdevapi02" {
+			t.Fatalf("second name = %s", name)
+		}
+		var dataPreview api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "sbrunner", api.RequestDraft{CatalogItemId: rhel.Id, VersionId: rhel.Version.Id,
+			ProjectId: "prj_data", Environment: "dev", Inputs: map[string]any{"role": "etl", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-db-dev-vl320", "post_config": []string{"linux-baseline"}}}, 200, &dataPreview)
+		if dataPreview.Names == nil || fmt.Sprint(*dataPreview.Names) != "[data-etl-0001]" {
+			t.Fatalf("Data Engineering's names = %v", dataPreview.Names)
+		}
+		var policies api.NamingPolicyList
+		h.json("GET", "/api/v1/admin/naming-policies", admin, nil, 200, &policies)
+		if len(policies.Items) != 2 {
+			t.Fatalf("policies = %+v", policies.Items)
+		}
+		h.json("DELETE", "/api/v1/admin/naming-policies/"+short.Id, admin, nil, 204, nil)
+		h.json("DELETE", "/api/v1/admin/naming-policies/"+short.Id, admin, nil, 404, nil)
+	})
+}
