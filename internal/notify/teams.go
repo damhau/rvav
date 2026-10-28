@@ -99,17 +99,22 @@ func (t *Teams) identity(ctx context.Context, d store.Delivery) (store.ChannelId
 		if d.UserEmail == "" {
 			return id, Permanent(errors.New("the user has no email address to find them in Teams"))
 		}
-		var u struct {
-			ID string `json:"id"`
+		// By mail or sign-in name: they differ for some people.
+		var found struct {
+			Value []struct {
+				ID string `json:"id"`
+			} `json:"value"`
 		}
-		err := t.call(ctx, t.graph, http.MethodGet, t.Config.GraphURL+"/v1.0/users/"+url.PathEscape(d.UserEmail)+"?$select=id", nil, &u)
-		if errors.Is(err, errNotFound) || err == nil && u.ID == "" {
+		q := strings.ReplaceAll(d.UserEmail, "'", "''")
+		filter := url.Values{"$filter": {"mail eq '" + q + "' or userPrincipalName eq '" + q + "'"}, "$select": {"id"}}
+		err := t.call(ctx, t.graph, http.MethodGet, t.Config.GraphURL+"/v1.0/users?"+filter.Encode(), nil, &found)
+		if errors.Is(err, errNotFound) || err == nil && (len(found.Value) == 0 || found.Value[0].ID == "") {
 			return id, Permanent(fmt.Errorf("%s is not in the tenant's directory", d.UserEmail))
 		}
 		if err != nil {
 			return id, err
 		}
-		id = store.ChannelIdentity{UserID: d.Notification.UserID, Channel: "teams", ExternalID: u.ID}
+		id = store.ChannelIdentity{UserID: d.Notification.UserID, Channel: "teams", ExternalID: found.Value[0].ID}
 	} else if err != nil {
 		return id, err
 	}
@@ -160,8 +165,13 @@ func adaptive(body, actions []any) map[string]any {
 		"version": "1.4", "body": body, "actions": actions}
 }
 
+// markdown keeps titles, reasons and comments from being read as links or
+// emphasis in a card's text.
+var markdown = strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`, "(", `\(`, ")", `\)`, "*", `\*`, "_", `\_`,
+	"`", "\\`", "#", `\#`, ">", `\>`, "~", `\~`)
+
 func text(s string, extra map[string]any) map[string]any {
-	t := map[string]any{"type": "TextBlock", "text": s, "wrap": true}
+	t := map[string]any{"type": "TextBlock", "text": markdown.Replace(s), "wrap": true}
 	for k, v := range extra {
 		t[k] = v
 	}
@@ -175,7 +185,7 @@ func Card(m Message) map[string]any {
 	body := []any{text(m.Subject, map[string]any{"weight": "Bolder", "size": "Medium"}), text(m.Short, nil)}
 	var facts []any
 	for _, f := range m.Facts() {
-		facts = append(facts, map[string]any{"title": f.Label, "value": f.Value})
+		facts = append(facts, map[string]any{"title": markdown.Replace(f.Label), "value": markdown.Replace(f.Value)})
 	}
 	if len(facts) > 0 {
 		body = append(body, map[string]any{"type": "FactSet", "facts": facts})
@@ -241,7 +251,9 @@ func ProblemCard(data CardData, problem string) map[string]any {
 // the call names.
 type TeamsVerifier struct {
 	AppID, OpenIDURL string
-	Client           *http.Client
+	// TenantID, when set, is the only tenant whose calls are answered.
+	TenantID string
+	Client   *http.Client
 
 	mu       sync.Mutex
 	verifier *oidc.IDTokenVerifier
@@ -279,8 +291,23 @@ func (v *TeamsVerifier) load(ctx context.Context) (*oidc.IDTokenVerifier, error)
 	return v.verifier, nil
 }
 
+// Activity is what rvav checks of a call besides its token: it comes from
+// Teams, in rvav's tenant.
+type Activity struct {
+	ChannelID, ServiceURL, TenantID string
+}
+
 // Verify checks the Authorization header of a call naming serviceURL.
-func (v *TeamsVerifier) Verify(ctx context.Context, authorization, serviceURL string) error {
+func (v *TeamsVerifier) Verify(ctx context.Context, authorization string, a Activity) error {
+	// Any channel of the bot gets tokens for its app ID: only Teams' calls,
+	// from the tenant, are answered.
+	if a.ChannelID != "msteams" {
+		return fmt.Errorf("a call from the %q channel, not Teams", a.ChannelID)
+	}
+	if v.TenantID != "" && a.TenantID != v.TenantID {
+		return fmt.Errorf("a call from another tenant (%q)", a.TenantID)
+	}
+	serviceURL := a.ServiceURL
 	raw, ok := strings.CutPrefix(authorization, "Bearer ")
 	if !ok || raw == "" {
 		return errors.New("no Bot Framework token")

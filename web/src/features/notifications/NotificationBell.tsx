@@ -74,18 +74,7 @@ export function NotificationBell() {
         </Button>
       </MenuTrigger>
       <MenuContent className="w-[min(380px,calc(100vw-32px))]">
-        <div className="flex items-center justify-between">
-          <MenuLabel>Notifications</MenuLabel>
-          {unread > 0 && (
-            <button
-              type="button"
-              className="px-2 text-xs text-accent hover:underline"
-              onClick={() => markRead.mutate({ all: true })}
-            >
-              Mark all read
-            </button>
-          )}
-        </div>
+        <MenuLabel>Notifications</MenuLabel>
         {latest.data?.items.length === 0 && <p className="px-2 py-3 text-xs text-muted">Nothing yet.</p>}
         {latest.data?.items.map((n) => (
           <MenuItem key={n.id} onSelect={() => open(n)}>
@@ -93,6 +82,7 @@ export function NotificationBell() {
           </MenuItem>
         ))}
         <MenuSeparator />
+        {unread > 0 && <MenuItem onSelect={() => markRead.mutate({ all: true })}>Mark all read</MenuItem>}
         <MenuItem onSelect={() => void navigate({ to: "/notifications" })}>All notifications and preferences</MenuItem>
       </MenuContent>
     </Menu>

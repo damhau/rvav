@@ -246,7 +246,18 @@ func TestEventOutbox(t *testing.T) {
 			}
 			clock = clock.Add(3 * time.Hour)
 		}
-		late := runs("sub_deleted")[0]
+		// The run of that event (runs of the same moment can't be told apart by time).
+		var lateID string
+		if err := h.store.Pool.QueryRow(ctx, `select r.id from subscription_runs r join integration_events e on e.id = r.event_id
+			where e.dedupe_key = 'a-late-delete' and r.subscription_id = 'sub_deleted'`).Scan(&lateID); err != nil {
+			t.Fatal(err)
+		}
+		var late store.SubscriptionRun
+		for _, r := range runs("sub_deleted") {
+			if r.ID == lateID {
+				late = r
+			}
+		}
 		if late.Status != "failed" || late.Attempts < 5 {
 			t.Fatalf("a run that never got through = %+v", late)
 		}

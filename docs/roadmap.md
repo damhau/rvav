@@ -51,6 +51,27 @@ workflows and composites in
   workflows, in order or in parallel, with CEL bindings to earlier steps'
   outputs and undo steps on failure, in one timeline.
 
+S11, notifications and request options, is built and accepted against
+fake Teams and SMTP endpoints on a real Temporal server, and on the compose
+stack with Mailpit ([ADR-0023](adr/0023-notifications.md)):
+
+- **What is kept:** what concerns someone is kept in the app's notification
+  centre (a bell with the unread count, and `/notifications`), once per
+  occasion.
+- **Channels:** each person chooses email, Teams or Slack per kind, and the
+  language (English or French).
+- **Delivery:** through an outbox, with templates per kind and language,
+  retried for a day.
+- **Approving from a card:** approvers approve or reject from a Teams card
+  or a Slack message, as the inbox does. The call is checked as coming
+  from Teams or Slack, and only the person it was sent to decides.
+- **Request options:** a requester can ask for several VMs at once, start
+  later, or request for someone else (project admins). They can save a
+  request as a draft and resume it, or request a past one again.
+
+A real mail server, Teams tenant and Slack workspace are in
+[Lab acceptance](https://github.com/damhau/rvav/milestone/9).
+
 S9
 projects, placement and governance is built and accepted on the compose
 stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
@@ -96,7 +117,10 @@ Verified so far:
   VM), the S10 acceptance through a real Temporal server (a CMDB webhook
   stops a request, a composite builds a VM with its database user and
   monitoring, the example's Python worker decommissions through an
-  approval); the Go and Python helpers and the example on Temporal's
+  approval), the S11 acceptance through a real Temporal server (approved
+  from a Teams card, emails when ready and a week before the lease ends,
+  against fake Teams and SMTP), email, Teams and Slack against fakes of
+  their protocols; the Go and Python helpers and the example on Temporal's
   time-skipping test server; web
   typecheck, lint, unit tests, build and Playwright on mock data (day-2
   menus, dialogs and bulk actions, the catalog admin pages and the form
@@ -112,7 +136,9 @@ Verified so far:
   rolls it back in the browser, and as an administrator sets a new project
   up and requests a VM in it. A subscription on the stack gets a request's
   `provisioning.post` event from the dispatcher, signed, and queues a retry
-  when the receiver refuses it.
+  when the receiver refuses it. Mailpit on the stack catches rvav's emails:
+  a request's "Ready", an approval for the leads, a test from the
+  preferences.
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the

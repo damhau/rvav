@@ -265,6 +265,20 @@ func TestEmailNotifications(t *testing.T) {
 			t.Fatalf("%d notifications for one occasion", once)
 		}
 
+		// Two accounts with one address get one email per occasion.
+		if _, err := h.store.Pool.Exec(ctx, `insert into users (id, subject, name, email) values
+			('usr_tom2', 'tom-second-subject', 'Thomas Nguyen', 'Thomas.Nguyen@corp.example')`); err != nil {
+			t.Fatal(err)
+		}
+		before := len(srv.to(tom))
+		for _, uid := range []string{"usr_tnguyen", "usr_tom2"} {
+			h.svc.Events.Notify(ctx, newNotification(uid, "request_failed", "test:same-address"))
+		}
+		send()
+		if got := len(srv.to(tom)) + len(srv.to("Thomas.Nguyen@corp.example")) - before; got != 1 {
+			t.Fatalf("%d emails to one address for one occasion", got)
+		}
+
 		// Someone without an address: kept, not retried.
 		if _, err := h.store.Pool.Exec(ctx, `update users set email = '' where id = 'usr_lmartin'`); err != nil {
 			t.Fatal(err)

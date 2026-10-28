@@ -11,6 +11,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -96,25 +97,31 @@ func (s *Service) SaveRequestDraft(ctx context.Context, p *auth.Principal, id st
 	} else if err != nil {
 		return api.SavedDraft{}, err
 	}
-	if _, err := s.Store.GetProject(ctx, w.Draft.ProjectId); errors.Is(err, store.ErrNotFound) {
-		errs = append(errs, fieldErr("/draft/project_id", "unknown", "No such project."))
-	} else if err != nil {
+	project, err := s.Store.GetProject(ctx, w.Draft.ProjectId)
+	switch {
+	case errors.Is(err, store.ErrNotFound) || err == nil && !p.CanRequest(project.ID):
+		errs = append(errs, fieldErr("/draft/project_id", "unknown", "No such project, or not one you request in."))
+	case err != nil:
 		return api.SavedDraft{}, err
+	}
+	if w.Name != nil && len([]rune(*w.Name)) > 120 {
+		errs = append(errs, fieldErr("/name", "too_long", "At most 120 characters."))
 	}
 	if len(errs) > 0 {
 		return api.SavedDraft{}, &ValidationError{Errors: errs}
 	}
-	// Secrets aren't kept in drafts.
+	// Secrets aren't kept in drafts: fields marked secret, and secret widgets.
+	secret := present.SecretFields(version.UISchema)
 	var ui api.UiSchema
 	_ = json.Unmarshal(version.UISchema, &ui)
 	inputs := map[string]any{}
 	for k, v := range w.Draft.Inputs {
-		if f, ok := ui.Fields[k]; ok && f.Widget == api.UiWidgetSecret {
+		if f, ok := ui.Fields[k]; secret[k] || ok && f.Widget == api.UiWidgetSecret {
 			continue
 		}
 		inputs[k] = v
 	}
-	w.Draft.Inputs = inputs
+	w.Draft.Inputs, w.Draft.ProjectId = inputs, project.ID
 	name := strings.TrimSpace(deref(w.Name))
 	if name == "" {
 		name = item.Name
@@ -128,7 +135,7 @@ func (s *Service) SaveRequestDraft(ctx context.Context, p *auth.Principal, id st
 	}
 	body, _ := json.Marshal(w.Draft)
 	if err := s.Store.SaveRequestDraft(ctx, store.RequestDraft{ID: id, UserID: p.User.ID, ItemID: item.ID,
-		ProjectID: w.Draft.ProjectId, Name: name, Draft: body}); errors.Is(err, store.ErrNotFound) {
+		ProjectID: project.ID, Name: name, Draft: body}); errors.Is(err, store.ErrNotFound) {
 		return api.SavedDraft{}, ErrNotFound
 	} else if err != nil {
 		return api.SavedDraft{}, err

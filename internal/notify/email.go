@@ -26,7 +26,8 @@ func (e *Email) client() (*mail.Client, error) {
 		opts = append(opts, mail.WithTLSPolicy(mail.TLSMandatory))
 	}
 	if e.Config.Username != "" {
-		opts = append(opts, mail.WithSMTPAuth(mail.SMTPAuthPlain), mail.WithUsername(e.Config.Username),
+		// The mechanism the server offers (Microsoft 365 has LOGIN, not PLAIN).
+		opts = append(opts, mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover), mail.WithUsername(e.Config.Username),
 			mail.WithPassword(e.Config.Password))
 	}
 	return mail.NewClient(e.Config.Host, opts...)

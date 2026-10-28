@@ -50,7 +50,7 @@ function state(db: Db): NotifState {
       title: "Approval needed: RHEL 9 server web-prd-front04",
       body: "Production VM above 32 GB RAM",
       level: "warning",
-      link: "/approvals",
+      link: `/approvals/${db.approvals[0]?.id ?? "apr_mock"}`,
       created_at: ago(5),
     },
     {

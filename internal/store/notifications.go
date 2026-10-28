@@ -135,6 +135,21 @@ func (s *Store) InsertNotification(ctx context.Context, n NewNotification, setUp
 			if !slices.Contains(setUp, ch) {
 				continue
 			}
+			if ch == "email" && n.DedupeKey != "" {
+				// Two accounts with one address (an identity provider that
+				// changed their subject) get one email per occasion.
+				var sent bool
+				if err := tx.QueryRow(ctx, `select exists (select 1 from notifications o
+						join notification_deliveries d on d.notification_id = o.id and d.channel = 'email'
+						join users ou on ou.id = o.user_id join users u on u.id = $3
+						where o.dedupe_key = $1 and o.id <> $2 and u.email <> '' and lower(ou.email) = lower(u.email))`,
+					n.DedupeKey, out.ID, n.UserID).Scan(&sent); err != nil {
+					return err
+				}
+				if sent {
+					continue
+				}
+			}
 			if _, err := tx.Exec(ctx, `insert into notification_deliveries (notification_id, channel) values ($1, $2)
 				on conflict do nothing`, out.ID, ch); err != nil {
 				return err

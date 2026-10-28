@@ -31,7 +31,10 @@ interface AdminState {
   leases: S["LeasePolicy"][];
   approvals: S["ApprovalPolicy"][];
   day2: S["Day2Policy"][];
-  integrations: Record<string, { settings: Record<string, unknown>; secret: boolean; updated_at?: string }>;
+  integrations: Record<
+    string,
+    { settings: Record<string, unknown>; secret: boolean; signing?: boolean; updated_at?: string }
+  >;
   seq: number;
 }
 
@@ -176,6 +179,9 @@ function state(db: Db): AdminState {
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
       efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false }, secret: true },
+      smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
+      teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea" }, secret: false },
+      slack: { settings: {}, secret: false, signing: false },
     }, // prettier-ignore
   };
   return d.administration;
@@ -944,13 +950,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
       return HttpResponse.json({
-        items: (["vcenter", "awx", "efficientip"] as const).map((kind) => {
+        items: (["vcenter", "awx", "efficientip", "smtp", "teams", "slack"] as const).map((kind) => {
           const it = st().integrations[kind]!;
           return {
             kind,
-            configured: Boolean(it.settings.url),
+            configured:
+              Boolean(it.settings.url ?? it.settings.host ?? it.settings.app_id) || (kind === "slack" && it.secret),
             settings: it.settings,
             secret_set: it.secret,
+            ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
             locked: kind === "vcenter" ? ["url"] : [],
             restart_needed: Boolean(it.updated_at),
             ...(it.updated_at
@@ -977,6 +985,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         ...Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k))),
       };
       if (w.secret) it.secret = true;
+      if (w.signing_secret) it.signing = true;
       it.updated_at = now();
       audited(db, `settings.integration.${kind}`, "integration", kind);
       return HttpResponse.json({
@@ -984,6 +993,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         configured: true,
         settings: it.settings,
         secret_set: it.secret,
+        ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
         locked,
         restart_needed: true,
         updated_at: it.updated_at,

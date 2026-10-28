@@ -151,8 +151,11 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   useNow(1000);
   const request = useQuery(q.request(requestKey));
   const id = request.data?.id;
-  const { projectId } = useCurrentProject();
+  const { me, projectId } = useCurrentProject();
   useRequestStream(id, Boolean(request.data && request.data.project.id !== projectId));
+  // Request again: for those who may request in its project.
+  const canRequestIn = (pid: string) =>
+    me.projects.some((p) => p.project.id === pid && (p.role === "member" || p.role === "project-admin"));
   const steps = useQuery({ ...q.steps(id ?? ""), enabled: Boolean(id) });
   const approvals = useQuery({ ...q.requestApprovals(id ?? ""), enabled: Boolean(id) });
   const levels = approvals.data?.items ?? [];
@@ -192,7 +195,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           {r && (
             <div className="flex flex-wrap gap-2">
               {cancellable.includes(r.status) && <CancelButton request={r} />}
-              {r.kind === "provision" && (
+              {r.kind === "provision" && canRequestIn(r.project.id) && (
                 <Button variant="secondary" asChild>
                   <Link
                     to="/catalog/$itemId/request"

@@ -10,7 +10,7 @@ test("the bell: unread notifications, opened and marked read", async ({ page }) 
   await expect(bell).toBeVisible();
   await bell.click();
   await page.getByRole("menuitem", { name: /Approval needed: RHEL 9 server web-prd-front04/ }).click();
-  await expect(page).toHaveURL(/\/approvals$/);
+  await expect(page).toHaveURL(/\/approvals\?id=apr_/);
   await expect(page.getByRole("button", { name: "Notifications, 2 unread" })).toBeVisible();
 
   await page.getByRole("button", { name: "Notifications, 2 unread" }).click();

@@ -303,7 +303,7 @@ func (a *App) RunAPI(ctx context.Context) error {
 		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
 	}
 	if a.Cfg.Teams.AppID != "" {
-		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL}
+		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL, TenantID: a.Cfg.Teams.TenantID}
 	}
 	if a.Cfg.Slack.BotToken != "" {
 		srv.Slack = &notify.Slack{Config: a.Cfg.Slack, Store: a.Store}

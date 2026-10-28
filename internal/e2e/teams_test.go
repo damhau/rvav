@@ -68,13 +68,16 @@ func startTeams(t *testing.T) *fakeTeams {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "tok", "token_type": "Bearer", "expires_in": 3600})
 	})
-	mux.HandleFunc("GET /v1.0/users/{email}", func(w http.ResponseWriter, r *http.Request) {
-		id, ok := f.users[r.PathValue("email")]
-		if !ok {
-			http.Error(w, `{"error":{"code":"Request_ResourceNotFound"}}`, http.StatusNotFound)
-			return
+	mux.HandleFunc("GET /v1.0/users", func(w http.ResponseWriter, r *http.Request) {
+		// $filter=mail eq '…' or userPrincipalName eq '…'
+		filter := r.URL.Query().Get("$filter")
+		found := []map[string]string{}
+		for email, id := range f.users {
+			if strings.Contains(filter, "mail eq '"+email+"'") {
+				found = append(found, map[string]string{"id": id})
+			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": found})
 	})
 	mux.HandleFunc("POST /smba/v3/conversations", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -138,9 +141,16 @@ func (f *fakeTeams) token(t *testing.T, serviceURL string, key *rsa.PrivateKey) 
 // press is someone pressing a card's button in Teams.
 func (f *fakeTeams) press(t *testing.T, h *harness, oid, verb string, data map[string]any, token string) (int, map[string]any) {
 	t.Helper()
-	act := map[string]any{"type": "invoke", "name": "adaptiveCard/action", "serviceUrl": f.URL + "/smba",
-		"from":  map[string]any{"id": "29:" + oid, "aadObjectId": oid},
-		"value": map[string]any{"action": map[string]any{"type": "Action.Execute", "verb": verb, "data": data}}}
+	return f.pressFrom(t, h, "msteams", "tenant-1", oid, verb, data, token)
+}
+
+// pressFrom is a call from a channel and tenant.
+func (f *fakeTeams) pressFrom(t *testing.T, h *harness, channel, tenant, oid, verb string, data map[string]any, token string) (int, map[string]any) {
+	t.Helper()
+	act := map[string]any{"type": "invoke", "name": "adaptiveCard/action", "serviceUrl": f.URL + "/smba", "channelId": channel,
+		"channelData": map[string]any{"tenant": map[string]any{"id": tenant}},
+		"from":        map[string]any{"id": "29:" + oid, "aadObjectId": oid},
+		"value":       map[string]any{"action": map[string]any{"type": "Action.Execute", "verb": verb, "data": data}}}
 	b, _ := json.Marshal(act)
 	req, _ := http.NewRequestWithContext(h.ctx, http.MethodPost, h.srv.URL+"/api/v1/integrations/teams/messages", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
@@ -181,7 +191,7 @@ func TestTeamsNotifications(t *testing.T) {
 		h := setup(t, ctx, c)
 		teams := startTeams(t)
 		h.svc.Events.Channels = []string{"teams"}
-		h.api.Teams = &notify.TeamsVerifier{AppID: "app-1", OpenIDURL: teams.URL + "/openid"}
+		h.api.Teams = &notify.TeamsVerifier{AppID: "app-1", OpenIDURL: teams.URL + "/openid", TenantID: "tenant-1"}
 		n := &notify.Notifier{Store: h.store, Log: h.svc.Log, PublicURL: "https://rvav.corp.example",
 			Senders: map[string]notify.Sender{"teams": &notify.Teams{Store: h.store, Config: config.TeamsConfig{AppID: "app-1",
 				TenantID: "tenant-1", AppPassword: "app-secret", ServiceURL: teams.URL + "/smba", LoginURL: teams.URL,
@@ -232,6 +242,13 @@ func TestTeamsNotifications(t *testing.T) {
 				}
 				if code, _ := teams.press(t, h, "oid-mkeller", "approve", data, ""); code != 401 {
 					t.Errorf("no token = %d", code)
+				}
+				// The bot's other channels (Web Chat, Direct Line) and other tenants aren't Teams'.
+				if code, _ := teams.pressFrom(t, h, "directline", "tenant-1", "oid-mkeller", "approve", data, good); code != 401 {
+					t.Errorf("a call from Direct Line = %d", code)
+				}
+				if code, _ := teams.pressFrom(t, h, "msteams", "tenant-2", "oid-mkeller", "approve", data, good); code != 401 {
+					t.Errorf("a call from another tenant = %d", code)
 				}
 				// Someone it wasn't sent to; a rejection without a comment.
 				code, out := teams.press(t, h, "oid-tnguyen", "approve", data, good)

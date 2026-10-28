@@ -25,15 +25,18 @@ func TestRequestDrafts(t *testing.T) {
 		var published api.CatalogItemVersionDetail
 		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/versions/"+rhel.PublishedVersion.Id, "mkeller", nil, 200, &published)
 		def := published.Definition
+		// Secret by its widget, or by the flag on another widget (an SSH key).
 		def.FormSchema["properties"].(map[string]any)["root_password"] = map[string]any{"type": "string"}
+		def.FormSchema["properties"].(map[string]any)["ssh_key"] = map[string]any{"type": "string"}
 		def.UiSchema.Fields["root_password"] = api.UiField{Widget: api.UiWidgetSecret, Label: "Root password"}
-		def.UiSchema.Layout.Sections[0].Fields = append(def.UiSchema.Layout.Sections[0].Fields, "root_password")
+		def.UiSchema.Fields["ssh_key"] = api.UiField{Widget: api.UiWidgetTextarea, Label: "SSH key", Secret: new(true)}
+		def.UiSchema.Layout.Sections[0].Fields = append(def.UiSchema.Layout.Sections[0].Fields, "root_password", "ssh_key")
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: "rhel-secret", Name: "RHEL with a password",
 			Summary: "A VM and its root password.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
 
 		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id, ProjectId: "prj_web", Environment: "dev",
-			Inputs: map[string]any{"role": "app", "size": "M", "root_password": "hunter2"}, Count: new(3),
+			Inputs: map[string]any{"role": "app", "size": "M", "root_password": "hunter2", "ssh_key": "-----BEGIN"}, Count: new(3),
 			Justification: new("Load test next week")}
 		var saved api.SavedDraft
 		h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: draft}, 201, &saved)
@@ -41,9 +44,24 @@ func TestRequestDrafts(t *testing.T) {
 			saved.Draft.Inputs["role"] != "app" || saved.Draft.Count == nil || *saved.Draft.Count != 3 {
 			t.Fatalf("saved = %+v", saved)
 		}
-		if _, kept := saved.Draft.Inputs["root_password"]; kept {
-			t.Fatal("a secret was kept in a draft")
+		for _, secret := range []string{"root_password", "ssh_key"} {
+			if _, kept := saved.Draft.Inputs[secret]; kept {
+				t.Fatalf("%s was kept in a draft", secret)
+			}
 		}
+		// A project given by its code is stored by its ID; one that isn't theirs is refused.
+		byCode := draft
+		byCode.ProjectId = "web"
+		var coded api.SavedDraft
+		h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: byCode}, 201, &coded)
+		if coded.Project.Id != "prj_web" || coded.Draft.ProjectId != "prj_web" {
+			t.Fatalf("a draft by project code = %+v", coded.Project)
+		}
+		h.json("DELETE", "/api/v1/me/drafts/"+coded.Id, "tnguyen", nil, 204, nil)
+		notTheirs := draft
+		notTheirs.ProjectId = "prj_data"
+		h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: notTheirs}, 422, nil)
+		h.json("GET", "/api/v1/me/notifications?limit=0", "tnguyen", nil, 200, nil)
 
 		// Only its author's.
 		h.json("GET", "/api/v1/me/drafts/"+saved.Id, "lmartin", nil, 404, nil)

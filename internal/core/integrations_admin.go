@@ -45,13 +45,14 @@ func address(kind string, settings map[string]any) string {
 		v, _ := settings["host"].(string)
 		return v
 	case "teams":
-		// The secret is the app's, in its tenant.
+		// The secret is the app's, in its tenant, sent to its Bot Connector.
 		app, _ := settings["app_id"].(string)
 		tenant, _ := settings["tenant_id"].(string)
-		if app == "" && tenant == "" {
+		service, _ := settings["service_url"].(string)
+		if app == "" && tenant == "" && service == "" {
 			return ""
 		}
-		return app + "@" + tenant
+		return app + "@" + tenant + " " + service
 	}
 	v, _ := settings["url"].(string)
 	return v
@@ -312,10 +313,17 @@ func withoutFake(m map[string]any) map[string]any {
 // for. One set by an environment variable goes only to the address set with
 // it.
 func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret bool, hasSecret bool) error {
-	moved := false
-	if u := address(kind, given); u != "" {
-		moved = u != address(kind, current)
+	// What is given over what is current: a part left out (or locked) stays.
+	merged := map[string]any{}
+	for k, v := range current {
+		merged[k] = v
 	}
+	for k, v := range given {
+		if s, ok := v.(string); !ok || s != "" {
+			merged[k] = v
+		}
+	}
+	moved := address(kind, merged) != address(kind, current)
 	if v, ok := given["insecure"].(bool); ok && v && current["insecure"] != true {
 		moved = true
 	}

@@ -362,6 +362,9 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
     user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
   });
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
+  if (count < 1 || count > 20) errors.push({ field: "/count", code: "range", message: "Between 1 and 20." });
+  if (draft.scheduled_at && new Date(draft.scheduled_at).getTime() < Date.now() - 60_000)
+    errors.push({ field: "/scheduled_at", code: "in_past", message: "Pick a start time in the future." });
   if (!project.environments.includes(draft.environment)) {
     errors.push({
       field: "/environment",

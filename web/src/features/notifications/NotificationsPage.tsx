@@ -16,12 +16,18 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
 import { failed } from "../admin/governance/common";
-import { channelLabel, kindLabel } from "./kinds";
+import { channelLabel, defaultChannels, kindLabel } from "./kinds";
 import { NotificationLine, useMarkRead } from "./NotificationBell";
 
 type S = components["schemas"];
 type Channel = "email" | "teams" | "slack";
 const channels: Channel[] = ["email", "teams", "slack"];
+
+/** Whether a kind's channels differ from its defaults. */
+const differs = (kind: string, chs: Channel[]) => {
+  const d = defaultChannels(kind as S["NotificationKind"]);
+  return d.length !== chs.length || d.some((c) => !chs.includes(c));
+};
 
 function List() {
   const [unread, setUnread] = useState(false);
@@ -100,14 +106,12 @@ function Preferences() {
   const prefs = useQuery(q.notificationPreferences());
   const [locale, setLocale] = useState<"en" | "fr">("en");
   const [rules, setRules] = useState<Record<string, Channel[]>>({});
-  const [touched, setTouched] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!prefs.data) return;
     setLocale(prefs.data.locale);
     setRules(
       Object.fromEntries(prefs.data.rules.map((r) => [r.kind, r.channels.filter((c) => c !== "in_app") as Channel[]])),
     );
-    setTouched(new Set(prefs.data.rules.filter((r) => !r.default).map((r) => r.kind)));
   }, [prefs.data]);
   const save = useMutation({
     mutationFn: () =>
@@ -115,7 +119,10 @@ function Preferences() {
         api.PUT("/me/notification-preferences", {
           body: {
             locale,
-            rules: [...touched].map((kind) => ({ kind: kind as S["NotificationKind"], channels: rules[kind] ?? [] })),
+            // Only kinds that differ from the defaults: the others follow them.
+            rules: Object.entries(rules)
+              .filter(([kind, chs]) => differs(kind, chs))
+              .map(([kind, chs]) => ({ kind: kind as S["NotificationKind"], channels: chs })),
           },
         }),
       ),
@@ -135,7 +142,6 @@ function Preferences() {
   const reach = Object.fromEntries(prefs.data.channels.map((c) => [c.channel, c]));
   const toggle = (kind: string, ch: Channel, on: boolean) => {
     setRules((r) => ({ ...r, [kind]: on ? [...(r[kind] ?? []), ch] : (r[kind] ?? []).filter((x) => x !== ch) }));
-    setTouched((t) => new Set(t).add(kind));
   };
   return (
     <div className="flex flex-col gap-4">
@@ -209,7 +215,9 @@ function Preferences() {
                   <tr key={r.kind}>
                     <th scope="row" className="border-b border-line py-2 pr-3 text-left font-normal">
                       <span className="font-medium">{kindLabel[r.kind].label}</span>
-                      {!touched.has(r.kind) && <span className="ml-2 text-[11px] text-faint">default</span>}
+                      {!differs(r.kind, rules[r.kind] ?? []) && (
+                        <span className="ml-2 text-[11px] text-faint">default</span>
+                      )}
                       <div className="text-xs text-muted">{kindLabel[r.kind].hint}</div>
                     </th>
                     <td className="border-b border-line px-3 py-2">

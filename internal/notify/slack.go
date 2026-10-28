@@ -116,10 +116,12 @@ func openButton(l labels, link string) *slack.ButtonBlockElement {
 // Reject, whose value is what the buttons send back.
 func Blocks(m Message) []slack.Block {
 	l := labelsFor(m.Data.Locale)
-	blocks := []slack.Block{slack.NewHeaderBlock(plain(truncate(m.Subject, 150))), slack.NewSectionBlock(md(escape(m.Short)), nil, nil)}
+	// Within Slack's limits: 3000 characters a section, 2000 a field.
+	blocks := []slack.Block{slack.NewHeaderBlock(plain(truncate(m.Subject, 150))),
+		slack.NewSectionBlock(md(truncate(escape(m.Short), 2900)), nil, nil)}
 	var fields []*slack.TextBlockObject
 	for _, f := range m.Facts() {
-		fields = append(fields, md("*"+escape(f.Label)+"*\n"+escape(f.Value)))
+		fields = append(fields, md(truncate("*"+escape(f.Label)+"*\n"+escape(f.Value), 1900)))
 	}
 	if len(fields) > 0 {
 		blocks = append(blocks, slack.NewSectionBlock(nil, fields, nil))

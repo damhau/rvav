@@ -19,6 +19,14 @@ export const kindLabel: Record<S["NotificationKind"], { label: string; hint: str
   owner_changed: { label: "Deployment handed over", hint: "A deployment is now yours" },
 };
 
+/** The channels besides the app a kind goes on by default, as the server's (ADR-0023). */
+export function defaultChannels(kind: S["NotificationKind"]): ("email" | "teams" | "slack")[] {
+  if (kind === "approval_needed") return ["email", "teams", "slack"];
+  if (["request_succeeded", "request_failed", "request_rejected", "lease_expiring", "lease_expired"].includes(kind))
+    return ["email"];
+  return [];
+}
+
 export const channelLabel: Record<"email" | "teams" | "slack", string> = {
   email: "Email",
   teams: "Teams",

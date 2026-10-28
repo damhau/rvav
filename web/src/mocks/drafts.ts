@@ -44,6 +44,11 @@ export function draftHandlers(db: Db, base: string, wait: () => Promise<void>) {
     list.unshift(saved);
     return saved;
   };
+  const missing = () =>
+    HttpResponse.json(
+      { type: "https://rvav.dev/problems/not-found", title: "Not found", status: 404, request_id: "req_mock" },
+      { status: 404, headers: { "Content-Type": "application/problem+json" } },
+    );
   const invalid = () =>
     HttpResponse.json(
       {
@@ -68,11 +73,11 @@ export function draftHandlers(db: Db, base: string, wait: () => Promise<void>) {
     http.get(`${base}/me/drafts/:id`, async ({ params }) => {
       await wait();
       const d = drafts(db).find((x) => x.id === params.id);
-      return d ? HttpResponse.json(d) : new HttpResponse(null, { status: 404 });
+      return d ? HttpResponse.json(d) : missing();
     }),
     http.put(`${base}/me/drafts/:id`, async ({ params, request }) => {
       await wait();
-      if (!drafts(db).some((x) => x.id === params.id)) return new HttpResponse(null, { status: 404 });
+      if (!drafts(db).some((x) => x.id === params.id)) return missing();
       const saved = save(String(params.id), (await request.json()) as S["SavedDraftWrite"]);
       return saved ? HttpResponse.json(saved) : invalid();
     }),
@@ -80,7 +85,7 @@ export function draftHandlers(db: Db, base: string, wait: () => Promise<void>) {
       await wait();
       const list = drafts(db);
       const at = list.findIndex((x) => x.id === params.id);
-      if (at < 0) return new HttpResponse(null, { status: 404 });
+      if (at < 0) return missing();
       list.splice(at, 1);
       return new HttpResponse(null, { status: 204 });
     }),

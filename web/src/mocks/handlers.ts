@@ -543,7 +543,7 @@ export const handlers = [
     const check = preview(db, item, project, draft);
     const errors = [
       ...validateInputs(db, item, draft.inputs),
-      ...check.errors.filter((e) => e.field === "" || e.field === "/environment"),
+      ...check.errors.filter((e) => ["", "/environment", "/count", "/scheduled_at"].includes(e.field)),
     ];
     if (errors.length) {
       return problem(

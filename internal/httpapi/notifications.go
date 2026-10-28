@@ -19,6 +19,8 @@ import (
 // ADR-0023): answered 501 until built.
 
 func (s *Server) ListNotifications(w http.ResponseWriter, r *http.Request, params api.ListNotificationsParams) {
+	limit := limitOf(params.Limit)
+	params.Limit = &limit
 	page, err := s.Core.Notifications(r.Context(), principal(r), params)
 	s.reply(w, r, http.StatusOK, page, err)
 }
@@ -65,10 +67,16 @@ func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var act struct {
-		Type       string `json:"type"`
-		Name       string `json:"name"`
-		ServiceURL string `json:"serviceUrl"`
-		From       struct {
+		Type        string `json:"type"`
+		Name        string `json:"name"`
+		ChannelID   string `json:"channelId"`
+		ServiceURL  string `json:"serviceUrl"`
+		ChannelData struct {
+			Tenant struct {
+				ID string `json:"id"`
+			} `json:"tenant"`
+		} `json:"channelData"`
+		From struct {
 			AADObjectID string `json:"aadObjectId"`
 		} `json:"from"`
 		Value struct {
@@ -82,7 +90,8 @@ func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, r, http.StatusBadRequest, "bad_request", "Not a Bot Framework activity", err.Error(), nil)
 		return
 	}
-	if err := s.Teams.Verify(r.Context(), r.Header.Get("Authorization"), act.ServiceURL); err != nil {
+	if err := s.Teams.Verify(r.Context(), r.Header.Get("Authorization"), notify.Activity{ChannelID: act.ChannelID,
+		ServiceURL: act.ServiceURL, TenantID: act.ChannelData.Tenant.ID}); err != nil {
 		s.Log.Warn("a Teams call was refused", "err", err)
 		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Not a call from Teams", "", nil)
 		return

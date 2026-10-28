@@ -60,7 +60,7 @@ func TestNotificationsAcceptance(t *testing.T) {
 		mail := startSMTP(t)
 		teams := startTeams(t)
 		h.svc.Events.Channels = []string{"email", "teams"}
-		h.api.Teams = &notify.TeamsVerifier{AppID: "app-1", OpenIDURL: teams.URL + "/openid"}
+		h.api.Teams = &notify.TeamsVerifier{AppID: "app-1", OpenIDURL: teams.URL + "/openid", TenantID: "tenant-1"}
 		n := &notify.Notifier{Store: h.store, Log: h.svc.Log, PublicURL: "https://rvav.corp.example", Interval: 100 * time.Millisecond,
 			Senders: map[string]notify.Sender{
 				"email": &notify.Email{Config: config.SMTPConfig{Host: "127.0.0.1", Port: mail.addr.Port, TLS: "none", From: "rvav <rvav@corp.example>"}},

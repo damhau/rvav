@@ -374,6 +374,9 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
   **Mark all read** is there too.
 - **The live stream's `notification` event** still shows a toast, and now
   also refreshes the centre's queries (`["me", "notifications"]`).
+- **Approval links:** notifications link to `/approvals/<level>`, which
+  redirects to the inbox with that level open (`/approvals?id=`). Links
+  in emails and cards keep working.
 - **`/notifications`** has two tabs:
   - **Notifications:** everything, or unread only, with load more and
     mark read.

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -308,7 +308,11 @@ function RequestFormBody({
   const [count, setCount] = useState(String(start?.count ?? 1));
   const [later, setLater] = useState(Boolean(start?.scheduledAt));
   const [startAt, setStartAt] = useState(localInput(start?.scheduledAt));
-  const [onBehalfOf, setOnBehalfOf] = useState<UserRef | null>(start?.onBehalfOf ?? null);
+  const { me } = useCurrentProject();
+  // Only project admins request for others; for oneself is not "on behalf".
+  const [onBehalfOf, setOnBehalfOf] = useState<UserRef | null>(
+    canActForOthers && start?.onBehalfOf && start.onBehalfOf.id !== me.user.id ? start.onBehalfOf : null,
+  );
   const [savedDraft, setSavedDraft] = useState(draftId);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const many = item.type === "vm_blueprint";
@@ -324,9 +328,10 @@ function RequestFormBody({
       ...(justification ? { justification } : {}),
       lease_days: leaseDays,
       ...(later && startAt ? { scheduled_at: new Date(startAt).toISOString() } : {}),
-      ...(onBehalfOf ? { on_behalf_of: onBehalfOf.id } : {}),
+      ...(onBehalfOf && canActForOthers ? { on_behalf_of: onBehalfOf.id } : {}),
     }),
     [
+      canActForOthers,
       item.id,
       form.version_id,
       project.id,
@@ -355,9 +360,10 @@ function RequestFormBody({
       setIdempotencyKey(newIdempotencyKey());
       if (savedDraft) {
         // Submitted: the draft has done its job.
-        void call(api.DELETE("/me/drafts/{id}", { params: { path: { id: savedDraft } } })).finally(
-          () => void qc.invalidateQueries({ queryKey: ["me", "drafts"] }),
-        );
+        // Already discarded elsewhere is fine: it is gone either way.
+        call(api.DELETE("/me/drafts/{id}", { params: { path: { id: savedDraft } } }))
+          .catch(() => undefined)
+          .finally(() => void qc.invalidateQueries({ queryKey: ["me", "drafts"] }));
       }
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       void qc.invalidateQueries({ queryKey: keys.deployments.lists() });
@@ -502,10 +508,10 @@ function RequestFormBody({
                   className="w-24"
                   value={count}
                   onChange={(e) => setCount(e.target.value)}
-                  aria-invalid={Boolean(fieldErrors.count) || undefined}
+                  aria-invalid={Boolean(fieldErrors.$count) || undefined}
                 />
                 <p className="text-[11px] text-faint">
-                  {fieldErrors.count ?? "Identical deployments, named one after the other (at most 20)."}
+                  {fieldErrors.$count ?? "Identical deployments, named one after the other (at most 20)."}
                 </p>
               </div>
             )}
@@ -529,10 +535,10 @@ function RequestFormBody({
                   aria-label="Start at"
                   value={startAt}
                   onChange={(e) => setStartAt(e.target.value)}
-                  aria-invalid={Boolean(fieldErrors.scheduled_at) || undefined}
+                  aria-invalid={Boolean(fieldErrors.$scheduled_at) || undefined}
                 />
               )}
-              {fieldErrors.scheduled_at && <p className="text-[11px] text-bad">{fieldErrors.scheduled_at}</p>}
+              {fieldErrors.$scheduled_at && <p className="text-[11px] text-bad">{fieldErrors.$scheduled_at}</p>}
             </div>
             {canActForOthers && (
               <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
@@ -552,7 +558,7 @@ function RequestFormBody({
                 ) : (
                   <UserPicker label="For someone else (optional)" id="on-behalf" onPick={setOnBehalfOf} />
                 )}
-                {fieldErrors.on_behalf_of && <p className="text-[11px] text-bad">{fieldErrors.on_behalf_of}</p>}
+                {fieldErrors.$on_behalf_of && <p className="text-[11px] text-bad">{fieldErrors.$on_behalf_of}</p>}
               </div>
             )}
           </div>
@@ -579,18 +585,23 @@ function RequestFormBody({
 }
 
 export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; draftId?: string; from?: string }) {
-  const { projectId, role, setProjectId } = useCurrentProject();
+  const { me, projectId, role, setProjectId } = useCurrentProject();
   const item = useQuery(q.catalogItem(itemKey, projectId));
   const form = useQuery(q.form(itemKey, projectId));
   const project = useQuery(q.project(projectId));
   const environments = useQuery(q.environments());
   const saved = useQuery({ ...q.draft(draftId ?? ""), enabled: Boolean(draftId) });
   const past = useQuery({ ...q.request(from ?? ""), enabled: Boolean(from) });
-  // A draft or a past request is resumed in its own project.
+  // A draft or a past request is resumed in its own project: switched to
+  // once, when the caller works there.
   const startProject = saved.data?.project.id ?? past.data?.project.id;
+  const member = startProject === undefined || me.projects.some((p) => p.project.id === startProject);
+  const switched = useRef(false);
   useEffect(() => {
-    if (startProject && startProject !== projectId) setProjectId(startProject);
-  }, [startProject, projectId, setProjectId]);
+    if (!startProject || !member || switched.current) return;
+    switched.current = true;
+    if (startProject !== projectId) setProjectId(startProject);
+  }, [startProject, member, projectId, setProjectId]);
   const start: FormStart | undefined = saved.data
     ? {
         environment: saved.data.draft.environment,
@@ -613,8 +624,12 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
   const waiting =
     (Boolean(draftId) && !saved.data) ||
     (Boolean(from) && !past.data) ||
-    (startProject !== undefined && startProject !== projectId);
-  const error = item.error ?? form.error ?? project.error ?? environments.error ?? saved.error ?? past.error;
+    (member && startProject !== undefined && startProject !== projectId && !switched.current);
+  const elsewhere = member
+    ? null
+    : new Error("This is in a project you don't work in: ask one of its members to request it.");
+  const error =
+    item.error ?? form.error ?? project.error ?? environments.error ?? saved.error ?? past.error ?? elsewhere;
 
   return (
     <Page>

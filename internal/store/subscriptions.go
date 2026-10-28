@@ -26,10 +26,13 @@ type Subscription struct {
 	Target         json.RawMessage `db:"target"`
 	CreatedAt      time.Time       `db:"created_at"`
 	UpdatedAt      time.Time       `db:"updated_at"`
+	// AfterSeq is the outbox sequence when it was saved: it gets the events
+	// numbered after it.
+	AfterSeq int64 `db:"after_seq"`
 }
 
 const subscriptionCols = `id, name, description, topic, condition, blocking, on_failure, priority, timeout_seconds,
-	enabled, target, created_at, updated_at`
+	enabled, target, created_at, updated_at, after_seq`
 
 // Subscriptions lists them by topic and priority.
 func (s *Store) Subscriptions(ctx context.Context) ([]Subscription, error) {
@@ -56,8 +59,11 @@ func (s *Store) GetSubscription(ctx context.Context, id string) (Subscription, e
 
 // SaveSubscription inserts or replaces one.
 func (s *Store) SaveSubscription(ctx context.Context, sub Subscription) error {
+	// The sequence's last value counts events still being written: those
+	// were before it.
 	_, err := s.Pool.Exec(ctx, `insert into subscriptions (id, name, description, topic, condition, blocking, on_failure,
-			priority, timeout_seconds, enabled, target) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			priority, timeout_seconds, enabled, target, after_seq) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+			coalesce(pg_sequence_last_value(pg_get_serial_sequence('integration_events', 'seq')), 0))
 		on conflict (id) do update set name = excluded.name, description = excluded.description, topic = excluded.topic,
 			condition = excluded.condition, blocking = excluded.blocking, on_failure = excluded.on_failure,
 			priority = excluded.priority, timeout_seconds = excluded.timeout_seconds, enabled = excluded.enabled,
@@ -105,6 +111,7 @@ func (s *Store) SubscriptionRunCounts(ctx context.Context) (map[string]map[strin
 // IntegrationEvent is an event in the outbox.
 type IntegrationEvent struct {
 	ID        string          `db:"id"`
+	Seq       int64           `db:"seq"`
 	Topic     string          `db:"topic"`
 	RequestID *string         `db:"request_id"`
 	Payload   json.RawMessage `db:"payload"`
@@ -113,7 +120,7 @@ type IntegrationEvent struct {
 
 // UndispatchedEvents locks the oldest events no run was made for yet.
 func (s *Store) UndispatchedEvents(ctx context.Context, tx pgx.Tx, limit int) ([]IntegrationEvent, error) {
-	rows, _ := tx.Query(ctx, `select id, topic, request_id, payload, created_at from integration_events
+	rows, _ := tx.Query(ctx, `select id, seq, topic, request_id, payload, created_at from integration_events
 		where dispatched_at is null order by seq limit $1 for update skip locked`, limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IntegrationEvent])
 }
@@ -212,7 +219,7 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.EventID, &c.Topic, &c.Status, &c.Blocking, &c.Test, &c.RequestID,
 			&c.RequestNumber, &c.StepID, &c.Attempts, &c.NextAttemptAt, &c.Outcome, &c.Reason, &c.Properties, &c.CreatedAt,
 			&c.FinishedAt, &c.LeaseUntil, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic, &sub.Condition, &sub.Blocking,
-			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt,
+			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt, &sub.AfterSeq,
 			&c.LastJobID); err != nil {
 			return nil, err
 		}
@@ -389,7 +396,7 @@ func splitCols(cols string) []string {
 
 // LatestEvent is the newest event of a topic about a request.
 func (s *Store) LatestEvent(ctx context.Context, requestID, topic string) (IntegrationEvent, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, topic, request_id, payload, created_at from integration_events
+	rows, _ := s.Pool.Query(ctx, `select id, seq, topic, request_id, payload, created_at from integration_events
 		where request_id = $1 and topic = $2 order by seq desc limit 1`, requestID, topic)
 	ev, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IntegrationEvent])
 	if errors.Is(err, pgx.ErrNoRows) {

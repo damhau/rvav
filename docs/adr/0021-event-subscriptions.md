@@ -72,8 +72,10 @@ the request finished, the reminder sent). A dispatcher in rvav's worker
 process reads new events, finds the enabled subscriptions to their topic
 whose condition is true, and makes one **run** per subscription and event
 (unique on both, so a crash between the two never doubles it). A
-subscription gets the events that happen once it exists, never earlier
-ones. Each run is
+subscription gets the events written once it exists, never earlier
+ones: it keeps the outbox's sequence number when it is saved, and gets the
+events numbered after it (a timestamp would be wrong when a server's clock
+is set back). Each run is
 delivered at least once: on failure it is retried with back-off (10 s,
 30 s, 1 min, 5 min, then every 15 min) for 24 hours, then marked failed.
 Runs keep the payload, every attempt's status, answer (first 4 KB) and

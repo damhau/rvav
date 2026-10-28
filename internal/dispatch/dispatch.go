@@ -201,8 +201,8 @@ func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 		done := make([]string, 0, len(events))
 		for _, ev := range events {
 			for _, sub := range subs {
-				// A subscription gets the events that happened once it existed.
-				if sub.Topic != ev.Topic || sub.CreatedAt.After(ev.CreatedAt) {
+				// A subscription gets the events written once it existed.
+				if sub.Topic != ev.Topic || ev.Seq <= sub.AfterSeq {
 					continue
 				}
 				run := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: sub.ID, EventID: ev.ID, Status: "queued",

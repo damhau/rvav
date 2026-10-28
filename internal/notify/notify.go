@@ -150,7 +150,7 @@ func (n *Notifier) round(ctx context.Context) (int, error) {
 	if free == 0 {
 		return 0, nil
 	}
-	ds, err := n.Store.ClaimDeliveries(ctx, free, n.now(), 2*time.Minute)
+	ds, err := n.Store.ClaimDeliveries(ctx, free, n.now(), lease)
 	if err != nil {
 		return 0, err
 	}
@@ -166,8 +166,15 @@ func (n *Notifier) round(ctx context.Context) (int, error) {
 	return len(ds), nil
 }
 
+// lease is how long a delivery is the notifier's once claimed; a send
+// stops before it ends, so no other round sends it too.
+const lease = 2 * time.Minute
+
 func (n *Notifier) deliver(ctx context.Context, d store.Delivery) {
-	sentTo, externalID, err := n.send(ctx, d)
+	sctx, cancel := context.WithTimeout(ctx, lease-15*time.Second)
+	defer cancel()
+	sentTo, externalID, err := n.send(sctx, d)
+	ctx = context.WithoutCancel(ctx) // what was sent is recorded, even on shutdown
 	u := store.DeliveryUpdate{Status: "sent"}
 	if sentTo != "" {
 		u.SentTo = &sentTo
@@ -199,7 +206,7 @@ func (n *Notifier) send(ctx context.Context, d store.Delivery) (string, string, 
 	}
 	m, err := n.Render(ctx, d)
 	if err != nil {
-		return "", "", Permanent(err)
+		return "", "", err
 	}
 	return s.Send(ctx, m)
 }
@@ -216,7 +223,7 @@ func (n *Notifier) Render(ctx context.Context, d store.Delivery) (Message, error
 	_ = json.Unmarshal(d.Notification.Data, &data.Extra)
 	m, err := render(d.Notification.Kind, d.Locale, data)
 	if err != nil {
-		return Message{}, err
+		return Message{}, Permanent(err) // a template that can't render won't later
 	}
 	m.Delivery = d
 	return m, nil

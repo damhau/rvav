@@ -270,8 +270,10 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 			}
 		}
 	}
-	if u, ok := settings["url"].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
-		errs["url"] = "An http or https URL."
+	for _, key := range []string{"url", "service_url"} {
+		if u, ok := settings[key].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+			errs[key] = "An http or https URL."
+		}
 	}
 	if kind == "smtp" {
 		if t, ok := settings["tls"].(string); ok && t != "starttls" && t != "tls" && t != "none" {

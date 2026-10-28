@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -57,5 +58,18 @@ func TestRenderEveryKind(t *testing.T) {
 	if m, err := render(string(api.KindOwnerChanged), "de", Data{Locale: "de", Extra: map[string]any{}}); err != nil ||
 		!strings.HasPrefix(m.Subject, "You now own") {
 		t.Fatalf("fallback = %q (%v)", m.Subject, err)
+	}
+}
+
+// A card's text can't turn a request's title into a link.
+func TestCardEscapesMarkdown(t *testing.T) {
+	m, err := render(string(api.KindRequestFailed), "en", Data{Locale: "en", Body: "see [here](https://evil.example)",
+		Subject: store.NotificationSubject{RequestNumber: "REQ-1", RequestTitle: "**big** [x](https://evil.example)"}, Extra: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(Card(m))
+	if strings.Contains(string(b), "[x](https") || strings.Contains(string(b), "[here](") || !strings.Contains(string(b), `\\[x\\]`) {
+		t.Fatalf("the card = %s", b)
 	}
 }

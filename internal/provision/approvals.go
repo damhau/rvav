@@ -51,6 +51,10 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	if opened {
 		_ = a.Store.Audit(ctx, a.Store.Pool, store.AuditEvent{Action: "approval.opened", TargetType: "approval", TargetID: lv.ID,
 			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name}})
+	}
+	// Also when a retry finds the level open already: the dedupe key makes
+	// a second notification nothing, and a first one isn't lost.
+	if lv.Status == "pending" {
 		for _, id := range recipients {
 			a.Events.Notify(ctx, store.NewNotification{UserID: id, Kind: "approval_needed", Title: "Approval needed: " + r.Title,
 				Body: strings.Join(lv.Reasons, "; "), Level: "warning", Link: "/approvals/" + lv.ID, RequestID: &r.ID,

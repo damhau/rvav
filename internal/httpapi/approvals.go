@@ -7,6 +7,8 @@ import (
 )
 
 func (s *Server) ListApprovals(w http.ResponseWriter, r *http.Request, params api.ListApprovalsParams) {
+	limit := limitOf(params.Limit)
+	params.Limit = &limit
 	page, err := s.Core.ListApprovals(r.Context(), principal(r), params)
 	if err != nil {
 		s.fail(w, r, err)
