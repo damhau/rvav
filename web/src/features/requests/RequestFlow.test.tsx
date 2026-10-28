@@ -6,9 +6,10 @@ import { renderApp } from "@/test/render";
 
 async function openForm() {
   const app = renderApp("/catalog/rhel9-server/request");
-  await screen.findByRole("heading", { name: "Request RHEL 9 server" });
+  // The first render loads the page's code: slower on CI runners.
+  await screen.findByRole("heading", { name: "Request RHEL 9 server" }, { timeout: 5000 });
   // Wait until server defaults are in and the preview has answered.
-  await screen.findByText("No approval needed");
+  await screen.findByText("No approval needed", {}, { timeout: 5000 });
   await waitFor(() => expect(screen.getByLabelText("Role")).toHaveValue("app"));
   return app;
 }
@@ -41,7 +42,7 @@ describe("request form against the mock API", () => {
     await user.click(screen.getByRole("button", { name: "Submit request" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
-    await screen.findByRole("heading", { name: /RHEL 9 server · web-dev-app001/ });
+    await screen.findByRole("heading", { name: /RHEL 9 server · web-dev-app001/ }, { timeout: 5000 });
     const steps = screen.getByRole("region", { name: "Steps" });
     expect(await within(steps).findByText("Submitted")).toBeInTheDocument();
 
@@ -51,7 +52,7 @@ describe("request form against the mock API", () => {
     expect(screen.getByRole("log", { name: /Output of AWX job/ })).toHaveTextContent("changed: [web-dev-app001]");
 
     await user.click(screen.getByRole("link", { name: "Open deployment" }));
-    await screen.findByRole("heading", { name: "web-dev-app" });
+    await screen.findByRole("heading", { name: "web-dev-app" }, { timeout: 5000 });
     expect(await screen.findByText("web-dev-app001")).toBeInTheDocument();
   }, 15000);
 });
