@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -419,5 +420,99 @@ func TestNamingPolicies(t *testing.T) {
 		}
 		h.json("DELETE", "/api/v1/admin/naming-policies/"+short.Id, admin, nil, 204, nil)
 		h.json("DELETE", "/api/v1/admin/naming-policies/"+short.Id, admin, nil, 404, nil)
+	})
+}
+
+// TestPolicyAdministration: quotas, lease, approval and day-2 policies are
+// managed from the API, their CEL checked on sample variables when saved,
+// and the explain query says which decide where and why (S9.6, ADR-0020).
+func TestPolicyAdministration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, web = "mkeller", "prj_web"
+		var problem struct{ Errors []api.FieldError }
+
+		// Quotas: replaced as a whole, checked against the project.
+		var quotas api.QuotaLimitList
+		h.json("GET", "/api/v1/admin/projects/"+web+"/quotas", admin, nil, 200, &quotas)
+		if len(quotas.Items) != 4 {
+			t.Fatalf("Web Platform's quotas = %+v", quotas.Items)
+		}
+		bad := api.QuotaLimitList{Items: []api.QuotaLimit{
+			{Environment: "uat", Resource: api.Vcpu, Limit: new(10), Enforcement: api.QuotaLimitEnforcementHard},
+			{Environment: "", Resource: api.Vcpu, Limit: new(-1), Enforcement: api.QuotaLimitEnforcementHard},
+		}}
+		h.json("PUT", "/api/v1/admin/projects/"+web+"/quotas", admin, bad, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/items/0/environment") || !slices.Contains(fields, "/items/1/limit") {
+			t.Fatalf("bad quotas = %v", fields)
+		}
+		h.json("PUT", "/api/v1/admin/projects/"+web+"/quotas", admin, api.QuotaLimitList{Items: []api.QuotaLimit{
+			{Environment: "", Resource: api.Vcpu, Limit: new(200), Enforcement: api.QuotaLimitEnforcementHard},
+			{Environment: "prd", Resource: api.VmCount, Limit: new(10), Enforcement: api.QuotaLimitEnforcementSoft},
+		}}, 200, &quotas)
+		if len(quotas.Items) != 2 {
+			t.Fatalf("set quotas = %+v", quotas.Items)
+		}
+
+		// Lease: a project's override of an environment's policy.
+		h.json("PUT", "/api/v1/admin/lease-policies", admin, api.LeasePolicy{Environment: "dev", ProjectId: new(web), DefaultDays: new(30),
+			MaxDays: new(14), ExpiryAction: api.PowerOffThenDelete}, 422, nil)
+		h.json("PUT", "/api/v1/admin/lease-policies", admin, api.LeasePolicy{Environment: "dev", ProjectId: new(web), DefaultDays: new(14),
+			MaxDays: new(30), MaxExtensions: 1, GraceDays: 3, ExpiryAction: api.PowerOffThenDelete}, 200, nil)
+
+		// Approval policies: the condition must compile and give true or false.
+		write := api.ApprovalPolicyWrite{Name: "Extra large in production", Condition: `environment == "prd" && inputs.size == "XL"`,
+			Levels: []api.ApprovalLevel{{Name: "Infrastructure leads", Group: new("rvav-infra-leads")}}, Priority: new(5)}
+		for _, b := range []api.ApprovalPolicyWrite{
+			{Name: "x", Condition: `environment ==`, Levels: write.Levels},
+			{Name: "x", Condition: `vm.vcpu + 1`, Levels: write.Levels},
+			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "Nobody"}}},
+			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "Late", Group: new("g"), Timeout: new("two days")}}},
+		} {
+			h.json("POST", "/api/v1/admin/approval-policies", admin, b, 422, nil)
+		}
+		var xl api.ApprovalPolicy
+		h.json("POST", "/api/v1/admin/approval-policies", admin, write, 201, &xl)
+
+		// Day-2 policies: roles, effect and condition checked.
+		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "x", Effect: api.Day2PolicyWriteEffectAllow,
+			Roles: &[]string{"boss"}}, 422, nil)
+		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "x", Effect: api.Day2PolicyWriteEffectApproval}, 422, nil)
+		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "x", Effect: api.Day2PolicyWriteEffectDeny,
+			Condition: new("action.key ==")}, 422, nil)
+		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "No snapshots for viewers", Effect: api.Day2PolicyWriteEffectDeny,
+			Actions: &[]string{"snapshot_*"}, Roles: &[]string{"viewer"}, Priority: new(5)}, 201, nil)
+
+		// What applies here.
+		var rhel api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id="+web, admin, nil, 200, &rhel)
+		var why api.PolicyExplanation
+		h.json("POST", "/api/v1/admin/policies/explain", admin, api.PolicyExplainQuery{ProjectId: web, Environment: "prd", ItemId: &rhel.Id,
+			Inputs: &map[string]any{"size": "XL"}, Action: new("delete"), AsUserId: new(seed.UserID("tnguyen"))}, 200, &why)
+		if why.Approval == nil || why.Approval.DecidedBy == nil || !strings.Contains(*why.Approval.DecidedBy, "Extra large in production") {
+			t.Fatalf("approval = %+v", why.Approval)
+		}
+		if why.Day2 == nil || why.Day2.DecidedBy == nil || *why.Day2.DecidedBy != "Deleting in production" {
+			t.Fatalf("day-2 = %+v", why.Day2)
+		}
+		if why.Lease.DecidedBy == nil || *why.Lease.DecidedBy != "Production" || why.Naming.DecidedBy != nil || len(why.Quota) == 0 {
+			t.Fatalf("lease %+v, naming %+v, quota %+v", why.Lease, why.Naming, why.Quota)
+		}
+		h.json("POST", "/api/v1/admin/policies/explain", admin, api.PolicyExplainQuery{ProjectId: web, Environment: "dev"}, 200, &why)
+		if why.Lease.DecidedBy == nil || *why.Lease.DecidedBy != "Web Platform in Development" {
+			t.Fatalf("dev lease = %+v", why.Lease)
+		}
+		h.json("POST", "/api/v1/admin/policies/explain", "tnguyen", api.PolicyExplainQuery{ProjectId: web, Environment: "dev"}, 403, nil)
+
+		h.json("DELETE", "/api/v1/admin/lease-policies?environment=dev&project_id="+web, admin, nil, 204, nil)
+		h.json("DELETE", "/api/v1/admin/approval-policies/"+xl.Id, admin, nil, 204, nil)
+		var audited int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action like 'policy.%'`).Scan(&audited)
+		if audited != 6 {
+			t.Fatalf("audited %d policy changes, want 6", audited)
+		}
 	})
 }

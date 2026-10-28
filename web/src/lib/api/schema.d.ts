@@ -3544,19 +3544,31 @@ export interface components {
             decided_by: string | null;
             /** @description What it means here, in words. */
             outcome?: string;
-            considered: {
-                id: string;
-                name: string;
-                applies: boolean;
-                why: string;
-            }[];
+            considered: components["schemas"]["PolicyConsidered"][];
+        };
+        PolicyConsidered: {
+            id: string;
+            name: string;
+            applies: boolean;
+            why: string;
         };
         PolicyExplanation: {
             approval?: components["schemas"]["PolicyDecision"];
             day2?: components["schemas"]["PolicyDecision"];
             lease: components["schemas"]["PolicyDecision"];
             naming: components["schemas"]["PolicyDecision"];
-            quota: components["schemas"]["QuotaUsage"][];
+            quota: components["schemas"]["PolicyQuotaLine"][];
+        };
+        PolicyQuotaLine: {
+            resource: components["schemas"]["QuotaResource"];
+            /** @description The environment the limit is for */
+            scope: string;
+            limit?: number | null;
+            /** @enum {string} */
+            enforcement: "hard" | "soft";
+            used: number;
+            /** @description Held by requests not done yet. */
+            reserved: number;
         };
         /** @enum {string} */
         IntegrationKind: "vcenter" | "awx" | "efficientip";

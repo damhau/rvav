@@ -4925,14 +4925,15 @@ components:
         outcome: { type: string, description: "What it means here, in words." }
         considered:
           type: array
-          items:
-            type: object
-            required: [id, name, applies, why]
-            properties:
-              id: { type: string }
-              name: { type: string }
-              applies: { type: boolean }
-              why: { type: string }
+          items: { $ref: "#/components/schemas/PolicyConsidered" }
+    PolicyConsidered:
+      type: object
+      required: [id, name, applies, why]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        applies: { type: boolean }
+        why: { type: string }
     PolicyExplanation:
       type: object
       required: [lease, quota, naming]
@@ -4943,7 +4944,17 @@ components:
         naming: { $ref: "#/components/schemas/PolicyDecision" }
         quota:
           type: array
-          items: { $ref: "#/components/schemas/QuotaUsage" }
+          items: { $ref: "#/components/schemas/PolicyQuotaLine" }
+    PolicyQuotaLine:
+      type: object
+      required: [resource, scope, used, reserved, enforcement]
+      properties:
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        scope: { type: string, description: The environment the limit is for, or empty for the project as a whole. }
+        limit: { type: [integer, "null"] }
+        enforcement: { type: string, enum: [hard, soft] }
+        used: { type: integer }
+        reserved: { type: integer, description: Held by requests not done yet. }
     IntegrationKind:
       type: string
       enum: [vcenter, awx, efficientip]

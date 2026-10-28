@@ -9,35 +9,57 @@ import (
 // Administration (S9, ADR-0020): answered 501 until built.
 
 func (s *Server) ListApprovalPolicies(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.ApprovalPolicies(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.ApprovalPolicyList{Items: items}, err)
 }
 
 func (s *Server) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.ApprovalPolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveApprovalPolicy(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteApprovalPolicy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteApprovalPolicy(r.Context(), principal(r), id))
 }
 
 func (s *Server) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	var b api.ApprovalPolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveApprovalPolicy(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.Day2Policies(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items}, err)
 }
 
 func (s *Server) CreateDay2Policy(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.Day2PolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveDay2Policy(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteDay2Policy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteDay2Policy(r.Context(), principal(r), id))
 }
 
 func (s *Server) UpdateDay2Policy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	var b api.Day2PolicyWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveDay2Policy(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListAdminEnvironments(w http.ResponseWriter, r *http.Request) {
@@ -98,15 +120,21 @@ func (s *Server) TestIntegration(w http.ResponseWriter, r *http.Request, kind ap
 }
 
 func (s *Server) DeleteLeasePolicy(w http.ResponseWriter, r *http.Request, params api.DeleteLeasePolicyParams) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteLeaseOverride(r.Context(), principal(r), params.Environment, params.ProjectId))
 }
 
 func (s *Server) ListLeasePolicies(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.LeasePolicies(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.LeasePolicyList{Items: items}, err)
 }
 
 func (s *Server) SetLeasePolicy(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.LeasePolicy
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetLeasePolicy(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListNamingPolicies(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +224,12 @@ func (s *Server) UpdatePlacementRule(w http.ResponseWriter, r *http.Request, id 
 }
 
 func (s *Server) ExplainPolicies(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var q api.PolicyExplainQuery
+	if !s.decode(w, r, &q) {
+		return
+	}
+	out, err := s.Core.ExplainPolicies(r.Context(), principal(r), q)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListAdminProjects(w http.ResponseWriter, r *http.Request, params api.ListAdminProjectsParams) {
@@ -228,11 +261,17 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, projectId
 }
 
 func (s *Server) GetProjectQuotas(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
-	s.notBuilt(w, r)
+	items, err := s.Core.ProjectQuotas(r.Context(), principal(r), projectId)
+	s.reply(w, r, http.StatusOK, api.QuotaLimitList{Items: items}, err)
 }
 
 func (s *Server) SetProjectQuotas(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
-	s.notBuilt(w, r)
+	var b api.QuotaLimitList
+	if !s.decode(w, r, &b) {
+		return
+	}
+	items, err := s.Core.SetProjectQuotas(r.Context(), principal(r), projectId, b.Items)
+	s.reply(w, r, http.StatusOK, api.QuotaLimitList{Items: items}, err)
 }
 
 func (s *Server) ListSizePresets(w http.ResponseWriter, r *http.Request) {
