@@ -38,6 +38,8 @@ type Evaluation struct {
 	Subnet     *store.NetworkSubnet
 	Naming     *naming.Template
 	NamePrefix string
+	// Workflow is the custom workflow a workflow item starts.
+	Workflow *store.WorkflowRegistration
 	// CounterKey is the name counter VM names advance: the prefix, or the
 	// naming policy's own counter.
 	CounterKey string
@@ -142,7 +144,20 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if ev.Blueprint, err = blueprint.Parse(ev.Version.Blueprint); err != nil {
 		return nil, err
 	}
-	if ev.Blueprint.Kind != blueprint.KindVM && ev.Blueprint.Kind != blueprint.KindAWX {
+	switch ev.Blueprint.Kind {
+	case blueprint.KindVM, blueprint.KindAWX:
+	case blueprint.KindWorkflow:
+		// A custom workflow (ADR-0022): registered, enabled and offered here.
+		reg, why, err := s.usableWorkflow(ctx, ev.Blueprint.Workflow, "catalog_item", ev.Project.ID)
+		if err != nil {
+			return nil, err
+		}
+		if why != "" {
+			add("", "not_available", why)
+			return ev, nil
+		}
+		ev.Workflow = &reg
+	default:
 		add("", "not_available", ev.Item.Name+" cannot be requested yet.")
 		return ev, nil
 	}
@@ -177,7 +192,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		add("/count", "out_of_range", "Request between 1 and 20 at a time.")
 		ev.Count = 1
 	}
-	if ev.Blueprint.Kind == blueprint.KindAWX && ev.Count != 1 {
+	if (ev.Blueprint.Kind == blueprint.KindAWX || ev.Blueprint.Kind == blueprint.KindWorkflow) && ev.Count != 1 {
 		add("/count", "out_of_range", "This item runs once per request.")
 		ev.Count = 1
 	}

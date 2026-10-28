@@ -43,6 +43,11 @@ func (t *Temporal) Approval(ctx context.Context, requestID, approvalID, outcome 
 
 // Rollback starts the rollback of a failed request, under the request's
 // workflow ID (its earlier run has ended).
+// Signal sends a signal to any workflow by its ID.
+func (t *Temporal) Signal(ctx context.Context, workflowID, name string, arg any) error {
+	return t.Client.SignalWorkflow(ctx, workflowID, "", name, arg)
+}
+
 func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
 	_, err := t.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        WorkflowID(requestID),
@@ -58,5 +63,6 @@ func NewWorker(c client.Client, taskQueue string, a *Activities) worker.Worker {
 	w.RegisterWorkflow(Housekeeping)
 	w.RegisterWorkflow(RollbackWorkflow)
 	w.RegisterActivity(a)
+	RegisterContract(w, a)
 	return w
 }

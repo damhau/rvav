@@ -49,6 +49,9 @@ type Activities struct {
 	Housekeeper Housekeeper
 	// Subscriptions delivers to blocking subscriptions (ADR-0021).
 	Subscriptions *dispatch.Dispatcher
+	// TaskQueue is rvav's: custom workflows call the contract's activities
+	// on it (ADR-0022).
+	TaskQueue string
 	// Now is the housekeeping clock (time.Now when nil); tests move it on.
 	Now func() time.Time
 }

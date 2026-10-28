@@ -32,6 +32,9 @@ type Approval struct {
 	DueAt          *time.Time `db:"due_at"`
 	DecidedAt      *time.Time `db:"decided_at"`
 	Outcome        *string    `db:"outcome"`
+	// WorkflowID is the custom workflow that asked for it (ADR-0022): its
+	// decision goes to that workflow, and it is not a policy level.
+	WorkflowID *string `db:"workflow_id"`
 }
 
 // Groups returns the groups whose members may decide: the level's, and the
@@ -80,7 +83,7 @@ type ApprovalDelegate struct {
 
 const approvalCols = `a.id, a.request_id, a.seq, a.name, a.group_name, a.approver_ids, a.mode, a.policy_ids,
 	a.reasons, a.rules, a.status, a.timeout_seconds, a.on_timeout, a.escalate_group, a.escalate_ids,
-	a.escalated, a.created_at, a.opened_at, a.due_at, a.decided_at, a.outcome`
+	a.escalated, a.created_at, a.opened_at, a.due_at, a.decided_at, a.outcome, a.workflow_id`
 
 func (s *Store) InsertApprovals(ctx context.Context, db DB, list []Approval) error {
 	for _, a := range list {
@@ -111,9 +114,29 @@ func (s *Store) LockApproval(ctx context.Context, tx pgx.Tx, id string) (Approva
 	return a, notFound(err)
 }
 
+// ApprovalsForRequest are the request's policy levels, in order (not the
+// approvals custom workflows asked for).
 func (s *Store) ApprovalsForRequest(ctx context.Context, requestID string) ([]Approval, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+approvalCols+` from approvals a where a.request_id = $1 and a.workflow_id is null
+		order by a.seq`, requestID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[Approval])
+}
+
+// AllApprovalsForRequest are its policy levels and the approvals its custom
+// workflows asked for.
+func (s *Store) AllApprovalsForRequest(ctx context.Context, requestID string) ([]Approval, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+approvalCols+` from approvals a where a.request_id = $1 order by a.seq`, requestID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Approval])
+}
+
+// InsertWorkflowApproval opens an approval a custom workflow asked for,
+// after the request's other levels.
+func (s *Store) InsertWorkflowApproval(ctx context.Context, a Approval) error {
+	_, err := s.Pool.Exec(ctx, `insert into approvals (id, request_id, seq, name, group_name, approver_ids, mode,
+			reasons, status, opened_at, workflow_id)
+		values ($1, $2, (select coalesce(max(seq), 0) + 1 from approvals where request_id = $2), $3, $4, $5, $6, $7, 'pending', now(), $8)`,
+		a.ID, a.RequestID, a.Name, a.GroupName, nonNil(a.ApproverIDs), a.Mode, nonNil(a.Reasons), a.WorkflowID)
+	return err
 }
 
 // ApprovalFilter selects approvals for the inbox.

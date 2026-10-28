@@ -559,7 +559,8 @@ func nextNumber(versions []store.VersionRow) string {
 }
 
 // itemKinds is the blueprint kind each item type needs.
-var itemKinds = map[string]string{"vm_blueprint": blueprint.KindVM, "awx_job_template": blueprint.KindAWX, "awx_workflow": blueprint.KindAWX}
+var itemKinds = map[string]string{"vm_blueprint": blueprint.KindVM, "awx_job_template": blueprint.KindAWX, "awx_workflow": blueprint.KindAWX,
+	"workflow": blueprint.KindWorkflow}
 
 // builtinSources are the builtin value sources (docs: ValueSource in the spec).
 var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
@@ -685,6 +686,10 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 				errs = append(errs, fieldErr(ptr+"/awx_templates/"+k+"/job_template", "required", "Name the AWX template."))
 			}
 		}
+	case blueprint.KindWorkflow:
+		if b.Workflow == "" && publish {
+			errs = append(errs, fieldErr(ptr+"/workflow", "required", "Name the registered custom workflow it starts."))
+		}
 	case blueprint.KindAWX:
 		if b.AWX == nil || b.AWX.JobTemplate == "" {
 			if publish {
@@ -737,6 +742,8 @@ func starterDefinition(itemType, name string) api.CatalogVersionDefinition {
 	case "vm_blueprint":
 		d.Blueprint = map[string]any{"kind": blueprint.KindVM, "template": "", "naming": "",
 			"guest": map[string]any{"os_family": "linux", "domain": ""}}
+	case "workflow":
+		d.Blueprint = map[string]any{"kind": blueprint.KindWorkflow, "workflow": ""}
 	default:
 		d.Blueprint = map[string]any{"kind": blueprint.KindAWX, "awx": map[string]any{"title": name, "job_template": "",
 			"workflow": itemType == "awx_workflow"}}

@@ -40,6 +40,9 @@ const MaxResponse = 4096
 
 // Delivery is one attempt to make.
 type Delivery struct {
+	// RunID names the run: a custom workflow started for it is found again
+	// on the next attempt.
+	RunID    string
 	Sub      store.Subscription
 	Event    json.RawMessage
 	Blocking bool
@@ -229,7 +232,7 @@ func (d *Dispatcher) deliver(ctx context.Context) (int, error) {
 
 func (d *Dispatcher) attemptRun(ctx context.Context, r store.ClaimedRun) {
 	start := d.now()
-	res := d.Attempt(ctx, Delivery{Sub: r.Subscription, Event: r.Payload, LastJobID: deref(r.LastJobID)})
+	res := d.Attempt(ctx, Delivery{RunID: r.ID, Sub: r.Subscription, Event: r.Payload, LastJobID: deref(r.LastJobID)})
 	u := store.RunUpdate{Status: "delivered"}
 	if !res.OK {
 		reason := res.Err

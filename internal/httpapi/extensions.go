@@ -69,18 +69,34 @@ func (s *Server) RetrySubscriptionRun(w http.ResponseWriter, r *http.Request, id
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
-func (s *Server) ListWorkflows(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) ListWorkflows(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Core.WorkflowRegistrations(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.WorkflowRegistrationList{Items: items}, err)
+}
 
-func (s *Server) RegisterWorkflow(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) RegisterWorkflow(w http.ResponseWriter, r *http.Request) {
+	var b api.WorkflowRegistrationWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveWorkflowRegistration(r.Context(), principal(r), "", true, b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
 
 func (s *Server) GetWorkflow(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	out, err := s.Core.GetWorkflowRegistration(r.Context(), principal(r), key)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) UpdateWorkflow(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	var b api.WorkflowRegistrationWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveWorkflowRegistration(r.Context(), principal(r), key, false, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) DeleteWorkflow(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteWorkflowRegistration(r.Context(), principal(r), key))
 }

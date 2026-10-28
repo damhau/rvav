@@ -66,13 +66,17 @@ context). A workflow calls them with `rvav_task_queue` as the task queue:
 |---|---|---|
 | `rvav.ReportStep` | `{key, title, status, detail}`, status `running`, `done`, `failed` or `skipped` | Adds or updates a step under the workflow's step in the timeline |
 | `rvav.AppendLog` | `{step_key, lines}` | Adds lines to a step's log (the workflow's own step without `step_key`) |
-| `rvav.RequestApproval` | `{title, reason, group, approvers, timeout, on_timeout}` | Opens an approval on the request, in the same inbox; returns its ID |
+| `rvav.RequestApproval` | `{title, reason, group, approvers, mode}` | Opens an approval on the request, in the same inbox; returns its ID |
 
 When an approval is decided, rvav sends the workflow the signal
 `rvav.approval` with `{approval_id, outcome, comment}` (`outcome` is
-`approved` or `rejected`). rvav finds the request and step from the
-calling workflow's ID: an activity called by a workflow rvav didn't start
-is refused.
+`approved` or `rejected`). An approval has no deadline of its own: a
+workflow that can't wait forever waits with its own timer and decides what
+happens (the helpers' `Wait`), and the approval stays open in the inbox
+until decided or the request ends. Approvals a workflow asks for are not
+policy levels: the request's approval chain ignores them. rvav finds the
+request and step from the calling workflow's ID: an activity called by a
+workflow rvav didn't start is refused.
 
 The Go package `pkg/rvavflow` and the Python package `rvav-workflows`
 (`sdk/python`) wrap these calls and the wait for the signal. An example

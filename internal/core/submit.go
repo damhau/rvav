@@ -116,6 +116,11 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			job, vars := awxLaunch(ev)
 			plan.AWX, plan.ExtraVars = &job, vars
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
+		case blueprint.KindWorkflow:
+			w := ev.Workflow
+			plan.Workflow = &provision.WorkflowCall{Key: w.Key, Title: w.Title, Type: w.WorkflowType, TaskQueue: w.TaskQueue,
+				Timeout: w.TimeoutSeconds, Inputs: ev.Inputs}
+			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		}
 		plan.Context = map[string]any{
 			"request_id": req.ID, "request_number": req.Number, "project": ev.Project.Code,

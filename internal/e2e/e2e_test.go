@@ -93,6 +93,7 @@ type recorder struct {
 	started    []string
 	cancelled  []string
 	signals    []provision.ApprovalSignal
+	byID       []workflowSignal
 	rolledBack []string
 	startErr   error // returned by Start, to act as an unreachable Temporal
 }
@@ -121,6 +122,19 @@ func (r *recorder) Approval(_ context.Context, _, approvalID, outcome string) er
 	return nil
 }
 
+// workflowSignal is a signal to a workflow by its ID.
+type workflowSignal struct {
+	id, name string
+	arg      any
+}
+
+func (r *recorder) Signal(_ context.Context, workflowID, name string, arg any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID = append(r.byID, workflowSignal{workflowID, name, arg})
+	return nil
+}
+
 func (r *recorder) Rollback(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -136,6 +150,13 @@ func (r *recorder) deliver(env *testsuite.TestWorkflowEnvironment) {
 	r.mu.Unlock()
 	for _, sig := range sigs {
 		env.SignalWorkflow(provision.SignalApproval, sig)
+	}
+	r.mu.Lock()
+	byID := r.byID
+	r.byID = nil
+	r.mu.Unlock()
+	for _, sig := range byID {
+		_ = env.SignalWorkflowByID(sig.id, sig.name, sig.arg)
 	}
 }
 
@@ -209,6 +230,7 @@ func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWo
 	s.SetLogger(nil)
 	env := s.NewTestWorkflowEnvironment()
 	env.RegisterActivity(h.acts)
+	provision.RegisterContract(env, h.acts)
 	env.SetTestTimeout(2 * time.Minute)
 	if setup != nil {
 		setup(env)
@@ -279,7 +301,7 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	t.Cleanup(srv.Close)
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
-		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second}
+		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test"}
 	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
 	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},

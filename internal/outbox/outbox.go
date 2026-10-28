@@ -143,6 +143,13 @@ func Vars(data map[string]any) map[string]any {
 	return vars
 }
 
+// RequestData is what an event says about a request (a custom workflow's
+// context has the same, ADR-0022).
+func RequestData(ctx context.Context, db store.DB, requestID string) (map[string]any, error) {
+	data, _, err := requestData(ctx, db, requestID)
+	return data, err
+}
+
 // requestData reads what an event says about a request.
 func requestData(ctx context.Context, db store.DB, requestID string) (map[string]any, *string, error) {
 	var (

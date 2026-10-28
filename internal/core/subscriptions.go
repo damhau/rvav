@@ -403,7 +403,7 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 		return api.SubscriptionRunDetail{}, err
 	}
 	start := time.Now()
-	res := s.Dispatcher.Attempt(ctx, dispatch.Delivery{Sub: sub, Event: payload, Blocking: sub.Blocking})
+	res := s.Dispatcher.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: sub.Blocking})
 	u := store.RunUpdate{Status: "delivered"}
 	if !res.OK {
 		u.Status, u.Reason = "failed", &res.Err
@@ -425,6 +425,12 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 
 // checkWorkflowTarget checks a custom workflow named as a subscription's
 // target (ADR-0022).
-func (s *Service) checkWorkflowTarget(_ context.Context, key string) []api.FieldError {
-	return []api.FieldError{fieldErr("/target/workflow/key", "unknown", "There is no custom workflow "+key+" registered.")}
+func (s *Service) checkWorkflowTarget(ctx context.Context, key string) []api.FieldError {
+	if _, why, err := s.usableWorkflow(ctx, key, "subscription_target", ""); err != nil || why != "" {
+		if err != nil {
+			why = err.Error()
+		}
+		return []api.FieldError{fieldErr("/target/workflow/key", "unusable", why)}
+	}
+	return nil
 }

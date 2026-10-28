@@ -28,6 +28,8 @@ type Plan struct {
 	Context      map[string]any  `json:"context,omitempty"`
 	// Day2 is set on day-2 requests instead of VMs or AWX.
 	Day2 *Day2 `json:"day2,omitempty"`
+	// Workflow is set on requests of custom workflow items (ADR-0022).
+	Workflow *WorkflowCall `json:"workflow,omitempty"`
 }
 
 // Day2 is the plan of a day-2 request: operations on one resource, in order.
@@ -144,6 +146,11 @@ func (p Plan) Steps(environment string) []StepDef {
 	if p.Kind == blueprint.KindAWX && p.AWX != nil {
 		return append(steps,
 			StepDef{Key: KeyJob + p.AWX.Key, Title: "AWX job · " + p.AWX.Template, System: "awx", Status: "pending"},
+			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
+	}
+	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {
+		return append(steps,
+			StepDef{Key: KeyWorkflow + p.Workflow.Key, Title: p.Workflow.Title, Detail: p.Workflow.Type, System: "rvav", Status: "pending"},
 			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
 	}
 	for _, vm := range p.VMs {

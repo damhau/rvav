@@ -14,6 +14,8 @@ import (
 const (
 	KindVM  = "vm"
 	KindAWX = "awx"
+	// KindWorkflow runs a registered custom workflow (ADR-0022).
+	KindWorkflow = "workflow"
 )
 
 type Blueprint struct {
@@ -29,6 +31,10 @@ type Blueprint struct {
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
+
+	// Workflow items: the key of the custom workflow they start, with the
+	// inputs.
+	Workflow string `json:"workflow,omitempty"`
 
 	// RollbackOnFailure deletes what was created when a step fails. When
 	// false, resources are kept so someone can look at the failure.

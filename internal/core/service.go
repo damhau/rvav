@@ -27,6 +27,9 @@ type Workflows interface {
 	Approval(ctx context.Context, requestID, approvalID, outcome string) error
 	// Rollback deletes what a failed request created.
 	Rollback(ctx context.Context, requestID string) error
+	// Signal sends a signal to a workflow by its ID (a custom workflow's
+	// approval, ADR-0022).
+	Signal(ctx context.Context, workflowID, name string, arg any) error
 }
 
 type Service struct {

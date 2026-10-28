@@ -321,7 +321,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	}
 	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
-		Subscriptions: a.Dispatcher()}, nil
+		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue}, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.
@@ -356,6 +356,9 @@ func (a *App) Dispatcher() *dispatch.Dispatcher {
 	t := dispatch.Targets{Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets)}}
 	if a.AWX != nil {
 		t.AWX = &dispatch.AWX{Client: a.AWX}
+	}
+	if tc, err := a.Temporal(); err == nil {
+		t.Workflow = &dispatch.Workflow{Client: tc, Store: a.Store, TaskQueue: a.Cfg.Temporal.TaskQueue}
 	}
 	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: t}
 }

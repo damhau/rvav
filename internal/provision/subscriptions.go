@@ -114,11 +114,11 @@ func (a *Activities) RunBlockingSubscription(ctx context.Context, requestID stri
 	// One more try within the timeout when the first fails fast.
 	start := time.Now()
 	deadline := start.Add(time.Duration(sub.TimeoutSeconds) * time.Second)
-	res := a.Subscriptions.Attempt(ctx, dispatch.Delivery{Sub: sub, Event: payload, Blocking: true})
+	res := a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
 	if !res.OK && time.Until(deadline) > time.Duration(sub.TimeoutSeconds)*time.Second/2 {
 		_ = a.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res), store.RunUpdate{Status: "delivering"})
 		start = time.Now()
-		res = a.Subscriptions.Attempt(ctx, dispatch.Delivery{Sub: sub, Event: payload, Blocking: true})
+		res = a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
 	}
 	if res.OK && len(res.Properties) > 0 {
 		if problem := checkProperties(sub.Topic, res.Properties); problem != "" {

@@ -164,7 +164,7 @@ func (s *Service) RequestApprovals(ctx context.Context, p *auth.Principal, idOrN
 	} else if !ok {
 		return nil, ErrNotFound
 	}
-	levels, err := s.Store.ApprovalsForRequest(ctx, r.ID)
+	levels, err := s.Store.AllApprovalsForRequest(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +316,13 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	if err != nil {
 		return api.Approval{}, err
 	}
-	if decided {
+	if decided && l.lv.WorkflowID != nil {
+		// An approval a custom workflow asked for (ADR-0022) goes to it.
+		if err := s.Workflows.Signal(ctx, *l.lv.WorkflowID, provision.SignalWorkflowApproval,
+			provision.WorkflowApprovalSignal{ApprovalID: id, Outcome: status, Comment: comment}); err != nil {
+			s.Log.Warn("signal workflow approval", "request", l.req.Number, "approval", id, "err", err)
+		}
+	} else if decided {
 		// If the signal is lost, the workflow still finds the decision when it
 		// checks the level again (see provision.awaitApprovals).
 		if err := s.Workflows.Approval(ctx, l.req.ID, id, status); err != nil {

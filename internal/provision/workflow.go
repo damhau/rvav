@@ -297,6 +297,15 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return "", nil
 	}
 
+	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {
+		key := KeyWorkflow + p.Workflow.Key
+		if info.done(key) {
+			return "", nil
+		}
+		_, err := runCustom(ctx, info, key, *p.Workflow, nil)
+		return key, err
+	}
+
 	if p.Kind == blueprint.KindAWX && p.AWX != nil {
 		key := KeyJob + p.AWX.Key
 		if info.done(key) {
