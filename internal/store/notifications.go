@@ -271,3 +271,58 @@ func (s *Store) NotificationSubjectOf(ctx context.Context, n Notification) (Noti
 	}
 	return out, nil
 }
+
+// ChannelIdentity is who a user is on Teams or Slack.
+type ChannelIdentity struct {
+	UserID, Channel, ExternalID string
+	ConversationID              *string
+}
+
+// GetChannelIdentity finds who a user is on a channel (ErrNotFound when not
+// known yet).
+func (s *Store) GetChannelIdentity(ctx context.Context, userID, channel string) (ChannelIdentity, error) {
+	out := ChannelIdentity{UserID: userID, Channel: channel}
+	err := s.Pool.QueryRow(ctx, `select external_id, conversation_id from user_channels where user_id = $1 and channel = $2`,
+		userID, channel).Scan(&out.ExternalID, &out.ConversationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, ErrNotFound
+	}
+	return out, err
+}
+
+// SetChannelIdentity records who a user is on a channel; an ID another user
+// had moves to this one (an account handed over).
+func (s *Store) SetChannelIdentity(ctx context.Context, c ChannelIdentity) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `delete from user_channels where channel = $1 and external_id = $2 and user_id <> $3`,
+			c.Channel, c.ExternalID, c.UserID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `insert into user_channels (user_id, channel, external_id, conversation_id) values ($1, $2, $3, $4)
+			on conflict (user_id, channel) do update set external_id = excluded.external_id,
+				conversation_id = coalesce(excluded.conversation_id, user_channels.conversation_id), updated_at = now()`,
+			c.UserID, c.Channel, c.ExternalID, c.ConversationID)
+		return err
+	})
+}
+
+// UserOnChannel is the user rvav knows by an ID on a channel.
+func (s *Store) UserOnChannel(ctx context.Context, channel, externalID string) (string, error) {
+	var id string
+	err := s.Pool.QueryRow(ctx, `select user_id from user_channels where channel = $1 and external_id = $2`, channel,
+		externalID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return id, err
+}
+
+// SentApprovalOnChannel says whether rvav sent a user the approval on a
+// channel: only they may decide from what it sent.
+func (s *Store) SentApprovalOnChannel(ctx context.Context, approvalID, userID, channel string) (bool, error) {
+	var ok bool
+	err := s.Pool.QueryRow(ctx, `select exists (select 1 from notifications n join notification_deliveries d on d.notification_id = n.id
+		where n.approval_id = $1 and n.user_id = $2 and n.kind = 'approval_needed' and d.channel = $3 and d.status = 'sent')`,
+		approvalID, userID, channel).Scan(&ok)
+	return ok, err
+}

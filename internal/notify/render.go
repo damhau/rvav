@@ -137,6 +137,9 @@ func render(kind, locale string, d Data) (Message, error) {
 	if err := run("text_all", &m.Text); err != nil {
 		return m, err
 	}
+	if err := run("text", &m.Short); err != nil {
+		return m, err
+	}
 	var b bytes.Buffer
 	if err := p.html.ExecuteTemplate(&b, "html", d); err != nil {
 		return m, err

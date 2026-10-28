@@ -302,6 +302,9 @@ func (a *App) RunAPI(ctx context.Context) error {
 		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
 		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
 	}
+	if a.Cfg.Teams.AppID != "" {
+		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL}
+	}
 	httpSrv := &http.Server{Addr: a.Cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() {
@@ -363,6 +366,9 @@ func (a *App) senders() map[string]notify.Sender {
 	out := map[string]notify.Sender{}
 	if a.Cfg.SMTP.Host != "" {
 		out["email"] = &notify.Email{Config: a.Cfg.SMTP}
+	}
+	if a.Cfg.Teams.AppID != "" && a.Cfg.Teams.AppPassword != "" {
+		out["teams"] = &notify.Teams{Config: a.Cfg.Teams, Store: a.Store}
 	}
 	return out
 }

@@ -108,6 +108,13 @@ const fields: Record<Kind, { title: string; secret: Setting; settings: Setting[]
     settings: [
       { name: "app_id", label: "Bot app ID", env: "RVAV_TEAMS_APP_ID", type: "string" },
       { name: "tenant_id", label: "Tenant ID", env: "RVAV_TEAMS_TENANT_ID", type: "string" },
+      {
+        name: "service_url",
+        label: "Bot Connector",
+        env: "RVAV_TEAMS_SERVICE_URL",
+        type: "string",
+        hint: "Where conversations start, for example https://smba.trafficmanager.net/emea",
+      },
     ],
   },
   slack: {

@@ -281,3 +281,7 @@ func TestEmailNotifications(t *testing.T) {
 		}
 	})
 }
+
+func newNotification(userID, kind, dedupe string) store.NewNotification {
+	return store.NewNotification{UserID: userID, Kind: kind, Title: "Test " + kind, DedupeKey: dedupe}
+}

@@ -266,3 +266,23 @@ Templates exist per kind and per language (English, French).
 
 The channels are set like the other integrations (Administration →
 Integrations, or `RVAV_SMTP_*`, `RVAV_TEAMS_*`, `RVAV_SLACK_*`).
+
+### Microsoft Teams setup
+1. **App registration and bot.** Register an app in Entra ID
+   (single-tenant) with a client secret. Create an Azure Bot resource on
+   that app with the Microsoft Teams channel. Its messaging endpoint is
+   `https://<rvav>/api/v1/integrations/teams/messages`.
+2. **Graph permission.** Give the app the application permission
+   `User.Read.All` (admin consent). rvav uses it to find each user's object
+   ID by their email.
+3. **Teams app.** Package a Teams app with the bot (personal scope) and
+   install it for the people who approve, for example with a setup policy.
+   Teams lets a bot write to someone only once its app is installed for
+   them.
+4. **rvav settings:** the app ID, tenant ID and client secret, and the Bot
+   Connector region (`RVAV_TEAMS_SERVICE_URL`, for example
+   `https://smba.trafficmanager.net/emea`).
+
+Teams' calls carry a Bot Framework token. rvav checks it against the keys
+published at `RVAV_TEAMS_OPENID_URL` (the Bot Framework's by default), and
+checks its audience (the app ID) and the service URL it was issued for.

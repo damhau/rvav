@@ -23,7 +23,8 @@ type Config struct {
 	IPAM     EfficientIPConfig
 	AWX      AWXConfig
 	// Notification channels (ADR-0023).
-	SMTP SMTPConfig
+	SMTP  SMTPConfig
+	Teams TeamsConfig
 
 	// PublicURL is where people open rvav: links in notifications start
 	// with it (RVAV_PUBLIC_URL).
@@ -111,6 +112,18 @@ type SMTPConfig struct {
 	Password string
 }
 
+// TeamsConfig sends notifications through an Azure bot; no app ID, no Teams.
+type TeamsConfig struct {
+	AppID       string
+	TenantID    string
+	AppPassword string
+	// ServiceURL is the Bot Connector rvav starts conversations on.
+	ServiceURL string
+	// Microsoft's endpoints, for other clouds and tests: sign-in, Graph,
+	// and the Bot Framework's OpenID configuration (its signing keys).
+	LoginURL, GraphURL, OpenIDURL string
+}
+
 type AWXConfig struct {
 	Fake         bool
 	URL          string
@@ -175,6 +188,15 @@ func Load() (Config, error) {
 		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
 		WebhookHosts:    list("RVAV_WEBHOOK_HOSTS"),
 		PublicURL:       strings.TrimRight(env("RVAV_PUBLIC_URL", "http://localhost:5173"), "/"),
+		Teams: TeamsConfig{
+			AppID:       env("RVAV_TEAMS_APP_ID", ""),
+			TenantID:    env("RVAV_TEAMS_TENANT_ID", ""),
+			AppPassword: env("RVAV_TEAMS_APP_PASSWORD", ""),
+			ServiceURL:  strings.TrimRight(env("RVAV_TEAMS_SERVICE_URL", "https://smba.trafficmanager.net/teams"), "/"),
+			LoginURL:    strings.TrimRight(env("RVAV_TEAMS_LOGIN_URL", "https://login.microsoftonline.com"), "/"),
+			GraphURL:    strings.TrimRight(env("RVAV_TEAMS_GRAPH_URL", "https://graph.microsoft.com"), "/"),
+			OpenIDURL:   env("RVAV_TEAMS_OPENID_URL", "https://login.botframework.com/v1/.well-known/openidconfiguration"),
+		},
 		SMTP: SMTPConfig{
 			Host:     env("RVAV_SMTP_HOST", ""),
 			TLS:      env("RVAV_SMTP_TLS", "starttls"),

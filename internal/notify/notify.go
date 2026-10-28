@@ -26,8 +26,33 @@ type Sender interface {
 type Message struct {
 	Delivery store.Delivery
 	Data     Data
-	// Subject, Text and HTML are the email's; Title and Text are a card's.
-	Subject, Title, Text, HTML string
+	// Subject, Text and HTML are the email's; a card has Title, Short (the
+	// kind's text alone) and Facts.
+	Subject, Title, Text, HTML, Short string
+}
+
+// Fact is a line of a card: what it is about.
+type Fact struct{ Label, Value string }
+
+// Facts are what a message is about, labelled in its language.
+func (m Message) Facts() []Fact {
+	l := labelsFor(m.Data.Locale)
+	s := m.Data.Subject
+	var out []Fact
+	add := func(label, value string) {
+		if value != "" {
+			out = append(out, Fact{label, value})
+		}
+	}
+	if s.RequestNumber != "" {
+		add(l.Request, s.RequestNumber+", "+s.RequestTitle)
+	}
+	add(l.Item, s.ItemName)
+	add(l.Deployment, s.DeploymentName)
+	if s.ProjectName != "" {
+		add(l.Project, s.ProjectName+" ("+s.Environment+")")
+	}
+	return out
 }
 
 // permanent is a failure that trying again won't fix.

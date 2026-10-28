@@ -56,6 +56,12 @@ var Fields = map[string][]Field{
 		{"username", "RVAV_SMTP_USERNAME", "string", false},
 		{"password", "RVAV_SMTP_PASSWORD", "string", true},
 	},
+	"teams": {
+		{"app_id", "RVAV_TEAMS_APP_ID", "string", false},
+		{"tenant_id", "RVAV_TEAMS_TENANT_ID", "string", false},
+		{"service_url", "RVAV_TEAMS_SERVICE_URL", "string", false},
+		{"app_password", "RVAV_TEAMS_APP_PASSWORD", "string", true},
+	},
 }
 
 // Locked lists the settings of an integration an environment variable sets.
@@ -160,6 +166,11 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("from", &c.SMTP.From)
 		str("username", &c.SMTP.Username)
 		secret("password", &c.SMTP.Password)
+	case "teams":
+		str("app_id", &c.Teams.AppID)
+		str("tenant_id", &c.Teams.TenantID)
+		str("service_url", &c.Teams.ServiceURL)
+		secret("app_password", &c.Teams.AppPassword)
 	}
 }
 
@@ -180,6 +191,8 @@ func (c Config) Settings(kind string) map[string]any {
 	case "smtp":
 		return map[string]any{"host": c.SMTP.Host, "port": c.SMTP.Port, "tls": c.SMTP.TLS, "from": c.SMTP.From,
 			"username": c.SMTP.Username}
+	case "teams":
+		return map[string]any{"app_id": c.Teams.AppID, "tenant_id": c.Teams.TenantID, "service_url": c.Teams.ServiceURL}
 	}
 	return nil
 }
@@ -195,6 +208,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.IPAM.Password != ""
 	case "smtp":
 		return c.SMTP.Password != ""
+	case "teams":
+		return c.Teams.AppPassword != ""
 	}
 	return false
 }

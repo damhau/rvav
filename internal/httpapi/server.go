@@ -23,6 +23,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/events"
+	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -43,6 +44,9 @@ type Server struct {
 	// the ESXi certificate check when vCenter gives no thumbprint.
 	WMKSSDKURLs     []string
 	ConsoleInsecure bool
+	// Teams checks the calls of rvav's Teams bot; nil when Teams isn't set
+	// up (ADR-0023).
+	Teams *notify.TeamsVerifier
 
 	secrets  sync.Map // version ID -> map[string]bool
 	consoles consoleTokens

@@ -315,9 +315,12 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		if decided {
 			action = "approval." + status
 		}
+		detail := map[string]any{"request": l.req.Number, "decision": d.Decision, "comment": comment}
+		if ch := fromChannel(ctx); ch != "" {
+			detail["channel"] = ch // decided from a Teams or Slack card (ADR-0023)
+		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: action, TargetType: "approval",
-			TargetID: id, ProjectID: &l.req.ProjectID,
-			Detail: map[string]any{"request": l.req.Number, "decision": d.Decision, "comment": comment}})
+			TargetID: id, ProjectID: &l.req.ProjectID, Detail: detail})
 	})
 	if err != nil {
 		return api.Approval{}, err

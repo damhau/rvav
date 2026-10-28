@@ -24,15 +24,24 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp"}
+var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp", "teams"}
 
 // address is where an integration goes: its URL, or the mail server.
 func address(kind string, settings map[string]any) string {
-	key := "url"
-	if kind == "smtp" {
-		key = "host"
+	switch kind {
+	case "smtp":
+		v, _ := settings["host"].(string)
+		return v
+	case "teams":
+		// The secret is the app's, in its tenant.
+		app, _ := settings["app_id"].(string)
+		tenant, _ := settings["tenant_id"].(string)
+		if app == "" && tenant == "" {
+			return ""
+		}
+		return app + "@" + tenant
 	}
-	v, _ := settings[key].(string)
+	v, _ := settings["url"].(string)
 	return v
 }
 
@@ -221,6 +230,12 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		}
 		check("Connect and sign in", (&notify.Email{Config: cfg.SMTP}).Test(ctx),
 			fmt.Sprintf("%s:%d accepted the connection", cfg.SMTP.Host, cfg.SMTP.Port))
+	case "teams":
+		if cfg.Teams.AppID == "" || cfg.Teams.TenantID == "" {
+			check("Bot app", errors.New("the app ID and tenant ID are needed"), "")
+			break
+		}
+		check("Sign in as the bot", (&notify.Teams{Config: cfg.Teams}).Test(ctx), "Microsoft accepted the app's credentials")
 	}
 	out.Ok = !slices.ContainsFunc(out.Checks, func(c api.IntegrationCheck) bool { return !c.Ok })
 	s.audit(ctx, p, "settings.test."+kind, "integration", kind, nil, map[string]any{"ok": out.Ok})
