@@ -178,7 +178,14 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 		problem("No placement rule for %s in %s: requests there fail.", proj.Name, environment)
 		return out, nil
 	}
+	// The folder of the rule that places the first cluster: requests use
+	// the rule that matched the cluster chosen.
 	out.Folder = pl.rules[0].Folder
+	if len(pl.clusters) > 0 {
+		if r := pl.rule(pl.clusters[0].Name); r != nil {
+			out.Folder = r.Folder
+		}
+	}
 	if len(pl.clusters) == 0 {
 		problem("No cluster in vCenter matches the rules.")
 	}

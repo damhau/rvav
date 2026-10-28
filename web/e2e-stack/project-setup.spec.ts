@@ -36,7 +36,7 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   await create.getByRole("textbox", { name: "Code" }).fill(code);
   await create.getByRole("textbox", { name: "Name" }).fill(name);
   await create.getByRole("textbox", { name: "Project admins" }).fill("Marc");
-  await create.getByRole("button", { name: /Marc Keller/ }).click();
+  await create.getByRole("button", { name: /Marc Keller.*\(you\)/ }).click();
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
   const members = page.getByRole("region", { name: "Members" });

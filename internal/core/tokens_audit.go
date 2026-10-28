@@ -69,8 +69,13 @@ func (s *Service) CreateAPIToken(ctx context.Context, p *auth.Principal, c api.A
 		errs = append(errs, fieldErr("/expires_at", "too_far", "At most a year from now."))
 	}
 	scope := ""
-	if c.Scope != nil && *c.Scope == api.ApiTokenCreateScopeInventory {
+	switch {
+	case c.Scope == nil || *c.Scope == api.ApiTokenCreateScopeAll:
+	case *c.Scope == api.ApiTokenCreateScopeInventory:
 		scope = auth.ScopeInventory
+	default:
+		// Anything else is refused, never taken as all.
+		errs = append(errs, fieldErr("/scope", "enum", "all or inventory."))
 	}
 	if len(errs) > 0 {
 		return api.ApiTokenCreated{}, &ValidationError{Errors: errs}

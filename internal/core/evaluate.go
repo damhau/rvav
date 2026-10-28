@@ -321,7 +321,9 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 		}
 	}
 	plan, _ := ev.Blueprint.EvaluateVM(ev.Inputs)
-	if plan.Template != "" {
+	// A template chosen in the form is an offered template's key; a
+	// blueprint that names its own vCenter template keeps it.
+	if plan.Template != "" && ev.Blueprint.Bindings["template"] != "" {
 		templates, err := s.offeredTemplates(ctx, ev.Project.ID, ev.Env.Key)
 		if err != nil {
 			return err

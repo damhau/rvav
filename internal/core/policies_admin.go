@@ -193,15 +193,21 @@ func sampleVars(inputs map[string]any) policy.Vars {
 
 // checkApprovalExpr compiles an approval condition and evaluates it on
 // sample variables: it must give true or false. An input the sample lacks
-// is fine (forms differ); anything else wrong is caught now.
+// is fine (forms differ); anything else wrong, a misspelt vm or project
+// field included, is caught now.
 func checkApprovalExpr(expr string) error {
 	if err := policy.Check(expr); err != nil {
 		return err
 	}
 	v, err := policy.Eval(expr, sampleVars(nil))
 	if err != nil {
-		if strings.Contains(err.Error(), "no such key") {
-			return nil
+		if _, key, ok := strings.Cut(err.Error(), "no such key: "); ok {
+			key = strings.TrimSpace(key)
+			if strings.Contains(expr, "inputs."+key) || strings.Contains(expr, `inputs["`+key+`"]`) ||
+				strings.Contains(expr, "inputs['"+key+"']") {
+				return nil
+			}
+			return fmt.Errorf("there is no %s here", key)
 		}
 		return err
 	}
@@ -222,6 +228,12 @@ func (s *Service) checkLevels(ctx context.Context, levels []api.ApprovalLevel, p
 		if strings.TrimSpace(l.Name) == "" {
 			errs = append(errs, fieldErr(lp+"/name", "required", "Name the level."))
 		}
+		if l.Mode != nil && !l.Mode.Valid() {
+			errs = append(errs, fieldErr(lp+"/mode", "enum", "any or all."))
+		}
+		if l.OnTimeout != nil && !l.OnTimeout.Valid() {
+			errs = append(errs, fieldErr(lp+"/on_timeout", "enum", "escalate, approve or reject."))
+		}
 		if deref(l.Group) == "" && (l.Approvers == nil || len(*l.Approvers) == 0) {
 			errs = append(errs, fieldErr(lp, "required", "Give an OIDC group or approvers."))
 		}
@@ -236,8 +248,9 @@ func (s *Service) checkLevels(ctx context.Context, levels []api.ApprovalLevel, p
 		if l.OnTimeout != nil && (l.Timeout == nil || *l.Timeout == "") {
 			errs = append(errs, fieldErr(lp+"/on_timeout", "required", "What happens on time-out needs a timeout."))
 		}
-		if l.OnTimeout != nil && *l.OnTimeout == api.ApprovalLevelOnTimeoutEscalate && l.EscalateTo == nil {
-			errs = append(errs, fieldErr(lp+"/escalate_to", "required", "Say whom to escalate to."))
+		if l.OnTimeout != nil && *l.OnTimeout == api.ApprovalLevelOnTimeoutEscalate &&
+			(l.EscalateTo == nil || deref(l.EscalateTo.Group) == "" && (l.EscalateTo.Approvers == nil || len(*l.EscalateTo.Approvers) == 0)) {
+			errs = append(errs, fieldErr(lp+"/escalate_to", "required", "Say whom to escalate to: an OIDC group or approvers."))
 		}
 		if l.EscalateTo != nil && l.EscalateTo.Approvers != nil {
 			ids = append(ids, *l.EscalateTo.Approvers...)
@@ -321,6 +334,9 @@ func (s *Service) SaveApprovalPolicy(ctx context.Context, p *auth.Principal, id 
 		if err := checkApprovalExpr(*w.AutoApprove); err != nil {
 			errs = append(errs, fieldErr("/auto_approve", "invalid", "This expression is not valid CEL: "+err.Error()))
 		}
+	}
+	if w.ItemType != nil && !w.ItemType.Valid() {
+		errs = append(errs, fieldErr("/item_type", "enum", "vm_blueprint, awx_job_template, awx_workflow or composite."))
 	}
 	levelErrs, err := s.checkLevels(ctx, w.Levels, "/levels", true)
 	if err != nil {
@@ -512,7 +528,13 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 		} else if err != nil {
 			return out, err
 		}
+		// As someone of the project only, as in the designer's preview.
+		if !as.CanSeeProject(proj.ID) {
+			return out, &ValidationError{Errors: []api.FieldError{fieldErr("/as_user_id", "not_member", "They are not in "+proj.Name+".")}}
+		}
 	}
+	// Project admins see the policies that concern their project only.
+	full := p.SeesEverything()
 	inputs := map[string]any{}
 	if q.Inputs != nil {
 		inputs = *q.Inputs
@@ -520,21 +542,21 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 	if out.Lease, err = s.explainLease(ctx, proj, env); err != nil {
 		return out, err
 	}
-	if out.Naming, err = s.explainNaming(ctx, proj, env); err != nil {
+	if out.Naming, err = s.explainNaming(ctx, proj, env, full); err != nil {
 		return out, err
 	}
 	if out.Quota, err = s.explainQuota(ctx, proj.ID, env.Key); err != nil {
 		return out, err
 	}
 	if q.ItemId != nil && *q.ItemId != "" {
-		dec, err := s.explainApproval(ctx, as, proj, env, *q.ItemId, inputs)
+		dec, err := s.explainApproval(ctx, as, proj, env, *q.ItemId, inputs, full)
 		if err != nil {
 			return out, err
 		}
 		out.Approval = &dec
 	}
 	if q.Action != nil && *q.Action != "" {
-		dec, err := s.explainDay2(ctx, as, proj, env, *q.Action, inputs)
+		dec, err := s.explainDay2(ctx, as, proj, env, *q.Action, inputs, full)
 		if err != nil {
 			return out, err
 		}
@@ -592,7 +614,7 @@ func (s *Service) explainLease(ctx context.Context, proj store.Project, env stor
 	return dec, nil
 }
 
-func (s *Service) explainNaming(ctx context.Context, proj store.Project, env store.Environment) (api.PolicyDecision, error) {
+func (s *Service) explainNaming(ctx context.Context, proj store.Project, env store.Environment, full bool) (api.PolicyDecision, error) {
 	dec := api.PolicyDecision{Considered: []api.PolicyConsidered{}}
 	all, err := s.Store.NamingPolicies(ctx)
 	if err != nil {
@@ -610,6 +632,9 @@ func (s *Service) explainNaming(ctx context.Context, proj store.Project, env sto
 		offered := slices.ContainsFunc(offers[n.ID], func(o store.Offer) bool {
 			return (o.ProjectID == nil || *o.ProjectID == proj.ID) && (o.Environment == nil || *o.Environment == env.Key)
 		})
+		if !offered && !full {
+			continue
+		}
 		why := "Not offered to " + proj.Name + " in " + env.Name + "."
 		switch {
 		case n.ID == chosen.ID:
@@ -655,7 +680,7 @@ func (s *Service) explainQuota(ctx context.Context, projectID, env string) ([]ap
 }
 
 func (s *Service) explainApproval(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment, itemID string,
-	inputs map[string]any) (api.PolicyDecision, error) {
+	inputs map[string]any, full bool) (api.PolicyDecision, error) {
 	dec := api.PolicyDecision{Considered: []api.PolicyConsidered{}}
 	item, err := s.Store.GetItem(ctx, itemID, as.User.ID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -672,6 +697,9 @@ func (s *Service) explainApproval(ctx context.Context, as *auth.Principal, proj 
 	vars := PolicyVars(ev, as)
 	var deciding []string
 	for _, pol := range all {
+		if !full && pol.ProjectID != nil && *pol.ProjectID != proj.ID {
+			continue
+		}
 		c := api.PolicyConsidered{Id: pol.ID, Name: pol.Name}
 		switch {
 		case !pol.Enabled:
@@ -685,6 +713,8 @@ func (s *Service) explainApproval(ctx context.Context, as *auth.Principal, proj 
 			switch {
 			case err != nil:
 				c.Why = "Its condition needs inputs not given here (" + err.Error() + "); on a request it is checked again."
+			case !match && strings.Contains(pol.Condition, "vm."):
+				c.Why = "Its condition " + pol.Condition + " depends on the VM's size, which only a request gives: false for an empty one."
 			case !match:
 				c.Why = "Its condition " + pol.Condition + " is false here."
 			default:
@@ -713,7 +743,7 @@ func (s *Service) explainApproval(ctx context.Context, as *auth.Principal, proj 
 }
 
 func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment, key string,
-	inputs map[string]any) (api.PolicyDecision, error) {
+	inputs map[string]any, full bool) (api.PolicyDecision, error) {
 	dec := api.PolicyDecision{Considered: []api.PolicyConsidered{}}
 	a := day2.Get(key)
 	if a == nil {
@@ -736,6 +766,9 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 	vars["quota"] = quotaVars(nil)
 	decided := false
 	for _, pol := range all {
+		if !full && pol.ProjectID != nil && *pol.ProjectID != proj.ID {
+			continue
+		}
 		c := api.PolicyConsidered{Id: pol.ID, Name: pol.Name}
 		switch {
 		case decided:

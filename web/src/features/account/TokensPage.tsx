@@ -41,6 +41,8 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
       void qc.invalidateQueries({ queryKey: ["tokens"] });
       setName("");
       onMade(t.token);
+      // The value lives on the page only, not in the query cache.
+      make.reset();
     },
     onError: (e) => toast.error(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.title) : "No token was made"),
   });
@@ -94,8 +96,12 @@ export function TokensPage() {
       <Panel title="New token">
         <NewToken onMade={setMade} />
         {made && (
-          <div role="status" className="mt-3 flex flex-col gap-1.5 rounded-md border border-ok bg-ok-soft p-3 text-xs">
-            <span>Copy it now: it won't be shown again.</span>
+          <section
+            aria-label="Your new token"
+            className="mt-3 flex flex-col gap-1.5 rounded-md border border-ok bg-ok-soft p-3 text-xs"
+          >
+            {/* Announced without the value itself. */}
+            <span role="status">Copy it now: it won't be shown again.</span>
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 rounded bg-surface px-2 py-1 font-mono break-all">{made}</code>
               <Button
@@ -111,7 +117,7 @@ export function TokensPage() {
                 Done
               </Button>
             </div>
-          </div>
+          </section>
         )}
       </Panel>
       <Panel

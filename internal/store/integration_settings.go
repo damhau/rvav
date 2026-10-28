@@ -71,9 +71,11 @@ func (s *Store) SettingsRevision(ctx context.Context) (int64, error) {
 	return n, err
 }
 
-// ResealIntegration replaces an integration's sealed secret only (key rotation).
-func (s *Store) ResealIntegration(ctx context.Context, kind string, v Sealed) error {
-	_, err := s.Pool.Exec(ctx, `update integration_settings set secret_key_id = $2, secret_nonce = $3, secret_ciphertext = $4
-		where kind = $1`, kind, v.KeyID, v.Nonce, v.Ciphertext)
-	return err
+// ResealIntegration replaces an integration's sealed secret only (key
+// rotation), if it is still the one sealed with oldNonce: false when it
+// changed meanwhile.
+func (s *Store) ResealIntegration(ctx context.Context, kind string, oldNonce []byte, v Sealed) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `update integration_settings set secret_key_id = $2, secret_nonce = $3, secret_ciphertext = $4
+		where kind = $1 and secret_nonce = $5`, kind, v.KeyID, v.Nonce, v.Ciphertext, oldNonce)
+	return tag.RowsAffected() == 1, err
 }

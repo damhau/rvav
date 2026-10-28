@@ -95,6 +95,9 @@ func IsUniqueViolation(err error) bool {
 // Advisory lock keys.
 const (
 	LockAWXSync int64 = 0x7276_6176_0001
+	// LockAdmins serializes changes that check who is left to administer
+	// rvav or a project, so two at once can't leave none.
+	LockAdmins int64 = 0x7276_6176_0002
 )
 
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever

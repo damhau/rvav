@@ -99,7 +99,8 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   page.on("dialog", (d) => void d.accept());
   await open(page, "Policies", "Policies");
 
-  // Approval: a broken condition is caught when saved; a new policy is moved first.
+  // Approval: a broken condition is caught when saved, under its field; so is
+  // escalating to nobody. Moving policies works on tied priorities too.
   await page.getByRole("button", { name: "New approval policy" }).click();
   const ap = page.getByRole("dialog", { name: "New approval policy" });
   await ap.getByRole("textbox", { name: "Name" }).fill("Big VMs");
@@ -107,13 +108,24 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await ap.getByRole("textbox", { name: "OIDC group" }).fill("rvav-capacity");
   await ap.getByRole("button", { name: "Save policy" }).click();
   await expect(ap.getByText(/not valid CEL/)).toBeVisible();
+  await expect(ap.getByRole("textbox", { name: "Applies when (CEL)" })).toHaveAttribute("aria-invalid", "true");
   await ap.getByRole("textbox", { name: "Applies when (CEL)" }).fill("inputs.cpu_count > 8");
+  await expect(ap.getByRole("combobox", { name: "Then" })).toBeDisabled();
+  await ap.getByRole("textbox", { name: "Time-out" }).fill("48h");
+  await choose(page, "Then", "Escalate");
+  await ap.getByRole("button", { name: "Save policy" }).click();
+  await expect(ap.getByText(/Say whom to escalate to/)).toBeVisible();
+  await ap.getByRole("textbox", { name: "Escalate to OIDC group" }).fill("rvav-infra-heads");
   await ap.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByText("Big VMs saved")).toBeVisible();
   const approvals = page.getByRole("region", { name: "Approval policies" });
+  // Both at priority 100: moving the first down still swaps them.
   await expect(approvals.getByRole("row").nth(1)).toContainText("Production VMs");
-  await approvals.getByRole("button", { name: "Move Big VMs up" }).click();
+  await approvals.getByRole("button", { name: "Move Production VMs down" }).click();
   await expect(approvals.getByRole("row").nth(1)).toContainText("Big VMs");
+  await expect(approvals.getByRole("row").nth(2)).toContainText("Production VMs");
+  await approvals.getByRole("button", { name: "Move Production VMs up" }).click();
+  await expect(approvals.getByRole("row").nth(1)).toContainText("Production VMs");
 
   // Day-2: the first policy that matches decides.
   await page.getByRole("tab", { name: "Day-2" }).click();
@@ -234,7 +246,10 @@ test("integration settings: locked fields, the write-only secret, test connectio
   const test = page.getByRole("region", { name: "vCenter test" });
   await expect(test).toContainText("Every check passed.");
   await expect(test).toContainText("Tagging service");
+  const put = page.waitForRequest((r) => r.method() === "PUT" && r.url().endsWith("/admin/integrations/vcenter"));
   await vcenter.getByRole("button", { name: "Save settings" }).click();
+  // The new password is sent once, with the save.
+  expect(((await put).postDataJSON() as { secret?: string }).secret).toBe("n3w-secret");
   await expect(page.getByText("vCenter settings saved")).toBeVisible();
   await expect(vcenter.getByRole("status")).toContainText("apply when rvav's processes (API and worker) restart");
   await expect(vcenter.getByLabel("Password")).toHaveValue("");
@@ -243,6 +258,10 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await page.getByRole("tab", { name: "AWX" }).click();
   const awx = page.getByRole("region", { name: "AWX connection" });
   await awx.getByRole("textbox", { name: "URL" }).fill("https://unreachable.corp.example");
+  // The saved token isn't sent to another address: it is asked for again.
+  await awx.getByRole("button", { name: "Test connection" }).click();
+  await expect(awx.getByText(/needs the password or token again/)).toBeVisible();
+  await awx.getByLabel("Token").fill("another-token");
   await awx.getByRole("button", { name: "Test connection" }).click();
   await expect(page.getByRole("region", { name: "AWX test" })).toContainText("A check failed.");
   await expect(page.getByRole("region", { name: "AWX test" })).toContainText("no such host");
@@ -251,4 +270,47 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await expect(awx.getByText("An http or https URL.")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Run the check" })).toBeVisible();
+});
+
+test("what a project admin and an auditor see", async ({ page }) => {
+  // A project admin of Web Platform, not an administrator.
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Projects", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Audit log" })).toBeVisible();
+  for (const hidden of ["Policies", "Integrations", "Templates and networks"])
+    await expect(nav.getByRole("link", { name: hidden })).toBeHidden();
+  await nav.getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("region", { name: "Your projects" }).getByRole("link", { name: "Web Platform" }).click();
+  await expect(page.getByRole("textbox", { name: "Add someone" })).toBeVisible();
+  await page.getByRole("tab", { name: "Placement" }).click();
+  await expect(page.getByRole("region", { name: "What Web Platform gets in dev" })).toContainText("GVA-DEV-CL01");
+  await expect(page.getByRole("button", { name: "New rule" })).toBeHidden();
+  await page.getByRole("tab", { name: "Quotas" }).click();
+  await expect(page.getByRole("button", { name: "Add a limit" })).toBeHidden();
+  await page.getByRole("tab", { name: "Details" }).click();
+  await expect(page.getByRole("checkbox", { name: "Production" })).toBeDisabled();
+});
+
+test("an auditor reads the administration pages without changing them", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
+  await open(page, "Policies", "Policies");
+  await expect(page.getByRole("region", { name: "Approval policies" })).toContainText("Production VMs");
+  await expect(page.getByRole("button", { name: "New approval policy" })).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Integrations" })).toBeHidden();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "New project" })).toBeHidden();
+  const envs = page.getByRole("region", { name: "Environments" });
+  await expect(envs.getByRole("checkbox", { name: "Production is production" })).toBeDisabled();
+  await expect(envs.getByRole("button", { name: "Add environment" })).toBeHidden();
+  await expect(
+    page.getByRole("region", { name: "OIDC group mappings" }).getByRole("button", { name: "Map group" }),
+  ).toBeHidden();
+  await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }).click();
+  await expect(page.getByRole("textbox", { name: "Add someone" })).toBeHidden();
+  await expect(page.getByRole("combobox", { name: /Role of/ })).toHaveCount(0);
 });

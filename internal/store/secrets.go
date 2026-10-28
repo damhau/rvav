@@ -73,8 +73,11 @@ func (s *Store) SecretUsers(ctx context.Context, name string) ([]string, error) 
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// ResealSecret replaces a secret's sealed value only (key rotation).
-func (s *Store) ResealSecret(ctx context.Context, name, keyID string, nonce, ciphertext []byte) error {
-	_, err := s.Pool.Exec(ctx, `update secrets set key_id = $2, nonce = $3, ciphertext = $4 where name = $1`, name, keyID, nonce, ciphertext)
-	return err
+// ResealSecret replaces a secret's sealed value only (key rotation), if it
+// is still the one sealed with oldNonce: false when it changed meanwhile, so
+// a value saved during the rotation is never put back to the old one.
+func (s *Store) ResealSecret(ctx context.Context, name string, oldNonce []byte, keyID string, nonce, ciphertext []byte) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `update secrets set key_id = $2, nonce = $3, ciphertext = $4 where name = $1 and nonce = $5`,
+		name, keyID, nonce, ciphertext, oldNonce)
+	return tag.RowsAffected() == 1, err
 }

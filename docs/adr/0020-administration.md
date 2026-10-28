@@ -24,8 +24,11 @@ environment variables rvav has been configured with.
   and revoke everyone's.
 - **Auditors** read the whole audit log.
 
-Every change is audited (`project.*`, `placement.*`, `policy.*`,
-`settings.*`, `token.*`).
+Every change is audited, the action saying what changed: `project.*`,
+`member.*`, `group_mapping.*`, `environment.*`, `placement.*`,
+`network.mapping.*`, `template.*`, `size.*`, `naming.*`, `policy.*`
+(quota, lease, approval, day-2), `settings.*` (integrations and their
+connection tests) and `token.*`. The audit log filters by these.
 
 ### Projects, members and groups
 - A project's code is fixed once it exists: it is in VM names and in their
@@ -87,6 +90,11 @@ The vCenter, AWX and EfficientIP connections are stored in the database
   is a risk for something that rarely changes.
 - **Test connection** uses the settings given, saved or not, and says
   which checks pass (reach the server, sign in, see what rvav needs).
+- **A password or token goes only where it was given for.** Testing or
+  saving another URL, or turning TLS checks off, needs it typed again; one
+  set by an environment variable goes only to the URL set with it. So an
+  administrator's session or token can't send the saved credentials to a
+  host of its choosing (found by the S9 review).
 
 ### Secrets
 Secrets stay AES-256-GCM in PostgreSQL (Vault later). Each records the ID
@@ -94,7 +102,8 @@ of the key that encrypted it. `RVAV_SECRETS_KEY` is the current key and
 `RVAV_SECRETS_OLD_KEYS` lists earlier ones that still decrypt; `rvav
 secrets rotate` re-encrypts everything with the current key, after which
 the old keys can go. Processes configured with both keys keep working
-throughout: no downtime.
+throughout: no downtime. A secret replaced while a rotation runs is left
+as replaced.
 
 ### EfficientIP instance
 `RVAV_INSTANCE_ID` (default `rvav`) is written on everything rvav creates

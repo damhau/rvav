@@ -134,6 +134,9 @@ func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id st
 	counter := "prefix"
 	if w.Counter != nil {
 		counter = string(*w.Counter)
+		if !w.Counter.Valid() {
+			errs = append(errs, fieldErr("/counter", "enum", "prefix or policy."))
+		}
 	}
 	offers, offerErrs, err := s.checkOffers(ctx, w.Offers)
 	if err != nil {

@@ -21,8 +21,19 @@ environment, [ADR-0014](adr/0014-leases-and-quotas.md)).
 See [ADR-0006](adr/0006-contract-first-vertical-slices.md) for how slices
 work, and [progress.md](progress.md) for the R0 work item by item.
 
-R1 (slices 6 to 9) is under way, item by item in
-[progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. S8
+R1 (slices 6 to 9) is built, item by item in
+[progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. S9
+projects, placement and governance is built and accepted on the compose
+stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
+project up from the UI (members and OIDC group mappings, placement by name
+patterns or vCenter tags with a preview, quotas, naming, templates and
+sizes) and it requests a VM without SQL or YAML; quotas, lease, approval
+and day-2 policies are edited with their CEL checked when saved and
+explained per project, environment, item and action; the vCenter, AWX and
+EfficientIP settings are set from the UI (an environment variable wins, a
+saved password goes only where it was given for, secrets re-sealed with
+`rvav secrets rotate`); API tokens and the audit log, searched and
+exported. S8
 catalog administration is built and accepted on the compose stack
 ([ADR-0019](adr/0019-catalog-administration.md)): catalog admins create
 items, publish versions and roll back (deployments keep theirs), open items
@@ -41,7 +52,7 @@ from their surveys, changed surveys flagged
 `rvav.platform` inventory plugin, and jobs on rvav's VMs run on that
 inventory ([ADR-0017](adr/0017-awx-inventory.md)); templates with the day2
 label become day-2 actions bound to resource types and a condition
-([ADR-0018](adr/0018-awx-day2-actions.md)). S9 comes next. The work
+([ADR-0018](adr/0018-awx-day2-actions.md)). The work
 left, slice by slice, is in [GitHub milestones and issues](https://github.com/damhau/rvav/milestones).
 
 Verified so far:
@@ -51,7 +62,9 @@ Verified so far:
   token checks against a fake provider, day-2 actions against vcsim and the
   console proxy against a fake ESXi WebSocket, the lease and quota
   acceptance scenario through a real Temporal server, the catalog
-  administration acceptance scenario with a fake REST service; web
+  administration acceptance scenario with a fake REST service, the S9
+  acceptance (a project set up through the administration API requests a
+  VM); web
   typecheck, lint, unit tests, build and Playwright on mock data (day-2
   menus, dialogs and bulk actions, the catalog admin pages and the form
   designer included).
@@ -63,7 +76,8 @@ Verified so far:
   the housekeeping schedule runs every 15 minutes there. With a stand-in
   CMDB on the stack's network (`deploy/cmdb`), `pnpm e2e:stack` also builds
   an item from YAML with a REST dropdown, publishes, requests, changes and
-  rolls it back in the browser.
+  rolls it back in the browser, and as an administrator sets a new project
+  up and requests a VM in it.
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the

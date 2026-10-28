@@ -297,9 +297,22 @@ ones they may use; auditors see them read only.
   says the settings apply when rvav's processes restart. The EfficientIP
   reconcile report stays below.
 
-Dialogs opened from a page's state give focus back to the button that
-opened them on close (`components/ui/dialog.tsx`); Radix only does that
-for a `DialogTrigger`.
+What each person can change follows the server: auditors read every page
+without write controls, project admins manage their projects' members and
+read the rest. The member picker marks the signed-in person "(you)", as two
+people can share a name and email (an identity provider that changed their
+subject). Policies are reordered by renumbering the list 10, 20, 30…
+
+Dialogs opened from a page's state give focus back to what had focus when
+they opened (`components/ui/dialog.tsx`); Radix only does that for a
+`DialogTrigger`. A field's problem from the server goes in `Field`'s
+`error`: shown in place of the hint and tied to the control with
+`aria-invalid` and `aria-describedby`.
+
+The mock backend follows the placement rules, naming policies and project
+quotas set on these pages. `rvav.mock.as` in localStorage set to
+`project-admin` or `auditor` makes the mock user one (Playwright uses it
+for what those roles see).
 
 ## Performance budget
 

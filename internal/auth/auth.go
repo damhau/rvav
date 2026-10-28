@@ -51,14 +51,13 @@ func (p *Principal) SeesEverything() bool { return p.IsAdmin() || p.HasGlobal("a
 
 // ProjectRole returns the caller's role in a project ("" when none).
 // Administrators act as project admins everywhere.
+// An administrator who is also a member or viewer of a project is still its
+// project admin.
 func (p *Principal) ProjectRole(projectID string) string {
-	if r, ok := p.ProjectRoles[projectID]; ok {
-		return r
-	}
 	if p.IsAdmin() {
 		return "project-admin"
 	}
-	return ""
+	return p.ProjectRoles[projectID]
 }
 
 func (p *Principal) CanSeeProject(projectID string) bool {

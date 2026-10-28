@@ -60,6 +60,15 @@ func (s *Store) NamingPolicyFor(ctx context.Context, projectID, environment stri
 	return p, err
 }
 
+// LockNamePrefix holds the names starting with a prefix until the
+// transaction ends: two requests naming VMs from the same prefix take turns,
+// counters of different policies included, so neither gives a name the other
+// is giving. Take it before reading the names in use.
+func (s *Store) LockNamePrefix(ctx context.Context, tx pgx.Tx, prefix string) error {
+	_, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('rvav.name:' || $1))`, prefix)
+	return err
+}
+
 // DeploymentNames are the names of every deployment rvav made starting
 // with the prefix, deleted ones too: a name is never given twice.
 func (s *Store) DeploymentNames(ctx context.Context, prefix string) (map[string]bool, error) {

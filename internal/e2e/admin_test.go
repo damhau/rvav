@@ -5,8 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,6 +56,11 @@ func TestProjectAdministration(t *testing.T) {
 		h.json("PUT", members+seed.UserID("tnguyen"), "sbrunner", api.ProjectMemberWrite{Role: api.Member}, 200, nil)
 		h.json("PUT", members+seed.UserID("lmartin"), "tnguyen", api.ProjectMemberWrite{Role: api.Member}, 403, nil)
 		h.json("PUT", members+seed.UserID("sbrunner"), "sbrunner", api.ProjectMemberWrite{Role: api.Member}, 409, nil) // the last project admin
+		// An administrator who is also a member still manages the members.
+		h.json("PUT", members+seed.UserID(admin), admin, api.ProjectMemberWrite{Role: api.Member}, 200, nil)
+		h.json("PUT", members+seed.UserID("cdubois"), admin, api.ProjectMemberWrite{Role: api.Viewer}, 200, nil)
+		h.json("DELETE", members+seed.UserID("cdubois"), admin, nil, 204, nil)
+		h.json("DELETE", members+seed.UserID(admin), admin, nil, 204, nil)
 		h.json("DELETE", members+seed.UserID("sbrunner"), "sbrunner", nil, 409, nil)
 
 		// A group gives a role; its members are changed through the mapping.
@@ -143,8 +151,8 @@ func TestProjectAdministration(t *testing.T) {
 		var audited int
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action in ('project.create', 'member.set',
 			'group_mapping.create', 'group_mapping.delete', 'environment.create', 'environment.delete', 'project.archive')`).Scan(&audited)
-		if audited != 8 {
-			t.Fatalf("audited %d of 8 changes", audited)
+		if audited != 10 {
+			t.Fatalf("audited %d of 10 changes", audited)
 		}
 	})
 }
@@ -366,6 +374,8 @@ func TestNamingPolicies(t *testing.T) {
 		const admin, web = "mkeller", "prj_web"
 		var problem struct{ Errors []api.FieldError }
 		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "No counter", Template: "{project}-{role}"}, 422, &problem)
+		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "Odd counter", Template: "{project}-{role}{seq:02}",
+			Counter: new(api.NamingPolicyWriteCounter("global"))}, 422, nil)
 		h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "Underscores", Template: "{project}_{role}{seq:02}"}, 422, &problem)
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/template" {
 			t.Fatalf("an invalid host name = %+v", problem.Errors)
@@ -475,6 +485,16 @@ func TestPolicyAdministration(t *testing.T) {
 			{Name: "x", Condition: `vm.vcpu + 1`, Levels: write.Levels},
 			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "Nobody"}}},
 			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "Late", Group: new("g"), Timeout: new("two days")}}},
+			{Name: "x", Condition: "vm.cpus > 8", Levels: write.Levels}, // a typo outside the inputs
+			{Name: "x", Condition: "true", Levels: write.Levels, ItemType: new(api.CatalogItemType("vm"))},
+			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "L", Group: new("g"), Mode: new(api.ApprovalLevelMode("ALL"))}}},
+			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "L", Group: new("g"), Timeout: new("1h"),
+				OnTimeout: new(api.ApprovalLevelOnTimeout("Approve"))}}},
+			{Name: "x", Condition: "true", Levels: []api.ApprovalLevel{{Name: "L", Group: new("g"), Timeout: new("1h"),
+				OnTimeout: new(api.ApprovalLevelOnTimeoutEscalate), EscalateTo: &struct {
+					Approvers *[]string `json:"approvers,omitempty"`
+					Group     *string   `json:"group,omitempty"`
+				}{}}}}, // escalating to nobody
 		} {
 			h.json("POST", "/api/v1/admin/approval-policies", admin, b, 422, nil)
 		}
@@ -510,6 +530,8 @@ func TestPolicyAdministration(t *testing.T) {
 			t.Fatalf("dev lease = %+v", why.Lease)
 		}
 		h.json("POST", "/api/v1/admin/policies/explain", "tnguyen", api.PolicyExplainQuery{ProjectId: web, Environment: "dev"}, 403, nil)
+		h.json("POST", "/api/v1/admin/policies/explain", "lmartin", api.PolicyExplainQuery{ProjectId: web, Environment: "dev",
+			AsUserId: new(seed.UserID("sbrunner"))}, 422, nil) // not in Web Platform
 
 		h.json("DELETE", "/api/v1/admin/lease-policies?environment=dev&project_id="+web, admin, nil, 204, nil)
 		h.json("DELETE", "/api/v1/admin/approval-policies/"+xl.Id, admin, nil, 204, nil)
@@ -556,9 +578,23 @@ func TestIntegrationSettings(t *testing.T) {
 		if !test.Ok || len(test.Checks) != 3 {
 			t.Fatalf("vCenter test = %+v", test)
 		}
-		// Settings given are tested without being saved (vcsim takes any password: a wrong address here).
+		// The saved password goes only where it was given for: tested or saved
+		// with another address, it is asked for again and nothing is sent.
+		var hits atomic.Int32
+		trap := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+		defer trap.Close()
+		elsewhere := map[string]any{"url": trap.URL + "/sdk", "username": "user", "insecure": true, "name": "vc01.corp.example"}
+		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, api.IntegrationWrite{Settings: elsewhere}, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/secret") {
+			t.Fatalf("another address without the password = %v", fields)
+		}
+		h.json("PUT", "/api/v1/admin/integrations/vcenter", admin, api.IntegrationWrite{Settings: elsewhere}, 422, nil)
+		if hits.Load() != 0 {
+			t.Fatalf("the trap got %d requests", hits.Load())
+		}
+		// Given again, settings are tested without being saved (vcsim takes any password: a wrong address here).
 		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, api.IntegrationWrite{Settings: map[string]any{
-			"url": "https://127.0.0.1:1/sdk"}}, 200, &test)
+			"url": "https://127.0.0.1:1/sdk"}, Secret: new("pass")}, 200, &test)
 		if test.Ok || test.Checks[0].Ok {
 			t.Fatalf("an unreachable vCenter tested fine: %+v", test)
 		}
@@ -590,6 +626,10 @@ func TestIntegrationSettings(t *testing.T) {
 		if n, _ := core.RotateSecrets(ctx, h.store, both); n != 0 {
 			t.Fatalf("rotated %d again", n)
 		}
+		// A value replaced while a rotation runs is not put back.
+		if done, err := h.store.ResealSecret(ctx, "cmdb", []byte("not the nonce read"), "k", []byte("n"), []byte("c")); err != nil || done {
+			t.Fatalf("resealed a changed secret: %v %v", done, err)
+		}
 	})
 }
 
@@ -605,6 +645,8 @@ func TestTokensAndAudit(t *testing.T) {
 		const admin = "mkeller"
 		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci", ExpiresAt: new(time.Now().Add(400 * 24 * time.Hour))}, 422, nil)
 		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci", ExpiresAt: new(time.Now().Add(-time.Hour))}, 422, nil)
+		// An unknown scope is refused, never taken as all.
+		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci", Scope: new(api.ApiTokenCreateScope("Inventory"))}, 422, nil)
 		var made api.ApiTokenCreated
 		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci pipeline"}, 201, &made)
 		if !strings.HasPrefix(made.Token, "rvav_pat_") || made.ExpiresAt == nil || made.Scope != api.ApiTokenCreatedScopeAll {

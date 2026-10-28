@@ -15,6 +15,7 @@ export function Textarea({ className, ...props }: React.ComponentProps<"textarea
 export function Field({
   label,
   hint,
+  error,
   htmlFor,
   children,
   className,
@@ -22,11 +23,21 @@ export function Field({
 }: {
   label: string;
   hint?: React.ReactNode;
+  /** A problem with the value: shown instead of the hint and tied to the control. */
+  error?: string;
   htmlFor?: string;
   children: React.ReactNode;
   className?: string;
   aside?: React.ReactNode;
 }) {
+  const noteId = htmlFor && (error || hint) ? `${htmlFor}-note` : undefined;
+  const control =
+    noteId && React.isValidElement<{ "aria-describedby"?: string; "aria-invalid"?: boolean }>(children)
+      ? React.cloneElement(children, {
+          "aria-describedby": children.props["aria-describedby"] ?? noteId,
+          ...(error ? { "aria-invalid": true } : {}),
+        })
+      : children;
   return (
     <div className={cn("flex min-w-0 flex-col gap-1", className)}>
       <div className="flex items-baseline justify-between gap-2">
@@ -35,8 +46,18 @@ export function Field({
         </label>
         {aside}
       </div>
-      {children}
-      {hint && <p className="text-xs text-faint">{hint}</p>}
+      {control}
+      {error ? (
+        <p id={noteId} className="text-xs text-bad">
+          {error}
+        </p>
+      ) : (
+        hint && (
+          <p id={noteId} className="text-xs text-faint">
+            {hint}
+          </p>
+        )
+      )}
     </div>
   );
 }

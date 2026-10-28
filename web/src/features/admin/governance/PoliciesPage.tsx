@@ -18,7 +18,18 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { useCurrentProject } from "@/lib/project";
-import { failed, fieldErrors, LevelsEditor, OfferEditor, offersText, td, th } from "./common";
+import {
+  errorAt,
+  failed,
+  fieldErrors,
+  LevelsEditor,
+  OfferEditor,
+  offersText,
+  priorityOf,
+  td,
+  th,
+  writable,
+} from "./common";
 
 type S = components["schemas"];
 
@@ -44,49 +55,60 @@ function useProjects() {
   };
 }
 
-/** Moves a policy up or down by swapping priorities with its neighbour. */
+/**
+ * Moves a policy up or down: the list in its new order is numbered 10, 20,
+ * 30…, so ties can't keep a policy in place, and only the policies whose
+ * priority changes are saved.
+ */
 function useReorder<T extends { id: string; priority: number }>(
   put: (p: T, priority: number) => Promise<unknown>,
   key: string,
 ) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ a, b }: { a: T; b: T }) => {
-      await put(a, a.priority === b.priority ? b.priority - 1 : b.priority);
-      await put(b, a.priority);
+    mutationFn: async ({ items, from, to }: { items: T[]; from: number; to: number }) => {
+      const order = [...items];
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved!);
+      for (const [i, p] of order.entries()) {
+        if (p.priority !== (i + 1) * 10) await put(p, (i + 1) * 10);
+      }
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", key] }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["admin", key] }),
     onError: (e) => failed(e, "Not moved"),
   });
 }
 
-function Order<T extends { id: string; name: string; priority: number }>({
-  items,
+function Order({
+  name,
   i,
+  count,
+  busy,
   move,
 }: {
-  items: T[];
+  name: string;
   i: number;
-  move: (a: T, b: T) => void;
+  count: number;
+  busy: boolean;
+  move: (to: number) => void;
 }) {
-  const p = items[i]!;
   return (
     <span className="inline-flex">
       <Button
         size="icon"
         variant="ghost"
-        aria-label={`Move ${p.name} up`}
-        disabled={i === 0}
-        onClick={() => move(p, items[i - 1]!)}
+        aria-label={`Move ${name} up`}
+        disabled={busy || i === 0}
+        onClick={() => move(i - 1)}
       >
         <ArrowUp className="size-3.5" />
       </Button>
       <Button
         size="icon"
         variant="ghost"
-        aria-label={`Move ${p.name} down`}
-        disabled={i === items.length - 1}
-        onClick={() => move(p, items[i + 1]!)}
+        aria-label={`Move ${name} down`}
+        disabled={busy || i === count - 1}
+        onClick={() => move(i + 1)}
       >
         <ArrowDown className="size-3.5" />
       </Button>
@@ -100,24 +122,32 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
   const qc = useQueryClient();
   const projects = useProjects();
   const [f, setF] = useState<S["ApprovalPolicyWrite"]>(
-    policy ?? {
-      name: "",
-      reason: "",
-      condition: "true",
-      item_type: null,
-      project_id: null,
-      levels: [{ name: "Level 1", mode: "any" }],
-      priority: 100,
-      enabled: true,
-      auto_approve: null,
-    },
+    policy
+      ? writable(policy, "id")
+      : {
+          name: "",
+          reason: "",
+          condition: "true",
+          item_type: null,
+          project_id: null,
+          levels: [{ name: "Level 1", mode: "any" }],
+          priority: 100,
+          enabled: true,
+          auto_approve: null,
+        },
   );
+  const [priority, setPriority] = useState(String(f.priority));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () =>
       policy
-        ? call(api.PUT("/admin/approval-policies/{id}", { params: { path: { id: policy.id } }, body: f }))
-        : call(api.POST("/admin/approval-policies", { body: f })),
+        ? call(
+            api.PUT("/admin/approval-policies/{id}", {
+              params: { path: { id: policy.id } },
+              body: { ...f, priority: priorityOf(priority) },
+            }),
+          )
+        : call(api.POST("/admin/approval-policies", { body: { ...f, priority: priorityOf(priority) } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "approval-policies"] });
       toast.success(`${f.name} saved`);
@@ -143,16 +173,11 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
           }}
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
-            <Field label="Name" htmlFor="ap-name" hint={errors["/name"]}>
+            <Field label="Name" htmlFor="ap-name" error={errors["/name"]}>
               <Input id="ap-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
             <Field label="Priority" htmlFor="ap-priority" hint="Lower first">
-              <Input
-                id="ap-priority"
-                type="number"
-                value={f.priority}
-                onChange={(e) => setF({ ...f, priority: Number(e.target.value) })}
-              />
+              <Input id="ap-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
             </Field>
           </div>
           <Field label="Reason requesters see" htmlFor="ap-reason">
@@ -161,7 +186,8 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
           <Field
             label="Applies when (CEL)"
             htmlFor="ap-condition"
-            hint={errors["/condition"] ?? 'For example environment == "prd" || inputs.cpu_count > 8'}
+            error={errors["/condition"]}
+            hint={'For example environment == "prd" || inputs.cpu_count > 8'}
           >
             <Textarea
               id="ap-condition"
@@ -195,7 +221,7 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
               />
             </Field>
           </div>
-          <Field label="Approved at once when (CEL, optional)" htmlFor="ap-auto" hint={errors["/auto_approve"]}>
+          <Field label="Approved at once when (CEL, optional)" htmlFor="ap-auto" error={errors["/auto_approve"]}>
             <Input
               id="ap-auto"
               className="font-mono text-xs"
@@ -294,7 +320,13 @@ function Approvals({ canEdit }: { canEdit: boolean }) {
                 <td className={`${td} text-right whitespace-nowrap`}>
                   {canEdit && (
                     <>
-                      <Order items={items} i={i} move={(a, b) => reorder.mutate({ a, b })} />
+                      <Order
+                        name={p.name}
+                        i={i}
+                        count={items.length}
+                        busy={reorder.isPending}
+                        move={(to) => reorder.mutate({ items, from: i, to })}
+                      />
                       <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
                         Change
                       </Button>
@@ -325,19 +357,22 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
   const qc = useQueryClient();
   const projects = useProjects();
   const [f, setF] = useState<S["Day2PolicyWrite"]>(
-    policy ?? {
-      name: "",
-      reason: "",
-      priority: 100,
-      actions: ["*"],
-      roles: [],
-      condition: "true",
-      effect: "allow",
-      levels: [],
-      project_id: null,
-      enabled: true,
-    },
+    policy
+      ? writable(policy, "id")
+      : {
+          name: "",
+          reason: "",
+          priority: 100,
+          actions: ["*"],
+          roles: [],
+          condition: "true",
+          effect: "allow",
+          levels: [],
+          project_id: null,
+          enabled: true,
+        },
   );
+  const [priority, setPriority] = useState(String(f.priority));
   const [actions, setActions] = useState((f.actions ?? []).join(", "));
   const [roles, setRoles] = useState((f.roles ?? []).join(", "));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -348,6 +383,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
         actions: list(actions),
         roles: list(roles),
         levels: f.effect === "approval" ? f.levels : [],
+        priority: priorityOf(priority),
       };
       return policy
         ? call(api.PUT("/admin/day2-policies/{id}", { params: { path: { id: policy.id } }, body }))
@@ -378,16 +414,11 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           }}
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px_160px]">
-            <Field label="Name" htmlFor="d2-name" hint={errors["/name"]}>
+            <Field label="Name" htmlFor="d2-name" error={errors["/name"]}>
               <Input id="d2-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
             <Field label="Priority" htmlFor="d2-priority" hint="Lower first">
-              <Input
-                id="d2-priority"
-                type="number"
-                value={f.priority}
-                onChange={(e) => setF({ ...f, priority: Number(e.target.value) })}
-              />
+              <Input id="d2-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
             </Field>
             <Field label="Effect" htmlFor="d2-effect">
               <Select
@@ -411,7 +442,8 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           <Field
             label="Actions"
             htmlFor="d2-actions"
-            hint={errors["/actions"] ?? "Comma-separated, * for all, for example snapshot_*, delete"}
+            error={errorAt(errors, "/actions")}
+            hint={"Comma-separated, * for all, for example snapshot_*, delete"}
           >
             <Input
               id="d2-actions"
@@ -423,7 +455,8 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           <Field
             label="Roles"
             htmlFor="d2-roles"
-            hint={errors["/roles"] ?? "owner, member, project-admin, admin; empty for anyone"}
+            error={errorAt(errors, "/roles")}
+            hint={"owner, member, project-admin, admin; empty for anyone"}
           >
             <Input
               id="d2-roles"
@@ -435,7 +468,8 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           <Field
             label="Applies when (CEL)"
             htmlFor="d2-condition"
-            hint={errors["/condition"] ?? "For example environment.production"}
+            error={errors["/condition"]}
+            hint={"For example environment.production"}
           >
             <Textarea
               id="d2-condition"
@@ -557,7 +591,13 @@ function Day2({ canEdit }: { canEdit: boolean }) {
                 <td className={`${td} text-right whitespace-nowrap`}>
                   {canEdit && (
                     <>
-                      <Order items={items} i={i} move={(a, b) => reorder.mutate({ a, b })} />
+                      <Order
+                        name={p.name}
+                        i={i}
+                        count={items.length}
+                        busy={reorder.isPending}
+                        move={(to) => reorder.mutate({ items, from: i, to })}
+                      />
                       <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
                         Change
                       </Button>
@@ -619,7 +659,7 @@ function LeaseDialog({ lease, onClose }: { lease?: S["LeasePolicy"]; onClose: ()
     },
   });
   const days = (k: "default_days" | "max_days", label: string) => (
-    <Field label={label} htmlFor={`lease-${k}`} hint={errors[`/${k}`] ?? "Empty for none"}>
+    <Field label={label} htmlFor={`lease-${k}`} error={errors[`/${k}`]} hint={"Empty for none"}>
       <Input
         id={`lease-${k}`}
         type="number"
@@ -661,7 +701,7 @@ function LeaseDialog({ lease, onClose }: { lease?: S["LeasePolicy"]; onClose: ()
             </Field>
             {days("default_days", "Lease, in days")}
             {days("max_days", "At most, in days")}
-            <Field label="Extensions" htmlFor="lease-ext" hint={errors["/max_extensions"]}>
+            <Field label="Extensions" htmlFor="lease-ext" error={errors["/max_extensions"]}>
               <Input
                 id="lease-ext"
                 type="number"
@@ -670,7 +710,7 @@ function LeaseDialog({ lease, onClose }: { lease?: S["LeasePolicy"]; onClose: ()
                 onChange={(e) => setF({ ...f, max_extensions: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Grace, in days" htmlFor="lease-grace" hint={errors["/grace_days"]}>
+            <Field label="Grace, in days" htmlFor="lease-grace" error={errors["/grace_days"]}>
               <Input
                 id="lease-grace"
                 type="number"
@@ -806,7 +846,9 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
   const qc = useQueryClient();
   const projects = useProjects();
   const [f, setF] = useState<S["NamingPolicyWrite"]>(
-    policy ?? { name: "", template: "{project}-{environment}-{role}{seq:03}", counter: "prefix", offers: [] },
+    policy
+      ? writable(policy, "id")
+      : { name: "", template: "{project}-{environment}-{role}{seq:03}", counter: "prefix", offers: [] },
   );
   const [sample, setSample] = useState({ project: "", environment: "dev", role: "app" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -859,13 +901,14 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
             save.mutate();
           }}
         >
-          <Field label="Name" htmlFor="nm-name" hint={errors["/name"]}>
+          <Field label="Name" htmlFor="nm-name" error={errors["/name"]}>
             <Input id="nm-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           </Field>
           <Field
             label="Template"
             htmlFor="nm-template"
-            hint={errors["/template"] ?? "{project}, {environment}, {role} or {inputs.x}, ending with {seq:03}"}
+            error={errors["/template"]}
+            hint={"{project}, {environment}, {role} or {inputs.x}, ending with {seq:03}"}
           >
             <Input
               id="nm-template"
@@ -885,7 +928,11 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
               ]}
             />
           </Field>
-          <OfferEditor value={f.offers ?? []} onChange={(offers) => setF({ ...f, offers })} />
+          <OfferEditor
+            value={f.offers ?? []}
+            onChange={(offers) => setF({ ...f, offers })}
+            error={errorAt(errors, "/offers")}
+          />
           <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
             <legend className="px-1 text-xs font-medium">Next names</legend>
             <div className="grid grid-cols-3 gap-2">
@@ -1047,9 +1094,10 @@ function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
 function Explain() {
   const projects = useProjects();
   const envs = useQuery(q.environments());
-  const items = useQuery(q.adminCatalogItems({ state: "published" }));
   const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none" });
   const project = f.project || projects.items[0]?.id || "";
+  // The items the project may request.
+  const items = useQuery({ ...q.catalog({ projectId: project }), enabled: Boolean(project) });
   const environment = f.environment || projects.items.find((p) => p.id === project)?.environments[0] || "";
   const explain = useMutation({
     mutationFn: () =>
@@ -1079,7 +1127,7 @@ function Explain() {
           <Select
             id="ex-project"
             value={project}
-            onChange={(v) => setF({ ...f, project: v, environment: "" })}
+            onChange={(v) => setF({ ...f, project: v, environment: "", item: "none" })}
             options={projects.items.map((p) => ({ value: p.id, label: p.name }))}
           />
         </Field>

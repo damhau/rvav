@@ -4,13 +4,14 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/core"
 )
 
-// Administration (S9, ADR-0020): answered 501 until built.
+// Administration (S9, ADR-0020).
 
 func (s *Server) ListApprovalPolicies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.ApprovalPolicies(r.Context(), principal(r))
@@ -419,7 +420,17 @@ func writeAuditCSV(w http.ResponseWriter, items []api.AuditEvent) {
 			project = e.Project.Code
 		}
 		detail, _ := json.Marshal(e.Detail)
-		_ = c.Write([]string{e.At.UTC().Format(time.RFC3339), actor, e.Action, e.TargetType, e.TargetId, project, string(detail)})
+		_ = c.Write([]string{e.At.UTC().Format(time.RFC3339), csvCell(actor), csvCell(e.Action), csvCell(e.TargetType),
+			csvCell(e.TargetId), csvCell(project), string(detail)})
 	}
 	c.Flush()
+}
+
+// csvCell keeps a spreadsheet from reading a value as a formula: names come
+// from the identity provider and targets from administrators.
+func csvCell(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
 }

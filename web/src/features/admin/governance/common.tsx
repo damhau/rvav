@@ -10,6 +10,7 @@ import { isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
+import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
 
 type S = components["schemas"];
@@ -25,6 +26,21 @@ export function fieldErrors(e: unknown): Record<string, string> {
   return Object.fromEntries(e.fieldErrors.map((f) => [f.field, f.message]));
 }
 
+/** What an edit dialog sends back: the stored object without what only the server sets. */
+export function writable<T extends object, K extends keyof T>(v: T, ...keys: K[]): Omit<T, K> {
+  const out: Partial<T> = { ...v };
+  for (const k of keys) delete out[k];
+  return out as Omit<T, K>;
+}
+
+/** A priority typed in a box: empty is the default, 100. */
+export const priorityOf = (v: string) => (v.trim() === "" ? 100 : Number(v));
+
+/** The problem at a pointer, or the first one under it (`/roles/2` for `/roles`). */
+export function errorAt(errors: Record<string, string>, pointer: string): string | undefined {
+  return errors[pointer] ?? Object.entries(errors).find(([k]) => k.startsWith(`${pointer}/`))?.[1];
+}
+
 /** A failed change, said in a toast (field problems go next to their field). */
 export function failed(e: unknown, fallback: string) {
   toast.error(isApiError(e) ? e.problem.title : fallback, {
@@ -37,6 +53,9 @@ export function UserPicker({ label, id, onPick }: { label: string; id: string; o
   const [text, setText] = useState("");
   const search = useDebounced(text, 250);
   const users = useQuery({ ...adm.users(search), enabled: search.length >= 2 });
+  // People with the same name and email can exist (an identity provider that
+  // changed their subject): mark the one signed in.
+  const { me } = useCurrentProject();
   return (
     <div className="relative flex flex-col gap-1">
       <Field label={label} htmlFor={id}>
@@ -65,6 +84,7 @@ export function UserPicker({ label, id, onPick }: { label: string; id: string; o
                 }}
               >
                 {u.name} <span className="text-xs text-faint">{u.email}</span>
+                {u.id === me.user.id && <span className="text-xs text-faint"> (you)</span>}
               </button>
             </li>
           ))}
@@ -75,7 +95,15 @@ export function UserPicker({ label, id, onPick }: { label: string; id: string; o
 }
 
 /** Where something is offered: projects and environments, "all" for none chosen. */
-export function OfferEditor({ value, onChange }: { value: Offer[]; onChange: (v: Offer[]) => void }) {
+export function OfferEditor({
+  value,
+  onChange,
+  error,
+}: {
+  value: Offer[];
+  onChange: (v: Offer[]) => void;
+  error?: string;
+}) {
   const projects = useQuery(adm.projects("", false));
   const envs = useQuery(q.environments());
   const projectOptions = [
@@ -90,6 +118,7 @@ export function OfferEditor({ value, onChange }: { value: Offer[]; onChange: (v:
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className="mb-1 text-xs font-medium">Offered to</legend>
+      {error && <p className="text-xs text-bad">{error}</p>}
       {value.length === 0 && <p className="text-xs text-faint">Nobody yet.</p>}
       {value.map((o, i) => (
         <div key={i} className="flex items-center gap-2">
@@ -158,68 +187,104 @@ export function LevelsEditor({
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-xs font-medium">Approval levels, in order</legend>
       {errors["/levels"] && <p className="text-xs text-bad">{errors["/levels"]}</p>}
-      {value.map((l, i) => (
-        <div
-          key={i}
-          className="grid grid-cols-1 gap-2 rounded-md border border-line p-2 sm:grid-cols-[1fr_1fr_110px_100px_130px_auto]"
-        >
-          <Field label="Level" htmlFor={`level-${i}-name`}>
-            <Input id={`level-${i}-name`} value={l.name} onChange={(e) => set(i, { ...l, name: e.target.value })} />
-          </Field>
-          <Field label="OIDC group" htmlFor={`level-${i}-group`} hint={errors[`/levels/${i}`]}>
-            <Input
-              id={`level-${i}-group`}
-              value={l.group ?? ""}
-              onChange={(e) => set(i, { ...l, group: e.target.value || undefined })}
-            />
-          </Field>
-          <Field label="Who" htmlFor={`level-${i}-mode`}>
-            <Select
-              id={`level-${i}-mode`}
-              value={l.mode ?? "any"}
-              onChange={(v) => set(i, { ...l, mode: v as ApprovalLevel["mode"] })}
-              options={[
-                { value: "any", label: "Any one" },
-                { value: "all", label: "All" },
-              ]}
-            />
-          </Field>
-          <Field label="Time-out" htmlFor={`level-${i}-timeout`} hint={errors[`/levels/${i}/timeout`]}>
-            <Input
-              id={`level-${i}-timeout`}
-              value={l.timeout ?? ""}
-              placeholder="48h"
-              onChange={(e) => set(i, { ...l, timeout: e.target.value || undefined })}
-            />
-          </Field>
-          <Field label="Then" htmlFor={`level-${i}-then`}>
-            <Select
-              id={`level-${i}-then`}
-              value={l.on_timeout ?? "none"}
-              onChange={(v) =>
-                set(i, { ...l, on_timeout: v === "none" ? undefined : (v as ApprovalLevel["on_timeout"]) })
-              }
-              options={[
-                { value: "none", label: "Wait" },
-                { value: "escalate", label: "Escalate" },
-                { value: "approve", label: "Approve" },
-                { value: "reject", label: "Reject" },
-              ]}
-            />
-          </Field>
-          <div className="self-end">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`Remove level ${i + 1}`}
-              onClick={() => onChange(value.filter((_, j) => j !== i))}
+      {value.map((l, i) => {
+        const at = (k: string) => errors[`/levels/${i}${k}`];
+        const timeout = Boolean(l.timeout);
+        return (
+          <div
+            key={i}
+            className="grid grid-cols-1 gap-2 rounded-md border border-line p-2 sm:grid-cols-[1fr_1fr_110px_100px_130px_auto]"
+          >
+            <Field label="Level" htmlFor={`level-${i}-name`} error={at("/name")}>
+              <Input id={`level-${i}-name`} value={l.name} onChange={(e) => set(i, { ...l, name: e.target.value })} />
+            </Field>
+            <Field
+              label="OIDC group"
+              htmlFor={`level-${i}-group`}
+              error={at("") ?? errorAt(errors, `/levels/${i}/approvers`)}
             >
-              <X className="size-3.5" />
-            </Button>
+              <Input
+                id={`level-${i}-group`}
+                value={l.group ?? ""}
+                onChange={(e) => set(i, { ...l, group: e.target.value || undefined })}
+              />
+            </Field>
+            <Field label="Who" htmlFor={`level-${i}-mode`}>
+              <Select
+                id={`level-${i}-mode`}
+                value={l.mode ?? "any"}
+                onChange={(v) => set(i, { ...l, mode: v as ApprovalLevel["mode"] })}
+                options={[
+                  { value: "any", label: "Any one" },
+                  { value: "all", label: "All" },
+                ]}
+              />
+            </Field>
+            <Field label="Time-out" htmlFor={`level-${i}-timeout`} error={at("/timeout")}>
+              <Input
+                id={`level-${i}-timeout`}
+                value={l.timeout ?? ""}
+                placeholder="48h"
+                onChange={(e) =>
+                  set(
+                    i,
+                    e.target.value
+                      ? { ...l, timeout: e.target.value }
+                      : { ...l, timeout: undefined, on_timeout: undefined, escalate_to: undefined },
+                  )
+                }
+              />
+            </Field>
+            <Field label="Then" htmlFor={`level-${i}-then`} error={at("/on_timeout")}>
+              <Select
+                id={`level-${i}-then`}
+                value={l.on_timeout ?? "none"}
+                disabled={!timeout}
+                onChange={(v) =>
+                  set(i, {
+                    ...l,
+                    on_timeout: v === "none" ? undefined : (v as ApprovalLevel["on_timeout"]),
+                    escalate_to: v === "escalate" ? (l.escalate_to ?? {}) : undefined,
+                  })
+                }
+                options={[
+                  { value: "none", label: "Wait" },
+                  { value: "escalate", label: "Escalate" },
+                  { value: "approve", label: "Approve" },
+                  { value: "reject", label: "Reject" },
+                ]}
+              />
+            </Field>
+            <div className="self-end">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={`Remove level ${i + 1}`}
+                onClick={() => onChange(value.filter((_, j) => j !== i))}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+            {l.on_timeout === "escalate" && (
+              <Field
+                label="Escalate to OIDC group"
+                htmlFor={`level-${i}-escalate`}
+                error={errorAt(errors, `/levels/${i}/escalate_to`)}
+                className="sm:col-span-2"
+              >
+                <Input
+                  id={`level-${i}-escalate`}
+                  value={l.escalate_to?.group ?? ""}
+                  onChange={(e) =>
+                    set(i, { ...l, escalate_to: { ...l.escalate_to, group: e.target.value || undefined } })
+                  }
+                />
+              </Field>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div>
         <Button
           type="button"

@@ -17,7 +17,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { useCurrentProject } from "@/lib/project";
-import { failed, fieldErrors, td, th, UserPicker } from "./common";
+import { errorAt, failed, fieldErrors, td, th, UserPicker } from "./common";
 
 type S = components["schemas"];
 const roleOptions = [
@@ -95,6 +95,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             <label key={e.key} htmlFor={`p-env-${e.key}`} className="flex items-center gap-1.5 text-[13px]">
               <Checkbox
                 id={`p-env-${e.key}`}
+                disabled={!isAdmin}
                 checked={f.environments.includes(e.key)}
                 onChange={(on) =>
                   setF({
@@ -130,7 +131,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
   );
 }
 
-function Members({ projectId }: { projectId: string }) {
+function Members({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const qc = useQueryClient();
   const members = useQuery(adm.members(projectId));
   const [role, setRole] = useState("member");
@@ -163,14 +164,25 @@ function Members({ projectId }: { projectId: string }) {
   });
   return (
     <Panel title="Members" flush>
-      <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
-        <div className="w-72">
-          <UserPicker label="Add someone" id="member-search" onPick={(u) => set.mutate({ userId: u.id, role })} />
+      {canManage && (
+        <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
+          <div className="w-72">
+            <UserPicker
+              label="Add someone"
+              id="member-search"
+              onPick={(u) =>
+                // Picking someone already in the project doesn't change their role: the list does.
+                members.data?.items.some((m) => m.user.id === u.id && m.direct)
+                  ? toast.info(`${u.name} is already a member`, { description: "Change their role in the list." })
+                  : set.mutate({ userId: u.id, role })
+              }
+            />
+          </div>
+          <Field label="As" htmlFor="member-role" className="w-40">
+            <Select id="member-role" value={role} onChange={setRole} options={roleOptions} />
+          </Field>
         </div>
-        <Field label="As" htmlFor="member-role" className="w-40">
-          <Select id="member-role" value={role} onChange={setRole} options={roleOptions} />
-        </Field>
-      </div>
+      )}
       {members.isPending && <SkeletonRows rows={3} cols={3} />}
       {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
       {members.data && (
@@ -198,7 +210,7 @@ function Members({ projectId }: { projectId: string }) {
                   {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
                 </td>
                 <td className={td}>
-                  {m.direct ? (
+                  {m.direct && canManage ? (
                     <Select
                       aria-label={`Role of ${m.user.name}`}
                       value={m.direct_role ?? m.role}
@@ -207,14 +219,14 @@ function Members({ projectId }: { projectId: string }) {
                       className="w-40"
                     />
                   ) : (
-                    roleOptions.find((r) => r.value === m.role)?.label
+                    roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label
                   )}
                 </td>
                 <td className={`${td} text-xs text-muted`}>
                   {[m.direct ? "Direct" : "", ...m.groups.map((g) => `group ${g}`)].filter(Boolean).join(", ")}
                 </td>
                 <td className={`${td} text-right`}>
-                  {m.direct && (
+                  {m.direct && canManage && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -261,7 +273,7 @@ function RuleDialog({
       const body: S["PlacementRuleWrite"] = {
         project_id: project.id,
         environment: env,
-        priority: Number(f.priority) || 100,
+        priority: f.priority.trim() === "" ? 100 : Number(f.priority),
         clusters: list(f.clusters),
         cluster_tags: list(f.cluster_tags),
         datastores: list(f.datastores),
@@ -285,7 +297,7 @@ function RuleDialog({
     },
   });
   const field = (k: keyof typeof f, label: string, hint?: string, mono = true) => (
-    <Field label={label} htmlFor={`rule-${k}`} hint={errors[`/${k}`] ?? errors[`/${k}/0`] ?? hint}>
+    <Field label={label} htmlFor={`rule-${k}`} error={errorAt(errors, `/${k}`)} hint={hint}>
       <Input
         id={`rule-${k}`}
         className={mono ? "font-mono text-xs" : undefined}
@@ -457,7 +469,9 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
   const qc = useQueryClient();
   const quotas = useQuery(adm.quotas(project.id));
   const [rows, setRows] = useState<S["QuotaLimit"][] | null>(null);
+  // Saving replaces every limit: nothing is offered until the current ones are in.
   const shown = rows ?? quotas.data?.items ?? [];
+  const ready = Boolean(quotas.data);
   const save = useMutation({
     mutationFn: () =>
       call(
@@ -484,13 +498,19 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
             <Button
               size="sm"
               variant="ghost"
+              disabled={!ready}
               onClick={() =>
                 setRows([...shown, { environment: "", resource: "vcpu", limit: null, enforcement: "hard" }])
               }
             >
               Add a limit
             </Button>
-            <Button size="sm" variant="primary" disabled={!rows || save.isPending} onClick={() => save.mutate()}>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!ready || !rows || save.isPending}
+              onClick={() => save.mutate()}
+            >
               Save quotas
             </Button>
           </div>
@@ -498,93 +518,97 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
       }
     >
       {quotas.isPending && <SkeletonRows rows={3} cols={4} />}
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="label text-left">
-            <th scope="col" className={`${th} pl-4`}>
-              Resource
-            </th>
-            <th scope="col" className={th}>
-              In
-            </th>
-            <th scope="col" className={th}>
-              Limit
-            </th>
-            <th scope="col" className={th}>
-              When passed
-            </th>
-            <th scope="col" className={th}>
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((r, i) => (
-            <tr key={i}>
-              <td className={`${td} pl-4`}>
-                <Select
-                  aria-label={`Limit ${i + 1}: resource`}
-                  value={r.resource}
-                  onChange={(v) => set(i, { ...r, resource: v as S["QuotaResource"] })}
-                  options={resources}
-                  disabled={!isAdmin}
-                  className="w-40"
-                />
-              </td>
-              <td className={td}>
-                <Select
-                  aria-label={`Limit ${i + 1}: environment`}
-                  value={r.environment || "all"}
-                  onChange={(v) => set(i, { ...r, environment: v === "all" ? "" : v })}
-                  options={[
-                    { value: "all", label: "The whole project" },
-                    ...project.environments.map((e) => ({ value: e, label: e })),
-                  ]}
-                  disabled={!isAdmin}
-                  className="w-44"
-                />
-              </td>
-              <td className={td}>
-                <Input
-                  aria-label={`Limit ${i + 1}: value`}
-                  type="number"
-                  min={0}
-                  className="h-8 w-24"
-                  placeholder="None"
-                  disabled={!isAdmin}
-                  value={r.limit ?? ""}
-                  onChange={(e) => set(i, { ...r, limit: e.target.value === "" ? null : Number(e.target.value) })}
-                />
-              </td>
-              <td className={td}>
-                <Select
-                  aria-label={`Limit ${i + 1}: enforcement`}
-                  value={r.enforcement}
-                  onChange={(v) => set(i, { ...r, enforcement: v as S["QuotaLimit"]["enforcement"] })}
-                  options={[
-                    { value: "hard", label: "Refused" },
-                    { value: "soft", label: "Needs approval" },
-                  ]}
-                  disabled={!isAdmin}
-                  className="w-40"
-                />
-              </td>
-              <td className={`${td} text-right`}>
-                {isAdmin && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Remove limit ${i + 1}`}
-                    onClick={() => setRows(shown.filter((_, j) => j !== i))}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </td>
+      {quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
+      {ready && shown.length === 0 && <p className="px-4 py-3 text-xs text-muted">No limit.</p>}
+      {ready && shown.length > 0 && (
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="label text-left">
+              <th scope="col" className={`${th} pl-4`}>
+                Resource
+              </th>
+              <th scope="col" className={th}>
+                In
+              </th>
+              <th scope="col" className={th}>
+                Limit
+              </th>
+              <th scope="col" className={th}>
+                When passed
+              </th>
+              <th scope="col" className={th}>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {shown.map((r, i) => (
+              <tr key={i}>
+                <td className={`${td} pl-4`}>
+                  <Select
+                    aria-label={`Limit ${i + 1}: resource`}
+                    value={r.resource}
+                    onChange={(v) => set(i, { ...r, resource: v as S["QuotaResource"] })}
+                    options={resources}
+                    disabled={!isAdmin}
+                    className="w-40"
+                  />
+                </td>
+                <td className={td}>
+                  <Select
+                    aria-label={`Limit ${i + 1}: environment`}
+                    value={r.environment || "all"}
+                    onChange={(v) => set(i, { ...r, environment: v === "all" ? "" : v })}
+                    options={[
+                      { value: "all", label: "The whole project" },
+                      ...project.environments.map((e) => ({ value: e, label: e })),
+                    ]}
+                    disabled={!isAdmin}
+                    className="w-44"
+                  />
+                </td>
+                <td className={td}>
+                  <Input
+                    aria-label={`Limit ${i + 1}: value`}
+                    type="number"
+                    min={0}
+                    className="h-8 w-24"
+                    placeholder="None"
+                    disabled={!isAdmin}
+                    value={r.limit ?? ""}
+                    onChange={(e) => set(i, { ...r, limit: e.target.value === "" ? null : Number(e.target.value) })}
+                  />
+                </td>
+                <td className={td}>
+                  <Select
+                    aria-label={`Limit ${i + 1}: enforcement`}
+                    value={r.enforcement}
+                    onChange={(v) => set(i, { ...r, enforcement: v as S["QuotaLimit"]["enforcement"] })}
+                    options={[
+                      { value: "hard", label: "Refused" },
+                      { value: "soft", label: "Needs approval" },
+                    ]}
+                    disabled={!isAdmin}
+                    className="w-40"
+                  />
+                </td>
+                <td className={`${td} text-right`}>
+                  {isAdmin && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Remove limit ${i + 1}`}
+                      onClick={() => setRows(shown.filter((_, j) => j !== i))}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </Panel>
   );
 }
@@ -632,7 +656,10 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
         <TabsContent value="members" className="pt-4">
-          <Members projectId={p.id} />
+          <Members
+            projectId={p.id}
+            canManage={isAdmin || me.projects.some((x) => x.project.id === p.id && x.role === "project-admin")}
+          />
         </TabsContent>
         <TabsContent value="placement" className="pt-4">
           <Placement project={p} isAdmin={isAdmin} />
@@ -641,7 +668,11 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           <Quotas project={p} isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
-          <Details key={JSON.stringify(p)} project={p} isAdmin={isAdmin} />
+          <Details
+            key={[p.name, p.description, p.cost_center, p.environments.join(), p.archived].join("|")}
+            project={p}
+            isAdmin={isAdmin}
+          />
         </TabsContent>
       </Tabs>
     </Page>

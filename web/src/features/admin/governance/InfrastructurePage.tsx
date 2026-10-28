@@ -16,7 +16,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { useCurrentProject } from "@/lib/project";
-import { failed, fieldErrors, OfferEditor, offersText, td, th } from "./common";
+import { errorAt, failed, fieldErrors, OfferEditor, offersText, td, th, writable } from "./common";
 
 type S = components["schemas"];
 
@@ -28,15 +28,17 @@ function useProjectName() {
 function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState<S["VmTemplateWrite"]>(
-    template ?? {
-      key: "",
-      label: "",
-      vcenter_template: "",
-      os_family: "linux",
-      customization: "",
-      description: "",
-      offers: [{ project_id: null, environment: null }],
-    },
+    template
+      ? writable(template, "in_inventory")
+      : {
+          key: "",
+          label: "",
+          vcenter_template: "",
+          os_family: "linux",
+          customization: "",
+          description: "",
+          offers: [{ project_id: null, environment: null }],
+        },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
@@ -69,7 +71,7 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
           }}
         >
           <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Key" htmlFor="tpl-key" hint={errors["/key"]}>
+            <Field label="Key" htmlFor="tpl-key" error={errors["/key"]}>
               <Input
                 id="tpl-key"
                 className="font-mono"
@@ -78,11 +80,11 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
                 onChange={(e) => setF({ ...f, key: e.target.value })}
               />
             </Field>
-            <Field label="Label" htmlFor="tpl-label" hint={errors["/label"]}>
+            <Field label="Label" htmlFor="tpl-label" error={errors["/label"]}>
               <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
             </Field>
           </div>
-          <Field label="vCenter template" htmlFor="tpl-vc" hint={errors["/vcenter_template"]}>
+          <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
             <Input
               id="tpl-vc"
               className="font-mono text-xs"
@@ -117,7 +119,11 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
               onChange={(e) => setF({ ...f, description: e.target.value })}
             />
           </Field>
-          <OfferEditor value={f.offers ?? []} onChange={(offers) => setF({ ...f, offers })} />
+          <OfferEditor
+            value={f.offers ?? []}
+            onChange={(offers) => setF({ ...f, offers })}
+            error={errorAt(errors, "/offers")}
+          />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
@@ -251,7 +257,7 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
     },
   });
   const num = (k: "vcpu" | "memory_gb" | "disk_gb", label: string) => (
-    <Field label={label} htmlFor={`size-${k}`} hint={errors[`/${k}`]}>
+    <Field label={label} htmlFor={`size-${k}`} error={errors[`/${k}`]}>
       <Input
         id={`size-${k}`}
         type="number"
@@ -273,7 +279,7 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
           }}
         >
           <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Key" htmlFor="size-key" hint={errors["/key"]}>
+            <Field label="Key" htmlFor="size-key" error={errors["/key"]}>
               <Input
                 id="size-key"
                 className="font-mono"
@@ -282,7 +288,7 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
                 onChange={(e) => setF({ ...f, key: e.target.value })}
               />
             </Field>
-            <Field label="Label" htmlFor="size-label" hint={errors["/label"]}>
+            <Field label="Label" htmlFor="size-label" error={errors["/label"]}>
               <Input id="size-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
             </Field>
           </div>
@@ -291,7 +297,11 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
             {num("memory_gb", "Memory (GB)")}
             {num("disk_gb", "System disk (GB)")}
           </div>
-          <OfferEditor value={f.offers ?? []} onChange={(offers) => setF({ ...f, offers })} />
+          <OfferEditor
+            value={f.offers ?? []}
+            onChange={(offers) => setF({ ...f, offers })}
+            error={errorAt(errors, "/offers")}
+          />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
@@ -444,7 +454,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Subnet" htmlFor="map-subnet" hint={errors["/subnet"]}>
+            <Field label="Subnet" htmlFor="map-subnet" error={errors["/subnet"]}>
               <Input
                 id="map-subnet"
                 className="font-mono text-xs"
@@ -452,7 +462,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
                 onChange={(e) => setF({ ...f, subnet: e.target.value })}
               />
             </Field>
-            <Field label="Gateway" htmlFor="map-gateway" hint={errors["/gateway"]}>
+            <Field label="Gateway" htmlFor="map-gateway" error={errors["/gateway"]}>
               <Input
                 id="map-gateway"
                 className="font-mono text-xs"
@@ -460,7 +470,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
                 onChange={(e) => setF({ ...f, gateway: e.target.value })}
               />
             </Field>
-            <Field label="DNS zone" htmlFor="map-zone" hint={errors["/dns_zone"]}>
+            <Field label="DNS zone" htmlFor="map-zone" error={errors["/dns_zone"]}>
               <Input id="map-zone" value={f.dns_zone} onChange={(e) => setF({ ...f, dns_zone: e.target.value })} />
             </Field>
             <Field label="DNS servers" htmlFor="map-dns" hint="Comma-separated">

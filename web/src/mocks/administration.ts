@@ -251,6 +251,22 @@ export function namingTemplate(db: Db, projectId: string, env: string): string |
   return best?.template;
 }
 
+/** As the server: a saved secret only goes to the address it was given for. */
+function secretMoves(current: Record<string, unknown>, given: Record<string, unknown>, secret: string | undefined) {
+  const url = given.url;
+  const moved =
+    (typeof url === "string" && url !== "" && url !== current.url) ||
+    (given.insecure === true && current.insecure !== true);
+  return moved && !secret
+    ? invalid([
+        err(
+          "/secret",
+          "A new address, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.",
+        ),
+      ])
+    : null;
+}
+
 export function administrationHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const st = () => state(db);
   const project = (id: string) => db.projects.find((p) => p.id === id || p.code === id);
@@ -821,6 +837,12 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           errors.push(err("/levels", "Give at least one level of approvers."));
         levels.forEach((l, i) => {
           if (!l.group && !l.approvers?.length) errors.push(err(`/levels/${i}`, "Give an OIDC group or approvers."));
+          if (l.timeout && !/^\d+(h|m|s)$/.test(l.timeout))
+            errors.push(err(`/levels/${i}/timeout`, "A duration such as 48h."));
+          if (l.on_timeout && !l.timeout)
+            errors.push(err(`/levels/${i}/on_timeout`, "What happens on time-out needs a timeout."));
+          if (l.on_timeout === "escalate" && !l.escalate_to?.group && !l.escalate_to?.approvers?.length)
+            errors.push(err(`/levels/${i}/escalate_to`, "Say whom to escalate to: an OIDC group or approvers."));
         });
         if (errors.length) return invalid(errors);
         const pol = {
@@ -947,6 +969,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         return invalid([err("/settings/url", "An http or https URL.")]);
       const it = st().integrations[kind]!;
       const locked = kind === "vcenter" ? ["url"] : [];
+      const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
+      const moved = it.secret ? secretMoves(it.settings, given, w.secret) : null;
+      if (moved) return moved;
       it.settings = {
         ...it.settings,
         ...Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k))),
@@ -969,7 +994,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const kind = String(params.kind);
       const raw = await request.text();
       const body = raw ? (JSON.parse(raw) as S["IntegrationWrite"]) : undefined;
-      const given = body?.settings?.url ?? st().integrations[kind]!.settings.url;
+      const saved = st().integrations[kind]!;
+      const editable = Object.fromEntries(
+        Object.entries(body?.settings ?? {}).filter(([k]) => !(kind === "vcenter" && k === "url")),
+      );
+      const moved = body && saved.secret ? secretMoves(saved.settings, editable, body.secret) : null;
+      if (moved) return moved;
+      const given = editable.url ?? saved.settings.url;
       const url = typeof given === "string" ? given : "";
       const reachable = !url.includes("unreachable");
       const checks: S["IntegrationCheck"][] = [

@@ -45,7 +45,7 @@ func (s *Service) projectChoices(ctx context.Context, p *auth.Principal, d store
 	}
 	out := []api.Option{}
 	for _, proj := range page.Items {
-		if proj.ID == d.ProjectID || !slices.Contains(proj.Environments, d.Environment) {
+		if proj.ID == d.ProjectID || proj.ArchivedAt != nil || !slices.Contains(proj.Environments, d.Environment) {
 			continue
 		}
 		code := proj.Code

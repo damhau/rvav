@@ -106,6 +106,18 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 	if len(errs) > 0 {
 		return api.Integration{}, &ValidationError{Errors: errs}
 	}
+	stored, err := s.Store.StoredIntegrations(ctx)
+	if err != nil {
+		return api.Integration{}, err
+	}
+	var row *store.IntegrationSettings
+	if r, ok := stored[kind]; ok {
+		row = &r
+	}
+	hasSecret := s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil
+	if err := secretGoesWhereGiven(kind, s.pendingSettings(kind, row), settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
+		return api.Integration{}, err
+	}
 	var sealed *store.Sealed
 	if w.Secret != nil && *w.Secret != "" {
 		keyID, nonce, ct, err := s.Secrets.Seal(IntegrationSecretName(kind), []byte(*w.Secret))
@@ -159,14 +171,18 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		}
 	}
 	if w != nil {
+		for field, msg := range config.CheckSettings(kind, withoutFake(w.Settings)) {
+			return out, &ValidationError{Errors: []api.FieldError{fieldErr("/settings/"+field, "invalid", msg)}}
+		}
+		given := w.Secret != nil && *w.Secret != ""
+		if err := secretGoesWhereGiven(kind, settings, w.Settings, given, secret != "" || s.Config.SecretSet(kind)); err != nil {
+			return out, err
+		}
 		for k, v := range w.Settings {
 			settings[k] = v
 		}
-		if w.Secret != nil && *w.Secret != "" {
+		if given {
 			secret = *w.Secret
-		}
-		for field, msg := range config.CheckSettings(kind, withoutFake(w.Settings)) {
-			return out, &ValidationError{Errors: []api.FieldError{fieldErr("/settings/"+field, "invalid", msg)}}
 		}
 	}
 	cfg := s.Config
@@ -202,6 +218,36 @@ func withoutFake(m map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+// secretGoesWhereGiven refuses settings that would send the saved password
+// or token to another address (a new URL, or TLS checks turned off) without
+// it being given again, so a secret never reaches a host it wasn't entered
+// for. One set by an environment variable goes only to the address set with
+// it.
+func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret bool, hasSecret bool) error {
+	moved := false
+	if u, ok := given["url"].(string); ok && u != "" {
+		cur, _ := current["url"].(string)
+		moved = u != cur
+	}
+	if v, ok := given["insecure"].(bool); ok && v && current["insecure"] != true {
+		moved = true
+	}
+	if !moved || !hasSecret {
+		return nil
+	}
+	for _, f := range config.Fields[kind] {
+		if f.Secret && slices.Contains(config.Locked(kind), f.Name) {
+			return &ValidationError{Errors: []api.FieldError{fieldErr("/settings/url", "locked_secret",
+				"The "+f.Name+" is set by "+f.Env+": it only goes to the address set with it, so set this one there too.")}}
+		}
+	}
+	if newSecret {
+		return nil
+	}
+	return &ValidationError{Errors: []api.FieldError{fieldErr("/secret", "required",
+		"A new address, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.")}}
 }
 
 type checkFunc func(name string, err error, ok string) bool
@@ -300,10 +346,12 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		if err != nil {
 			return n, err
 		}
-		if err := st.ResealSecret(ctx, v.Name, keyID, nonce, ct); err != nil {
+		// A secret replaced meanwhile is sealed with the current key already.
+		if done, err := st.ResealSecret(ctx, v.Name, v.Nonce, keyID, nonce, ct); err != nil {
 			return n, err
+		} else if done {
+			n++
 		}
-		n++
 	}
 	stored, err := st.StoredIntegrations(ctx)
 	if err != nil {
@@ -322,10 +370,11 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		if err != nil {
 			return n, err
 		}
-		if err := st.ResealIntegration(ctx, kind, store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
+		if done, err := st.ResealIntegration(ctx, kind, row.SecretNonce, store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
 			return n, err
+		} else if done {
+			n++
 		}
-		n++
 	}
 	return n, nil
 }

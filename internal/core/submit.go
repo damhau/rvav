@@ -70,6 +70,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 
 		switch ev.Blueprint.Kind {
 		case blueprint.KindVM:
+			if err := s.Store.LockNamePrefix(ctx, tx, ev.NamePrefix); err != nil {
+				return err
+			}
 			taken, err := s.Store.InventoryVMNames(ctx, ev.NamePrefix)
 			if err != nil {
 				return err

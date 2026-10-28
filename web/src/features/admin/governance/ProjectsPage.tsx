@@ -55,7 +55,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
           }}
         >
           <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Code" htmlFor="project-code" hint={errors["/code"]}>
+            <Field label="Code" htmlFor="project-code" error={errors["/code"]}>
               <Input
                 id="project-code"
                 className="font-mono"
@@ -63,7 +63,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setF({ ...f, code: e.target.value })}
               />
             </Field>
-            <Field label="Name" htmlFor="project-name" hint={errors["/name"]}>
+            <Field label="Name" htmlFor="project-name" error={errors["/name"]}>
               <Input id="project-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
           </div>
@@ -245,7 +245,7 @@ function Projects() {
   );
 }
 
-function Environments() {
+function Environments({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const envs = useQuery(adm.environments());
   const [f, setF] = useState({ key: "", name: "" });
@@ -317,6 +317,7 @@ function Environments() {
                 <td className={td}>
                   <Checkbox
                     id={`env-prod-${e.key}`}
+                    disabled={!canEdit}
                     checked={e.production}
                     onChange={(on) => update.mutate({ key: e.key, production: on })}
                   />
@@ -330,58 +331,68 @@ function Environments() {
                     type="number"
                     min={0}
                     className="h-7 w-20"
+                    disabled={!canEdit}
                     defaultValue={e.snapshot_max_count}
-                    onBlur={(ev) =>
-                      Number(ev.target.value) !== e.snapshot_max_count &&
-                      update.mutate({ key: e.key, snapshot_max_count: Number(ev.target.value) })
-                    }
+                    onBlur={(ev) => {
+                      // Empty or not a whole number: put the saved value back rather than save 0.
+                      const n = ev.target.valueAsNumber;
+                      if (ev.target.value.trim() === "" || !Number.isInteger(n) || n < 0) {
+                        ev.target.value = String(e.snapshot_max_count);
+                        return;
+                      }
+                      if (n !== e.snapshot_max_count) update.mutate({ key: e.key, snapshot_max_count: n });
+                    }}
                   />
                 </td>
                 <td className={`${td} text-xs text-muted`}>
                   {e.projects ?? 0} projects, {e.deployments ?? 0} deployments
                 </td>
                 <td className={`${td} text-right`}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Remove ${e.name}`}
-                    disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
-                    title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
-                    onClick={() => remove.mutate(e.key)}
-                  >
-                    Remove
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Remove ${e.name}`}
+                      disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
+                      title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
+                      onClick={() => remove.mutate(e.key)}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <form
-        className="flex flex-wrap gap-2 px-4 py-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          add.mutate();
-        }}
-      >
-        <Input
-          aria-label="New environment key"
-          placeholder="key"
-          className="h-7 w-28 font-mono"
-          value={f.key}
-          onChange={(e) => setF({ ...f, key: e.target.value })}
-        />
-        <Input
-          aria-label="New environment name"
-          placeholder="Name"
-          className="h-7 w-48"
-          value={f.name}
-          onChange={(e) => setF({ ...f, name: e.target.value })}
-        />
-        <Button size="sm" type="submit" disabled={!f.key || !f.name || add.isPending}>
-          Add environment
-        </Button>
-      </form>
+      {canEdit && (
+        <form
+          className="flex flex-wrap gap-2 px-4 py-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add.mutate();
+          }}
+        >
+          <Input
+            aria-label="New environment key"
+            placeholder="key"
+            className="h-7 w-28 font-mono"
+            value={f.key}
+            onChange={(e) => setF({ ...f, key: e.target.value })}
+          />
+          <Input
+            aria-label="New environment name"
+            placeholder="Name"
+            className="h-7 w-48"
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+          />
+          <Button size="sm" type="submit" disabled={!f.key || !f.name || add.isPending}>
+            Add environment
+          </Button>
+        </form>
+      )}
     </Panel>
   );
 }
@@ -397,7 +408,7 @@ const projectRoles = [
   { value: "viewer", label: "Viewer" },
 ];
 
-function GroupMappings() {
+function GroupMappings({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const mappings = useQuery(adm.groupMappings());
   const projects = useQuery(adm.projects("", false));
@@ -454,68 +465,73 @@ function GroupMappings() {
                 </td>
                 <td className={`${td} text-xs text-muted`}>{m.users ?? 0}</td>
                 <td className={`${td} text-right`}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Remove the mapping of ${m.oidc_group}`}
-                    onClick={() => remove.mutate(m.id)}
-                  >
-                    Remove
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Remove the mapping of ${m.oidc_group}`}
+                      onClick={() => remove.mutate(m.id)}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <form
-        className="flex flex-wrap items-end gap-2 px-4 py-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          add.mutate();
-        }}
-      >
-        <Input
-          aria-label="OIDC group"
-          placeholder="rvav-web"
-          className="h-7 w-44 font-mono"
-          value={f.group}
-          onChange={(e) => setF({ ...f, group: e.target.value })}
-        />
-        <Select
-          aria-label="In project"
-          value={f.project}
-          onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
-          options={[
-            { value: "none", label: "Everywhere (a global role)" },
-            ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
-          ]}
-          className="w-56"
-        />
-        <Select
-          aria-label="Role"
-          value={f.role}
-          onChange={(v) => setF({ ...f, role: v })}
-          options={roles}
-          className="w-40"
-        />
-        <Button size="sm" type="submit" disabled={!f.group || add.isPending}>
-          Map group
-        </Button>
-      </form>
+      {canEdit && (
+        <form
+          className="flex flex-wrap items-end gap-2 px-4 py-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add.mutate();
+          }}
+        >
+          <Input
+            aria-label="OIDC group"
+            placeholder="rvav-web"
+            className="h-7 w-44 font-mono"
+            value={f.group}
+            onChange={(e) => setF({ ...f, group: e.target.value })}
+          />
+          <Select
+            aria-label="In project"
+            value={f.project}
+            onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
+            options={[
+              { value: "none", label: "Everywhere (a global role)" },
+              ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            className="w-56"
+          />
+          <Select
+            aria-label="Role"
+            value={f.role}
+            onChange={(v) => setF({ ...f, role: v })}
+            options={roles}
+            className="w-40"
+          />
+          <Button size="sm" type="submit" disabled={!f.group || add.isPending}>
+            Map group
+          </Button>
+        </form>
+      )}
     </Panel>
   );
 }
 
 export function ProjectsPage() {
   const { me } = useCurrentProject();
-  const isAdmin = me.global_roles.includes("admin") || me.global_roles.includes("auditor");
+  const isAdmin = me.global_roles.includes("admin");
+  const seesAll = isAdmin || me.global_roles.includes("auditor");
   return (
     <Page>
       <PageHeader title="Projects" meta="Projects, who is in them and the environments they deploy to." />
       <Projects />
-      {isAdmin && <Environments />}
-      {isAdmin && <GroupMappings />}
+      {seesAll && <Environments canEdit={isAdmin} />}
+      {seesAll && <GroupMappings canEdit={isAdmin} />}
     </Page>
   );
 }

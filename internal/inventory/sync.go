@@ -81,18 +81,39 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Tags that couldn't be read keep their last known values: a hiccup of
+	// the tagging service mustn't empty placement by tag.
+	clusterTags, datastoreTags := map[string][]string{}, map[string][]string{}
 	if inv.TagsError != nil {
-		s.Log.Warn("inventory: no vSphere tags; placement by tag finds nothing", "err", inv.TagsError)
+		s.Log.Warn("inventory: vSphere tags not read; keeping the last ones", "err", inv.TagsError)
+		if cs, err := s.Store.InventoryClusters(ctx); err == nil {
+			for _, c := range cs {
+				clusterTags[c.Moref] = c.Tags
+			}
+		}
+		if ds, err := s.Store.InventoryDatastores(ctx); err == nil {
+			for _, d := range ds {
+				datastoreTags[d.Moref] = d.Tags
+			}
+		}
 	}
 	snap := store.Inventory{VCenter: s.VSphere.Name()}
 	for _, c := range inv.Clusters {
+		tags := c.Tags
+		if inv.TagsError != nil {
+			tags = clusterTags[c.Moref]
+		}
 		snap.Clusters = append(snap.Clusters, store.InvCluster{Moref: c.Moref, Name: c.Name, Datacenter: c.Datacenter,
 			HostCount: c.HostCount, CPUTotalMHz: c.CPUTotalMHz, CPUUsedMHz: c.CPUUsedMHz,
-			MemoryTotalMB: c.MemoryTotalMB, MemoryUsedMB: c.MemoryUsedMB, Tags: c.Tags})
+			MemoryTotalMB: c.MemoryTotalMB, MemoryUsedMB: c.MemoryUsedMB, Tags: tags})
 	}
 	for _, d := range inv.Datastores {
+		tags := d.Tags
+		if inv.TagsError != nil {
+			tags = datastoreTags[d.Moref]
+		}
 		snap.Datastores = append(snap.Datastores, store.InvDatastore{Moref: d.Moref, Name: d.Name,
-			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Clusters: d.Clusters, Tags: d.Tags})
+			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Clusters: d.Clusters, Tags: tags})
 	}
 	for _, n := range inv.Networks {
 		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters})

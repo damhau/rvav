@@ -1,7 +1,7 @@
 // The audit log (ADR-0020): who did what, when and in which project,
 // searched and exported as CSV. Administrators and auditors see all of it,
 // project admins their projects' events.
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
-import { q, type AuditFilters } from "@/lib/query";
+import { adm, q, type AuditFilters } from "@/lib/query";
 import { useCurrentProject } from "@/lib/project";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
@@ -23,12 +23,23 @@ const kinds = [
   { value: "project.", label: "Projects" },
   { value: "member.", label: "Members" },
   { value: "group_mapping.", label: "Group mappings" },
+  { value: "environment.", label: "Environments" },
   { value: "placement.", label: "Placement" },
+  { value: "network.", label: "Network mappings" },
+  { value: "template.", label: "Templates" },
+  { value: "size.", label: "Sizes" },
   { value: "policy.", label: "Policies" },
   { value: "naming.", label: "Naming" },
   { value: "settings.", label: "Settings" },
   { value: "token.", label: "API tokens" },
 ];
+
+/** The start of a local day, or of the day after it: "To" includes the day chosen. */
+function dayStart(day: string, after = false): string {
+  const d = new Date(`${day}T00:00`);
+  if (after) d.setDate(d.getDate() + 1);
+  return d.toISOString();
+}
 
 const time = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -49,6 +60,14 @@ function Detail({ e }: { e: AuditEvent }) {
 
 export function AuditPage() {
   const { me } = useCurrentProject();
+  // Administrators and auditors filter by any project; project admins by theirs.
+  const seesAll = me.global_roles.includes("admin") || me.global_roles.includes("auditor");
+  const allProjects = useQuery({ ...adm.projects("", true), enabled: seesAll });
+  const projectOptions = seesAll
+    ? (allProjects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))
+    : me.projects
+        .filter((p) => p.role === "project-admin")
+        .map((p) => ({ value: p.project.id, label: p.project.name }));
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("any");
   const [project, setProject] = useState("any");
@@ -58,8 +77,8 @@ export function AuditPage() {
     q: useDebounced(search, 300) || undefined,
     action: kind === "any" ? undefined : kind,
     project_id: project === "any" ? undefined : project,
-    from: from ? new Date(from).toISOString() : undefined,
-    to: to ? new Date(to).toISOString() : undefined,
+    from: from ? dayStart(from) : undefined,
+    to: to ? dayStart(to, true) : undefined,
   };
   const events = useInfiniteQuery(q.audit(filters));
   const list = events.data?.pages.flatMap((p) => p.items) ?? [];
@@ -101,10 +120,7 @@ export function AuditPage() {
               id="audit-project"
               value={project}
               onChange={setProject}
-              options={[
-                { value: "any", label: "Any" },
-                ...me.projects.map((p) => ({ value: p.project.id, label: p.project.name })),
-              ]}
+              options={[{ value: "any", label: "Any" }, ...projectOptions]}
             />
           </Field>
           <Field label="From" htmlFor="audit-from">

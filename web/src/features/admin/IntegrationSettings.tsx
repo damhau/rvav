@@ -190,15 +190,17 @@ function Integration({ it }: { it: S["Integration"] }) {
           {def.settings.map((f) => {
             const locked = it.locked.includes(f.name);
             const id = `${it.kind}-${f.name}`;
-            const hint = errors[`/settings/${f.name}`] ?? (locked ? lockedHint(f) : f.hint);
+            const error = errors[`/settings/${f.name}`];
+            const hint = locked ? lockedHint(f) : f.hint;
             if (f.type === "bool")
               return (
                 <div key={f.name} className="flex flex-col gap-1 self-end">
                   <label htmlFor={id} className="flex items-center gap-1.5 text-[13px]">
                     <Checkbox
                       id={id}
+                      disabled={locked}
                       checked={values[f.name] === true}
-                      onChange={(on) => !locked && setValues({ ...values, [f.name]: on })}
+                      onChange={(on) => setValues({ ...values, [f.name]: on })}
                     />
                     {f.label}
                   </label>
@@ -206,7 +208,7 @@ function Integration({ it }: { it: S["Integration"] }) {
                 </div>
               );
             return (
-              <Field key={f.name} label={f.label} htmlFor={id} hint={hint}>
+              <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
                 <Input
                   id={id}
                   className={f.type === "string" && f.name !== "username" ? "font-mono text-xs" : undefined}
@@ -221,6 +223,7 @@ function Integration({ it }: { it: S["Integration"] }) {
           <Field
             label={def.secret.label}
             htmlFor={`${it.kind}-secret`}
+            error={errors["/secret"]}
             hint={
               secretLocked ? lockedHint(def.secret) : it.secret_set ? "Set; type a new one to replace it" : "Not set"
             }

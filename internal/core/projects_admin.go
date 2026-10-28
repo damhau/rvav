@@ -270,12 +270,14 @@ func (s *Service) SetProjectMember(ctx context.Context, p *auth.Principal, proje
 	} else if err != nil {
 		return api.ProjectMember{}, err
 	}
-	if role != "project-admin" {
-		if err := s.keepsAdmin(ctx, proj, userID); err != nil {
-			return api.ProjectMember{}, err
+	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
+		if role != "project-admin" {
+			if err := s.keepsAdmin(ctx, proj, userID); err != nil {
+				return err
+			}
 		}
-	}
-	if err := s.Store.SetMember(ctx, proj.ID, userID, role); err != nil {
+		return s.Store.SetMember(ctx, proj.ID, userID, role)
+	}); err != nil {
 		return api.ProjectMember{}, err
 	}
 	s.audit(ctx, p, "member.set", "project", proj.ID, &proj.ID, map[string]any{"user_id": userID, "role": role})
@@ -296,10 +298,12 @@ func (s *Service) RemoveProjectMember(ctx context.Context, p *auth.Principal, pr
 	if err != nil {
 		return err
 	}
-	if err := s.keepsAdmin(ctx, proj, userID); err != nil {
-		return err
-	}
-	if err := s.Store.RemoveMember(ctx, proj.ID, userID); errors.Is(err, store.ErrNotFound) {
+	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
+		if err := s.keepsAdmin(ctx, proj, userID); err != nil {
+			return err
+		}
+		return s.Store.RemoveMember(ctx, proj.ID, userID)
+	}); errors.Is(err, store.ErrNotFound) {
 		return &ConflictError{Msg: "They are a member through a group only: change the group mapping."}
 	} else if err != nil {
 		return err
@@ -383,21 +387,23 @@ func (s *Service) DeleteGroupMapping(ctx context.Context, p *auth.Principal, id 
 	if err != nil {
 		return err
 	}
-	if m.Role == "admin" && m.ProjectID == nil {
-		if n, err := s.Store.AdminSources(ctx, m.ID); err != nil {
-			return err
-		} else if n == 0 {
-			return &ConflictError{Msg: "Nobody would be an administrator any more: map another group to admin first."}
+	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
+		if m.Role == "admin" && m.ProjectID == nil {
+			if n, err := s.Store.AdminSources(ctx, m.ID); err != nil {
+				return err
+			} else if n == 0 {
+				return &ConflictError{Msg: "Nobody would be an administrator any more: map another group to admin first."}
+			}
 		}
-	}
-	if m.Role == "project-admin" && m.ProjectID != nil {
-		if n, err := s.Store.OtherProjectAdmins(ctx, *m.ProjectID, ""); err != nil {
-			return err
-		} else if n <= 1 {
-			return &ConflictError{Msg: deref(m.ProjectName) + " would have no project admin: make someone one first."}
+		if m.Role == "project-admin" && m.ProjectID != nil {
+			if n, err := s.Store.OtherProjectAdmins(ctx, *m.ProjectID, ""); err != nil {
+				return err
+			} else if n <= 1 {
+				return &ConflictError{Msg: deref(m.ProjectName) + " would have no project admin: make someone one first."}
+			}
 		}
-	}
-	if err := s.Store.DeleteGroupMapping(ctx, id); err != nil {
+		return s.Store.DeleteGroupMapping(ctx, id)
+	}); err != nil {
 		return err
 	}
 	s.audit(ctx, p, "group_mapping.delete", "group_mapping", id, m.ProjectID, map[string]any{"group": m.Group, "role": m.Role})

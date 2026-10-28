@@ -99,11 +99,19 @@ export function createDb(now = Date.now()): Db {
   const data = projects[1]!;
   const ref = (p: Project) => ({ id: p.id, code: p.code, name: p.name });
 
+  // Mock mode shows every page: the mock user is an administrator too, unless
+  // rvav.mock.as in localStorage says "project-admin" or "auditor" (tests of
+  // what those see).
+  let as: string | null = null;
+  try {
+    as = localStorage.getItem("rvav.mock.as");
+  } catch {
+    // No storage: an administrator.
+  }
   const me: Me = {
     user: lea,
     title: "Platform engineer",
-    // Mock mode shows every page: the mock user is an administrator too.
-    global_roles: ["user", "admin"],
+    global_roles: as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"],
     projects: [
       { project: ref(web), role: "project-admin" },
       { project: ref(data), role: "member" },
