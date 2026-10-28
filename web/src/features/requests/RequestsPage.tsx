@@ -11,6 +11,7 @@ import type { RequestStatus } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
+import { Drafts } from "./Drafts";
 import { ProgressSegments } from "./ProgressBar";
 
 export interface RequestsSearch {
@@ -48,6 +49,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
   return (
     <Page>
       <PageHeader title="Requests" meta={`Everything requested in ${project.name}, newest first.`} />
+      <Drafts />
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="requests-search" className="sr-only">
           Filter requests

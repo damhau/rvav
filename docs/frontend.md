@@ -346,6 +346,24 @@ ServiceNow subscription with a failed run, the `webhook-signing` secret and
 the decommission workflow. It checks webhook hosts against
 `cmdb.corp.example`, `hooks.corp.example` and `servicenow.corp.example`.
 
+## Request options
+
+The request form (`features/requests/RequestFormPage.tsx`) has an
+**Options** section:
+
+- **How many:** VM items only, at most 20, named one after the other.
+- **Start:** as soon as approved, or at a chosen time.
+- **For someone else:** project admins only. That person owns what is
+  built.
+
+**Save as draft** keeps the request as filled: unchecked, and without
+secret fields (`/me/drafts`). Drafts are listed at the top of Requests
+(**Resume**, **Discard**). A resumed draft is discarded once submitted.
+
+**Request again** on a request's page opens the form with its inputs
+(`?from=REQ-…`): fields since removed, and masked secrets, stay out. A
+draft or request from another project switches to that project first.
+
 ## Notifications
 
 The notification centre ([ADR-0023](adr/0023-notifications.md)) is in

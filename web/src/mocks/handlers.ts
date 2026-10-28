@@ -32,6 +32,7 @@ import { administrationHandlers } from "./administration";
 import { governanceHandlers } from "./governance";
 import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
+import { draftHandlers } from "./drafts";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
@@ -294,6 +295,7 @@ export const handlers = [
   ...administrationHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
+  ...draftHandlers(db, base, wait),
 
   // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).
   ...(() => {
@@ -554,41 +556,45 @@ export const handlers = [
     }
 
     const approval = check.approval.policies[0]?.reason ?? null;
+    const later = !approval && draft.scheduled_at && new Date(draft.scheduled_at) > new Date();
+    const behalf = draft.on_behalf_of ? db.users.find((u) => u.id === draft.on_behalf_of) : undefined;
     const number = newRequestNumber();
     const id = `req_${number.slice(4)}`;
     const { steps, host } = planSteps(item, project, draft.environment, draft.inputs, approval);
     const now = new Date().toISOString();
     const deploymentIds: string[] = [];
-    const dep = approval
-      ? null
-      : createDeployment(
-          item,
-          project,
-          draft.environment,
-          draft.inputs,
-          draft.count ?? 1,
-          host,
-          number,
-          draft.lease_days,
-        );
+    const dep =
+      approval || later
+        ? null
+        : createDeployment(
+            item,
+            project,
+            draft.environment,
+            draft.inputs,
+            draft.count ?? 1,
+            host,
+            number,
+            draft.lease_days,
+          );
     if (dep) deploymentIds.push(dep.id);
     const req: ServiceRequest = {
       id,
       number,
       kind: "provision",
       title: title(item, host, draft.inputs),
-      status: approval ? "pending_approval" : "running",
+      status: approval ? "pending_approval" : later ? "scheduled" : "running",
       catalog_item: { id: item.id, slug: item.slug, name: item.name, type: item.type },
       version: item.version,
       project: { id: project.id, code: project.code, name: project.name },
       environment: draft.environment,
       requester: db.me.user,
+      ...(behalf ? { on_behalf_of: behalf } : {}),
       inputs: draft.inputs,
       count: draft.count ?? 1,
       justification: draft.justification,
       submitted_at: now,
       scheduled_at: draft.scheduled_at ?? null,
-      started_at: approval ? null : now,
+      started_at: approval || later ? null : now,
       finished_at: null,
       deployment_ids: deploymentIds,
       current_step: null,
@@ -604,7 +610,7 @@ export const handlers = [
       levels.forEach(publishApproval);
     }
     publishRequest(stored);
-    if (!approval) start(id);
+    if (!approval && !later) start(id);
     db.idempotency.set(key, { body: raw, status: 202, response: structuredClone(req) });
     return json<S["Request"]>(req, { status: 202, headers: { Location: `/api/v1/requests/${number}` } });
   }),

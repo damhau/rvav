@@ -203,6 +203,81 @@ paths:
               schema: { type: object, additionalProperties: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /me/drafts:
+    get:
+      tags: [requests]
+      operationId: listRequestDrafts
+      summary: The caller's saved request drafts, last changed first
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedDraftList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [requests]
+      operationId: createRequestDraft
+      summary: Save a request to finish later
+      description: |
+        A draft is the request as filled so far, unchecked; it is only the
+        caller's. Values of secret fields are not kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedDraftWrite" }
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/drafts/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [requests]
+      operationId: getRequestDraft
+      summary: A saved draft, to resume it
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [requests]
+      operationId: updateRequestDraft
+      summary: Save a draft again
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedDraftWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [requests]
+      operationId: deleteRequestDraft
+      summary: Discard a draft (done once it is submitted)
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /environments:
     get:
       tags: [projects]
@@ -3940,6 +4015,41 @@ components:
           type: string
           format: date-time
           description: Start later instead of now. Approval, if needed, still happens first.
+
+    SavedDraftWrite:
+      type: object
+      required: [draft]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 120, description: "Shown in the list; the item's name when empty." }
+        draft: { $ref: "#/components/schemas/RequestDraft" }
+    SavedDraft:
+      type: object
+      required: [id, name, draft, catalog_item, project, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        draft: { $ref: "#/components/schemas/RequestDraft" }
+        catalog_item:
+          type: object
+          required: [id, slug, name]
+          properties:
+            id: { type: string }
+            slug: { type: string }
+            name: { type: string }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        on_behalf_of:
+          $ref: "#/components/schemas/UserRef"
+          description: Who the draft's `on_behalf_of` is.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    SavedDraftList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SavedDraft" }
 
     RequestPreview:
       type: object

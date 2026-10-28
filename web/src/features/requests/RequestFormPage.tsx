@@ -1,15 +1,16 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { UserPicker } from "@/features/admin/governance/common";
 import { FormRenderer } from "@/forms/FormRenderer";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -21,6 +22,7 @@ import type {
   RequestDraft,
   RequestForm,
   RequestPreview,
+  UserRef,
 } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
@@ -35,6 +37,25 @@ const quotaLabel: Record<QuotaResource, [string, string]> = {
 };
 
 type ApprovalPreview = RequestPreview["approval"];
+
+/** Where a form starts from: a saved draft, or a past request asked again. */
+export interface FormStart {
+  environment?: string;
+  inputs?: Record<string, unknown>;
+  justification?: string;
+  leaseDays?: number | null;
+  count?: number;
+  scheduledAt?: string | null;
+  onBehalfOf?: UserRef;
+}
+
+/** A date-time for a datetime-local input, in local time. */
+function localInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */
 function approvalTitle(approval: ApprovalPreview) {
@@ -115,6 +136,9 @@ function Summary({
   pending,
   formErrors,
   onSubmit,
+  onSaveDraft,
+  savingDraft,
+  scheduled,
 }: {
   preview: RequestPreview | undefined;
   fetching: boolean;
@@ -122,6 +146,9 @@ function Summary({
   pending: boolean;
   formErrors: string[];
   onSubmit: () => void;
+  onSaveDraft: () => void;
+  savingDraft: boolean;
+  scheduled: boolean;
 }) {
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) ? (values.post_config as string[]) : [];
@@ -205,7 +232,11 @@ function Summary({
             >
               <span className="font-medium">{approval?.required ? approvalTitle(approval) : "No approval needed"}</span>
               <span className="text-xs">
-                {approval?.required ? approvalBody(approval) : "Provisioning starts as soon as you submit."}
+                {approval?.required
+                  ? approvalBody(approval)
+                  : scheduled
+                    ? "Provisioning starts at the time you chose."
+                    : "Provisioning starts as soon as you submit."}
               </span>
             </div>
           </>
@@ -225,6 +256,9 @@ function Summary({
         {pending && <LoaderCircle className="animate-spin" aria-hidden />}
         {approval?.required ? "Submit for approval" : "Submit request"}
       </Button>
+      <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
+        Save as draft
+      </Button>
       <p className="text-center text-[11px] text-faint">
         You can follow every step live, including the AWX job output.
       </p>
@@ -237,11 +271,17 @@ function RequestFormBody({
   form,
   project,
   environments,
+  start,
+  draftId,
+  canActForOthers,
 }: {
   item: CatalogItem;
   form: RequestForm;
   project: Project;
   environments: Environment[];
+  start?: FormStart;
+  draftId?: string;
+  canActForOthers: boolean;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -251,14 +291,27 @@ function RequestFormBody({
       .sort((a, b) => a.order - b.order)[0]?.key ??
     project.environments[0] ??
     "dev";
-  const [environment, setEnvironment] = useState(firstEnv);
-  const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...form.initial_values }));
+  const [environment, setEnvironment] = useState(
+    start?.environment && project.environments.includes(start.environment) ? start.environment : firstEnv,
+  );
+  const [values, setValues] = useState<Record<string, unknown>>(() => {
+    // What the form has now: fields since removed, and masked secrets, stay out.
+    const props = (form.schema as { properties?: Record<string, unknown> }).properties ?? {};
+    const kept = Object.entries(start?.inputs ?? {}).filter(([k, v]) => k in props && v !== "••••");
+    return { ...form.initial_values, ...Object.fromEntries(kept) };
+  });
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<MappedErrors | null>(null);
-  const [justification, setJustification] = useState("");
-  const [leaseDays, setLeaseDays] = useState<number | null>(null);
+  const [justification, setJustification] = useState(start?.justification ?? "");
+  const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
+  const [count, setCount] = useState(String(start?.count ?? 1));
+  const [later, setLater] = useState(Boolean(start?.scheduledAt));
+  const [startAt, setStartAt] = useState(localInput(start?.scheduledAt));
+  const [onBehalfOf, setOnBehalfOf] = useState<UserRef | null>(start?.onBehalfOf ?? null);
+  const [savedDraft, setSavedDraft] = useState(draftId);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const many = item.type === "vm_blueprint";
 
   const draft = useMemo<RequestDraft>(
     () => ({
@@ -267,11 +320,26 @@ function RequestFormBody({
       project_id: project.id,
       environment,
       inputs: values,
-      count: 1,
+      count: many ? Math.max(1, Number(count) || 1) : 1,
       ...(justification ? { justification } : {}),
       lease_days: leaseDays,
+      ...(later && startAt ? { scheduled_at: new Date(startAt).toISOString() } : {}),
+      ...(onBehalfOf ? { on_behalf_of: onBehalfOf.id } : {}),
     }),
-    [item.id, form.version_id, project.id, environment, values, justification, leaseDays],
+    [
+      item.id,
+      form.version_id,
+      project.id,
+      environment,
+      values,
+      justification,
+      leaseDays,
+      many,
+      count,
+      later,
+      startAt,
+      onBehalfOf,
+    ],
   );
   const debounced = useDebounced(draft, 350);
   const preview = useQuery({
@@ -285,6 +353,12 @@ function RequestFormBody({
       call(api.POST("/requests", { params: { header: { "Idempotency-Key": idempotencyKey } }, body })),
     onSuccess: (request) => {
       setIdempotencyKey(newIdempotencyKey());
+      if (savedDraft) {
+        // Submitted: the draft has done its job.
+        void call(api.DELETE("/me/drafts/{id}", { params: { path: { id: savedDraft } } })).finally(
+          () => void qc.invalidateQueries({ queryKey: ["me", "drafts"] }),
+        );
+      }
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       void qc.invalidateQueries({ queryKey: keys.deployments.lists() });
       toast.success(`${request.number} submitted`, {
@@ -301,6 +375,23 @@ function RequestFormBody({
       }
       toast.error(isApiError(e) ? e.problem.title : "The request was not sent", {
         description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
+      });
+    },
+  });
+
+  const saveDraft = useMutation({
+    mutationFn: () =>
+      savedDraft
+        ? call(api.PUT("/me/drafts/{id}", { params: { path: { id: savedDraft } }, body: { draft } }))
+        : call(api.POST("/me/drafts", { body: { draft } })),
+    onSuccess: (saved) => {
+      setSavedDraft(saved.id);
+      void qc.invalidateQueries({ queryKey: ["me", "drafts"] });
+      toast.success("Draft saved", { description: "Find it under Requests, to finish later." });
+    },
+    onError: (e) => {
+      toast.error(isApiError(e) ? e.problem.title : "The draft was not saved", {
+        description: isApiError(e) ? e.problem.detail : undefined,
       });
     },
   });
@@ -392,6 +483,80 @@ function RequestFormBody({
             </div>
           </div>
         </fieldset>
+        <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
+          <legend className="sr-only">Options</legend>
+          <div className="border-b border-line px-4 py-2.5 text-[13px] font-semibold" aria-hidden>
+            Options
+          </div>
+          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+            {many && (
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <label htmlFor="count" className="text-xs font-medium">
+                  How many
+                </label>
+                <Input
+                  id="count"
+                  type="number"
+                  min={1}
+                  max={20}
+                  className="w-24"
+                  value={count}
+                  onChange={(e) => setCount(e.target.value)}
+                  aria-invalid={Boolean(fieldErrors.count) || undefined}
+                />
+                <p className="text-[11px] text-faint">
+                  {fieldErrors.count ?? "Identical deployments, named one after the other (at most 20)."}
+                </p>
+              </div>
+            )}
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <label htmlFor="start" className="text-xs font-medium">
+                Start
+              </label>
+              <Select
+                id="start"
+                value={later ? "later" : "now"}
+                onChange={(v) => setLater(v === "later")}
+                options={[
+                  { value: "now", label: "As soon as it is approved" },
+                  { value: "later", label: "At a time I choose" },
+                ]}
+              />
+              {later && (
+                <Input
+                  id="start-at"
+                  type="datetime-local"
+                  aria-label="Start at"
+                  value={startAt}
+                  onChange={(e) => setStartAt(e.target.value)}
+                  aria-invalid={Boolean(fieldErrors.scheduled_at) || undefined}
+                />
+              )}
+              {fieldErrors.scheduled_at && <p className="text-[11px] text-bad">{fieldErrors.scheduled_at}</p>}
+            </div>
+            {canActForOthers && (
+              <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
+                {onBehalfOf ? (
+                  <>
+                    <span className="text-xs font-medium">For someone else</span>
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span>
+                        On behalf of <strong>{onBehalfOf.name}</strong>{" "}
+                        <span className="text-xs text-faint">{onBehalfOf.email}</span>: they will own it.
+                      </span>
+                      <Button size="sm" variant="ghost" onClick={() => setOnBehalfOf(null)}>
+                        For myself instead
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <UserPicker label="For someone else (optional)" id="on-behalf" onPick={setOnBehalfOf} />
+                )}
+                {fieldErrors.on_behalf_of && <p className="text-[11px] text-bad">{fieldErrors.on_behalf_of}</p>}
+              </div>
+            )}
+          </div>
+        </fieldset>
       </div>
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col self-stretch">
         <Summary
@@ -404,19 +569,52 @@ function RequestFormBody({
             setSubmitted(true);
             submit.mutate(draft);
           }}
+          onSaveDraft={() => saveDraft.mutate()}
+          savingDraft={saveDraft.isPending}
+          scheduled={later && Boolean(startAt)}
         />
       </aside>
     </div>
   );
 }
 
-export function RequestFormPage({ itemKey }: { itemKey: string }) {
-  const { projectId } = useCurrentProject();
+export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; draftId?: string; from?: string }) {
+  const { projectId, role, setProjectId } = useCurrentProject();
   const item = useQuery(q.catalogItem(itemKey, projectId));
   const form = useQuery(q.form(itemKey, projectId));
   const project = useQuery(q.project(projectId));
   const environments = useQuery(q.environments());
-  const error = item.error ?? form.error ?? project.error ?? environments.error;
+  const saved = useQuery({ ...q.draft(draftId ?? ""), enabled: Boolean(draftId) });
+  const past = useQuery({ ...q.request(from ?? ""), enabled: Boolean(from) });
+  // A draft or a past request is resumed in its own project.
+  const startProject = saved.data?.project.id ?? past.data?.project.id;
+  useEffect(() => {
+    if (startProject && startProject !== projectId) setProjectId(startProject);
+  }, [startProject, projectId, setProjectId]);
+  const start: FormStart | undefined = saved.data
+    ? {
+        environment: saved.data.draft.environment,
+        inputs: saved.data.draft.inputs,
+        justification: saved.data.draft.justification,
+        leaseDays: saved.data.draft.lease_days,
+        count: saved.data.draft.count,
+        scheduledAt: saved.data.draft.scheduled_at,
+        onBehalfOf: saved.data.on_behalf_of,
+      }
+    : past.data
+      ? {
+          environment: past.data.environment,
+          inputs: past.data.inputs,
+          justification: past.data.justification,
+          count: past.data.count,
+          onBehalfOf: past.data.on_behalf_of,
+        }
+      : undefined;
+  const waiting =
+    (Boolean(draftId) && !saved.data) ||
+    (Boolean(from) && !past.data) ||
+    (startProject !== undefined && startProject !== projectId);
+  const error = item.error ?? form.error ?? project.error ?? environments.error ?? saved.error ?? past.error;
 
   return (
     <Page>
@@ -446,7 +644,7 @@ export function RequestFormPage({ itemKey }: { itemKey: string }) {
       </div>
       {error ? (
         <ErrorState error={error} className="rounded-lg border border-line bg-surface" />
-      ) : !item.data || !form.data || !project.data || !environments.data ? (
+      ) : !item.data || !form.data || !project.data || !environments.data || waiting ? (
         <div className="flex flex-wrap gap-4">
           <div className="flex flex-[999_1_560px] flex-col gap-4">
             <Skeleton className="h-40 rounded-lg" />
@@ -456,11 +654,14 @@ export function RequestFormPage({ itemKey }: { itemKey: string }) {
         </div>
       ) : (
         <RequestFormBody
-          key={`${form.data.version_id}-${projectId}`}
+          key={`${form.data.version_id}-${projectId}-${draftId ?? from ?? ""}`}
           item={item.data}
           form={form.data}
           project={project.data}
           environments={environments.data.items}
+          start={start}
+          draftId={draftId}
+          canActForOthers={role === "project-admin"}
         />
       )}
     </Page>

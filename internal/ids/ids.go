@@ -30,6 +30,7 @@ const (
 	Workflow     = "wfl"
 	// Notifications (ADR-0023).
 	Notification = "ntf"
+	Draft        = "drf"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

@@ -135,6 +135,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's saved request drafts, last changed first */
+        get: operations["listRequestDrafts"];
+        put?: never;
+        /**
+         * Save a request to finish later
+         * @description A draft is the request as filled so far, unchecked; it is only the
+         *     caller's. Values of secret fields are not kept.
+         */
+        post: operations["createRequestDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/drafts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** A saved draft, to resume it */
+        get: operations["getRequestDraft"];
+        /** Save a draft again */
+        put: operations["updateRequestDraft"];
+        post?: never;
+        /** Discard a draft (done once it is submitted) */
+        delete: operations["deleteRequestDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/environments": {
         parameters: {
             query?: never;
@@ -2779,6 +2822,31 @@ export interface components {
              */
             scheduled_at?: string;
         };
+        SavedDraftWrite: {
+            /** @description Shown in the list; the item's name when empty. */
+            name?: string;
+            draft: components["schemas"]["RequestDraft"];
+        };
+        SavedDraft: {
+            id: string;
+            name: string;
+            draft: components["schemas"]["RequestDraft"];
+            catalog_item: {
+                id: string;
+                slug: string;
+                name: string;
+            };
+            project: components["schemas"]["ProjectRef"];
+            /** @description Who the draft's `on_behalf_of` is. */
+            on_behalf_of?: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SavedDraftList: {
+            items: components["schemas"]["SavedDraft"][];
+        };
         RequestPreview: {
             valid: boolean;
             fields?: components["schemas"]["FieldStates"];
@@ -4562,6 +4630,128 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRequestDrafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDraftList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRequestDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedDraftWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getRequestDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateRequestDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedDraftWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteRequestDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listEnvironments: {

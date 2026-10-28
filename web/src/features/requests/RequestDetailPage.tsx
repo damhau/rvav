@@ -192,6 +192,17 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           {r && (
             <div className="flex flex-wrap gap-2">
               {cancellable.includes(r.status) && <CancelButton request={r} />}
+              {r.kind === "provision" && (
+                <Button variant="secondary" asChild>
+                  <Link
+                    to="/catalog/$itemId/request"
+                    params={{ itemId: r.catalog_item.slug }}
+                    search={{ from: r.number }}
+                  >
+                    Request again
+                  </Link>
+                </Button>
+              )}
               {deploymentId && (
                 <Button variant={r.status === "succeeded" ? "primary" : "secondary"} asChild>
                   <Link to="/deployments/$deploymentId" params={{ deploymentId }}>

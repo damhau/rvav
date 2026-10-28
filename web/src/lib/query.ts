@@ -215,6 +215,16 @@ export const q = {
       queryKey: ["me", "notifications", "latest"],
       queryFn: ({ signal }) => call(api.GET("/me/notifications", { params: { query: { limit: 8 } }, signal })),
     }),
+  drafts: () =>
+    queryOptions({
+      queryKey: ["me", "drafts"],
+      queryFn: ({ signal }) => call(api.GET("/me/drafts", { signal })),
+    }),
+  draft: (id: string) =>
+    queryOptions({
+      queryKey: ["me", "drafts", id],
+      queryFn: ({ signal }) => call(api.GET("/me/drafts/{id}", { params: { path: { id } }, signal })),
+    }),
   notificationPreferences: () =>
     queryOptions({
       queryKey: ["me", "notification-preferences"],

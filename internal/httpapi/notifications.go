@@ -202,3 +202,37 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+// Request drafts.
+
+func (s *Server) ListRequestDrafts(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Core.RequestDrafts(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.SavedDraftList{Items: items}, err)
+}
+
+func (s *Server) CreateRequestDraft(w http.ResponseWriter, r *http.Request) {
+	var b api.SavedDraftWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	d, err := s.Core.SaveRequestDraft(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, d, err)
+}
+
+func (s *Server) GetRequestDraft(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	d, err := s.Core.GetRequestDraft(r.Context(), principal(r), id)
+	s.reply(w, r, http.StatusOK, d, err)
+}
+
+func (s *Server) UpdateRequestDraft(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	var b api.SavedDraftWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	d, err := s.Core.SaveRequestDraft(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, d, err)
+}
+
+func (s *Server) DeleteRequestDraft(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	s.replyEmpty(w, r, s.Core.DeleteRequestDraft(r.Context(), principal(r), id))
+}
