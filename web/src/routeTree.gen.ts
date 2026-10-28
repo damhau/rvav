@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as ReportsRouteImport } from "./routes/reports"
+import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
+import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
@@ -40,9 +42,19 @@ const ReportsRoute = ReportsRouteImport.update({
   path: "/reports",
   getParentRoute: () => rootRouteImport,
 } as any)
+const TokensRoute = TokensRouteImport.update({
+  id: "/tokens",
+  path: "/tokens",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminSectionRoute = AdminSectionRouteImport.update({
   id: "/admin/$section",
   path: "/admin/$section",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: "/admin/audit",
+  path: "/admin/audit",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
@@ -106,7 +118,9 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
+  "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -123,7 +137,9 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
+  "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -141,7 +157,9 @@ export interface FileRoutesById {
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
   "/reports": typeof ReportsRoute
+  "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -160,7 +178,9 @@ export interface FileRouteTypes {
     | "/"
     | "/approvals"
     | "/reports"
+    | "/tokens"
     | "/admin/$section"
+    | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -177,7 +197,9 @@ export interface FileRouteTypes {
     | "/"
     | "/approvals"
     | "/reports"
+    | "/tokens"
     | "/admin/$section"
+    | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -194,7 +216,9 @@ export interface FileRouteTypes {
     | "/"
     | "/approvals"
     | "/reports"
+    | "/tokens"
     | "/admin/$section"
+    | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/integrations"
     | "/deployments/$deploymentId"
@@ -212,7 +236,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApprovalsRoute: typeof ApprovalsRoute
   ReportsRoute: typeof ReportsRoute
+  TokensRoute: typeof TokensRoute
   AdminSectionRoute: typeof AdminSectionRoute
+  AdminAuditRoute: typeof AdminAuditRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
@@ -249,11 +275,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/tokens": {
+      id: "/tokens"
+      path: "/tokens"
+      fullPath: "/tokens"
+      preLoaderRoute: typeof TokensRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admin/$section": {
       id: "/admin/$section"
       path: "/admin/$section"
       fullPath: "/admin/$section"
       preLoaderRoute: typeof AdminSectionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/audit": {
+      id: "/admin/audit"
+      path: "/admin/audit"
+      fullPath: "/admin/audit"
+      preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/day2-actions": {
@@ -340,7 +380,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApprovalsRoute: ApprovalsRoute,
   ReportsRoute: ReportsRoute,
+  TokensRoute: TokensRoute,
   AdminSectionRoute: AdminSectionRoute,
+  AdminAuditRoute: AdminAuditRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,

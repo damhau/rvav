@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"encoding/csv"
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
 )
 
 // Administration (S9, ADR-0020): answered 501 until built.
@@ -343,7 +347,22 @@ func (s *Server) UpdateVmTemplate(w http.ResponseWriter, r *http.Request, key ap
 }
 
 func (s *Server) ListAuditEvents(w http.ResponseWriter, r *http.Request, params api.ListAuditEventsParams) {
-	s.notBuilt(w, r)
+	q := core.AuditQuery{Search: deref(params.Q), ActorID: deref(params.Actor), Action: deref(params.Action),
+		ProjectID: deref(params.ProjectId), From: params.From, To: params.To, Cursor: deref(params.Cursor), Limit: limitOf(params.Limit)}
+	if params.Format != nil && *params.Format == api.Csv {
+		q.Limit, q.Cursor = 50000, ""
+		items, _, err := s.Core.AuditEvents(r.Context(), principal(r), q)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="rvav-audit.csv"`)
+		writeAuditCSV(w, items)
+		return
+	}
+	items, next, err := s.Core.AuditEvents(r.Context(), principal(r), q)
+	s.reply(w, r, http.StatusOK, api.AuditEventPage{Items: items, NextCursor: next}, err)
 }
 
 func (s *Server) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
@@ -365,18 +384,42 @@ func (s *Server) SetProjectMember(w http.ResponseWriter, r *http.Request, projec
 }
 
 func (s *Server) ListApiTokens(w http.ResponseWriter, r *http.Request, params api.ListApiTokensParams) {
-	s.notBuilt(w, r)
+	items, err := s.Core.APITokens(r.Context(), principal(r), params.All != nil && *params.All)
+	s.reply(w, r, http.StatusOK, api.ApiTokenList{Items: items}, err)
 }
 
 func (s *Server) CreateApiToken(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.ApiTokenCreate
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.CreateAPIToken(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) RevokeApiToken(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.RevokeAPIToken(r.Context(), principal(r), id))
 }
 
 func (s *Server) SearchUsers(w http.ResponseWriter, r *http.Request, params api.SearchUsersParams) {
 	items, err := s.Core.SearchUsers(r.Context(), deref(params.Q), limitOf(params.Limit))
 	s.reply(w, r, http.StatusOK, api.UserList{Items: items}, err)
+}
+
+// writeAuditCSV writes audit events as CSV, the detail as JSON.
+func writeAuditCSV(w http.ResponseWriter, items []api.AuditEvent) {
+	c := csv.NewWriter(w)
+	_ = c.Write([]string{"at", "actor", "action", "target_type", "target_id", "project", "detail"})
+	for _, e := range items {
+		actor, project := "rvav", ""
+		if e.Actor != nil {
+			actor = e.Actor.Name
+		}
+		if e.Project != nil {
+			project = e.Project.Code
+		}
+		detail, _ := json.Marshal(e.Detail)
+		_ = c.Write([]string{e.At.UTC().Format(time.RFC3339), actor, e.Action, e.TargetType, e.TargetId, project, string(detail)})
+	}
+	c.Flush()
 }

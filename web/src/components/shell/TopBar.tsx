@@ -1,4 +1,5 @@
-import { Check, ChevronDown, LogOut, Menu as MenuIcon, Monitor, Moon, Search, Sun } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Check, ChevronDown, KeyRound, LogOut, Menu as MenuIcon, Monitor, Moon, Search, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
@@ -19,6 +20,7 @@ const roleLabel = { "project-admin": "Project admin", member: "Member", viewer: 
 export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void; onOpenNav: () => void }) {
   const { me, project, role, setProjectId } = useCurrentProject();
   const { theme, setTheme } = useTheme();
+  const navigate = useNavigate();
   const ThemeIcon = themes.find((t) => t.value === theme)?.icon ?? Monitor;
 
   return (
@@ -99,6 +101,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
             <MenuLabel>{me.user.email}</MenuLabel>
             {me.title && <p className="px-2 pb-1 text-xs text-muted">{me.title}</p>}
             <MenuSeparator />
+            <MenuItem onSelect={() => void navigate({ to: "/tokens" })}>
+              <KeyRound /> API tokens
+            </MenuItem>
             {isMock ? (
               <p className="max-w-56 px-2 py-1.5 text-xs text-faint">
                 Mock mode: signed in with a development identity.

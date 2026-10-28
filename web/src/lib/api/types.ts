@@ -76,6 +76,7 @@ export type CatalogVersionDefinition = S["CatalogVersionDefinition"];
 export type CatalogVersionChange = S["CatalogVersionChange"];
 export type CatalogEntitlements = S["CatalogEntitlements"];
 export type AdminCatalogCategory = S["AdminCatalogCategory"];
+export type AuditEventPage = S["AuditEventPage"];
 export type AwxActionUpdate = S["AwxActionUpdate"];
 
 /** Every paginated list has this shape. */

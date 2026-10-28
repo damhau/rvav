@@ -1,6 +1,13 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, call } from "./api/client";
-import type { ApprovalStatus, CatalogItemType, DeploymentStatus, EnvironmentKey, RequestStatus } from "./api/types";
+import type {
+  ApprovalStatus,
+  AuditEventPage,
+  CatalogItemType,
+  DeploymentStatus,
+  EnvironmentKey,
+  RequestStatus,
+} from "./api/types";
 
 export interface CatalogFilters {
   projectId: string;
@@ -36,6 +43,14 @@ export interface AdminItemFilters {
   state?: "published" | "unpublished";
 }
 
+export interface AuditFilters {
+  q?: string;
+  action?: string;
+  project_id?: string;
+  from?: string;
+  to?: string;
+}
+
 // Query key factories: one place per resource, so invalidation stays precise.
 export const keys = {
   me: ["me"] as const,
@@ -51,6 +66,8 @@ export const keys = {
     categories: ["admin", "catalog", "categories"] as const,
     icons: ["admin", "catalog", "icons"] as const,
   },
+  tokens: (all: boolean) => ["tokens", all] as const,
+  audit: (f: AuditFilters) => ["audit", f] as const,
   environments: ["environments"] as const,
   project: (id: string) => ["projects", id] as const,
   quota: (id: string, environment?: string) => ["projects", id, "quota", environment ?? "all"] as const,
@@ -93,6 +110,22 @@ export const keys = {
 const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
 
 export const q = {
+  tokens: (all: boolean) =>
+    queryOptions({
+      queryKey: keys.tokens(all),
+      queryFn: ({ signal }) => call(api.GET("/tokens", { params: { query: { all } }, signal })),
+    }),
+  audit: (f: AuditFilters) =>
+    infiniteQueryOptions({
+      queryKey: keys.audit(f),
+      // JSON here; the same path answers CSV with format=csv.
+      queryFn: async ({ signal, pageParam }) =>
+        (await call(
+          api.GET("/audit", { params: { query: { ...f, limit: 50, cursor: pageParam } }, signal }),
+        )) as AuditEventPage,
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (last) => last.next_cursor ?? undefined,
+    }),
   adminCatalogItems: (f: AdminItemFilters) =>
     queryOptions({
       queryKey: keys.catalogAdmin.items(f),

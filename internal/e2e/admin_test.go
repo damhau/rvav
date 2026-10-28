@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
@@ -588,6 +589,74 @@ func TestIntegrationSettings(t *testing.T) {
 		}
 		if n, _ := core.RotateSecrets(ctx, h.store, both); n != 0 {
 			t.Fatalf("rotated %d again", n)
+		}
+	})
+}
+
+// TestTokensAndAudit: users make, use and revoke their own API tokens,
+// administrators everyone's; the audit log is searched and exported, each
+// seeing what they may (S9.8, ADR-0020).
+func TestTokensAndAudit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci", ExpiresAt: new(time.Now().Add(400 * 24 * time.Hour))}, 422, nil)
+		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci", ExpiresAt: new(time.Now().Add(-time.Hour))}, 422, nil)
+		var made api.ApiTokenCreated
+		h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "ci pipeline"}, 201, &made)
+		if !strings.HasPrefix(made.Token, "rvav_pat_") || made.ExpiresAt == nil || made.Scope != api.ApiTokenCreatedScopeAll {
+			t.Fatalf("made %+v", made)
+		}
+		var me api.Me
+		h.json("GET", "/api/v1/me", "", nil, 200, &me, "Authorization", "Bearer "+made.Token)
+		if me.User.Id != seed.UserID("tnguyen") {
+			t.Fatalf("the token acts as %s", me.User.Id)
+		}
+		var mine api.ApiTokenList
+		h.json("GET", "/api/v1/tokens", "tnguyen", nil, 200, &mine)
+		if len(mine.Items) != 1 || mine.Items[0].LastUsedAt == nil {
+			t.Fatalf("tokens = %+v", mine.Items)
+		}
+		h.json("GET", "/api/v1/tokens?all=true", "tnguyen", nil, 403, nil)
+		var all api.ApiTokenList
+		h.json("GET", "/api/v1/tokens?all=true", admin, nil, 200, &all)
+		if !slices.ContainsFunc(all.Items, func(x api.ApiToken) bool { return x.Id == made.Id }) {
+			t.Fatalf("everyone's tokens = %+v", all.Items)
+		}
+		h.json("DELETE", "/api/v1/tokens/"+made.Id, "lmartin", nil, 404, nil)
+		h.json("DELETE", "/api/v1/tokens/"+made.Id, "tnguyen", nil, 204, nil)
+		h.json("GET", "/api/v1/me", "", nil, 401, nil, "Authorization", "Bearer "+made.Token)
+
+		// The audit log: searched, by prefix, per project, as CSV.
+		h.json("PATCH", "/api/v1/admin/environments/dev", admin, api.AdminEnvironmentUpdate{Order: new(1)}, 200, nil)
+		h.json("PUT", "/api/v1/projects/prj_web/members/"+seed.UserID("cdubois"), "lmartin", api.ProjectMemberWrite{Role: api.Viewer}, 200, nil)
+		var page api.AuditEventPage
+		h.json("GET", "/api/v1/audit?action=token.", admin, nil, 200, &page)
+		if len(page.Items) != 2 || page.Items[0].Action != "token.revoke" || page.Items[0].Actor == nil {
+			t.Fatalf("token events = %+v", page.Items)
+		}
+		h.json("GET", "/api/v1/audit?limit=1", admin, nil, 200, &page)
+		if len(page.Items) != 1 || page.NextCursor == nil {
+			t.Fatalf("first page = %+v", page)
+		}
+		first := page.Items[0].Id
+		h.json("GET", "/api/v1/audit?limit=1&cursor="+*page.NextCursor, admin, nil, 200, &page)
+		if len(page.Items) != 1 || page.Items[0].Id == first {
+			t.Fatalf("second page = %+v", page.Items)
+		}
+		h.json("GET", "/api/v1/audit", "tnguyen", nil, 403, nil)
+		var webOnly api.AuditEventPage
+		h.json("GET", "/api/v1/audit", "lmartin", nil, 200, &webOnly)
+		if len(webOnly.Items) == 0 || slices.ContainsFunc(webOnly.Items, func(e api.AuditEvent) bool { return e.Project == nil || e.Project.Id != "prj_web" }) {
+			t.Fatalf("a project admin's view = %+v", webOnly.Items)
+		}
+		code, csv, hdr := h.do("GET", "/api/v1/audit?format=csv&q=cdubois", admin, nil)
+		if code != 200 || !strings.HasPrefix(hdr.Get("Content-Type"), "text/csv") ||
+			!strings.HasPrefix(string(csv), "at,actor,action,target_type,target_id,project,detail\n") || !strings.Contains(string(csv), "member.set") {
+			t.Fatalf("CSV %d %s:\n%s", code, hdr.Get("Content-Type"), csv)
 		}
 	})
 }

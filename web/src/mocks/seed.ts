@@ -102,7 +102,8 @@ export function createDb(now = Date.now()): Db {
   const me: Me = {
     user: lea,
     title: "Platform engineer",
-    global_roles: ["user"],
+    // Mock mode shows every page: the mock user is an administrator too.
+    global_roles: ["user", "admin"],
     projects: [
       { project: ref(web), role: "project-admin" },
       { project: ref(data), role: "member" },

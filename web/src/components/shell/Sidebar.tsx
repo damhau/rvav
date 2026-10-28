@@ -10,14 +10,23 @@ const item =
   "flex h-[30px] items-center gap-2.5 rounded-md px-2 text-[13px] text-muted hover:bg-sunken hover:text-fg [&_svg]:size-[15px] [&_svg]:shrink-0";
 const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface";
 
-const admin = [
-  ["catalog-items", "Catalog items"],
-  ["day2-actions", "Day-2 actions"],
-  ["policies", "Policies"],
-  ["projects", "Projects"],
-  ["integrations", "Integrations"],
-  ["audit", "Audit log"],
-] as const;
+interface Roles {
+  admin: boolean;
+  catalogAdmin: boolean;
+  auditor: boolean;
+  projectAdmin: boolean;
+}
+
+// The administration pages, each for those who may use it (ADR-0020); the
+// server decides again.
+const admin: [string, string, (r: Roles) => boolean][] = [
+  ["catalog-items", "Catalog items", (r) => r.admin || r.catalogAdmin],
+  ["day2-actions", "Day-2 actions", (r) => r.admin],
+  ["policies", "Policies", (r) => r.admin || r.auditor],
+  ["projects", "Projects", (r) => r.admin || r.auditor || r.projectAdmin],
+  ["integrations", "Integrations", (r) => r.admin],
+  ["audit", "Audit log", (r) => r.admin || r.auditor || r.projectAdmin],
+];
 
 function LiveIndicator() {
   const status = useLiveStatus();
@@ -44,7 +53,14 @@ function LiveIndicator() {
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { projectId } = useCurrentProject();
+  const { projectId, me } = useCurrentProject();
+  const roles: Roles = {
+    admin: me.global_roles.includes("admin"),
+    catalogAdmin: me.global_roles.includes("catalog-admin"),
+    auditor: me.global_roles.includes("auditor"),
+    projectAdmin: me.projects.some((p) => p.role === "project-admin"),
+  };
+  const adminPages = admin.filter(([, , show]) => show(roles));
   const running = useInfiniteQuery(q.requests({ projectId, status: ["running", "queued", "cancelling"], limit: 50 }));
   const runningCount = running.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0;
   const waiting = useQuery(q.approvals(["pending"])).data?.total ?? 0;
@@ -105,18 +121,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </li>
       </ul>
 
-      <div className="flex flex-col gap-0.5">
-        <span className="label px-2 pb-1">Administration</span>
-        <ul className="flex flex-col gap-0.5">
-          {admin.map(([section, label]) => (
-            <li key={section}>
-              <Link to="/admin/$section" params={{ section }} className={cn(item, "h-7")} {...linkProps}>
-                {label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {adminPages.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          <span className="label px-2 pb-1">Administration</span>
+          <ul className="flex flex-col gap-0.5">
+            {adminPages.map(([section, label]) => (
+              <li key={section}>
+                <Link to="/admin/$section" params={{ section }} className={cn(item, "h-7")} {...linkProps}>
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-auto flex flex-col gap-1 border-t border-line px-2 pt-2.5 text-[11px] text-faint">
         <LiveIndicator />
