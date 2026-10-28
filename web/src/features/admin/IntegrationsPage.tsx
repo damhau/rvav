@@ -6,6 +6,7 @@ import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import type { IpamReconcile } from "@/lib/api/types";
 import { q } from "@/lib/query";
+import { IntegrationSettings } from "./IntegrationSettings";
 
 const th = "border-b border-line px-4 py-2 font-medium";
 const td = "border-b border-line px-4 py-2 align-top";
@@ -116,8 +117,9 @@ export function IntegrationsPage() {
     <Page>
       <PageHeader
         title="Integrations"
-        meta="Connection settings for vCenter, AWX and EfficientIP come with the administration screens."
+        meta="How rvav connects to vCenter, AWX and EfficientIP, and whether EfficientIP agrees with what rvav recorded."
       />
+      <IntegrationSettings />
       <Panel
         title="EfficientIP reconcile"
         flush

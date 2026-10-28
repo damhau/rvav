@@ -219,3 +219,36 @@ test("the administration pages work from the keyboard", async ({ page }) => {
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "New day-2 policy" })).toBeFocused();
 });
+
+test("integration settings: locked fields, the write-only secret, test connection and the restart notice", async ({
+  page,
+}) => {
+  await open(page, "Integrations", "Integrations");
+  const vcenter = page.getByRole("region", { name: "vCenter connection" });
+  await expect(vcenter.getByRole("textbox", { name: "URL" })).toBeDisabled();
+  await expect(vcenter.getByText("Set by RVAV_VCENTER_URL")).toBeVisible();
+  await expect(vcenter.getByText("Set; type a new one to replace it")).toBeVisible();
+  await vcenter.getByRole("textbox", { name: "User" }).fill("svc-rvav2@vsphere.local");
+  await vcenter.getByLabel("Password").fill("n3w-secret");
+  await vcenter.getByRole("button", { name: "Test connection" }).click();
+  const test = page.getByRole("region", { name: "vCenter test" });
+  await expect(test).toContainText("Every check passed.");
+  await expect(test).toContainText("Tagging service");
+  await vcenter.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByText("vCenter settings saved")).toBeVisible();
+  await expect(vcenter.getByRole("status")).toContainText("apply when rvav's processes (API and worker) restart");
+  await expect(vcenter.getByLabel("Password")).toHaveValue("");
+  await expect(vcenter.getByRole("textbox", { name: "User" })).toHaveValue("svc-rvav2@vsphere.local");
+
+  await page.getByRole("tab", { name: "AWX" }).click();
+  const awx = page.getByRole("region", { name: "AWX connection" });
+  await awx.getByRole("textbox", { name: "URL" }).fill("https://unreachable.corp.example");
+  await awx.getByRole("button", { name: "Test connection" }).click();
+  await expect(page.getByRole("region", { name: "AWX test" })).toContainText("A check failed.");
+  await expect(page.getByRole("region", { name: "AWX test" })).toContainText("no such host");
+  await awx.getByRole("textbox", { name: "URL" }).fill("awx.corp.example");
+  await awx.getByRole("button", { name: "Save settings" }).click();
+  await expect(awx.getByText("An http or https URL.")).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "Run the check" })).toBeVisible();
+});

@@ -911,12 +911,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.post(`${base}/admin/integrations/:kind/test`, async ({ params, request }) => {
       await wait();
       const kind = String(params.kind);
-      const body = (await request.text())
-        ? ((await request
-            .clone()
-            .json()
-            .catch(() => ({}))) as S["IntegrationWrite"])
-        : undefined;
+      const raw = await request.text();
+      const body = raw ? (JSON.parse(raw) as S["IntegrationWrite"]) : undefined;
       const given = body?.settings?.url ?? st().integrations[kind]!.settings.url;
       const url = typeof given === "string" ? given : "";
       const reachable = !url.includes("unreachable");

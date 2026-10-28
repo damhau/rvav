@@ -289,6 +289,13 @@ ones they may use; auditors see them read only.
 - **Templates and networks**: VM templates and sizes, with where each is
   offered (projects and environments), and the network mappings, from
   EfficientIP or by hand.
+- **Integrations**: the vCenter, AWX and EfficientIP settings, one tab
+  each (`features/admin/IntegrationSettings.tsx`). A field an environment
+  variable sets is disabled and names the variable; the password or token
+  is write-only (left empty, it stays as it is). **Test connection** runs
+  the server's checks with the settings on screen; after a save the page
+  says the settings apply when rvav's processes restart. The EfficientIP
+  reconcile report stays below.
 
 Dialogs opened from a page's state give focus back to the button that
 opened them on close (`components/ui/dialog.tsx`); Radix only does that
