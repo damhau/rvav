@@ -24,7 +24,19 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp", "teams"}
+var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp", "teams", "slack"}
+
+// storedSlack opens Slack's sealed secrets, both kept as one.
+func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
+	var sec config.SlackSecrets
+	if row == nil || row.SecretCiphertext == nil {
+		return sec
+	}
+	if plain, err := s.Secrets.Open(IntegrationSecretName("slack"), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext); err == nil {
+		_ = json.Unmarshal(plain, &sec)
+	}
+	return sec
+}
 
 // address is where an integration goes: its URL, or the mail server.
 func address(kind string, settings map[string]any) string {
@@ -83,6 +95,12 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 		settings := s.pendingSettings(kind, row)
 		it := api.Integration{Kind: api.IntegrationKind(kind), Settings: settings, Locked: nonNilStrings(config.Locked(kind)),
 			Configured: address(kind, settings) != "" || config.Fake(kind), SecretSet: s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil}
+		if kind == "slack" {
+			sec := s.storedSlack(row)
+			it.SecretSet = s.Config.Slack.BotToken != "" || sec.BotToken != ""
+			it.SigningSecretSet = new(s.Config.Slack.SigningSecret != "" || sec.SigningSecret != "")
+			it.Configured = it.SecretSet
+		}
 		if row != nil {
 			it.RestartNeeded = row.Revision > s.SettingsRevision
 			it.UpdatedAt = &row.UpdatedAt
@@ -138,8 +156,23 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		return api.Integration{}, err
 	}
 	var sealed *store.Sealed
-	if w.Secret != nil && *w.Secret != "" {
-		keyID, nonce, ct, err := s.Secrets.Seal(IntegrationSecretName(kind), []byte(*w.Secret))
+	given := func(v *string) bool { return v != nil && *v != "" }
+	if given(w.Secret) || kind == "slack" && given(w.SigningSecret) {
+		var plain []byte
+		if kind == "slack" {
+			// The one given replaces its half; the other is kept.
+			sec := s.storedSlack(row)
+			if given(w.Secret) {
+				sec.BotToken = *w.Secret
+			}
+			if given(w.SigningSecret) {
+				sec.SigningSecret = *w.SigningSecret
+			}
+			plain, _ = json.Marshal(sec)
+		} else {
+			plain = []byte(*w.Secret)
+		}
+		keyID, nonce, ct, err := s.Secrets.Seal(IntegrationSecretName(kind), plain)
 		if errors.Is(err, secrets.ErrNoKey) {
 			return api.Integration{}, &ConflictError{Msg: "RVAV_SECRETS_KEY is not set, so rvav can't store the password or token."}
 		} else if err != nil {
@@ -200,7 +233,18 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		for k, v := range w.Settings {
 			settings[k] = v
 		}
-		if given {
+		switch {
+		case kind == "slack":
+			sec := s.storedSlack(row)
+			if given {
+				sec.BotToken = *w.Secret
+			}
+			if w.SigningSecret != nil && *w.SigningSecret != "" {
+				sec.SigningSecret = *w.SigningSecret
+			}
+			b, _ := json.Marshal(sec)
+			secret = string(b)
+		case given:
 			secret = *w.Secret
 		}
 	}
@@ -230,6 +274,16 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		}
 		check("Connect and sign in", (&notify.Email{Config: cfg.SMTP}).Test(ctx),
 			fmt.Sprintf("%s:%d accepted the connection", cfg.SMTP.Host, cfg.SMTP.Port))
+	case "slack":
+		if cfg.Slack.BotToken == "" {
+			check("Bot token", errors.New("no bot token is set"), "")
+			break
+		}
+		team, err := (&notify.Slack{Config: cfg.Slack}).Test(ctx)
+		check("Sign in as the bot", err, "Slack accepted the bot token for "+team)
+		if cfg.Slack.SigningSecret == "" {
+			check("Signing secret", errors.New("no signing secret is set: Approve and Reject can't be checked"), "")
+		}
 	case "teams":
 		if cfg.Teams.AppID == "" || cfg.Teams.TenantID == "" {
 			check("Bot app", errors.New("the app ID and tenant ID are needed"), "")

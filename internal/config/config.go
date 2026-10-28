@@ -25,6 +25,7 @@ type Config struct {
 	// Notification channels (ADR-0023).
 	SMTP  SMTPConfig
 	Teams TeamsConfig
+	Slack SlackConfig
 
 	// PublicURL is where people open rvav: links in notifications start
 	// with it (RVAV_PUBLIC_URL).
@@ -124,6 +125,15 @@ type TeamsConfig struct {
 	LoginURL, GraphURL, OpenIDURL string
 }
 
+// SlackConfig sends notifications through a Slack app; no bot token, no
+// Slack.
+type SlackConfig struct {
+	BotToken      string
+	SigningSecret string
+	// APIURL is Slack's Web API (tests point it elsewhere).
+	APIURL string
+}
+
 type AWXConfig struct {
 	Fake         bool
 	URL          string
@@ -196,6 +206,11 @@ func Load() (Config, error) {
 			LoginURL:    strings.TrimRight(env("RVAV_TEAMS_LOGIN_URL", "https://login.microsoftonline.com"), "/"),
 			GraphURL:    strings.TrimRight(env("RVAV_TEAMS_GRAPH_URL", "https://graph.microsoft.com"), "/"),
 			OpenIDURL:   env("RVAV_TEAMS_OPENID_URL", "https://login.botframework.com/v1/.well-known/openidconfiguration"),
+		},
+		Slack: SlackConfig{
+			BotToken:      env("RVAV_SLACK_BOT_TOKEN", ""),
+			SigningSecret: env("RVAV_SLACK_SIGNING_SECRET", ""),
+			APIURL:        env("RVAV_SLACK_API_URL", "https://slack.com/api/"),
 		},
 		SMTP: SMTPConfig{
 			Host:     env("RVAV_SMTP_HOST", ""),

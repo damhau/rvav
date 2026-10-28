@@ -5,7 +5,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/slack-go/slack"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/core"
@@ -81,4 +84,94 @@ func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"statusCode": 200, "type": "application/vnd.microsoft.card.adaptive", "value": card})
 }
 
-func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+// SlackInteractions answers rvav's Slack app: Approve decides at once,
+// Reject asks for the comment in a dialog, which decides when sent
+// (ADR-0023).
+func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
+	if s.Slack == nil {
+		s.problem(w, r, http.StatusNotFound, "not_found", "Slack is not set up", "", nil)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		s.problem(w, r, http.StatusBadRequest, "bad_request", "Can't read the request", err.Error(), nil)
+		return
+	}
+	if err := notify.VerifySlack(r.Header, body, s.Slack.Config.SigningSecret); err != nil {
+		s.Log.Warn("a Slack call was refused", "err", err)
+		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Not a call from Slack", "", nil)
+		return
+	}
+	form, _ := url.ParseQuery(string(body))
+	var cb slack.InteractionCallback
+	if err := json.Unmarshal([]byte(form.Get("payload")), &cb); err != nil {
+		s.problem(w, r, http.StatusBadRequest, "bad_request", "Not a Slack interaction", err.Error(), nil)
+		return
+	}
+	ctx := r.Context()
+	why := func(err error) string {
+		if errors.Is(err, core.ErrCardNotYours) || errors.Is(err, core.ErrCardDecided) || errors.Is(err, core.ErrCardComment) {
+			return err.Error()
+		}
+		s.Log.Error("decide from Slack", "err", err)
+		return "rvav couldn't record it; try again in rvav"
+	}
+	switch cb.Type {
+	case slack.InteractionTypeBlockActions:
+		if len(cb.ActionCallback.BlockActions) == 0 {
+			break
+		}
+		a := cb.ActionCallback.BlockActions[0]
+		var data notify.CardData
+		_ = json.Unmarshal([]byte(a.Value), &data)
+		switch a.ActionID {
+		case notify.SlackApprove:
+			by, err := s.Core.DecideFromChannel(ctx, "slack", cb.User.ID, data.ApprovalID, true, "")
+			msg := &slack.WebhookMessage{ReplaceOriginal: true, Text: data.Title,
+				Blocks: &slack.Blocks{BlockSet: notify.DecidedBlocks(data, true, by)}}
+			if err != nil {
+				msg = &slack.WebhookMessage{ResponseType: slack.ResponseTypeEphemeral, Text: notify.ProblemText(data.Locale, why(err))}
+			}
+			if err := notify.Answer(ctx, cb.ResponseURL, msg); err != nil {
+				s.Log.Warn("answer Slack", "err", err)
+			}
+		case notify.SlackReject:
+			if _, err := s.Slack.API().OpenViewContext(ctx, cb.TriggerID, notify.RejectDialog(data, cb.Container.ChannelID,
+				cb.Container.MessageTs)); err != nil {
+				s.Log.Warn("open Slack's reject dialog", "err", err)
+			}
+		}
+	case slack.InteractionTypeViewSubmission:
+		if cb.View.CallbackID != notify.SlackDialog {
+			break
+		}
+		var meta struct {
+			notify.CardData
+			Channel string `json:"channel"`
+			TS      string `json:"ts"`
+		}
+		_ = json.Unmarshal([]byte(cb.View.PrivateMetadata), &meta)
+		comment := ""
+		if cb.View.State != nil {
+			comment = strings.TrimSpace(cb.View.State.Values["comment"]["comment"].Value)
+		}
+		if comment == "" {
+			writeJSON(w, http.StatusOK, slack.NewErrorsViewSubmissionResponse(map[string]string{
+				"comment": notify.ProblemText(meta.Locale, "comment")}))
+			return
+		}
+		by, err := s.Core.DecideFromChannel(ctx, "slack", cb.User.ID, meta.ApprovalID, false, comment)
+		if err != nil {
+			writeJSON(w, http.StatusOK, slack.NewErrorsViewSubmissionResponse(map[string]string{
+				"comment": notify.ProblemText(meta.Locale, why(err))}))
+			return
+		}
+		if meta.Channel != "" && meta.TS != "" {
+			if _, _, _, err := s.Slack.API().UpdateMessageContext(ctx, meta.Channel, meta.TS, slack.MsgOptionText(meta.Title, false),
+				slack.MsgOptionBlocks(notify.DecidedBlocks(meta.CardData, false, by)...)); err != nil {
+				s.Log.Warn("update the Slack message", "err", err)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}

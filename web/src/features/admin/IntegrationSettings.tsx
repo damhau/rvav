@@ -28,8 +28,9 @@ interface Setting {
   hint?: string;
 }
 
-// The settings of each integration, as the server's config.Fields.
-const fields: Record<Kind, { title: string; secret: Setting; settings: Setting[] }> = {
+// The settings of each integration, as the server's config.Fields; Slack
+// has a second secret, its signing secret.
+const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; settings: Setting[] }> = {
   vcenter: {
     title: "vCenter",
     secret: { name: "password", label: "Password", env: "RVAV_VCENTER_PASSWORD", type: "string" },
@@ -120,6 +121,7 @@ const fields: Record<Kind, { title: string; secret: Setting; settings: Setting[]
   slack: {
     title: "Slack",
     secret: { name: "bot_token", label: "Bot token", env: "RVAV_SLACK_BOT_TOKEN", type: "string" },
+    signing: { name: "signing_secret", label: "Signing secret", env: "RVAV_SLACK_SIGNING_SECRET", type: "string" },
     settings: [],
   },
 };
@@ -146,8 +148,10 @@ function Integration({ it }: { it: S["Integration"] }) {
     ),
   );
   const [secret, setSecret] = useState("");
+  const [signing, setSigning] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const secretLocked = it.locked.includes(def.secret.name);
+  const signingLocked = def.signing ? it.locked.includes(def.signing.name) : false;
   const body = (): S["IntegrationWrite"] => ({
     settings: Object.fromEntries(
       editable.map((f): [string, unknown] => {
@@ -167,6 +171,7 @@ function Integration({ it }: { it: S["Integration"] }) {
       }),
     ),
     ...(secret ? { secret } : {}),
+    ...(signing ? { signing_secret: signing } : {}),
   });
   const save = useMutation({
     mutationFn: () =>
@@ -174,6 +179,7 @@ function Integration({ it }: { it: S["Integration"] }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "integrations"] });
       setSecret("");
+      setSigning("");
       toast.success(`${def.title} settings saved`, { description: "They apply when rvav's processes restart." });
     },
     onError: (e) => {
@@ -270,6 +276,30 @@ function Integration({ it }: { it: S["Integration"] }) {
               onChange={(e) => setSecret(e.target.value)}
             />
           </Field>
+          {def.signing && (
+            <Field
+              label={def.signing.label}
+              htmlFor={`${it.kind}-signing`}
+              error={errors["/signing_secret"]}
+              hint={
+                signingLocked
+                  ? lockedHint(def.signing)
+                  : it.signing_secret_set
+                    ? "Set; type a new one to replace it"
+                    : "Not set: Approve and Reject can't be checked"
+              }
+            >
+              <Input
+                id={`${it.kind}-signing`}
+                type="password"
+                autoComplete="new-password"
+                disabled={signingLocked}
+                placeholder={it.signing_secret_set ? "••••••••" : undefined}
+                value={signing}
+                onChange={(e) => setSigning(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" variant="primary" disabled={save.isPending}>

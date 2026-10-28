@@ -47,6 +47,8 @@ type Server struct {
 	// Teams checks the calls of rvav's Teams bot; nil when Teams isn't set
 	// up (ADR-0023).
 	Teams *notify.TeamsVerifier
+	// Slack answers rvav's Slack app; nil when Slack isn't set up.
+	Slack *notify.Slack
 
 	secrets  sync.Map // version ID -> map[string]bool
 	consoles consoleTokens

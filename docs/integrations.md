@@ -286,3 +286,16 @@ Integrations, or `RVAV_SMTP_*`, `RVAV_TEAMS_*`, `RVAV_SLACK_*`).
 Teams' calls carry a Bot Framework token. rvav checks it against the keys
 published at `RVAV_TEAMS_OPENID_URL` (the Bot Framework's by default), and
 checks its audience (the app ID) and the service URL it was issued for.
+
+### Slack setup
+1. **Slack app.** Create a Slack app in the workspace with these bot
+   scopes:
+   - `users:read.email` (to find people by their email);
+   - `im:write` (to open direct messages);
+   - `chat:write`.
+2. **Interactivity.** Turn Interactivity on, with the request URL
+   `https://<rvav>/api/v1/integrations/slack/interactions`.
+3. **Install it** in the workspace.
+4. **rvav settings:** the bot token (`xoxb-…`) and the app's signing secret.
+   Slack's calls are refused when they aren't signed with the signing
+   secret, or are more than five minutes old.

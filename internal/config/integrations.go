@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/mail"
 	"os"
@@ -62,6 +63,17 @@ var Fields = map[string][]Field{
 		{"service_url", "RVAV_TEAMS_SERVICE_URL", "string", false},
 		{"app_password", "RVAV_TEAMS_APP_PASSWORD", "string", true},
 	},
+	// Slack's two secrets are sealed together, as SlackSecrets.
+	"slack": {
+		{"bot_token", "RVAV_SLACK_BOT_TOKEN", "string", true},
+		{"signing_secret", "RVAV_SLACK_SIGNING_SECRET", "string", true},
+	},
+}
+
+// SlackSecrets are Slack's bot token and signing secret, sealed as one.
+type SlackSecrets struct {
+	BotToken      string `json:"bot_token,omitempty"`
+	SigningSecret string `json:"signing_secret,omitempty"`
 }
 
 // Locked lists the settings of an integration an environment variable sets.
@@ -171,6 +183,15 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("tenant_id", &c.Teams.TenantID)
 		str("service_url", &c.Teams.ServiceURL)
 		secret("app_password", &c.Teams.AppPassword)
+	case "slack":
+		var sec SlackSecrets
+		_ = json.Unmarshal([]byte(s.Secret), &sec)
+		if sec.BotToken != "" && !locked["bot_token"] {
+			c.Slack.BotToken = sec.BotToken
+		}
+		if sec.SigningSecret != "" && !locked["signing_secret"] {
+			c.Slack.SigningSecret = sec.SigningSecret
+		}
 	}
 }
 
@@ -193,6 +214,8 @@ func (c Config) Settings(kind string) map[string]any {
 			"username": c.SMTP.Username}
 	case "teams":
 		return map[string]any{"app_id": c.Teams.AppID, "tenant_id": c.Teams.TenantID, "service_url": c.Teams.ServiceURL}
+	case "slack":
+		return map[string]any{}
 	}
 	return nil
 }
@@ -210,6 +233,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.SMTP.Password != ""
 	case "teams":
 		return c.Teams.AppPassword != ""
+	case "slack":
+		return c.Slack.BotToken != ""
 	}
 	return false
 }

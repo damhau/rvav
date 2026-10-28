@@ -305,6 +305,9 @@ func (a *App) RunAPI(ctx context.Context) error {
 	if a.Cfg.Teams.AppID != "" {
 		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL}
 	}
+	if a.Cfg.Slack.BotToken != "" {
+		srv.Slack = &notify.Slack{Config: a.Cfg.Slack, Store: a.Store}
+	}
 	httpSrv := &http.Server{Addr: a.Cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() {
@@ -369,6 +372,9 @@ func (a *App) senders() map[string]notify.Sender {
 	}
 	if a.Cfg.Teams.AppID != "" && a.Cfg.Teams.AppPassword != "" {
 		out["teams"] = &notify.Teams{Config: a.Cfg.Teams, Store: a.Store}
+	}
+	if a.Cfg.Slack.BotToken != "" {
+		out["slack"] = &notify.Slack{Config: a.Cfg.Slack, Store: a.Store}
 	}
 	return out
 }
