@@ -4521,7 +4521,7 @@ components:
         production: { type: boolean }
         order: { type: integer }
         snapshot_max_count: { type: integer, minimum: 0 }
-        snapshot_max_age_days: { type: [integer, "null"], minimum: 1 }
+        snapshot_max_age_days: { type: integer, minimum: 0, description: 0 keeps snapshots of any age. }
     PlacementRule:
       type: object
       required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags]

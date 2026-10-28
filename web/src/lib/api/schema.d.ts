@@ -3225,7 +3225,8 @@ export interface components {
             production?: boolean;
             order?: number;
             snapshot_max_count?: number;
-            snapshot_max_age_days?: number | null;
+            /** @description 0 keeps snapshots of any age. */
+            snapshot_max_age_days?: number;
         };
         PlacementRule: {
             id: string;

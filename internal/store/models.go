@@ -32,6 +32,8 @@ type Project struct {
 	Description  string   `db:"description"`
 	CostCenter   string   `db:"cost_center"`
 	Environments []string `db:"environments"`
+	// ArchivedAt: archived projects request nothing new (ADR-0020).
+	ArchivedAt *time.Time `db:"archived_at"`
 }
 
 type Membership struct {

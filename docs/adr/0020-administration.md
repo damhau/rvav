@@ -117,3 +117,7 @@ who, what, when and project, and exported as CSV.
   rolling restart.
 - Templates, sizes and naming move from blueprints to policies that can be
   shared; blueprints that define their own keep working.
+- The development seed fills what administrators manage (environments,
+  projects, members, group mappings, quotas, placement, network mappings,
+  policies) and keeps it current only until an administrator changes that
+  kind of thing: from the first audited change, it is theirs.

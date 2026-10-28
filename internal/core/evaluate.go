@@ -93,6 +93,11 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if !p.CanRequest(ev.Project.ID) {
 		return nil, fmt.Errorf("%w: you can view %s but not request in it", ErrForbidden, ev.Project.Name)
 	}
+	// An approver's edits to a request made before still count (ofRequest).
+	if ev.Project.ArchivedAt != nil && !ofRequest {
+		return nil, &ValidationError{Errors: []api.FieldError{
+			fieldErr("/project_id", "archived", ev.Project.Name+" is archived: it can't request anything new.")}}
+	}
 	env, err := s.Store.GetEnvironment(ctx, d.Environment)
 	switch {
 	case errors.Is(err, store.ErrNotFound):

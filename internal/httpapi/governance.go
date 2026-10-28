@@ -41,31 +41,48 @@ func (s *Server) UpdateDay2Policy(w http.ResponseWriter, r *http.Request, id api
 }
 
 func (s *Server) ListAdminEnvironments(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.AdminEnvironments(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.AdminEnvironmentList{Items: items}, err)
 }
 
 func (s *Server) CreateEnvironment(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var e api.AdminEnvironment
+	if !s.decode(w, r, &e) {
+		return
+	}
+	out, err := s.Core.CreateEnvironment(r.Context(), principal(r), e)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteEnvironment(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteEnvironment(r.Context(), principal(r), key))
 }
 
 func (s *Server) UpdateEnvironment(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	var u api.AdminEnvironmentUpdate
+	if !s.decode(w, r, &u) {
+		return
+	}
+	out, err := s.Core.UpdateEnvironment(r.Context(), principal(r), key, u)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListGroupMappings(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.GroupMappings(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.GroupMappingList{Items: items}, err)
 }
 
 func (s *Server) CreateGroupMapping(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var m api.GroupMappingWrite
+	if !s.decode(w, r, &m) {
+		return
+	}
+	out, err := s.Core.CreateGroupMapping(r.Context(), principal(r), m)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteGroupMapping(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteGroupMapping(r.Context(), principal(r), id))
 }
 
 func (s *Server) GetIntegrations(w http.ResponseWriter, r *http.Request) {
@@ -149,19 +166,31 @@ func (s *Server) ExplainPolicies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListAdminProjects(w http.ResponseWriter, r *http.Request, params api.ListAdminProjectsParams) {
-	s.notBuilt(w, r)
+	items, err := s.Core.AdminProjects(r.Context(), principal(r), deref(params.Q), params.Archived != nil && *params.Archived)
+	s.reply(w, r, http.StatusOK, api.AdminProjectList{Items: items}, err)
 }
 
 func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var c api.AdminProjectCreate
+	if !s.decode(w, r, &c) {
+		return
+	}
+	out, err := s.Core.CreateProject(r.Context(), principal(r), c)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) GetAdminProject(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
-	s.notBuilt(w, r)
+	out, err := s.Core.AdminProject(r.Context(), principal(r), projectId)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
-	s.notBuilt(w, r)
+	var u api.AdminProjectUpdate
+	if !s.decode(w, r, &u) {
+		return
+	}
+	out, err := s.Core.UpdateProject(r.Context(), principal(r), projectId, u)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) GetProjectQuotas(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
@@ -209,15 +238,21 @@ func (s *Server) ListAuditEvents(w http.ResponseWriter, r *http.Request, params 
 }
 
 func (s *Server) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
-	s.notBuilt(w, r)
+	items, err := s.Core.ProjectMembers(r.Context(), principal(r), projectId)
+	s.reply(w, r, http.StatusOK, api.ProjectMemberList{Items: items}, err)
 }
 
 func (s *Server) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath, userId api.UserIdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.RemoveProjectMember(r.Context(), principal(r), projectId, userId))
 }
 
 func (s *Server) SetProjectMember(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath, userId api.UserIdPath) {
-	s.notBuilt(w, r)
+	var m api.ProjectMemberWrite
+	if !s.decode(w, r, &m) {
+		return
+	}
+	out, err := s.Core.SetProjectMember(r.Context(), principal(r), projectId, userId, string(m.Role))
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListApiTokens(w http.ResponseWriter, r *http.Request, params api.ListApiTokensParams) {
@@ -233,5 +268,6 @@ func (s *Server) RevokeApiToken(w http.ResponseWriter, r *http.Request, id api.I
 }
 
 func (s *Server) SearchUsers(w http.ResponseWriter, r *http.Request, params api.SearchUsersParams) {
-	s.notBuilt(w, r)
+	items, err := s.Core.SearchUsers(r.Context(), deref(params.Q), limitOf(params.Limit))
+	s.reply(w, r, http.StatusOK, api.UserList{Items: items}, err)
 }

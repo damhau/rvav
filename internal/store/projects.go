@@ -17,7 +17,7 @@ func (s *Store) GetEnvironment(ctx context.Context, key string) (Environment, er
 	return e, notFound(err)
 }
 
-const projectCols = `id, code, name, description, cost_center, environments`
+const projectCols = `id, code, name, description, cost_center, environments, archived_at`
 
 // ListProjects returns projects ordered by name. A nil only list means all projects.
 func (s *Store) ListProjects(ctx context.Context, only []string, limit int, after *Cursor) (Page[Project], error) {

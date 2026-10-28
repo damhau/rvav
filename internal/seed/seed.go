@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -114,9 +117,36 @@ func placements(code string) []store.PlacementRule {
 }
 
 // Run loads the seed data in one transaction.
+// adminKinds are the tables administrators manage (ADR-0020), with the
+// prefix of the audit actions that change them.
+var adminKinds = map[string]string{"environments": "environment.", "projects": "project.", "quotas": "policy.quota.",
+	"placement_rules": "placement.", "project_members": "member.", "group_mappings": "group_mapping.",
+	"network_subnets": "network.", "lease_policies": "policy.lease.", "approval_policies": "policy.approval.",
+	"day2_policies": "policy.day2."}
+
+var insertInto = regexp.MustCompile(`^\s*insert into (\w+)`)
+
 func Run(ctx context.Context, s *store.Store) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
+		// What administrators manage is theirs once they changed it: the
+		// seed fills such a table, and keeps it current, only until then.
+		rows, _ := tx.Query(ctx, `select distinct action from audit_events`)
+		actions, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		owned := func(sql string) bool {
+			m := insertInto.FindStringSubmatch(sql)
+			prefix, ok := "", false
+			if m != nil {
+				prefix, ok = adminKinds[m[1]]
+			}
+			return ok && slices.ContainsFunc(actions, func(a string) bool { return strings.HasPrefix(a, prefix) })
+		}
 		exec := func(sql string, args ...any) error {
+			if owned(sql) {
+				return nil
+			}
 			if _, err := tx.Exec(ctx, sql, args...); err != nil {
 				return fmt.Errorf("%w\n%s", err, sql)
 			}
@@ -180,7 +210,8 @@ func Run(ctx context.Context, s *store.Store) error {
 				id := ProjectID(g.project)
 				project = &id
 			}
-			if err := exec(`insert into group_mappings (oidc_group, project_id, role) values ($1,$2,$3) on conflict do nothing`,
+			if err := exec(`insert into group_mappings (id, oidc_group, project_id, role)
+				values ('gmp_' || substr(md5($1::text || coalesce($2::text, '') || $3::text), 1, 20), $1, $2, $3) on conflict do nothing`,
 				g.group, project, g.role); err != nil {
 				return err
 			}
