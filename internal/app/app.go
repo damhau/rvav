@@ -29,6 +29,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
@@ -104,6 +105,10 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, err
 	}
 	cfg = a.Cfg
+	// Notifications are queued on the channels set up (ADR-0023).
+	for ch := range a.senders() {
+		a.Events.Channels = append(a.Events.Channels, ch)
+	}
 
 	if cfg.IPAM.Fake {
 		fake, err := NewFakeEfficientIP(ctx, st)
@@ -344,11 +349,27 @@ func (a *App) RunWorker(ctx context.Context) error {
 		a.Log.Warn("housekeeping schedule", "err", err)
 	}
 	a.Log.Info("worker started", "task_queue", a.Cfg.Temporal.TaskQueue)
-	// Events to subscriptions (ADR-0021): every worker replica takes part.
+	// Events to subscriptions (ADR-0021) and notifications to their
+	// channels (ADR-0023): every worker replica takes part.
 	go a.Dispatcher().Run(ctx)
+	go a.Notifier().Run(ctx)
 	<-ctx.Done()
 	w.Stop()
 	return nil
+}
+
+// senders are the notification channels set up, by name.
+func (a *App) senders() map[string]notify.Sender {
+	out := map[string]notify.Sender{}
+	if a.Cfg.SMTP.Host != "" {
+		out["email"] = &notify.Email{Config: a.Cfg.SMTP}
+	}
+	return out
+}
+
+// Notifier sends notifications on their channels.
+func (a *App) Notifier() *notify.Notifier {
+	return &notify.Notifier{Store: a.Store, Senders: a.senders(), Log: a.Log, PublicURL: a.Cfg.PublicURL}
 }
 
 // Dispatcher delivers integration events to subscriptions.

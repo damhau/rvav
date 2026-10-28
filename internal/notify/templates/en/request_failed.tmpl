@@ -1,0 +1,7 @@
+{{define "subject"}}Failed: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}{{.Subject.RequestNumber}} failed.{{if .Body}}
+What went wrong: {{.Body}}{{end}}
+Open it to see the step that failed, then try it again or roll it back.{{end}}
+{{define "html_body"}}<p><strong>{{.Subject.RequestNumber}}</strong> failed.</p>{{if .Body}}
+<p style="margin:8px 0"><span style="color:#59636e">What went wrong:</span> {{.Body}}</p>{{end}}
+<p style="margin:8px 0">Open it to see the step that failed, then try it again or roll it back.</p>{{end}}

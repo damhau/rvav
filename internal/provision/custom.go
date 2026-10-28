@@ -363,7 +363,9 @@ func (c *Contract) RequestApproval(ctx context.Context, in RequestApprovalInput)
 		ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": title, "workflow": run.WorkflowID}})
 	recipients := c.A.approvers(ctx, stored, r.RequesterID)
 	for _, uid := range recipients {
-		c.A.Events.Notify(ctx, uid, "Approval needed: "+r.Title, in.Reason, "warning", "/approvals/"+id)
+		c.A.Events.Notify(ctx, store.NewNotification{UserID: uid, Kind: "approval_needed", Title: "Approval needed: " + r.Title,
+			Body: in.Reason, Level: "warning", Link: "/approvals/" + id, RequestID: &r.ID, ApprovalID: &id,
+			DedupeKey: "approval_needed:" + id})
 	}
 	c.A.Events.Approval(ctx, append(recipients, r.RequesterID), id, r.ID, "pending")
 	return RequestApprovalOutput{ApprovalID: id}, nil

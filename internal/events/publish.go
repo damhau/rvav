@@ -19,6 +19,9 @@ import (
 type Publisher struct {
 	Store  *store.Store
 	Logger *slog.Logger
+	// Channels are the notification channels set up besides the app
+	// (email, teams, slack): deliveries are queued only on those.
+	Channels []string
 
 	secrets sync.Map // version ID -> map[string]bool
 }
@@ -98,16 +101,30 @@ func (p *Publisher) Resource(ctx context.Context, projectID string, r store.Reso
 		map[string]any{"deployment_id": r.DeploymentID, "resource": res})
 }
 
-// Notify sends a notification to one user.
-func (p *Publisher) Notify(ctx context.Context, userID, title, body, level, link string) {
-	data := map[string]any{"id": time.Now().UTC().Format("20060102150405.000000"), "title": title, "level": level}
-	if body != "" {
-		data["body"] = body
+// Notify keeps a notification for one user, queues it on the channels
+// they chose among those set up (ADR-0023), and pushes it to the app. A
+// notification whose occasion was notified already (its dedupe key) does
+// nothing.
+func (p *Publisher) Notify(ctx context.Context, n store.NewNotification) {
+	if n.UserID == "" {
+		return
 	}
-	if link != "" {
-		data["link"] = link
+	kept, created, err := p.Store.InsertNotification(ctx, n, p.Channels)
+	if err != nil {
+		p.Logger.Warn("keep notification", "kind", n.Kind, "user", n.UserID, "err", err)
+		return
 	}
-	p.insert(ctx, "notification", nil, []string{"notifications", "user:" + userID}, data)
+	if !created {
+		return
+	}
+	data := map[string]any{"id": kept.ID, "kind": kept.Kind, "title": kept.Title, "level": kept.Level}
+	if kept.Body != "" {
+		data["body"] = kept.Body
+	}
+	if kept.Link != "" {
+		data["link"] = kept.Link
+	}
+	p.insert(ctx, "notification", nil, []string{"notifications", "user:" + n.UserID}, data)
 }
 
 // Approval tells each of the given users that an approval they may decide

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"os"
 	"strings"
 )
@@ -46,6 +47,14 @@ var Fields = map[string][]Field{
 		{"dns_view", "RVAV_EFFICIENTIP_DNS_VIEW", "string", false},
 		{"instance_id", "RVAV_INSTANCE_ID", "string", false},
 		{"insecure", "RVAV_EFFICIENTIP_INSECURE", "bool", false},
+	},
+	"smtp": {
+		{"host", "RVAV_SMTP_HOST", "string", false},
+		{"port", "RVAV_SMTP_PORT", "int", false},
+		{"tls", "RVAV_SMTP_TLS", "string", false},
+		{"from", "RVAV_SMTP_FROM", "string", false},
+		{"username", "RVAV_SMTP_USERNAME", "string", false},
+		{"password", "RVAV_SMTP_PASSWORD", "string", true},
 	},
 }
 
@@ -142,6 +151,15 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("dns_view", &c.IPAM.DNSView)
 		str("instance_id", &c.IPAM.Instance)
 		flag("insecure", &c.IPAM.Insecure)
+	case "smtp":
+		str("host", &c.SMTP.Host)
+		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
+			c.SMTP.Port = int(v)
+		}
+		str("tls", &c.SMTP.TLS)
+		str("from", &c.SMTP.From)
+		str("username", &c.SMTP.Username)
+		secret("password", &c.SMTP.Password)
 	}
 }
 
@@ -159,6 +177,9 @@ func (c Config) Settings(kind string) map[string]any {
 		return map[string]any{"url": c.IPAM.URL, "auth": c.IPAM.Auth, "username": c.IPAM.Username, "space": c.IPAM.Space,
 			"dns_server": c.IPAM.DNSServer, "dns_view": c.IPAM.DNSView, "instance_id": c.IPAM.Instance, "insecure": c.IPAM.Insecure,
 			"fake": c.IPAM.Fake}
+	case "smtp":
+		return map[string]any{"host": c.SMTP.Host, "port": c.SMTP.Port, "tls": c.SMTP.TLS, "from": c.SMTP.From,
+			"username": c.SMTP.Username}
 	}
 	return nil
 }
@@ -172,6 +193,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.AWX.Token != ""
 	case "efficientip":
 		return c.IPAM.Password != ""
+	case "smtp":
+		return c.SMTP.Password != ""
 	}
 	return false
 }
@@ -209,6 +232,16 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 	}
 	if u, ok := settings["url"].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		errs["url"] = "An http or https URL."
+	}
+	if kind == "smtp" {
+		if t, ok := settings["tls"].(string); ok && t != "starttls" && t != "tls" && t != "none" {
+			errs["tls"] = "starttls, tls or none."
+		}
+		if f, ok := settings["from"].(string); ok && f != "" {
+			if _, err := mail.ParseAddress(f); err != nil {
+				errs["from"] = "An address, for example rvav <rvav@corp.example>."
+			}
+		}
 	}
 	return errs
 }

@@ -1,0 +1,3 @@
+{{define "subject"}}Soumise : {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Votre demande {{.Subject.RequestNumber}} a été soumise. Vous serez informé quand elle sera décidée ou terminée.{{end}}
+{{define "html_body"}}<p>Votre demande <strong>{{.Subject.RequestNumber}}</strong> a été soumise. Vous serez informé quand elle sera décidée ou terminée.</p>{{end}}

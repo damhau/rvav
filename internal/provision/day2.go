@@ -227,7 +227,8 @@ func (a *Activities) RolledBack(ctx context.Context, requestID, errMsg string) e
 	}
 	a.publishAll(ctx, r.ProjectID, requestID)
 	if errMsg == "" {
-		a.Events.Notify(ctx, r.OwnerID, "Rolled back: "+r.Title, "", "info", "/requests/"+r.Number)
+		a.Events.Notify(ctx, store.NewNotification{UserID: r.OwnerID, Kind: "request_rolled_back", Title: "Rolled back: " + r.Title,
+			Level: "info", Link: "/requests/" + r.Number, RequestID: &r.ID, DedupeKey: runKey(ctx, r.ID, "request_rolled_back")})
 	}
 	return nil
 }

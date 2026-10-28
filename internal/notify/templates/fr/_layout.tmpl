@@ -1,0 +1,34 @@
+{{/* Le texte et le HTML autour de chaque type : pieds, faits, bouton. */}}
+{{define "button"}}Ouvrir dans rvav{{end}}
+{{define "facts_text"}}{{with .Subject}}{{if .RequestNumber}}
+Demande :      {{.RequestNumber}}, {{.RequestTitle}}{{end}}{{if .ItemName}}
+Élément :      {{.ItemName}}{{end}}{{if .DeploymentName}}
+Déploiement :  {{.DeploymentName}}{{end}}{{if .ProjectName}}
+Projet :       {{.ProjectName}} ({{.Environment}}){{end}}{{end}}{{end}}
+{{define "text_all"}}Bonjour {{.UserName}},
+
+{{template "text" .}}
+{{template "facts_text" .}}
+
+{{template "button" .}} : {{.Link}}
+
+--
+rvav. Vous recevez ce message selon vos préférences de notification : {{.Preferences}}
+{{end}}
+{{define "facts_html"}}{{with .Subject}}<table style="border-collapse:collapse;margin:16px 0;font-size:14px">{{if .RequestNumber}}
+<tr><td style="padding:2px 16px 2px 0;color:#59636e">Demande</td><td>{{.RequestNumber}}, {{.RequestTitle}}</td></tr>{{end}}{{if .ItemName}}
+<tr><td style="padding:2px 16px 2px 0;color:#59636e">Élément</td><td>{{.ItemName}}</td></tr>{{end}}{{if .DeploymentName}}
+<tr><td style="padding:2px 16px 2px 0;color:#59636e">Déploiement</td><td>{{.DeploymentName}}</td></tr>{{end}}{{if .ProjectName}}
+<tr><td style="padding:2px 16px 2px 0;color:#59636e">Projet</td><td>{{.ProjectName}} ({{.Environment}})</td></tr>{{end}}
+</table>{{end}}{{end}}
+{{define "html"}}<!doctype html>
+<html lang="{{.Locale}}"><head><meta charset="utf-8"><title>{{template "subject" .}}</title></head>
+<body style="margin:0;padding:24px;background:#f6f7f9;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2328;line-height:1.5">
+<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #d8dee4;border-radius:8px;padding:24px">
+<p style="margin:0 0 12px">Bonjour {{.UserName}},</p>
+{{template "html_body" .}}
+{{template "facts_html" .}}
+<p style="margin:20px 0 0"><a href="{{.Link}}" style="display:inline-block;background:#0969da;color:#ffffff;text-decoration:none;padding:8px 14px;border-radius:6px">{{template "button" .}}</a></p>
+</div>
+<p style="max-width:560px;margin:12px auto 0;font-size:12px;color:#59636e">rvav. Vous recevez ce message selon vos <a href="{{.Preferences}}" style="color:#59636e">préférences de notification</a>.</p>
+</body></html>{{end}}

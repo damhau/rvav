@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -23,7 +24,17 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip"}
+var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp"}
+
+// address is where an integration goes: its URL, or the mail server.
+func address(kind string, settings map[string]any) string {
+	key := "url"
+	if kind == "smtp" {
+		key = "host"
+	}
+	v, _ := settings[key].(string)
+	return v
+}
 
 // IntegrationSecretName is what an integration's sealed secret is bound to.
 func IntegrationSecretName(kind string) string { return "integration:" + kind }
@@ -61,9 +72,8 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 			row = &r
 		}
 		settings := s.pendingSettings(kind, row)
-		url, _ := settings["url"].(string)
 		it := api.Integration{Kind: api.IntegrationKind(kind), Settings: settings, Locked: nonNilStrings(config.Locked(kind)),
-			Configured: url != "" || config.Fake(kind), SecretSet: s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil}
+			Configured: address(kind, settings) != "" || config.Fake(kind), SecretSet: s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil}
 		if row != nil {
 			it.RestartNeeded = row.Revision > s.SettingsRevision
 			it.UpdatedAt = &row.UpdatedAt
@@ -204,6 +214,13 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		s.testAWX(ctx, cfg.AWX, check)
 	case "efficientip":
 		s.testEfficientIP(ctx, cfg.IPAM, check)
+	case "smtp":
+		if cfg.SMTP.Host == "" {
+			check("Mail server", errors.New("no SMTP host is set"), "")
+			break
+		}
+		check("Connect and sign in", (&notify.Email{Config: cfg.SMTP}).Test(ctx),
+			fmt.Sprintf("%s:%d accepted the connection", cfg.SMTP.Host, cfg.SMTP.Port))
 	}
 	out.Ok = !slices.ContainsFunc(out.Checks, func(c api.IntegrationCheck) bool { return !c.Ok })
 	s.audit(ctx, p, "settings.test."+kind, "integration", kind, nil, map[string]any{"ok": out.Ok})
@@ -227,9 +244,8 @@ func withoutFake(m map[string]any) map[string]any {
 // it.
 func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret bool, hasSecret bool) error {
 	moved := false
-	if u, ok := given["url"].(string); ok && u != "" {
-		cur, _ := current["url"].(string)
-		moved = u != cur
+	if u := address(kind, given); u != "" {
+		moved = u != address(kind, current)
 	}
 	if v, ok := given["insecure"].(bool); ok && v && current["insecure"] != true {
 		moved = true

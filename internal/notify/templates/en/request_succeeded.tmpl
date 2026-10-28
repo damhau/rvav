@@ -1,0 +1,3 @@
+{{define "subject"}}{{if eq (.Str "ready") "true"}}Ready{{else}}Done{{end}}: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}{{if eq (.Str "ready") "true"}}{{.Subject.RequestNumber}} is done: what you asked for is ready.{{else}}{{.Subject.RequestNumber}} is done.{{end}}{{end}}
+{{define "html_body"}}<p>{{if eq (.Str "ready") "true"}}<strong>{{.Subject.RequestNumber}}</strong> is done: what you asked for is ready.{{else}}<strong>{{.Subject.RequestNumber}}</strong> is done.{{end}}</p>{{end}}

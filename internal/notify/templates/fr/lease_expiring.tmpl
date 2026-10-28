@@ -1,0 +1,6 @@
+{{define "button"}}Prolonger le bail{{end}}
+{{define "subject"}}Le bail de {{.Subject.DeploymentName}} se termine {{if eq (.Str "days") "1"}}d'ici un jour{{else}}dans {{.Str "days"}} jours{{end}}{{end}}
+{{define "then"}}{{if eq (.Str "expiry_action") "power_off_then_delete"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq (.Str "expiry_action") "delete"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}{{end}}
+{{define "text"}}Le bail de {{.Subject.DeploymentName}} se termine le {{date .Subject.LeaseExpiresAt}}. {{template "then" .}}{{end}}
+{{define "html_body"}}<p>Le bail de <strong>{{.Subject.DeploymentName}}</strong> se termine le {{date .Subject.LeaseExpiresAt}}.</p>
+<p style="margin:8px 0">{{template "then" .}}</p>{{end}}

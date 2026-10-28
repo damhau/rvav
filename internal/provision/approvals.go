@@ -52,7 +52,9 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 		_ = a.Store.Audit(ctx, a.Store.Pool, store.AuditEvent{Action: "approval.opened", TargetType: "approval", TargetID: lv.ID,
 			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name}})
 		for _, id := range recipients {
-			a.Events.Notify(ctx, id, "Approval needed: "+r.Title, strings.Join(lv.Reasons, "; "), "warning", "/approvals/"+lv.ID)
+			a.Events.Notify(ctx, store.NewNotification{UserID: id, Kind: "approval_needed", Title: "Approval needed: " + r.Title,
+				Body: strings.Join(lv.Reasons, "; "), Level: "warning", Link: "/approvals/" + lv.ID, RequestID: &r.ID,
+				ApprovalID: &lv.ID, DedupeKey: "approval_needed:" + lv.ID})
 		}
 	}
 	a.Events.Approval(ctx, append(recipients, r.RequesterID), lv.ID, r.ID, lv.Status)
@@ -135,7 +137,9 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 	}
 	for _, id := range dedupe(notify) {
 		if id != r.RequesterID {
-			a.Events.Notify(ctx, id, "Approval escalated to you: "+r.Title, "No decision from "+lv.Name+" in time.", "warning", "/approvals/"+lv.ID)
+			a.Events.Notify(ctx, store.NewNotification{UserID: id, Kind: "approval_needed", Title: "Approval escalated to you: " + r.Title,
+				Body: "No decision from " + lv.Name + " in time.", Level: "warning", Link: "/approvals/" + lv.ID, RequestID: &r.ID,
+				ApprovalID: &lv.ID, Data: map[string]any{"why": "escalated"}, DedupeKey: "approval_needed:" + lv.ID + ":escalated"})
 		}
 	}
 	a.Events.Approval(ctx, append(a.approvers(ctx, lv, r.RequesterID), r.RequesterID), lv.ID, r.ID, st.Status)
@@ -253,11 +257,13 @@ func (a *Activities) FinishApprovals(ctx context.Context, requestID string) (boo
 	if err != nil {
 		return false, err
 	}
+	n := store.NewNotification{UserID: r.RequesterID, Kind: "request_approved", Title: "Approved: " + r.Title, Body: title,
+		Level: "success", Link: "/requests/" + r.Number, RequestID: &r.ID}
 	if !approved {
-		a.Events.Notify(ctx, r.RequesterID, "Rejected: "+r.Title, strings.Join(notes, " "), "error", "/requests/"+r.Number)
-	} else {
-		a.Events.Notify(ctx, r.RequesterID, "Approved: "+r.Title, title, "success", "/requests/"+r.Number)
+		n.Kind, n.Title, n.Body, n.Level = "request_rejected", "Rejected: "+r.Title, strings.Join(notes, " "), "error"
 	}
+	n.DedupeKey = runKey(ctx, r.ID, n.Kind)
+	a.Events.Notify(ctx, n)
 	a.publishAll(ctx, r.ProjectID, requestID)
 	return approved, nil
 }

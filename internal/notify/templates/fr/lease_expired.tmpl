@@ -1,0 +1,5 @@
+{{define "subject"}}Le bail de {{.Subject.DeploymentName}} est terminé{{end}}
+{{define "then"}}{{if .Str "grace_days"}}Ses VM sont arrêtées ; il sera supprimé dans {{.Str "grace_days"}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}{{end}}
+{{define "text"}}Le bail de {{.Subject.DeploymentName}} est terminé. {{template "then" .}}{{end}}
+{{define "html_body"}}<p>Le bail de <strong>{{.Subject.DeploymentName}}</strong> est terminé.</p>
+<p style="margin:8px 0">{{template "then" .}}</p>{{end}}

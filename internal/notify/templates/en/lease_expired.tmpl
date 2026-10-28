@@ -1,0 +1,5 @@
+{{define "subject"}}The lease of {{.Subject.DeploymentName}} ended{{end}}
+{{define "then"}}{{if .Str "grace_days"}}Its VMs are powered off; it is deleted in {{.Str "grace_days"}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}{{end}}
+{{define "text"}}The lease of {{.Subject.DeploymentName}} ended. {{template "then" .}}{{end}}
+{{define "html_body"}}<p>The lease of <strong>{{.Subject.DeploymentName}}</strong> ended.</p>
+<p style="margin:8px 0">{{template "then" .}}</p>{{end}}

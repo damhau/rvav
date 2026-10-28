@@ -1,0 +1,6 @@
+{{define "button"}}Extend the lease{{end}}
+{{define "subject"}}The lease of {{.Subject.DeploymentName}} ends {{if eq (.Str "days") "1"}}within a day{{else}}in {{.Str "days"}} days{{end}}{{end}}
+{{define "then"}}{{if eq (.Str "expiry_action") "power_off_then_delete"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq (.Str "expiry_action") "delete"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}{{end}}
+{{define "text"}}The lease of {{.Subject.DeploymentName}} ends on {{date .Subject.LeaseExpiresAt}}. {{template "then" .}}{{end}}
+{{define "html_body"}}<p>The lease of <strong>{{.Subject.DeploymentName}}</strong> ends on {{date .Subject.LeaseExpiresAt}}.</p>
+<p style="margin:8px 0">{{template "then" .}}</p>{{end}}

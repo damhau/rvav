@@ -185,7 +185,9 @@ func (a *Activities) setOwner(ctx context.Context, in OpInput) (string, error) {
 		return "", err
 	}
 	a.Events.Deployment(ctx, d.ID)
-	a.Events.Notify(ctx, owner.ID, "You now own "+d.Name, d.OwnerName+" handed it over to you.", "info", "/deployments/"+d.ID)
+	a.Events.Notify(ctx, store.NewNotification{UserID: owner.ID, Kind: "owner_changed", Title: "You now own " + d.Name,
+		Body: d.OwnerName + " handed it over to you.", Level: "info", Link: "/deployments/" + d.ID, DeploymentID: &d.ID,
+		Data: map[string]any{"from": d.OwnerName}, DedupeKey: runKey(ctx, in.RequestID, "owner_changed")})
 	return "From " + d.OwnerName + " to " + owner.Name, nil
 }
 
@@ -322,8 +324,10 @@ func (a *Activities) leaseExpired(ctx context.Context, in OpInput) (string, erro
 	}
 	a.Events.Deployment(ctx, d.ID)
 	if d.LeaseGraceDays != nil && d.ExpiryAction == "power_off_then_delete" {
-		a.Events.Notify(ctx, d.OwnerID, "The lease of "+d.Name+" ended", fmt.Sprintf(
-			"Its VMs are powered off; it is deleted in %d days unless you extend the lease.", *d.LeaseGraceDays), "warning", "/deployments/"+d.ID)
+		a.Events.Notify(ctx, store.NewNotification{UserID: d.OwnerID, Kind: "lease_expired", Title: "The lease of " + d.Name + " ended",
+			Body:  fmt.Sprintf("Its VMs are powered off; it is deleted in %d days unless you extend the lease.", *d.LeaseGraceDays),
+			Level: "warning", Link: "/deployments/" + d.ID, DeploymentID: &d.ID, Data: map[string]any{"grace_days": *d.LeaseGraceDays},
+			DedupeKey: "lease_expired:" + d.ID + ":" + d.LeaseExpiresAt.UTC().Format(time.RFC3339)})
 		return fmt.Sprintf("Deleted in %d days unless the lease is extended", *d.LeaseGraceDays), nil
 	}
 	return "", nil

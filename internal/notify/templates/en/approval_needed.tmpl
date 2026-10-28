@@ -1,0 +1,8 @@
+{{define "button"}}Decide in rvav{{end}}
+{{define "subject"}}{{if eq (.Str "why") "delegated"}}Approval delegated to you{{else if eq (.Str "why") "escalated"}}Approval escalated to you{{else}}Approval needed{{end}}: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}{{.Subject.RequestNumber}} waits for your decision{{if .Subject.ApprovalName}} ({{.Subject.ApprovalName}}){{end}}.{{if .Subject.ApprovalReasons}}
+Why it needs approval: {{join .Subject.ApprovalReasons "; "}}{{end}}{{if .Body}}
+{{.Body}}{{end}}{{end}}
+{{define "html_body"}}<p><strong>{{.Subject.RequestNumber}}</strong> waits for your decision{{if .Subject.ApprovalName}} ({{.Subject.ApprovalName}}){{end}}.</p>{{if .Subject.ApprovalReasons}}
+<p style="margin:8px 0">Why it needs approval:</p><ul style="margin:0;padding-left:20px">{{range .Subject.ApprovalReasons}}<li>{{.}}</li>{{end}}</ul>{{end}}{{if .Body}}
+<p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}{{end}}

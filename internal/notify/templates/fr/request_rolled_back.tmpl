@@ -1,0 +1,3 @@
+{{define "subject"}}Annulée : {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Ce que {{.Subject.RequestNumber}} avait créé a été supprimé.{{end}}
+{{define "html_body"}}<p>Ce que <strong>{{.Subject.RequestNumber}}</strong> avait créé a été supprimé.</p>{{end}}

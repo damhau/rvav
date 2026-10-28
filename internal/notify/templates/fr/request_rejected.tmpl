@@ -1,0 +1,5 @@
+{{define "subject"}}Refusée : {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Votre demande {{.Subject.RequestNumber}} a été refusée. Rien n'a été créé ni modifié.{{if .Body}}
+Commentaires : {{.Body}}{{end}}{{end}}
+{{define "html_body"}}<p>Votre demande <strong>{{.Subject.RequestNumber}}</strong> a été refusée. Rien n'a été créé ni modifié.</p>{{if .Body}}
+<p style="margin:8px 0"><span style="color:#59636e">Commentaires :</span> {{.Body}}</p>{{end}}{{end}}

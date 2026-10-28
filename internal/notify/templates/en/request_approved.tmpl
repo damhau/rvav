@@ -1,0 +1,5 @@
+{{define "subject"}}Approved: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Your request {{.Subject.RequestNumber}} was approved. It runs now, or when it was scheduled.{{if .Body}}
+{{.Body}}{{end}}{{end}}
+{{define "html_body"}}<p>Your request <strong>{{.Subject.RequestNumber}}</strong> was approved. It runs now, or when it was scheduled.</p>{{if .Body}}
+<p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}{{end}}

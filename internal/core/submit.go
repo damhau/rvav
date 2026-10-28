@@ -153,7 +153,15 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	}
 	// Approvers hear about it when the workflow opens their level.
 	s.publishRequest(ctx, req.ID)
-	return s.Store.GetRequest(ctx, req.ID)
+	stored, err := s.Store.GetRequest(ctx, req.ID)
+	if err == nil && s.Events != nil {
+		// The requester, and the owner when on their behalf (ADR-0023).
+		for _, uid := range []string{stored.RequesterID, stored.OwnerID} {
+			s.Events.Notify(ctx, store.NewNotification{UserID: uid, Kind: "request_submitted", Title: "Submitted: " + stored.Title,
+				Level: "info", Link: "/requests/" + stored.Number, RequestID: &stored.ID, DedupeKey: "request_submitted:" + stored.ID})
+		}
+	}
+	return stored, err
 }
 
 // vmUnit is the plan for one VM of a deployment.

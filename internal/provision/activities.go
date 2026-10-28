@@ -936,11 +936,18 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	if err != nil {
 		return err
 	}
-	switch in.Outcome {
-	case "succeeded":
-		a.Events.Notify(ctx, r.OwnerID, title+": "+r.Title, "", "success", "/requests/"+r.Number)
-	case "failed":
-		a.Events.Notify(ctx, r.OwnerID, "Failed: "+r.Title, in.Message, "error", "/requests/"+r.Number)
+	// The owner hears how it ended, and the requester when on their behalf.
+	n := store.NewNotification{Title: title + ": " + r.Title, Level: "success", Link: "/requests/" + r.Number,
+		RequestID: &r.ID, Kind: "request_succeeded", Data: map[string]any{"ready": title == "Ready"}}
+	if in.Outcome == "failed" {
+		n.Kind, n.Title, n.Body, n.Level = "request_failed", "Failed: "+r.Title, in.Message, "error"
+	}
+	if in.Outcome == "succeeded" || in.Outcome == "failed" {
+		n.DedupeKey = runKey(ctx, r.ID, n.Kind)
+		for _, uid := range dedupe([]string{r.OwnerID, r.RequesterID}) {
+			n.UserID = uid
+			a.Events.Notify(ctx, n)
+		}
 	}
 	a.publishAll(ctx, r.ProjectID, in.RequestID)
 	return nil

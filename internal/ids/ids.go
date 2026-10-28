@@ -28,6 +28,8 @@ const (
 	Subscription = "sub"
 	Run          = "run"
 	Workflow     = "wfl"
+	// Notifications (ADR-0023).
+	Notification = "ntf"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

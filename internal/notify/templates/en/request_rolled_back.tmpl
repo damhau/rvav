@@ -1,0 +1,3 @@
+{{define "subject"}}Rolled back: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}What {{.Subject.RequestNumber}} had built was deleted.{{end}}
+{{define "html_body"}}<p>What <strong>{{.Subject.RequestNumber}}</strong> had built was deleted.</p>{{end}}

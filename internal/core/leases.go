@@ -42,7 +42,9 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 			continue
 		case d.ExpiryAction == "notify_only":
 			if !slices.Contains(d.LeaseReminded, "ended") {
-				s.notify(ctx, d.OwnerID, "The lease of "+d.Name+" ended", "Its policy keeps it running; delete it when you no longer need it.", "warning", d.ID)
+				s.notify(ctx, store.NewNotification{UserID: d.OwnerID, Kind: "lease_expired", Title: "The lease of " + d.Name + " ended",
+					Body: "Its policy keeps it running; delete it when you no longer need it.", Level: "warning",
+					DedupeKey: leaseKey(d, "lease_expired")}, d.ID)
 				if err := s.Store.Tx(ctx, func(tx pgx.Tx) error {
 					if err := s.Store.SetLeaseReminded(ctx, tx, d.ID, *d.LeaseExpiresAt, append(d.LeaseReminded, "ended")); err != nil {
 						return err
@@ -143,7 +145,13 @@ func (s *Service) remind(ctx context.Context, d store.DeploymentRow, left time.D
 	case "delete":
 		then = "It is then deleted, unless you extend the lease."
 	}
-	s.notify(ctx, d.OwnerID, "The lease of "+d.Name+" ends "+when, then, "warning", d.ID)
+	days := 1
+	if tag == "7d" {
+		days = int(left.Hours()/24) + 1
+	}
+	s.notify(ctx, store.NewNotification{UserID: d.OwnerID, Kind: "lease_expiring", Title: "The lease of " + d.Name + " ends " + when,
+		Body: then, Level: "warning", Data: map[string]any{"days": days, "expiry_action": d.ExpiryAction},
+		DedupeKey: leaseKey(d, "lease_expiring:"+tag)}, d.ID)
 	reminded := append(slices.Clone(d.LeaseReminded), tag)
 	if tag == "1d" && !slices.Contains(reminded, "7d") {
 		reminded = append(reminded, "7d")
@@ -163,8 +171,9 @@ func leaseKey(d store.DeploymentRow, what string) string {
 	return d.ID + ":" + what + ":" + d.LeaseExpiresAt.UTC().Format(time.RFC3339)
 }
 
-func (s *Service) notify(ctx context.Context, userID, title, body, level, deploymentID string) {
+func (s *Service) notify(ctx context.Context, n store.NewNotification, deploymentID string) {
 	if s.Events != nil {
-		s.Events.Notify(ctx, userID, title, body, level, "/deployments/"+deploymentID)
+		n.Link, n.DeploymentID = "/deployments/"+deploymentID, &deploymentID
+		s.Events.Notify(ctx, n)
 	}
 }

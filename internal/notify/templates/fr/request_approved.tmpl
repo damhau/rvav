@@ -1,0 +1,5 @@
+{{define "subject"}}Approuvée : {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Votre demande {{.Subject.RequestNumber}} a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.{{if .Body}}
+{{.Body}}{{end}}{{end}}
+{{define "html_body"}}<p>Votre demande <strong>{{.Subject.RequestNumber}}</strong> a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.</p>{{if .Body}}
+<p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}{{end}}

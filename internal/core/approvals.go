@@ -499,7 +499,9 @@ func (s *Service) DelegateApproval(ctx context.Context, p *auth.Principal, id st
 	if err != nil {
 		return api.Approval{}, err
 	}
-	s.Events.Notify(ctx, to.ID, "Approval delegated to you: "+l.req.Title, p.User.Name+": "+comment, "warning", "/approvals/"+id)
+	s.Events.Notify(ctx, store.NewNotification{UserID: to.ID, Kind: "approval_needed", Title: "Approval delegated to you: " + l.req.Title,
+		Body: p.User.Name + ": " + comment, Level: "warning", Link: "/approvals/" + id, RequestID: &l.req.ID, ApprovalID: &id,
+		Data: map[string]any{"why": "delegated"}, DedupeKey: "approval_needed:" + id + ":delegated:" + to.ID})
 	l.delegates = append(l.delegates, store.ApprovalDelegate{UserID: to.ID})
 	s.publishApproval(ctx, l)
 	return s.GetApproval(ctx, p, id)

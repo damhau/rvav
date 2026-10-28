@@ -5,6 +5,7 @@
 #   Temporal UI    http://localhost:8233
 #   Keycloak       http://localhost:8081          (admin / admin, realm "rvav")
 #   vcsim          https://localhost:8989/sdk     (user / pass)
+#   Mailpit        http://localhost:8025          (the emails rvav sends)
 #
 # Image tags are pinned; check them against the registries when upgrading.
 # Host ports can be changed with RVAV_*_PORT variables, in the shell or in
@@ -44,6 +45,12 @@ x-rvav-env: &rvav-env
   RVAV_SECRETS_KEY: ${RVAV_SECRETS_KEY:-ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=}
   RVAV_REST_SOURCE_HOSTS: ${RVAV_REST_SOURCE_HOSTS:-}
   RVAV_WEBHOOK_HOSTS: ${RVAV_WEBHOOK_HOSTS:-}
+  # Notifications (ADR-0023): emails go to Mailpit; links open the web app.
+  RVAV_PUBLIC_URL: ${RVAV_PUBLIC_URL:-http://localhost:3000}
+  RVAV_SMTP_HOST: ${RVAV_SMTP_HOST-mailpit}
+  RVAV_SMTP_PORT: ${RVAV_SMTP_PORT:-1025}
+  RVAV_SMTP_TLS: ${RVAV_SMTP_TLS:-none}
+  RVAV_SMTP_FROM: ${RVAV_SMTP_FROM:-rvav <rvav@corp.example>}
 
 services:
   postgres:
@@ -103,6 +110,11 @@ services:
       interval: 3s
       start_period: 20s
       retries: 40
+
+  mailpit:
+    # Catches the emails rvav sends: SMTP on 1025, a web UI on 8025.
+    image: axllent/mailpit:v1.27.10
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_MAILPIT_PORT:-8025}:8025"]
 
   vcsim:
     image: vmware/vcsim:v0.52.0

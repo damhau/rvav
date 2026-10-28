@@ -1,0 +1,5 @@
+{{define "subject"}}Rejected: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Your request {{.Subject.RequestNumber}} was rejected. Nothing was built or changed.{{if .Body}}
+Comments: {{.Body}}{{end}}{{end}}
+{{define "html_body"}}<p>Your request <strong>{{.Subject.RequestNumber}}</strong> was rejected. Nothing was built or changed.</p>{{if .Body}}
+<p style="margin:8px 0"><span style="color:#59636e">Comments:</span> {{.Body}}</p>{{end}}{{end}}

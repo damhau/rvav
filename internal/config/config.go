@@ -22,6 +22,12 @@ type Config struct {
 	VCenter  VCenterConfig
 	IPAM     EfficientIPConfig
 	AWX      AWXConfig
+	// Notification channels (ADR-0023).
+	SMTP SMTPConfig
+
+	// PublicURL is where people open rvav: links in notifications start
+	// with it (RVAV_PUBLIC_URL).
+	PublicURL string
 
 	// SecretsKey encrypts stored secrets (32 bytes, base64); RESTSourceHosts
 	// are the hosts `rest` value sources may call (ADR-0019).
@@ -95,6 +101,16 @@ type EfficientIPConfig struct {
 	Instance string
 }
 
+// SMTPConfig sends notifications by email; no host, no email.
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	TLS      string // starttls (default), tls or none
+	From     string
+	Username string
+	Password string
+}
+
 type AWXConfig struct {
 	Fake         bool
 	URL          string
@@ -158,6 +174,14 @@ func Load() (Config, error) {
 		SecretsOldKeys:  list("RVAV_SECRETS_OLD_KEYS"),
 		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
 		WebhookHosts:    list("RVAV_WEBHOOK_HOSTS"),
+		PublicURL:       strings.TrimRight(env("RVAV_PUBLIC_URL", "http://localhost:5173"), "/"),
+		SMTP: SMTPConfig{
+			Host:     env("RVAV_SMTP_HOST", ""),
+			TLS:      env("RVAV_SMTP_TLS", "starttls"),
+			From:     env("RVAV_SMTP_FROM", "rvav <rvav@localhost>"),
+			Username: env("RVAV_SMTP_USERNAME", ""),
+			Password: env("RVAV_SMTP_PASSWORD", ""),
+		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
 			URL:           env("RVAV_AWX_URL", ""),
@@ -171,6 +195,9 @@ func Load() (Config, error) {
 
 	var err error
 	if c.AWX.InventorySourceID, err = integer("RVAV_AWX_INVENTORY_SOURCE_ID", 0); err != nil {
+		return c, err
+	}
+	if c.SMTP.Port, err = integer("RVAV_SMTP_PORT", 587); err != nil {
 		return c, err
 	}
 	if c.AWX.FakeTaskDelay, err = duration("RVAV_FAKE_AWX_TASK_DELAY", 1500*time.Millisecond); err != nil {

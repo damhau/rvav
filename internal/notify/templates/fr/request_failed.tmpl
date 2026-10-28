@@ -1,0 +1,7 @@
+{{define "subject"}}Échec : {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}{{.Subject.RequestNumber}} a échoué.{{if .Body}}
+Ce qui n'a pas marché : {{.Body}}{{end}}
+Ouvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait.{{end}}
+{{define "html_body"}}<p><strong>{{.Subject.RequestNumber}}</strong> a échoué.</p>{{if .Body}}
+<p style="margin:8px 0"><span style="color:#59636e">Ce qui n'a pas marché :</span> {{.Body}}</p>{{end}}
+<p style="margin:8px 0">Ouvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait.</p>{{end}}

@@ -1,0 +1,3 @@
+{{define "subject"}}{{.Subject.DeploymentName}} est maintenant à vous{{end}}
+{{define "text"}}{{.Str "from"}} vous a confié {{.Subject.DeploymentName}} : c'est vous qui décidez désormais de son bail et de ses changements.{{end}}
+{{define "html_body"}}<p>{{.Str "from"}} vous a confié <strong>{{.Subject.DeploymentName}}</strong> : c'est vous qui décidez désormais de son bail et de ses changements.</p>{{end}}

@@ -1,0 +1,3 @@
+{{define "subject"}}Submitted: {{.Subject.RequestTitle}} ({{.Subject.RequestNumber}}){{end}}
+{{define "text"}}Your request {{.Subject.RequestNumber}} was submitted. You will hear when it is decided or done.{{end}}
+{{define "html_body"}}<p>Your request <strong>{{.Subject.RequestNumber}}</strong> was submitted. You will hear when it is decided or done.</p>{{end}}
