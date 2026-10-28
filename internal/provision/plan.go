@@ -30,6 +30,59 @@ type Plan struct {
 	Day2 *Day2 `json:"day2,omitempty"`
 	// Workflow is set on requests of custom workflow items (ADR-0022).
 	Workflow *WorkflowCall `json:"workflow,omitempty"`
+	// Composite is set on requests of composite items (ADR-0022), instead
+	// of VMs, AWX or Workflow.
+	Composite []CompositeStep `json:"composite,omitempty"`
+}
+
+// CompositeStep is one step of a composite item's plan. Steps of the same
+// group run at the same time; groups run in order.
+type CompositeStep struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	Group int    `json:"group"`
+	// When skips the step when false; With binds the inputs of AWX and
+	// workflow steps, both CEL over inputs and steps.<key>, at run time.
+	When string         `json:"when,omitempty"`
+	With map[string]any `json:"with,omitempty"`
+	// A VM step, planned at submit: its VMs and post-configuration.
+	VMs        []VMUnit        `json:"vms,omitempty"`
+	Guest      blueprint.Guest `json:"guest,omitempty"`
+	PostConfig []Job           `json:"post_config,omitempty"`
+	AWX        *Job            `json:"awx,omitempty"`
+	Workflow   *WorkflowCall   `json:"workflow,omitempty"`
+	Undo       *CompositeUndo  `json:"undo,omitempty"`
+}
+
+// CompositeUndo undoes a step when a later one fails.
+type CompositeUndo struct {
+	AWX      *Job           `json:"awx,omitempty"`
+	Workflow *WorkflowCall  `json:"workflow,omitempty"`
+	With     map[string]any `json:"with,omitempty"`
+}
+
+// KeyStep prefixes a composite step's key.
+const KeyStep = "step:"
+
+// Key is the step's key in the timeline.
+func (c CompositeStep) StepKey() string { return KeyStep + c.Key }
+
+// VMKey is the key of one of its VM steps.
+func (c CompositeStep) VMKey(base string, vm VMUnit) string {
+	k := c.StepKey() + "/" + base
+	if len(c.VMs) > 1 {
+		k += "@" + vm.Name
+	}
+	return k
+}
+
+// Limit is the AWX host limit covering its VMs.
+func (c CompositeStep) Limit() string {
+	names := make([]string, len(c.VMs))
+	for i, vm := range c.VMs {
+		names[i] = vm.Name
+	}
+	return strings.Join(names, ",")
 }
 
 // Day2 is the plan of a day-2 request: operations on one resource, in order.
@@ -85,13 +138,15 @@ type Job struct {
 	Credentials []int `json:"credentials,omitempty"`
 }
 
-// StepDef is a top-level step created, pending, when the request is submitted.
+// StepDef is a step created, pending, when the request is submitted:
+// top-level, or under Parent (a composite step's own steps).
 type StepDef struct {
 	Key    string
 	Title  string
 	Detail string
 	System string
 	Status string
+	Parent string
 }
 
 // Step keys. VM steps get "@<vm name>" appended when a request builds
@@ -115,6 +170,13 @@ func (p Plan) VMKey(base string, vm VMUnit) string {
 		return base + "@" + vm.Name
 	}
 	return base
+}
+
+func vmTitle(vms []VMUnit, title string, vm VMUnit) string {
+	if len(vms) > 1 {
+		return title + " · " + vm.Name
+	}
+	return title
 }
 
 func (p Plan) vmTitle(title string, vm VMUnit) string {
@@ -147,6 +209,36 @@ func (p Plan) Steps(environment string) []StepDef {
 		return append(steps,
 			StepDef{Key: KeyJob + p.AWX.Key, Title: "AWX job · " + p.AWX.Template, System: "awx", Status: "pending"},
 			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
+	}
+	if len(p.Composite) > 0 {
+		for _, c := range p.Composite {
+			parent := c.StepKey()
+			switch {
+			case len(c.VMs) > 0:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
+				for _, vm := range c.VMs {
+					steps = append(steps,
+						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, "Reserve an IP address", vm), Detail: "Subnet " + vm.Subnet, System: "efficientip", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, "Clone from "+vm.Template, vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
+					)
+				}
+				if len(c.PostConfig) > 0 {
+					steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})
+					for _, j := range c.PostConfig {
+						steps = append(steps, StepDef{Key: parent + "/" + KeyJob + j.Key, Title: "AWX job · " + j.Template,
+							Detail: "limit=" + c.Limit(), System: "awx", Status: "pending", Parent: parent})
+					}
+				}
+			case c.AWX != nil:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "AWX job · " + c.AWX.Template, System: "awx", Status: "pending"})
+			case c.Workflow != nil:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Workflow.Type, System: "rvav", Status: "pending"})
+			}
+		}
+		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {
 		return append(steps,

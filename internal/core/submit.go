@@ -71,50 +71,42 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 
 		switch ev.Blueprint.Kind {
 		case blueprint.KindVM:
-			if err := s.Store.LockNamePrefix(ctx, tx, ev.NamePrefix); err != nil {
-				return err
-			}
-			taken, err := s.Store.InventoryVMNames(ctx, ev.NamePrefix)
+			deps, vms, err := s.reserveVMs(ctx, tx, ev, req.ID, owner)
 			if err != nil {
 				return err
 			}
-			ours, err := s.Store.DeploymentNames(ctx, ev.NamePrefix)
-			if err != nil {
-				return err
-			}
-			names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: ev.Subnet.DNSZone}
-			if ev.names != nil {
-				names.dns = ev.names.dns
-			}
-			order := optionOrder(ev.Version.UISchema, "post_config")
-			for i := 0; i < ev.Count; i++ {
-				seq, err := s.Store.NextName(ctx, tx, ev.CounterKey, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
-				if err != nil {
-					return err
-				}
-				if names.err != nil {
-					return names.err
-				}
-				name := ev.Naming.Name(ev.NamePrefix, seq)
-				dep := store.Deployment{
-					ID: ids.New(ids.Deployment), Name: name, Status: "provisioning", ProjectID: ev.Project.ID,
-					Environment: ev.Env.Key, ItemID: ev.Item.ID, VersionID: ev.Version.ID, OwnerID: owner,
-					CreatedByRequestID: &req.ID, LeaseExpiresAt: ev.Lease.ExpiresAt, ExpiryAction: orDefault(ev.Lease.ExpiryAction, "notify_only"),
-				}
-				if ev.Lease.ExpiresAt != nil {
-					dep.LeaseExtensionsMax = &ev.Lease.MaxExtensions
-				}
-				dep.Inputs, _ = json.Marshal(ev.Inputs)
-				deployments = append(deployments, dep)
-				plan.VMs = append(plan.VMs, vmUnit(ev, dep.ID, name))
-			}
-			if plan.PostConfig, err = postConfigJobs(ev, order); err != nil {
+			deployments, plan.VMs = append(deployments, deps...), vms
+			if plan.PostConfig, err = postConfigJobs(ev, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
 				return err
 			}
 			req.Title = ev.Item.Name + " · " + titleNames(plan.VMs)
 		case blueprint.KindAWX:
 			job, vars := awxLaunch(ev)
 			plan.AWX, plan.ExtraVars = &job, vars
+			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
+		case blueprint.KindComposite:
+			for _, part := range ev.Composite {
+				c := provision.CompositeStep{Key: part.step.Key, Title: part.title, Group: part.group, When: part.step.When,
+					Undo: part.undo}
+				switch {
+				case part.sub != nil:
+					// The composite's lease is its VMs'.
+					part.sub.Lease = ev.Lease
+					deps, vms, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner)
+					if err != nil {
+						return err
+					}
+					deployments, c.VMs, c.Guest = append(deployments, deps...), vms, part.sub.Blueprint.Guest
+					if c.PostConfig, err = postConfigJobs(part.sub, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
+						return err
+					}
+				case part.job != nil:
+					c.AWX, c.With = part.job, part.step.With
+				case part.call != nil:
+					c.Workflow, c.With = part.call, part.step.With
+				}
+				plan.Composite = append(plan.Composite, c)
+			}
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		case blueprint.KindWorkflow:
 			w := ev.Workflow
@@ -133,20 +125,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
 			return err
 		}
-		now := time.Now().UTC()
-		var steps []store.Step
-		for i, sd := range plan.Steps(ev.Env.Name) {
-			st := store.Step{ID: ids.New(ids.Step), RequestID: req.ID, Position: i, Key: sd.Key, Title: sd.Title,
-				Detail: sd.Detail, System: &sd.System, Status: sd.Status}
-			if sd.Status != "pending" {
-				st.StartedAt = &now
-			}
-			if sd.Status == "done" {
-				st.FinishedAt = &now
-			}
-			steps = append(steps, st)
-		}
-		if err := s.Store.InsertSteps(ctx, tx, steps); err != nil {
+		if err := s.Store.InsertSteps(ctx, tx, stepsOf(req.ID, plan.Steps(ev.Env.Name))); err != nil {
 			return err
 		}
 		if err := s.Store.InsertApprovals(ctx, tx, chainRows(req.ID, ev.Chain)); err != nil {
@@ -383,4 +362,51 @@ func awxLaunch(ev *Evaluation) (provision.Job, map[string]any) {
 		delete(vars, name)
 	}
 	return job, vars
+}
+
+// reserveVMs names a VM item's VMs for good, inside the submit transaction,
+// and makes their deployments.
+func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, requestID, owner string) ([]store.Deployment, []provision.VMUnit, error) {
+	if err := s.Store.LockNamePrefix(ctx, tx, ev.NamePrefix); err != nil {
+		return nil, nil, err
+	}
+	taken, err := s.Store.InventoryVMNames(ctx, ev.NamePrefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	ours, err := s.Store.DeploymentNames(ctx, ev.NamePrefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: ev.Subnet.DNSZone}
+	if ev.names != nil {
+		names.dns = ev.names.dns
+	}
+	var deps []store.Deployment
+	var vms []provision.VMUnit
+	for i := 0; i < ev.Count; i++ {
+		seq, err := s.Store.NextName(ctx, tx, ev.CounterKey, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
+		if err != nil {
+			return nil, nil, err
+		}
+		if names.err != nil {
+			return nil, nil, names.err
+		}
+		name := ev.Naming.Name(ev.NamePrefix, seq)
+		// Names from this prefix given in this request count as taken (a
+		// composite with two VM steps of one naming).
+		names.rvav[name] = true
+		dep := store.Deployment{
+			ID: ids.New(ids.Deployment), Name: name, Status: "provisioning", ProjectID: ev.Project.ID,
+			Environment: ev.Env.Key, ItemID: ev.Item.ID, VersionID: ev.Version.ID, OwnerID: owner,
+			CreatedByRequestID: &requestID, LeaseExpiresAt: ev.Lease.ExpiresAt, ExpiryAction: orDefault(ev.Lease.ExpiryAction, "notify_only"),
+		}
+		if ev.Lease.ExpiresAt != nil {
+			dep.LeaseExtensionsMax = &ev.Lease.MaxExtensions
+		}
+		dep.Inputs, _ = json.Marshal(ev.Inputs)
+		deps = append(deps, dep)
+		vms = append(vms, vmUnit(ev, dep.ID, name))
+	}
+	return deps, vms, nil
 }

@@ -139,9 +139,6 @@ func (s *Service) CreateCatalogItem(ctx context.Context, p *auth.Principal, c ap
 	if strings.TrimSpace(c.Summary) == "" {
 		errs = append(errs, fieldErr("/summary", "required", "Say in a line what the item gives."))
 	}
-	if c.Type == api.Composite {
-		errs = append(errs, fieldErr("/type", "not_available", "Composite items come with S10."))
-	}
 	if ok, err := s.Store.CategoryExists(ctx, c.Category); err != nil {
 		return api.AdminCatalogItem{}, err
 	} else if !ok {
@@ -560,7 +557,7 @@ func nextNumber(versions []store.VersionRow) string {
 
 // itemKinds is the blueprint kind each item type needs.
 var itemKinds = map[string]string{"vm_blueprint": blueprint.KindVM, "awx_job_template": blueprint.KindAWX, "awx_workflow": blueprint.KindAWX,
-	"workflow": blueprint.KindWorkflow}
+	"workflow": blueprint.KindWorkflow, "composite": blueprint.KindComposite}
 
 // builtinSources are the builtin value sources (docs: ValueSource in the spec).
 var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
@@ -690,6 +687,8 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 		if b.Workflow == "" && publish {
 			errs = append(errs, fieldErr(ptr+"/workflow", "required", "Name the registered custom workflow it starts."))
 		}
+	case blueprint.KindComposite:
+		errs = append(errs, checkComposite(b, ptr, publish)...)
 	case blueprint.KindAWX:
 		if b.AWX == nil || b.AWX.JobTemplate == "" {
 			if publish {
@@ -744,6 +743,8 @@ func starterDefinition(itemType, name string) api.CatalogVersionDefinition {
 			"guest": map[string]any{"os_family": "linux", "domain": ""}}
 	case "workflow":
 		d.Blueprint = map[string]any{"kind": blueprint.KindWorkflow, "workflow": ""}
+	case "composite":
+		d.Blueprint = map[string]any{"kind": blueprint.KindComposite, "rollback_on_failure": true, "steps": []any{}}
 	default:
 		d.Blueprint = map[string]any{"kind": blueprint.KindAWX, "awx": map[string]any{"title": name, "job_template": "",
 			"workflow": itemType == "awx_workflow"}}

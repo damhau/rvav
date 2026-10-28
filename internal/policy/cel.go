@@ -36,6 +36,10 @@ var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm
 // (key, name, production).
 var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
 
+// composite is for a composite item's bindings and step conditions
+// (ADR-0022): its inputs and the outputs of earlier steps.
+var composite = &set{names: []string{"inputs", "steps", "environment", "project"}, strings: map[string]bool{"environment": true}}
+
 // events is for subscription conditions (ADR-0021): the event's data.
 var events = &set{names: []string{"request", "item", "project", "environment", "production", "requester", "owner",
 	"deployment", "deployments", "resources", "inputs", "vm"}, strings: map[string]bool{"environment": true}}
@@ -132,6 +136,18 @@ func Bool(expr string, vars Vars) (bool, error) { return forms.boolean(expr, var
 
 // Day2Bool evaluates the condition of a day-2 policy.
 func Day2Bool(expr string, vars Vars) (bool, error) { return day2.boolean(expr, vars) }
+
+// CompositeEval evaluates a composite step's binding.
+func CompositeEval(expr string, vars Vars) (any, error) { return composite.eval(expr, vars) }
+
+// CompositeBool evaluates a composite step's condition.
+func CompositeBool(expr string, vars Vars) (bool, error) { return composite.boolean(expr, vars) }
+
+// CheckComposite compiles a composite binding or condition.
+func CheckComposite(expr string) error {
+	_, err := composite.program(expr)
+	return err
+}
 
 // EventBool evaluates a subscription's condition on an event's data.
 func EventBool(expr string, vars Vars) (bool, error) { return events.boolean(expr, vars) }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -10,7 +11,7 @@ import (
 )
 
 const stepCols = `id, request_id, parent_id, position, key, title, detail, system, status, started_at,
-	finished_at, error, external_kind, external_id, external_url, has_log`
+	finished_at, error, external_kind, external_id, external_url, has_log, outputs`
 
 // InsertSteps creates the pending top-level steps of a request.
 func (s *Store) InsertSteps(ctx context.Context, db DB, steps []Step) error {
@@ -209,4 +210,10 @@ func (s *Store) InsertStepBeforePending(ctx context.Context, db DB, requestID, k
 		returning `+stepCols, requestID, key, ids.New(ids.Step), title, detail, system)
 	st, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Step])
 	return st, notFound(err)
+}
+
+// SetStepOutputs keeps what a composite step gave.
+func (s *Store) SetStepOutputs(ctx context.Context, requestID, key string, outputs json.RawMessage) error {
+	_, err := s.Pool.Exec(ctx, `update request_steps set outputs = $3 where request_id = $1 and key = $2`, requestID, key, outputs)
+	return err
 }

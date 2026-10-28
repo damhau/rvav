@@ -70,6 +70,8 @@ type Info struct {
 	// per deployment: a retried request resumes after them (ADR-0013).
 	Done  []string         `json:"done,omitempty"`
 	Built map[string]Built `json:"built,omitempty"`
+	// Outputs are what composite steps already done gave, by step key.
+	Outputs map[string]map[string]any `json:"outputs,omitempty"`
 }
 
 // Built is what earlier steps made for one VM.
@@ -213,8 +215,19 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 		return info, err
 	}
 	for _, s := range steps {
-		if s.ParentID == nil && s.Status == "done" && s.Key != KeySubmit && s.Key != KeyPolicy {
+		// A composite step's own steps count too (step:<key>/…).
+		top := s.ParentID == nil || strings.HasPrefix(s.Key, KeyStep)
+		if top && s.Status == "done" && s.Key != KeySubmit && s.Key != KeyPolicy {
 			info.Done = append(info.Done, s.Key)
+		}
+		if len(s.Outputs) > 0 && strings.HasPrefix(s.Key, KeyStep) {
+			var out map[string]any
+			if json.Unmarshal(s.Outputs, &out) == nil {
+				if info.Outputs == nil {
+					info.Outputs = map[string]map[string]any{}
+				}
+				info.Outputs[s.Key] = out
+			}
 		}
 	}
 	if len(info.Done) > 0 {
@@ -524,7 +537,13 @@ func (a *Activities) poll() time.Duration {
 }
 
 func (a *Activities) RefreshInventory(ctx context.Context, requestID, projectID string) error {
-	return a.run(ctx, requestID, projectID, KeyInventory, func() (string, string, error) {
+	return a.RefreshInventoryStep(ctx, requestID, projectID, KeyInventory)
+}
+
+// RefreshInventoryStep refreshes the AWX inventory as the step key (a
+// composite step's own).
+func (a *Activities) RefreshInventoryStep(ctx context.Context, requestID, projectID, key string) error {
+	return a.run(ctx, requestID, projectID, key, func() (string, string, error) {
 		if a.AWXInventorySource == 0 && a.AWXInventoryRequired {
 			return "", "", permanent("AWX: RVAV_AWX_INVENTORY_SOURCE_ID is not set, so jobs can't run on rvav's VMs")
 		}
@@ -540,7 +559,7 @@ func (a *Activities) RefreshInventory(ctx context.Context, requestID, projectID 
 			return "", "", fmt.Errorf("AWX inventory update %d ended %s", id, j.Status)
 		}
 		kind, ext := "awx_inventory_update", fmt.Sprint(id)
-		_, _ = a.Store.UpdateStep(ctx, a.Store.Pool, requestID, KeyInventory, store.StepUpdate{ExternalKind: &kind, ExternalID: &ext, ExternalURL: &j.URL})
+		_, _ = a.Store.UpdateStep(ctx, a.Store.Pool, requestID, key, store.StepUpdate{ExternalKind: &kind, ExternalID: &ext, ExternalURL: &j.URL})
 		return "Refreshed AWX inventory", fmt.Sprintf("Inventory update %d", id), nil
 	})
 }

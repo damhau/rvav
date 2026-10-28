@@ -40,6 +40,8 @@ type Evaluation struct {
 	NamePrefix string
 	// Workflow is the custom workflow a workflow item starts.
 	Workflow *store.WorkflowRegistration
+	// Composite are a composite item's steps, evaluated.
+	Composite []compositePart
 	// CounterKey is the name counter VM names advance: the prefix, or the
 	// naming policy's own counter.
 	CounterKey string
@@ -145,7 +147,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		return nil, err
 	}
 	switch ev.Blueprint.Kind {
-	case blueprint.KindVM, blueprint.KindAWX:
+	case blueprint.KindVM, blueprint.KindAWX, blueprint.KindComposite:
 	case blueprint.KindWorkflow:
 		// A custom workflow (ADR-0022): registered, enabled and offered here.
 		reg, why, err := s.usableWorkflow(ctx, ev.Blueprint.Workflow, "catalog_item", ev.Project.ID)
@@ -192,7 +194,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		add("/count", "out_of_range", "Request between 1 and 20 at a time.")
 		ev.Count = 1
 	}
-	if (ev.Blueprint.Kind == blueprint.KindAWX || ev.Blueprint.Kind == blueprint.KindWorkflow) && ev.Count != 1 {
+	if ev.Blueprint.Kind != blueprint.KindVM && ev.Count != 1 {
 		add("/count", "out_of_range", "This item runs once per request.")
 		ev.Count = 1
 	}
@@ -212,6 +214,11 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 
 	if ev.Blueprint.Kind == blueprint.KindVM {
 		if err := s.evaluateVM(ctx, ev, strict); err != nil {
+			return nil, err
+		}
+	}
+	if ev.Blueprint.Kind == blueprint.KindComposite {
+		if err := s.evaluateComposite(ctx, p, ev, strict); err != nil {
 			return nil, err
 		}
 	}
@@ -637,6 +644,14 @@ func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) err
 			"storage_gb": ev.VM.DiskGB * ev.Count, "vm_count": ev.Count,
 		}
 	}
+	// A composite's VMs count together: each fitting alone isn't enough.
+	for _, part := range ev.Composite {
+		if part.sub != nil {
+			for k, v := range part.sub.QuotaAdd {
+				ev.QuotaAdd[k] += v
+			}
+		}
+	}
 	q, err := s.quotaCheck(ctx, ev.Project, ev.Env.Key, ev.Env.Name, "This request", ev.QuotaAdd)
 	if err != nil {
 		return err
@@ -661,7 +676,7 @@ func quotaLabel(res string) string {
 }
 
 func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *int) error {
-	if ev.Blueprint.Kind != blueprint.KindVM || ev.Env.Key == "" {
+	if (ev.Blueprint.Kind != blueprint.KindVM && !ev.compositeVMs()) || ev.Env.Key == "" {
 		return nil
 	}
 	pol, err := s.Store.LeasePolicy(ctx, ev.Project.ID, ev.Env.Key)

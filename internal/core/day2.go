@@ -351,20 +351,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
 			return err
 		}
-		now := time.Now().UTC()
-		var steps []store.Step
-		for i, sd := range plan.Steps(c.Environment) {
-			st := store.Step{ID: ids.New(ids.Step), RequestID: req.ID, Position: i, Key: sd.Key, Title: sd.Title,
-				Detail: sd.Detail, System: &sd.System, Status: sd.Status}
-			if sd.Status != "pending" {
-				st.StartedAt = &now
-			}
-			if sd.Status == "done" {
-				st.FinishedAt = &now
-			}
-			steps = append(steps, st)
-		}
-		if err := s.Store.InsertSteps(ctx, tx, steps); err != nil {
+		if err := s.Store.InsertSteps(ctx, tx, stepsOf(req.ID, plan.Steps(c.Environment))); err != nil {
 			return err
 		}
 		if err := s.Store.InsertApprovals(ctx, tx, chainRows(req.ID, dec.Chain)); err != nil {

@@ -214,6 +214,8 @@ type Step struct {
 	ExternalID   *string    `db:"external_id"`
 	ExternalURL  *string    `db:"external_url"`
 	HasLog       bool       `db:"has_log"`
+	// Outputs are what a composite step gave (ADR-0022).
+	Outputs json.RawMessage `db:"outputs"`
 }
 
 type LogLine struct {

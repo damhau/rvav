@@ -9,7 +9,36 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 | `vm_blueprint` | Authored in the app | Provisions one or more VMs natively, with optional AWX post-config steps |
 | `awx_job_template` | Imported from AWX | Launches a job template with inputs from the form |
 | `awx_workflow` | Imported from AWX | Launches a workflow job template |
-| `composite` | Authored in the app | Ordered or parallel steps combining native operations, AWX templates and other catalog items |
+| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates and custom workflows, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
+| `workflow` | Authored in the app | Starts a registered custom Temporal workflow with the form's inputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
+
+A composite's blueprint, in its Definition tab:
+
+```yaml
+kind: composite
+rollback_on_failure: true
+steps:
+  - key: vm
+    item: rhel9-server
+    with: {role: inputs.role, size: inputs.size, cluster: inputs.cluster,
+           datastore: inputs.datastore, network: inputs.network, post_config: ["linux-baseline"]}
+  - parallel:
+      - key: db_user
+        item: db-user
+        with: {database: inputs.database, role_name: inputs.role_name, privileges: '"read"', host: steps.vm.fqdn}
+        undo: {job_template: pg-drop-role, with: {role_name: inputs.role_name}}
+      - key: monitoring
+        awx: {job_template: monitoring-agent, title: Monitoring}
+        with: {target: steps.vm.fqdn}
+  - key: dba_notice
+    awx: {job_template: dba-notice}
+    when: inputs.database == "ledger"
+```
+
+`with` values that are strings are CEL (a literal string is quoted:
+`'"read"'`); a VM step's come from the form only, the others may use
+`steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
+job's `job_id`, a workflow's result.
 
 ### AWX import
 - A content source connects to AWX and filters templates by organisation, label or

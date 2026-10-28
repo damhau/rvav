@@ -120,9 +120,11 @@ steps:
         with: {fqdn: steps.vm.fqdn}
 ```
 
-- A step is **another item** (`item`: VM or AWX items, or other
-  composites, three levels deep at most), an **AWX template** (`awx`) or a
-  **custom workflow** (`workflow`). A step may have a `when` condition.
+- A step is **another item** (`item`: a VM, AWX or custom workflow item),
+  an **AWX template** (`awx`) or a **custom workflow** (`workflow`). A step
+  may have a `when` condition. Composites don't nest yet: one composite
+  can't be a step of another (step keys and bindings would need a
+  namespace each).
 - **`with`** binds a step's inputs with CEL over `inputs` and, except for
   VM steps, `steps.<key>` (the outputs of earlier steps: a VM's `name`,
   `fqdn`, `ip` and `moref`, or `vms` when there are several; an AWX job's
@@ -132,7 +134,8 @@ steps:
   approval policies see the whole. So their inputs come from the form
   only. The other steps' inputs are bound when they run.
 - **One timeline:** each step is a step of the request, with its own steps
-  under it.
+  under it. A step's outputs are kept on it, so a request retried from a
+  failed step binds later steps to what earlier ones gave.
 - **Failure:** with `rollback_on_failure`, what was built is undone in
   reverse order: VMs, addresses and records are deleted as today, AWX and
   workflow steps run their `undo` when they have one. Without it,

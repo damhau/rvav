@@ -297,6 +297,10 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return "", nil
 	}
 
+	if len(p.Composite) > 0 {
+		return runComposite(ctx, info)
+	}
+
 	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {
 		key := KeyWorkflow + p.Workflow.Key
 		if info.done(key) {
@@ -320,84 +324,111 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
-	type built struct {
-		vm    VMUnit
-		ip    string
-		moref string
+	vms, failed, err := buildVMs(ctx, info, p.VMs, p.Guest, p.VMKey)
+	if err != nil {
+		return failed, err
 	}
-	var vms []built
-	for _, vm := range p.VMs {
+	return postConfig(ctx, info, vms, p.PostConfig, KeyInventory, func(j Job) string { return KeyJob + j.Key }, p.Limit(), p.Context)
+}
+
+// builtVM is a VM a request built.
+type builtVM struct {
+	vm    VMUnit
+	ip    string
+	moref string
+}
+
+// buildVMs reserves an address, creates DNS records, clones, customises and
+// powers on each VM, under the step keys key gives, and returns what it built.
+func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Guest, key func(string, VMUnit) string) ([]builtVM, string, error) {
+	var a *Activities
+	var vms []builtVM
+	for _, vm := range list {
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
-		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = p.Guest.OSFamily, p.Guest.Domain, p.Guest.TimeZone
+		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = guest.OSFamily, guest.Domain, guest.TimeZone
 
 		// Steps done before a retry are skipped, with what they built. When
 		// that is gone (deleted since), it is built again, and so is what
 		// depends on it: DNS on the address, customization and power on the VM.
 		before := info.Built[vm.DeploymentID]
-		in.Key = p.VMKey(KeyIPAM, vm)
+		in.Key = key(KeyIPAM, vm)
 		newIP := !info.done(in.Key) || before.IP == ""
 		in.IP = before.IP
 		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
-				return in.Key, err
+				return nil, in.Key, err
 			}
 		}
-		newVM := !info.done(p.VMKey(KeyClone, vm)) || before.Moref == ""
-		in.Key = p.VMKey(KeyDNS, vm)
+		newVM := !info.done(key(KeyClone, vm)) || before.Moref == ""
+		in.Key = key(KeyDNS, vm)
 		if !info.done(in.Key) || newIP || newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
-				return in.Key, err
+				return nil, in.Key, err
 			}
 		}
-		in.Key = p.VMKey(KeyClone, vm)
+		in.Key = key(KeyClone, vm)
 		in.Moref = before.Moref
 		if newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
-				return in.Key, err
+				return nil, in.Key, err
 			}
 		}
 		for _, step := range []struct {
 			key string
 			fn  any
 		}{{KeyCustomize, a.Customize}, {KeyPowerOn, a.PowerOn}} {
-			in.Key = p.VMKey(step.key, vm)
+			in.Key = key(step.key, vm)
 			if info.done(in.Key) && !newVM {
 				continue
 			}
 			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {
-				return in.Key, err
+				return nil, in.Key, err
 			}
 		}
-		vms = append(vms, built{vm: vm, ip: in.IP, moref: in.Moref})
+		vms = append(vms, builtVM{vm: vm, ip: in.IP, moref: in.Moref})
 	}
+	return vms, "", nil
+}
 
-	if len(p.PostConfig) > 0 {
-		// Refreshed again on a retry, before the jobs left to run.
-		pending := slices.ContainsFunc(p.PostConfig, func(j Job) bool { return !info.done(KeyJob + j.Key) })
-		if !info.done(KeyInventory) || pending {
-			if err := workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil); err != nil {
-				return KeyInventory, err
-			}
+// postConfig refreshes the AWX inventory, then runs the post-configuration
+// jobs on the VMs built, under the step keys given.
+func postConfig(ctx workflow.Context, info Info, vms []builtVM, jobs []Job, inventoryKey string, jobKey func(Job) string,
+	limit string, context map[string]any) (string, error) {
+	var a *Activities
+	if len(jobs) == 0 {
+		return "", nil
+	}
+	// Refreshed again on a retry, before the jobs left to run.
+	pending := slices.ContainsFunc(jobs, func(j Job) bool { return !info.done(jobKey(j)) })
+	if !info.done(inventoryKey) || pending {
+		var err error
+		if inventoryKey == KeyInventory {
+			err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
+		} else {
+			err = workflow.ExecuteActivity(ctx, a.RefreshInventoryStep, info.RequestID, info.ProjectID, inventoryKey).Get(ctx, nil)
 		}
-		resources := make([]map[string]any, len(vms))
-		for i, b := range vms {
-			resources[i] = map[string]any{"name": b.vm.Name, "ip": b.ip, "fqdn": b.vm.FQDN, "moref": b.moref,
-				"deployment_id": b.vm.DeploymentID}
+		if err != nil {
+			return inventoryKey, err
 		}
-		rvav := map[string]any{"resources": resources}
-		for k, v := range p.Context {
-			rvav[k] = v
+	}
+	resources := make([]map[string]any, len(vms))
+	for i, b := range vms {
+		resources[i] = map[string]any{"name": b.vm.Name, "ip": b.ip, "fqdn": b.vm.FQDN, "moref": b.moref,
+			"deployment_id": b.vm.DeploymentID}
+	}
+	rvav := map[string]any{"resources": resources}
+	for k, v := range context {
+		rvav[k] = v
+	}
+	for _, job := range jobs {
+		key := jobKey(job)
+		if info.done(key) {
+			continue
 		}
-		for _, job := range p.PostConfig {
-			key := KeyJob + job.Key
-			if info.done(key) {
-				continue
-			}
-			in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job,
-				Limit: p.Limit(), ExtraVars: map[string]any{"rvav": rvav}}
-			if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
-				return key, err
-			}
+		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job,
+			Limit: limit, ExtraVars: map[string]any{"rvav": rvav}}
+		if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
+			return key, err
 		}
 	}
 	return "", nil

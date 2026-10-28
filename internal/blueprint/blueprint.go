@@ -16,6 +16,8 @@ const (
 	KindAWX = "awx"
 	// KindWorkflow runs a registered custom workflow (ADR-0022).
 	KindWorkflow = "workflow"
+	// KindComposite chains other items, AWX templates and custom workflows.
+	KindComposite = "composite"
 )
 
 type Blueprint struct {
@@ -35,6 +37,10 @@ type Blueprint struct {
 	// Workflow items: the key of the custom workflow they start, with the
 	// inputs.
 	Workflow string `json:"workflow,omitempty"`
+
+	// Composite items: their steps, in order; a step with Parallel is a
+	// group run at the same time.
+	Steps []CompositeStep `json:"steps,omitempty"`
 
 	// RollbackOnFailure deletes what was created when a step fails. When
 	// false, resources are kept so someone can look at the failure.
@@ -184,4 +190,29 @@ func (b Blueprint) OrderedPostConfig(chosen []string, order []string) []string {
 		}
 	}
 	return out
+}
+
+// CompositeStep is one step of a composite item (ADR-0022): another item,
+// an AWX template or a custom workflow; or, with Parallel, a group of them.
+type CompositeStep struct {
+	Key   string `json:"key,omitempty"`
+	Title string `json:"title,omitempty"`
+	// Item is another item's slug: a VM, AWX or custom workflow item.
+	Item     string       `json:"item,omitempty"`
+	AWX      *AWXTemplate `json:"awx,omitempty"`
+	Workflow string       `json:"workflow,omitempty"`
+	// With binds the step's inputs: strings are CEL over inputs and the
+	// outputs of earlier steps (steps.<key>), other values are as they are.
+	With map[string]any `json:"with,omitempty"`
+	// When, a CEL condition, skips the step when false.
+	When     string          `json:"when,omitempty"`
+	Undo     *CompositeUndo  `json:"undo,omitempty"`
+	Parallel []CompositeStep `json:"parallel,omitempty"`
+}
+
+// CompositeUndo undoes an AWX or workflow step when a later one fails.
+type CompositeUndo struct {
+	JobTemplate string         `json:"job_template,omitempty"`
+	Workflow    string         `json:"workflow,omitempty"`
+	With        map[string]any `json:"with,omitempty"`
 }
