@@ -66,6 +66,11 @@ switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --bu
 The API starts even while Keycloak is still booting; it answers `503`, and
 reports not ready, until it can reach it. `RVAV_STACK_AUTH=oidc pnpm e2e:stack` signs in as `lea` and
 `thomas` and checks that their Keycloak groups give them their project roles.
+Keycloak imports `keycloak/realm-rvav.json` only when its container is
+created: after the file changes, recreate it with
+`docker compose -f deploy/docker-compose.yml up -d --force-recreate keycloak`.
+Users then get new subjects, so rvav makes new user records for them (the
+member picker marks the signed-in person).
 
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
 as you edit and uses the same API on `:8080`.
