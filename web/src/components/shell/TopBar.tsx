@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Check, ChevronDown, KeyRound, LogOut, Menu as MenuIcon, Monitor, Moon, Search, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Kbd } from "@/components/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { signOut } from "@/lib/auth";
@@ -39,6 +40,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
       </button>
 
       <div className="ml-auto flex items-center gap-2">
+        <NotificationBell />
         <Menu>
           <MenuTrigger asChild>
             <Button variant="secondary" className="border-line">

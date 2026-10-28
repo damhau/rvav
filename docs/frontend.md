@@ -346,6 +346,27 @@ ServiceNow subscription with a failed run, the `webhook-signing` secret and
 the decommission workflow. It checks webhook hosts against
 `cmdb.corp.example`, `hooks.corp.example` and `servicenow.corp.example`.
 
+## Notifications
+
+The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
+`features/notifications/`.
+
+- **The bell in the top bar** shows the unread count, with the latest eight
+  notifications. Opening one marks it read and goes to what it is about;
+  **Mark all read** is there too.
+- **The live stream's `notification` event** still shows a toast, and now
+  also refreshes the centre's queries (`["me", "notifications"]`).
+- **`/notifications`** has two tabs:
+  - **Notifications:** everything, or unread only, with load more and
+    mark read.
+  - **Preferences:** a grid of kinds × channels. In the app is always on.
+    A channel that can't reach the person is disabled, with the reason
+    shown above the grid. The language of what is sent, and **Send me a
+    test** per channel.
+
+  Kinds keep the defaults until changed. Only the changed kinds are sent,
+  so the others follow later changes to the defaults.
+
 ## Performance budget
 
 - Initial JS under 200 kB gzipped for the app shell; routes and heavy widgets

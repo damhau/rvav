@@ -261,7 +261,7 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision,
-		Dispatcher: a.Dispatcher()}
+		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}

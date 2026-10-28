@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
+import { Route as NotificationsRouteImport } from "./routes/notifications"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: "/approvals",
   path: "/approvals",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: "/notifications",
+  path: "/notifications",
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -160,6 +166,7 @@ const DeploymentsDeploymentIdConsoleResourceIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
+  "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
@@ -186,6 +193,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
+  "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
   "/approvals": typeof ApprovalsRoute
+  "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
   "/admin/$section": typeof AdminSectionRoute
@@ -241,6 +250,7 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/approvals"
+    | "/notifications"
     | "/reports"
     | "/tokens"
     | "/admin/$section"
@@ -267,6 +277,7 @@ export interface FileRouteTypes {
   to:
     | "/"
     | "/approvals"
+    | "/notifications"
     | "/reports"
     | "/tokens"
     | "/admin/$section"
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | "__root__"
     | "/"
     | "/approvals"
+    | "/notifications"
     | "/reports"
     | "/tokens"
     | "/admin/$section"
@@ -320,6 +332,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApprovalsRoute: typeof ApprovalsRoute
+  NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
   TokensRoute: typeof TokensRoute
   AdminSectionRoute: typeof AdminSectionRoute
@@ -358,6 +371,13 @@ declare module "@tanstack/react-router" {
       path: "/approvals"
       fullPath: "/approvals"
       preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/notifications": {
+      id: "/notifications"
+      path: "/notifications"
+      fullPath: "/notifications"
+      preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/reports": {
@@ -520,6 +540,7 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApprovalsRoute: ApprovalsRoute,
+  NotificationsRoute: NotificationsRoute,
   ReportsRoute: ReportsRoute,
   TokensRoute: TokensRoute,
   AdminSectionRoute: AdminSectionRoute,

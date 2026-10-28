@@ -19,16 +19,43 @@ import (
 // ADR-0023): answered 501 until built.
 
 func (s *Server) ListNotifications(w http.ResponseWriter, r *http.Request, params api.ListNotificationsParams) {
-	s.notBuilt(w, r)
+	page, err := s.Core.Notifications(r.Context(), principal(r), params)
+	s.reply(w, r, http.StatusOK, page, err)
 }
 
-func (s *Server) MarkNotificationsRead(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) MarkNotificationsRead(w http.ResponseWriter, r *http.Request) {
+	var b api.NotificationsRead
+	if !s.decode(w, r, &b) {
+		return
+	}
+	n, err := s.Core.MarkNotificationsRead(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, n, err)
+}
 
-func (s *Server) GetNotificationPreferences(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) GetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	prefs, err := s.Core.NotificationPreferences(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, prefs, err)
+}
 
-func (s *Server) SetNotificationPreferences(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) SetNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	var b api.NotificationPreferencesWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	prefs, err := s.Core.SetNotificationPreferences(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, prefs, err)
+}
 
-func (s *Server) TestNotificationChannel(w http.ResponseWriter, r *http.Request) { s.notBuilt(w, r) }
+func (s *Server) TestNotificationChannel(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Channel api.NotificationChannel `json:"channel"`
+	}
+	if !s.decode(w, r, &b) {
+		return
+	}
+	check, err := s.Core.TestNotificationChannel(r.Context(), principal(r), b.Channel)
+	s.reply(w, r, http.StatusOK, check, err)
+}
 
 // TeamsMessages answers rvav's Teams bot: Approve and Reject on an
 // approval card decide it as the user it was sent to (ADR-0023).

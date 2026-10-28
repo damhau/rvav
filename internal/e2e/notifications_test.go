@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net"
 	"net/mail"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -284,4 +287,138 @@ func TestEmailNotifications(t *testing.T) {
 
 func newNotification(userID, kind, dedupe string) store.NewNotification {
 	return store.NewNotification{UserID: userID, Kind: kind, Title: "Test " + kind, DedupeKey: dedupe}
+}
+
+// stubSender fails for good, as a channel that doesn't know the user.
+type stubSender struct{ err error }
+
+func (s stubSender) Send(context.Context, notify.Message) (string, string, error) {
+	return "", "", s.err
+}
+
+// TestNotificationCentre: the app keeps each person's notifications, read
+// or not; preferences choose the channels per kind, say which can reach
+// them and why not, and send a test (S11.5, ADR-0023).
+func TestNotificationCentre(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		srv := startSMTP(t)
+		h.svc.Notifier = &notify.Notifier{Store: h.store, Log: h.svc.Log, PublicURL: "https://rvav.corp.example",
+			Senders: map[string]notify.Sender{
+				"email": &notify.Email{Config: config.SMTPConfig{Host: "127.0.0.1", Port: srv.addr.Port, TLS: "none", From: "rvav <rvav@corp.example>"}},
+				"teams": stubSender{notify.Permanent(errors.New("thomas.nguyen@corp.example is not in the tenant's directory"))},
+			}}
+		h.svc.Events.Channels = []string{"email", "teams"}
+
+		// The centre: newest first, unread counted, marked read one by one or all.
+		for i := range 3 {
+			n := newNotification("usr_tnguyen", "request_succeeded", "centre:"+strconv.Itoa(i))
+			n.Link = "/requests/REQ-" + strconv.Itoa(i)
+			h.svc.Events.Notify(ctx, n)
+		}
+		h.svc.Events.Notify(ctx, newNotification("usr_mkeller", "approval_needed", "centre:other"))
+		var page api.NotificationPage
+		h.json("GET", "/api/v1/me/notifications?limit=2", "tnguyen", nil, 200, &page)
+		if len(page.Items) != 2 || page.Unread != 3 || page.NextCursor == nil || *page.Items[0].Link != "/requests/REQ-2" {
+			t.Fatalf("Thomas's first page = %+v", page)
+		}
+		var rest api.NotificationPage
+		h.json("GET", "/api/v1/me/notifications?limit=2&cursor="+*page.NextCursor, "tnguyen", nil, 200, &rest)
+		if len(rest.Items) != 1 || rest.NextCursor != nil || *rest.Items[0].Link != "/requests/REQ-0" {
+			t.Fatalf("the next page = %+v", rest)
+		}
+		var count api.NotificationCount
+		h.json("POST", "/api/v1/me/notifications/read", "tnguyen", api.NotificationsRead{Ids: &[]string{page.Items[0].Id}}, 200, &count)
+		h.json("POST", "/api/v1/me/notifications/read", "tnguyen", api.NotificationsRead{Ids: &[]string{"ntf_someone_else"}}, 200, nil)
+		if count.Unread != 2 {
+			t.Fatalf("unread after one read = %d", count.Unread)
+		}
+		h.json("GET", "/api/v1/me/notifications?unread=true", "tnguyen", nil, 200, &page)
+		if len(page.Items) != 2 {
+			t.Fatalf("unread = %d", len(page.Items))
+		}
+		h.json("POST", "/api/v1/me/notifications/read", "tnguyen", api.NotificationsRead{}, 422, nil)
+		h.json("POST", "/api/v1/me/notifications/read", "tnguyen", api.NotificationsRead{All: new(true)}, 200, &count)
+		var marc api.NotificationPage
+		h.json("GET", "/api/v1/me/notifications", "mkeller", nil, 200, &marc)
+		if count.Unread != 0 || marc.Unread != 1 {
+			t.Fatalf("after all read: Thomas %d, Marc %d", count.Unread, marc.Unread)
+		}
+
+		// Preferences: the defaults, what can reach him, and why not.
+		var prefs api.NotificationPreferences
+		h.json("GET", "/api/v1/me/notification-preferences", "tnguyen", nil, 200, &prefs)
+		rule := func(p api.NotificationPreferences, kind api.NotificationKind) (string, bool) {
+			for _, r := range p.Rules {
+				if r.Kind == kind {
+					return fmt.Sprint(r.Channels), r.Default
+				}
+			}
+			return "", false
+		}
+		if ch, def := rule(prefs, api.KindApprovalNeeded); ch != "[email teams slack]" || !def || len(prefs.Rules) != 10 || prefs.Locale != "en" {
+			t.Fatalf("the defaults = %+v", prefs)
+		}
+		reach := map[api.NotificationChannel]string{}
+		for _, c := range prefs.Channels {
+			if c.Available {
+				reach[c.Channel] = "yes " + *c.Address
+			} else {
+				reach[c.Channel] = "no " + *c.Reason
+			}
+		}
+		if reach[api.ChannelEmail] != "yes thomas.nguyen@corp.example" || !strings.HasPrefix(reach[api.ChannelSlack], "no Slack is not set up") ||
+			!strings.HasPrefix(reach[api.ChannelTeams], "yes") {
+			t.Fatalf("channels = %v", reach)
+		}
+		// Teams didn't know him: said once a delivery there failed for good.
+		h.svc.Events.Notify(ctx, newNotification("usr_tnguyen", "approval_needed", "centre:teams"))
+		if _, err := h.svc.Notifier.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+		h.json("GET", "/api/v1/me/notification-preferences", "tnguyen", nil, 200, &prefs)
+		for _, c := range prefs.Channels {
+			if c.Channel == api.ChannelTeams && (c.Available || !strings.Contains(*c.Reason, "not in the tenant's directory")) {
+				t.Fatalf("Teams after a failure = %+v", c)
+			}
+		}
+
+		// Choices are checked, then kept; a kind left out keeps the defaults.
+		var problem struct{ Errors []api.FieldError }
+		h.json("PUT", "/api/v1/me/notification-preferences", "tnguyen", api.NotificationPreferencesWrite{Locale: "fr",
+			Rules: []api.NotificationRule{{Kind: api.KindRequestFailed, Channels: []api.NotificationChannel{api.ChannelInApp}},
+				{Kind: "nope", Channels: []api.NotificationChannel{}}}}, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/rules/0/channels/0") || !slices.Contains(fields, "/rules/1/kind") {
+			t.Fatalf("bad preferences = %v", fields)
+		}
+		h.json("PUT", "/api/v1/me/notification-preferences", "tnguyen", api.NotificationPreferencesWrite{Locale: "fr",
+			Rules: []api.NotificationRule{{Kind: api.KindRequestFailed, Channels: []api.NotificationChannel{}},
+				{Kind: api.KindRequestSubmitted, Channels: []api.NotificationChannel{api.ChannelEmail, api.ChannelEmail}}}}, 200, &prefs)
+		failed, def := rule(prefs, api.KindRequestFailed)
+		submitted, _ := rule(prefs, api.KindRequestSubmitted)
+		ready, readyDefault := rule(prefs, api.KindRequestSucceeded)
+		if failed != "[]" || def || submitted != "[email]" || ready != "[email]" || !readyDefault || prefs.Locale != "fr" {
+			t.Fatalf("saved = %+v", prefs)
+		}
+
+		// A test, now, in his language.
+		var check api.IntegrationCheck
+		h.json("POST", "/api/v1/me/notification-preferences/test", "tnguyen", map[string]string{"channel": "email"}, 200, &check)
+		var got []sentMail
+		for _, m := range srv.to("thomas.nguyen@corp.example") {
+			if strings.Contains(m.Subject, "test") {
+				got = append(got, m)
+			}
+		}
+		if !check.Ok || check.Message != "Sent to thomas.nguyen@corp.example" || len(got) != 1 || got[0].Subject != "Un test de rvav" {
+			t.Fatalf("a test email = %+v, %d sent", check, len(got))
+		}
+		h.json("POST", "/api/v1/me/notification-preferences/test", "tnguyen", map[string]string{"channel": "slack"}, 200, &check)
+		if check.Ok || !strings.Contains(check.Message, "not set up") {
+			t.Fatalf("a test on Slack = %+v", check)
+		}
+	})
 }

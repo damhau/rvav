@@ -144,6 +144,8 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       break;
     }
     case "notification":
+      // The centre's list and count follow (ADR-0023).
+      void qc.invalidateQueries({ queryKey: ["me", "notifications"] });
       notify?.(event.data);
       break;
     case "approval.updated":

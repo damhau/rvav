@@ -326,3 +326,61 @@ func (s *Store) SentApprovalOnChannel(ctx context.Context, approvalID, userID, c
 		approvalID, userID, channel).Scan(&ok)
 	return ok, err
 }
+
+// ListNotifications is a page of a user's notifications, newest first.
+func (s *Store) ListNotifications(ctx context.Context, userID string, unread bool, after *Cursor, limit int) (Page[Notification], int, error) {
+	var afterTime time.Time
+	afterID := ""
+	if after != nil {
+		t, err := time.Parse(time.RFC3339Nano, after.Value)
+		if err != nil {
+			return Page[Notification]{}, 0, ErrBadCursor
+		}
+		afterTime, afterID = t, after.ID
+	}
+	rows, _ := s.Pool.Query(ctx, `select `+notificationCols+` from notifications
+		where user_id = $1 and (not $2 or read_at is null) and ($3 = '' or (created_at, id) < ($4, $3))
+		order by created_at desc, id desc limit $5`, userID, unread, afterID, afterTime, limit+1)
+	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[Notification])
+	if err != nil {
+		return Page[Notification]{}, 0, err
+	}
+	count, err := s.UnreadNotifications(ctx, userID)
+	if err != nil {
+		return Page[Notification]{}, 0, err
+	}
+	return paginate(list, limit, func(n Notification) Cursor {
+		return Cursor{Value: n.CreatedAt.Format(time.RFC3339Nano), ID: n.ID}
+	}), count, nil
+}
+
+// UnreadNotifications counts a user's unread notifications.
+func (s *Store) UnreadNotifications(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := s.Pool.QueryRow(ctx, `select count(*) from notifications where user_id = $1 and read_at is null`, userID).Scan(&n)
+	return n, err
+}
+
+// MarkNotificationsRead marks a user's notifications read: those listed, or
+// all of them. It returns how many are left unread.
+func (s *Store) MarkNotificationsRead(ctx context.Context, userID string, ids []string, all bool) (int, error) {
+	if _, err := s.Pool.Exec(ctx, `update notifications set read_at = now()
+		where user_id = $1 and read_at is null and ($2 or id = any($3))`, userID, all, ids); err != nil {
+		return 0, err
+	}
+	return s.UnreadNotifications(ctx, userID)
+}
+
+// ChannelProblem is why the latest delivery to a user on a channel failed
+// for good, when it did ("" otherwise): not in the directory, no address.
+func (s *Store) ChannelProblem(ctx context.Context, userID, channel string) (string, error) {
+	var status, problem string
+	err := s.Pool.QueryRow(ctx, `select d.status, coalesce(d.error, '') from notification_deliveries d
+		join notifications n on n.id = d.notification_id
+		where n.user_id = $1 and d.channel = $2 and d.status in ('sent', 'failed')
+		order by coalesce(d.sent_at, d.created_at) desc limit 1`, userID, channel).Scan(&status, &problem)
+	if errors.Is(err, pgx.ErrNoRows) || status == "sent" {
+		return "", nil
+	}
+	return problem, err
+}

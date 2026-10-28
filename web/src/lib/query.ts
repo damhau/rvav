@@ -196,6 +196,30 @@ export const adm = {
 };
 
 export const q = {
+  // The caller's notifications and their preferences (S11, ADR-0023).
+  notifications: (unread: boolean) =>
+    infiniteQueryOptions({
+      queryKey: ["me", "notifications", "list", unread],
+      queryFn: async ({ signal, pageParam }) =>
+        call(
+          api.GET("/me/notifications", {
+            params: { query: { unread: unread || undefined, cursor: pageParam, limit: 30 } },
+            signal,
+          }),
+        ),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (last) => last.next_cursor ?? undefined,
+    }),
+  latestNotifications: () =>
+    queryOptions({
+      queryKey: ["me", "notifications", "latest"],
+      queryFn: ({ signal }) => call(api.GET("/me/notifications", { params: { query: { limit: 8 } }, signal })),
+    }),
+  notificationPreferences: () =>
+    queryOptions({
+      queryKey: ["me", "notification-preferences"],
+      queryFn: ({ signal }) => call(api.GET("/me/notification-preferences", { signal })),
+    }),
   tokens: (all: boolean) =>
     queryOptions({
       queryKey: keys.tokens(all),

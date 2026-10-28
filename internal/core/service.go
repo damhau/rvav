@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -37,7 +38,10 @@ type Service struct {
 	IPAM      efficientip.Client
 	Workflows Workflows
 	Events    *events.Publisher
-	Log       *slog.Logger
+	// Notifier renders and sends notifications (ADR-0023): the channels set
+	// up, and test messages.
+	Notifier *notify.Notifier
+	Log      *slog.Logger
 	// VCenter gives WebMKS tickets for consoles (ADR-0012); it may connect
 	// on first use.
 	VCenter func(ctx context.Context) (ConsoleSource, error)
