@@ -4950,7 +4950,7 @@ components:
       required: [resource, scope, used, reserved, enforcement]
       properties:
         resource: { $ref: "#/components/schemas/QuotaResource" }
-        scope: { type: string, description: The environment the limit is for, or empty for the project as a whole. }
+        scope: { type: string, description: "The environment the limit is for, or empty for the project as a whole." }
         limit: { type: [integer, "null"] }
         enforcement: { type: string, enum: [hard, soft] }
         used: { type: integer }

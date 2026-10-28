@@ -3561,7 +3561,7 @@ export interface components {
         };
         PolicyQuotaLine: {
             resource: components["schemas"]["QuotaResource"];
-            /** @description The environment the limit is for */
+            /** @description The environment the limit is for, or empty for the project as a whole. */
             scope: string;
             limit?: number | null;
             /** @enum {string} */
