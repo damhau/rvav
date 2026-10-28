@@ -41,24 +41,27 @@ Every event has the same envelope, version `rvav.event.v1`:
   "id": "evt_01…", "topic": "provisioning.pre", "contract": "rvav.event.v1",
   "occurred_at": "2026-10-28T10:00:00Z",
   "data": {
-    "request": {"id": "req_…", "number": "REQ-10042", "action": null, "outcome": null},
+    "request": {"id": "req_…", "number": "REQ-10042", "kind": "provision", "action": null,
+                "status": "running", "outcome": null},
     "item": {"id": "itm_…", "slug": "rhel9-server", "type": "vm_blueprint", "version": "3.2"},
     "project": {"id": "prj_web", "code": "web", "name": "Web Platform", "cost_center": "CC-4120"},
-    "environment": {"key": "dev", "production": false},
+    "environment": "dev", "production": false,
     "requester": {"id": "usr_…", "name": "Thomas Nguyen", "email": "…"},
     "owner": {"id": "usr_…", "name": "…"},
-    "deployment": {"id": "dep_…", "name": "web-dev-app001", "properties": {}},
+    "deployment": {"id": "dep_…", "name": "web-dev-app001", "status": "provisioning",
+                   "properties": {}, "lease_expires_at": "…"},
+    "deployments": ["… every deployment of the request"],
     "resources": [{"id": "res_…", "type": "vsphere.vm", "name": "web-dev-app001",
-                   "fqdn": "…", "ip": "10.31.10.57", "moref": "vm-1042"}],
+                   "fqdn": "…", "ip": "10.31.10.57", "moref": "vm-1042", "deployment_id": "dep_…"}],
     "inputs": {"role": "app", "size": "M"},
-    "vm": {"vcpu": 4, "memory_gb": 16, "disk_gb": 80, "count": 1},
-    "lease": {"expires_at": "…"}
+    "vm": {"vcpu": 4, "memory_gb": 16, "disk_gb": 80, "count": 1}
   }
 }
 ```
 
-Fields that don't apply are null (`resources` is empty before
-provisioning; `lease` is set on lease topics). Inputs of secret fields are
+Fields that don't apply are null: `request` and `requester` on lease
+topics, `vm` on day-2 ones; `resources` is empty before provisioning. A
+post event's `request.outcome` is `succeeded`, `failed` or `cancelled`. Inputs of secret fields are
 left out, as in the API. Within `v1`, fields are only added, never removed
 or changed: receivers ignore what they don't know.
 
@@ -80,8 +83,8 @@ Events are not ordered across subscriptions; receivers use the event ID
 
 ### Subscriptions
 A subscription has a name, a topic, a CEL **condition** over the event's
-`data` (with `environment` as a string and `production`, as in the approval
-and day-2 policies; checked on a sample of the topic when saved), a
+`data` (`environment == "prd" && item.slug == "rhel9-server"`, as in the
+approval and day-2 policies; checked on a sample of the topic when saved), a
 **priority** (lower first), a **timeout**, a target, whether it is
 **blocking**, and whether it is enabled. Administrators manage them;
 auditors read them; every change is audited (`subscription.*`).

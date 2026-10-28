@@ -16,6 +16,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -367,6 +368,9 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return err
 		}
 		if err := s.Store.InsertApprovals(ctx, tx, chainRows(req.ID, dec.Chain)); err != nil {
+			return err
+		}
+		if err := outbox.ForRequest(ctx, tx, outbox.RequestSubmitted, req.ID, req.ID+":"+outbox.RequestSubmitted, ""); err != nil {
 			return err
 		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "action.run", TargetType: "deployment",

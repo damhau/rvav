@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
 )
@@ -264,23 +266,51 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 	default:
 		return false, nil
 	}
-	if err := a.Store.SetRequestStatus(ctx, a.Store.Pool, requestID, "running"); err != nil {
+	// Running, and the provisioning, day-2 or delete pre event (ADR-0021),
+	// in one transaction.
+	pre, _ := outbox.RequestTopics(r.Kind, deref(r.Action))
+	err = a.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := a.Store.SetRequestStatus(ctx, tx, requestID, "running"); err != nil {
+			return err
+		}
+		if r.DeploymentID != nil {
+			var plan Plan
+			_ = json.Unmarshal(r.Plan, &plan)
+			during := "updating"
+			if plan.Day2 != nil && plan.Day2.During != "" {
+				during = plan.Day2.During
+			}
+			if err := a.Store.SetDeploymentStatus(ctx, tx, *r.DeploymentID, during); err != nil {
+				return err
+			}
+		}
+		return outbox.ForRequest(ctx, tx, pre, requestID, runKey(ctx, requestID, pre), "")
+	})
+	if err != nil {
 		return false, err
 	}
 	if r.DeploymentID != nil {
-		var plan Plan
-		_ = json.Unmarshal(r.Plan, &plan)
-		during := "updating"
-		if plan.Day2 != nil && plan.Day2.During != "" {
-			during = plan.Day2.During
-		}
-		if err := a.Store.SetDeploymentStatus(ctx, a.Store.Pool, *r.DeploymentID, during); err != nil {
-			return false, err
-		}
 		a.Events.Deployment(ctx, *r.DeploymentID)
 	}
 	a.Events.Request(ctx, requestID)
 	return true, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// runKey dedupes an event written by an activity: the same in a retried
+// activity, new in a retried request (another workflow run).
+func runKey(ctx context.Context, requestID, topic string) string {
+	run := "direct"
+	if activity.IsActivity(ctx) {
+		run = activity.GetInfo(ctx).WorkflowExecution.RunID
+	}
+	return requestID + ":" + topic + ":" + run
 }
 
 func (a *Activities) subnet(vm VMUnit) efficientip.Subnet {
@@ -787,68 +817,80 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	if err != nil {
 		return err
 	}
-	db := a.Store.Pool
-	switch in.Outcome {
-	case "succeeded":
-		title := "Ready"
-		if r.ItemType != "vm_blueprint" || r.Kind == "day2" {
-			title = "Done"
-		}
-		if _, err := a.Store.UpdateStep(ctx, db, in.RequestID, KeyReady, store.StepUpdate{Status: "done", Title: &title}); err != nil {
-			return err
-		}
-		if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "ready"); err != nil {
-			return err
-		}
-		if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "succeeded"); err != nil {
-			return err
-		}
-		a.Events.Notify(ctx, r.OwnerID, title+": "+r.Title, "", "success", "/requests/"+r.Number)
-	case "failed":
-		stepID := ""
-		if st, err := a.Store.GetStepByKey(ctx, in.RequestID, in.StepKey); err == nil {
-			stepID = st.ID
-		}
-		if err := a.Store.SetRequestError(ctx, db, in.RequestID, stepID, in.Message); err != nil {
-			return err
-		}
-		if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "failed"); err != nil {
-			return err
-		}
-		if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "failed"); err != nil {
-			return err
-		}
-		a.Events.Notify(ctx, r.OwnerID, "Failed: "+r.Title, in.Message, "error", "/requests/"+r.Number)
-	case "cancelled":
-		if err := a.Store.MarkRemainingSteps(ctx, db, in.RequestID, "cancelled"); err != nil {
-			return err
-		}
-		if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "deleted"); err != nil {
-			return err
-		}
-		if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "cancelled"); err != nil {
-			return err
-		}
-	default:
-		return permanent("unknown outcome %q", in.Outcome)
+	title := "Ready"
+	if r.ItemType != "vm_blueprint" || r.Kind == "day2" {
+		title = "Done"
 	}
-	if r.DeploymentID != nil {
-		// A day-2 request: the deployment it acted on goes back to ready,
-		// or to what the action made of it, unless an action on another VM
-		// still runs. This request's own outcome is recorded first, so of two
-		// finishing together at least one sees the other done.
-		var plan Plan
-		_ = json.Unmarshal(r.Plan, &plan)
-		status := day2Status(plan, in.Outcome, r.StartedAt != nil)
-		other, err := a.Store.OtherRunningOnDeployment(ctx, db, *r.DeploymentID, r.ID)
-		if err != nil {
-			return err
-		}
-		if !other || status != "ready" {
-			if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, status); err != nil {
+	// The outcome and the post event (ADR-0021) in one transaction;
+	// notifications once it is committed.
+	_, post := outbox.RequestTopics(r.Kind, deref(r.Action))
+	err = a.Store.Tx(ctx, func(db pgx.Tx) error {
+		switch in.Outcome {
+		case "succeeded":
+			if _, err := a.Store.UpdateStep(ctx, db, in.RequestID, KeyReady, store.StepUpdate{Status: "done", Title: &title}); err != nil {
 				return err
 			}
+			if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "ready"); err != nil {
+				return err
+			}
+			if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "succeeded"); err != nil {
+				return err
+			}
+		case "failed":
+			stepID := ""
+			if st, err := a.Store.GetStepByKey(ctx, in.RequestID, in.StepKey); err == nil {
+				stepID = st.ID
+			}
+			if err := a.Store.SetRequestError(ctx, db, in.RequestID, stepID, in.Message); err != nil {
+				return err
+			}
+			if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "failed"); err != nil {
+				return err
+			}
+			if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "failed"); err != nil {
+				return err
+			}
+		case "cancelled":
+			if err := a.Store.MarkRemainingSteps(ctx, db, in.RequestID, "cancelled"); err != nil {
+				return err
+			}
+			if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "deleted"); err != nil {
+				return err
+			}
+			if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "cancelled"); err != nil {
+				return err
+			}
+		default:
+			return permanent("unknown outcome %q", in.Outcome)
 		}
+		if r.DeploymentID != nil {
+			// A day-2 request: the deployment it acted on goes back to ready,
+			// or to what the action made of it, unless an action on another VM
+			// still runs. This request's own outcome is recorded first, so of two
+			// finishing together at least one sees the other done.
+			var plan Plan
+			_ = json.Unmarshal(r.Plan, &plan)
+			status := day2Status(plan, in.Outcome, r.StartedAt != nil)
+			other, err := a.Store.OtherRunningOnDeployment(ctx, db, *r.DeploymentID, r.ID)
+			if err != nil {
+				return err
+			}
+			if !other || status != "ready" {
+				if err := a.Store.SetDeploymentStatus(ctx, db, *r.DeploymentID, status); err != nil {
+					return err
+				}
+			}
+		}
+		return outbox.ForRequest(ctx, db, post, in.RequestID, runKey(ctx, in.RequestID, post), in.Outcome)
+	})
+	if err != nil {
+		return err
+	}
+	switch in.Outcome {
+	case "succeeded":
+		a.Events.Notify(ctx, r.OwnerID, title+": "+r.Title, "", "success", "/requests/"+r.Number)
+	case "failed":
+		a.Events.Notify(ctx, r.OwnerID, "Failed: "+r.Title, in.Message, "error", "/requests/"+r.Number)
 	}
 	a.publishAll(ctx, r.ProjectID, in.RequestID)
 	return nil

@@ -7,7 +7,10 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -40,7 +43,14 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 		case d.ExpiryAction == "notify_only":
 			if !slices.Contains(d.LeaseReminded, "ended") {
 				s.notify(ctx, d.OwnerID, "The lease of "+d.Name+" ended", "Its policy keeps it running; delete it when you no longer need it.", "warning", d.ID)
-				_ = s.Store.SetLeaseReminded(ctx, s.Store.Pool, d.ID, *d.LeaseExpiresAt, append(d.LeaseReminded, "ended"))
+				if err := s.Store.Tx(ctx, func(tx pgx.Tx) error {
+					if err := s.Store.SetLeaseReminded(ctx, tx, d.ID, *d.LeaseExpiresAt, append(d.LeaseReminded, "ended")); err != nil {
+						return err
+					}
+					return outbox.ForDeployment(ctx, tx, outbox.LeaseExpired, d.ID, leaseKey(d, outbox.LeaseExpired))
+				}); err != nil {
+					s.Log.Warn("lease ended", "deployment", d.ID, "err", err)
+				}
 			}
 			continue
 		case expiredAt == nil && !slices.Contains(d.LeaseReminded, "1d"):
@@ -72,6 +82,13 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 		}
 		if failed {
 			continue
+		}
+		// The lease ended and rvav acts on it (a deletion after the grace
+		// period is the delete topic's): once per lease.
+		if expiredAt == nil {
+			if err := outbox.ForDeployment(ctx, s.Store.Pool, outbox.LeaseExpired, d.ID, leaseKey(d, outbox.LeaseExpired)); err != nil {
+				s.Log.Warn("lease expired event", "deployment", d.ID, "err", err)
+			}
 		}
 		inputs := map[string]any{}
 		if action == "delete" {
@@ -131,9 +148,19 @@ func (s *Service) remind(ctx context.Context, d store.DeploymentRow, left time.D
 	if tag == "1d" && !slices.Contains(reminded, "7d") {
 		reminded = append(reminded, "7d")
 	}
-	if err := s.Store.SetLeaseReminded(ctx, s.Store.Pool, d.ID, *d.LeaseExpiresAt, reminded); err != nil {
+	if err := s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.Store.SetLeaseReminded(ctx, tx, d.ID, *d.LeaseExpiresAt, reminded); err != nil {
+			return err
+		}
+		return outbox.ForDeployment(ctx, tx, outbox.LeaseExpiring, d.ID, leaseKey(d, outbox.LeaseExpiring+":"+tag))
+	}); err != nil {
 		s.Log.Warn("lease reminder", "deployment", d.ID, "err", err)
 	}
+}
+
+// leaseKey dedupes a lease event: one per lease (an extension starts another).
+func leaseKey(d store.DeploymentRow, what string) string {
+	return d.ID + ":" + what + ":" + d.LeaseExpiresAt.UTC().Format(time.RFC3339)
 }
 
 func (s *Service) notify(ctx context.Context, userID, title, body, level, deploymentID string) {

@@ -23,6 +23,11 @@ const (
 	Placement  = "plc"
 	Token      = "tok"
 	Approval   = "apr"
+	// Events, subscriptions and custom workflows (ADR-0021, ADR-0022).
+	Event        = "evt"
+	Subscription = "sub"
+	Run          = "run"
+	Workflow     = "wfl"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

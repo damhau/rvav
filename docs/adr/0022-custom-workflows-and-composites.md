@@ -42,7 +42,7 @@ single argument is the **context**:
   "rvav_task_queue": "rvav-provision",
   "request": {"id": "req_…", "number": "REQ-10077", "action": "decommission"},
   "project": {"id": "prj_web", "code": "web", "name": "Web Platform"},
-  "environment": {"key": "prd", "production": true},
+  "environment": "prd", "production": true,
   "requester": {"id": "usr_…", "name": "…", "email": "…"},
   "deployment": {"id": "dep_…", "name": "…", "properties": {}},
   "resources": [{"id": "res_…", "type": "vsphere.vm", "name": "…", "fqdn": "…", "ip": "…", "moref": "…"}],

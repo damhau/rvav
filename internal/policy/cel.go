@@ -36,6 +36,10 @@ var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm
 // (key, name, production).
 var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
 
+// events is for subscription conditions (ADR-0021): the event's data.
+var events = &set{names: []string{"request", "item", "project", "environment", "production", "requester", "owner",
+	"deployment", "deployments", "resources", "inputs", "vm"}, strings: map[string]bool{"environment": true}}
+
 func (s *set) celEnv() (*cel.Env, error) {
 	s.once.Do(func() {
 		opts := make([]cel.EnvOption, 0, len(s.names))
@@ -128,6 +132,15 @@ func Bool(expr string, vars Vars) (bool, error) { return forms.boolean(expr, var
 
 // Day2Bool evaluates the condition of a day-2 policy.
 func Day2Bool(expr string, vars Vars) (bool, error) { return day2.boolean(expr, vars) }
+
+// EventBool evaluates a subscription's condition on an event's data.
+func EventBool(expr string, vars Vars) (bool, error) { return events.boolean(expr, vars) }
+
+// CheckEvent compiles a subscription's condition without evaluating it.
+func CheckEvent(expr string) error {
+	_, err := events.program(expr)
+	return err
+}
 
 // CheckDay2 compiles a day-2 policy condition without evaluating it.
 func CheckDay2(expr string) error {

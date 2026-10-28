@@ -22,6 +22,7 @@ import (
 	"github.com/damhau/rvav/internal/awxcatalog"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -341,9 +342,18 @@ func (a *App) RunWorker(ctx context.Context) error {
 		a.Log.Warn("housekeeping schedule", "err", err)
 	}
 	a.Log.Info("worker started", "task_queue", a.Cfg.Temporal.TaskQueue)
+	// Events to subscriptions (ADR-0021): every worker replica takes part.
+	go a.Dispatcher().Run(ctx)
 	<-ctx.Done()
 	w.Stop()
 	return nil
+}
+
+// Dispatcher delivers integration events to subscriptions.
+func (a *App) Dispatcher() *dispatch.Dispatcher {
+	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: dispatch.Targets{
+		Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets)},
+	}}
 }
 
 // RunSync runs the inventory sync until ctx is done.

@@ -29,6 +29,9 @@ type Config struct {
 	// SecretsOldKeys still open what earlier keys sealed (rotation).
 	SecretsOldKeys  []string
 	RESTSourceHosts []string
+	// WebhookHosts are the hosts subscriptions may post events to
+	// (ADR-0021); none, no webhooks.
+	WebhookHosts []string
 
 	SyncInterval time.Duration
 	// How often the network mappings are read from EfficientIP.
@@ -154,6 +157,7 @@ func Load() (Config, error) {
 		SecretsKey:      env("RVAV_SECRETS_KEY", ""),
 		SecretsOldKeys:  list("RVAV_SECRETS_OLD_KEYS"),
 		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
+		WebhookHosts:    list("RVAV_WEBHOOK_HOSTS"),
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
 			URL:           env("RVAV_AWX_URL", ""),

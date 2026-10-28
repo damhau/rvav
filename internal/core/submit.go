@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -151,7 +152,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				return err
 			}
 		}
-		return nil
+		return outbox.ForRequest(ctx, tx, outbox.RequestSubmitted, req.ID, req.ID+":"+outbox.RequestSubmitted, "")
 	})
 	if err != nil {
 		return store.RequestRow{}, err

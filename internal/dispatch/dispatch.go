@@ -1,0 +1,266 @@
+// Package dispatch delivers integration events (ADR-0021): it makes one run
+// per event and enabled subscription whose condition is true, and delivers
+// each at least once, with back-off, keeping every attempt.
+package dispatch
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/store"
+)
+
+// Result is what one attempt at a target gave.
+type Result struct {
+	OK         bool
+	StatusCode int
+	JobID      int
+	WorkflowID string
+	// Response is what came back, at most MaxResponse bytes.
+	Response string
+	Err      string
+	// A blocking target's answer: continue or stop, why, and the
+	// properties it sets on the deployment.
+	Outcome    string
+	Reason     string
+	Properties map[string]string
+}
+
+// MaxResponse is how much of an answer a run keeps.
+const MaxResponse = 4096
+
+// Target delivers events to one kind of target.
+type Target interface {
+	Deliver(ctx context.Context, sub store.Subscription, event json.RawMessage, blocking bool) Result
+}
+
+// Targets are the kinds of target rvav has; a nil one is not available.
+type Targets struct {
+	Webhook  Target
+	AWX      Target
+	Workflow Target
+}
+
+// For picks the target a subscription names.
+func (t Targets) For(sub store.Subscription) (Target, error) {
+	var kinds map[string]json.RawMessage
+	if err := json.Unmarshal(sub.Target, &kinds); err != nil {
+		return nil, err
+	}
+	var tg Target
+	switch {
+	case kinds["webhook"] != nil:
+		tg = t.Webhook
+	case kinds["awx"] != nil:
+		tg = t.AWX
+	case kinds["workflow"] != nil:
+		tg = t.Workflow
+	}
+	if tg == nil {
+		return nil, errors.New("this kind of target is not available in this rvav")
+	}
+	return tg, nil
+}
+
+// Dispatcher fans events out to runs and delivers them.
+type Dispatcher struct {
+	Store   *store.Store
+	Targets Targets
+	Log     *slog.Logger
+	// Interval between rounds; 2 s when zero.
+	Interval time.Duration
+	// Now is the clock; time.Now when nil.
+	Now func() time.Time
+}
+
+// Back-off between attempts; the last repeats until a run is a day old.
+var backoff = []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 15 * time.Minute}
+
+// GiveUpAfter is how long a run is retried.
+const GiveUpAfter = 24 * time.Hour
+
+// Retention is how long finished runs are kept.
+const Retention = 30 * 24 * time.Hour
+
+func (d *Dispatcher) now() time.Time {
+	if d.Now != nil {
+		return d.Now()
+	}
+	return time.Now()
+}
+
+// Run dispatches until the context ends, pruning old runs every hour.
+func (d *Dispatcher) Run(ctx context.Context) {
+	interval := d.Interval
+	if interval == 0 {
+		interval = 2 * time.Second
+	}
+	tick, prune := time.NewTicker(interval), time.NewTicker(time.Hour)
+	defer tick.Stop()
+	defer prune.Stop()
+	for {
+		if _, err := d.Once(ctx); err != nil && ctx.Err() == nil {
+			d.Log.Warn("dispatch", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		case <-prune.C:
+			if n, err := d.Store.PruneRuns(ctx, d.now().Add(-Retention)); err != nil {
+				d.Log.Warn("prune subscription runs", "err", err)
+			} else if n > 0 {
+				d.Log.Info("pruned subscription runs", "runs", n)
+			}
+		}
+	}
+}
+
+// Once makes the runs of new events, then delivers what is due. It returns
+// how many attempts it made.
+func (d *Dispatcher) Once(ctx context.Context) (int, error) {
+	for {
+		n, err := d.fanOut(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if n < 100 {
+			break
+		}
+	}
+	return d.deliver(ctx)
+}
+
+// fanOut makes a run per event and matching non-blocking subscription;
+// blocking ones run in the request's workflow.
+func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
+	var n int
+	err := d.Store.Tx(ctx, func(tx pgx.Tx) error {
+		events, err := d.Store.UndispatchedEvents(ctx, tx, 100)
+		if err != nil || len(events) == 0 {
+			return err
+		}
+		n = len(events)
+		subs, err := d.Store.ActiveSubscriptions(ctx, "", false)
+		if err != nil {
+			return err
+		}
+		done := make([]string, 0, len(events))
+		for _, ev := range events {
+			for _, sub := range subs {
+				if sub.Topic != ev.Topic {
+					continue
+				}
+				run := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: sub.ID, EventID: ev.ID, Status: "queued",
+					RequestID: ev.RequestID, NextAttemptAt: d.now()}
+				match, err := Matches(sub.Condition, ev.Payload)
+				switch {
+				case err != nil:
+					// Kept as a failed run, so administrators see why it didn't go.
+					now := d.now()
+					reason := "The condition can't be evaluated: " + err.Error()
+					run.Status, run.Reason, run.FinishedAt = "failed", &reason, &now
+				case !match:
+					continue
+				}
+				if err := d.Store.InsertRun(ctx, tx, run); err != nil {
+					return err
+				}
+			}
+			done = append(done, ev.ID)
+		}
+		return d.Store.MarkDispatched(ctx, tx, done)
+	})
+	return n, err
+}
+
+// Matches says whether a subscription's condition is true for an event.
+func Matches(condition string, payload json.RawMessage) (bool, error) {
+	if condition == "" {
+		return true, nil
+	}
+	var ev outbox.Event
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return false, err
+	}
+	return policy.EventBool(condition, policy.Vars(outbox.Vars(ev.Data)))
+}
+
+// deliver makes an attempt at every run that is due, eight at a time.
+func (d *Dispatcher) deliver(ctx context.Context) (int, error) {
+	runs, err := d.Store.ClaimRuns(ctx, 50, d.now())
+	if err != nil {
+		return 0, err
+	}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for _, r := range runs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(r store.ClaimedRun) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			d.attemptRun(ctx, r)
+		}(r)
+	}
+	wg.Wait()
+	return len(runs), nil
+}
+
+func (d *Dispatcher) attemptRun(ctx context.Context, r store.ClaimedRun) {
+	start := d.now()
+	res := d.Attempt(ctx, r.Subscription, r.Payload, false)
+	u := store.RunUpdate{Status: "delivered"}
+	if !res.OK {
+		reason := res.Err
+		u.Reason = &reason
+		if d.now().Sub(r.CreatedAt) >= GiveUpAfter {
+			u.Status = "failed"
+		} else {
+			next := d.now().Add(backoff[min(r.Attempts, len(backoff))-1])
+			u.Status, u.NextAttempt = "queued", &next
+		}
+	}
+	if err := d.Store.RecordAttempt(ctx, r.ID, AttemptRow(start, d.now(), res), u); err != nil {
+		d.Log.Warn("record subscription attempt", "run", r.ID, "err", err)
+	}
+}
+
+// Attempt delivers an event to a subscription's target once.
+func (d *Dispatcher) Attempt(ctx context.Context, sub store.Subscription, payload json.RawMessage, blocking bool) Result {
+	tg, err := d.Targets.For(sub)
+	if err != nil {
+		return Result{Err: err.Error()}
+	}
+	return tg.Deliver(ctx, sub, payload, blocking)
+}
+
+// AttemptRow is how an attempt is kept.
+func AttemptRow(start, end time.Time, res Result) store.Attempt {
+	a := store.Attempt{At: start, OK: res.OK, DurationMS: int(end.Sub(start).Milliseconds())}
+	if res.StatusCode != 0 {
+		a.StatusCode = &res.StatusCode
+	}
+	if res.JobID != 0 {
+		a.JobID = &res.JobID
+	}
+	if res.WorkflowID != "" {
+		a.WorkflowID = &res.WorkflowID
+	}
+	if res.Response != "" {
+		a.Response = &res.Response
+	}
+	if res.Err != "" {
+		a.Error = &res.Err
+	}
+	return a
+}

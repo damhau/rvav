@@ -183,6 +183,10 @@ func (s *Store) SetRequestStatus(ctx context.Context, db DB, id, status string) 
 // nothing behind.
 func (s *Store) DeleteUnstartedRequest(ctx context.Context, id string) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
+		// Its events go too: subscribers never hear of a request that wasn't.
+		if _, err := tx.Exec(ctx, `delete from integration_events where request_id = $1`, id); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `delete from deployments where created_by_request_id = $1`, id); err != nil {
 			return err
 		}
