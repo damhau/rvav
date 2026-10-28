@@ -563,7 +563,8 @@ var itemKinds = map[string]string{"vm_blueprint": blueprint.KindVM, "awx_job_tem
 
 // builtinSources are the builtin value sources (docs: ValueSource in the spec).
 var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
-	"ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview"}
+	"ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
+	"rvav.templates", "rvav.sizes"}
 
 // checkDefinition checks a version's definition as a whole, with pointers
 // under prefix. A draft may be incomplete (no template named yet); to
@@ -670,8 +671,9 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 	var errs []api.FieldError
 	switch b.Kind {
 	case blueprint.KindVM:
-		if b.Template == "" && publish {
-			errs = append(errs, fieldErr(ptr+"/template", "required", "Name the vCenter template the VMs are cloned from."))
+		if b.Template == "" && b.Bindings["template"] == "" && publish {
+			errs = append(errs, fieldErr(ptr+"/template", "required",
+				"Name the vCenter template the VMs are cloned from, or take it from an input (bindings.template, for example inputs.template with rvav.templates)."))
 		}
 		for _, k := range sortedKeys(b.Bindings) {
 			if err := policy.Check(b.Bindings[k]); err != nil {

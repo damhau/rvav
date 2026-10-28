@@ -2409,7 +2409,9 @@ export interface components {
              * @description For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
              *     `vsphere.networks`, `vsphere.templates`, `vsphere.folders`,
              *     `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
-             *     `awx.inventories`, `awx.credentials`, `naming.preview`.
+             *     `awx.inventories`, `awx.credentials`, `naming.preview`, and
+             *     `rvav.templates` and `rvav.sizes` (what is offered to the
+             *     project and environment; ADR-0020).
              * @example vsphere.datastores
              */
             name?: string;
@@ -3319,11 +3321,11 @@ export interface components {
             key: string;
             /** @example RHEL 9.4 */
             label: string;
-            /** @description A template's name in vCenter, or `library:<library>/<item>` for a content library item. */
+            /** @description A template's name in vCenter (content library items come with S12). */
             vcenter_template: string;
             /** @enum {string} */
             os_family: "linux" | "windows";
-            /** @description A vCenter customization specification's name; empty for rvav's own (hostname and network). */
+            /** @description A vCenter customization specification's name, used from S12; until then and when empty, rvav's own (hostname, network, time zone). */
             customization: string;
             description: string;
             offers: components["schemas"]["Offer"][];

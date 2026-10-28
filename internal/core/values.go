@@ -229,6 +229,47 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		out.Options = &opts
 		cache(60)
 
+	case "rvav.templates":
+		if err := needEnv(); err != nil {
+			return out, err
+		}
+		list, err := s.offeredTemplates(ctx, proj.ID, env)
+		if err != nil {
+			return out, err
+		}
+		inventory, err := s.inventoryTemplates(ctx)
+		if err != nil {
+			return out, err
+		}
+		opts := []api.Option{}
+		for _, t := range list {
+			o := option(t.Key, t.Label, t.VCenterTemplate)
+			if t.Description != "" {
+				o.Description = &t.Description
+			}
+			if !inventory[t.VCenterTemplate] {
+				o.Disabled, o.DisabledReason = present.Ptr(true), present.Ptr("vCenter doesn't have "+t.VCenterTemplate+" now.")
+			}
+			opts = append(opts, o)
+		}
+		out.Options = &opts
+		cache(60)
+
+	case "rvav.sizes":
+		if err := needEnv(); err != nil {
+			return out, err
+		}
+		list, err := s.offeredSizes(ctx, proj.ID, env)
+		if err != nil {
+			return out, err
+		}
+		opts := []api.Option{}
+		for _, z := range list {
+			opts = append(opts, option(z.Key, z.Label, sizeMeta(z)))
+		}
+		out.Options = &opts
+		cache(60)
+
 	case "ipam.next_free_address":
 		network := params["network"]
 		if network == "" {

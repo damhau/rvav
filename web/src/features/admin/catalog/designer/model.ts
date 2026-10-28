@@ -53,6 +53,8 @@ export const builtinSources = [
   "awx.inventories",
   "awx.credentials",
   "naming.preview",
+  "rvav.templates",
+  "rvav.sizes",
 ];
 
 /** The built-in source a widget is made for, set when the field is added. */

@@ -22,6 +22,7 @@ interface AdminState {
 const builtinSources = [
   "vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
   "ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
+  "rvav.templates", "rvav.sizes",
 ]; // prettier-ignore
 
 /** Who may be previewed as, per project (as the server's seed). */

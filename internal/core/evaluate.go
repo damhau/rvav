@@ -239,6 +239,10 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 			allowed, err = s.dnsZones(ctx)
 		case "awx.inventories", "awx.credentials":
 			allowed, err = s.awxChoices(ctx, *src.Name, resolveParams(src.Params, ev.Inputs))
+		case "rvav.templates":
+			allowed, err = s.Store.OfferedKeys(ctx, "template", ev.Project.ID, ev.Env.Key)
+		case "rvav.sizes":
+			allowed, err = s.Store.OfferedKeys(ctx, "size", ev.Project.ID, ev.Env.Key)
 		default:
 			continue
 		}
@@ -300,7 +304,31 @@ func pickedValues(v any) (values []string, ok bool) {
 
 func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) error {
 	add := func(field, code, msg string) { ev.Errors = append(ev.Errors, fieldErr(field, code, msg)) }
+	// A blueprint without sizes of its own uses the presets offered here,
+	// and a template chosen from the offered ones by key is that template
+	// in vCenter, with its OS family (ADR-0020).
+	if len(ev.Blueprint.Sizes) == 0 {
+		sizes, err := s.offeredSizes(ctx, ev.Project.ID, ev.Env.Key)
+		if err != nil {
+			return err
+		}
+		ev.Blueprint.Sizes = map[string]blueprint.Size{}
+		for _, z := range sizes {
+			ev.Blueprint.Sizes[z.Key] = blueprint.Size{Label: z.Label, VCPU: z.VCPU, MemoryGB: z.MemoryGB, DiskGB: z.DiskGB}
+		}
+	}
 	plan, _ := ev.Blueprint.EvaluateVM(ev.Inputs)
+	if plan.Template != "" {
+		templates, err := s.offeredTemplates(ctx, ev.Project.ID, ev.Env.Key)
+		if err != nil {
+			return err
+		}
+		for _, t := range templates {
+			if t.Key == plan.Template {
+				plan.Template, ev.Blueprint.Guest.OSFamily = t.VCenterTemplate, t.OSFamily
+			}
+		}
+	}
 	ev.VM = plan
 
 	pl, err := s.placement(ctx, ev.Project.ID, ev.Env.Key)

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
@@ -234,5 +235,116 @@ func TestPlacementAdministration(t *testing.T) {
 		}
 		h.json("DELETE", "/api/v1/admin/network-mappings/"+net, admin, nil, 204, nil)
 		h.json("DELETE", "/api/v1/admin/network-mappings/"+net, admin, nil, 404, nil)
+	})
+}
+
+// TestTemplatesAndSizes: templates and size presets offered per project and
+// environment are what VM forms choose from, and a request gets the vCenter
+// template, its OS family and the preset's resources (S9.4, ADR-0020).
+func TestTemplatesAndSizes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, web = "mkeller", "prj_web"
+		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "ubuntu", Label: "Ubuntu 24.04",
+			VcenterTemplate: "tpl-ubuntu24.04-2026.10", OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: &[]api.Offer{{ProjectId: new(web)}}}, 201, nil)
+		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "win", Label: "Windows Server 2025",
+			VcenterTemplate: "tpl-win2025-std-2026.09", OsFamily: api.VmTemplateWriteOsFamilyWindows, Offers: &[]api.Offer{{Environment: new("dev")}}}, 201, nil)
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "lib", Label: "From a library", VcenterTemplate: "library:os/rhel",
+			OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: &[]api.Offer{{ProjectId: new("prj_nope")}}}, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/vcenter_template") || !slices.Contains(fields, "/offers/0/project_id") {
+			t.Fatalf("bad template = %v", fields)
+		}
+		for _, z := range []api.SizePresetWrite{
+			{Key: "S", Label: "Small", Vcpu: 2, MemoryGb: 4, DiskGb: 40, Offers: &[]api.Offer{{}}},
+			{Key: "M", Label: "Medium", Vcpu: 4, MemoryGb: 16, DiskGb: 80, Offers: &[]api.Offer{{}}},
+			{Key: "XL", Label: "Extra large", Vcpu: 16, MemoryGb: 64, DiskGb: 200, Offers: &[]api.Offer{{Environment: new("prd")}}},
+		} {
+			h.json("POST", "/api/v1/admin/sizes", admin, z, 201, nil)
+		}
+		var templates api.VmTemplateList
+		h.json("GET", "/api/v1/admin/templates", admin, nil, 200, &templates)
+		if len(templates.Items) != 2 || templates.Items[0].InInventory == nil || !*templates.Items[0].InInventory {
+			t.Fatalf("templates = %+v", templates.Items)
+		}
+
+		// A VM item that chooses from what is offered.
+		var rhel api.AdminCatalogItem
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server", admin, nil, 200, &rhel)
+		var published api.CatalogItemVersionDetail
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/versions/"+rhel.PublishedVersion.Id, admin, nil, 200, &published)
+		def := published.Definition
+		props := def.FormSchema["properties"].(map[string]any)
+		props["size"] = map[string]any{"type": "string"}
+		props["template"] = map[string]any{"type": "string"}
+		def.FormSchema["required"] = append(def.FormSchema["required"].([]any), "template")
+		def.UiSchema.Fields["size"] = api.UiField{Widget: api.UiWidgetSelect, Label: "Size", ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("rvav.sizes")}}
+		def.UiSchema.Fields["template"] = api.UiField{Widget: api.UiWidgetSelect, Label: "Operating system",
+			ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("rvav.templates")}}
+		def.UiSchema.Layout.Sections[0].Fields = append(def.UiSchema.Layout.Sections[0].Fields, "template")
+		delete(def.Blueprint, "sizes")
+		def.Blueprint["template"] = ""
+		def.Blueprint["bindings"].(map[string]any)["template"] = "inputs.template"
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "any-vm", Name: "A VM", Summary: "From the offered templates.",
+			Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/any-vm/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/any-vm/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+
+		options := func(user, project, env, field string) []string {
+			t.Helper()
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", user, api.FieldValuesQuery{VersionId: item.DraftVersion.Id, ProjectId: project,
+				Environment: new(api.EnvironmentKey(env)), Field: field, Inputs: map[string]any{}}, 200, &out)
+			keys := []string{}
+			for _, o := range *out.Options {
+				keys = append(keys, o.Value)
+			}
+			return keys
+		}
+		if got := options("tnguyen", web, "dev", "template"); fmt.Sprint(got) != "[ubuntu win]" {
+			t.Fatalf("templates for web/dev = %v", got)
+		}
+		if got := options("sbrunner", "prj_data", "dev", "template"); fmt.Sprint(got) != "[win]" {
+			t.Fatalf("templates for data/dev = %v", got)
+		}
+		if got := options("tnguyen", web, "dev", "size"); fmt.Sprint(got) != "[S M]" {
+			t.Fatalf("sizes for web/dev = %v", got)
+		}
+		if got := options("tnguyen", web, "prd", "size"); fmt.Sprint(got) != "[S M XL]" {
+			t.Fatalf("sizes for web/prd = %v", got)
+		}
+
+		// A request gets the vCenter template, its OS family and the preset; what isn't offered is refused.
+		inputs := map[string]any{"role": "api", "size": "M", "template": "win", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+			"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}
+		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id, ProjectId: web, Environment: "dev", Inputs: inputs}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		var plan struct {
+			VMs []struct {
+				Template string `json:"template"`
+				VCPU     int    `json:"vcpu"`
+			} `json:"vms"`
+			Guest struct {
+				OSFamily string `json:"os_family"`
+			} `json:"guest"`
+		}
+		var raw []byte
+		if err := h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.Unmarshal(raw, &plan)
+		if len(plan.VMs) != 1 || plan.VMs[0].Template != "tpl-win2025-std-2026.09" || plan.VMs[0].VCPU != 4 || plan.Guest.OSFamily != "windows" {
+			t.Fatalf("plan = %s", raw)
+		}
+		inputs["size"] = "XL"
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 422, &problem, "Idempotency-Key", uuid.NewString())
+		if !slices.ContainsFunc(problem.Errors, func(e api.FieldError) bool { return e.Field == "/inputs/size" }) {
+			t.Fatalf("a size not offered in dev = %+v", problem.Errors)
+		}
 	})
 }

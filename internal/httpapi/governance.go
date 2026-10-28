@@ -220,35 +220,57 @@ func (s *Server) SetProjectQuotas(w http.ResponseWriter, r *http.Request, projec
 }
 
 func (s *Server) ListSizePresets(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.SizePresets(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.SizePresetList{Items: items}, err)
 }
 
 func (s *Server) CreateSizePreset(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.SizePresetWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveSizePreset(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteSizePreset(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteSizePreset(r.Context(), principal(r), key))
 }
 
 func (s *Server) UpdateSizePreset(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	var b api.SizePresetWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveSizePreset(r.Context(), principal(r), key, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListVmTemplates(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.VMTemplates(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.VmTemplateList{Items: items}, err)
 }
 
 func (s *Server) CreateVmTemplate(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.VmTemplateWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveVMTemplate(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeleteVmTemplate(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteVMTemplate(r.Context(), principal(r), key))
 }
 
 func (s *Server) UpdateVmTemplate(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
-	s.notBuilt(w, r)
+	var b api.VmTemplateWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveVMTemplate(r.Context(), principal(r), key, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListAuditEvents(w http.ResponseWriter, r *http.Request, params api.ListAuditEventsParams) {

@@ -132,6 +132,21 @@ export function resolveField(
       );
     case "dns.zones":
       return withDefault(dnsZones.map((z) => ({ value: z, label: z })));
+    // What administrators offer this project and environment (ADR-0020); the mock offers the same everywhere.
+    case "rvav.templates":
+      return withDefault([
+        { value: "rhel9", label: "RHEL 9.4", meta: "tpl-rhel9.4-2026.10" },
+        { value: "ubuntu", label: "Ubuntu 24.04", meta: "tpl-ubuntu24.04-2026.10" },
+        { value: "win2025", label: "Windows Server 2025", meta: "tpl-win2025-std-2026.09" },
+      ]);
+    case "rvav.sizes":
+      return withDefault(
+        (Object.entries(sizes) as [SizeKey, (typeof sizes)[SizeKey]][]).map(([key, z]) => ({
+          value: key,
+          label: z.label,
+          meta: `${z.vcpu} vCPU · ${z.memoryGb} GB · ${z.diskGb} GB`,
+        })),
+      );
     case "awx.inventories":
       return withDefault([
         { value: "1", label: "Demo inventory" },
