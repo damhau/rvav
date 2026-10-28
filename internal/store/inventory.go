@@ -17,12 +17,13 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 		b := &pgx.Batch{}
 		for _, c := range inv.Clusters {
 			b.Queue(`insert into inv_clusters (vcenter, moref, name, datacenter, host_count, cpu_total_mhz, cpu_used_mhz,
-				memory_total_mb, memory_used_mb) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-				inv.VCenter, c.Moref, c.Name, c.Datacenter, c.HostCount, c.CPUTotalMHz, c.CPUUsedMHz, c.MemoryTotalMB, c.MemoryUsedMB)
+				memory_total_mb, memory_used_mb, tags) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+				inv.VCenter, c.Moref, c.Name, c.Datacenter, c.HostCount, c.CPUTotalMHz, c.CPUUsedMHz, c.MemoryTotalMB, c.MemoryUsedMB,
+				nonNil(c.Tags))
 		}
 		for _, d := range inv.Datastores {
-			b.Queue(`insert into inv_datastores (vcenter, moref, name, capacity_gb, free_gb, clusters) values ($1,$2,$3,$4,$5,$6)`,
-				inv.VCenter, d.Moref, d.Name, d.CapacityGB, d.FreeGB, nonNil(d.Clusters))
+			b.Queue(`insert into inv_datastores (vcenter, moref, name, capacity_gb, free_gb, clusters, tags) values ($1,$2,$3,$4,$5,$6,$7)`,
+				inv.VCenter, d.Moref, d.Name, d.CapacityGB, d.FreeGB, nonNil(d.Clusters), nonNil(d.Tags))
 		}
 		for _, n := range inv.Networks {
 			b.Queue(`insert into inv_networks (vcenter, moref, name, kind, clusters) values ($1,$2,$3,$4,$5)`,
@@ -45,12 +46,12 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 
 func (s *Store) InventoryClusters(ctx context.Context) ([]InvCluster, error) {
 	rows, _ := s.Pool.Query(ctx, `select moref, name, datacenter, host_count, cpu_total_mhz, cpu_used_mhz,
-		memory_total_mb, memory_used_mb from inv_clusters order by name`)
+		memory_total_mb, memory_used_mb, tags from inv_clusters order by name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvCluster])
 }
 
 func (s *Store) InventoryDatastores(ctx context.Context) ([]InvDatastore, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, capacity_gb, free_gb, clusters from inv_datastores order by name`)
+	rows, _ := s.Pool.Query(ctx, `select moref, name, capacity_gb, free_gb, clusters, tags from inv_datastores order by name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvDatastore])
 }
 

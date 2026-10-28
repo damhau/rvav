@@ -60,17 +60,20 @@ type PlacementRule struct {
 	DatastorePatterns []string `db:"datastore_patterns"`
 	NetworkPatterns   []string `db:"network_patterns"`
 	Folder            string   `db:"folder"`
+	ClusterTags       []string `db:"cluster_tags"`
+	DatastoreTags     []string `db:"datastore_tags"`
 }
 
 type NetworkSubnet struct {
-	Network             string   `db:"network"`
-	Subnet              string   `db:"subnet"`
-	Gateway             string   `db:"gateway"`
-	DNSZone             string   `db:"dns_zone"`
-	DNSServers          []string `db:"dns_servers"`
-	EfficientIPSubnetID string   `db:"efficientip_subnet_id"`
-	SubnetName          string   `db:"subnet_name"`
-	Source              string   `db:"source"` // manual or efficientip
+	Network             string     `db:"network"`
+	Subnet              string     `db:"subnet"`
+	Gateway             string     `db:"gateway"`
+	DNSZone             string     `db:"dns_zone"`
+	DNSServers          []string   `db:"dns_servers"`
+	EfficientIPSubnetID string     `db:"efficientip_subnet_id"`
+	SubnetName          string     `db:"subnet_name"`
+	Source              string     `db:"source"` // manual or efficientip
+	SyncedAt            *time.Time `db:"synced_at"`
 }
 
 // LeasePolicy is the lease policy of an environment, or a project's
@@ -274,14 +277,15 @@ type Resource struct {
 }
 
 type InvCluster struct {
-	Moref         string `db:"moref"`
-	Name          string `db:"name"`
-	Datacenter    string `db:"datacenter"`
-	HostCount     int    `db:"host_count"`
-	CPUTotalMHz   int64  `db:"cpu_total_mhz"`
-	CPUUsedMHz    int64  `db:"cpu_used_mhz"`
-	MemoryTotalMB int64  `db:"memory_total_mb"`
-	MemoryUsedMB  int64  `db:"memory_used_mb"`
+	Moref         string   `db:"moref"`
+	Name          string   `db:"name"`
+	Datacenter    string   `db:"datacenter"`
+	HostCount     int      `db:"host_count"`
+	CPUTotalMHz   int64    `db:"cpu_total_mhz"`
+	CPUUsedMHz    int64    `db:"cpu_used_mhz"`
+	MemoryTotalMB int64    `db:"memory_total_mb"`
+	MemoryUsedMB  int64    `db:"memory_used_mb"`
+	Tags          []string `db:"tags"`
 }
 
 type InvDatastore struct {
@@ -290,6 +294,7 @@ type InvDatastore struct {
 	CapacityGB int64    `db:"capacity_gb"`
 	FreeGB     int64    `db:"free_gb"`
 	Clusters   []string `db:"clusters"`
+	Tags       []string `db:"tags"`
 }
 
 type InvNetwork struct {

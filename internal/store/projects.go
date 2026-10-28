@@ -111,14 +111,16 @@ func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string
 	return out, rows.Err()
 }
 
+const placementRuleCols = `id, project_id, environment, priority, cluster_patterns, datastore_patterns, network_patterns, folder,
+	cluster_tags, datastore_tags`
+
 func (s *Store) PlacementRules(ctx context.Context, projectID, environment string) ([]PlacementRule, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, project_id, environment, priority, cluster_patterns,
-		datastore_patterns, network_patterns, folder
+	rows, _ := s.Pool.Query(ctx, `select `+placementRuleCols+`
 		from placement_rules where project_id = $1 and environment = $2 order by priority, id`, projectID, environment)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[PlacementRule])
 }
 
-const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id, subnet_name, source`
+const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id, subnet_name, source, synced_at`
 
 // SyncNetworkSubnets replaces the mappings found in EfficientIP with these:
 // rows set by hand are kept, and get the subnet's ID when their CIDR is

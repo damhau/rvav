@@ -3260,24 +3260,32 @@ export interface components {
             items: components["schemas"]["PlacementRule"][];
         };
         PlacementPreview: {
-            clusters: {
-                name: string;
-                hosts?: number;
-            }[];
-            datastores: {
-                name: string;
-                free_gb?: number;
-            }[];
-            networks: {
-                name: string;
-                subnet?: string;
-                dns_zone?: string;
-                /** @enum {string} */
-                source?: "manual" | "efficientip";
-            }[];
+            clusters: components["schemas"]["PreviewCluster"][];
+            datastores: components["schemas"]["PreviewDatastore"][];
+            networks: components["schemas"]["PreviewNetwork"][];
             folder: string;
             /** @description What stops a request here, for example a network with no subnet. */
             problems: string[];
+        };
+        PreviewCluster: {
+            name: string;
+            hosts: number;
+            tags: string[];
+        };
+        PreviewDatastore: {
+            name: string;
+            free_gb: number;
+            clusters: string[];
+            tags: string[];
+        };
+        PreviewNetwork: {
+            name: string;
+            clusters: string[];
+            /** @description Empty when no mapping gives it a subnet. */
+            subnet?: string;
+            dns_zone?: string;
+            /** @enum {string} */
+            source?: "manual" | "efficientip";
         };
         NetworkMapping: {
             network: string;

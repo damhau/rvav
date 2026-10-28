@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vmware/govmomi/simulator"
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
 	"github.com/vmware/govmomi/vim25"
 )
 
@@ -31,6 +32,11 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 		ds := findDatastore(inv, "vsan-gva-dev-cl01")
 		if ds == nil || len(ds.Clusters) != 1 || ds.Clusters[0] != "GVA-DEV-CL01" {
 			t.Fatalf("datastore vsan-gva-dev-cl01 = %+v", ds)
+		}
+		// Tags, for placement by tag, once each though the bootstrap ran twice.
+		if inv.TagsError != nil || !contains(cluster.Tags, "rvav-tier/bronze") || len(cluster.Tags) != 1 ||
+			!contains(ds.Tags, "rvav-tier/gold") || len(ds.Tags) != 1 {
+			t.Fatalf("tags: cluster %v, datastore %v, error %v", cluster.Tags, ds.Tags, inv.TagsError)
 		}
 		pg := findNetworkInv(inv, "dvpg-app-dev-vl310")
 		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") {

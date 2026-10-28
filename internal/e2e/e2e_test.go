@@ -32,6 +32,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
 	"github.com/vmware/govmomi/vim25"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"

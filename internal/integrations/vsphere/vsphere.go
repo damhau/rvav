@@ -148,6 +148,8 @@ type Client struct {
 	insecure bool
 	mu       sync.Mutex
 	c        *govmomi.Client
+	// login signs in to vCenter's REST API (the tagging service).
+	login *url.Userinfo
 }
 
 // New logs in to vCenter. rawURL is the SDK endpoint, for example
@@ -163,16 +165,17 @@ func New(ctx context.Context, name, rawURL, username, password string, insecure 
 	if username != "" {
 		u.User = url.UserPassword(username, password)
 	}
-	cl := &Client{name: name, url: u, insecure: insecure}
+	cl := &Client{name: name, url: u, insecure: insecure, login: u.User}
 	if _, err := cl.client(ctx); err != nil {
 		return nil, err
 	}
 	return cl, nil
 }
 
-// NewFromVim wraps an existing session, as used by tests against vcsim.
+// NewFromVim wraps an existing session, as used by tests against vcsim
+// (whose default account the tagging service signs in with).
 func NewFromVim(name string, c *vim25.Client) *Client {
-	return &Client{name: name, c: &govmomi.Client{Client: c}}
+	return &Client{name: name, c: &govmomi.Client{Client: c}, login: vcsimLogin}
 }
 
 func (cl *Client) Name() string { return cl.name }

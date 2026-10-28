@@ -17,6 +17,9 @@ type Inventory struct {
 	Networks   []Network
 	Templates  []Template
 	VMs        []InventoryVM
+	// TagsError says why clusters and datastores have no tags: the
+	// tagging service couldn't be read. The rest of the inventory is fine.
+	TagsError error
 }
 
 type Cluster struct {
@@ -28,6 +31,7 @@ type Cluster struct {
 	CPUUsedMHz    int64
 	MemoryTotalMB int64
 	MemoryUsedMB  int64
+	Tags          []string // category/tag
 }
 
 type Datastore struct {
@@ -36,6 +40,7 @@ type Datastore struct {
 	CapacityGB int64
 	FreeGB     int64
 	Clusters   []string
+	Tags       []string
 }
 
 type Network struct {
@@ -183,6 +188,7 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		inv.VMs = append(inv.VMs, iv)
 	}
 	_ = datacenters
+	inv.TagsError = cl.readTags(ctx, c, inv)
 	return inv, nil
 }
 

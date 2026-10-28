@@ -130,35 +130,53 @@ func (s *Server) PreviewNaming(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListNetworkMappings(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.NetworkMappings(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.NetworkMappingList{Items: items}, err)
 }
 
 func (s *Server) DeleteNetworkMapping(w http.ResponseWriter, r *http.Request, network string) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeleteNetworkMapping(r.Context(), principal(r), network))
 }
 
 func (s *Server) SetNetworkMapping(w http.ResponseWriter, r *http.Request, network string) {
-	s.notBuilt(w, r)
+	var b api.NetworkMappingWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetNetworkMapping(r.Context(), principal(r), network, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) PreviewPlacement(w http.ResponseWriter, r *http.Request, params api.PreviewPlacementParams) {
-	s.notBuilt(w, r)
+	out, err := s.Core.PlacementPreview(r.Context(), principal(r), params.ProjectId, params.Environment)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListPlacementRules(w http.ResponseWriter, r *http.Request, params api.ListPlacementRulesParams) {
-	s.notBuilt(w, r)
+	items, err := s.Core.PlacementRules(r.Context(), principal(r), deref(params.ProjectId))
+	s.reply(w, r, http.StatusOK, api.PlacementRuleList{Items: items}, err)
 }
 
 func (s *Server) CreatePlacementRule(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	var b api.PlacementRuleWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SavePlacementRule(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
 }
 
 func (s *Server) DeletePlacementRule(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	s.replyEmpty(w, r, s.Core.DeletePlacementRule(r.Context(), principal(r), id))
 }
 
 func (s *Server) UpdatePlacementRule(w http.ResponseWriter, r *http.Request, id api.IdPath) {
-	s.notBuilt(w, r)
+	var b api.PlacementRuleWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SavePlacementRule(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ExplainPolicies(w http.ResponseWriter, r *http.Request) {

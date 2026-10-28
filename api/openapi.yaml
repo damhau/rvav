@@ -4575,35 +4575,42 @@ components:
       properties:
         clusters:
           type: array
-          items:
-            type: object
-            required: [name]
-            properties:
-              name: { type: string }
-              hosts: { type: integer }
+          items: { $ref: "#/components/schemas/PreviewCluster" }
         datastores:
           type: array
-          items:
-            type: object
-            required: [name]
-            properties:
-              name: { type: string }
-              free_gb: { type: integer }
+          items: { $ref: "#/components/schemas/PreviewDatastore" }
         networks:
           type: array
-          items:
-            type: object
-            required: [name]
-            properties:
-              name: { type: string }
-              subnet: { type: string }
-              dns_zone: { type: string }
-              source: { type: string, enum: [manual, efficientip] }
+          items: { $ref: "#/components/schemas/PreviewNetwork" }
         folder: { type: string }
         problems:
           type: array
           description: What stops a request here, for example a network with no subnet.
           items: { type: string }
+    PreviewCluster:
+      type: object
+      required: [name, hosts, tags]
+      properties:
+        name: { type: string }
+        hosts: { type: integer }
+        tags: { type: array, items: { type: string } }
+    PreviewDatastore:
+      type: object
+      required: [name, free_gb, clusters, tags]
+      properties:
+        name: { type: string }
+        free_gb: { type: integer }
+        clusters: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+    PreviewNetwork:
+      type: object
+      required: [name, clusters]
+      properties:
+        name: { type: string }
+        clusters: { type: array, items: { type: string } }
+        subnet: { type: string, description: Empty when no mapping gives it a subnet. }
+        dns_zone: { type: string }
+        source: { type: string, enum: [manual, efficientip] }
     NetworkMapping:
       type: object
       required: [network, subnet, gateway, dns_zone, dns_servers, source]

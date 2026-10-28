@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/seed"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // TestProjectAdministration: administrators create and archive projects,
@@ -147,4 +149,90 @@ func fieldsOf(errs []api.FieldError) []string {
 		out = append(out, e.Field)
 	}
 	return out
+}
+
+// TestPlacementAdministration: placement rules by name and by vSphere tag,
+// a preview of what they select, and network mappings set by hand that
+// the EfficientIP sync leaves alone (S9.3, ADR-0020).
+func TestPlacementAdministration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		var rules api.PlacementRuleList
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
+		if len(rules.Items) != 3 {
+			t.Fatalf("Web Platform's rules = %+v", rules.Items)
+		}
+		h.json("GET", "/api/v1/admin/placement-rules", "tnguyen", nil, 403, nil)
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", "lmartin", nil, 200, nil) // its project admin
+
+		var preview api.PlacementPreview
+		h.json("GET", "/api/v1/admin/placement-preview?project_id=prj_web&environment=dev", admin, nil, 200, &preview)
+		if len(preview.Clusters) != 1 || preview.Clusters[0].Name != "GVA-DEV-CL01" || len(preview.Datastores) == 0 ||
+			len(preview.Networks) == 0 || preview.Folder == "" || len(preview.Problems) != 0 {
+			t.Fatalf("web/dev preview = %+v", preview)
+		}
+
+		// A project placed by tag: gold clusters and gold datastores.
+		var gold api.AdminProject
+		h.json("POST", "/api/v1/admin/projects", admin, api.AdminProjectCreate{Code: "gold", Name: "Gold tier", Environments: []string{"prd"}}, 201, &gold)
+		h.json("GET", "/api/v1/admin/placement-preview?project_id="+gold.Id+"&environment=prd", admin, nil, 200, &preview)
+		if len(preview.Problems) != 1 || len(preview.Clusters) != 0 {
+			t.Fatalf("a project without rules = %+v", preview)
+		}
+		rule := api.PlacementRuleWrite{ProjectId: gold.Id, Environment: "prd", Clusters: []string{}, Datastores: []string{},
+			ClusterTags: &[]string{"rvav-tier/gold"}, DatastoreTags: &[]string{"rvav-tier/gold"},
+			Networks: []string{"dvpg-*-prd-*"}, Folder: "/GVA/vm/rvav/web/prd"}
+		var problem struct{ Errors []api.FieldError }
+		bad := rule
+		bad.Environment, bad.ClusterTags = "dev", &[]string{"gold"}
+		h.json("POST", "/api/v1/admin/placement-rules", admin, bad, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/environment") || !slices.Contains(fields, "/cluster_tags/0") {
+			t.Fatalf("a bad rule = %v", fields)
+		}
+		var created api.PlacementRule
+		h.json("POST", "/api/v1/admin/placement-rules", admin, rule, 201, &created)
+		h.json("GET", "/api/v1/admin/placement-preview?project_id="+gold.Id+"&environment=prd", admin, nil, 200, &preview)
+		datastores := []string{}
+		for _, d := range preview.Datastores {
+			datastores = append(datastores, d.Name)
+		}
+		if len(preview.Clusters) != 1 || preview.Clusters[0].Name != "GVA-PRD-CL01" ||
+			fmt.Sprint(datastores) != "[vsan-gva-prd-cl01]" || len(preview.Networks) == 0 {
+			t.Fatalf("placed by tag: clusters %+v, datastores %v, networks %d, problems %v", preview.Clusters, datastores,
+				len(preview.Networks), preview.Problems)
+		}
+		rule.Priority = new(50)
+		h.json("PUT", "/api/v1/admin/placement-rules/"+created.Id, admin, rule, 200, &created)
+		if created.Priority != 50 {
+			t.Fatalf("updated rule = %+v", created)
+		}
+		h.json("DELETE", "/api/v1/admin/placement-rules/"+created.Id, admin, nil, 204, nil)
+
+		// A network's subnet by hand wins over EfficientIP's, until removed.
+		const net = "dvpg-db-dev-vl320"
+		mapping := api.NetworkMappingWrite{Subnet: "10.32.20.0/24", Gateway: "10.32.20.1", DnsZone: "db.corp.example"}
+		h.json("PUT", "/api/v1/admin/network-mappings/"+net, admin, api.NetworkMappingWrite{Subnet: "10.32.20.0/24", Gateway: "10.9.9.9",
+			DnsZone: "db.corp.example"}, 422, nil)
+		var set api.NetworkMapping
+		h.json("PUT", "/api/v1/admin/network-mappings/"+net, admin, mapping, 200, &set)
+		if set.Source != api.NetworkMappingSourceManual || set.Subnet != "10.32.20.0/24" {
+			t.Fatalf("set = %+v", set)
+		}
+		if _, _, err := h.store.SyncNetworkSubnets(ctx, []store.NetworkSubnet{{Network: net, Subnet: "10.99.0.0/24", Gateway: "10.99.0.1",
+			DNSZone: "corp.example", DNSServers: []string{}, EfficientIPSubnetID: "99"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		var mappings api.NetworkMappingList
+		h.json("GET", "/api/v1/admin/network-mappings", admin, nil, 200, &mappings)
+		i := slices.IndexFunc(mappings.Items, func(m api.NetworkMapping) bool { return m.Network == net })
+		if i < 0 || mappings.Items[i].Subnet != "10.32.20.0/24" || mappings.Items[i].Source != api.NetworkMappingSourceManual {
+			t.Fatalf("after the sync: %+v", mappings.Items)
+		}
+		h.json("DELETE", "/api/v1/admin/network-mappings/"+net, admin, nil, 204, nil)
+		h.json("DELETE", "/api/v1/admin/network-mappings/"+net, admin, nil, 404, nil)
+	})
 }

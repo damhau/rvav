@@ -85,6 +85,7 @@ type placement struct {
 	datastores []store.InvDatastore
 	networks   []store.InvNetwork
 	subnets    map[string]store.NetworkSubnet
+	tags       map[string][]string // of every cluster, by name
 }
 
 func matchAny(patterns []string, name string) bool {
@@ -94,6 +95,21 @@ func matchAny(patterns []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// selects says whether a rule's patterns and tags choose an object: a name
+// matching one of the patterns (no patterns: any name) and every tag
+// (ADR-0020).
+func selects(patterns, wantTags []string, name string, tags []string) bool {
+	if len(patterns) > 0 && !matchAny(patterns, name) {
+		return false
+	}
+	for _, t := range wantTags {
+		if !slices.Contains(tags, t) {
+			return false
+		}
+	}
+	return len(patterns) > 0 || len(wantTags) > 0
 }
 
 func (s *Service) placement(ctx context.Context, projectID, environment string) (*placement, error) {
@@ -108,6 +124,10 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 	clusters, err := s.Store.InventoryClusters(ctx)
 	if err != nil {
 		return nil, err
+	}
+	pl.tags = map[string][]string{}
+	for _, c := range clusters {
+		pl.tags[c.Name] = c.Tags
 	}
 	for _, c := range clusters {
 		if pl.rule(c.Name) != nil {
@@ -129,7 +149,7 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 // rule returns the first rule allowing the cluster.
 func (pl *placement) rule(cluster string) *store.PlacementRule {
 	for i := range pl.rules {
-		if matchAny(pl.rules[i].ClusterPatterns, cluster) {
+		if selects(pl.rules[i].ClusterPatterns, pl.rules[i].ClusterTags, cluster, pl.tags[cluster]) {
 			return &pl.rules[i]
 		}
 	}
@@ -152,7 +172,7 @@ func (pl *placement) datastoresFor(cluster string) []store.InvDatastore {
 	}
 	var out []store.InvDatastore
 	for _, d := range pl.datastores {
-		if slices.Contains(d.Clusters, cluster) && matchAny(r.DatastorePatterns, d.Name) {
+		if slices.Contains(d.Clusters, cluster) && selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags) {
 			out = append(out, d)
 		}
 	}

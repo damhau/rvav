@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/vapi/rest"
+	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -24,6 +27,13 @@ type Layout struct {
 	Portgroups []string
 	Folders    []string
 	Templates  []TemplateSpec
+	Tags       []TagSpec
+}
+
+// TagSpec is a vSphere tag on clusters and datastores, by name.
+type TagSpec struct {
+	Category, Name string
+	Objects        []string
 }
 
 type ClusterSpec struct {
@@ -71,6 +81,11 @@ func DefaultLayout() Layout {
 				Network: "dvpg-app-dev-vl310", Folder: "/GVA/vm/templates", VCPU: 2, MemoryMB: 4096, DiskGB: 40},
 			{Name: "tpl-win2025-std-2026.09", GuestID: "windows2019srvNext_64Guest", Cluster: "GVA-DEV-CL01", Datastore: "vsan-gva-dev-cl01",
 				Network: "dvpg-app-dev-vl310", Folder: "/GVA/vm/templates", VCPU: 2, MemoryMB: 8192, DiskGB: 80},
+		},
+		// Placement by tag (ADR-0020): a storage tier on clusters and datastores.
+		Tags: []TagSpec{
+			{Category: "rvav-tier", Name: "gold", Objects: []string{"GVA-PRD-CL01", "vsan-gva-prd-cl01", "vsan-gva-dev-cl01"}},
+			{Category: "rvav-tier", Name: "bronze", Objects: []string{"GVA-DEV-CL01", "nfs-gva-bronze-01"}},
 		},
 	}
 }
@@ -128,6 +143,66 @@ func Bootstrap(ctx context.Context, c *vim25.Client, l Layout) error {
 	for _, t := range l.Templates {
 		if err := ensureTemplate(ctx, c, t); err != nil {
 			return fmt.Errorf("template %s: %w", t.Name, err)
+		}
+	}
+	if err := ensureTags(ctx, c, l); err != nil {
+		return fmt.Errorf("tags: %w", err)
+	}
+	return nil
+}
+
+// vcsimLogin is vcsim's default account: the tagging service signs in
+// apart from the vim25 session, which doesn't keep its credentials.
+var vcsimLogin = url.UserPassword("user", "pass")
+
+// ensureTags creates the layout's tag categories and tags and attaches
+// them, through the tagging service.
+func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
+	if len(l.Tags) == 0 {
+		return nil
+	}
+	rc := rest.NewClient(c)
+	if err := rc.Login(ctx, vcsimLogin); err != nil {
+		return err
+	}
+	defer func() { _ = rc.Logout(context.Background()) }()
+	m := tags.NewManager(rc)
+	finder := find.NewFinder(c, false)
+	dc, err := finder.Datacenter(ctx, "/"+l.Datacenter)
+	if err != nil {
+		return err
+	}
+	finder.SetDatacenter(dc)
+	categories := map[string]string{}
+	for _, t := range l.Tags {
+		catID, ok := categories[t.Category]
+		if !ok {
+			if cat, err := m.GetCategory(ctx, t.Category); err == nil {
+				catID = cat.ID
+			} else if catID, err = m.CreateCategory(ctx, &tags.Category{Name: t.Category, Cardinality: "MULTIPLE",
+				AssociableTypes: []string{"ClusterComputeResource", "Datastore"}}); err != nil {
+				return err
+			}
+			categories[t.Category] = catID
+		}
+		var tagID string
+		if tag, err := m.GetTagForCategory(ctx, t.Name, catID); err == nil {
+			tagID = tag.ID
+		} else if tagID, err = m.CreateTag(ctx, &tags.Tag{Name: t.Name, CategoryID: catID}); err != nil {
+			return err
+		}
+		for _, name := range t.Objects {
+			var ref types.ManagedObjectReference
+			if cc, err := finder.ClusterComputeResource(ctx, name); err == nil {
+				ref = cc.Reference()
+			} else if ds, err := finder.Datastore(ctx, name); err == nil {
+				ref = ds.Reference()
+			} else {
+				return fmt.Errorf("no cluster or datastore %s to tag", name)
+			}
+			if err := m.AttachTag(ctx, tagID, ref); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

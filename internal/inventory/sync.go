@@ -81,15 +81,18 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if inv.TagsError != nil {
+		s.Log.Warn("inventory: no vSphere tags; placement by tag finds nothing", "err", inv.TagsError)
+	}
 	snap := store.Inventory{VCenter: s.VSphere.Name()}
 	for _, c := range inv.Clusters {
 		snap.Clusters = append(snap.Clusters, store.InvCluster{Moref: c.Moref, Name: c.Name, Datacenter: c.Datacenter,
 			HostCount: c.HostCount, CPUTotalMHz: c.CPUTotalMHz, CPUUsedMHz: c.CPUUsedMHz,
-			MemoryTotalMB: c.MemoryTotalMB, MemoryUsedMB: c.MemoryUsedMB})
+			MemoryTotalMB: c.MemoryTotalMB, MemoryUsedMB: c.MemoryUsedMB, Tags: c.Tags})
 	}
 	for _, d := range inv.Datastores {
 		snap.Datastores = append(snap.Datastores, store.InvDatastore{Moref: d.Moref, Name: d.Name,
-			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Clusters: d.Clusters})
+			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Clusters: d.Clusters, Tags: d.Tags})
 	}
 	for _, n := range inv.Networks {
 		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters})

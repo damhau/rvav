@@ -15,6 +15,7 @@ import (
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/simulator"
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
 
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 )
