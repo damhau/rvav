@@ -15,13 +15,14 @@ type Secret struct {
 	Description string    `db:"description"`
 	Username    string    `db:"username"`
 	Header      string    `db:"header"`
+	KeyID       string    `db:"key_id"`
 	Nonce       []byte    `db:"nonce"`
 	Ciphertext  []byte    `db:"ciphertext"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }
 
-const secretCols = `name, kind, description, username, header, nonce, ciphertext, created_at, updated_at`
+const secretCols = `name, kind, description, username, header, key_id, nonce, ciphertext, created_at, updated_at`
 
 func (s *Store) Secrets(ctx context.Context) ([]Secret, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+secretCols+` from secrets order by name`)
@@ -38,15 +39,16 @@ func (s *Store) GetSecret(ctx context.Context, name string) (Secret, error) {
 // creating a name that exists, ErrNotFound when replacing one that doesn't.
 func (s *Store) PutSecret(ctx context.Context, v Secret, create bool) error {
 	if create {
-		_, err := s.Pool.Exec(ctx, `insert into secrets (name, kind, description, username, header, nonce, ciphertext)
-			values ($1, $2, $3, $4, $5, $6, $7)`, v.Name, v.Kind, v.Description, v.Username, v.Header, v.Nonce, v.Ciphertext)
+		_, err := s.Pool.Exec(ctx, `insert into secrets (name, kind, description, username, header, nonce, ciphertext, key_id)
+			values ($1, $2, $3, $4, $5, $6, $7, $8)`, v.Name, v.Kind, v.Description, v.Username, v.Header, v.Nonce, v.Ciphertext, v.KeyID)
 		if IsUniqueViolation(err) {
 			return ErrInUse
 		}
 		return err
 	}
 	tag, err := s.Pool.Exec(ctx, `update secrets set kind = $2, description = $3, username = $4, header = $5, nonce = $6,
-		ciphertext = $7, updated_at = now() where name = $1`, v.Name, v.Kind, v.Description, v.Username, v.Header, v.Nonce, v.Ciphertext)
+		ciphertext = $7, key_id = $8, updated_at = now() where name = $1`, v.Name, v.Kind, v.Description, v.Username, v.Header,
+		v.Nonce, v.Ciphertext, v.KeyID)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
@@ -69,4 +71,10 @@ func (s *Store) SecretUsers(ctx context.Context, name string) ([]string, error) 
 			jsonb_build_object('name', $1::text))
 		order by i.slug`, name)
 	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// ResealSecret replaces a secret's sealed value only (key rotation).
+func (s *Store) ResealSecret(ctx context.Context, name, keyID string, nonce, ciphertext []byte) error {
+	_, err := s.Pool.Exec(ctx, `update secrets set key_id = $2, nonce = $3, ciphertext = $4 where name = $1`, name, keyID, nonce, ciphertext)
+	return err
 }

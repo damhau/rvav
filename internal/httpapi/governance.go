@@ -108,15 +108,29 @@ func (s *Server) DeleteGroupMapping(w http.ResponseWriter, r *http.Request, id a
 }
 
 func (s *Server) GetIntegrations(w http.ResponseWriter, r *http.Request) {
-	s.notBuilt(w, r)
+	items, err := s.Core.Integrations(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.IntegrationList{Items: items}, err)
 }
 
 func (s *Server) SetIntegration(w http.ResponseWriter, r *http.Request, kind api.IntegrationKindPath) {
-	s.notBuilt(w, r)
+	var b api.IntegrationWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetIntegration(r.Context(), principal(r), string(kind), b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) TestIntegration(w http.ResponseWriter, r *http.Request, kind api.IntegrationKindPath) {
-	s.notBuilt(w, r)
+	var b *api.IntegrationWrite
+	if r.ContentLength != 0 {
+		b = &api.IntegrationWrite{}
+		if !s.decode(w, r, b) {
+			return
+		}
+	}
+	out, err := s.Core.TestIntegration(r.Context(), principal(r), string(kind), b)
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) DeleteLeasePolicy(w http.ResponseWriter, r *http.Request, params api.DeleteLeasePolicyParams) {

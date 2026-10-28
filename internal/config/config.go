@@ -25,7 +25,9 @@ type Config struct {
 
 	// SecretsKey encrypts stored secrets (32 bytes, base64); RESTSourceHosts
 	// are the hosts `rest` value sources may call (ADR-0019).
-	SecretsKey      string
+	SecretsKey string
+	// SecretsOldKeys still open what earlier keys sealed (rotation).
+	SecretsOldKeys  []string
 	RESTSourceHosts []string
 
 	SyncInterval time.Duration
@@ -85,6 +87,9 @@ type EfficientIPConfig struct {
 	Space     string
 	DNSServer string
 	DNSView   string
+	// Instance tells this rvav's objects from another's on a shared
+	// SOLIDserver (RVAV_INSTANCE_ID).
+	Instance string
 }
 
 type AWXConfig struct {
@@ -144,8 +149,10 @@ func Load() (Config, error) {
 			Space:     env("RVAV_EFFICIENTIP_SPACE", ""),
 			DNSServer: env("RVAV_EFFICIENTIP_DNS_SERVER", ""),
 			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
+			Instance:  env("RVAV_INSTANCE_ID", "rvav"),
 		},
 		SecretsKey:      env("RVAV_SECRETS_KEY", ""),
+		SecretsOldKeys:  list("RVAV_SECRETS_OLD_KEYS"),
 		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),

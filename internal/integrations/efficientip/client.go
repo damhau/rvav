@@ -62,6 +62,9 @@ type Options struct {
 	DNSServer string
 	// DNSView is the DNS view records go in, when the server has views.
 	DNSView string
+	// Instance tells this rvav's objects from another's on a shared
+	// SOLIDserver (InstanceParam); empty is "rvav".
+	Instance string
 }
 
 // TagParam is the class parameter set on every address and record rvav
@@ -73,7 +76,25 @@ const TagParam = "rvav_managed"
 // address and never one of the same name reserved by anyone else.
 const OwnerParam = "rvav_owner"
 
-var tag = url.Values{TagParam: {"1"}}.Encode()
+// InstanceParam names the rvav instance that made an object (ADR-0020), so
+// two instances sharing a SOLIDserver each report only their own.
+const InstanceParam = "rvav_instance"
+
+// tags are the class parameters rvav sets on what it creates.
+func (c *HTTPClient) tags(extra url.Values) string {
+	v := url.Values{TagParam: {"1"}, InstanceParam: {c.instance()}}
+	for k, list := range extra {
+		v[k] = list
+	}
+	return v.Encode()
+}
+
+func (c *HTTPClient) instance() string {
+	if c.opts.Instance == "" {
+		return "rvav"
+	}
+	return c.opts.Instance
+}
 
 // APIError is an error SOLIDserver answered with.
 type APIError struct {
@@ -394,7 +415,7 @@ func (c *HTTPClient) Reserve(ctx context.Context, s Subnet, hostname, owner stri
 		}
 		return Address{ID: existing[0]["ip_id"], IP: existing[0]["hostaddr"], Subnet: s.CIDR, Hostname: hostname}, nil
 	}
-	classParams := url.Values{TagParam: {"1"}, OwnerParam: {owner}}.Encode()
+	classParams := c.tags(url.Values{OwnerParam: {owner}})
 	var last error
 	for range 2 {
 		free, err := c.free(ctx, s, ref, 5)
@@ -531,7 +552,7 @@ func (c *HTTPClient) CreateRecord(ctx context.Context, r Record) (Record, error)
 		return Record{}, fmt.Errorf("%s record %s already points to %s", r.Type, r.FQDN, rows[0]["value1"])
 	}
 	params := url.Values{"rr_name": {fqdn(r.FQDN)}, "rr_type": {r.Type}, "value1": {r.Value},
-		"dns_name": {c.opts.DNSServer}, "rr_class_parameters": {tag}, "add_flag": {"new_only"}}
+		"dns_name": {c.opts.DNSServer}, "rr_class_parameters": {c.tags(nil)}, "add_flag": {"new_only"}}
 	if c.opts.DNSView != "" {
 		params.Set("dnsview_name", c.opts.DNSView)
 	}
@@ -677,9 +698,15 @@ func (c *HTTPClient) Zones(ctx context.Context) ([]string, error) {
 
 var tagged = TagParam + "=1"
 
-func isTagged(classParams string) bool {
+// ours says whether rvav made an object, this instance of it: those made
+// before instances were recorded count as this instance's.
+func (c *HTTPClient) ours(classParams string) bool {
 	params, _ := url.ParseQuery(classParams)
-	return params.Get(TagParam) == "1"
+	if params.Get(TagParam) != "1" {
+		return false
+	}
+	instance := params.Get(InstanceParam)
+	return instance == "" || instance == c.instance()
 }
 
 func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
@@ -689,7 +716,7 @@ func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
 	}
 	var addresses []Address
 	for _, r := range rows {
-		if !isTagged(r["ip_class_parameters"]) {
+		if !c.ours(r["ip_class_parameters"]) {
 			continue
 		}
 		subnet := r["subnet_name"]
@@ -704,7 +731,7 @@ func (c *HTTPClient) Managed(ctx context.Context) ([]Address, []Record, error) {
 	}
 	var records []Record
 	for _, r := range live(rows) {
-		if isTagged(r["rr_class_parameters"]) {
+		if c.ours(r["rr_class_parameters"]) {
 			records = append(records, Record{ID: r["rr_id"], FQDN: r["rr_full_name"], Type: r["rr_type"], Value: r["value1"], Zone: r["dnszone_name"]})
 		}
 	}

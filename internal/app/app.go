@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -41,6 +42,9 @@ type App struct {
 	Events *events.Publisher
 	// Secrets seals stored secrets; nil without RVAV_SECRETS_KEY.
 	Secrets *secrets.Box
+	// SettingsRevision is the revision of the saved settings this process
+	// started with.
+	SettingsRevision int64
 
 	vcMu    sync.Mutex
 	vc      vsphere.Driver
@@ -90,9 +94,15 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, err
 	}
 	a := &App{Cfg: cfg, Log: log, Store: st, Events: &events.Publisher{Store: st, Logger: log}}
-	if a.Secrets, err = secrets.New(cfg.SecretsKey); err != nil {
+	if a.Secrets, err = secrets.New(cfg.SecretsKey, cfg.SecretsOldKeys...); err != nil {
 		return nil, err
 	}
+	// Connection settings saved from the UI, where no environment variable
+	// sets them (ADR-0020); they take effect here, at start.
+	if err := a.applyStoredSettings(ctx); err != nil {
+		return nil, err
+	}
+	cfg = a.Cfg
 
 	if cfg.IPAM.Fake {
 		fake, err := NewFakeEfficientIP(ctx, st)
@@ -112,7 +122,7 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 	} else if cfg.IPAM.URL != "" {
 		if a.IPAM, err = efficientip.New(efficientip.Options{URL: cfg.IPAM.URL, Auth: efficientip.Auth(cfg.IPAM.Auth),
 			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Space: cfg.IPAM.Space,
-			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView}); err != nil {
+			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView, Instance: cfg.IPAM.Instance}); err != nil {
 			return nil, err
 		}
 		if strings.HasPrefix(cfg.IPAM.URL, "http://") {
@@ -144,6 +154,34 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, errors.New("set RVAV_AWX_URL, or RVAV_FAKE_AWX=1 for development")
 	}
 	return a, nil
+}
+
+// applyStoredSettings merges the integrations' saved settings into the
+// configuration and records their revision.
+func (a *App) applyStoredSettings(ctx context.Context) error {
+	stored, err := a.Store.StoredIntegrations(ctx)
+	if err != nil {
+		return err
+	}
+	for kind, row := range stored {
+		var s config.Stored
+		if err := json.Unmarshal(row.Settings, &s.Settings); err != nil {
+			return fmt.Errorf("stored %s settings: %w", kind, err)
+		}
+		if row.SecretCiphertext != nil {
+			plain, err := a.Secrets.Open(core.IntegrationSecretName(kind), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext)
+			if err != nil {
+				a.Log.Warn("the stored "+kind+" password or token can't be opened; it is not used", "err", err)
+			} else {
+				s.Secret = string(plain)
+			}
+		}
+		a.Cfg.ApplyStored(kind, s)
+		if row.Revision > a.SettingsRevision {
+			a.SettingsRevision = row.Revision
+		}
+	}
+	return nil
 }
 
 func (a *App) Close() {
@@ -216,7 +254,7 @@ func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
-		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts)}
+		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
 	}

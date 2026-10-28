@@ -45,6 +45,8 @@ Usage:
                            (-revoke deletes the user's tokens of that name)
   rvav ipam-reconcile      list EfficientIP addresses and records no deployment owns,
                            and owned ones EfficientIP no longer has (JSON)
+  rvav secrets rotate      seal every stored secret again with RVAV_SECRETS_KEY, so the
+                           keys in RVAV_SECRETS_OLD_KEYS can then be removed
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
@@ -201,6 +203,17 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		fmt.Println(token)
+		return nil
+	case "secrets":
+		if len(args) != 1 || args[0] != "rotate" {
+			return errors.New("usage: rvav secrets rotate")
+		}
+		n, err := core.RotateSecrets(ctx, a.Store, a.Secrets)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%d secret(s) sealed again with key %s; RVAV_SECRETS_OLD_KEYS can be emptied once every process has the new key\n",
+			n, a.Secrets.KeyID())
 		return nil
 	case "ipam-reconcile":
 		report, err := a.Core(nil).ReconcileIPAM(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID}, GlobalRoles: []string{"admin"}})

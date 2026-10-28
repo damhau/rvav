@@ -85,7 +85,7 @@ func (s *Service) PutSecret(ctx context.Context, p *auth.Principal, name string,
 	if len(errs) > 0 {
 		return api.Secret{}, &ValidationError{Errors: errs}
 	}
-	nonce, ct, err := s.Secrets.Seal(name, []byte(deref(w.Value)))
+	keyID, nonce, ct, err := s.Secrets.Seal(name, []byte(deref(w.Value)))
 	if errors.Is(err, secrets.ErrNoKey) {
 		return api.Secret{}, &ConflictError{Msg: "RVAV_SECRETS_KEY is not set, so rvav can't store secrets."}
 	}
@@ -93,7 +93,7 @@ func (s *Service) PutSecret(ctx context.Context, p *auth.Principal, name string,
 		return api.Secret{}, err
 	}
 	row := store.Secret{Name: name, Kind: string(w.Kind), Description: deref(w.Description), Username: deref(w.Username),
-		Header: deref(w.Header), Nonce: nonce, Ciphertext: ct}
+		Header: deref(w.Header), KeyID: keyID, Nonce: nonce, Ciphertext: ct}
 	switch err := s.Store.PutSecret(ctx, row, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.Secret{}, &ConflictError{Msg: fmt.Sprintf("The secret %q exists: replace its value instead.", name)}
@@ -143,6 +143,6 @@ func (s *Service) secretValue(ctx context.Context, name string) (store.Secret, s
 	if err != nil {
 		return v, "", err
 	}
-	plain, err := s.Secrets.Open(v.Name, v.Nonce, v.Ciphertext)
+	plain, err := s.Secrets.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext)
 	return v, string(plain), err
 }

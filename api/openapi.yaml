@@ -5007,13 +5007,14 @@ components:
         ok: { type: boolean }
         checks:
           type: array
-          items:
-            type: object
-            required: [name, ok, message]
-            properties:
-              name: { type: string, examples: [Sign in] }
-              ok: { type: boolean }
-              message: { type: string }
+          items: { $ref: "#/components/schemas/IntegrationCheck" }
+    IntegrationCheck:
+      type: object
+      required: [name, ok, message]
+      properties:
+        name: { type: string, examples: [Sign in] }
+        ok: { type: boolean }
+        message: { type: string }
     ApiToken:
       type: object
       required: [id, name, scope, user, created_at]

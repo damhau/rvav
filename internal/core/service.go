@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
@@ -50,6 +51,10 @@ type Service struct {
 	// `rest` value sources (ADR-0019).
 	Secrets *secrets.Box
 	REST    *RESTSources
+	// Config is the configuration this process started with, saved
+	// settings applied; SettingsRevision is theirs (ADR-0020).
+	Config           config.Config
+	SettingsRevision int64
 }
 
 // ConsoleSource is what the web console needs from vCenter.

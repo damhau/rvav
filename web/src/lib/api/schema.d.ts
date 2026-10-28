@@ -3605,12 +3605,13 @@ export interface components {
         };
         IntegrationTest: {
             ok: boolean;
-            checks: {
-                /** @example Sign in */
-                name: string;
-                ok: boolean;
-                message: string;
-            }[];
+            checks: components["schemas"]["IntegrationCheck"][];
+        };
+        IntegrationCheck: {
+            /** @example Sign in */
+            name: string;
+            ok: boolean;
+            message: string;
         };
         ApiToken: {
             id: string;

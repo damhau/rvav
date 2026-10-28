@@ -100,7 +100,7 @@ func TestAddresses(t *testing.T) {
 	}
 	add := l.last("POST", "/rest/ip_add").Query
 	want := url.Values{"site_id": {add.Get("site_id")}, "hostaddr": {"10.31.10.21"}, "name": {"web-dev-app001.corp.example"},
-		"ip_class_parameters": {"rvav_managed=1&rvav_owner=dep_1"}, "add_flag": {"new_only"}}
+		"ip_class_parameters": {"rvav_instance=rvav&rvav_managed=1&rvav_owner=dep_1"}, "add_flag": {"new_only"}}
 	if add.Encode() != want.Encode() || add.Get("site_id") == "" {
 		t.Fatalf("ip_add = %v", add)
 	}
@@ -232,7 +232,7 @@ func TestRecords(t *testing.T) {
 	}
 	add := l.last("POST", "/rest/dns_rr_add").Query
 	want := url.Values{"rr_name": {"web-dev-app001.corp.example"}, "rr_type": {"A"}, "value1": {"10.31.10.21"},
-		"dns_name": {"ns1.corp.example"}, "dnszone_name": {"corp.example"}, "rr_class_parameters": {"rvav_managed=1"},
+		"dns_name": {"ns1.corp.example"}, "dnszone_name": {"corp.example"}, "rr_class_parameters": {"rvav_instance=rvav&rvav_managed=1"},
 		"add_flag": {"new_only"}}
 	if add.Encode() != want.Encode() {
 		t.Fatalf("dns_rr_add = %v", add)
@@ -380,5 +380,39 @@ func TestWhere(t *testing.T) {
 		if _, err := parseWhere(bad); err == nil {
 			t.Errorf("%s parsed", bad)
 		}
+	}
+}
+
+// Two rvav instances sharing a SOLIDserver each report only their own
+// objects as managed; objects made before instances were recorded count as
+// the instance's (ADR-0020).
+func TestInstances(t *testing.T) {
+	ctx := context.Background()
+	l := newLab(t)
+	client := func(instance string) *HTTPClient {
+		c, err := New(Options{URL: l.srv.URL, Auth: AuthNative, Username: "rvav", Password: "s3cret", DNSServer: "ns1.corp.example",
+			Instance: instance})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	prod, lab := client(""), client("lab")
+	if _, err := prod.Reserve(ctx, subnet, "web-dev-app001.corp.example", "dep_1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lab.CreateRecord(ctx, Record{FQDN: "lab-vm001.corp.example", Type: "A", Value: "10.31.10.99", Zone: "corp.example"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.last("POST", "/rest/ip_add").Query.Get("ip_class_parameters"); !strings.Contains(got, InstanceParam+"=rvav") {
+		t.Fatalf("class parameters = %q", got)
+	}
+	addresses, records, err := prod.Managed(ctx)
+	if err != nil || len(addresses) != 1 || len(records) != 0 {
+		t.Fatalf("rvav's managed: %v %v %v", addresses, records, err)
+	}
+	addresses, records, err = lab.Managed(ctx)
+	if err != nil || len(addresses) != 0 || len(records) != 1 {
+		t.Fatalf("lab's managed: %v %v %v", addresses, records, err)
 	}
 }

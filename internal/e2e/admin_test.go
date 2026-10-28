@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -13,6 +14,8 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -513,6 +516,78 @@ func TestPolicyAdministration(t *testing.T) {
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action like 'policy.%'`).Scan(&audited)
 		if audited != 6 {
 			t.Fatalf("audited %d policy changes, want 6", audited)
+		}
+	})
+}
+
+// TestIntegrationSettings: connections set from the API, their secret
+// sealed and never returned, tested before or after saving; a restart is
+// said to be needed; secrets sealed again under a new key (S9.7, ADR-0020).
+func TestIntegrationSettings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		h.json("GET", "/api/v1/admin/integrations", "lmartin", nil, 403, nil)
+		vcsim := c.URL().String()
+		var problem struct{ Errors []api.FieldError }
+		h.json("PUT", "/api/v1/admin/integrations/awx", admin, api.IntegrationWrite{Settings: map[string]any{"colour": "blue",
+			"insecure": "yes"}}, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/settings/colour") || !slices.Contains(fields, "/settings/insecure") {
+			t.Fatalf("bad settings = %v", fields)
+		}
+
+		var vc api.Integration
+		h.json("PUT", "/api/v1/admin/integrations/vcenter", admin, api.IntegrationWrite{Settings: map[string]any{"url": vcsim,
+			"username": "user", "insecure": true, "name": "vc01.corp.example"}, Secret: new("pass")}, 200, &vc)
+		if !vc.SecretSet || !vc.RestartNeeded || vc.Settings["url"] != vcsim || vc.Settings["password"] != nil {
+			t.Fatalf("saved vcenter = %+v", vc)
+		}
+		_, raw, _ := h.do("GET", "/api/v1/admin/integrations", admin, nil)
+		if strings.Contains(string(raw), `"pass"`) {
+			t.Fatal("the password came back")
+		}
+
+		var test api.IntegrationTest
+		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, nil, 200, &test)
+		if !test.Ok || len(test.Checks) != 3 {
+			t.Fatalf("vCenter test = %+v", test)
+		}
+		// Settings given are tested without being saved (vcsim takes any password: a wrong address here).
+		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, api.IntegrationWrite{Settings: map[string]any{
+			"url": "https://127.0.0.1:1/sdk"}}, 200, &test)
+		if test.Ok || test.Checks[0].Ok {
+			t.Fatalf("an unreachable vCenter tested fine: %+v", test)
+		}
+		h.json("POST", "/api/v1/admin/integrations/awx/test", admin, api.IntegrationWrite{Settings: map[string]any{
+			"url": "http://127.0.0.1:1", "organization": "rvav-test"}, Secret: new("t")}, 200, &test)
+		if test.Ok {
+			t.Fatalf("an unreachable AWX tested fine: %+v", test)
+		}
+
+		// Secrets sealed again under a new key; the old one can go.
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb", Kind: api.SecretWriteKindToken, Value: new("cmdb-token")}, 201, nil)
+		oldKey := base64.StdEncoding.EncodeToString([]byte("e2e-only-secrets-key-32-bytes!!!"))
+		newKey := base64.StdEncoding.EncodeToString([]byte("another-e2e-secrets-key-32-bytes"))
+		both, err := secrets.New(newKey, oldKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := core.RotateSecrets(ctx, h.store, both); err != nil || n != 2 {
+			t.Fatalf("rotated %d, %v", n, err)
+		}
+		onlyNew, _ := secrets.New(newKey)
+		v, err := h.store.GetSecret(ctx, "cmdb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plain, err := onlyNew.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext); err != nil || string(plain) != "cmdb-token" {
+			t.Fatalf("after rotation: %q %v", plain, err)
+		}
+		if n, _ := core.RotateSecrets(ctx, h.store, both); n != 0 {
+			t.Fatalf("rotated %d again", n)
 		}
 	})
 }
