@@ -73,10 +73,12 @@ When an approval is decided, rvav sends the workflow the signal
 `approved` or `rejected`). An approval has no deadline of its own: a
 workflow that can't wait forever waits with its own timer and decides what
 happens (the helpers' `Wait`), and the approval stays open in the inbox
-until decided or the request ends. Approvals a workflow asks for are not
-policy levels: the request's approval chain ignores them. rvav finds the
-request and step from the calling workflow's ID: an activity called by a
-workflow rvav didn't start is refused.
+until decided or the run ends (its open approvals are then cancelled).
+Approvals a workflow asks for are not policy levels: the request's
+approval chain ignores them, and an approver can't change the request's
+inputs in them. rvav finds the request and step from the calling
+workflow's ID: an activity called by a workflow rvav didn't start, or by
+one whose run rvav saw end, is refused.
 
 The Go package `pkg/rvavflow` and the Python package `rvav-workflows`
 (`sdk/python`) wrap these calls and the wait for the signal. An example
@@ -132,14 +134,17 @@ steps:
 - **VM steps are planned when the request is submitted**, as one request:
   names, placement and quota are checked for all of them together, and
   approval policies see the whole. So their inputs come from the form
-  only. The other steps' inputs are bound when they run.
+  only, and they have no `when`. The other steps' inputs are bound when
+  they run. Approvers can't change a composite's inputs.
 - **One timeline:** each step is a step of the request, with its own steps
   under it. A step's outputs are kept on it, so a request retried from a
   failed step binds later steps to what earlier ones gave.
 - **Failure:** with `rollback_on_failure`, what was built is undone in
   reverse order: VMs, addresses and records are deleted as today, AWX and
-  workflow steps run their `undo` when they have one. Without it,
-  everything is kept to be looked at.
+  workflow steps run their `undo` when they have one (a step its `when`
+  skipped has nothing to undo). A step undone is marked cancelled, so a
+  retry runs it again; a VM step retried keeps its own steps that were
+  done. Without rollback, everything is kept to be looked at.
 - Composites are written in YAML (the item's Definition tab), checked when
   saved: steps, references, bindings, cycles and depth.
 

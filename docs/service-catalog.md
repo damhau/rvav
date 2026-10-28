@@ -36,7 +36,8 @@ steps:
 ```
 
 `with` values that are strings are CEL (a literal string is quoted:
-`'"read"'`); a VM step's come from the form only, the others may use
+`'"read"'`); a VM step's come from the form only (and it has no `when`:
+its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
 job's `job_id`, a workflow's result.
 

@@ -102,6 +102,9 @@ func (a *Activities) RunBlockingSubscription(ctx context.Context, requestID stri
 	if err != nil {
 		return out, err
 	}
+	if payload, err = a.withProperties(ctx, requestID, payload); err != nil {
+		return out, err
+	}
 	in := JobInput{RequestID: requestID, ProjectID: r.ProjectID, StepKey: KeyChecks}
 	a.child(ctx, in, out.StepKey, sub.Name, "running", nil)
 	step, _ := a.Store.GetStepByKey(ctx, requestID, out.StepKey)
@@ -116,7 +119,8 @@ func (a *Activities) RunBlockingSubscription(ctx context.Context, requestID stri
 	deadline := start.Add(time.Duration(sub.TimeoutSeconds) * time.Second)
 	res := a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
 	if !res.OK && time.Until(deadline) > time.Duration(sub.TimeoutSeconds)*time.Second/2 {
-		_ = a.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res), store.RunUpdate{Status: "delivering"})
+		_ = a.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res),
+			store.RunUpdate{Status: "delivering", Unclaimed: true})
 		start = time.Now()
 		res = a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
 	}
@@ -126,7 +130,7 @@ func (a *Activities) RunBlockingSubscription(ctx context.Context, requestID stri
 		}
 	}
 
-	u := store.RunUpdate{}
+	u := store.RunUpdate{Unclaimed: true}
 	switch {
 	case !res.OK && sub.OnFailure == "continue_request":
 		u.Status, u.Reason = "failed", &res.Err
@@ -169,6 +173,37 @@ func (a *Activities) FinishChecks(ctx context.Context, requestID, projectID stri
 	}
 	a.Events.Step(ctx, projectID, requestID, st)
 	return nil
+}
+
+// withProperties gives a check the deployment properties earlier checks
+// set (ADR-0021: later subscriptions see them).
+func (a *Activities) withProperties(ctx context.Context, requestID string, payload json.RawMessage) (json.RawMessage, error) {
+	props, err := a.Store.RequestProperties(ctx, requestID)
+	if err != nil || len(props) == 0 {
+		return payload, err
+	}
+	var ev map[string]any
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return payload, nil
+	}
+	data, _ := ev["data"].(map[string]any)
+	if data == nil {
+		return payload, nil
+	}
+	dep, _ := data["deployment"].(map[string]any)
+	if dep == nil {
+		dep = map[string]any{}
+		data["deployment"] = dep
+	}
+	merged, _ := dep["properties"].(map[string]any)
+	if merged == nil {
+		merged = map[string]any{}
+	}
+	for k, v := range props {
+		merged[k] = v
+	}
+	dep["properties"] = merged
+	return json.Marshal(ev)
 }
 
 func (a *Activities) eventPayload(ctx context.Context, eventID string) (string, json.RawMessage, error) {

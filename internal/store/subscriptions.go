@@ -176,6 +176,8 @@ type ClaimedRun struct {
 	SubscriptionRun
 	Subscription Subscription
 	Payload      json.RawMessage
+	// LeaseUntil is the lease it was claimed with.
+	LeaseUntil *time.Time
 	// LastJobID is the AWX job its last attempt launched.
 	LastJobID *int
 }
@@ -186,7 +188,7 @@ type ClaimedRun struct {
 func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]ClaimedRun, error) {
 	rows, err := s.Pool.Query(ctx, `with due as (
 			select r.id from subscription_runs r join subscriptions s on s.id = r.subscription_id
-			where (r.status = 'queued' and r.next_attempt_at <= $2) or (r.status = 'delivering' and r.lease_until < $2)
+			where s.enabled and ((r.status = 'queued' and r.next_attempt_at <= $2) or (r.status = 'delivering' and r.lease_until < $2))
 			order by r.next_attempt_at limit $1 for update of r skip locked)
 		update subscription_runs r set status = 'delivering', attempts = r.attempts + 1,
 			lease_until = $2::timestamptz + make_interval(secs => s.timeout_seconds + 60)
@@ -199,7 +201,7 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 	if err != nil || len(ids) == 0 {
 		return nil, err
 	}
-	rows, _ = s.Pool.Query(ctx, `select `+runCols+`, e.payload, `+prefixed("s", subscriptionCols)+`,
+	rows, _ = s.Pool.Query(ctx, `select `+runCols+`, r.lease_until, e.payload, `+prefixed("s", subscriptionCols)+`,
 			(select a.job_id from subscription_attempts a where a.run_id = r.id and a.job_id is not null order by a.id desc limit 1)`+runFrom+`
 		join subscriptions s on s.id = r.subscription_id where r.id = any($1)`, ids)
 	defer rows.Close()
@@ -209,7 +211,7 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 		sub := &c.Subscription
 		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.EventID, &c.Topic, &c.Status, &c.Blocking, &c.Test, &c.RequestID,
 			&c.RequestNumber, &c.StepID, &c.Attempts, &c.NextAttemptAt, &c.Outcome, &c.Reason, &c.Properties, &c.CreatedAt,
-			&c.FinishedAt, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic, &sub.Condition, &sub.Blocking,
+			&c.FinishedAt, &c.LeaseUntil, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic, &sub.Condition, &sub.Blocking,
 			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt,
 			&c.LastJobID); err != nil {
 			return nil, err
@@ -239,6 +241,12 @@ type RunUpdate struct {
 	Reason      *string
 	Properties  json.RawMessage
 	StepID      *string
+	// Lease, for a run the dispatcher claimed: the run moves on only while
+	// it still holds that lease (another worker may have taken it since).
+	Lease *time.Time
+	// Unclaimed counts the attempt here: test and blocking runs aren't
+	// claimed, which is where attempts are otherwise counted.
+	Unclaimed bool
 }
 
 // RecordAttempt keeps an attempt and moves the run on.
@@ -252,8 +260,10 @@ func (s *Store) RecordAttempt(ctx context.Context, runID string, a Attempt, u Ru
 		_, err := tx.Exec(ctx, `update subscription_runs set status = $2, lease_until = null,
 				next_attempt_at = coalesce($3, next_attempt_at), outcome = coalesce($4, outcome), reason = $5,
 				properties = coalesce($6, properties), step_id = coalesce($7, step_id),
+				attempts = attempts + case when $9 then 1 else 0 end,
 				finished_at = case when $2 in ('delivered', 'failed', 'blocked') then now() end
-			where id = $1`, runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID)
+			where id = $1 and ($8::timestamptz is null or lease_until = $8)`,
+			runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID, u.Lease, u.Unclaimed)
 		return err
 	})
 }
@@ -319,6 +329,13 @@ func (s *Store) RetryRun(ctx context.Context, id string) (bool, error) {
 // PruneRuns removes runs finished before a time, and events nothing waits
 // for any more.
 func (s *Store) PruneRuns(ctx context.Context, before time.Time) (int64, error) {
+	// A test or blocking run is attempted in place, without a lease: one
+	// still delivering after an hour was interrupted before its answer.
+	if _, err := s.Pool.Exec(ctx, `update subscription_runs set status = 'failed', finished_at = now(),
+			reason = 'Interrupted before its answer was recorded.'
+		where status = 'delivering' and lease_until is null and created_at < now() - interval '1 hour'`); err != nil {
+		return 0, err
+	}
 	tag, err := s.Pool.Exec(ctx, `delete from subscription_runs where finished_at < $1`, before)
 	if err != nil {
 		return 0, err

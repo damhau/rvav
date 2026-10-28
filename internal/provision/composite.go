@@ -19,6 +19,8 @@ type stepResult struct {
 	out    map[string]any
 	failed string
 	err    error
+	// skipped: its condition was false, so there is nothing to undo.
+	skipped bool
 }
 
 // runComposite runs a composite item's steps. On a failure with rollback,
@@ -65,6 +67,9 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 				}
 				continue
 			}
+			if results[i].skipped {
+				continue
+			}
 			if results[i].out != nil {
 				outputs[c.Key] = results[i].out
 			}
@@ -97,7 +102,7 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 		}
 		if r.Skip {
 			err := workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "skipped", "Its condition is false.").Get(ctx, nil)
-			return stepResult{err: err, failed: key}
+			return stepResult{err: err, failed: key, skipped: true}
 		}
 		values = r.Values
 	}
@@ -161,7 +166,8 @@ func vmOutputs(vms []builtVM) map[string]any {
 }
 
 // undoComposite undoes the steps done, newest first; what can't be undone
-// is said in its step, and the rest goes on.
+// is said in its step, and the rest goes on. A step undone is cancelled, so
+// a retry runs it again.
 func undoComposite(ctx workflow.Context, info Info, done []CompositeStep, outputs map[string]any) {
 	var a *Activities
 	dctx, _ := workflow.NewDisconnectedContext(ctx)
@@ -194,6 +200,10 @@ func undoComposite(ctx workflow.Context, info Info, done []CompositeStep, output
 		}
 		if err != nil {
 			workflow.GetLogger(ctx).Error("undo", "key", key, "err", err)
+			continue
+		}
+		if err := workflow.ExecuteActivity(dctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", "Undone.").Get(dctx, nil); err != nil {
+			workflow.GetLogger(ctx).Error("mark undone", "key", c.StepKey(), "err", err)
 		}
 	}
 }

@@ -120,8 +120,11 @@ func checkEventCondition(topic, expr string) error {
 	}
 	if _, key, ok := strings.Cut(err.Error(), "no such key: "); ok {
 		key = strings.TrimSpace(key)
-		if strings.Contains(expr, "inputs."+key) || strings.Contains(expr, `inputs["`+key+`"]`) {
-			return nil
+		// Inputs and deployment properties differ from item to item.
+		for _, m := range []string{"inputs", "properties"} {
+			if strings.Contains(expr, m+"."+key) || strings.Contains(expr, m+`["`+key+`"]`) {
+				return nil
+			}
 		}
 		return fmt.Errorf("the event has no %s", key)
 	}
@@ -404,7 +407,7 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 	}
 	start := time.Now()
 	res := s.Dispatcher.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: sub.Blocking})
-	u := store.RunUpdate{Status: "delivered"}
+	u := store.RunUpdate{Status: "delivered", Unclaimed: true}
 	if !res.OK {
 		u.Status, u.Reason = "failed", &res.Err
 	} else if res.Outcome != "" {
@@ -416,7 +419,7 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 			u.Properties, _ = json.Marshal(res.Properties)
 		}
 	}
-	if err := s.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res), u); err != nil {
+	if err := s.Store.RecordAttempt(context.WithoutCancel(ctx), run.ID, dispatch.AttemptRow(start, time.Now(), res), u); err != nil {
 		return api.SubscriptionRunDetail{}, err
 	}
 	s.audit(ctx, p, "subscription.test", "subscription", sub.ID, nil, map[string]any{"ok": res.OK})

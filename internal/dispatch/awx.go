@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -37,7 +38,12 @@ func (a *AWX) Deliver(ctx context.Context, d Delivery) Result {
 	// A job an earlier attempt launched is followed, not launched again.
 	jobID := d.LastJobID
 	if jobID != 0 {
-		if job, err := a.Client.GetJob(ctx, jobID, false); err != nil || (awx.Done(job.Status) && job.Status != "successful") {
+		job, err := a.Client.GetJob(ctx, jobID, false)
+		if err != nil {
+			// Not known to have ended: launching again could run it twice.
+			return Result{JobID: jobID, Err: "AWX didn't say how job " + strconv.Itoa(jobID) + " went: " + err.Error()}
+		}
+		if awx.Done(job.Status) && job.Status != "successful" {
 			jobID = 0
 		}
 	}

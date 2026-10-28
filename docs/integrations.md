@@ -209,6 +209,47 @@ type Client interface {
 - Group claims map to global and project roles. Optional manager claim for
   approval routing.
 
+## Events and webhooks (ADR-0021)
+
+Subscriptions send rvav's events (`rvav.event.v1`) to webhooks, AWX
+templates or custom workflows ([ADR-0021](adr/0021-event-subscriptions.md)).
+Writing a custom workflow is covered in
+[custom-workflows.md](custom-workflows.md). For a webhook receiver:
+
+- **Hosts.** rvav posts only to hosts in `RVAV_WEBHOOK_HOSTS` and doesn't
+  follow redirects.
+- **Body and headers.** The body is the event: `id`, `topic`, `contract`,
+  `occurred_at`, `data`. The headers carry `X-Rvav-Event-Id`,
+  `X-Rvav-Topic` and `X-Rvav-Signature: t=<unix time>,v1=<hex>`.
+- **Signature.** `v1` is the HMAC-SHA256 of `<t>.<body>` under the stored
+  secret the subscription names. Check it with a constant-time compare,
+  and refuse a `t` far from now.
+- **Retries.** A 2xx answer delivers it. Anything else is retried after
+  10 s, 30 s, 1 min, 5 min, then every 15 min for a day. The event ID stays
+  the same across retries, so ignore an ID you already have.
+- **Blocking subscriptions** (`.pre` topics) wait for the answer within
+  their timeout:
+  - empty or `{"outcome": "continue"}` lets the request go on;
+  - `{"outcome": "stop", "reason": "…"}` fails it with the reason, before
+    anything is built or changed;
+  - on `provisioning.pre`, `"properties": {"cmdb_id": "CI0042"}` sets
+    deployment properties, which AWX jobs get in `rvav.properties`.
+  - A failure or timeout stops or continues the request as the
+    subscription's `on_failure` says, after one more try within the
+    timeout.
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: bytes, header: str, body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(p.split("=", 1) for p in header.split(","))
+    t, sig = parts.get("t", ""), parts.get("v1", "")
+    if not t.isdigit() or abs(time.time() - int(t)) > tolerance:
+        return False
+    want = hmac.new(secret, t.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, sig)
+```
+
 ## Notifications
 
 - Email (SMTP), Slack (bot with interactive approval buttons), Microsoft Teams

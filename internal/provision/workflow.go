@@ -108,7 +108,7 @@ func Provision(ctx workflow.Context, requestID string) error {
 		stepKey, reason, err := runChecks(ctx, info)
 		switch {
 		case temporal.IsCanceledError(err) || errors.Is(ctx.Err(), workflow.ErrCanceled):
-			return finishCancelled(ctx, info, false)
+			return finishCancelledUntouched(ctx, info)
 		case err != nil:
 			reason = errMessage(err)
 			fallthrough
@@ -221,6 +221,16 @@ func finishCancelled(ctx workflow.Context, info Info, rollback bool) error {
 		}
 	}
 	return workflow.ExecuteActivity(dctx, a.Finish, FinishInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Outcome: "cancelled"}).Get(dctx, nil)
+}
+
+// finishCancelledUntouched ends a request cancelled before it built or
+// changed anything: a day-2 deployment keeps its status.
+func finishCancelledUntouched(ctx workflow.Context, info Info) error {
+	var a *Activities
+	dctx, _ := workflow.NewDisconnectedContext(ctx)
+	dctx = workflow.WithActivityOptions(dctx, activityOptions)
+	return workflow.ExecuteActivity(dctx, a.Finish, FinishInput{RequestID: info.RequestID, ProjectID: info.ProjectID,
+		Outcome: "cancelled", Untouched: true}).Get(dctx, nil)
 }
 
 // runChecks asks the blocking subscriptions that apply, in priority order:

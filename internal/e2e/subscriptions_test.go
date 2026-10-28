@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
@@ -99,7 +98,7 @@ func TestSubscriptions(t *testing.T) {
 		var test api.SubscriptionRunDetail
 		h.json("POST", "/api/v1/admin/subscriptions/"+sub.Id+"/test", admin, nil, 200, &test)
 		if !test.Test || test.Status != api.SubscriptionRunStatusDelivered || test.Outcome == nil || *test.Outcome != "continue" ||
-			len(test.History) != 1 || test.History[0].StatusCode == nil {
+			len(test.History) != 1 || test.History[0].StatusCode == nil || test.Attempts != 1 {
 			t.Fatalf("test run = %+v", test)
 		}
 
@@ -134,6 +133,27 @@ func TestSubscriptions(t *testing.T) {
 			return api.Step{}
 		}
 
+		// A later check sees the properties an earlier one set.
+		var later struct {
+			sync.Mutex
+			props map[string]any
+		}
+		laterSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var ev outbox.Event
+			_ = json.NewDecoder(r.Body).Decode(&ev)
+			dep, _ := ev.Data["deployment"].(map[string]any)
+			later.Lock()
+			later.props, _ = dep["properties"].(map[string]any)
+			later.Unlock()
+		}))
+		defer laterSrv.Close()
+		h.allowWebhooks(laterSrv.URL)
+		var laterTarget api.SubscriptionTarget
+		_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+laterSrv.URL+`/rvav", "secret": "cmdb-hook"}}`), &laterTarget)
+		var laterSub api.Subscription
+		h.json("POST", "/api/v1/admin/subscriptions", admin, api.SubscriptionWrite{Name: "Billing check", Topic: api.ProvisioningPre,
+			Blocking: new(true), Priority: new(200), TimeoutSeconds: new(5), Target: laterTarget}, 201, &laterSub)
+
 		// Known to the CMDB: built, with its configuration item.
 		ok := request("api")
 		if ok.Status != api.RequestStatusSucceeded {
@@ -149,6 +169,12 @@ func TestSubscriptions(t *testing.T) {
 		if props["cmdb_id"] != "CI0042" {
 			t.Fatalf("properties = %v", props)
 		}
+		later.Lock()
+		if later.props["cmdb_id"] != "CI0042" {
+			t.Fatalf("the later check saw properties %v", later.props)
+		}
+		later.Unlock()
+		h.json("DELETE", "/api/v1/admin/subscriptions/"+laterSub.Id, admin, nil, 204, nil)
 		job := step(ok.Id, provision.KeyJob+"linux-baseline")
 		jobID, _ := strconv.Atoi(job.ExternalRef.Id)
 		vars := h.awx.Launched(jobID).ExtraVars["rvav"].(map[string]any)
@@ -166,8 +192,8 @@ func TestSubscriptions(t *testing.T) {
 		}
 		var name string
 		_ = h.store.Pool.QueryRow(ctx, `select name from deployments where created_by_request_id = $1`, stopped.Id).Scan(&name)
-		if _, err := find.NewFinder(c).VirtualMachine(ctx, name); err == nil {
-			t.Fatalf("%s was built", name)
+		if name == "" || vmExists(ctx, c, name) {
+			t.Fatalf("%q was built", name)
 		}
 		var runs api.SubscriptionRunPage
 		h.json("GET", "/api/v1/admin/subscriptions/"+sub.Id+"/runs?status=blocked", admin, nil, 200, &runs)

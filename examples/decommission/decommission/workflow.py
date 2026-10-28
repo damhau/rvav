@@ -23,6 +23,9 @@ with workflow.unsafe.imports_passed_through():
     from decommission import activities
 
 TYPE = "decommission.v1"
+#: Who approves deleting the data: set here, not on the form, so the
+#: requester can't choose.
+APPROVER_GROUP = "rvav-infra-leads"
 ACT = {"start_to_close_timeout": timedelta(minutes=5)}
 
 #: Its form in rvav: register this as the workflow's input schema.
@@ -32,7 +35,6 @@ INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "application": {"type": "string", "minLength": 1},
         "retention_days": {"type": "integer", "minimum": 0, "default": 3},
-        "approver_group": {"type": "string", "default": "rvav-infra-leads"},
         "decision_days": {"type": "integer", "minimum": 1, "default": 2},
     },
 }
@@ -45,7 +47,6 @@ class Decommission(RvavWorkflow):
         rc = self.start(context)
         app = rc.inputs["application"]
         retention = int(rc.inputs.get("retention_days", 3))
-        group = rc.inputs.get("approver_group") or "rvav-infra-leads"
         owners = [u["email"] for u in (rc.requester, rc.owner) if u and u.get("email")]
 
         async with self.step("freeze", f"Freeze {app}"):
@@ -58,7 +59,7 @@ class Decommission(RvavWorkflow):
             Approval(
                 title=f"Delete {app}'s data",
                 reason=f"{app} is frozen; its data is deleted after {retention} days.",
-                group=group,
+                group=APPROVER_GROUP,
                 wait=timedelta(days=int(rc.inputs.get("decision_days", 2))),
             )
         )

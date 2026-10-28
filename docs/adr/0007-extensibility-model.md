@@ -58,6 +58,28 @@ There is no visual workflow designer. Simple chains are composite items
   external systems stay in the custom worker, never in rvav. Registration is
   limited to administrators, and every run is audited.
 
+### As built (S10)
+
+Levels 1 and 3 and the event subscriptions were built in S10:
+[ADR-0021](0021-event-subscriptions.md) covers events and subscriptions,
+[ADR-0022](0022-custom-workflows-and-composites.md) covers custom
+workflows and composite items. Developers start from
+[custom-workflows.md](../custom-workflows.md). Where the build differs
+from the plan above:
+
+- **Composites** chain VM, AWX and custom workflow items, AWX templates
+  and custom workflows, with `when` conditions, CEL bindings to earlier
+  steps' outputs, parallel groups and undo steps. They don't nest yet.
+- **Subscriptions** target webhooks as well as AWX templates and custom
+  workflows. Blocking ones run inside the request's workflow and may stop
+  it.
+- **Custom workflows** may also be composite steps. The helpers exist
+  for Go (`pkg/rvavflow`) and Python (`sdk/python`), not TypeScript. The
+  example (`examples/decommission`) lives in this repository rather than
+  its own.
+- **Approvals** a workflow asks for wait as long as the workflow decides;
+  rvav gives them no deadline of their own.
+
 ### Migrating vRO workflows
 
 Each existing vRO workflow is sorted into one group:

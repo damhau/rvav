@@ -199,11 +199,15 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			return r, err
 		}
 	}
+	var plan provision.Plan
+	_ = json.Unmarshal(r.Plan, &plan)
 	if rolledBack {
 		// Its VM names were freed: someone else may have one now.
-		var plan provision.Plan
-		_ = json.Unmarshal(r.Plan, &plan)
-		for _, vm := range plan.VMs {
+		vms := plan.VMs
+		for _, c := range plan.Composite {
+			vms = append(vms, c.VMs...)
+		}
+		for _, vm := range vms {
 			taken, err := s.Store.InventoryVMNames(ctx, vm.Name)
 			if err != nil {
 				return r, err
@@ -217,7 +221,23 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 		if err := s.lockForRetry(ctx, tx, r, rolledBack); err != nil {
 			return err
 		}
-		if err := s.Store.ResetForRetry(ctx, tx, r.ID, rolledBack); err != nil {
+		// A composite VM step runs again with its own steps: those done stay
+		// done, the others are planned again.
+		var children []store.ChildStep
+		var keep []string
+		positions := map[string]int{}
+		for _, d := range plan.Steps(r.Environment) {
+			if d.Parent != "" {
+				children = append(children, store.ChildStep{ParentKey: d.Parent, Key: d.Key, Title: d.Title, Detail: d.Detail,
+					System: d.System, Position: positions[d.Parent]})
+				keep = append(keep, d.Key)
+				positions[d.Parent]++
+			}
+		}
+		if err := s.Store.ResetForRetry(ctx, tx, r.ID, rolledBack, keep); err != nil {
+			return err
+		}
+		if err := s.Store.RestoreChildSteps(ctx, tx, r.ID, children); err != nil {
 			return err
 		}
 		if r.Kind != "day2" {

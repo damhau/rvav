@@ -229,6 +229,12 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_allowed",
 			"Inputs can only be changed when approving.")}}
 	}
+	// A workflow's approval comes while it runs, and composites and custom
+	// workflows aren't planned again: their inputs stay as submitted.
+	if len(edits) > 0 && (l.lv.WorkflowID != nil || l.req.ItemType == "composite" || l.req.ItemType == "workflow") {
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_allowed",
+			"The inputs of this request can't be changed when approving: reject it with what should change.")}}
+	}
 
 	var changes []inputChange
 	var decided bool

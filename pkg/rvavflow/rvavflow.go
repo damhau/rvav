@@ -164,7 +164,9 @@ type signal struct {
 }
 
 // RequestApproval opens an approval on the request and waits for its
-// decision.
+// decision. It waits for one approval at a time: a decision on another
+// approval arriving meanwhile is dropped (a workflow asking for several at
+// once receives the rvav.approval signal itself).
 func RequestApproval(ctx workflow.Context, rc Context, a Approval) (Decision, error) {
 	in := map[string]any{"title": a.Title, "reason": a.Reason, "group": a.Group, "approvers": a.Approvers, "mode": a.Mode}
 	var out struct {

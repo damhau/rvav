@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -37,6 +38,20 @@ type Result struct {
 
 // MaxResponse is how much of an answer a run keeps.
 const MaxResponse = 4096
+
+// maxAnswer is how much of a webhook's answer is read.
+const maxAnswer = 256 << 10
+
+// truncate keeps the first n bytes of s, cut on a rune boundary.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
 
 // Delivery is one attempt to make.
 type Delivery struct {
@@ -93,6 +108,12 @@ type Dispatcher struct {
 	Interval time.Duration
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
+	// Workers is how many attempts run at once; 8 when zero.
+	Workers int
+
+	init     sync.Once
+	slots    chan struct{}
+	inFlight sync.WaitGroup
 }
 
 // Back-off between attempts; the last repeats until a run is a day old.
@@ -121,11 +142,14 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	defer tick.Stop()
 	defer prune.Stop()
 	for {
-		if _, err := d.Once(ctx); err != nil && ctx.Err() == nil {
+		// Attempts go on in the background: a slow target holds one worker,
+		// not the round.
+		if _, err := d.round(ctx); err != nil && ctx.Err() == nil {
 			d.Log.Warn("dispatch", "err", err)
 		}
 		select {
 		case <-ctx.Done():
+			d.inFlight.Wait()
 			return
 		case <-tick.C:
 		case <-prune.C:
@@ -138,9 +162,16 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	}
 }
 
-// Once makes the runs of new events, then delivers what is due. It returns
-// how many attempts it made.
+// Once makes the runs of new events, then delivers what is due, and waits
+// for the attempts. It returns how many it started.
 func (d *Dispatcher) Once(ctx context.Context) (int, error) {
+	n, err := d.round(ctx)
+	d.inFlight.Wait()
+	return n, err
+}
+
+// round makes the runs of new events and starts attempts at what is due.
+func (d *Dispatcher) round(ctx context.Context) (int, error) {
 	for {
 		n, err := d.fanOut(ctx)
 		if err != nil {
@@ -209,31 +240,40 @@ func Matches(condition string, payload json.RawMessage) (bool, error) {
 	return policy.EventBool(condition, policy.Vars(outbox.Vars(ev.Data)))
 }
 
-// deliver makes an attempt at every run that is due, eight at a time.
+// deliver claims as many due runs as there are free workers and starts
+// them: each starts as soon as it is claimed, within its lease.
 func (d *Dispatcher) deliver(ctx context.Context) (int, error) {
-	runs, err := d.Store.ClaimRuns(ctx, 50, d.now())
+	d.init.Do(func() {
+		n := d.Workers
+		if n == 0 {
+			n = 8
+		}
+		d.slots = make(chan struct{}, n)
+	})
+	free := cap(d.slots) - len(d.slots)
+	if free == 0 {
+		return 0, nil
+	}
+	runs, err := d.Store.ClaimRuns(ctx, free, d.now())
 	if err != nil {
 		return 0, err
 	}
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
 	for _, r := range runs {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(r store.ClaimedRun) {
-			defer wg.Done()
-			defer func() { <-sem }()
+		d.slots <- struct{}{}
+		d.inFlight.Add(1)
+		go func() {
+			defer d.inFlight.Done()
+			defer func() { <-d.slots }()
 			d.attemptRun(ctx, r)
-		}(r)
+		}()
 	}
-	wg.Wait()
 	return len(runs), nil
 }
 
 func (d *Dispatcher) attemptRun(ctx context.Context, r store.ClaimedRun) {
 	start := d.now()
 	res := d.Attempt(ctx, Delivery{RunID: r.ID, Sub: r.Subscription, Event: r.Payload, LastJobID: deref(r.LastJobID)})
-	u := store.RunUpdate{Status: "delivered"}
+	u := store.RunUpdate{Status: "delivered", Lease: r.LeaseUntil}
 	if !res.OK {
 		reason := res.Err
 		u.Reason = &reason

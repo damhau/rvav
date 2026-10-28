@@ -118,11 +118,18 @@ func (s *Store) StartWorkflowRun(ctx context.Context, workflowID, key string, re
 	return err
 }
 
-// FinishWorkflowRun records how a run ended.
+// FinishWorkflowRun records how a run ended; the approvals it asked for and
+// that are still open are cancelled, as nothing waits for them any more.
 func (s *Store) FinishWorkflowRun(ctx context.Context, workflowID, status string, result json.RawMessage, errText *string) error {
-	_, err := s.Pool.Exec(ctx, `update workflow_runs set status = $2, result = $3, error = $4, finished_at = now()
-		where workflow_id = $1`, workflowID, status, nullJSON(result), errText)
-	return err
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `update workflow_runs set status = $2, result = $3, error = $4, finished_at = now()
+			where workflow_id = $1`, workflowID, status, nullJSON(result), errText); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `update approvals set status = 'cancelled', due_at = null
+			where workflow_id = $1 and status = 'pending'`, workflowID)
+		return err
+	})
 }
 
 // GetWorkflowRun finds the run a contract activity's caller is.

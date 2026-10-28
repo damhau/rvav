@@ -109,15 +109,16 @@ func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {
 		return Result{Err: err.Error()}
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, MaxResponse))
+	// A blocking answer may carry 50 properties: read enough to parse it,
+	// keep MaxResponse.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
 	res := Result{StatusCode: resp.StatusCode, Response: string(body), OK: resp.StatusCode >= 200 && resp.StatusCode < 300}
 	if !res.OK {
 		res.Err = fmt.Sprintf("%s answered %d", u.Host, resp.StatusCode)
-		return res
+	} else if d.Blocking {
+		res = answer(res)
 	}
-	if d.Blocking {
-		return answer(res)
-	}
+	res.Response = truncate(res.Response, MaxResponse)
 	return res
 }
 

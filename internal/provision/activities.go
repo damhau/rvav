@@ -869,6 +869,13 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	// notifications once it is committed.
 	_, post := outbox.RequestTopics(r.Kind, deref(r.Action))
 	err = a.Store.Tx(ctx, func(db pgx.Tx) error {
+		if r.DeploymentID != nil {
+			// Two actions on one deployment finishing together take turns,
+			// so the second sees the first's outcome below.
+			if err := a.Store.LockDeployment(ctx, db, *r.DeploymentID); err != nil {
+				return err
+			}
+		}
 		switch in.Outcome {
 		case "succeeded":
 			if _, err := a.Store.UpdateStep(ctx, db, in.RequestID, KeyReady, store.StepUpdate{Status: "done", Title: &title}); err != nil {
@@ -910,8 +917,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 		if r.DeploymentID != nil {
 			// A day-2 request: the deployment it acted on goes back to ready,
 			// or to what the action made of it, unless an action on another VM
-			// still runs. This request's own outcome is recorded first, so of two
-			// finishing together at least one sees the other done.
+			// still runs (the deployment's lock orders two finishing together).
 			var plan Plan
 			_ = json.Unmarshal(r.Plan, &plan)
 			status := day2Status(plan, in.Outcome, r.StartedAt != nil && !in.Untouched)

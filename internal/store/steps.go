@@ -165,9 +165,11 @@ func (s *Store) ReplacePendingSteps(ctx context.Context, db DB, requestID string
 
 // ResetForRetry makes a failed request runnable again: its failed, running
 // and cancelled steps, with their sub-steps, are pending again, or every
-// step after the approval when what it built was rolled back. A rollback
-// step goes. The request is queued, without its error.
-func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool) error {
+// step after the approval when what it built was rolled back. Planned
+// sub-steps named in keep that were done stay, unless all goes (a composite
+// VM step's: its VM is reused). A rollback step goes. The request is
+// queued, without its error.
+func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool, keep []string) error {
 	reset := `request_id = $1 and parent_id is null and status in ('failed', 'running', 'cancelled')`
 	if all {
 		reset = `request_id = $1 and parent_id is null and key not in ('submit', 'policy')`
@@ -176,19 +178,45 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 	if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and key = 'rollback'`, requestID); err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, `delete from request_steps where parent_id in (select id from request_steps where `+reset+`)`, requestID); err != nil {
+	children := `parent_id in (select id from request_steps where ` + reset + `)`
+	if all {
+		keep = nil
+	}
+	if _, err := db.Exec(ctx, `delete from request_steps where `+children+`
+		and not (status = 'done' and key = any($2::text[]))`, requestID, keep); err != nil {
 		return err
 	}
 	if _, err := db.Exec(ctx, `delete from step_log_lines where step_id in (select id from request_steps where `+reset+`)`, requestID); err != nil {
 		return err
 	}
 	if _, err := db.Exec(ctx, `update request_steps set status = 'pending', started_at = null, finished_at = null, error = null,
-		external_kind = null, external_id = null, external_url = null, has_log = false where `+reset, requestID); err != nil {
+		external_kind = null, external_id = null, external_url = null, has_log = false, outputs = null where `+reset, requestID); err != nil {
 		return err
 	}
 	_, err := db.Exec(ctx, `update requests set status = 'queued', error_step_id = null, error_message = null, finished_at = null
 		where id = $1`, requestID)
 	return err
+}
+
+// ChildStep is a step planned under another, by key.
+type ChildStep struct {
+	ParentKey, Key, Title, Detail, System string
+	Position                              int
+}
+
+// RestoreChildSteps puts back, pending, the planned steps under pending
+// parents that a retry's reset removed (a composite VM step's own steps).
+func (s *Store) RestoreChildSteps(ctx context.Context, db DB, requestID string, steps []ChildStep) error {
+	for _, st := range steps {
+		if _, err := db.Exec(ctx, `insert into request_steps (id, request_id, parent_id, position, key, title, detail, system, status)
+			select $1, $2, p.id, $3, $4, $5, $6, $7, 'pending' from request_steps p
+			where p.request_id = $2 and p.key = $8 and p.status = 'pending'
+			on conflict (request_id, key) do nothing`,
+			ids.New(ids.Step), requestID, st.Position, st.Key, st.Title, st.Detail, st.System, st.ParentKey); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // InsertStepBeforePending adds a top-level step just before the first one

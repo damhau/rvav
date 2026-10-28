@@ -17,6 +17,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/pkg/rvavflow"
 )
 
@@ -127,6 +128,10 @@ func TestCustomWorkflows(t *testing.T) {
 					t.Errorf("the leads' inbox = %+v", inbox.Items)
 					return
 				}
+				// The workflow runs already: its inputs can't change now.
+				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", admin,
+					api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove, Comment: &comment,
+						Inputs: &map[string]any{"application": "other"}}, 422, nil)
 				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", admin,
 					api.ApprovalDecision{Decision: outcome, Comment: &comment}, 200, nil)
 				h.wf.deliver(env)
@@ -173,6 +178,24 @@ func TestCustomWorkflows(t *testing.T) {
 		no := request("payroll", decide(api.ApprovalDecisionDecisionReject, "Payroll still uses it"))
 		if no.Status != api.RequestStatusFailed || !strings.Contains(errorOf(no), "Payroll still uses it") {
 			t.Fatalf("a rejected decommission = %s %s", no.Status, errorOf(no))
+		}
+
+		// A run that ends cancels the approvals it left open: nothing waits for them.
+		const leftOpen = "apr_left_open"
+		if err := h.store.InsertWorkflowApproval(ctx, store.Approval{ID: leftOpen, RequestID: done.Id, Name: "Left open",
+			Mode: "any", WorkflowID: new("wf-left-open")}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.store.StartWorkflowRun(ctx, "wf-left-open", "decommission", &done.Id, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.store.FinishWorkflowRun(ctx, "wf-left-open", "failed", nil, new("No decision in time.")); err != nil {
+			t.Fatal(err)
+		}
+		var openStatus string
+		_ = h.store.Pool.QueryRow(ctx, `select status from approvals where id = $1`, leftOpen).Scan(&openStatus)
+		if openStatus != "cancelled" {
+			t.Fatalf("an approval its ended run left open = %s", openStatus)
 		}
 
 		// A workflow rvav didn't start can't report into a request.

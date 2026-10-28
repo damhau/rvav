@@ -211,6 +211,10 @@ func (c *Contract) caller(ctx context.Context) (store.WorkflowRun, error) {
 	if errors.Is(err, store.ErrNotFound) {
 		return run, temporal.NewNonRetryableApplicationError("rvav didn't start the workflow "+id, "UnknownWorkflow", nil)
 	}
+	if err == nil && run.Status != "running" {
+		// A workflow started later with an ID rvav used is not rvav's.
+		return run, temporal.NewNonRetryableApplicationError("the run of "+id+" rvav started has ended", "UnknownWorkflow", nil)
+	}
 	return run, err
 }
 

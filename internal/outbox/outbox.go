@@ -105,7 +105,7 @@ func Sample(topic string) Event {
 		"lease_expires_at": time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)}
 	data := map[string]any{
 		"request": map[string]any{"id": "req_sample", "number": "REQ-00000", "kind": "provision", "action": nil,
-			"status": "running", "outcome": nil},
+			"status": "running", "outcome": nil, "resource_id": nil, "resource_name": nil},
 		"item":        map[string]any{"id": "itm_sample", "slug": "rhel9-server", "name": "RHEL 9 server", "type": "vm_blueprint", "version": "1.0"},
 		"project":     map[string]any{"id": "prj_sample", "code": "web", "name": "Web Platform", "cost_center": "CC-0000"},
 		"environment": "dev", "production": false,

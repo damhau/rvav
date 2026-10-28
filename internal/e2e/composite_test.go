@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/mo"
 
 	"github.com/damhau/rvav/internal/api"
 )
@@ -111,12 +112,52 @@ func TestCompositeItems(t *testing.T) {
 			t.Fatalf("a composite whose step failed = %s", failed.Status)
 		}
 		steps = timeline(failed.Id)
-		if steps["step:monitoring"].Status != api.StepStatusFailed || steps["step:db_user/undo"].Status != api.StepStatusDone {
-			t.Fatalf("monitoring %s, undo %s (steps %v)", steps["step:monitoring"].Status, steps["step:db_user/undo"].Status, keysOf(steps))
+		if steps["step:monitoring"].Status != api.StepStatusFailed || steps["step:db_user/undo"].Status != api.StepStatusDone ||
+			steps["step:db_user"].Status != api.StepStatusCancelled {
+			t.Fatalf("monitoring %s, db_user %s, its undo %s (steps %v)", steps["step:monitoring"].Status,
+				steps["step:db_user"].Status, steps["step:db_user/undo"].Status, keysOf(steps))
+		}
+		// A step its condition skipped did nothing: nothing to undo.
+		if _, undone := steps["step:ledger_grant/undo"]; undone || steps["step:ledger_grant"].Status != api.StepStatusSkipped {
+			t.Fatalf("ledger_grant = %s (steps %v)", steps["step:ledger_grant"].Status, keysOf(steps))
 		}
 		_ = h.store.Pool.QueryRow(ctx, `select name from deployments where created_by_request_id = $1`, failed.Id).Scan(&vmName)
-		if _, err := find.NewFinder(c).VirtualMachine(ctx, vmName); err == nil {
-			t.Fatalf("%s is still there after the rollback", vmName)
+		if vmName == "" || vmExists(ctx, c, vmName) {
+			t.Fatalf("%q is still there after the rollback", vmName)
+		}
+
+		// Retried: the VM is built again with its own steps, the undone
+		// database user created again, monitoring this time installed.
+		h.json("POST", "/api/v1/requests/"+failed.Id+"/retry", "tnguyen", nil, 202, nil)
+		h.runWorkflow(failed.Id, nil)
+		h.json("GET", "/api/v1/requests/"+failed.Id, "tnguyen", nil, 200, &failed)
+		steps = timeline(failed.Id)
+		if failed.Status != api.RequestStatusSucceeded {
+			t.Fatalf("the retried composite = %s %s (steps %v)", failed.Status, errorOf(failed), keysOf(steps))
+		}
+		for _, key := range []string{"step:vm/vsphere.clone", "step:vm/awx.job:linux-baseline", "step:db_user", "step:monitoring"} {
+			if steps[key].Status != api.StepStatusDone {
+				t.Fatalf("after the retry %s = %s (steps %v)", key, steps[key].Status, keysOf(steps))
+			}
+		}
+		if !vmExists(ctx, c, vmName) {
+			t.Fatalf("%s wasn't built again", vmName)
+		}
+
+		// A VM step has no condition: its VMs are planned at submit.
+		when := vmWithDBUser()
+		when.Blueprint["steps"].([]any)[0].(map[string]any)["when"] = `inputs.database != "orders"`
+		var cond api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "vm-when", Name: "VM when",
+			Summary: "A VM step with a condition.", Category: "compute", Type: api.Composite, Definition: &when}, 201, &cond)
+		h.json("POST", "/api/v1/admin/catalog/items/vm-when/versions/"+cond.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/vm-when/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: cond.Id, VersionId: cond.DraftVersion.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "db", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "database": "orders", "role_name": "orders_ro"}},
+			422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) == 0 || !strings.Contains(problem.Errors[0].Message, "has no condition") {
+			t.Fatalf("a VM step with a condition = %+v", problem.Errors)
 		}
 
 		// The seeded composite without steps can't be requested.
@@ -148,6 +189,8 @@ func vmWithDBUser() api.CatalogVersionDefinition {
 			map[string]any{"key": "vm", "title": "The VM", "item": "rhel9-server", "with": map[string]any{
 				"role": "inputs.role", "size": "inputs.size", "cluster": "inputs.cluster", "datastore": "inputs.datastore",
 				"network": "inputs.network", "post_config": []any{"linux-baseline"}}},
+			map[string]any{"key": "ledger_grant", "awx": map[string]any{"job_template": "role-nginx", "title": "Ledger access"},
+				"when": `inputs.database == "ledger"`, "undo": map[string]any{"job_template": "idm-hbac-group"}},
 			map[string]any{"parallel": []any{
 				map[string]any{"key": "db_user", "title": "Database user", "item": "db-user",
 					"with": map[string]any{"database": "inputs.database", "role_name": "inputs.role_name",
@@ -163,6 +206,20 @@ func vmWithDBUser() api.CatalogVersionDefinition {
 	def.UiSchema.Layout.Kind = api.Page
 	def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "VM and database user", Fields: fields}}
 	return def
+}
+
+// vmExists says whether vCenter has a VM of that name, in any folder.
+func vmExists(ctx context.Context, c *vim25.Client, name string) bool {
+	v, err := view.NewManager(c).CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"VirtualMachine"}, true)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = v.Destroy(ctx) }()
+	var vms []mo.VirtualMachine
+	if err := v.Retrieve(ctx, []string{"VirtualMachine"}, []string{"name"}, &vms); err != nil {
+		return false
+	}
+	return slices.ContainsFunc(vms, func(vm mo.VirtualMachine) bool { return vm.Name == name })
 }
 
 func keysOf(m map[string]api.Step) []string {

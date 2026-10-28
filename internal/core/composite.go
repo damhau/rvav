@@ -177,6 +177,9 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 				if st.Undo != nil {
 					add("", "invalid", label+": a VM isn't undone by a job or workflow; a failure deletes it.")
 				}
+				if st.When != "" {
+					add("", "invalid", label+": a VM step has no condition: its VMs are planned when the request is submitted.")
+				}
 				inputs := map[string]any{}
 				for k, v := range st.With {
 					e, ok := v.(string)

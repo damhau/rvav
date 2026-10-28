@@ -8,6 +8,7 @@ import (
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 
@@ -62,10 +63,16 @@ func (w *Workflow) Deliver(ctx context.Context, d Delivery) Result {
 	timeout := time.Duration(d.Sub.TimeoutSeconds) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	// A retried run finds the workflow its first attempt started.
+	// A retried run finds the workflow its first attempt started, running
+	// or completed; only a failed one is started again.
 	run, err := w.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: reg.TaskQueue,
 		WorkflowExecutionTimeout: time.Duration(reg.TimeoutSeconds) * time.Second,
-		WorkflowIDConflictPolicy: enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING}, reg.WorkflowType, rctx)
+		WorkflowIDConflictPolicy: enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+		WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY}, reg.WorkflowType, rctx)
+	var started *serviceerror.WorkflowExecutionAlreadyStarted
+	if errors.As(err, &started) {
+		run, err = w.Client.GetWorkflow(ctx, id, ""), nil
+	}
 	if err != nil {
 		return Result{WorkflowID: id, Err: "Temporal refused to start it: " + err.Error()}
 	}

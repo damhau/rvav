@@ -314,6 +314,38 @@ quotas set on these pages. `rvav.mock.as` in localStorage set to
 `project-admin` or `auditor` makes the mock user one (Playwright uses it
 for what those roles see).
 
+## Extensibility
+
+Subscriptions and custom workflows ([ADR-0021](adr/0021-event-subscriptions.md),
+[ADR-0022](adr/0022-custom-workflows-and-composites.md)) are in
+`features/admin/extensibility/`. Administrators change them; auditors read
+them.
+
+- **Subscriptions**: each one's topic, condition, target and last 30 days.
+  The dialog shows the topic's description and sample event (what the
+  condition sees). Blocking is only offered on `.pre` topics, and then
+  what happens when the target fails. **Test** sends the sample and opens
+  the run. A subscription's page (`/admin/subscriptions/$subscriptionId`)
+  lists its runs by status. A run (`runs.tsx`) shows its answer, the
+  properties it set, each attempt with what came back, the event sent,
+  and **Try again** when it failed.
+- **Custom workflows**: registered and changed in one dialog (type, task
+  queue, timeout in days, input schema as JSON, usages, projects, and the
+  day-2 action when that usage is ticked). The list says what uses each
+  one and how many runs haven't ended; removing one in use shows the
+  server's refusal.
+- **Composite items** are written in the item's Definition tab, like the
+  others. Under the YAML, `CompositeOutline` shows the steps as they will
+  run: groups, parallel steps, what each runs, uses and undoes. It also
+  shows the server's structural checks while typing
+  (`catalog/composite.ts`; the mock reuses them, CEL included). Saving
+  puts the server's problems on their lines.
+
+The mock backend (`mocks/extensibility.ts`) seeds a blocking CMDB check, a
+ServiceNow subscription with a failed run, the `webhook-signing` secret and
+the decommission workflow. It checks webhook hosts against
+`cmdb.corp.example`, `hooks.corp.example` and `servicenow.corp.example`.
+
 ## Performance budget
 
 - Initial JS under 200 kB gzipped for the app shell; routes and heavy widgets

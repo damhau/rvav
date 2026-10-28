@@ -26,6 +26,31 @@ in [progress-r1.md](progress-r1.md) and, from S8 on, in GitHub issues. Its
 demo script is [demo-r1.md](demo-r1.md), and the report for the go/no-go
 is [release-r1.md](release-r1.md): what remains needs real infrastructure
 (the [Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9)).
+
+R2 (slices 10 to 14) is under way. S10, extensibility, is built and
+accepted on a real Temporal server and the compose stack. Event
+subscriptions are in [ADR-0021](adr/0021-event-subscriptions.md); custom
+workflows and composites in
+[ADR-0022](adr/0022-custom-workflows-and-composites.md):
+
+- **Events:** requests, provisioning, day-2 actions, deletions and leases
+  publish events through an outbox written with each change.
+- **Subscriptions** deliver them, with retries for a day, to signed
+  webhooks on allowed hosts, AWX templates or custom workflows. Blocking
+  ones run inside the request's workflow: a CMDB can stop a request
+  before anything is built, or set properties on the deployment.
+- **Custom Temporal workflows** run on their own workers. Teams register
+  them as catalog items, day-2 actions (`wf.<key>`), subscription targets
+  or composite steps. They show their steps and logs in the request's
+  timeline and ask for approvals in rvav's inbox.
+- **Helpers** for Go (`pkg/rvavflow`) and Python (`sdk/python`), with an
+  example decommission workflow over several days
+  (`examples/decommission`) and a developer guide,
+  [custom-workflows.md](custom-workflows.md).
+- **Composite items** chain VM, AWX and workflow items, AWX templates and
+  workflows, in order or in parallel, with CEL bindings to earlier steps'
+  outputs and undo steps on failure, in one timeline.
+
 S9
 projects, placement and governance is built and accepted on the compose
 stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
@@ -68,7 +93,11 @@ Verified so far:
   acceptance scenario through a real Temporal server, the catalog
   administration acceptance scenario with a fake REST service, the S9
   acceptance (a project set up through the administration API requests a
-  VM); web
+  VM), the S10 acceptance through a real Temporal server (a CMDB webhook
+  stops a request, a composite builds a VM with its database user and
+  monitoring, the example's Python worker decommissions through an
+  approval); the Go and Python helpers and the example on Temporal's
+  time-skipping test server; web
   typecheck, lint, unit tests, build and Playwright on mock data (day-2
   menus, dialogs and bulk actions, the catalog admin pages and the form
   designer included).
@@ -81,7 +110,9 @@ Verified so far:
   CMDB on the stack's network (`deploy/cmdb`), `pnpm e2e:stack` also builds
   an item from YAML with a REST dropdown, publishes, requests, changes and
   rolls it back in the browser, and as an administrator sets a new project
-  up and requests a VM in it.
+  up and requests a VM in it. A subscription on the stack gets a request's
+  `provisioning.post` event from the dispatcher, signed, and queues a retry
+  when the receiver refuses it.
 
 Not verified yet: a real vCenter (S2 and S4 acceptance on the lab vCenter:
 guest operations with VMware Tools, hot add, the web console through the
