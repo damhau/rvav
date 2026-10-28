@@ -92,7 +92,9 @@ type Action struct {
 	// Condition, a CEL expression over the day-2 policy variables, limits
 	// where the action is offered ("": everywhere). Native actions use
 	// Unavailable instead.
-	Condition   string
+	Condition string
+	// Projects, when set, are the only projects it is offered in.
+	Projects    []string
 	Destructive bool
 	// Confirm is the message of the confirmation dialog, if any.
 	Confirm string

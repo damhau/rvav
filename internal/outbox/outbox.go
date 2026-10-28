@@ -155,12 +155,14 @@ func requestData(ctx context.Context, db store.DB, requestID string) (map[string
 	var (
 		id, number, kind, status        string
 		action, deploymentID            *string
+		resourceID, resourceName        *string
 		inputs, uiSchema, plan          []byte
 		item, project, requester, owner []byte
 		environment                     string
 		production                      bool
 	)
-	err := db.QueryRow(ctx, `select r.id, r.number, r.kind, r.action, r.status, r.deployment_id, r.inputs, v.ui_schema, r.plan,
+	err := db.QueryRow(ctx, `select r.id, r.number, r.kind, r.action, r.status, r.deployment_id, r.resource_id, r.resource_name,
+			r.inputs, v.ui_schema, r.plan,
 			jsonb_build_object('id', i.id, 'slug', i.slug, 'name', i.name, 'type', i.type, 'version', v.number),
 			jsonb_build_object('id', p.id, 'code', p.code, 'name', p.name, 'cost_center', p.cost_center),
 			jsonb_build_object('id', ru.id, 'name', ru.name, 'email', ru.email),
@@ -169,7 +171,8 @@ func requestData(ctx context.Context, db store.DB, requestID string) (map[string
 		from requests r join catalog_items i on i.id = r.item_id join catalog_item_versions v on v.id = r.version_id
 		join projects p on p.id = r.project_id join environments e on e.key = r.environment
 		join users ru on ru.id = r.requester_id join users ou on ou.id = r.owner_id
-		where r.id = $1`, requestID).Scan(&id, &number, &kind, &action, &status, &deploymentID, &inputs, &uiSchema, &plan,
+		where r.id = $1`, requestID).Scan(&id, &number, &kind, &action, &status, &deploymentID, &resourceID, &resourceName,
+		&inputs, &uiSchema, &plan,
 		&item, &project, &requester, &owner, &environment, &production)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, store.ErrNotFound
@@ -177,7 +180,8 @@ func requestData(ctx context.Context, db store.DB, requestID string) (map[string
 		return nil, nil, err
 	}
 	data := map[string]any{
-		"request":     map[string]any{"id": id, "number": number, "kind": kind, "action": action, "status": status, "outcome": nil},
+		"request": map[string]any{"id": id, "number": number, "kind": kind, "action": action, "status": status, "outcome": nil,
+			"resource_id": resourceID, "resource_name": resourceName},
 		"environment": environment, "production": production,
 		"item": raw(item), "project": raw(project), "requester": raw(requester), "owner": raw(owner),
 		"inputs": publicInputs(inputs, uiSchema), "vm": vmVars(plan),

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -35,7 +36,43 @@ func (s *Service) day2Actions(ctx context.Context) ([]*day2.Action, error) {
 			out = append(out, awxAction(a))
 		}
 	}
-	return day2.Sorted(out), nil
+	wfs, err := s.workflowActions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return day2.Sorted(append(out, wfs...)), nil
+}
+
+// workflowActions are the custom workflows offered as day-2 actions
+// (ADR-0022): registered for it, enabled and offered.
+func (s *Service) workflowActions(ctx context.Context) ([]*day2.Action, error) {
+	regs, err := s.Store.WorkflowRegistrations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*day2.Action
+	for _, w := range regs {
+		if a := workflowAction(w); a != nil {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func workflowAction(w store.WorkflowRegistration) *day2.Action {
+	if !w.Enabled || !slices.Contains(w.Usages, "day2_action") || len(w.Day2) == 0 {
+		return nil
+	}
+	var d api.WorkflowDay2
+	if json.Unmarshal(w.Day2, &d) != nil || d.Offered == nil || !*d.Offered {
+		return nil
+	}
+	types := make([]string, len(d.Types))
+	for i, t := range d.Types {
+		types[i] = string(t)
+	}
+	return day2.WorkflowAction(day2.WorkflowDef{Key: w.Key, Name: d.Name, Type: w.WorkflowType, TaskQueue: w.TaskQueue,
+		Timeout: w.TimeoutSeconds, Types: types, Condition: deref(d.Condition), Projects: w.ProjectIDs, Schema: w.InputSchema})
 }
 
 // day2Action is the action with this key, native or AWX (nil when none is
@@ -43,6 +80,15 @@ func (s *Service) day2Actions(ctx context.Context) ([]*day2.Action, error) {
 func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, error) {
 	if a := day2.Get(key); a != nil {
 		return a, nil
+	}
+	if wf, ok := strings.CutPrefix(key, "wf."); ok {
+		w, err := s.Store.GetWorkflowRegistration(ctx, wf)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+		return workflowAction(w), nil
 	}
 	a, err := s.Store.GetAWXAction(ctx, key)
 	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.Enabled || a.Gone) {
@@ -57,6 +103,9 @@ func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, err
 // offered says whether an action's condition holds for the target. A
 // condition that can't be evaluated offers nothing.
 func (j *judge) offered(a *day2.Action, t day2.Target) bool {
+	if len(a.Projects) > 0 && !slices.Contains(a.Projects, j.d.ProjectID) {
+		return false
+	}
 	if a.Condition == "" {
 		return true
 	}

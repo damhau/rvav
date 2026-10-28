@@ -268,6 +268,12 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 			}
 			var err error
 			switch {
+			case op.Op == day2.OpWorkflow:
+				// A custom workflow offered as an action (ADR-0022).
+				inputs, _ := op.Args["inputs"].(map[string]any)
+				call := WorkflowCall{Key: argStr(op.Args, "key"), Title: argStr(op.Args, "title"), Type: argStr(op.Args, "type"),
+					TaskQueue: argStr(op.Args, "task_queue"), Timeout: argInt(op.Args, "timeout_seconds"), Inputs: inputs}
+				_, err = runCustom(ctx, info, op.Key, call, nil)
 			case op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory:
 				err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
 			case op.System == day2.SystemAWX && op.Op == day2.OpJob:

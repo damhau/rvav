@@ -45,7 +45,11 @@ func decommission(ctx workflow.Context, rc rvavflow.Context) (map[string]any, er
 	if err := rvavflow.Step(ctx, rc, "archive", "Archive "+app, func() error { return nil }); err != nil {
 		return nil, err
 	}
-	return map[string]any{"archived": app, "requested_by": rc.Requester.Name, "contract": rc.Contract}, nil
+	out := map[string]any{"archived": app, "requested_by": rc.Requester.Name, "contract": rc.Contract}
+	if rc.Deployment != nil {
+		out["deployment"] = rc.Deployment.Name
+	}
+	return out, nil
 }
 
 // TestCustomWorkflows: administrators register custom workflows; a
@@ -196,5 +200,86 @@ func TestCustomWorkflows(t *testing.T) {
 			t.Fatalf("registrations = %+v", list.Items)
 		}
 		h.json("DELETE", "/api/v1/admin/workflows/decommission-v2", admin, nil, 204, nil)
+	})
+}
+
+// TestWorkflowDay2Actions: a registered workflow offered on deployments is
+// the action wf.<key>, with the input schema as its form, decided by the
+// day-2 policies, offered to its projects only (S10.7, ADR-0022).
+func TestWorkflowDay2Actions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		var problem struct{ Errors []api.FieldError }
+		reg := api.WorkflowRegistrationWrite{Key: new("decommission"), Title: "Decommission an application",
+			WorkflowType: "decommission.v1", TaskQueue: "platform-workflows",
+			InputSchema: &map[string]any{"type": "object", "required": []string{"application"},
+				"properties": map[string]any{"application": map[string]any{"type": "string", "minLength": 1},
+					"retention_days": map[string]any{"type": "integer", "default": 3}}},
+			Usages:     []api.WorkflowUsage{api.WorkflowUsageDay2Action},
+			ProjectIds: &[]string{"prj_web"},
+			Day2: &api.WorkflowDay2{Name: "Decommission", Types: []api.WorkflowDay2Types{api.WorkflowDay2TypesDeployment},
+				Condition: new(`environment.key == "dev"`), Offered: new(true)}}
+		h.json("POST", "/api/v1/admin/workflows", admin, reg, 201, nil)
+
+		d := buildVM(h, nil)
+		actions := d.actions("tnguyen")
+		action, ok := actions["wf.decommission"]
+		if !ok || action.Form == nil || action.Form.InitialValues["retention_days"] != float64(3) ||
+			action.Form.UiSchema.Fields["application"].Widget != api.UiWidgetText {
+			t.Fatalf("the workflow action = %+v (offered %v)", action, ok)
+		}
+
+		// Its form is checked like any action's.
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "wf.decommission",
+			Inputs: map[string]any{}}, 422, &problem, "Idempotency-Key", uuid.NewString())
+		var req api.Request
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "wf.decommission",
+			Inputs: map[string]any{"application": "web"}}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, func(env *testsuite.TestWorkflowEnvironment) {
+			env.RegisterWorkflowWithOptions(decommission, workflow.RegisterOptions{Name: "decommission.v1"})
+			env.RegisterDelayedCallback(func() {
+				var inbox api.ApprovalPage
+				h.json("GET", "/api/v1/approvals", admin, nil, 200, &inbox)
+				if inbox.Total != 1 {
+					t.Errorf("inbox = %+v", inbox.Items)
+					return
+				}
+				h.json("POST", "/api/v1/approvals/"+inbox.Items[0].Id+"/decision", admin,
+					api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove, Comment: new("Go")}, 200, nil)
+				h.wf.deliver(env)
+			}, time.Hour)
+		})
+		h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
+		if req.Status != api.RequestStatusSucceeded || req.Action == nil || req.Action.Key != "wf.decommission" {
+			t.Fatalf("the action's request = %s %s", req.Status, errorOf(req))
+		}
+		var result map[string]any
+		if err := h.store.Pool.QueryRow(ctx, `select result from workflow_runs where request_id = $1`, req.Id).Scan(&result); err != nil ||
+			result["archived"] != "web" {
+			t.Fatalf("the run = %v (%v)", result, err)
+		}
+		var ctxDeployment string
+		_ = h.store.Pool.QueryRow(ctx, `select coalesce((select name from deployments where id = $1), '')`, d.id).Scan(&ctxDeployment)
+		if result["deployment"] != ctxDeployment {
+			t.Fatalf("the workflow saw deployment %v, not %s", result["deployment"], ctxDeployment)
+		}
+
+		// Not offered outside its projects, nor once switched off.
+		reg.ProjectIds = &[]string{"prj_data"}
+		h.json("PUT", "/api/v1/admin/workflows/decommission", admin, reg, 200, nil)
+		if _, ok := d.actions("tnguyen")["wf.decommission"]; ok {
+			t.Fatal("offered outside its projects")
+		}
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "wf.decommission",
+			Inputs: map[string]any{"application": "web"}}, 422, nil, "Idempotency-Key", uuid.NewString())
+		reg.ProjectIds, reg.Day2.Offered = &[]string{}, new(false)
+		h.json("PUT", "/api/v1/admin/workflows/decommission", admin, reg, 200, nil)
+		if _, ok := d.actions("tnguyen")["wf.decommission"]; ok {
+			t.Fatal("offered while switched off")
+		}
 	})
 }
