@@ -33,6 +33,7 @@ import (
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vcenters"
 )
 
 type App struct {
@@ -50,6 +51,7 @@ type App struct {
 
 	vcMu    sync.Mutex
 	vc      vsphere.Driver
+	vcs     *vcenters.Set
 	console vsphere.Driver // the console-only account, for VMRC clone tickets
 
 	tcOnce sync.Once
@@ -220,6 +222,20 @@ func (a *App) VCenter(ctx context.Context) (vsphere.Driver, error) {
 	return vc, nil
 }
 
+// VCenters are the vCenters rvav manages (ADR-0024): the integration's,
+// first, and those administrators add.
+func (a *App) VCenters() *vcenters.Set {
+	a.vcMu.Lock()
+	defer a.vcMu.Unlock()
+	if a.vcs == nil {
+		a.vcs = &vcenters.Set{Store: a.Store, Secrets: a.Secrets, PrimaryName: a.Cfg.VCenter.Name}
+		if a.Cfg.VCenter.URL != "" {
+			a.vcs.Primary = func(ctx context.Context) (vsphere.Driver, error) { return a.VCenter(ctx) }
+		}
+	}
+	return a.vcs
+}
+
 // Temporal returns a Temporal client. It connects on first use, so the API
 // serves reads while Temporal is down and submitting answers 502.
 func (a *App) Temporal() (client.Client, error) {
@@ -258,7 +274,7 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 // Core builds the business service with the given workflow engine.
 func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
-		VCenter:    func(ctx context.Context) (core.ConsoleSource, error) { return a.VCenter(ctx) },
+		VCenter:    func(ctx context.Context, name string) (core.ConsoleSource, error) { return a.VCenters().Get(ctx, name) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
@@ -332,7 +348,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	}
 	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
-		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets}, nil
+		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets, VCenters: a.VCenters()}, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.
@@ -398,13 +414,13 @@ func (a *App) Dispatcher() *dispatch.Dispatcher {
 
 // RunSync runs the inventory sync until ctx is done.
 func (a *App) RunSync(ctx context.Context) error {
-	vc, err := a.VCenter(ctx)
-	if err != nil {
+	// The vCenter integration's must answer; the others are synced too.
+	if _, err := a.VCenter(ctx); err != nil {
 		return err
 	}
 	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval}
 	go func() { _ = subnets.Run(ctx) }()
 	go func() { _ = a.awxCatalog().Run(ctx) }()
-	s := &inventory.Syncer{Store: a.Store, VSphere: vc, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
+	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 	return s.Run(ctx)
 }

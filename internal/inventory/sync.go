@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"hash/fnv"
 	"log/slog"
 	"time"
@@ -19,11 +21,20 @@ import (
 )
 
 type Syncer struct {
-	Store    *store.Store
+	Store *store.Store
+	// VCenters are the vCenters to sync, each in turn (ADR-0024); without
+	// it, VSphere alone.
+	VCenters VCenterSet
 	VSphere  vsphere.Driver
 	Events   *events.Publisher
 	Log      *slog.Logger
 	Interval time.Duration
+}
+
+// VCenterSet is the vCenters rvav manages.
+type VCenterSet interface {
+	Names(ctx context.Context) ([]string, error)
+	Get(ctx context.Context, name string) (vsphere.Driver, error)
 }
 
 // lockKey is the Postgres advisory lock that keeps one active syncer.
@@ -57,7 +68,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 	}
 	defer conn.Exec(context.Background(), `select pg_advisory_unlock($1)`, lockKey) //nolint:errcheck
-	s.Log.Info("inventory sync started", "vcenter", s.VSphere.Name(), "interval", s.Interval.String())
+	s.Log.Info("inventory sync started", "interval", s.Interval.String())
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
 	for {
@@ -75,9 +86,32 @@ func (s *Syncer) Run(ctx context.Context) error {
 	}
 }
 
-// SyncOnce reads the inventory, replaces the cache and refreshes VM resources.
+// SyncOnce syncs every vCenter; one that fails doesn't stop the others.
 func (s *Syncer) SyncOnce(ctx context.Context) error {
-	inv, err := s.VSphere.Inventory(ctx)
+	if s.VCenters == nil {
+		return s.syncVCenter(ctx, s.VSphere)
+	}
+	names, err := s.VCenters.Names(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, name := range names {
+		d, err := s.VCenters.Get(ctx, name)
+		if err == nil {
+			err = s.syncVCenter(ctx, d)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// syncVCenter reads a vCenter's inventory, replaces its cache and refreshes
+// its VM resources.
+func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver) error {
+	inv, err := vc.Inventory(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,7 +131,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 			}
 		}
 	}
-	snap := store.Inventory{VCenter: s.VSphere.Name()}
+	snap := store.Inventory{VCenter: vc.Name()}
 	for _, c := range inv.Clusters {
 		tags := c.Tags
 		if inv.TagsError != nil {
@@ -151,7 +185,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 	if err := s.Store.ReplaceInventory(ctx, snap); err != nil {
 		return err
 	}
-	return s.refreshResources(ctx, byUUID)
+	return s.refreshResources(ctx, vc.Name(), byUUID)
 }
 
 type storedVM struct {
@@ -162,14 +196,15 @@ type storedVM struct {
 	} `json:"vm"`
 }
 
-func (s *Syncer) refreshResources(ctx context.Context, byUUID map[string]vsphere.InventoryVM) error {
+func (s *Syncer) refreshResources(ctx context.Context, vcenter string, byUUID map[string]vsphere.InventoryVM) error {
 	resources, err := s.Store.VMResources(ctx)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	for _, r := range resources {
-		if r.ExternalID == nil {
+		// Another vCenter's VMs aren't missing from this one.
+		if r.ExternalID == nil || vmprops.VCenterOf(r.Properties) != vcenter {
 			continue
 		}
 		dep, err := s.Store.GetDeployment(ctx, r.DeploymentID)
@@ -195,7 +230,7 @@ func (s *Syncer) refreshResources(ctx context.Context, byUUID map[string]vsphere
 		if vm.Folder == "" {
 			vm.Folder = old.VM.Folder
 		}
-		props := vmprops.Build(s.VSphere.Name(), vm.VM, vmprops.OursOf(r.Properties),
+		props := vmprops.Build(vcenter, vm.VM, vmprops.OursOf(r.Properties),
 			&vmprops.Usage{CPUPct: vm.CPUPct, MemoryPct: vm.MemoryPct, SampledAt: now}, vm.SnapshotCount)
 		changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != "in_sync"
 		if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "in_sync", props); err != nil {

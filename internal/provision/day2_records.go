@@ -11,6 +11,7 @@ import (
 
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vmprops"
 )
 
 // Day-2 operations on rvav's records and on EfficientIP: renames, owner
@@ -226,7 +227,11 @@ func (a *Activities) moveFolder(ctx context.Context, in OpInput) (string, error)
 		if folder == "" || folder == p.VM.Folder {
 			continue
 		}
-		if err := heartbeatWhile(ctx, func() error { return a.VSphere.MoveToFolder(ctx, p.VM.Moref, folder) }); err != nil {
+		vc, err := a.vc(ctx, vmprops.VCenterOf(r.Properties))
+		if err != nil {
+			return "", err
+		}
+		if err := heartbeatWhile(ctx, func() error { return vc.MoveToFolder(ctx, p.VM.Moref, folder) }); err != nil {
 			return "", err
 		}
 		a.refreshVM(ctx, OpInput{ProjectID: in.ProjectID, DeploymentID: d.ID, ResourceID: r.ID, Moref: p.VM.Moref})

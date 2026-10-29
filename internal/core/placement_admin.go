@@ -23,7 +23,8 @@ func presentPlacementRule(r store.PlacementRuleRow) api.PlacementRule {
 	return api.PlacementRule{Id: r.ID, Project: api.ProjectRef{Id: r.ProjectID, Code: r.ProjectCode, Name: r.ProjectName},
 		Environment: r.Environment, Priority: r.Priority, Clusters: nonNilStrings(r.ClusterPatterns),
 		Datastores: nonNilStrings(r.DatastorePatterns), Networks: nonNilStrings(r.NetworkPatterns), Folder: r.Folder,
-		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags), StoragePolicy: r.StoragePolicy}
+		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags), StoragePolicy: r.StoragePolicy,
+		Vcenter: r.VCenter}
 }
 
 // canSeeSettings: administrators and auditors everywhere; a project's
@@ -114,6 +115,15 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	errs = append(errs, checkPatterns(w.Networks, "/networks")...)
 	errs = append(errs, checkTags(clusterTags, "/cluster_tags")...)
 	errs = append(errs, checkTags(datastoreTags, "/datastore_tags")...)
+	// A vCenter rvav manages (ADR-0024).
+	vcenter := strings.TrimSpace(deref(w.Vcenter))
+	if vcenter != "" && vcenter != s.Config.VCenter.Name {
+		if _, err := s.Store.GetVCenter(ctx, vcenter); errors.Is(err, store.ErrNotFound) {
+			errs = append(errs, fieldErr("/vcenter", "unknown", "rvav manages no vCenter "+vcenter+"."))
+		} else if err != nil {
+			return api.PlacementRule{}, err
+		}
+	}
 	// A storage policy vCenter has (ADR-0024), when the inventory knows them.
 	policy := strings.TrimSpace(deref(w.StoragePolicy))
 	if policy != "" {
@@ -138,7 +148,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	}
 	r := store.PlacementRule{ID: id, ProjectID: proj.ID, Environment: w.Environment, Priority: priority,
 		ClusterPatterns: w.Clusters, DatastorePatterns: w.Datastores, NetworkPatterns: w.Networks, Folder: w.Folder,
-		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy}
+		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy, VCenter: vcenter}
 	if err := s.Store.SavePlacementRule(ctx, r); err != nil {
 		return api.PlacementRule{}, err
 	}

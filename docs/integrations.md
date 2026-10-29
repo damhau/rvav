@@ -6,8 +6,23 @@ can be faked in tests and swapped later.
 ## vSphere (native, govmomi)
 
 ### Connections
-- One or more vCenter endpoints. Credentials are stored as secrets, and sessions
-  are kept alive and pooled per endpoint.
+- The vCenter integration's endpoint (Integrations, or `RVAV_VCENTER_*`),
+  and others administrators add under it (**vCenters**: name, SDK address,
+  account, password sealed like a secret, certificate check), with a test
+  that signs in and reads the inventory ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
+  A password goes only where it was given for: a new address, or the
+  certificate not checked, needs it again.
+- rvav connects to each when it first needs it, and again when its
+  settings change. The inventory sync reads every vCenter in turn; one
+  that fails doesn't stop the others. A vCenter that deployments have VMs
+  in can't be removed.
+- Every VM resource knows its vCenter: provisioning, day-2 actions, the
+  console (the console account is the first vCenter's) and deletion use
+  it. Placement rules may name the vCenter their clusters are in; a
+  cluster name allowed in two vCenters needs it. When a blueprint doesn't
+  bind a cluster, rvav chooses, among those allowed in every vCenter, the
+  one with the most free memory that has the network and a datastore
+  with room.
 - Testing uses **vcsim** (govmomi's simulator) in unit and integration tests and in CI.
 
 ### Driver interface (sketch)

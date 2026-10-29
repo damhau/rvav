@@ -16,6 +16,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
+import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
 type Kind = S["IntegrationKind"];
@@ -358,8 +359,9 @@ export function IntegrationSettings() {
         ))}
       </TabsList>
       {items.map((it) => (
-        <TabsContent key={it.kind} value={it.kind} className="pt-4">
+        <TabsContent key={it.kind} value={it.kind} className="flex flex-col gap-4 pt-4">
           <Integration key={it.updated_at ?? "unsaved"} it={it} />
+          {it.kind === "vcenter" && <VCenters />}
         </TabsContent>
       ))}
     </Tabs>

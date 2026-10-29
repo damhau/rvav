@@ -54,7 +54,10 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 }
 
 func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
-	v := a.VSphere
+	v, err := a.resourceVC(ctx, in.ResourceID)
+	if err != nil {
+		return "", err
+	}
 	args := in.Op.Args
 	switch in.Op.Op {
 	case "reconfigure":
@@ -133,6 +136,19 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 	return "", permanent("unknown operation %q", in.Op.Op)
 }
 
+// resourceVC connects to the vCenter a VM resource is in (the first for
+// none: a deployment's own operation).
+func (a *Activities) resourceVC(ctx context.Context, resourceID string) (vsphere.Driver, error) {
+	if resourceID == "" {
+		return a.vc(ctx, "")
+	}
+	res, err := a.Store.GetResource(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	return a.vc(ctx, vmprops.VCenterOf(res.Properties))
+}
+
 // refreshVM stores what vCenter reports about the VM now. A failure only
 // delays the update to the next inventory sync.
 func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
@@ -141,12 +157,17 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
 		a.Log.Warn("refresh vm: load resource", "resource", in.ResourceID, "err", err)
 		return
 	}
-	vm, err := a.VSphere.GetVM(ctx, in.Moref)
+	vc, err := a.vc(ctx, vmprops.VCenterOf(res.Properties))
 	if err != nil {
 		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
 		return
 	}
-	res.Properties = vmprops.Build(a.VSphere.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0)
+	vm, err := vc.GetVM(ctx, in.Moref)
+	if err != nil {
+		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
+		return
+	}
+	res.Properties = vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0)
 	res.Name, res.SyncState = vm.Name, "in_sync"
 	if err := a.Store.UpdateResourceState(ctx, a.Store.Pool, res.ID, res.SyncState, res.Properties); err != nil {
 		a.Log.Warn("refresh vm: store", "resource", res.ID, "err", err)

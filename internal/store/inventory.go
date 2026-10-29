@@ -48,18 +48,18 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 }
 
 func (s *Store) InventoryClusters(ctx context.Context) ([]InvCluster, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, datacenter, host_count, cpu_total_mhz, cpu_used_mhz,
-		memory_total_mb, memory_used_mb, tags from inv_clusters order by name`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, datacenter, host_count, cpu_total_mhz, cpu_used_mhz,
+		memory_total_mb, memory_used_mb, tags from inv_clusters order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvCluster])
 }
 
 func (s *Store) InventoryDatastores(ctx context.Context) ([]InvDatastore, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, capacity_gb, free_gb, clusters, tags from inv_datastores order by name`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, capacity_gb, free_gb, clusters, tags from inv_datastores order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvDatastore])
 }
 
 func (s *Store) InventoryNetworks(ctx context.Context) ([]InvNetwork, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, kind, clusters from inv_networks order by name`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, kind, clusters from inv_networks order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvNetwork])
 }
 

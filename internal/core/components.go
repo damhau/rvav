@@ -44,6 +44,10 @@ type vmPart struct {
 	guest  blueprint.Guest
 	rule   *store.PlacementRule
 	subnet *store.NetworkSubnet
+	// vcenter is its cluster's vCenter; chosen says rvav chose the cluster
+	// or datastore (ADR-0024).
+	vcenter string
+	chosen  bool
 	// nicSubnets are the added adapters' subnets (nil for DHCP).
 	nicSubnets []*store.NetworkSubnet
 	naming     *naming.Template
@@ -188,11 +192,29 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return part, nil // nothing to place or name
 	}
 
+	// Placement chooses the cluster, and the datastore, the blueprint
+	// doesn't bind (ADR-0024).
+	pickDatastore := plan.Datastore == "" && c.Bindings["datastore"] == ""
+	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.clusters) > 0 {
+		if cl := pl.choose(plan, part.count, c.AntiAffinity, pickDatastore); cl != nil {
+			plan.Cluster, part.chosen = cl.Name, true
+		} else {
+			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
+		}
+	}
+	if pickDatastore && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
+		if ds := pl.roomiest(plan.Cluster, plan.StorageGB()*part.count); ds != "" {
+			plan.Datastore, part.chosen = ds, true
+		}
+	}
 	if plan.Cluster != "" {
 		if pl.cluster(plan.Cluster) == nil {
 			add(field("cluster"), "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
 		} else {
-			part.rule = pl.rule(plan.Cluster)
+			part.rule, part.vcenter = pl.rule(plan.Cluster), pl.cluster(plan.Cluster).VCenter
+			if pl.ambiguous(plan.Cluster) {
+				add(field("cluster"), "ambiguous", fmt.Sprintf("Cluster %s is in two vCenters. Ask an administrator to name the vCenter in the placement rule.", plan.Cluster))
+			}
 			if plan.Datastore != "" && !slices.ContainsFunc(pl.datastoresFor(plan.Cluster), func(d store.InvDatastore) bool { return d.Name == plan.Datastore }) {
 				add(field("datastore"), "not_allowed", fmt.Sprintf("Datastore %s cannot be used on %s.", plan.Datastore, plan.Cluster))
 			}
@@ -318,6 +340,51 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	return part, nil
 }
 
+// choose is the cluster a component's VMs go to when the blueprint doesn't
+// say: among those allowed, with its network, enough hosts to keep the VMs
+// apart, and a datastore with room (the one given, else any allowed), the
+// one with the most free memory.
+func (pl *placement) choose(plan blueprint.VMPlan, count int, apart, anyDatastore bool) *store.InvCluster {
+	var best *store.InvCluster
+	for i := range pl.clusters {
+		c := &pl.clusters[i]
+		if pl.cluster(c.Name) != c {
+			continue // a name in two vCenters: the first only
+		}
+		if plan.Network != "" && !slices.ContainsFunc(pl.networksFor(c.Name), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
+			continue
+		}
+		if apart && count > 1 && c.HostCount > 0 && c.HostCount < count {
+			continue
+		}
+		room := false
+		for _, d := range pl.datastoresFor(c.Name) {
+			if anyDatastore && d.FreeGB >= int64(plan.StorageGB()*count) || !anyDatastore && d.Name == plan.Datastore {
+				room = true
+			}
+		}
+		if !room {
+			continue
+		}
+		if best == nil || c.MemoryTotalMB-c.MemoryUsedMB > best.MemoryTotalMB-best.MemoryUsedMB {
+			best = c
+		}
+	}
+	return best
+}
+
+// roomiest is the allowed datastore of the cluster with the most free
+// space, if it has room for need GB ("" when none has).
+func (pl *placement) roomiest(cluster string, need int) string {
+	best, free := "", int64(-1)
+	for _, d := range pl.datastoresFor(cluster) {
+		if d.FreeGB >= int64(need) && d.FreeGB > free {
+			best, free = d.Name, d.FreeGB
+		}
+	}
+	return best
+}
+
 // vmQuota is what a VM blueprint's components add to the quotas.
 func (ev *Evaluation) vmQuota() map[string]int {
 	q := map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
@@ -374,7 +441,10 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			Folder        *string `json:"folder,omitempty"`
 			StoragePolicy *string `json:"storage_policy,omitempty"`
 			Vcenter       *string `json:"vcenter,omitempty"`
-		}{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy)}
+		}{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy), Vcenter: str(p.vcenter)}
+		if p.chosen {
+			c.Placement.Chosen = present.Ptr(true)
+		}
 		if p.rule != nil {
 			c.Placement.Folder = str(p.rule.Folder)
 		}
@@ -434,7 +504,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		DeploymentID: deploymentID, Component: p.comp.Key, Index: index, Name: name,
 		VCPU: p.vm.VCPU, MemoryGB: p.vm.MemoryGB, DiskGB: p.vm.DiskGB,
 		Cluster: p.vm.Cluster, Datastore: p.vm.Datastore, Network: p.vm.Network, Template: p.vm.Template,
-		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy,
+		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy, VCenter: p.vcenter,
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder

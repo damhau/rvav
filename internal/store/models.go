@@ -62,8 +62,10 @@ type PlacementRule struct {
 	Folder            string   `db:"folder"`
 	ClusterTags       []string `db:"cluster_tags"`
 	DatastoreTags     []string `db:"datastore_tags"`
-	// StoragePolicy is the storage policy of VMs placed by the rule.
+	// StoragePolicy is the storage policy of VMs placed by the rule, and
+	// VCenter the vCenter its clusters are in ("" for any; ADR-0024).
 	StoragePolicy string `db:"storage_policy"`
+	VCenter       string `db:"vcenter"`
 }
 
 type NetworkSubnet struct {
@@ -281,6 +283,7 @@ type Resource struct {
 }
 
 type InvCluster struct {
+	VCenter       string   `db:"vcenter"`
 	Moref         string   `db:"moref"`
 	Name          string   `db:"name"`
 	Datacenter    string   `db:"datacenter"`
@@ -293,6 +296,7 @@ type InvCluster struct {
 }
 
 type InvDatastore struct {
+	VCenter    string   `db:"vcenter"`
 	Moref      string   `db:"moref"`
 	Name       string   `db:"name"`
 	CapacityGB int64    `db:"capacity_gb"`
@@ -302,6 +306,7 @@ type InvDatastore struct {
 }
 
 type InvNetwork struct {
+	VCenter  string   `db:"vcenter"`
 	Moref    string   `db:"moref"`
 	Name     string   `db:"name"`
 	Kind     string   `db:"kind"`

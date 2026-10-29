@@ -2596,6 +2596,94 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/vcenters:
+    get:
+      tags: [admin]
+      operationId: listVCenters
+      summary: The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VCenterList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createVCenter
+      summary: Add a vCenter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VCenterWrite" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VCenter" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/vcenters/{name}:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [admin]
+      operationId: updateVCenter
+      summary: Change a vCenter (the password is kept when not given)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VCenterWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VCenter" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteVCenter
+      summary: Stop managing a vCenter; refused while deployments have VMs there
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/vcenters/{name}/test:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: testVCenter
+      summary: Test a vCenter, with its saved settings or the ones given
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VCenterWrite" }
+      responses:
+        "200":
+          description: The checks, passed or not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntegrationTest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/event-topics:
     get:
       tags: [admin]
@@ -5123,7 +5211,7 @@ components:
         snapshot_max_age_days: { type: integer, minimum: 0, description: 0 keeps snapshots of any age. }
     PlacementRule:
       type: object
-      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy]
+      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy, vcenter]
       properties:
         id: { type: string }
         project: { $ref: "#/components/schemas/ProjectRef" }
@@ -5150,6 +5238,9 @@ components:
         storage_policy:
           type: string
           description: The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none.
+        vcenter:
+          type: string
+          description: The vCenter its clusters are in; empty for any (ADR-0024). Needed when a cluster's name is in two vCenters.
     PlacementRuleWrite:
       type: object
       required: [project_id, environment, clusters, datastores, networks, folder]
@@ -5165,6 +5256,7 @@ components:
         cluster_tags: { type: array, items: { type: string } }
         datastore_tags: { type: array, items: { type: string } }
         storage_policy: { type: string }
+        vcenter: { type: string }
     PlacementRuleList:
       type: object
       required: [items]
@@ -5736,6 +5828,44 @@ components:
         checks:
           type: array
           items: { $ref: "#/components/schemas/IntegrationCheck" }
+    VCenter:
+      type: object
+      required: [name, url, username, insecure, password_set, primary]
+      properties:
+        name:
+          type: string
+          description: How the vCenter is known in rvav (inventory, placement rules, VMs), for example `vc02.corp.example`.
+        url: { type: string, examples: [https://vc02.corp.example/sdk] }
+        username: { type: string }
+        insecure: { type: boolean, description: Its certificate isn't checked. }
+        password_set: { type: boolean }
+        primary:
+          type: boolean
+          description: The vCenter integration's (Integrations); changed there, not here.
+        inventory:
+          type: object
+          description: What the inventory sync last read from it.
+          properties:
+            clusters: { type: integer }
+            vms: { type: integer }
+            synced_at: { type: [string, "null"], format: date-time }
+    VCenterWrite:
+      type: object
+      required: [name, url, username]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9.-]{1,62}$" }
+        url: { type: string, minLength: 1 }
+        username: { type: string, minLength: 1 }
+        password: { type: string, writeOnly: true, description: Kept when not given on a change. }
+        insecure: { type: boolean }
+    VCenterList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VCenter" }
     IntegrationCheck:
       type: object
       required: [name, ok, message]

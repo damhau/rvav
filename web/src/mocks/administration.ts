@@ -35,6 +35,8 @@ interface AdminState {
     string,
     { settings: Record<string, unknown>; secret: boolean; signing?: boolean; updated_at?: string }
   >;
+  /** vCenters added besides the integration's (ADR-0024). */
+  vcenters: S["VCenter"][];
   seq: number;
 }
 
@@ -68,6 +70,7 @@ function state(db: Db): AdminState {
         networks: [`dvpg-*-${env}-*`],
         folder: `/GVA/vm/rvav/${p.code}/${env}`,
         storage_policy: "",
+        vcenter: "",
         cluster_tags: [],
         datastore_tags: [],
       });
@@ -176,6 +179,7 @@ function state(db: Db): AdminState {
         roles: ["owner", "member", "project-admin"], condition: "true", effect: "allow", project_id: null, enabled: true,
       },
     ], // prettier-ignore
+    vcenters: [],
     integrations: {
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
@@ -553,6 +557,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           cluster_tags: w.cluster_tags ?? [],
           datastore_tags: w.datastore_tags ?? [],
           storage_policy: w.storage_policy ?? "",
+          vcenter: w.vcenter ?? "",
         };
         const rules = st().rules;
         const i = rules.findIndex((r) => r.id === rule.id);
@@ -944,6 +949,81 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           : {}),
       }; // prettier-ignore
       return HttpResponse.json(out);
+    }),
+
+    // ── vCenters (ADR-0024) ──
+    http.get(`${base}/admin/vcenters`, async () => {
+      await wait();
+      const primary = st().integrations.vcenter!;
+      return HttpResponse.json({
+        items: [
+          {
+            name: String(primary.settings.name),
+            url: String(primary.settings.url),
+            username: String(primary.settings.username),
+            insecure: primary.settings.insecure === true,
+            password_set: primary.secret,
+            primary: true,
+            inventory: { clusters: 4, vms: db.deployments.length, synced_at: now() },
+          },
+          ...st().vcenters,
+        ],
+      });
+    }),
+    ...(["post", "put"] as const).map((method) =>
+      http[method](`${base}/admin/vcenters${method === "put" ? "/:name" : ""}`, async ({ params, request }) => {
+        await wait();
+        const w = (await request.json()) as S["VCenterWrite"];
+        const name = method === "put" ? String(params.name) : w.name;
+        const current = st().vcenters.find((v) => v.name === name);
+        if (method === "put" && !current) return problem(404, "Not found");
+        if (method === "post" && current) return problem(409, "Conflict", undefined, `rvav already manages ${name}.`);
+        const errors: S["FieldError"][] = [];
+        if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(name))
+          errors.push(err("/name", "Its host name in lower case, for example vc02.corp.example."));
+        if (!/^https:\/\/[^/]+/.test(w.url))
+          errors.push(err("/url", "Its SDK address over HTTPS, for example https://vc02.corp.example/sdk."));
+        if (!w.username.trim()) errors.push(err("/username", "Give the account rvav signs in with."));
+        if (!current && !w.password) errors.push(err("/password", "Give the account's password."));
+        if (current && !w.password && w.url !== current.url)
+          errors.push(err("/password", "A new address needs the password again."));
+        if (errors.length) return invalid(errors);
+        const vc: S["VCenter"] = {
+          name,
+          url: w.url,
+          username: w.username,
+          insecure: w.insecure ?? false,
+          password_set: true,
+          primary: false,
+          inventory: current?.inventory ?? { clusters: 0, vms: 0, synced_at: null },
+        };
+        st().vcenters = [...st().vcenters.filter((v) => v.name !== name), vc];
+        audited(db, `vcenter.${method === "put" ? "update" : "create"}`, "vcenter", name);
+        return HttpResponse.json(vc, { status: method === "post" ? 201 : 200 });
+      }),
+    ),
+    http.delete(`${base}/admin/vcenters/:name`, async ({ params }) => {
+      await wait();
+      const i = st().vcenters.findIndex((v) => v.name === params.name);
+      if (i < 0) return problem(404, "Not found");
+      st().vcenters.splice(i, 1);
+      audited(db, "vcenter.delete", "vcenter", String(params.name));
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post(`${base}/admin/vcenters/:name/test`, async ({ request }) => {
+      await wait();
+      const raw = await request.text();
+      const w = raw ? (JSON.parse(raw) as S["VCenterWrite"]) : undefined;
+      const ok = !w || /^https:\/\/[^/]+/.test(w.url);
+      return HttpResponse.json({
+        ok,
+        checks: ok
+          ? [
+              { name: "Sign in", ok: true, message: `Signed in to ${w?.url ?? "it"} as ${w?.username ?? "rvav"}.` },
+              { name: "Inventory", ok: true, message: "2 clusters, 2 datastores, 3 networks and 1 templates." },
+            ]
+          : [{ name: "Settings", ok: false, message: "Its SDK address over HTTPS." }],
+      });
     }),
 
     // ── Integrations ──

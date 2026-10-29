@@ -44,7 +44,7 @@ type Service struct {
 	Log      *slog.Logger
 	// VCenter gives WebMKS tickets for consoles (ADR-0012); it may connect
 	// on first use.
-	VCenter func(ctx context.Context) (ConsoleSource, error)
+	VCenter func(ctx context.Context, name string) (ConsoleSource, error)
 	// ConsoleAccount, when set, is a session of a vCenter account that may
 	// only open consoles: VMRC links carry a clone ticket of it. Never
 	// rvav's own session, which a clone ticket would hand to the user.
@@ -94,14 +94,17 @@ func (s *Service) visibleProject(ctx context.Context, p *auth.Principal, idOrCod
 	return proj, nil
 }
 
-// placement is what a project may use in one environment.
+// placement is what a project may use in one environment. Clusters are
+// known by name; with several vCenters (ADR-0024) a cluster is the first of
+// that name its rules allow, and its datastores and networks are its
+// vCenter's.
 type placement struct {
 	rules      []store.PlacementRule
-	clusters   []store.InvCluster
+	all        []store.InvCluster // every cluster of every vCenter
+	clusters   []store.InvCluster // those a rule allows
 	datastores []store.InvDatastore
 	networks   []store.InvNetwork
 	subnets    map[string]store.NetworkSubnet
-	tags       map[string][]string // of every cluster, by name
 }
 
 func matchAny(patterns []string, name string) bool {
@@ -128,6 +131,11 @@ func selects(patterns, wantTags []string, name string, tags []string) bool {
 	return len(patterns) > 0 || len(wantTags) > 0
 }
 
+// allows says whether a rule allows a cluster: its vCenter, name and tags.
+func allows(r store.PlacementRule, c store.InvCluster) bool {
+	return (r.VCenter == "" || r.VCenter == c.VCenter) && selects(r.ClusterPatterns, r.ClusterTags, c.Name, c.Tags)
+}
+
 func (s *Service) placement(ctx context.Context, projectID, environment string) (*placement, error) {
 	rules, err := s.Store.PlacementRules(ctx, projectID, environment)
 	if err != nil {
@@ -137,16 +145,11 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 	if len(rules) == 0 {
 		return pl, nil
 	}
-	clusters, err := s.Store.InventoryClusters(ctx)
-	if err != nil {
+	if pl.all, err = s.Store.InventoryClusters(ctx); err != nil {
 		return nil, err
 	}
-	pl.tags = map[string][]string{}
-	for _, c := range clusters {
-		pl.tags[c.Name] = c.Tags
-	}
-	for _, c := range clusters {
-		if pl.rule(c.Name) != nil {
+	for _, c := range pl.all {
+		if slices.ContainsFunc(rules, func(r store.PlacementRule) bool { return allows(r, c) }) {
 			pl.clusters = append(pl.clusters, c)
 		}
 	}
@@ -162,16 +165,7 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 	return pl, nil
 }
 
-// rule returns the first rule allowing the cluster.
-func (pl *placement) rule(cluster string) *store.PlacementRule {
-	for i := range pl.rules {
-		if selects(pl.rules[i].ClusterPatterns, pl.rules[i].ClusterTags, cluster, pl.tags[cluster]) {
-			return &pl.rules[i]
-		}
-	}
-	return nil
-}
-
+// cluster is the allowed cluster of that name.
 func (pl *placement) cluster(name string) *store.InvCluster {
 	for i := range pl.clusters {
 		if pl.clusters[i].Name == name {
@@ -181,14 +175,43 @@ func (pl *placement) cluster(name string) *store.InvCluster {
 	return nil
 }
 
+// ambiguous says whether clusters of that name are allowed in two vCenters:
+// a rule allowing it must name the vCenter.
+func (pl *placement) ambiguous(name string) bool {
+	seen := ""
+	for _, c := range pl.clusters {
+		if c.Name == name {
+			if seen != "" && seen != c.VCenter {
+				return true
+			}
+			seen = c.VCenter
+		}
+	}
+	return false
+}
+
+// rule returns the first rule allowing the cluster.
+func (pl *placement) rule(cluster string) *store.PlacementRule {
+	c := pl.cluster(cluster)
+	if c == nil {
+		return nil
+	}
+	for i := range pl.rules {
+		if allows(pl.rules[i], *c) {
+			return &pl.rules[i]
+		}
+	}
+	return nil
+}
+
 func (pl *placement) datastoresFor(cluster string) []store.InvDatastore {
-	r := pl.rule(cluster)
+	c, r := pl.cluster(cluster), pl.rule(cluster)
 	if r == nil {
 		return nil
 	}
 	var out []store.InvDatastore
 	for _, d := range pl.datastores {
-		if slices.Contains(d.Clusters, cluster) && selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags) {
+		if d.VCenter == c.VCenter && slices.Contains(d.Clusters, cluster) && selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags) {
 			out = append(out, d)
 		}
 	}
@@ -196,13 +219,13 @@ func (pl *placement) datastoresFor(cluster string) []store.InvDatastore {
 }
 
 func (pl *placement) networksFor(cluster string) []store.InvNetwork {
-	r := pl.rule(cluster)
+	c, r := pl.cluster(cluster), pl.rule(cluster)
 	if r == nil {
 		return nil
 	}
 	var out []store.InvNetwork
 	for _, n := range pl.networks {
-		if slices.Contains(n.Clusters, cluster) && matchAny(r.NetworkPatterns, n.Name) {
+		if n.VCenter == c.VCenter && slices.Contains(n.Clusters, cluster) && matchAny(r.NetworkPatterns, n.Name) {
 			out = append(out, n)
 		}
 	}

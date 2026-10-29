@@ -266,6 +266,7 @@ function RuleDialog({
     networks: rule?.networks.join(", ") ?? "",
     folder: rule?.folder ?? `/GVA/vm/rvav/${project.code}/${env}`,
     storage_policy: rule?.storage_policy ?? "",
+    vcenter: rule?.vcenter ?? "",
     priority: String(rule?.priority ?? 100),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -282,6 +283,7 @@ function RuleDialog({
         networks: list(f.networks),
         folder: f.folder,
         storage_policy: f.storage_policy.trim(),
+        vcenter: f.vcenter.trim(),
       };
       return rule
         ? call(api.PUT("/admin/placement-rules/{id}", { params: { path: { id: rule.id } }, body }))
@@ -333,6 +335,7 @@ function RuleDialog({
             {field("networks", "Networks", "For example dvpg-*-dev-*")}
             {field("folder", "VM folder")}
             {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
+            {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
             {field("priority", "Priority", "Lower first", false)}
           </div>
           <div className="flex justify-end gap-2">
@@ -408,6 +411,12 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
                 <>
                   <dt className="text-faint">Storage policy</dt>
                   <dd>{r.storage_policy}</dd>
+                </>
+              )}
+              {r.vcenter && (
+                <>
+                  <dt className="text-faint">vCenter</dt>
+                  <dd className="font-mono">{r.vcenter}</dd>
                 </>
               )}
             </dl>

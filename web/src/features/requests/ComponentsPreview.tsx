@@ -15,7 +15,9 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
       <ul className="flex flex-col gap-3">
         {components.map((c) => {
           const disks = c.disks.map((d) => `${d.size_gb} GB`).join(" + ");
-          const where = [c.placement?.cluster, c.placement?.datastore].filter(Boolean).join(" · ");
+          const where = [c.placement?.vcenter, c.placement?.cluster, c.placement?.datastore]
+            .filter(Boolean)
+            .join(" · ");
           return (
             <li key={c.key} className="flex flex-col gap-0.5" aria-label={c.title}>
               <span className="flex flex-wrap items-center gap-1.5">
@@ -34,6 +36,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                   <span className="text-xs text-muted">
                     {c.vcpu} vCPU · {c.memory_gb} GB · disks {disks}
                     {where ? ` · ${where}` : ""}
+                    {c.placement?.chosen ? " (chosen by rvav)" : ""}
                   </span>
                   <span className="font-mono text-[11px] break-words text-faint">
                     {c.nics

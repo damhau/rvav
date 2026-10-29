@@ -434,3 +434,44 @@ func csvCell(v string) string {
 	}
 	return v
 }
+
+// Several vCenters (ADR-0024).
+
+func (s *Server) ListVCenters(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.ListVCenters(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) CreateVCenter(w http.ResponseWriter, r *http.Request) {
+	var b api.VCenterWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveVCenter(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) UpdateVCenter(w http.ResponseWriter, r *http.Request, name string) {
+	var b api.VCenterWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveVCenter(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeleteVCenter(w http.ResponseWriter, r *http.Request, name string) {
+	s.replyEmpty(w, r, s.Core.DeleteVCenter(r.Context(), principal(r), name))
+}
+
+func (s *Server) TestVCenter(w http.ResponseWriter, r *http.Request, name string) {
+	var b *api.VCenterWrite
+	if r.ContentLength != 0 {
+		b = &api.VCenterWrite{}
+		if !s.decode(w, r, b) {
+			return
+		}
+	}
+	out, err := s.Core.TestVCenter(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}

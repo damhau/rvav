@@ -1904,6 +1904,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/vcenters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vCenters rvav manages (ADR-0024); the first is the vCenter integration's */
+        get: operations["listVCenters"];
+        put?: never;
+        /** Add a vCenter */
+        post: operations["createVCenter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vcenters/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a vCenter (the password is kept when not given) */
+        put: operations["updateVCenter"];
+        post?: never;
+        /** Stop managing a vCenter; refused while deployments have VMs there */
+        delete: operations["deleteVCenter"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vcenters/{name}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a vCenter, with its saved settings or the ones given */
+        post: operations["testVCenter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/event-topics": {
         parameters: {
             query?: never;
@@ -3681,6 +3738,8 @@ export interface components {
             datastore_tags: string[];
             /** @description The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none. */
             storage_policy: string;
+            /** @description The vCenter its clusters are in; empty for any (ADR-0024). Needed when a cluster's name is in two vCenters. */
+            vcenter: string;
         };
         PlacementRuleWrite: {
             project_id: string;
@@ -3694,6 +3753,7 @@ export interface components {
             cluster_tags?: string[];
             datastore_tags?: string[];
             storage_policy?: string;
+            vcenter?: string;
         };
         PlacementRuleList: {
             items: components["schemas"]["PlacementRule"][];
@@ -4143,6 +4203,36 @@ export interface components {
         IntegrationTest: {
             ok: boolean;
             checks: components["schemas"]["IntegrationCheck"][];
+        };
+        VCenter: {
+            /** @description How the vCenter is known in rvav (inventory, placement rules, VMs), for example `vc02.corp.example`. */
+            name: string;
+            /** @example https://vc02.corp.example/sdk */
+            url: string;
+            username: string;
+            /** @description Its certificate isn't checked. */
+            insecure: boolean;
+            password_set: boolean;
+            /** @description The vCenter integration's (Integrations); changed there, not here. */
+            primary: boolean;
+            /** @description What the inventory sync last read from it. */
+            inventory?: {
+                clusters?: number;
+                vms?: number;
+                /** Format: date-time */
+                synced_at?: string | null;
+            };
+        };
+        VCenterWrite: {
+            name: string;
+            url: string;
+            username: string;
+            /** @description Kept when not given on a change. */
+            password?: string;
+            insecure?: boolean;
+        };
+        VCenterList: {
+            items: components["schemas"]["VCenter"][];
         };
         IntegrationCheck: {
             /** @example Sign in */
@@ -8015,6 +8105,140 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listVCenters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VCenterList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createVCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VCenterWrite"];
+            };
+        };
+        responses: {
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VCenter"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateVCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VCenterWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VCenter"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteVCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    testVCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["VCenterWrite"];
+            };
+        };
+        responses: {
+            /** @description The checks, passed or not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
         };
     };

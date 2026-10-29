@@ -132,7 +132,7 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 		again := false
 		for i, b := range built {
 			if b.vm.Component == c.Key {
-				in.DeploymentID, in.Cluster = b.vm.DeploymentID, b.vm.Cluster
+				in.DeploymentID, in.Cluster, in.VCenter = b.vm.DeploymentID, b.vm.Cluster, b.vm.VCenter
 				in.VMs, in.Morefs = append(in.VMs, b.vm.Name), append(in.Morefs, b.moref)
 				again = again || fresh[i]
 			}

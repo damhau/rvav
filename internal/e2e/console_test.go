@@ -78,7 +78,7 @@ func TestConsole(t *testing.T) {
 		sum := sha256.Sum256(esxi.Certificate().Raw)
 		source := consoleSource{Client: h.vc, mks: vsphere.WebMKS{URL: "wss://" + esxi.Listener.Addr().String() + "/ticket/good",
 			Thumbprints: []string{hex.EncodeToString(sum[:])}}}
-		h.svc.VCenter = func(context.Context) (core.ConsoleSource, error) { return source, nil }
+		h.svc.VCenter = func(context.Context, string) (core.ConsoleSource, error) { return source, nil }
 		d := buildVM(h, simulator.VPX())
 		path := "/api/v1/deployments/" + d.id + "/resources/" + d.resource + "/console"
 		open := func(user string, want int) api.ConsoleSession {

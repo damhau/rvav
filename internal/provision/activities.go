@@ -59,6 +59,26 @@ type Activities struct {
 	// Secrets opens the secrets a guest names: a domain join's account, a
 	// local administrator's password (ADR-0024).
 	Secrets *secrets.Box
+	// VCenters connects to the vCenter a VM is in (ADR-0024); without it,
+	// VSphere is the only one.
+	VCenters VCenterSet
+}
+
+// VCenterSet is the vCenters rvav manages, by name ("" for the first).
+type VCenterSet interface {
+	Get(ctx context.Context, name string) (vsphere.Driver, error)
+}
+
+// vc connects to a vCenter by name ("" for the first).
+func (a *Activities) vc(ctx context.Context, name string) (vsphere.Driver, error) {
+	if a.VCenters == nil {
+		return a.VSphere, nil
+	}
+	d, err := a.VCenters.Get(ctx, name)
+	if err != nil {
+		return nil, permanent("vCenter %s: %v", name, err)
+	}
+	return d, nil
 }
 
 // Info is what the workflow loads first.
@@ -112,6 +132,7 @@ type VMInput struct {
 
 // RuleInput is a component's DRS rule: its VMs by name and moref.
 type RuleInput struct {
+	VCenter      string   `json:"vcenter,omitempty"`
 	RequestID    string   `json:"request_id"`
 	ProjectID    string   `json:"project_id"`
 	Key          string   `json:"key"`
@@ -516,8 +537,8 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 	})
 }
 
-func (a *Activities) recordVM(ctx context.Context, in VMInput, vm *vsphere.VM) (store.Resource, error) {
-	props := vmprops.Build(a.VSphere.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component}, nil, 0)
+func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput, vm *vsphere.VM) (store.Resource, error) {
+	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component}, nil, 0)
 	ext := vm.InstanceUUID
 	if ext == "" {
 		ext = vm.Moref
@@ -534,10 +555,14 @@ func (a *Activities) recordVM(ctx context.Context, in VMInput, vm *vsphere.VM) (
 func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 	var moref string
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
+		vc, err := a.vc(ctx, in.VM.VCenter)
+		if err != nil {
+			return "", "", err
+		}
 		var vm *vsphere.VM
-		err := heartbeatWhile(ctx, func() error {
+		err = heartbeatWhile(ctx, func() error {
 			var err error
-			vm, err = a.VSphere.CloneVM(ctx, vsphere.VMSpec{
+			vm, err = vc.CloneVM(ctx, vsphere.VMSpec{
 				Name: in.VM.Name, Template: in.VM.Template, Cluster: in.VM.Cluster, Datastore: in.VM.Datastore,
 				Network: in.VM.Network, Folder: in.VM.Folder, VCPU: in.VM.VCPU, MemoryMB: in.VM.MemoryGB * 1024,
 				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
@@ -555,12 +580,12 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 		}
 		moref = vm.Moref
 		// Tags after the clone, before it is recorded with them.
-		if err := a.VSphere.AttachTags(ctx, vm.Moref, in.VM.Tags); errors.Is(err, vsphere.ErrNotFound) {
+		if err := vc.AttachTags(ctx, vm.Moref, in.VM.Tags); errors.Is(err, vsphere.ErrNotFound) {
 			return "", "", permanent("vCenter: %v. Ask an administrator to create it.", err)
 		} else if err != nil {
 			return "", "", fmt.Errorf("vCenter tags: %w", err)
 		}
-		if _, err := a.recordVM(ctx, in, vm); err != nil {
+		if _, err := a.recordVM(ctx, vc, in, vm); err != nil {
 			return "", "", err
 		}
 		detail := fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref)
@@ -627,7 +652,11 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		if cu.Spec != "" {
 			detail += ", from specification " + cu.Spec
 		}
-		err := a.VSphere.Customize(ctx, in.Moref, cu)
+		vc, err := a.vc(ctx, in.VM.VCenter)
+		if err != nil {
+			return "", "", err
+		}
+		err = vc.Customize(ctx, in.Moref, cu)
 		if errors.Is(err, vsphere.ErrNotFound) {
 			return "", "", permanent("vCenter: %v. Ask a catalog admin to check this item.", err)
 		}
@@ -661,7 +690,11 @@ func (a *Activities) secret(ctx context.Context, name string) (username, value s
 // cloudInit gives a Linux VM its host name, addresses and user data
 // through guestinfo, for cloud-init, instead of vCenter's customization.
 func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (string, string, error) {
-	vm, err := a.VSphere.GetVM(ctx, in.Moref)
+	vc, err := a.vc(ctx, in.VM.VCenter)
+	if err != nil {
+		return "", "", err
+	}
+	vm, err := vc.GetVM(ctx, in.Moref)
 	if err != nil {
 		return "", "", fmt.Errorf("vCenter: %w", err)
 	}
@@ -702,7 +735,7 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	if err != nil {
 		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 	}
-	if err := a.VSphere.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
+	if err := vc.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
 		return "", "", fmt.Errorf("vCenter: %w", err)
 	}
 	return "Wrote cloud-init metadata and user data", fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo",
@@ -711,7 +744,11 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 
 func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		if err := a.VSphere.PowerOn(ctx, in.Moref); err != nil {
+		vc, err := a.vc(ctx, in.VM.VCenter)
+		if err != nil {
+			return "", "", err
+		}
+		if err := vc.PowerOn(ctx, in.Moref); err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		timeout := a.IPTimeout
@@ -721,9 +758,9 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 		wctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		var ip string
-		err := heartbeatWhile(ctx, func() error {
+		err = heartbeatWhile(ctx, func() error {
 			var err error
-			ip, err = a.VSphere.WaitForIP(wctx, in.Moref)
+			ip, err = vc.WaitForIP(wctx, in.Moref)
 			return err
 		})
 		if err != nil {
@@ -732,8 +769,8 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 			}
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
-		if vm, err := a.VSphere.GetVM(ctx, in.Moref); err == nil {
-			_, _ = a.recordVM(ctx, in, vm)
+		if vm, err := vc.GetVM(ctx, in.Moref); err == nil {
+			_, _ = a.recordVM(ctx, vc, in, vm)
 		}
 		detail := "VMware Tools reports " + ip
 		if ip != in.IP {
@@ -764,15 +801,19 @@ func nicNetworks(vm VMUnit) []string {
 // rule, recorded on the deployment so deleting it removes the rule.
 func (a *Activities) CreateDRSRule(ctx context.Context, in RuleInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		if err := a.VSphere.SetAntiAffinityRule(ctx, in.Cluster, in.Name, in.Morefs); err != nil {
+		vc, err := a.vc(ctx, in.VCenter)
+		if err != nil {
+			return "", "", err
+		}
+		if err := vc.SetAntiAffinityRule(ctx, in.Cluster, in.Name, in.Morefs); err != nil {
 			if errors.Is(err, vsphere.ErrNotFound) {
 				return "", "", permanent("%v", err)
 			}
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		props, _ := json.Marshal(map[string]any{"rule": map[string]any{"kind": "vm_anti_affinity", "cluster": in.Cluster,
-			"vcenter": a.VSphere.Name(), "component": in.Component, "vms": in.VMs}})
-		ext := a.VSphere.Name() + "/" + in.Cluster + "/" + in.Name
+			"vcenter": vc.Name(), "component": in.Component, "vms": in.VMs}})
+		ext := vc.Name() + "/" + in.Cluster + "/" + in.Name
 		res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.DeploymentID,
 			RequestID: &in.RequestID, Type: "vsphere.drs_rule", Name: in.Name, ExternalID: &ext, Properties: props})
 		if err != nil {
@@ -1235,19 +1276,27 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 		var p struct {
 			Rule struct {
 				Cluster string `json:"cluster"`
+				VCenter string `json:"vcenter"`
 			} `json:"rule"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
-		err = a.VSphere.DeleteRule(ctx, p.Rule.Cluster, r.Name)
+		var vc vsphere.Driver
+		if vc, err = a.vc(ctx, p.Rule.VCenter); err == nil {
+			err = vc.DeleteRule(ctx, p.Rule.Cluster, r.Name)
+		}
 		what = "removed DRS rule " + r.Name
 	case "vsphere.vm":
 		var p struct {
 			VM struct {
-				Moref string `json:"moref"`
+				Moref   string `json:"moref"`
+				VCenter string `json:"vcenter"`
 			} `json:"vm"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
-		err = heartbeatWhile(ctx, func() error { return a.VSphere.Destroy(ctx, p.VM.Moref) })
+		var vc vsphere.Driver
+		if vc, err = a.vc(ctx, p.VM.VCenter); err == nil {
+			err = heartbeatWhile(ctx, func() error { return vc.Destroy(ctx, p.VM.Moref) })
+		}
 		what = "deleted VM " + r.Name
 	case "dns.record":
 		var p struct {

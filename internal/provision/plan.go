@@ -177,6 +177,8 @@ type VMUnit struct {
 	// StoragePolicy the VM's (ADR-0024).
 	Library       string `json:"library,omitempty"`
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	// VCenter is the vCenter its cluster is in ("" for the first).
+	VCenter string `json:"vcenter,omitempty"`
 }
 
 // NICUnit is an adapter added after the template's: with efficientip, an

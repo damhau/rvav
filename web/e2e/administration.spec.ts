@@ -316,3 +316,29 @@ test("an auditor reads the administration pages without changing them", async ({
   await expect(page.getByRole("textbox", { name: "Add someone" })).toBeHidden();
   await expect(page.getByRole("combobox", { name: /Role of/ })).toHaveCount(0);
 });
+
+test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {
+  await open(page, "Integrations", "Integrations");
+  const vcenters = page.getByRole("region", { name: "vCenters" });
+  await expect(vcenters.getByRole("row", { name: /vc01\.corp\.example/ })).toContainText("The connection above");
+  await vcenters.getByRole("button", { name: "Add a vCenter" }).click();
+  const add = page.getByRole("dialog", { name: "Add a vCenter" });
+  await add.getByRole("textbox", { name: "Name" }).fill("vc02.corp.example");
+  await add.getByRole("textbox", { name: "SDK address" }).fill("http://vc02.corp.example/sdk");
+  await add.getByRole("textbox", { name: "Account" }).fill("svc-rvav@vsphere.local");
+  await add.getByRole("button", { name: "Save vCenter" }).click();
+  await expect(add.getByText("Its SDK address over HTTPS, for example https://vc02.corp.example/sdk.")).toBeVisible();
+  await expect(add.getByText("Give the account's password.")).toBeVisible();
+  await add.getByRole("textbox", { name: "SDK address" }).fill("https://vc02.corp.example/sdk");
+  await add.getByLabel("Password").fill("s3cret");
+  await add.getByRole("button", { name: "Test" }).click();
+  await expect(add.getByRole("list", { name: "Test" })).toContainText("Signed in to https://vc02.corp.example/sdk");
+  await add.getByRole("button", { name: "Save vCenter" }).click();
+  const row = vcenters.getByRole("row", { name: /vc02\.corp\.example/ });
+  await expect(row).toContainText("svc-rvav@vsphere.local");
+  await expect(row).toContainText("0 clusters, 0 VMs");
+
+  page.once("dialog", (d) => void d.accept());
+  await vcenters.getByRole("button", { name: "Remove vc02.corp.example" }).click();
+  await expect(row).toBeHidden();
+});

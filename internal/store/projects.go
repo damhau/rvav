@@ -112,7 +112,7 @@ func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string
 }
 
 const placementRuleCols = `id, project_id, environment, priority, cluster_patterns, datastore_patterns, network_patterns, folder,
-	cluster_tags, datastore_tags, storage_policy`
+	cluster_tags, datastore_tags, storage_policy, vcenter`
 
 func (s *Store) PlacementRules(ctx context.Context, projectID, environment string) ([]PlacementRule, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+placementRuleCols+`

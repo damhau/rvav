@@ -39,6 +39,17 @@ func OursOf(props json.RawMessage) Ours {
 	return p.VM
 }
 
+// VCenterOf is the vCenter a VM's stored properties say it is in.
+func VCenterOf(props json.RawMessage) string {
+	var p struct {
+		VM struct {
+			VCenter string `json:"vcenter"`
+		} `json:"vm"`
+	}
+	_ = json.Unmarshal(props, &p)
+	return p.VM.VCenter
+}
+
 // Build returns the resource properties for a VM.
 func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int) json.RawMessage {
 	p := api.VmProperties{

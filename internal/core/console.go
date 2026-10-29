@@ -59,14 +59,17 @@ func (s *Service) OpenConsole(ctx context.Context, p *auth.Principal, deployment
 	if s.VCenter == nil {
 		return out, &UpstreamError{System: "vCenter", Err: errors.New("no vCenter is configured")}
 	}
-	vc, err := s.VCenter(ctx)
+	// The VM's own vCenter (ADR-0024); the console account is the first's.
+	vc, err := s.VCenter(ctx, target.VM.Vcenter)
 	if err != nil {
 		return out, &UpstreamError{System: "vCenter", Err: err}
 	}
+	_, err = s.Store.GetVCenter(ctx, target.VM.Vcenter)
+	primary := errors.Is(err, store.ErrNotFound) // not one administrators added
 	// Without a console account, VMRC asks the user to sign in with their
 	// own vCenter account, whose permissions then apply.
 	out.VMRC = fmt.Sprintf("vmrc://%s/?moid=%s", vc.Host(), url.QueryEscape(target.VM.Moref))
-	if s.ConsoleAccount != nil {
+	if s.ConsoleAccount != nil && primary {
 		acct, err := s.ConsoleAccount(ctx)
 		if err != nil {
 			return out, &UpstreamError{System: "vCenter", Err: err}
