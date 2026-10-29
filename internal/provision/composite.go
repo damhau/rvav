@@ -112,8 +112,13 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 		if err := workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "running", "").Get(ctx, nil); err != nil {
 			return stepResult{failed: key, err: err}
 		}
-		vms, failed, err := buildVMs(ctx, info, c.VMs, c.Guest, c.VMKey)
-		if err == nil {
+		var vms []builtVM
+		var failed string
+		var err error
+		if len(c.Components) > 0 {
+			// A multi-VM item (ADR-0024): its components' steps are this step's.
+			vms, failed, err = buildComponents(ctx, info, c.VMs, c.Components, c.keys())
+		} else if vms, failed, err = buildVMs(ctx, info, c.VMs, c.Guest, c.VMKey); err == nil {
 			failed, err = postConfig(ctx, info, vms, c.PostConfig, key+"/"+KeyInventory,
 				func(j Job) string { return key + "/" + KeyJob + j.Key }, c.Limit(), info.Plan.Context)
 		}

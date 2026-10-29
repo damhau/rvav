@@ -51,6 +51,96 @@ var sizes = map[string]any{
 	"XL": map[string]any{"label": "X-Large", "vcpu": 8, "memory_gb": 48, "disk_gb": 120},
 }
 
+// pgFields are the inputs the PostgreSQL cluster and its nodes share.
+func pgFields() (props map[string]any, fields map[string]any) {
+	props = map[string]any{
+		"name":       map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9]{2,20}$"},
+		"pg_version": map[string]any{"type": "string", "enum": []string{"16.6", "15.10"}},
+		"size":       map[string]any{"type": "string", "enum": []string{"S", "M", "L", "XL"}},
+		"data_gb":    map[string]any{"type": "integer", "minimum": 20, "maximum": 4000},
+		"cluster":    map[string]any{"type": "string", "minLength": 1},
+		"datastore":  map[string]any{"type": "string", "minLength": 1},
+		"network":    map[string]any{"type": "string", "minLength": 1},
+	}
+	fields = map[string]any{
+		"name": map[string]any{"widget": "text", "label": "Database", "placeholder": "ledger", "expose_to_inventory": true,
+			"help": "Lower case letters and digits. The database, and the nodes' names."},
+		"pg_version": map[string]any{"widget": "segmented", "label": "PostgreSQL version", "expose_to_inventory": true,
+			"options": options(option{"16.6", "16.6", "recommended"}, option{"15.10", "15.10", ""})},
+		"size": map[string]any{"widget": "radio_cards", "label": "Node size", "options": options(
+			option{"S", "Small", "2 vCPU · 4 GB · 60 GB"},
+			option{"M", "Medium", "4 vCPU · 16 GB · 80 GB"},
+			option{"L", "Large", "8 vCPU · 32 GB · 120 GB"},
+			option{"XL", "X-Large", "8 vCPU · 48 GB · 120 GB"},
+		)},
+		"data_gb": map[string]any{"widget": "number", "label": "Data disk (GB)", "help": "On each node, besides the system disk."},
+		"cluster": map[string]any{"widget": "vsphere_cluster", "label": "Cluster", "help": "Three hosts at least: the nodes are kept apart.",
+			"value_source": map[string]any{"kind": "builtin", "name": "vsphere.clusters"}, "depends_on": []string{"$environment"}},
+		"datastore": map[string]any{"widget": "vsphere_datastore", "label": "Datastore",
+			"value_source": map[string]any{"kind": "builtin", "name": "vsphere.datastores", "params": map[string]any{"cluster": "${inputs.cluster}"}},
+			"depends_on":   []string{"$environment", "cluster"}},
+		"network": map[string]any{"widget": "vsphere_network", "label": "Network",
+			"value_source": map[string]any{"kind": "builtin", "name": "vsphere.networks", "params": map[string]any{"cluster": "${inputs.cluster}"}},
+			"depends_on":   []string{"$environment", "cluster"}},
+	}
+	return props, fields
+}
+
+// pgNode is the PostgreSQL cluster's nodes: one component, kept on
+// separate hosts, made a Patroni cluster by AWX after boot.
+func pgNode() (schema, ui, initial, blueprint map[string]any) {
+	props, fields := pgFields()
+	props["nodes"] = map[string]any{"type": "integer", "minimum": 3, "maximum": 5}
+	fields["nodes"] = map[string]any{"widget": "number", "label": "Nodes"}
+	schema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"required": []string{"name", "nodes", "pg_version", "size", "data_gb", "cluster", "datastore", "network"}, "properties": props}
+	ui = map[string]any{"layout": map[string]any{"kind": "page", "sections": []map[string]any{
+		{"key": "db", "title": "Database", "columns": 2, "fields": []string{"name", "pg_version", "nodes"}},
+		{"key": "size", "title": "Nodes", "columns": 1, "fields": []string{"size", "data_gb"}},
+		{"key": "placement", "title": "Placement and network", "columns": 2, "fields": []string{"cluster", "datastore", "network"}},
+	}}, "fields": fields}
+	blueprint = map[string]any{
+		"kind": "vm", "naming": "{project}-{environment}-pg{inputs.name}{seq:02}", "deployment_name": "{project}-{environment}-pg-{inputs.name}",
+		"template": "tpl-rhel9.4-2026.10", "rollback_on_failure": true,
+		"guest": map[string]any{"os_family": "linux", "domain": "corp.example", "time_zone": "Europe/Zurich"},
+		"bindings": map[string]any{
+			"vcpu": "sizes[inputs.size].vcpu", "memory_gb": "sizes[inputs.size].memory_gb", "disk_gb": "sizes[inputs.size].disk_gb",
+			"cluster": "inputs.cluster", "datastore": "inputs.datastore", "network": "inputs.network",
+		},
+		"awx_templates": map[string]any{
+			"linux-baseline":     map[string]any{"title": "Corporate baseline", "job_template": "linux-baseline"},
+			"postgresql-install": map[string]any{"title": "PostgreSQL", "job_template": "postgresql-install"},
+			"patroni-cluster":    map[string]any{"title": "Patroni cluster", "job_template": "patroni-cluster"},
+		},
+		"components": []any{map[string]any{"key": "db", "title": "Database nodes", "count": "inputs.nodes", "anti_affinity": true,
+			"disks":    []any{map[string]any{"size_gb": "inputs.data_gb"}},
+			"bindings": map[string]any{"post_config": `["linux-baseline", "postgresql-install", "patroni-cluster"]`}}},
+	}
+	return schema, ui, map[string]any{"nodes": 3, "pg_version": "16.6", "size": "M", "data_gb": 100}, blueprint
+}
+
+// pgCluster is the PostgreSQL cluster: its nodes, then the database's owner.
+func pgCluster() (schema, ui, initial, blueprint map[string]any) {
+	props, fields := pgFields()
+	schema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"required": []string{"name", "pg_version", "size", "data_gb", "cluster", "datastore", "network"}, "properties": props}
+	ui = map[string]any{"layout": map[string]any{"kind": "page", "sections": []map[string]any{
+		{"key": "db", "title": "Database", "columns": 2, "fields": []string{"name", "pg_version"}},
+		{"key": "size", "title": "Three nodes", "columns": 1, "fields": []string{"size", "data_gb"}},
+		{"key": "placement", "title": "Placement and network", "columns": 2, "fields": []string{"cluster", "datastore", "network"}},
+	}}, "fields": fields}
+	with := map[string]any{"nodes": 3}
+	for _, f := range []string{"name", "pg_version", "size", "data_gb", "cluster", "datastore", "network"} {
+		with[f] = "inputs." + f
+	}
+	blueprint = map[string]any{"kind": "composite", "rollback_on_failure": true, "steps": []any{
+		map[string]any{"key": "nodes", "title": "Database nodes", "item": "pg-node", "with": with},
+		map[string]any{"key": "owner", "title": "The database's owner", "item": "db-user", "with": map[string]any{
+			"database": "inputs.name", "role_name": `inputs.name + "_owner"`, "privileges": `"owner"`}},
+	}}
+	return schema, ui, map[string]any{"pg_version": "16.6", "size": "M", "data_gb": 100}, blueprint
+}
+
 // vmItem builds a VM blueprint whose form matches the request mockup:
 // role and name, size, placement and network, then AWX post-configuration.
 func vmItem(template, osFamily, required string, post []option, defaultPost []string) (schema, ui, initial, blueprint map[string]any) {
@@ -188,14 +278,18 @@ func catalogItems() []item {
 		summary: "Domain-joined Windows Server 2025 Standard with the CIS level 1 GPO set.",
 		tags:    []string{"windows"}, version: "1.8", projects: all}, s, u, in, bp)
 
+	// The PostgreSQL cluster (ADR-0024): three nodes kept on separate hosts,
+	// made a Patroni cluster by AWX, then the database's owner role. Its
+	// nodes are an item of their own that only the composite requests.
+	s, u, in, bp = pgNode()
+	add(item{slug: "pg-node", name: "PostgreSQL nodes", category: "databases", typ: "vm_blueprint", icon: "database",
+		summary: "Database nodes for the PostgreSQL cluster: requested through it.", tags: []string{"postgres"}, version: "1.0"},
+		s, u, in, bp)
+	s, u, in, bp = pgCluster()
 	add(item{slug: "postgres-cluster", name: "PostgreSQL 16 cluster", category: "databases", typ: "composite", icon: "database",
-		summary: "Three-node Patroni cluster with etcd, an HAProxy VIP and pgBackRest backups.",
-		tags:    []string{"postgres"}, version: "1.3", projects: []string{"data", "fin", "core"}},
-		map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
-			"required": []string{"name"}, "properties": map[string]any{"name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9-]{2,20}$"}}},
-		map[string]any{"layout": map[string]any{"kind": "page", "sections": []map[string]any{{"key": "basics", "title": "Cluster", "fields": []string{"name"}}}},
-			"fields": map[string]any{"name": map[string]any{"widget": "text", "label": "Cluster name"}}},
-		map[string]any{}, map[string]any{"kind": "composite"})
+		summary:     "Three-node Patroni cluster with etcd, an HAProxy VIP and pgBackRest backups.",
+		description: "Three RHEL nodes on separate hosts, each with a data disk; AWX installs PostgreSQL and forms the Patroni cluster, then the database's owner role is created.",
+		tags:        []string{"postgres"}, version: "1.3", projects: []string{"data", "fin", "core"}}, s, u, in, bp)
 
 	s, u, in, bp = awxItem("pg-create-role", false, "Create database user",
 		map[string]any{

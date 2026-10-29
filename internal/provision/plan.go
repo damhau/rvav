@@ -65,6 +65,83 @@ func (c ComponentUnit) RuleName(deploymentID string) string {
 	return "rvav-" + deploymentID + "-" + c.Key
 }
 
+// vmKeys name the steps of components' VMs: under each component's own
+// step in a plan, or under a composite step (ADR-0024).
+type vmKeys struct {
+	vm        func(c ComponentUnit, base string, vm VMUnit) string
+	rule      func(c ComponentUnit) string
+	inventory func(c ComponentUnit) string
+	job       func(c ComponentUnit, j Job) string
+	// parent is a component's own step, "" when it has none.
+	parent func(c ComponentUnit) string
+}
+
+func planKeys() vmKeys {
+	return vmKeys{
+		vm:        func(c ComponentUnit, base string, vm VMUnit) string { return c.VMKey(base, vm) },
+		rule:      func(c ComponentUnit) string { return c.StepKey() + "/" + KeyDRSRule },
+		inventory: func(c ComponentUnit) string { return c.StepKey() + "/" + KeyInventory },
+		job:       func(c ComponentUnit, j Job) string { return c.StepKey() + "/" + KeyJob + j.Key },
+		parent:    func(c ComponentUnit) string { return c.StepKey() },
+	}
+}
+
+// keys are a composite step's: its components' steps are its own, named
+// "@<VM>" or "@<component>".
+func (c CompositeStep) keys() vmKeys {
+	at := func(base, of string) string { return c.StepKey() + "/" + base + "@" + of }
+	return vmKeys{
+		vm:        func(_ ComponentUnit, base string, vm VMUnit) string { return at(base, vm.Name) },
+		rule:      func(u ComponentUnit) string { return at(KeyDRSRule, u.Key) },
+		inventory: func(u ComponentUnit) string { return at(KeyInventory, u.Key) },
+		job:       func(u ComponentUnit, j Job) string { return at(KeyJob+j.Key, u.Key) },
+		parent:    func(ComponentUnit) string { return "" },
+	}
+}
+
+// componentSteps are the steps of components' VMs, under parent ("" for
+// each component's own step).
+func componentSteps(vms []VMUnit, comps []ComponentUnit, keys vmKeys, parent string) []StepDef {
+	var steps []StepDef
+	for _, c := range comps {
+		var own []VMUnit
+		for _, vm := range vms {
+			if vm.Component == c.Key {
+				own = append(own, vm)
+			}
+		}
+		if len(own) == 0 {
+			continue
+		}
+		under := parent
+		if p := keys.parent(c); p != "" {
+			under = p
+			steps = append(steps, StepDef{Key: p, Title: c.Title, Detail: strings.ReplaceAll(names(own), ",", ", "), System: "vcenter", Status: "pending"})
+		}
+		for _, vm := range own {
+			steps = append(steps,
+				StepDef{Key: keys.vm(c, KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyClone, vm), Title: vm.cloneTitle() + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: under},
+			)
+		}
+		if c.AntiAffinity {
+			steps = append(steps, StepDef{Key: keys.rule(c), Title: "Keep " + c.Title + " on separate hosts",
+				Detail: "DRS rule " + c.RuleName(own[0].DeploymentID) + " in " + own[0].Cluster, System: "vcenter", Status: "pending", Parent: under})
+		}
+		if len(c.PostConfig) > 0 {
+			steps = append(steps, StepDef{Key: keys.inventory(c), Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: under})
+			for _, j := range c.PostConfig {
+				steps = append(steps, StepDef{Key: keys.job(c, j), Title: "AWX job · " + j.Template,
+					Detail: "limit=" + names(own), System: "awx", Status: "pending", Parent: under})
+			}
+		}
+	}
+	return steps
+}
+
 // ComponentVMs are the plan's VMs of a component, in order.
 func (p Plan) ComponentVMs(key string) []VMUnit {
 	var out []VMUnit
@@ -94,7 +171,9 @@ type CompositeStep struct {
 	// workflow steps, both CEL over inputs and steps.<key>, at run time.
 	When string         `json:"when,omitempty"`
 	With map[string]any `json:"with,omitempty"`
-	// A VM step, planned at submit: its VMs and post-configuration.
+	// A VM step, planned at submit: its VMs and post-configuration; with
+	// Components, a multi-VM item's (ADR-0024), each with its own.
+	Components []ComponentUnit `json:"components,omitempty"`
 	VMs        []VMUnit        `json:"vms,omitempty"`
 	Guest      blueprint.Guest `json:"guest,omitempty"`
 	PostConfig []Job           `json:"post_config,omitempty"`
@@ -324,6 +403,9 @@ func (p Plan) Steps(environment string) []StepDef {
 		for _, c := range p.Composite {
 			parent := c.StepKey()
 			switch {
+			case len(c.Components) > 0:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
+				steps = append(steps, componentSteps(c.VMs, c.Components, c.keys(), parent)...)
 			case len(c.VMs) > 0:
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
 				for _, vm := range c.VMs {
@@ -351,34 +433,7 @@ func (p Plan) Steps(environment string) []StepDef {
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	if len(p.Components) > 0 {
-		for _, c := range p.Components {
-			vms := p.ComponentVMs(c.Key)
-			if len(vms) == 0 {
-				continue
-			}
-			parent := c.StepKey()
-			steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(names(vms), ",", ", "), System: "vcenter", Status: "pending"})
-			for _, vm := range vms {
-				steps = append(steps,
-					StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
-					StepDef{Key: c.VMKey(KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
-					StepDef{Key: c.VMKey(KeyClone, vm), Title: vm.cloneTitle() + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
-					StepDef{Key: c.VMKey(KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
-					StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: parent},
-				)
-			}
-			if c.AntiAffinity {
-				steps = append(steps, StepDef{Key: parent + "/" + KeyDRSRule, Title: "Keep the VMs on separate hosts",
-					Detail: "DRS rule " + c.RuleName(vms[0].DeploymentID) + " in " + vms[0].Cluster, System: "vcenter", Status: "pending", Parent: parent})
-			}
-			if len(c.PostConfig) > 0 {
-				steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})
-				for _, j := range c.PostConfig {
-					steps = append(steps, StepDef{Key: parent + "/" + KeyJob + j.Key, Title: "AWX job · " + j.Template,
-						Detail: "limit=" + names(vms), System: "awx", Status: "pending", Parent: parent})
-				}
-			}
-		}
+		steps = append(steps, componentSteps(p.VMs, p.Components, planKeys(), "")...)
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {

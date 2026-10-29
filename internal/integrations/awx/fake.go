@@ -57,6 +57,10 @@ func DefaultTemplates() map[string][]string {
 		"role-nginx":       {"Gathering Facts", "nginx : install packages", "nginx : deploy TLS defaults", "nginx : start service"},
 		"win-baseline":     {"Gathering Facts", "win_baseline : apply CIS GPO", "win_baseline : configure WSUS", "win_baseline : join domain"},
 		"pg-create-role":   {"Gathering Facts", "postgres : create role", "vault : store password"},
+		// The PostgreSQL cluster's roles (ADR-0024).
+		"postgresql-install": {"Gathering Facts", "postgres : install packages", "postgres : initialise the data directory"},
+		"patroni-cluster": {"Gathering Facts", "etcd : form the quorum", "patroni : bootstrap the leader", "patroni : join the replicas",
+			"haproxy : configure the VIP", "pgbackrest : configure backups"},
 		"ddi-dns-record":   {"Gathering Facts", "efficientip : add record"},
 		"pki-renew-deploy": {"Gathering Facts", "pki : issue certificate", "pki : deploy certificate", "pki : reload services"},
 		"idm-hbac-group":   {"Gathering Facts", "idm : create group", "idm : add sudo rule", "idm : add HBAC rule"},

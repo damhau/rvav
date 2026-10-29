@@ -19,13 +19,13 @@ import (
 	"github.com/damhau/rvav/internal/vcenters"
 )
 
-// zurich is a second vCenter's layout: a dev cluster of three hosts, with
+// zurich is a second vCenter's layout: a dev cluster of four hosts, with
 // the dev network's name, and a cluster named as one of Geneva's.
 func zurich() vsphere.Layout {
 	return vsphere.Layout{
 		Datacenter: "ZRH",
 		Clusters: []vsphere.ClusterSpec{
-			{Name: "ZRH-DEV-CL01", HostPrefix: "esx-zrh-dev", Hosts: 3, Datastores: []string{"vsan-zrh-dev-cl01"}},
+			{Name: "ZRH-DEV-CL01", HostPrefix: "esx-zrh-dev", Hosts: 4, Datastores: []string{"vsan-zrh-dev-cl01"}},
 			{Name: "GVA-TST-CL01", HostPrefix: "esx-zrh-tst", Hosts: 1, Datastores: []string{"vsan-zrh-tst-cl01"}},
 		},
 		Switch:     "ZRH-DVS01",

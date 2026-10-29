@@ -101,10 +101,10 @@ func TestMultiVMBlueprint(t *testing.T) {
 				t.Fatalf("quota %s adds %d", q.Resource, q.Adding)
 			}
 		}
-		// Three VMs kept apart need three hosts; the request's own count stays 1.
-		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft("shop", 3), 200, &pv)
+		// Four VMs kept apart need four hosts; the request's own count stays 1.
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft("shop", 4), 200, &pv)
 		if pv.Valid || !slices.Contains(fieldsOf(pv.Errors), "/inputs/web_cluster") {
-			t.Fatalf("three web servers on two hosts = %+v", pv.Errors)
+			t.Fatalf("four web servers on three hosts = %+v", pv.Errors)
 		}
 		many := draft("shop", 2)
 		many.Count = new(2)

@@ -28,7 +28,7 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 			t.Fatalf("inventory: %v", err)
 		}
 		cluster := findCluster(inv, "GVA-DEV-CL01")
-		if cluster == nil || cluster.HostCount != 2 || cluster.Datacenter != "GVA" {
+		if cluster == nil || cluster.HostCount != 3 || cluster.Datacenter != "GVA" {
 			t.Fatalf("cluster GVA-DEV-CL01 = %+v", cluster)
 		}
 		ds := findDatastore(inv, "vsan-gva-dev-cl01")

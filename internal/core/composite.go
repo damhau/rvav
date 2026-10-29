@@ -174,10 +174,6 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			}
 			switch bp.Kind {
 			case blueprint.KindVM:
-				if bp.Multi() {
-					add("", "not_available", label+": "+st.Item+" builds several components; a composite step builds single-VM items for now.")
-					continue
-				}
 				if st.Undo != nil {
 					add("", "invalid", label+": a VM isn't undone by a job or workflow; a failure deletes it.")
 				}

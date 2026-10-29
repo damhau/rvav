@@ -68,6 +68,12 @@ every component's VMs (20 at most). When a component's `cluster` isn't
 bound, rvav chooses the allowed cluster with the most free memory, and
 the datastore likewise.
 
+The seeded **PostgreSQL 16 cluster** is the reference: a composite whose
+first step is the `pg-node` item (one component of three nodes kept on
+separate hosts, each with a data disk, made a Patroni cluster by the AWX
+roles of its post-configuration), then the database's owner role on it.
+`pg-node` has no entitlement: only the composite requests it.
+
 ### AWX import
 - A content source connects to AWX and filters templates by organisation, label or
   name pattern.

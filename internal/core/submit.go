@@ -97,13 +97,16 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				case part.sub != nil:
 					// The composite's lease is its VMs'.
 					part.sub.Lease = ev.Lease
-					deps, vms, _, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner, req.Number)
+					deps, vms, comps, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner, req.Number)
 					if err != nil {
 						return err
 					}
-					deployments, c.VMs, c.Guest = append(deployments, deps...), vms, part.sub.Blueprint.Guest
-					if c.PostConfig, err = postConfigJobs(part.sub, part.sub.VM, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
-						return err
+					deployments, c.VMs, c.Guest, c.Components = append(deployments, deps...), vms, part.sub.Blueprint.Guest, comps
+					// A multi-VM item's post-configuration is its components' (ADR-0024).
+					if len(comps) == 0 {
+						if c.PostConfig, err = postConfigJobs(part.sub, part.sub.VM, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
+							return err
+						}
 					}
 				case part.job != nil:
 					c.AWX, c.With = part.job, part.step.With

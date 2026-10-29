@@ -36,12 +36,19 @@ func eachVM(ctx workflow.Context, n int, fn func(ctx workflow.Context, i int) (s
 	return keys[first], errs[first]
 }
 
-// runComponents builds a multi-VM blueprint's VMs: their addresses, records
-// and clones; the DRS rules keeping VMs apart; their customization and
-// power on; then each component's post-configuration, in order.
+// runComponents builds a multi-VM blueprint's plan.
 func runComponents(ctx workflow.Context, info Info) (string, error) {
+	_, failed, err := buildComponents(ctx, info, info.Plan.VMs, info.Plan.Components, planKeys())
+	return failed, err
+}
+
+// buildComponents builds components' VMs: their addresses, records and
+// clones; the DRS rules keeping VMs apart; their customization and power
+// on; then each component's post-configuration, in order. Steps are named
+// by keys.
+func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []ComponentUnit, keys vmKeys) ([]builtVM, string, error) {
 	var a *Activities
-	p := info.Plan
+	p := Plan{VMs: vms, Components: units, Context: info.Plan.Context}
 	comps := map[string]ComponentUnit{}
 	for _, c := range p.Components {
 		comps[c.Key] = c
@@ -63,28 +70,28 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 	// takes them up again.
 	var started []ComponentUnit
 	for _, c := range p.Components {
-		if len(p.ComponentVMs(c.Key)) > 0 && !info.done(c.StepKey()) {
+		if keys.parent(c) != "" && len(p.ComponentVMs(c.Key)) > 0 && !info.done(keys.parent(c)) {
 			started = append(started, c)
 		}
 	}
 	finished := map[string]bool{}
 	mark := func(c ComponentUnit, status, why string) {
-		_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), status, why).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, keys.parent(c), status, why).Get(ctx, nil)
 	}
 	for _, c := range started {
 		mark(c, "running", "")
 	}
-	fail := func(key string, err error) (string, error) {
+	fail := func(key string, err error) ([]builtVM, string, error) {
 		for _, c := range started {
 			switch {
 			case finished[c.Key]:
-			case strings.HasPrefix(key, c.StepKey()+"/"):
+			case strings.HasPrefix(key, keys.parent(c)+"/"):
 				mark(c, "failed", errMessage(err))
 			default:
 				mark(c, "cancelled", "")
 			}
 		}
-		return key, err
+		return nil, key, err
 	}
 
 	// 1. Addresses, DNS records and clones. Steps done before a retry are
@@ -94,7 +101,7 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 		vm := p.VMs[i]
 		c, in := comps[vm.Component], input(vm)
 		before := info.BuiltVMs[vm.Name]
-		in.Key = c.VMKey(KeyIPAM, vm)
+		in.Key = keys.vm(c, KeyIPAM, vm)
 		newIP := !info.done(in.Key) || before.IP == ""
 		in.IP = before.IP
 		if newIP {
@@ -102,14 +109,14 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 				return in.Key, err
 			}
 		}
-		newVM := !info.done(c.VMKey(KeyClone, vm)) || before.Moref == ""
-		in.Key = c.VMKey(KeyDNS, vm)
+		newVM := !info.done(keys.vm(c, KeyClone, vm)) || before.Moref == ""
+		in.Key = keys.vm(c, KeyDNS, vm)
 		if !info.done(in.Key) || newIP || newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return in.Key, err
 			}
 		}
-		in.Key = c.VMKey(KeyClone, vm)
+		in.Key = keys.vm(c, KeyClone, vm)
 		in.Moref = before.Moref
 		if newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
@@ -128,7 +135,7 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 		if !c.AntiAffinity {
 			continue
 		}
-		in := RuleInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: c.StepKey() + "/" + KeyDRSRule, Component: c.Key}
+		in := RuleInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: keys.rule(c), Component: c.Key}
 		again := false
 		for i, b := range built {
 			if b.vm.Component == c.Key {
@@ -155,7 +162,7 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 			key string
 			fn  any
 		}{{KeyCustomize, a.Customize}, {KeyPowerOn, a.PowerOn}} {
-			in.Key = c.VMKey(step.key, vm)
+			in.Key = keys.vm(c, step.key, vm)
 			if info.done(in.Key) && !fresh[i] {
 				continue
 			}
@@ -184,15 +191,14 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 		for i, b := range vms {
 			list[i] = b.vm
 		}
-		parent := c.StepKey()
-		if failed, err := postConfig(ctx, info, vms, c.PostConfig, parent+"/"+KeyInventory,
-			func(j Job) string { return parent + "/" + KeyJob + j.Key }, names(list), p.Context); err != nil {
+		if failed, err := postConfig(ctx, info, vms, c.PostConfig, keys.inventory(c),
+			func(j Job) string { return keys.job(c, j) }, names(list), p.Context); err != nil {
 			return fail(failed, err)
 		}
-		if !info.done(parent) {
+		if keys.parent(c) != "" && !info.done(keys.parent(c)) {
 			mark(c, "done", "")
 		}
 		finished[c.Key] = true
 	}
-	return "", nil
+	return built, "", nil
 }

@@ -160,7 +160,7 @@ func TestCompositeItems(t *testing.T) {
 			t.Fatalf("a VM step with a condition = %+v", problem.Errors)
 		}
 
-		// The seeded composite without steps can't be requested.
+		// The seeded PostgreSQL cluster needs its inputs (TestPostgresCluster builds one).
 		h.json("GET", "/api/v1/catalog/items/postgres-cluster?project_id=prj_data", "sbrunner", nil, 200, nil)
 		var pg api.CatalogItem
 		h.json("GET", "/api/v1/catalog/items/postgres-cluster?project_id=prj_data", "sbrunner", nil, 200, &pg)

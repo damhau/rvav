@@ -77,7 +77,7 @@ func DefaultLayout() Layout {
 	return Layout{
 		Datacenter: "GVA",
 		Clusters: []ClusterSpec{
-			{Name: "GVA-DEV-CL01", HostPrefix: "esx-gva-dev", Hosts: 2, Datastores: []string{"vsan-gva-dev-cl01", "nfs-gva-bronze-01"}},
+			{Name: "GVA-DEV-CL01", HostPrefix: "esx-gva-dev", Hosts: 3, Datastores: []string{"vsan-gva-dev-cl01", "nfs-gva-bronze-01"}},
 			{Name: "GVA-TST-CL01", HostPrefix: "esx-gva-tst", Hosts: 2, Datastores: []string{"vsan-gva-tst-cl01"}},
 			{Name: "GVA-PRD-CL01", HostPrefix: "esx-gva-prd1", Hosts: 3, Datastores: []string{"vsan-gva-prd-cl01", "nfs-gva-silver-02"}},
 			{Name: "GVA-PRD-CL02", HostPrefix: "esx-gva-prd2", Hosts: 2, Datastores: []string{"vsan-gva-prd-cl02"}},
