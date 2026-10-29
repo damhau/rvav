@@ -176,7 +176,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 		for _, t := range offered {
 			if c.Bindings["template"] != "" && t.Key == plan.Template {
-				plan.Template, part.guest.OSFamily = t.VCenterTemplate, t.OSFamily
+				plan.Template, plan.Library, part.guest.OSFamily = t.VCenterTemplate, t.ContentLibrary, t.OSFamily
 			}
 			if t.VCenterTemplate == plan.Template && part.guest.CustomizationSpec == "" && t.Customization != "" {
 				part.guest.CustomizationSpec = t.Customization
@@ -238,9 +238,35 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(at, "no_subnet", "No EfficientIP subnet is linked to "+n.Network+". Ask an administrator to link one.")
 		}
 	}
-	if len(templates) > 0 && plan.Template != "" && !slices.ContainsFunc(templates, func(t store.InvTemplate) bool { return t.Name == plan.Template }) {
-		add("", "template_missing", fmt.Sprintf("Template %s was not found in vCenter. Ask a catalog admin to check this item.", plan.Template))
+	if len(templates) > 0 && plan.Template != "" &&
+		!slices.ContainsFunc(templates, func(t store.InvTemplate) bool { return t.Name == plan.Template && t.Library == plan.Library }) {
+		what := "Template " + plan.Template
+		if plan.Library != "" {
+			what += " of content library " + plan.Library
+		}
+		add("", "template_missing", what+" was not found in vCenter. Ask a catalog admin to check this item.")
 	}
+	// The storage policy: the component's, else its placement rule's; a
+	// disk's own wins (ADR-0024).
+	if plan.StoragePolicy == "" && part.rule != nil {
+		plan.StoragePolicy = part.rule.StoragePolicy
+	}
+	if policies, err := s.Store.InventoryStoragePolicies(ctx); err != nil {
+		return part, err
+	} else if len(policies) > 0 {
+		known := func(name string) bool {
+			return name == "" || slices.ContainsFunc(policies, func(p store.InvStoragePolicy) bool { return p.Name == name })
+		}
+		if !known(plan.StoragePolicy) {
+			add("", "storage_policy_missing", fmt.Sprintf("Storage policy %s was not found in vCenter. Ask an administrator to check it.", plan.StoragePolicy))
+		}
+		for _, d := range plan.Disks {
+			if !known(d.StoragePolicy) {
+				add("", "storage_policy_missing", fmt.Sprintf("Storage policy %s was not found in vCenter. Ask a catalog admin to check this item.", d.StoragePolicy))
+			}
+		}
+	}
+	part.vm = plan
 
 	spec, err := s.namingFor(ctx, ev.Project.ID, ev.Env.Key, c.Naming)
 	if err != nil {
@@ -348,7 +374,7 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			Folder        *string `json:"folder,omitempty"`
 			StoragePolicy *string `json:"storage_policy,omitempty"`
 			Vcenter       *string `json:"vcenter,omitempty"`
-		}{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore)}
+		}{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy)}
 		if p.rule != nil {
 			c.Placement.Folder = str(p.rule.Folder)
 		}
@@ -357,9 +383,10 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			SizeGb        int     `json:"size_gb"`
 			StoragePolicy *string `json:"storage_policy,omitempty"`
 		}
-		c.Disks = []disk{{SizeGb: p.vm.DiskGB, Datastore: str(p.vm.Datastore)}}
+		c.Disks = []disk{{SizeGb: p.vm.DiskGB, Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy)}}
 		for _, d := range p.vm.Disks {
-			c.Disks = append(c.Disks, disk{SizeGb: d.SizeGB, Datastore: str(cmp.Or(d.Datastore, p.vm.Datastore)), StoragePolicy: str(d.StoragePolicy)})
+			c.Disks = append(c.Disks, disk{SizeGb: d.SizeGB, Datastore: str(cmp.Or(d.Datastore, p.vm.Datastore)),
+				StoragePolicy: str(cmp.Or(d.StoragePolicy, p.vm.StoragePolicy))})
 		}
 		type nic = struct {
 			Address *string                      `json:"address,omitempty"`
@@ -407,6 +434,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		DeploymentID: deploymentID, Component: p.comp.Key, Index: index, Name: name,
 		VCPU: p.vm.VCPU, MemoryGB: p.vm.MemoryGB, DiskGB: p.vm.DiskGB,
 		Cluster: p.vm.Cluster, Datastore: p.vm.Datastore, Network: p.vm.Network, Template: p.vm.Template,
+		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy,
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder

@@ -247,8 +247,12 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 			if t.Description != "" {
 				o.Description = &t.Description
 			}
-			if !inventory[t.VCenterTemplate] {
-				o.Disabled, o.DisabledReason = present.Ptr(true), present.Ptr("vCenter doesn't have "+t.VCenterTemplate+" now.")
+			if !inventory[t.ContentLibrary+"/"+t.VCenterTemplate] {
+				what := t.VCenterTemplate
+				if t.ContentLibrary != "" {
+					what += " in content library " + t.ContentLibrary
+				}
+				o.Disabled, o.DisabledReason = present.Ptr(true), present.Ptr("vCenter doesn't have "+what+" now.")
 			}
 			opts = append(opts, o)
 		}

@@ -83,9 +83,10 @@ func (s *Service) VMTemplates(ctx context.Context, p *auth.Principal) ([]api.VmT
 	}
 	out := make([]api.VmTemplate, len(list))
 	for i, t := range list {
-		found := inventory[t.VCenterTemplate]
-		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, VcenterTemplate: t.VCenterTemplate, OsFamily: api.VmTemplateOsFamily(t.OSFamily),
-			Customization: t.Customization, Description: t.Description, Offers: presentOffers(offers[t.Key]), InInventory: &found}
+		found := inventory[t.ContentLibrary+"/"+t.VCenterTemplate]
+		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, VcenterTemplate: t.VCenterTemplate, ContentLibrary: t.ContentLibrary,
+			OsFamily: api.VmTemplateOsFamily(t.OSFamily), Customization: t.Customization, Description: t.Description,
+			Offers: presentOffers(offers[t.Key]), InInventory: &found}
 	}
 	return out, nil
 }
@@ -95,9 +96,10 @@ func (s *Service) inventoryTemplates(ctx context.Context) (map[string]bool, erro
 	if err != nil {
 		return nil, err
 	}
+	// By library/name: "/name" for a VM template.
 	out := map[string]bool{}
 	for _, t := range list {
-		out[t.Name] = true
+		out[t.Library+"/"+t.Name] = true
 	}
 	return out, nil
 }
@@ -118,7 +120,7 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	case strings.TrimSpace(w.VcenterTemplate) == "":
 		errs = append(errs, fieldErr("/vcenter_template", "required", "Name the template in vCenter."))
 	case strings.HasPrefix(w.VcenterTemplate, "library:"):
-		errs = append(errs, fieldErr("/vcenter_template", "not_yet", "Content library items come with advanced provisioning (S12): name a vCenter template."))
+		errs = append(errs, fieldErr("/vcenter_template", "invalid", "Name the content library item, and its library in Content library."))
 	}
 	if w.OsFamily != api.VmTemplateWriteOsFamilyLinux && w.OsFamily != api.VmTemplateWriteOsFamilyWindows {
 		errs = append(errs, fieldErr("/os_family", "enum", "linux or windows."))
@@ -134,7 +136,8 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 		key = w.Key
 	}
 	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), VCenterTemplate: strings.TrimSpace(w.VcenterTemplate),
-		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description)}
+		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description),
+		ContentLibrary: strings.TrimSpace(deref(w.ContentLibrary))}
 	switch err := s.Store.SaveVMTemplate(ctx, t, offers, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.VmTemplate{}, &ConflictError{Msg: "A template has the key " + key + "."}

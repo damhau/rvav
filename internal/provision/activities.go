@@ -543,11 +543,12 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
 				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
+				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy,
 			})
 			return err
 		})
 		if errors.Is(err, vsphere.ErrNotFound) {
-			return "", "", permanent("%v", err)
+			return "", "", permanent("vCenter: %v", err)
 		}
 		if err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
@@ -563,11 +564,17 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 			return "", "", err
 		}
 		detail := fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref)
+		if in.VM.StoragePolicy != "" {
+			detail += " · " + in.VM.StoragePolicy
+		}
 		if n := len(in.VM.Disks) + len(in.VM.NICs); n > 0 {
 			detail += fmt.Sprintf(" · %d disks, %d adapters", 1+len(in.VM.Disks), 1+len(in.VM.NICs))
 		}
 		if len(in.VM.Tags) > 0 {
 			detail += " · tags " + strings.Join(in.VM.Tags, ", ")
+		}
+		if in.VM.Library != "" {
+			return "Deployed " + in.VM.Template + " from " + in.VM.Library, detail, nil
 		}
 		return "Cloned from " + in.VM.Template, detail, nil
 	})
@@ -740,7 +747,7 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 func diskSpecs(vm VMUnit) []vsphere.DiskSpec {
 	var out []vsphere.DiskSpec
 	for _, d := range vm.Disks {
-		out = append(out, vsphere.DiskSpec{SizeGB: d.SizeGB, Datastore: d.Datastore})
+		out = append(out, vsphere.DiskSpec{SizeGB: d.SizeGB, Datastore: d.Datastore, StoragePolicy: d.StoragePolicy})
 	}
 	return out
 }

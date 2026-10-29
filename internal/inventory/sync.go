@@ -119,7 +119,26 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters})
 	}
 	for _, t := range inv.Templates {
-		snap.Templates = append(snap.Templates, store.InvTemplate{Moref: t.Moref, Name: t.Name, GuestOS: t.GuestOS})
+		snap.Templates = append(snap.Templates, store.InvTemplate{Moref: t.Moref, Name: t.Name, GuestOS: t.GuestOS, Library: t.Library})
+	}
+	for _, p := range inv.StoragePolicies {
+		snap.StoragePolicies = append(snap.StoragePolicies, store.InvStoragePolicy{ID: p.ID, Name: p.Name})
+	}
+	// Content library items and storage policies that couldn't be read keep
+	// their last known values too (ADR-0024).
+	if inv.LibrariesError != nil {
+		s.Log.Warn("inventory: content libraries not read; keeping the last items", "err", inv.LibrariesError)
+		if ts, err := s.Store.InventoryTemplatesOf(ctx, snap.VCenter); err == nil {
+			for _, t := range ts {
+				if t.Library != "" {
+					snap.Templates = append(snap.Templates, t)
+				}
+			}
+		}
+	}
+	if inv.PoliciesError != nil {
+		s.Log.Warn("inventory: storage policies not read; keeping the last ones", "err", inv.PoliciesError)
+		snap.StoragePolicies, _ = s.Store.InventoryStoragePoliciesOf(ctx, snap.VCenter)
 	}
 	byUUID := map[string]vsphere.InventoryVM{}
 	for _, v := range inv.VMs {

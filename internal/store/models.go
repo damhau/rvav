@@ -62,6 +62,8 @@ type PlacementRule struct {
 	Folder            string   `db:"folder"`
 	ClusterTags       []string `db:"cluster_tags"`
 	DatastoreTags     []string `db:"datastore_tags"`
+	// StoragePolicy is the storage policy of VMs placed by the rule.
+	StoragePolicy string `db:"storage_policy"`
 }
 
 type NetworkSubnet struct {
@@ -310,6 +312,15 @@ type InvTemplate struct {
 	Moref   string `db:"moref"`
 	Name    string `db:"name"`
 	GuestOS string `db:"guest_os"`
+	// Library is a content library item's library (its ID is Moref);
+	// empty for a VM template.
+	Library string `db:"library"`
+}
+
+// InvStoragePolicy is a vCenter storage policy (SPBM).
+type InvStoragePolicy struct {
+	ID   string `db:"id"`
+	Name string `db:"name"`
 }
 
 type InvVM struct {
@@ -332,12 +343,13 @@ type InvVM struct {
 
 // Inventory is one full snapshot of a vCenter, written by the sync loop.
 type Inventory struct {
-	VCenter    string
-	Clusters   []InvCluster
-	Datastores []InvDatastore
-	Networks   []InvNetwork
-	Templates  []InvTemplate
-	VMs        []InvVM
+	VCenter         string
+	Clusters        []InvCluster
+	Datastores      []InvDatastore
+	Networks        []InvNetwork
+	Templates       []InvTemplate
+	VMs             []InvVM
+	StoragePolicies []InvStoragePolicy
 }
 
 type Event struct {

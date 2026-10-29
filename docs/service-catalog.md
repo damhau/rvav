@@ -56,9 +56,10 @@ and `sizes` (a literal is quoted: `'"vsan-01"'`); numbers are themselves.
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
 | `tags` | vSphere tags, `category/tag` |
+| `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, which win over the blueprint's (guest field by field, bindings key by key) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, which win over the blueprint's (guest field by field, bindings key by key) |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for

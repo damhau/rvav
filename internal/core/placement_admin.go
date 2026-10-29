@@ -23,7 +23,7 @@ func presentPlacementRule(r store.PlacementRuleRow) api.PlacementRule {
 	return api.PlacementRule{Id: r.ID, Project: api.ProjectRef{Id: r.ProjectID, Code: r.ProjectCode, Name: r.ProjectName},
 		Environment: r.Environment, Priority: r.Priority, Clusters: nonNilStrings(r.ClusterPatterns),
 		Datastores: nonNilStrings(r.DatastorePatterns), Networks: nonNilStrings(r.NetworkPatterns), Folder: r.Folder,
-		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags)}
+		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags), StoragePolicy: r.StoragePolicy}
 }
 
 // canSeeSettings: administrators and auditors everywhere; a project's
@@ -114,6 +114,17 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	errs = append(errs, checkPatterns(w.Networks, "/networks")...)
 	errs = append(errs, checkTags(clusterTags, "/cluster_tags")...)
 	errs = append(errs, checkTags(datastoreTags, "/datastore_tags")...)
+	// A storage policy vCenter has (ADR-0024), when the inventory knows them.
+	policy := strings.TrimSpace(deref(w.StoragePolicy))
+	if policy != "" {
+		policies, err := s.Store.InventoryStoragePolicies(ctx)
+		if err != nil {
+			return api.PlacementRule{}, err
+		}
+		if len(policies) > 0 && !slices.ContainsFunc(policies, func(p store.InvStoragePolicy) bool { return p.Name == policy }) {
+			errs = append(errs, fieldErr("/storage_policy", "unknown", "vCenter has no storage policy "+policy+"."))
+		}
+	}
 	if len(errs) > 0 {
 		return api.PlacementRule{}, &ValidationError{Errors: errs}
 	}
@@ -127,7 +138,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	}
 	r := store.PlacementRule{ID: id, ProjectID: proj.ID, Environment: w.Environment, Priority: priority,
 		ClusterPatterns: w.Clusters, DatastorePatterns: w.Datastores, NetworkPatterns: w.Networks, Folder: w.Folder,
-		ClusterTags: clusterTags, DatastoreTags: datastoreTags}
+		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy}
 	if err := s.Store.SavePlacementRule(ctx, r); err != nil {
 		return api.PlacementRule{}, err
 	}

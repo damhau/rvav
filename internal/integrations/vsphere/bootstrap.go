@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/vapi/library"
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
+	"github.com/vmware/govmomi/vapi/vcenter"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -28,6 +32,19 @@ type Layout struct {
 	Folders    []string
 	Templates  []TemplateSpec
 	Tags       []TagSpec
+	// VMTagCategories are tag categories for VMs, which blueprints' tags
+	// use (ADR-0024).
+	VMTagCategories []string
+	// Libraries are content libraries with VM template items cloned from
+	// the layout's templates.
+	Libraries []LibrarySpec
+}
+
+// LibrarySpec is a local content library on a datastore, with VM template
+// items made from templates (item name: template name), through a cluster.
+type LibrarySpec struct {
+	Name, Datastore, Cluster string
+	Items                    map[string]string
 }
 
 // TagSpec is a vSphere tag on clusters and datastores, by name.
@@ -82,6 +99,9 @@ func DefaultLayout() Layout {
 			{Name: "tpl-win2025-std-2026.09", GuestID: "windows2019srvNext_64Guest", Cluster: "GVA-DEV-CL01", Datastore: "vsan-gva-dev-cl01",
 				Network: "dvpg-app-dev-vl310", Folder: "/GVA/vm/templates", VCPU: 2, MemoryMB: 8192, DiskGB: 80},
 		},
+		VMTagCategories: []string{"backup", "app"},
+		Libraries: []LibrarySpec{{Name: "rvav-templates", Datastore: "vsan-gva-dev-cl01", Cluster: "GVA-DEV-CL01",
+			Items: map[string]string{"rhel9-library": "tpl-rhel9.4-2026.10"}}},
 		// Placement by tag (ADR-0020): a storage tier on clusters and datastores.
 		Tags: []TagSpec{
 			{Category: "rvav-tier", Name: "gold", Objects: []string{"GVA-PRD-CL01", "vsan-gva-prd-cl01", "vsan-gva-dev-cl01"}},
@@ -148,6 +168,70 @@ func Bootstrap(ctx context.Context, c *vim25.Client, l Layout) error {
 	if err := ensureTags(ctx, c, l); err != nil {
 		return fmt.Errorf("tags: %w", err)
 	}
+	if err := ensureLibraries(ctx, c, l); err != nil {
+		return fmt.Errorf("content libraries: %w", err)
+	}
+	return nil
+}
+
+// ensureLibraries creates the layout's content libraries and their VM
+// template items.
+func ensureLibraries(ctx context.Context, c *vim25.Client, l Layout) error {
+	if len(l.Libraries) == 0 {
+		return nil
+	}
+	rc := rest.NewClient(c)
+	if err := rc.Login(ctx, vcsimLogin); err != nil {
+		return err
+	}
+	defer func() { _ = rc.Logout(context.Background()) }()
+	lm, vm := library.NewManager(rc), vcenter.NewManager(rc)
+	for _, ls := range l.Libraries {
+		ds, err := findRef(ctx, c, "Datastore", ls.Datastore)
+		if err != nil {
+			return err
+		}
+		lib, err := lm.GetLibraryByName(ctx, ls.Name)
+		if err != nil {
+			id, err := lm.CreateLibrary(ctx, library.Library{Name: ls.Name, Type: "LOCAL",
+				Storage: []library.StorageBacking{{DatastoreID: ds.Value, Type: "DATASTORE"}}})
+			if err != nil {
+				return err
+			}
+			if lib, err = lm.GetLibraryByID(ctx, id); err != nil {
+				return err
+			}
+		}
+		for _, item := range slices.Sorted(maps.Keys(ls.Items)) {
+			if ids, err := lm.FindLibraryItems(ctx, library.FindItem{LibraryID: lib.ID, Name: item}); err != nil {
+				return err
+			} else if len(ids) > 0 {
+				continue
+			}
+			src, err := findRef(ctx, c, "VirtualMachine", ls.Items[item])
+			if err != nil {
+				return err
+			}
+			pc := property.DefaultCollector(c)
+			var vmo mo.VirtualMachine
+			if err := pc.RetrieveOne(ctx, src, []string{"parent"}, &vmo); err != nil {
+				return err
+			}
+			clusterRef, err := findRef(ctx, c, "ClusterComputeResource", ls.Cluster)
+			if err != nil {
+				return err
+			}
+			var cc mo.ClusterComputeResource
+			if err := pc.RetrieveOne(ctx, clusterRef, []string{"resourcePool"}, &cc); err != nil {
+				return err
+			}
+			placement := &vcenter.Placement{Folder: vmo.Parent.Value, ResourcePool: cc.ResourcePool.Value}
+			if _, err := vm.CreateTemplate(ctx, vcenter.Template{Name: item, Library: lib.ID, SourceVM: src.Value,
+				Placement: placement}); err != nil {
+				return fmt.Errorf("item %s: %w", item, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -158,7 +242,7 @@ var vcsimLogin = url.UserPassword("user", "pass")
 // ensureTags creates the layout's tag categories and tags and attaches
 // them, through the tagging service.
 func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
-	if len(l.Tags) == 0 {
+	if len(l.Tags)+len(l.VMTagCategories) == 0 {
 		return nil
 	}
 	rc := rest.NewClient(c)
@@ -174,6 +258,15 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 	}
 	finder.SetDatacenter(dc)
 	categories := map[string]string{}
+	for _, name := range l.VMTagCategories {
+		if _, err := m.GetCategory(ctx, name); err == nil {
+			continue
+		}
+		if _, err := m.CreateCategory(ctx, &tags.Category{Name: name, Cardinality: "MULTIPLE",
+			AssociableTypes: []string{"VirtualMachine"}}); err != nil {
+			return err
+		}
+	}
 	for _, t := range l.Tags {
 		catID, ok := categories[t.Category]
 		if !ok {

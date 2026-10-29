@@ -65,9 +65,11 @@ type VMTemplate struct {
 	Customization   string    `db:"customization"`
 	Description     string    `db:"description"`
 	CreatedAt       time.Time `db:"created_at"`
+	// ContentLibrary, when set, is the library VCenterTemplate is an item of.
+	ContentLibrary string `db:"content_library"`
 }
 
-const templateCols = `key, label, vcenter_template, os_family, customization, description, created_at`
+const templateCols = `key, label, vcenter_template, os_family, customization, description, created_at, content_library`
 
 func (s *Store) VMTemplates(ctx context.Context) ([]VMTemplate, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+templateCols+` from vm_templates order by label, key`)
@@ -85,13 +87,15 @@ func (s *Store) GetVMTemplate(ctx context.Context, key string) (VMTemplate, erro
 func (s *Store) SaveVMTemplate(ctx context.Context, t VMTemplate, offers []Offer, create bool) error {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		if create {
-			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, vcenter_template, os_family, customization, description)
-				values ($1, $2, $3, $4, $5, $6)`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization, t.Description); err != nil {
+			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, vcenter_template, os_family, customization, description,
+				content_library) values ($1, $2, $3, $4, $5, $6, $7)`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization,
+				t.Description, t.ContentLibrary); err != nil {
 				return err
 			}
 		} else {
 			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, vcenter_template = $3, os_family = $4, customization = $5,
-				description = $6 where key = $1`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization, t.Description)
+				description = $6, content_library = $7 where key = $1`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization,
+				t.Description, t.ContentLibrary)
 			if err != nil {
 				return err
 			}

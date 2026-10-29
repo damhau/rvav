@@ -3679,6 +3679,8 @@ export interface components {
             /** @description vSphere tags (`category/tag`) a cluster must carry, all of them. */
             cluster_tags: string[];
             datastore_tags: string[];
+            /** @description The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none. */
+            storage_policy: string;
         };
         PlacementRuleWrite: {
             project_id: string;
@@ -3691,6 +3693,7 @@ export interface components {
             folder: string;
             cluster_tags?: string[];
             datastore_tags?: string[];
+            storage_policy?: string;
         };
         PlacementRuleList: {
             items: components["schemas"]["PlacementRule"][];
@@ -3755,11 +3758,13 @@ export interface components {
             key: string;
             /** @example RHEL 9.4 */
             label: string;
-            /** @description A template's name in vCenter (content library items come with S12). */
+            /** @description A template's name in vCenter, or an item's name in `content_library`. */
             vcenter_template: string;
+            /** @description A content library whose item (VM template or OVF) `vcenter_template` is (ADR-0024); empty for a VM template. */
+            content_library: string;
             /** @enum {string} */
             os_family: "linux" | "windows";
-            /** @description A vCenter customization specification's name, used from S12; until then and when empty, rvav's own (hostname, network, time zone). */
+            /** @description A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone). */
             customization: string;
             description: string;
             offers: components["schemas"]["Offer"][];
@@ -3770,6 +3775,7 @@ export interface components {
             key: string;
             label: string;
             vcenter_template: string;
+            content_library?: string;
             /** @enum {string} */
             os_family: "linux" | "windows";
             customization?: string;

@@ -183,11 +183,13 @@ test("templates, sizes and network mappings", async ({ page }) => {
   await tpl.getByRole("textbox", { name: "Label" }).fill("Ubuntu 24.04");
   await tpl.getByRole("textbox", { name: "vCenter template" }).fill("library:ubuntu-24.04");
   await tpl.getByRole("button", { name: "Save template" }).click();
-  await expect(tpl.getByText(/Content library items come with advanced provisioning/)).toBeVisible();
-  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("tpl-ubuntu24.04-2026.10");
+  await expect(tpl.getByText(/its library in Content library/)).toBeVisible();
+  // An item of a content library (S12.5).
+  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("ubuntu-24.04");
+  await tpl.getByRole("textbox", { name: "Content library" }).fill("rvav-templates");
   await tpl.getByRole("button", { name: "Save template" }).click();
   const templates = page.getByRole("region", { name: "VM templates" });
-  await expect(templates.getByRole("row", { name: /Ubuntu 24.04/ })).toBeVisible();
+  await expect(templates.getByRole("row", { name: /Ubuntu 24.04/ })).toContainText("rvav-templates / ubuntu-24.04");
 
   await page.getByRole("tab", { name: "Sizes" }).click();
   await page.getByRole("button", { name: "Change Medium" }).click();

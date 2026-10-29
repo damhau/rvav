@@ -31,8 +31,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "github.com/vmware/govmomi/pbm/simulator" // storage policies
 	"github.com/vmware/govmomi/simulator"
-	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service and content libraries
 	"github.com/vmware/govmomi/vim25"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"

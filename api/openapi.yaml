@@ -5123,7 +5123,7 @@ components:
         snapshot_max_age_days: { type: integer, minimum: 0, description: 0 keeps snapshots of any age. }
     PlacementRule:
       type: object
-      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags]
+      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy]
       properties:
         id: { type: string }
         project: { $ref: "#/components/schemas/ProjectRef" }
@@ -5147,6 +5147,9 @@ components:
         datastore_tags:
           type: array
           items: { type: string }
+        storage_policy:
+          type: string
+          description: The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none.
     PlacementRuleWrite:
       type: object
       required: [project_id, environment, clusters, datastores, networks, folder]
@@ -5161,6 +5164,7 @@ components:
         folder: { type: string }
         cluster_tags: { type: array, items: { type: string } }
         datastore_tags: { type: array, items: { type: string } }
+        storage_policy: { type: string }
     PlacementRuleList:
       type: object
       required: [items]
@@ -5249,17 +5253,20 @@ components:
             - type: "null"
     VmTemplate:
       type: object
-      required: [key, label, vcenter_template, os_family, customization, description, offers, in_inventory]
+      required: [key, label, vcenter_template, content_library, os_family, customization, description, offers, in_inventory]
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, examples: [RHEL 9.4] }
         vcenter_template:
           type: string
-          description: A template's name in vCenter (content library items come with S12).
+          description: A template's name in vCenter, or an item's name in `content_library`.
+        content_library:
+          type: string
+          description: A content library whose item (VM template or OVF) `vcenter_template` is (ADR-0024); empty for a VM template.
         os_family: { type: string, enum: [linux, windows] }
         customization:
           type: string
-          description: "A vCenter customization specification's name, used from S12; until then and when empty, rvav's own (hostname, network, time zone)."
+          description: "A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone)."
         description: { type: string }
         offers:
           type: array
@@ -5273,6 +5280,7 @@ components:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, minLength: 1, maxLength: 80 }
         vcenter_template: { type: string, minLength: 1 }
+        content_library: { type: string }
         os_family: { type: string, enum: [linux, windows] }
         customization: { type: string }
         description: { type: string, maxLength: 500 }

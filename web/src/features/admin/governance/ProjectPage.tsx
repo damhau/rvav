@@ -265,6 +265,7 @@ function RuleDialog({
     datastore_tags: rule?.datastore_tags.join(", ") ?? "",
     networks: rule?.networks.join(", ") ?? "",
     folder: rule?.folder ?? `/GVA/vm/rvav/${project.code}/${env}`,
+    storage_policy: rule?.storage_policy ?? "",
     priority: String(rule?.priority ?? 100),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -280,6 +281,7 @@ function RuleDialog({
         datastore_tags: list(f.datastore_tags),
         networks: list(f.networks),
         folder: f.folder,
+        storage_policy: f.storage_policy.trim(),
       };
       return rule
         ? call(api.PUT("/admin/placement-rules/{id}", { params: { path: { id: rule.id } }, body }))
@@ -330,6 +332,7 @@ function RuleDialog({
             {field("datastore_tags", "Datastore tags")}
             {field("networks", "Networks", "For example dvpg-*-dev-*")}
             {field("folder", "VM folder")}
+            {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
             {field("priority", "Priority", "Lower first", false)}
           </div>
           <div className="flex justify-end gap-2">
@@ -401,6 +404,12 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
               <dd className="font-mono">{r.networks.join(", ")}</dd>
               <dt className="text-faint">Folder</dt>
               <dd className="font-mono">{r.folder}</dd>
+              {r.storage_policy && (
+                <>
+                  <dt className="text-faint">Storage policy</dt>
+                  <dd>{r.storage_policy}</dd>
+                </>
+              )}
             </dl>
             {isAdmin && (
               <div className="flex gap-1">

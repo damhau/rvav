@@ -173,6 +173,10 @@ type VMUnit struct {
 	Disks []blueprint.DiskPlan `json:"disks,omitempty"`
 	NICs  []NICUnit            `json:"nics,omitempty"`
 	Tags  []string             `json:"tags,omitempty"`
+	// Library is the content library Template is an item of, and
+	// StoragePolicy the VM's (ADR-0024).
+	Library       string `json:"library,omitempty"`
+	StoragePolicy string `json:"storage_policy,omitempty"`
 }
 
 // NICUnit is an adapter added after the template's: with efficientip, an
@@ -187,6 +191,13 @@ type NICUnit struct {
 	PrefixLength int      `json:"prefix_length,omitempty"`
 	DNSZone      string   `json:"dns_zone,omitempty"`
 	DNSServers   []string `json:"dns_servers,omitempty"`
+}
+
+func (vm VMUnit) cloneTitle() string {
+	if vm.Library != "" {
+		return "Deploy " + vm.Template + " from " + vm.Library
+	}
+	return "Clone from " + vm.Template
 }
 
 func (vm VMUnit) ipTitle() string {
@@ -317,7 +328,7 @@ func (p Plan) Steps(environment string) []StepDef {
 					steps = append(steps,
 						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
-						StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, "Clone from "+vm.Template, vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
 					)
@@ -349,7 +360,7 @@ func (p Plan) Steps(environment string) []StepDef {
 				steps = append(steps,
 					StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
-					StepDef{Key: c.VMKey(KeyClone, vm), Title: "Clone from " + vm.Template + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyClone, vm), Title: vm.cloneTitle() + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: parent},
 				)
@@ -377,7 +388,7 @@ func (p Plan) Steps(environment string) []StepDef {
 		steps = append(steps,
 			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle("Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle("Clone from "+vm.Template, vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle(vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyPowerOn, vm), Title: p.vmTitle("Power on and wait for guest IP", vm), System: "vcenter", Status: "pending"},
 		)

@@ -34,6 +34,7 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
           key: "",
           label: "",
           vcenter_template: "",
+          content_library: "",
           os_family: "linux",
           customization: "",
           description: "",
@@ -84,14 +85,29 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
               <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
             </Field>
           </div>
-          <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
-            <Input
-              id="tpl-vc"
-              className="font-mono text-xs"
-              value={f.vcenter_template}
-              onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
+              <Input
+                id="tpl-vc"
+                className="font-mono text-xs"
+                value={f.vcenter_template}
+                onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
+              />
+            </Field>
+            <Field
+              label="Content library"
+              htmlFor="tpl-lib"
+              hint="When the template is an item of one"
+              error={errors["/content_library"]}
+            >
+              <Input
+                id="tpl-lib"
+                className="font-mono text-xs"
+                value={f.content_library ?? ""}
+                onChange={(e) => setF({ ...f, content_library: e.target.value })}
+              />
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Operating system" htmlFor="tpl-os">
               <Select
@@ -191,6 +207,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                   <span className="font-mono text-[11px] text-faint">{t.key}</span>
                 </td>
                 <td className={`${td} font-mono text-xs`}>
+                  {t.content_library && <span className="text-faint">{t.content_library} / </span>}
                   {t.vcenter_template}
                   {!t.in_inventory && (
                     <Badge tone="warn" className="ml-2">

@@ -9,7 +9,7 @@ import (
 // ReplaceInventory swaps the cached inventory of one vCenter for a new snapshot.
 func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms"} {
+		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies"} {
 			if _, err := tx.Exec(ctx, `delete from `+t+` where vcenter = $1`, inv.VCenter); err != nil {
 				return err
 			}
@@ -30,8 +30,11 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 				inv.VCenter, n.Moref, n.Name, n.Kind, nonNil(n.Clusters))
 		}
 		for _, t := range inv.Templates {
-			b.Queue(`insert into inv_templates (vcenter, moref, name, guest_os) values ($1,$2,$3,$4)`,
-				inv.VCenter, t.Moref, t.Name, t.GuestOS)
+			b.Queue(`insert into inv_templates (vcenter, moref, name, guest_os, library) values ($1,$2,$3,$4,$5)`,
+				inv.VCenter, t.Moref, t.Name, t.GuestOS, t.Library)
+		}
+		for _, p := range inv.StoragePolicies {
+			b.Queue(`insert into inv_storage_policies (vcenter, id, name) values ($1,$2,$3)`, inv.VCenter, p.ID, p.Name)
 		}
 		for _, v := range inv.VMs {
 			b.Queue(`insert into inv_vms (vcenter, moref, instance_uuid, name, power_state, guest_state, ip_address, hostname,
@@ -61,8 +64,24 @@ func (s *Store) InventoryNetworks(ctx context.Context) ([]InvNetwork, error) {
 }
 
 func (s *Store) InventoryTemplates(ctx context.Context) ([]InvTemplate, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, guest_os from inv_templates order by name`)
+	rows, _ := s.Pool.Query(ctx, `select moref, name, guest_os, library from inv_templates order by library, name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTemplate])
+}
+
+// InventoryTemplatesOf and InventoryStoragePoliciesOf are one vCenter's.
+func (s *Store) InventoryTemplatesOf(ctx context.Context, vcenter string) ([]InvTemplate, error) {
+	rows, _ := s.Pool.Query(ctx, `select moref, name, guest_os, library from inv_templates where vcenter = $1`, vcenter)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTemplate])
+}
+
+func (s *Store) InventoryStoragePoliciesOf(ctx context.Context, vcenter string) ([]InvStoragePolicy, error) {
+	rows, _ := s.Pool.Query(ctx, `select id, name from inv_storage_policies where vcenter = $1`, vcenter)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvStoragePolicy])
+}
+
+func (s *Store) InventoryStoragePolicies(ctx context.Context) ([]InvStoragePolicy, error) {
+	rows, _ := s.Pool.Query(ctx, `select distinct on (name) id, name from inv_storage_policies order by name, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvStoragePolicy])
 }
 
 const invVMCols = `moref, instance_uuid, name, power_state, guest_state, ip_address, hostname, guest_os,

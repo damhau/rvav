@@ -20,6 +20,11 @@ type Inventory struct {
 	// TagsError says why clusters and datastores have no tags: the
 	// tagging service couldn't be read. The rest of the inventory is fine.
 	TagsError error
+	// StoragePolicies are the vCenter's storage policies (ADR-0024).
+	StoragePolicies []StoragePolicy
+	// LibrariesError and PoliciesError say why content library items or
+	// storage policies are missing: they couldn't be read.
+	LibrariesError, PoliciesError error
 }
 
 type Cluster struct {
@@ -54,6 +59,8 @@ type Template struct {
 	Moref   string
 	Name    string
 	GuestOS string
+	// Library is a content library item's library; Moref is its ID then.
+	Library string
 }
 
 type InventoryVM struct {
@@ -189,6 +196,8 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	}
 	_ = datacenters
 	inv.TagsError = cl.readTags(ctx, c, inv)
+	inv.LibrariesError = cl.readLibraries(ctx, c, inv)
+	inv.PoliciesError = readStoragePolicies(ctx, c, inv)
 	return inv, nil
 }
 

@@ -2,11 +2,13 @@ package vsphere
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
+	_ "github.com/vmware/govmomi/pbm/simulator" // storage policies
 	"github.com/vmware/govmomi/simulator"
-	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service and content libraries
 	"github.com/vmware/govmomi/vim25"
 )
 
@@ -42,8 +44,19 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") {
 			t.Fatalf("port group dvpg-app-dev-vl310 = %+v", pg)
 		}
-		if len(inv.Templates) != 3 {
-			t.Fatalf("templates = %d, want 3", len(inv.Templates))
+		// Three VM templates, the content library's item (ADR-0024) and the
+		// VM template vcsim keeps for it; the storage policies vcsim has.
+		var library []string
+		for _, tpl := range inv.Templates {
+			if tpl.Library != "" {
+				library = append(library, tpl.Library+"/"+tpl.Name)
+			}
+		}
+		if len(inv.Templates) != 5 || len(library) != 1 || library[0] != "rvav-templates/rhel9-library" || inv.LibrariesError != nil {
+			t.Fatalf("templates = %+v (%v)", inv.Templates, inv.LibrariesError)
+		}
+		if inv.PoliciesError != nil || !slices.ContainsFunc(inv.StoragePolicies, func(p StoragePolicy) bool { return p.Name == "vSAN Default Storage Policy" }) {
+			t.Fatalf("storage policies = %+v (%v)", inv.StoragePolicies, inv.PoliciesError)
 		}
 
 		spec := VMSpec{

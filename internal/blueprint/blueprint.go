@@ -35,6 +35,8 @@ type Blueprint struct {
 	Disks        []Disk                 `json:"disks,omitempty"`
 	NICs         []NIC                  `json:"nics,omitempty"`
 	Tags         []string               `json:"tags,omitempty"`
+	// StoragePolicy is the VMs' storage policy, over the placement rule's.
+	StoragePolicy string `json:"storage_policy,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
 	Components     []Component `json:"components,omitempty"`
@@ -121,6 +123,8 @@ type Component struct {
 	Disks    []Disk            `json:"disks,omitempty"`
 	NICs     []NIC             `json:"nics,omitempty"`
 	Tags     []string          `json:"tags,omitempty"`
+	// StoragePolicy is its VMs' storage policy.
+	StoragePolicy string `json:"storage_policy,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 }
@@ -159,7 +163,7 @@ func (b Blueprint) Multi() bool { return len(b.Components) > 0 }
 func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
-			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags}}
+			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -188,6 +192,9 @@ func (b Blueprint) ComponentList() []Component {
 		}
 		if r.Tags == nil {
 			r.Tags = b.Tags
+		}
+		if r.StoragePolicy == "" {
+			r.StoragePolicy = b.StoragePolicy
 		}
 		out[i] = r
 	}
@@ -234,6 +241,8 @@ type VMPlan struct {
 	Template   string   `json:"template"`
 	Library    string   `json:"library,omitempty"`
 	PostConfig []string `json:"post_config"`
+	// StoragePolicy is the VM's (its home and disks without their own).
+	StoragePolicy string `json:"storage_policy,omitempty"`
 	// Disks and NICs are those added after the template's first ones.
 	Disks []DiskPlan `json:"disks,omitempty"`
 	NICs  []NICPlan  `json:"nics,omitempty"`
@@ -350,7 +359,7 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 			count = n
 		}
 	}
-	plan.Template, plan.Library = c.Template, c.Library
+	plan.Template, plan.Library, plan.StoragePolicy = c.Template, c.Library, c.StoragePolicy
 	plan.Tags = append(plan.Tags, c.Tags...)
 	for i, d := range c.Disks {
 		dp := DiskPlan{StoragePolicy: d.StoragePolicy}

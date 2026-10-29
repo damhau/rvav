@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -65,14 +64,11 @@ func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory)
 
 // tagManager signs in to the tagging service; done signs out.
 func (cl *Client) tagManager(ctx context.Context, c *vim25.Client) (*tags.Manager, func(), error) {
-	if cl.login == nil {
-		return nil, nil, fmt.Errorf("no credentials for the tagging service")
+	rc, done, err := cl.restClient(ctx, c)
+	if err != nil {
+		return nil, nil, err
 	}
-	rc := rest.NewClient(c)
-	if err := rc.Login(ctx, cl.login); err != nil {
-		return nil, nil, fmt.Errorf("sign in to the tagging service: %w", err)
-	}
-	return tags.NewManager(rc), func() { _ = rc.Logout(context.Background()) }, nil
+	return tags.NewManager(rc), done, nil
 }
 
 // AttachTags attaches vSphere tags, as category/tag, to a VM (ADR-0024).

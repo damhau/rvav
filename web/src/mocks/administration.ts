@@ -67,6 +67,7 @@ function state(db: Db): AdminState {
         datastores: ["*"],
         networks: [`dvpg-*-${env}-*`],
         folder: `/GVA/vm/rvav/${p.code}/${env}`,
+        storage_policy: "",
         cluster_tags: [],
         datastore_tags: [],
       });
@@ -103,11 +104,11 @@ function state(db: Db): AdminState {
     })),
     templates: [
       {
-        key: "rhel9", label: "RHEL 9.4", vcenter_template: "tpl-rhel9.4-2026.10", os_family: "linux", customization: "",
+        key: "rhel9", label: "RHEL 9.4", vcenter_template: "tpl-rhel9.4-2026.10", content_library: "", os_family: "linux", customization: "",
         description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }], in_inventory: true,
       },
       {
-        key: "win2025", label: "Windows Server 2025", vcenter_template: "tpl-win2025-std-2026.09", os_family: "windows",
+        key: "win2025", label: "Windows Server 2025", vcenter_template: "tpl-win2025-std-2026.09", content_library: "", os_family: "windows",
         customization: "", description: "", offers: [{ project_id: "prj_web", environment: null }], in_inventory: true,
       },
     ], // prettier-ignore
@@ -551,6 +552,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           folder: w.folder,
           cluster_tags: w.cluster_tags ?? [],
           datastore_tags: w.datastore_tags ?? [],
+          storage_policy: w.storage_policy ?? "",
         };
         const rules = st().rules;
         const i = rules.findIndex((r) => r.id === rule.id);
@@ -670,17 +672,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           if (!w.label?.trim()) return invalid([err("/label", "Give it a label.")]);
           if (w.vcenter_template?.startsWith("library:"))
             return invalid([
-              err(
-                "/vcenter_template",
-                "Content library items come with advanced provisioning (S12): name a vCenter template.",
-              ),
+              err("/vcenter_template", "Name the content library item, and its library in Content library."),
             ]);
           if (list().some((x) => x.key === w.key))
             return problem(409, "Conflict", undefined, `The key ${w.key} is taken.`);
           const row = {
             offers: [],
+            ...(kind === "template" ? { customization: "", description: "", content_library: "" } : {}),
             ...w,
-            ...(kind === "template" ? { in_inventory: true, customization: "", description: "" } : {}),
+            ...(kind === "template" ? { in_inventory: true } : {}),
           };
           list().push(row);
           audited(db, `${kind}.create`, kind, w.key);

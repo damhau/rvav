@@ -14,8 +14,9 @@ import (
 	"syscall"
 
 	"github.com/vmware/govmomi"
+	_ "github.com/vmware/govmomi/pbm/simulator" // storage policies
 	"github.com/vmware/govmomi/simulator"
-	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service, for placement by tag
+	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service and content libraries
 
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 )

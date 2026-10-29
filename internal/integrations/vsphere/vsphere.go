@@ -3,6 +3,7 @@
 package vsphere
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -51,13 +52,19 @@ type VMSpec struct {
 	// Disks and NICs are added after the template's (networks, by name).
 	Disks []DiskSpec
 	NICs  []string
+	// Library, when set, is the content library Template is an item of:
+	// a VM template or an OVF, deployed rather than cloned.
+	Library string
+	// StoragePolicy is the VM's (its home and disks) storage policy.
+	StoragePolicy string
 }
 
 // DiskSpec is a disk added at provisioning, on Datastore (the VM's when
-// empty).
+// empty), with StoragePolicy (the VM's when empty).
 type DiskSpec struct {
-	SizeGB    int
-	Datastore string
+	SizeGB        int
+	Datastore     string
+	StoragePolicy string
 }
 
 // Customization is the guest identity and network applied before first boot.
@@ -544,11 +551,18 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 		return cl.vmInfo(ctx, c, vmRef(existing.Moref))
 	}
 
-	tplRef, err := findRef(ctx, c, "VirtualMachine", spec.Template)
-	if err != nil {
-		return nil, fmt.Errorf("template: %w", err)
+	var tpl *object.VirtualMachine
+	if spec.Library == "" {
+		tplRef, err := findRef(ctx, c, "VirtualMachine", spec.Template)
+		if err != nil {
+			return nil, fmt.Errorf("template: %w", err)
+		}
+		tpl = object.NewVirtualMachine(c, tplRef)
 	}
-	tpl := object.NewVirtualMachine(c, tplRef)
+	policy, err := policyID(ctx, c, spec.StoragePolicy)
+	if err != nil {
+		return nil, err
+	}
 	clusterRef, err := findRef(ctx, c, "ClusterComputeResource", spec.Cluster)
 	if err != nil {
 		return nil, err
@@ -592,40 +606,90 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err != nil {
 		return nil, err
 	}
+	pool := *cluster.ResourcePool
+	var ref types.ManagedObjectReference
+	if spec.Library != "" {
+		if ref, err = cl.deployFromLibrary(ctx, c, spec, pool, *host, folder.Reference(), dsRef, policy); err != nil {
+			return nil, err
+		}
+		vm := object.NewVirtualMachine(c, ref)
+		// vcsim deploys a library VM template as a template: make it a VM.
+		if tpl, err := vm.IsTemplate(ctx); err != nil {
+			return nil, err
+		} else if tpl {
+			poolObj := object.NewResourcePool(c, pool)
+			hostObj := object.NewHostSystem(c, *host)
+			if err := vm.MarkAsVirtualMachine(ctx, *poolObj, hostObj); err != nil {
+				return nil, err
+			}
+		}
+		if change, err := firstNIC(ctx, c, vm, spec); err != nil {
+			return nil, err
+		} else if change != nil {
+			if err := vm.EditDevice(ctx, change.Device); err != nil {
+				return nil, fmt.Errorf("connect %s to %s: %w", spec.Name, spec.Network, err)
+			}
+		}
+	} else if ref, err = cl.cloneTemplate(ctx, c, tpl, spec, pool, *host, folder, dsRef, policy); err != nil {
+		return nil, err
+	}
+	// Some vCenter versions (and vcsim) ignore the clone spec's hardware
+	// settings, so apply size and extra config explicitly.
+	if err := reconfigure(ctx, object.NewVirtualMachine(c, ref), spec, policy); err != nil {
+		return nil, fmt.Errorf("reconfigure %s: %w", spec.Name, err)
+	}
+	if err := cl.addHardware(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
+		return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
+	}
+	return cl.vmInfo(ctx, c, ref)
+}
 
-	devices, err := tpl.Device(ctx)
+// firstNIC is the change connecting the VM's (or template's) first adapter
+// to spec.Network (nil without one).
+func firstNIC(ctx context.Context, c *vim25.Client, vm *object.VirtualMachine, spec VMSpec) (*types.VirtualDeviceConfigSpec, error) {
+	if spec.Network == "" {
+		return nil, nil
+	}
+	devices, err := vm.Device(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var changes []types.BaseVirtualDeviceConfigSpec
-	if spec.Network != "" {
-		nics := devices.SelectByType((*types.VirtualEthernetCard)(nil))
-		if len(nics) == 0 {
-			return nil, fmt.Errorf("template %q has no network adapter", spec.Template)
-		}
-		net, err := findNetwork(ctx, c, spec.Network)
-		if err != nil {
-			return nil, err
-		}
-		backing, err := net.EthernetCardBackingInfo(ctx)
-		if err != nil {
-			return nil, err
-		}
-		card := nics[0].(types.BaseVirtualEthernetCard).GetVirtualEthernetCard()
-		card.Backing = backing
-		changes = append(changes, &types.VirtualDeviceConfigSpec{
-			Operation: types.VirtualDeviceConfigSpecOperationEdit,
-			Device:    nics[0],
-		})
+	nics := devices.SelectByType((*types.VirtualEthernetCard)(nil))
+	if len(nics) == 0 {
+		return nil, fmt.Errorf("template %q has no network adapter", spec.Template)
 	}
+	net, err := findNetwork(ctx, c, spec.Network)
+	if err != nil {
+		return nil, err
+	}
+	backing, err := net.EthernetCardBackingInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	card := nics[0].(types.BaseVirtualEthernetCard).GetVirtualEthernetCard()
+	card.Backing = backing
+	return &types.VirtualDeviceConfigSpec{Operation: types.VirtualDeviceConfigSpecOperationEdit, Device: nics[0]}, nil
+}
 
-	pool := *cluster.ResourcePool
+// cloneTemplate clones the VM template, its first adapter on the network.
+func (cl *Client) cloneTemplate(ctx context.Context, c *vim25.Client, tpl *object.VirtualMachine, spec VMSpec,
+	pool, host types.ManagedObjectReference, folder *object.Folder, dsRef types.ManagedObjectReference, policy string) (types.ManagedObjectReference, error) {
+	var none types.ManagedObjectReference
+	var changes []types.BaseVirtualDeviceConfigSpec
+	change, err := firstNIC(ctx, c, tpl, spec)
+	if err != nil {
+		return none, err
+	}
+	if change != nil {
+		changes = append(changes, change)
+	}
 	cs := types.VirtualMachineCloneSpec{
 		Location: types.VirtualMachineRelocateSpec{
 			Pool:         &pool,
-			Host:         host,
+			Host:         &host,
 			Datastore:    &dsRef,
 			DeviceChange: changes,
+			Profile:      profile(policy),
 		},
 		Config: &types.VirtualMachineConfigSpec{
 			NumCPUs:    int32(spec.VCPU),
@@ -638,25 +702,17 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	}
 	task, err := tpl.Clone(ctx, folder, spec.Name, cs)
 	if err != nil {
-		return nil, err
+		return none, err
 	}
 	info, err := task.WaitForResult(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("clone %s: %w", spec.Name, err)
+		return none, fmt.Errorf("clone %s: %w", spec.Name, err)
 	}
 	ref, ok := info.Result.(types.ManagedObjectReference)
 	if !ok {
-		return nil, fmt.Errorf("clone %s: unexpected task result %T", spec.Name, info.Result)
+		return none, fmt.Errorf("clone %s: unexpected task result %T", spec.Name, info.Result)
 	}
-	// Some vCenter versions (and vcsim) ignore the clone spec's hardware
-	// settings, so apply size and extra config explicitly.
-	if err := reconfigure(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
-		return nil, fmt.Errorf("reconfigure %s: %w", spec.Name, err)
-	}
-	if err := cl.addHardware(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
-		return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
-	}
-	return cl.vmInfo(ctx, c, ref)
+	return ref, nil
 }
 
 // addHardware adds the spec's disks and adapters the VM doesn't have yet,
@@ -707,8 +763,12 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 				disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo).FileName = "[" + d.Datastore + "]"
 			}
 			disk.CapacityInKB = int64(d.SizeGB) * 1024 * 1024
+			id, err := policyID(ctx, c, cmp.Or(d.StoragePolicy, spec.StoragePolicy))
+			if err != nil {
+				return err
+			}
 			// A disk at a time: each one's file is named when it is made.
-			if err := vm.AddDevice(ctx, disk); err != nil {
+			if err := vm.AddDeviceWithProfile(ctx, profile(id), disk); err != nil {
 				return err
 			}
 			// The next one takes the next unit number on the controller.
@@ -721,18 +781,20 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 	return vm.AddDevice(ctx, add...)
 }
 
-// reconfigure sets CPU, memory, annotation and extra config, and grows the
-// first disk to spec.DiskGB (disks are never shrunk).
-func reconfigure(ctx context.Context, vm *object.VirtualMachine, spec VMSpec) error {
+// reconfigure sets CPU, memory, annotation and extra config, grows the
+// first disk to spec.DiskGB (disks are never shrunk), and puts the VM's
+// home and first disk on the storage policy.
+func reconfigure(ctx context.Context, vm *object.VirtualMachine, spec VMSpec, policy string) error {
 	cfg := types.VirtualMachineConfigSpec{
 		NumCPUs:    int32(spec.VCPU),
 		MemoryMB:   int64(spec.MemoryMB),
 		Annotation: spec.Annotation,
+		VmProfile:  profile(policy),
 	}
 	for k, v := range spec.ExtraConfig {
 		cfg.ExtraConfig = append(cfg.ExtraConfig, &types.OptionValue{Key: k, Value: v})
 	}
-	if spec.DiskGB > 0 {
+	if spec.DiskGB > 0 || policy != "" {
 		devices, err := vm.Device(ctx)
 		if err != nil {
 			return err
@@ -740,12 +802,15 @@ func reconfigure(ctx context.Context, vm *object.VirtualMachine, spec VMSpec) er
 		if disks := devices.SelectByType((*types.VirtualDisk)(nil)); len(disks) > 0 {
 			disk := disks[0].(*types.VirtualDisk)
 			want := int64(spec.DiskGB) * 1024 * 1024
-			if disk.CapacityInKB < want {
-				disk.CapacityInKB = want
-				disk.CapacityInBytes = want * 1024
+			if grow := disk.CapacityInKB < want; grow || policy != "" {
+				if grow {
+					disk.CapacityInKB = want
+					disk.CapacityInBytes = want * 1024
+				}
 				cfg.DeviceChange = append(cfg.DeviceChange, &types.VirtualDeviceConfigSpec{
 					Operation: types.VirtualDeviceConfigSpecOperationEdit,
 					Device:    disk,
+					Profile:   profile(policy),
 				})
 			}
 		}

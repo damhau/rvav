@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/vmware/govmomi/simulator"
@@ -31,6 +32,44 @@ func TestCloneAddsDisksAndAdapters(t *testing.T) {
 			if len(vm.Disks) != 3 || vm.Disks[1].CapacityGB != 20 || vm.Disks[2].CapacityGB != 5 ||
 				len(vm.NICs) != 2 || vm.NICs[1].Network != "dvpg-db-dev-vl320" {
 				t.Fatalf("%s: disks %+v, adapters %+v", name, vm.Disks, vm.NICs)
+			}
+		}
+	})
+}
+
+// A VM from a content library's VM template, on a storage policy; a library,
+// item or policy that isn't there is ErrNotFound (ADR-0024).
+func TestDeployFromLibrary(t *testing.T) {
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		if err := Bootstrap(ctx, c, DefaultLayout()); err != nil {
+			t.Fatal(err)
+		}
+		d := NewFromVim("vc01.corp.example", c)
+		spec := VMSpec{Name: "web-dev-lib01", Library: "rvav-templates", Template: "rhel9-library", Cluster: "GVA-DEV-CL01",
+			Datastore: "vsan-gva-dev-cl01", Network: "dvpg-db-dev-vl320", Folder: "/GVA/vm/rvav/web/dev", VCPU: 4, MemoryMB: 8192,
+			DiskGB: 60, StoragePolicy: "vSAN Default Storage Policy", Disks: []DiskSpec{{SizeGB: 10}}}
+		vm, err := d.CloneVM(ctx, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if vm.Template || vm.CPUCount != 4 || len(vm.Disks) != 2 || vm.Disks[0].CapacityGB != 60 || vm.NICs[0].Network != "dvpg-db-dev-vl320" ||
+			vm.Folder != "/GVA/vm/rvav/web/dev" || vm.Cluster != "GVA-DEV-CL01" {
+			t.Fatalf("deployed VM = %+v", vm)
+		}
+		for _, bad := range []VMSpec{{Library: "nope"}, {Template: "nope"}, {StoragePolicy: "Platinum"}} {
+			s := spec
+			s.Name = "web-dev-lib02"
+			if bad.Library != "" {
+				s.Library = bad.Library
+			}
+			if bad.Template != "" {
+				s.Template = bad.Template
+			}
+			if bad.StoragePolicy != "" {
+				s.StoragePolicy = bad.StoragePolicy
+			}
+			if _, err := d.CloneVM(ctx, s); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("%+v: %v", bad, err)
 			}
 		}
 	})

@@ -36,6 +36,15 @@ How a blueprint is built is in
   separate hosts), in the placement rule's folder. CPU, memory and the
   first disk's size are set; `guestinfo.rvav.deployment` and
   `guestinfo.rvav.request` are written to the VM.
+- **Content library:** a template that is an item of a content library (a
+  VM template or an OVF) is deployed through vCenter's REST API to the
+  same place, then reconfigured like a clone; its first adapter is
+  connected to the network after. The inventory sync lists the libraries'
+  items as templates of their library.
+- **Storage policies** (SPBM): the VM's home and disks get the policy the
+  blueprint or the placement rule names, resolved by name through the
+  storage policy service; a disk may have its own. The inventory sync
+  lists the policies, so placement rules and previews check them.
 - **Disks and adapters** added by the blueprint, after the clone: a disk
   on another datastore gets the path `[datastore]` alone, and vCenter
   names its file in the VM's folder there. A retry adds only what is
