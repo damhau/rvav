@@ -2,8 +2,14 @@ GO      ?= go
 PNPM    ?= pnpm
 BIN     := bin
 COMPOSE := docker compose -f deploy/docker-compose.yml
+# Scanners, pinned (the image by digest).
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+IMAGES      ?= rvav:scan rvav-web:scan
+# Files Trivy writes are the caller's, not root's.
+AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
+TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check up down vcsim
+.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
 
@@ -54,6 +60,31 @@ web-check: ## Web app: generated types current, typecheck, lint, unit tests, bui
 	cd web && $(PNPM) test
 	cd web && $(PNPM) build
 	cd web && $(PNPM) e2e
+
+vuln: vuln-go vuln-web vuln-images ## Known vulnerabilities in the Go code, the web app's dependencies and the images (CI, daily)
+
+vuln-go: ## Vulnerabilities the Go code reaches (govulncheck, built with the module's toolchain)
+	GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) run $(GOVULNCHECK) ./...
+
+vuln-web: ## The web app's dependencies, with its build and test tools (pnpm audit)
+	cd web && $(PNPM) audit
+
+images: ## Build the rvav and rvav-web images as $(IMAGES)
+	docker build -q -t $(word 1,$(IMAGES)) . >/dev/null
+	docker build -q -t $(word 2,$(IMAGES)) web >/dev/null
+
+vuln-images: images ## Scan both images: no HIGH or CRITICAL vulnerability that has a fix (Trivy)
+	for i in $(IMAGES); do \
+		docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $(TRIVY) image --quiet \
+			--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $$i || exit 1; done
+
+sbom: images ## CycloneDX SBOMs into ./sbom: each image, and the web app's npm dependencies (not in its image)
+	mkdir -p sbom
+	for i in $(IMAGES); do \
+		docker run --rm $(AS_ME) -v /var/run/docker.sock:/var/run/docker.sock -v $$PWD/sbom:/out $(TRIVY) image --quiet \
+			--format cyclonedx -o /out/$$(echo $$i | sed 's|.*/||; s|:.*||').cdx.json $$i || exit 1; done
+	docker run --rm $(AS_ME) -v $$PWD/web:/src:ro -v $$PWD/sbom:/out $(TRIVY) fs --quiet --format cyclonedx \
+		-o /out/rvav-web-npm.cdx.json /src
 
 up: ## Start the local stack (PostgreSQL, Temporal, Keycloak, vcsim, rvav)
 	$(COMPOSE) up --build -d

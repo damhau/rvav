@@ -112,11 +112,9 @@ func (s *Service) SaveRequestDraft(ctx context.Context, p *auth.Principal, id st
 	}
 	// Secrets aren't kept in drafts: fields marked secret, and secret widgets.
 	secret := present.SecretFields(version.UISchema)
-	var ui api.UiSchema
-	_ = json.Unmarshal(version.UISchema, &ui)
 	inputs := map[string]any{}
 	for k, v := range w.Draft.Inputs {
-		if f, ok := ui.Fields[k]; secret[k] || ok && f.Widget == api.UiWidgetSecret {
+		if secret[k] {
 			continue
 		}
 		inputs[k] = v

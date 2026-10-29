@@ -1,0 +1,55 @@
+# Known vulnerabilities (S14.6): in the Go code, the web app's dependencies
+# and the two images. On every push, and daily: a vulnerability published
+# today fails tomorrow's run even when nothing changed.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go code (govulncheck)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make vuln-go
+
+  web:
+    name: Web app dependencies (pnpm audit)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: make vuln-web
+
+  images:
+    name: Images (Trivy) and SBOMs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: make vuln-images
+      - run: make sbom
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom

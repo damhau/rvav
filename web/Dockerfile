@@ -18,7 +18,9 @@ ENV VITE_API_MODE=real \
     VITE_OIDC_SCOPE=${VITE_OIDC_SCOPE}
 RUN pnpm build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
+# The base's packages with their latest fixes (S14.6: the image is scanned).
+RUN apk upgrade --no-cache
 ARG VITE_AUTH_MODE=oidc
 ARG VITE_OIDC_AUTHORITY=
 ARG VITE_OIDC_CLIENT_ID=rvav
@@ -28,11 +30,13 @@ ARG VITE_OIDC_SCOPE="openid profile email"
 # /etc/resolv.conf: Docker's DNS, or the cluster DNS on Kubernetes.
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-# The sign-in settings at run time (/config.js), the build's by default.
+# The sign-in settings at run time (/config.js), the build's by default; the
+# origins of the console's SDK scripts, for the Content-Security-Policy.
 ENV RVAV_API_UPSTREAM=http://api:8080 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     RVAV_WEB_AUTH_MODE=${VITE_AUTH_MODE} \
     RVAV_WEB_OIDC_AUTHORITY=${VITE_OIDC_AUTHORITY} \
     RVAV_WEB_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID} \
-    RVAV_WEB_OIDC_SCOPE=${VITE_OIDC_SCOPE}
+    RVAV_WEB_OIDC_SCOPE=${VITE_OIDC_SCOPE} \
+    RVAV_WEB_SCRIPT_SOURCES=
 EXPOSE 8080

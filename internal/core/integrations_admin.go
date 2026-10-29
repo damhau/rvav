@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/notify"
+	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -464,6 +465,28 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 			return n, err
 		}
 		if done, err := st.ResealIntegration(ctx, kind, row.SecretNonce, store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
+			return n, err
+		} else if done {
+			n++
+		}
+	}
+	// Requests' secret inputs (S14.6).
+	inputs, err := st.SealedInputsNotWith(ctx, box.KeyID())
+	if err != nil {
+		return n, err
+	}
+	for _, in := range inputs {
+		name := secretinput.Name(in.RequestID, in.Field)
+		plain, err := box.Open(name, in.KeyID, in.Nonce, in.Ciphertext)
+		if err != nil {
+			return n, fmt.Errorf("request %s's %s: %w", in.RequestID, in.Field, err)
+		}
+		keyID, nonce, ct, err := box.Seal(name, plain)
+		if err != nil {
+			return n, err
+		}
+		if done, err := st.ResealRequestSecret(ctx, in.RequestID, in.Field, in.Nonce,
+			store.SealedInput{Field: in.Field, KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
 			return n, err
 		} else if done {
 			n++

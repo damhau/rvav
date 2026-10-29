@@ -1,0 +1,44 @@
+# A release (S14.6): on a tag v1.2.3, the images scanned and pushed to
+# ghcr.io as 1.2.3, and a GitHub release with their SBOMs (CycloneDX; the
+# web app's npm dependencies apart, since its image holds only the build)
+# and the Helm chart. Run by hand, it does the same without publishing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # the GitHub release
+  packages: write  # the images
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version and image names
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then v=${GITHUB_REF_NAME#v}; else v=0.0.0-dev.${GITHUB_SHA::7}; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "IMAGES=ghcr.io/$GITHUB_REPOSITORY:$v ghcr.io/$GITHUB_REPOSITORY-web:$v" >> "$GITHUB_ENV"
+      - name: Images, with no known HIGH or CRITICAL vulnerability that has a fix
+        run: make vuln-images IMAGES="$IMAGES"
+      - run: make sbom IMAGES="$IMAGES"
+      - name: Helm chart
+        run: helm package deploy/helm/rvav --version "$VERSION" --app-version "$VERSION" -d dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ env.VERSION }}
+          path: |
+            sbom
+            dist
+      - name: Publish
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for i in $IMAGES; do docker push "$i"; done
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes sbom/*.cdx.json dist/*.tgz

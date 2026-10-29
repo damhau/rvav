@@ -160,14 +160,20 @@ func TestGuests(t *testing.T) {
 		}
 
 		// Linux by cloud-init: its metadata and user data in guestinfo.
-		ubuntu := publish("ubuntu-ci", guestItem("tpl-ubuntu24.04-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example",
-			"cloud_init": map[string]any{"user_data": "#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ printf \"%s for %s\" .inputs.role .request.number | json }}"}}), 200)
+		// A secret input reaches the user data, and only it (S14.6).
+		ciDef := guestItem("tpl-ubuntu24.04-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example",
+			"cloud_init": map[string]any{"user_data": "#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ printf \"%s for %s\" .inputs.role .request.number | json }}\npassword: {{ .inputs.admin_password | json }}"}})
+		ciDef.FormSchema["properties"].(map[string]any)["admin_password"] = map[string]any{"type": "string"}
+		ciDef.UiSchema.Fields["admin_password"] = api.UiField{Widget: api.UiWidgetSecret, Label: "Admin password"}
+		ciDef.UiSchema.Layout.Sections[0].Fields = append(ciDef.UiSchema.Layout.Sections[0].Fields, "admin_password")
+		ubuntu := publish("ubuntu-ci", ciDef, 200)
 		// vcsim has no cloud-init to set the guest's address: the test does,
 		// as the guest would once it booted.
 		var ci api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: ubuntu.Id, VersionId: ubuntu.DraftVersion.Id,
 			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "ci", "cluster": "GVA-DEV-CL01",
-				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}, 202, &ci, "Idempotency-Key", uuid.NewString())
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "admin_password": "Cl0ud-pw"}},
+			202, &ci, "Idempotency-Key", uuid.NewString())
 		h.runWorkflow(ci.Id, cloudInitGuest(h, c))
 		h.json("GET", "/api/v1/requests/"+ci.Id, "tnguyen", nil, 200, &ci)
 		if ci.Status != api.RequestStatusSucceeded {
@@ -194,10 +200,16 @@ func TestGuests(t *testing.T) {
 		_ = json.Unmarshal(rawMeta, &meta)
 		var ip string
 		_ = h.store.Pool.QueryRow(ctx, `select name from resources where request_id = $1 and type = 'ipam.address'`, ci.Id).Scan(&ip)
-		if string(user) != "#cloud-config\nfqdn: web-dev-ci01.corp.example\nfinal_message: \"ci for "+ci.Number+"\"" ||
+		if string(user) != "#cloud-config\nfqdn: web-dev-ci01.corp.example\nfinal_message: \"ci for "+ci.Number+"\"\npassword: \"Cl0ud-pw\"" ||
 			meta.Local != "web-dev-ci01" || len(meta.Network.Ethernets["nic0"].Addresses) != 1 ||
 			meta.Network.Ethernets["nic0"].Addresses[0] != ip+"/24" {
 			t.Fatalf("user data %q, metadata %s (address %s)", user, rawMeta, ip)
+		}
+		var inPlan int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from requests where id = $1 and (inputs::text like '%Cl0ud-pw%' or plan::text like '%Cl0ud-pw%')`,
+			ci.Id).Scan(&inPlan)
+		if inPlan != 0 {
+			t.Fatal("the secret input is in the request's inputs or plan")
 		}
 	})
 }

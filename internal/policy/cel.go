@@ -73,7 +73,9 @@ func (s *set) program(expr string) (cel.Program, error) {
 	if iss.Err() != nil {
 		return nil, fmt.Errorf("compile %q: %w", expr, iss.Err())
 	}
-	p, err := e.Program(ast)
+	// Bounded: an expression that would run too long (comprehensions
+	// nested over large lists) fails instead of holding a CPU (S14.6).
+	p, err := e.Program(ast, cel.CostLimit(costLimit))
 	if err != nil {
 		return nil, fmt.Errorf("program %q: %w", expr, err)
 	}
@@ -87,6 +89,10 @@ func (s *set) program(expr string) (cel.Program, error) {
 }
 
 const maxPrograms = 2000
+
+// costLimit is far above any policy, rule or binding rvav has seen (tens to
+// a few thousand), and well under a second of evaluation.
+const costLimit = 1_000_000
 
 func (s *set) eval(expr string, vars Vars) (any, error) {
 	p, err := s.program(expr)

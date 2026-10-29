@@ -24,6 +24,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vcenters"
@@ -748,6 +749,11 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
+	// The blueprint's user data may use secret inputs (S14.6): opened here,
+	// never returned.
+	if inputs, err = a.openSecretInputs(ctx, r.ID, inputs); err != nil {
+		return "", "", permanent("%v", err)
+	}
 	ips := []string{in.IP}
 	for _, n := range nics[1:] {
 		ips = append(ips, n.IP)
@@ -974,7 +980,12 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 				return permanent("AWX: %v", err)
 			}
 		}
-		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: in.ExtraVars, Inventory: in.Job.Inventory, Credentials: in.Job.Credentials}
+		// Secret inputs opened only for the launch (S14.6).
+		extra, err := a.openSecretInputs(ctx, in.RequestID, in.ExtraVars)
+		if err != nil {
+			return permanent("%v", err)
+		}
+		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: extra, Inventory: in.Job.Inventory, Credentials: in.Job.Credentials}
 		if in.Limit != "" {
 			// Jobs on rvav's VMs run against rvav's inventory, refreshed before.
 			if a.AWXInventorySource == 0 && a.AWXInventoryRequired {
@@ -1459,4 +1470,22 @@ func (a *Activities) checkAWXAction(ctx context.Context, key string) error {
 		return permanent("%s was turned off since it was asked for.", act.Name)
 	}
 	return nil
+}
+
+// openSecretInputs is a copy of vars with the request's secret inputs in
+// place of their markers (S14.6); vars itself keeps the markers.
+func (a *Activities) openSecretInputs(ctx context.Context, requestID string, vars map[string]any) (map[string]any, error) {
+	sealed, err := a.Store.RequestSecrets(ctx, requestID)
+	if err != nil || len(sealed) == 0 {
+		return vars, err
+	}
+	b, err := json.Marshal(vars)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out, secretinput.Open(a.Secrets, requestID, sealed, out)
 }

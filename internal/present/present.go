@@ -103,13 +103,14 @@ func RedactInputs(raw json.RawMessage, secret map[string]bool) map[string]any {
 	return inputs
 }
 
-// SecretFields lists the inputs marked secret in a UI schema.
+// SecretFields lists the inputs marked secret in a UI schema: by the flag,
+// or by the secret widget.
 func SecretFields(uiSchema json.RawMessage) map[string]bool {
 	var ui api.UiSchema
 	_ = json.Unmarshal(uiSchema, &ui)
 	out := map[string]bool{}
 	for k, f := range ui.Fields {
-		if f.Secret != nil && *f.Secret {
+		if f.Secret != nil && *f.Secret || f.Widget == api.UiWidgetSecret {
 			out[k] = true
 		}
 	}

@@ -72,6 +72,10 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		if err := s.lockPrefixes(ctx, tx, ev); err != nil {
 			return err
 		}
+		// Secret inputs sealed, a marker in their place in what follows (S14.6).
+		if err := s.sealSecretInputs(ctx, tx, req.ID, ev.Version.UISchema, ev.Inputs); err != nil {
+			return err
+		}
 
 		switch ev.Blueprint.Kind {
 		case blueprint.KindVM:

@@ -182,6 +182,9 @@ func (s *Service) RequestApprovals(ctx context.Context, p *auth.Principal, idOrN
 	return out, nil
 }
 
+// hidden stands for a secret input's value in what the API returns.
+const hidden = "••••"
+
 type inputChange struct {
 	Field string `json:"field"`
 	Label string `json:"label"`
@@ -393,6 +396,12 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	_ = json.Unmarshal(version.UISchema, &ui)
 	inputs := map[string]any{}
 	_ = json.Unmarshal(req.Inputs, &inputs)
+	// Compared and evaluated with the secret inputs' values, sealed again
+	// after (S14.6).
+	if err := s.openSecretInputs(ctx, req.ID, inputs); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	secret := present.SecretFields(version.UISchema)
 	var changes []inputChange
 	var errs []api.FieldError
 	for _, field := range sortedKeys(edits) {
@@ -402,7 +411,11 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 			continue
 		}
 		if !reflect.DeepEqual(inputs[field], edits[field]) {
-			changes = append(changes, inputChange{Field: field, Label: f.Label, From: inputs[field], To: edits[field]})
+			c := inputChange{Field: field, Label: f.Label, From: inputs[field], To: edits[field]}
+			if secret[field] {
+				c.From, c.To = hidden, hidden
+			}
+			changes = append(changes, c)
 			inputs[field] = edits[field]
 		}
 	}
@@ -444,6 +457,10 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 		plan.ExtraVars = ev.Inputs
 	}
 	plan.Quota = ev.QuotaAdd
+	// plan.ExtraVars is ev.Inputs: sealed with it.
+	if err := s.sealSecretInputs(ctx, s.Store.Pool, req.ID, ev.Version.UISchema, ev.Inputs); err != nil {
+		return nil, nil, nil, nil, err
+	}
 	newInputs, _ := json.Marshal(ev.Inputs)
 	newPlan, _ := json.Marshal(plan)
 	// The steps still to run follow the new plan (post-config jobs, placement).

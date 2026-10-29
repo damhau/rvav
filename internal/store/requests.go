@@ -175,7 +175,22 @@ func (s *Store) SetRequestStatus(ctx context.Context, db DB, id, status string) 
 		started_at = case when $2 = 'running' and started_at is null then now() else started_at end,
 		finished_at = case when $2 in ('succeeded', 'failed', 'rejected', 'cancelled') then now() else finished_at end
 		where id = $1`, id, status)
-	return err
+	if err != nil {
+		return err
+	}
+	return dropSecretInputs(ctx, db, id, status)
+}
+
+// dropSecretInputs deletes a request's sealed secret inputs once it can't
+// run again: succeeded, rejected or cancelled. A failed request keeps them
+// for a retry (S14.6).
+func dropSecretInputs(ctx context.Context, db DB, id, status string) error {
+	switch status {
+	case "succeeded", "rejected", "cancelled":
+		_, err := db.Exec(ctx, `delete from request_secrets where request_id = $1`, id)
+		return err
+	}
+	return nil
 }
 
 // DeleteUnstartedRequest removes a request whose workflow never started,
@@ -271,5 +286,51 @@ func (s *Store) SetRequestStatusFrom(ctx context.Context, db DB, id, from, to st
 	tag, err := db.Exec(ctx, `update requests set status = $3,
 		finished_at = case when $3 in ('succeeded', 'failed', 'rejected', 'cancelled') then now() else finished_at end
 		where id = $1 and status = $2`, id, from, to)
+	if err != nil || tag.RowsAffected() != 1 {
+		return false, err
+	}
+	return true, dropSecretInputs(ctx, db, id, to)
+}
+
+// SealedInput is a request's secret input, sealed (S14.6).
+type SealedInput struct {
+	Field      string `db:"field"`
+	KeyID      string `db:"key_id"`
+	Nonce      []byte `db:"nonce"`
+	Ciphertext []byte `db:"ciphertext"`
+}
+
+// PutRequestSecret keeps (or replaces) a request's sealed secret input.
+func (s *Store) PutRequestSecret(ctx context.Context, db DB, requestID string, in SealedInput) error {
+	_, err := db.Exec(ctx, `insert into request_secrets (request_id, field, key_id, nonce, ciphertext) values ($1,$2,$3,$4,$5)
+		on conflict (request_id, field) do update set key_id = excluded.key_id, nonce = excluded.nonce, ciphertext = excluded.ciphertext`,
+		requestID, in.Field, in.KeyID, in.Nonce, in.Ciphertext)
+	return err
+}
+
+// SealedInputRow is a request's sealed secret input, for key rotation.
+type SealedInputRow struct {
+	RequestID string `db:"request_id"`
+	SealedInput
+}
+
+// SealedInputsNotWith lists the sealed secret inputs of every request not
+// sealed with this key.
+func (s *Store) SealedInputsNotWith(ctx context.Context, keyID string) ([]SealedInputRow, error) {
+	rows, _ := s.Pool.Query(ctx, `select request_id, field, key_id, nonce, ciphertext from request_secrets where key_id <> $1`, keyID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[SealedInputRow])
+}
+
+// ResealRequestSecret replaces a sealed secret input (key rotation), if it
+// wasn't changed meanwhile.
+func (s *Store) ResealRequestSecret(ctx context.Context, requestID, field string, oldNonce []byte, in SealedInput) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `update request_secrets set key_id = $3, nonce = $4, ciphertext = $5
+		where request_id = $1 and field = $2 and nonce = $6`, requestID, field, in.KeyID, in.Nonce, in.Ciphertext, oldNonce)
 	return tag.RowsAffected() == 1, err
+}
+
+// RequestSecrets are a request's sealed secret inputs.
+func (s *Store) RequestSecrets(ctx context.Context, requestID string) ([]SealedInput, error) {
+	rows, _ := s.Pool.Query(ctx, `select field, key_id, nonce, ciphertext from request_secrets where request_id = $1`, requestID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[SealedInput])
 }

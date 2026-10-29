@@ -7,6 +7,12 @@ import { initAuth } from "@/lib/auth";
 import { isMock } from "@/lib/env";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { createAppRouter } from "./router";
+// Fonts served with the app, not from a third party (S14.6).
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-sans/400.css";
+import "@fontsource/ibm-plex-sans/500.css";
+import "@fontsource/ibm-plex-sans/600.css";
 import "./styles.css";
 
 export function createQueryClient() {

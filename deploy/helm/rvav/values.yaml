@@ -50,6 +50,9 @@ web:
   oidcAuthority: https://sso.corp.example/realms/rvav
   oidcClientId: rvav
   oidcScope: openid profile email
+  # Origins the browser may load the VM console's SDK from (the origins of
+  # config.RVAV_WMKS_SDK_URLS), for the Content-Security-Policy.
+  scriptSources: ""
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }

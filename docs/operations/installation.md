@@ -9,7 +9,9 @@ and systemd (ADR-0009). Both use the same two images:
   API on the same origin.
 
 Every setting is an environment variable
-([configuration.md](configuration.md)).
+([configuration.md](configuration.md)). Each release publishes the images'
+SBOMs; what the installation must do for security (TLS, the key, the
+network) is in [security.md](security.md).
 
 ## What rvav needs
 

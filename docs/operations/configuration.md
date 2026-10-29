@@ -144,3 +144,4 @@ The web image reads these at start-up and gives them to the browser
 | `RVAV_WEB_OIDC_AUTHORITY` | the build's | | The identity provider's issuer, as the browser reaches it. |
 | `RVAV_WEB_OIDC_CLIENT_ID` | `rvav` | | The browser's client. |
 | `RVAV_WEB_OIDC_SCOPE` | `openid profile email` | | The scopes it asks for (add `offline_access` for Entra ID). |
+| `RVAV_WEB_SCRIPT_SOURCES` | none | | Where the browser may load scripts from besides the web app: the origins of `RVAV_WMKS_SDK_URLS` (`https://vc01.corp.example`), for the Content-Security-Policy. Add `'unsafe-eval'` only if the console's SDK needs it. |

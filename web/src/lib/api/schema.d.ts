@@ -2854,7 +2854,7 @@ export interface components {
             /** @description Inputs whose change re-resolves this field's value source and rules. */
             depends_on?: string[];
             rules?: components["schemas"]["UiRules"];
-            /** @description Stored encrypted, never returned by the API, passed to AWX only at launch. */
+            /** @description Stored encrypted, never returned by the API, and kept out of the request's plan and workflow history (a `{"$secret": "<field>"}` marker stands for it there): given only to the AWX job at launch and to cloud-init user data. The `secret` widget makes a field secret too. */
             secret?: boolean;
             /** @description Published as a host variable in the AWX dynamic inventory. */
             expose_to_inventory?: boolean;

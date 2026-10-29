@@ -244,9 +244,23 @@ func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
 	keys := keySet{oidc.NewRemoteKeySet(context.Background(), meta.JWKSURL)}
-	o.verifier = oidc.NewVerifier(o.issuer, keys, &oidc.Config{ClientID: o.clientID, SupportedSigningAlgs: meta.Algs})
+	o.verifier = oidc.NewVerifier(o.issuer, keys, &oidc.Config{ClientID: o.clientID, SupportedSigningAlgs: signingAlgs(meta.Algs)})
 	o.lastErr = nil
 	return o.verifier, nil
+}
+
+// signingAlgs are the algorithms the provider advertises that rvav accepts:
+// signatures with a public key only, never a shared secret or none (S14.6).
+// Without any, go-oidc takes RS256.
+func signingAlgs(advertised []string) []string {
+	var out []string
+	for _, a := range advertised {
+		switch a {
+		case oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256, oidc.ES384, oidc.ES512, oidc.PS256, oidc.PS384, oidc.PS512, oidc.EdDSA:
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // keySet notes when the provider's keys could not be fetched: go-oidc reports
