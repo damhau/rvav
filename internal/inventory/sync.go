@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/damhau/rvav/internal/events"
@@ -89,20 +90,29 @@ func (s *Syncer) Run(ctx context.Context) error {
 // SyncOnce syncs every vCenter; one that fails doesn't stop the others.
 func (s *Syncer) SyncOnce(ctx context.Context) error {
 	if s.VCenters == nil {
-		return s.syncVCenter(ctx, s.VSphere)
+		return s.syncVCenter(ctx, s.VSphere, func(string) bool { return true })
 	}
 	names, err := s.VCenters.Names(ctx)
 	if err != nil {
 		return err
 	}
 	var errs []error
-	for _, name := range names {
+	for i, name := range names {
+		// The first's VMs are those of a name rvav doesn't know too: the
+		// integration's may have been renamed since they were built.
+		owns := func(vc string) bool { return vc == name || i == 0 && !slices.Contains(names, vc) }
 		d, err := s.VCenters.Get(ctx, name)
 		if err == nil {
-			err = s.syncVCenter(ctx, d)
+			err = s.syncVCenter(ctx, d, owns)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+		}
+	}
+	// The inventory of a vCenter rvav no longer manages (or renamed) goes.
+	if len(errs) == 0 {
+		if err := s.Store.PruneInventory(ctx, names); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
@@ -110,7 +120,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 
 // syncVCenter reads a vCenter's inventory, replaces its cache and refreshes
 // its VM resources.
-func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver) error {
+func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(vcenter string) bool) error {
 	inv, err := vc.Inventory(ctx)
 	if err != nil {
 		return err
@@ -120,14 +130,19 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver) error {
 	clusterTags, datastoreTags := map[string][]string{}, map[string][]string{}
 	if inv.TagsError != nil {
 		s.Log.Warn("inventory: vSphere tags not read; keeping the last ones", "err", inv.TagsError)
+		// This vCenter's: morefs repeat between vCenters.
 		if cs, err := s.Store.InventoryClusters(ctx); err == nil {
 			for _, c := range cs {
-				clusterTags[c.Moref] = c.Tags
+				if c.VCenter == vc.Name() {
+					clusterTags[c.Moref] = c.Tags
+				}
 			}
 		}
 		if ds, err := s.Store.InventoryDatastores(ctx); err == nil {
 			for _, d := range ds {
-				datastoreTags[d.Moref] = d.Tags
+				if d.VCenter == vc.Name() {
+					datastoreTags[d.Moref] = d.Tags
+				}
 			}
 		}
 	}
@@ -185,7 +200,7 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver) error {
 	if err := s.Store.ReplaceInventory(ctx, snap); err != nil {
 		return err
 	}
-	return s.refreshResources(ctx, vc.Name(), byUUID)
+	return s.refreshResources(ctx, vc.Name(), owns, byUUID)
 }
 
 type storedVM struct {
@@ -196,7 +211,7 @@ type storedVM struct {
 	} `json:"vm"`
 }
 
-func (s *Syncer) refreshResources(ctx context.Context, vcenter string, byUUID map[string]vsphere.InventoryVM) error {
+func (s *Syncer) refreshResources(ctx context.Context, vcenter string, owns func(string) bool, byUUID map[string]vsphere.InventoryVM) error {
 	resources, err := s.Store.VMResources(ctx)
 	if err != nil {
 		return err
@@ -204,7 +219,7 @@ func (s *Syncer) refreshResources(ctx context.Context, vcenter string, byUUID ma
 	now := time.Now().UTC()
 	for _, r := range resources {
 		// Another vCenter's VMs aren't missing from this one.
-		if r.ExternalID == nil || vmprops.VCenterOf(r.Properties) != vcenter {
+		if r.ExternalID == nil || !owns(vmprops.VCenterOf(r.Properties)) {
 			continue
 		}
 		dep, err := s.Store.GetDeployment(ctx, r.DeploymentID)

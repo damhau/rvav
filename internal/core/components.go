@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -191,12 +192,35 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if part.count == 0 {
 		return part, nil // nothing to place or name
 	}
+	// A size the bindings can't work out is the blueprint's fault once the
+	// inputs are all there: never a VM of the template's size by default.
+	if strict && (plan.VCPU < 1 || plan.MemoryGB < 1) {
+		add("", "invalid_size", "The VMs' CPU and memory could not be worked out from the inputs. Ask a catalog admin to check this item.")
+	}
+	// Added disks and adapters too: never a disk of 0 GB or an adapter on
+	// no network.
+	for _, m := range missing {
+		if strict && (strings.HasPrefix(m, "disks/") || strings.HasPrefix(m, "nics/") || m == "tags") {
+			add("", "invalid", m+" could not be worked out from the inputs. Ask a catalog admin to check this item.")
+		}
+	}
+	for i, d := range plan.Disks {
+		if !slices.Contains(missing, fmt.Sprintf("disks/%d/size_gb", i)) && (d.SizeGB < 1 || d.SizeGB > 65536) {
+			add(bindingField(c.Disks[i].SizeGB, ""), "out_of_range", fmt.Sprintf("A disk of %d GB: from 1 to 65536 GB.", d.SizeGB))
+		}
+	}
 
 	// Placement chooses the cluster, and the datastore, the blueprint
 	// doesn't bind (ADR-0024).
 	pickDatastore := plan.Datastore == "" && c.Bindings["datastore"] == ""
-	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.clusters) > 0 {
-		if cl := pl.choose(plan, part.count, c.AntiAffinity, pickDatastore); cl != nil {
+	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.rules) > 0 {
+		// Only in a vCenter that has the template (when the inventory says).
+		hasTemplate := func(vc string) bool {
+			return len(templates) == 0 || slices.ContainsFunc(templates, func(t store.InvTemplate) bool {
+				return t.Name == plan.Template && t.Library == plan.Library && t.VCenter == vc
+			})
+		}
+		if cl := pl.choose(plan, part.count, c.AntiAffinity, pickDatastore, hasTemplate); cl != nil {
 			plan.Cluster, part.chosen = cl.Name, true
 		} else {
 			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
@@ -205,6 +229,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if pickDatastore && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
 		if ds := pl.roomiest(plan.Cluster, plan.StorageGB()*part.count); ds != "" {
 			plan.Datastore, part.chosen = ds, true
+		} else {
+			add("", "no_room", fmt.Sprintf("No datastore allowed on %s has room for %d GB. Ask an administrator.", plan.Cluster, plan.StorageGB()*part.count))
 		}
 	}
 	if plan.Cluster != "" {
@@ -260,8 +286,11 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(at, "no_subnet", "No EfficientIP subnet is linked to "+n.Network+". Ask an administrator to link one.")
 		}
 	}
-	if len(templates) > 0 && plan.Template != "" &&
-		!slices.ContainsFunc(templates, func(t store.InvTemplate) bool { return t.Name == plan.Template && t.Library == plan.Library }) {
+	// In the vCenter the VMs go to, once their cluster is known.
+	inVC := func(vc string) bool { return part.vcenter == "" || vc == part.vcenter }
+	if len(templates) > 0 && plan.Template != "" && !slices.ContainsFunc(templates, func(t store.InvTemplate) bool {
+		return t.Name == plan.Template && t.Library == plan.Library && inVC(t.VCenter)
+	}) {
 		what := "Template " + plan.Template
 		if plan.Library != "" {
 			what += " of content library " + plan.Library
@@ -277,7 +306,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return part, err
 	} else if len(policies) > 0 {
 		known := func(name string) bool {
-			return name == "" || slices.ContainsFunc(policies, func(p store.InvStoragePolicy) bool { return p.Name == name })
+			return name == "" || slices.ContainsFunc(policies, func(p store.InvStoragePolicy) bool { return p.Name == name && inVC(p.VCenter) })
 		}
 		if !known(plan.StoragePolicy) {
 			add("", "storage_policy_missing", fmt.Sprintf("Storage policy %s was not found in vCenter. Ask an administrator to check it.", plan.StoragePolicy))
@@ -341,15 +370,17 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 }
 
 // choose is the cluster a component's VMs go to when the blueprint doesn't
-// say: among those allowed, with its network, enough hosts to keep the VMs
-// apart, and a datastore with room (the one given, else any allowed), the
-// one with the most free memory.
-func (pl *placement) choose(plan blueprint.VMPlan, count int, apart, anyDatastore bool) *store.InvCluster {
+// say: among those allowed in a vCenter with the template, with its
+// network, enough hosts to keep the VMs apart, and a datastore with room
+// (the one given, else any allowed), the one with the most free memory.
+func (pl *placement) choose(plan blueprint.VMPlan, count int, apart, anyDatastore bool, hasTemplate func(vcenter string) bool) *store.InvCluster {
 	var best *store.InvCluster
 	for i := range pl.clusters {
 		c := &pl.clusters[i]
-		if pl.cluster(c.Name) != c {
-			continue // a name in two vCenters: the first only
+		// A name in two vCenters is never chosen (its rule must say which),
+		// and a name twice in one is the first.
+		if pl.ambiguous(c.Name) || pl.cluster(c.Name) != c || !hasTemplate(c.VCenter) {
+			continue
 		}
 		if plan.Network != "" && !slices.ContainsFunc(pl.networksFor(c.Name), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
 			continue
@@ -397,14 +428,36 @@ func (ev *Evaluation) vmQuota() map[string]int {
 	return q
 }
 
-// vmVars are the VMs approval policies see in vms, one entry each.
-func (ev *Evaluation) vmVars() []any {
+// allParts are the components of a VM item, or of a composite's VM steps.
+func (ev *Evaluation) allParts() []vmPart {
 	parts := ev.Parts
 	for _, c := range ev.Composite {
 		if c.sub != nil {
 			parts = append(parts, c.sub.Parts...)
 		}
 	}
+	return parts
+}
+
+// vmPolicy is what approval policies see as vm: each size the largest of
+// the VMs built (a component of none counts for nothing), and how many
+// VMs in all.
+func (ev *Evaluation) vmPolicy() map[string]any {
+	vcpu, mem, disk, found := 0, 0, 0, false
+	for _, p := range ev.allParts() {
+		if p.count > 0 {
+			vcpu, mem, disk, found = max(vcpu, p.vm.VCPU), max(mem, p.vm.MemoryGB), max(disk, p.vm.DiskGB), true
+		}
+	}
+	if !found {
+		vcpu, mem, disk = ev.VM.VCPU, ev.VM.MemoryGB, ev.VM.DiskGB
+	}
+	return map[string]any{"vcpu": vcpu, "memory_gb": mem, "disk_gb": disk, "count": max(ev.Count, ev.VMCount)}
+}
+
+// vmVars are the VMs approval policies see in vms, one entry each.
+func (ev *Evaluation) vmVars() []any {
+	parts := ev.allParts()
 	out := []any{}
 	for _, p := range parts {
 		for range p.count {
@@ -548,6 +601,25 @@ func postConfigJobs(ev *Evaluation, plan blueprint.VMPlan, order []string) ([]pr
 	return jobs, nil
 }
 
+// lockPrefixes locks the name prefixes a request gives names from, its
+// composite's steps' too, in one order, so two requests never wait on each
+// other. Locks taken again by the same transaction stack.
+func (s *Service) lockPrefixes(ctx context.Context, tx pgx.Tx, ev *Evaluation) error {
+	var prefixes []string
+	for _, p := range ev.allParts() {
+		if p.count > 0 && p.prefix != "" && !slices.Contains(prefixes, p.prefix) {
+			prefixes = append(prefixes, p.prefix)
+		}
+	}
+	slices.Sort(prefixes)
+	for _, prefix := range prefixes {
+		if err := s.Store.LockNamePrefix(ctx, tx, prefix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // componentUnit is a component's plan: its guest, anti-affinity and jobs.
 func componentUnit(ev *Evaluation, p vmPart, order []string) (provision.ComponentUnit, error) {
 	jobs, err := postConfigJobs(ev, p.vm, order)
@@ -615,18 +687,8 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 		dep.Inputs, _ = json.Marshal(ev.Inputs)
 		return dep
 	}
-	// Prefixes are locked in one order, so two requests never wait on each other.
-	var prefixes []string
-	for _, p := range ev.Parts {
-		if p.count > 0 && !slices.Contains(prefixes, p.prefix) {
-			prefixes = append(prefixes, p.prefix)
-		}
-	}
-	slices.Sort(prefixes)
-	for _, prefix := range prefixes {
-		if err := s.Store.LockNamePrefix(ctx, tx, prefix); err != nil {
-			return nil, nil, nil, err
-		}
+	if err := s.lockPrefixes(ctx, tx, ev); err != nil {
+		return nil, nil, nil, err
 	}
 	var deps []store.Deployment
 	var vms []provision.VMUnit

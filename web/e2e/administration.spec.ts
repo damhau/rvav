@@ -336,7 +336,7 @@ test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => 
   await add.getByRole("button", { name: "Save vCenter" }).click();
   const row = vcenters.getByRole("row", { name: /vc02\.corp\.example/ });
   await expect(row).toContainText("svc-rvav@vsphere.local");
-  await expect(row).toContainText("0 clusters, 0 VMs");
+  await expect(row).toContainText("Not synced yet");
 
   page.once("dialog", (d) => void d.accept());
   await vcenters.getByRole("button", { name: "Remove vc02.corp.example" }).click();

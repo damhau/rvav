@@ -14,15 +14,18 @@ can be faked in tests and swapped later.
   certificate not checked, needs it again.
 - rvav connects to each when it first needs it, and again when its
   settings change. The inventory sync reads every vCenter in turn; one
-  that fails doesn't stop the others. A vCenter that deployments have VMs
-  in can't be removed.
+  that fails doesn't stop the others, and the inventory of a vCenter no
+  longer managed goes. A vCenter that deployments have VMs in, or that
+  placement rules name, can't be removed. A VM whose vCenter name rvav
+  doesn't know is the integration's: its name may have changed since.
 - Every VM resource knows its vCenter: provisioning, day-2 actions, the
   console (the console account is the first vCenter's) and deletion use
   it. Placement rules may name the vCenter their clusters are in; a
   cluster name allowed in two vCenters needs it. When a blueprint doesn't
-  bind a cluster, rvav chooses, among those allowed in every vCenter, the
-  one with the most free memory that has the network and a datastore
-  with room.
+  bind a cluster, rvav chooses, among those allowed in every vCenter that
+  has the template, the one with the most free memory that has the
+  network and a datastore with room. Templates and storage policies are
+  checked in the vCenter the VMs go to.
 - Testing uses **vcsim** (govmomi's simulator) in unit and integration tests and in CI.
 
 ### Driver interface (sketch)

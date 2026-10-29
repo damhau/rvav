@@ -77,6 +77,10 @@ func (s *Store) DeploymentNames(ctx context.Context, prefix string) (map[string]
 	rows, _ := s.Pool.Query(ctx, `select name from deployments where starts_with(name, $1)
 		union select v->>'name' from requests r, jsonb_array_elements(case when jsonb_typeof(r.plan->'components') = 'array'
 			then r.plan->'vms' else '[]' end) v
+		where starts_with(v->>'name', $1)
+		union select v->>'name' from requests r,
+			jsonb_array_elements(case when jsonb_typeof(r.plan->'composite') = 'array' then r.plan->'composite' else '[]' end) st,
+			jsonb_array_elements(case when jsonb_typeof(st->'components') = 'array' then st->'vms' else '[]' end) v
 		where starts_with(v->>'name', $1)`, prefix)
 	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {

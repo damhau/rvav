@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plus, Power, RefreshCw, SquareTerminal } from "lucide-react";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { Page, Panel } from "@/components/common/page";
@@ -67,7 +67,14 @@ function VmTable({
       <p className="px-4 py-6 text-xs text-muted">No VMs yet. They appear here as soon as vCenter creates them.</p>
     );
   }
-  const grouped = isMulti(vms);
+  // By component, in the order they come; one group without components.
+  const groups: [string | undefined, VmResource[]][] = [];
+  for (const v of vms) {
+    const key = isMulti(vms) ? v.vm.component : undefined;
+    const last = groups[groups.length - 1];
+    if (last && last[0] === key) last[1].push(v);
+    else groups.push([key, [v]]);
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse">
@@ -90,30 +97,28 @@ function VmTable({
             </th>
           </tr>
         </thead>
-        <tbody>
-          {vms.map(({ id, name, vm }, i) => {
-            const on = vm.power_state === "on";
-            // A multi-VM deployment's VMs, by component (ADR-0024).
-            const group = grouped && vm.component !== vms[i - 1]?.vm.component ? vm.component : undefined;
-            const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
-            const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
-            const mine = actions.filter((a) => a.resource_id === id);
-            const powerBtn = powerAction(mine, on);
-            return (
-              <Fragment key={id}>
-                {group && (
-                  <tr>
-                    <th
-                      scope="colgroup"
-                      colSpan={5}
-                      className="border-b border-line bg-sunken px-4 py-1.5 text-left text-[11px] font-medium text-muted"
-                    >
-                      {group} · {vms.filter((v) => v.vm.component === group).length} VM
-                      {vms.filter((v) => v.vm.component === group).length === 1 ? "" : "s"}
-                    </th>
-                  </tr>
-                )}
-                <tr className="hover:bg-sunken">
+        {/* A multi-VM deployment's VMs, a row group per component (ADR-0024). */}
+        {groups.map(([component, list]) => (
+          <tbody key={component ?? "vms"}>
+            {component && (
+              <tr>
+                <th
+                  scope="rowgroup"
+                  colSpan={5}
+                  className="border-b border-line bg-sunken px-4 py-1.5 text-left text-[11px] font-medium text-muted"
+                >
+                  {component} · {list.length} VM{list.length === 1 ? "" : "s"}
+                </th>
+              </tr>
+            )}
+            {list.map(({ id, name, vm }) => {
+              const on = vm.power_state === "on";
+              const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
+              const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
+              const mine = actions.filter((a) => a.resource_id === id);
+              const powerBtn = powerAction(mine, on);
+              return (
+                <tr key={id} className="hover:bg-sunken">
                   <td className="border-b border-line px-4 py-2.5">
                     <span className="flex items-center gap-2">
                       <PowerDot on={on} />
@@ -185,10 +190,10 @@ function VmTable({
                     </span>
                   </td>
                 </tr>
-              </Fragment>
-            );
-          })}
-        </tbody>
+              );
+            })}
+          </tbody>
+        ))}
       </table>
     </div>
   );
@@ -237,7 +242,10 @@ function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[]
       "Datastore",
       distinct(vms, (v) => v.vm.disks[0]?.datastore),
     ),
-    ["Folder", vm.vm.folder],
+    row(
+      "Folder",
+      distinct(vms, (v) => v.vm.folder),
+    ),
     row(
       "Network",
       distinct(vms, (v) => v.vm.nics[0]?.network),

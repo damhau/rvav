@@ -96,3 +96,23 @@ func TestSingleVMBlueprint(t *testing.T) {
 		t.Fatalf("plan = %+v, missing %v", plan, missing)
 	}
 }
+
+func TestCheckUserData(t *testing.T) {
+	for text, ok := range map[string]bool{
+		"#cloud-config\nhostname: {{ .vm.name }}":              true,
+		"motd: {{ .inputs.motd | json }}":                      true,
+		"{{ if .inputs.debug }}debug: true{{ end }}":           true,
+		"{{ $m := .inputs.motd }}motd: {{ $m | json }}":        true,
+		"motd: {{ .inputs.motd }}":                             false,
+		"motd: {{ printf \"%s\" .inputs.motd }}":               false,
+		"{{ $m := .inputs.motd }}motd: {{ $m }}":               false,
+		"{{ range .inputs.users }}- {{ . }}\n{{ end }}":        false,
+		"{{ range .inputs.users }}- {{ . | json }}\n{{ end }}": true,
+		"{{ with .inputs.motd }}motd: {{ . }}{{ end }}":        false,
+		"fqdn: {{ $.vm.fqdn }}":                                true,
+	} {
+		if err := CheckUserData(text); (err == nil) != ok {
+			t.Errorf("%q: %v", text, err)
+		}
+	}
+}

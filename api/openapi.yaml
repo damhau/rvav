@@ -2650,11 +2650,12 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [admin]
       operationId: deleteVCenter
-      summary: Stop managing a vCenter; refused while deployments have VMs there
+      summary: Stop managing a vCenter; refused while deployments have VMs there or placement rules name it
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4183,9 +4184,9 @@ components:
         components:
           type: array
           description: |
-            What each component of the blueprint builds (ADR-0024), in its
-            order; a single-VM item has one, `vm`. Absent for items that
-            build no VM.
+            What each component of a VM item builds (ADR-0024), in its
+            order; a single-VM item has one, `vm`. Absent for other items,
+            composites with VM steps among them.
           items: { $ref: "#/components/schemas/PreviewComponent" }
 
     PreviewComponent:

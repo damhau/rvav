@@ -40,24 +40,24 @@ type conn struct {
 	updated time.Time
 }
 
-// Get connects to a vCenter by name; "" is the primary.
+// Get connects to a vCenter by name; "" is the primary, and so is a name
+// rvav doesn't know: the integration's may have been renamed since a VM
+// was built (only vCenters without VMs can be removed).
 func (s *Set) Get(ctx context.Context, name string) (vsphere.Driver, error) {
-	if name == "" || name == s.PrimaryName {
+	row, err := s.Store.GetVCenter(ctx, name)
+	if name == "" || name == s.PrimaryName || errors.Is(err, store.ErrNotFound) {
 		if s.Primary == nil {
-			return nil, errors.New("no vCenter is configured")
+			return nil, fmt.Errorf("%s: %w", name, ErrUnknown)
 		}
 		return s.Primary(ctx)
-	}
-	row, err := s.Store.GetVCenter(ctx, name)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("%s: %w", name, ErrUnknown)
 	}
 	if err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if c, ok := s.conns[name]; ok && c.updated.Equal(row.UpdatedAt) {
+	c, ok := s.conns[name]
+	s.mu.Unlock()
+	if ok && c.updated.Equal(row.UpdatedAt) {
 		return c.d, nil
 	}
 	password := ""
@@ -77,10 +77,13 @@ func (s *Set) Get(ctx context.Context, name string) (vsphere.Driver, error) {
 			return vsphere.New(ctx, name, url, username, password, insecure)
 		}
 	}
+	// Outside the lock: a vCenter slow to answer doesn't hold up the others.
 	d, err := dial(ctx, name, row.URL, row.Username, password, row.Insecure)
 	if err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.conns == nil {
 		s.conns = map[string]conn{}
 	}

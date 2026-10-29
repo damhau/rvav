@@ -68,7 +68,8 @@ func TestPostgresCluster(t *testing.T) {
 			switch v, _ := r.ValueByDiscriminator(); v := v.(type) {
 			case api.VmResource:
 				hosts[deref(v.Vm.Host)] = true
-				if len(v.Vm.Disks) != 2 || v.Vm.Disks[1].CapacityGb != 50 {
+				// Size S: 60 GB of system disk, then the data disk.
+				if len(v.Vm.Disks) != 2 || v.Vm.Disks[0].CapacityGb != 60 || v.Vm.Disks[1].CapacityGb != 50 {
 					t.Fatalf("%s disks = %+v", v.Name, v.Vm.Disks)
 				}
 			case api.DrsRuleResource:

@@ -39,33 +39,73 @@ type dnsProps struct {
 	ID    string `json:"efficientip_id"`
 }
 
-// renameAddress renames the VM's address in EfficientIP, under the FQDN as
-// when it was reserved.
+type addressProps struct {
+	Address  string `json:"address"`
+	Subnet   string `json:"subnet"`
+	ID       string `json:"efficientip_id"`
+	Hostname string `json:"hostname"`
+	FQDN     string `json:"fqdn"`
+	NIC      string `json:"nic"`
+}
+
+// renames are the FQDNs the VM's rename changes, old to new: its own, and
+// each added adapter's, <name>-<key> in its zone (ADR-0024).
+func (a *Activities) renames(ctx context.Context, in OpInput) (map[string]string, error) {
+	oldName, name := argStr(in.Op.Args, "old_name"), argStr(in.Op.Args, "name")
+	out := map[string]string{argStr(in.Op.Args, "old_fqdn"): argStr(in.Op.Args, "fqdn")}
+	addresses, err := a.deploymentResources(ctx, in.DeploymentID, "ipam.address")
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range addresses {
+		var p addressProps
+		_ = json.Unmarshal(r.Properties, &p)
+		if p.NIC == "" || p.Hostname != oldName && p.Hostname != name {
+			continue
+		}
+		if zone, ok := strings.CutPrefix(p.FQDN, oldName+"-"+p.NIC+"."); ok {
+			out[p.FQDN] = name + "-" + p.NIC + "." + zone
+		}
+	}
+	delete(out, "")
+	return out, nil
+}
+
+// renameAddress renames the VM's addresses in EfficientIP, under the FQDN
+// as when they were reserved: its own, and its added adapters'.
 func (a *Activities) renameAddress(ctx context.Context, in OpInput) (string, error) {
 	oldName, fqdn := argStr(in.Op.Args, "old_name"), argStr(in.Op.Args, "fqdn")
 	addresses, err := a.deploymentResources(ctx, in.DeploymentID, "ipam.address")
 	if err != nil {
 		return "", err
 	}
+	renames, err := a.renames(ctx, in)
+	if err != nil {
+		return "", err
+	}
+	var done []string
 	for _, r := range addresses {
-		var p struct {
-			Address  string `json:"address"`
-			Subnet   string `json:"subnet"`
-			ID       string `json:"efficientip_id"`
-			Hostname string `json:"hostname"`
-			FQDN     string `json:"fqdn"`
-		}
+		var p addressProps
 		_ = json.Unmarshal(r.Properties, &p)
 		if p.Hostname != oldName && p.Hostname != argStr(in.Op.Args, "name") {
 			continue
 		}
+		to := fqdn
+		if p.NIC != "" {
+			if to = renames[p.FQDN]; to == "" {
+				continue // renamed already
+			}
+		}
 		addr := efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)}
-		if err := a.IPAM.RenameAddress(ctx, addr, fqdn); err != nil {
+		if err := a.IPAM.RenameAddress(ctx, addr, to); err != nil {
 			return "", fmt.Errorf("EfficientIP: %w", err)
 		}
-		return p.Address + " is now " + fqdn, nil
+		done = append(done, p.Address+" is now "+to)
 	}
-	return "No address to rename", nil
+	if len(done) == 0 {
+		return "No address to rename", nil
+	}
+	return strings.Join(done, ", "), nil
 }
 
 // checkName makes sure, just before the rename, that DNS and IPAM don't
@@ -73,12 +113,18 @@ func (a *Activities) renameAddress(ctx context.Context, in OpInput) (string, err
 // approval may have taken days.
 func (a *Activities) checkName(ctx context.Context, in OpInput) (string, error) {
 	fqdn := argStr(in.Op.Args, "fqdn")
-	taken, err := a.IPAM.NameExists(ctx, fqdn)
+	renames, err := a.renames(ctx, in)
 	if err != nil {
-		return "", fmt.Errorf("EfficientIP: %w", err)
+		return "", err
 	}
-	if taken {
-		return "", permanent("%s is already in DNS or IPAM", fqdn)
+	for _, to := range renames {
+		taken, err := a.IPAM.NameExists(ctx, to)
+		if err != nil {
+			return "", fmt.Errorf("EfficientIP: %w", err)
+		}
+		if taken {
+			return "", permanent("%s is already in DNS or IPAM", to)
+		}
 	}
 	return fqdn + " is free", nil
 }
@@ -93,15 +139,20 @@ func (a *Activities) renameDNS(ctx context.Context, in OpInput) (string, error) 
 	if err != nil {
 		return "", err
 	}
+	// The VM's own records and its added adapters'.
+	renames, err := a.renames(ctx, in)
+	if err != nil {
+		return "", err
+	}
 	for _, r := range records {
 		var p dnsProps
 		_ = json.Unmarshal(r.Properties, &p)
 		next := p
 		switch {
-		case p.Type == "A" && p.FQDN == oldFQDN:
-			next.FQDN = fqdn
-		case p.Type == "PTR" && p.Value == oldFQDN:
-			next.Value = fqdn
+		case p.Type == "A" && renames[p.FQDN] != "":
+			next.FQDN = renames[p.FQDN]
+		case p.Type == "PTR" && renames[p.Value] != "":
+			next.Value = renames[p.Value]
 		default:
 			continue
 		}
@@ -149,6 +200,10 @@ func (a *Activities) renameRecords(ctx context.Context, in OpInput) (string, err
 	if err != nil {
 		return "", err
 	}
+	renames, err := a.renames(ctx, in)
+	if err != nil {
+		return "", err
+	}
 	for _, r := range list {
 		var props map[string]any
 		_ = json.Unmarshal(r.Properties, &props)
@@ -159,7 +214,12 @@ func (a *Activities) renameRecords(ctx context.Context, in OpInput) (string, err
 			}
 			r.Name = name
 		case r.Type == "ipam.address" && props["hostname"] == oldName:
+			old, _ := props["fqdn"].(string)
 			props["hostname"], props["fqdn"] = name, fqdn
+			// An added adapter's address keeps its own name (ADR-0024).
+			if nic, _ := props["nic"].(string); nic != "" {
+				props["fqdn"] = cmp.Or(renames[old], old)
+			}
 		default:
 			continue
 		}

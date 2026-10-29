@@ -87,8 +87,10 @@ components:
   first adapter, `<name>-<key>` for the others. Customisation gives each
   adapter its address; only the first has the gateway. A `dhcp` adapter
   gets neither address nor records.
-- Strings in `disks` and `nics` are CEL, as bindings are (a literal is
-  quoted: `'"dvpg-backup-vl900"'`); numbers are themselves.
+- In `disks`, `size_gb` and `datastore` are CEL, as bindings are, and in
+  `nics`, `network` (a literal is quoted: `'"dvpg-backup-vl900"'`);
+  numbers are themselves. `storage_policy`, `key` and `ipam` are plain
+  values.
 
 ### vSphere tags
 `tags` lists fixed tags as `category/tag`; `bindings.tags` is CEL giving
@@ -117,10 +119,12 @@ and vCenters.
 - A component's `cluster`, `datastore` and `network` are checked against
   the project's placement rules for the environment, as a single VM's are.
 - When `cluster` isn't bound, rvav chooses: among the clusters placement
-  allows that carry the component's network and an allowed datastore with
-  room for its disks, the one with the most free memory. When `datastore`
-  isn't bound, the allowed datastore of that cluster with the most free
-  space. The network is always chosen (it decides the subnet).
+  allows that carry the component's network, enough hosts to keep its VMs
+  apart and an allowed datastore with room for its disks, the one with
+  the most free memory. When `datastore` isn't bound, the allowed
+  datastore of that cluster with the most free space. When none fits, the
+  request is refused. The network is always chosen (it decides the
+  subnet).
 - **Storage policies** (SPBM): a placement rule may name one; a disk's or
   component's `storage_policy` wins over it. It applies to the VM's home
   and disks.
@@ -140,7 +144,9 @@ and vCenters.
   domain, time zone and addresses. With `cloud_init.user_data`, the VM
   gets cloud-init through `guestinfo` (cloud-init's VMware data source)
   instead: the user data is a Go template over `.vm` (name, fqdn, ip,
-  nics), `.inputs`, `.project`, `.environment` and `.request`; the
+  ips), `.inputs`, `.project`, `.environment` and `.request`, where an
+  input is printed only through `json` (`{{ .inputs.motd | json }}`, a
+  quoted scalar), so what a requester types can't add YAML of its own; the
   metadata holds the host name and the network (version 2), so the
   addresses are set the same way.
 - **Windows**: Sysprep sets the computer name, the time zone (a Windows
@@ -164,9 +170,10 @@ and vCenters.
 - **Resources**: every VM (with its `component`), every address and
   record, and every DRS rule.
 - **Quotas** count every VM: vCPU, memory, storage (every disk) and VMs.
-- **Approval policies** see `vm` as before (the first VM, `count` all of
-  them) and `vms`, one entry per VM: `component`, `vcpu`, `memory_gb`,
-  `storage_gb`.
+- **Approval policies** see `vm` as before, each of its sizes the largest
+  of the VMs built and `count` all of them (so a policy written for one VM
+  never under-counts), and `vms`, one entry per VM: `component`, `vcpu`,
+  `memory_gb`, `storage_gb`.
 - **Lease**: one, the deployment's; its expiry acts on every VM.
 - **Day-2**: VM actions act on one VM, deployment actions on all of them;
   deleting removes every VM, address, record and rule. A component's
@@ -200,7 +207,12 @@ before it finish the way they began.
   The worker connects to each when it first needs it; day-2 actions and
   the console use the VM's own.
 - A cluster name found in two vCenters is ambiguous: a placement rule
-  allowing it must name the vCenter.
+  allowing it must name the vCenter. Templates and storage policies are
+  checked in the vCenter the VMs go to, and rvav chooses only a vCenter
+  that has the template.
+- A vCenter that deployments have VMs in, or that placement rules name,
+  can't be removed. A VM whose vCenter name rvav doesn't know is the
+  integration's: its name may have changed since the VM was built.
 
 ## Consequences
 - vRA templates with several machines, disks, adapters and tags translate

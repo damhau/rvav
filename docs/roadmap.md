@@ -27,11 +27,11 @@ demo script is [demo-r1.md](demo-r1.md), and the report for the go/no-go
 is [release-r1.md](release-r1.md): what remains needs real infrastructure
 (the [Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9)).
 
-R2 (slices 10 to 14) is under way. S10, extensibility, is built and
-accepted on a real Temporal server and the compose stack. Event
-subscriptions are in [ADR-0021](adr/0021-event-subscriptions.md); custom
-workflows and composites in
-[ADR-0022](adr/0022-custom-workflows-and-composites.md):
+R2 (slices 10 to 14) is under way: S10 to S12 are built. S10,
+extensibility, is built and accepted on a real Temporal server and the
+compose stack. Event subscriptions are in
+[ADR-0021](adr/0021-event-subscriptions.md); custom workflows and
+composites in [ADR-0022](adr/0022-custom-workflows-and-composites.md):
 
 - **Events:** requests, provisioning, day-2 actions, deletions and leases
   publish events through an outbox written with each change.
@@ -71,6 +71,32 @@ stack with Mailpit ([ADR-0023](adr/0023-notifications.md)):
 
 A real mail server, Teams tenant and Slack workspace are in
 [Lab acceptance](https://github.com/damhau/rvav/milestone/9).
+
+S12, advanced provisioning, is built and accepted on vcsim, on a real
+Temporal server, and on the compose stack
+([ADR-0024](adr/0024-multi-vm-blueprints.md)):
+
+- **Multi-VM blueprints:** components, groups of VMs with their count,
+  template, size, placement, guest and post-configuration, are built as
+  one deployment, at the same time, in one timeline. A component's VMs
+  can be kept on separate hosts by a DRS rule. A failure rolls them all
+  back, and a retry resumes per VM.
+- **Disks, adapters and tags:** added disks on any datastore, added
+  adapters with their own EfficientIP address and DNS records (or DHCP),
+  and vSphere tags from the blueprint and the inputs.
+- **Guests:** Windows VMs join the domain, in an OU, with the account of
+  a stored secret, on a vCenter customization specification; Linux VMs
+  can get cloud-init through guestinfo instead.
+- **Templates and storage:** templates from content libraries, and
+  storage policies from the placement rule, the blueprint or the disk.
+- **Several vCenters:** administrators add vCenters, which are synced,
+  placed on (rvav chooses the cluster when a blueprint doesn't), and
+  acted on per VM.
+- **The PostgreSQL cluster** is the reference composite: three nodes kept
+  apart, made a Patroni cluster by AWX, then the database's owner role.
+
+What only real vCenters, guests and a domain can show is in
+[Lab acceptance](https://github.com/damhau/rvav/issues/83).
 
 S9
 projects, placement and governance is built and accepted on the compose

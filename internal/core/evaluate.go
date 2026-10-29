@@ -352,7 +352,7 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"environment": ev.Env.Key,
 		"project":     map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name},
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
-		"vm":          map[string]any{"vcpu": ev.VM.VCPU, "memory_gb": ev.VM.MemoryGB, "disk_gb": ev.VM.DiskGB, "count": max(ev.Count, ev.VMCount)},
+		"vm":          ev.vmPolicy(),
 		"vms":         ev.vmVars(),
 		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles, "groups": nonNilStrings(p.Groups)},
 		"quota":       quotaVars(ev.OverSoft),

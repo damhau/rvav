@@ -101,7 +101,7 @@ func pgNode() (schema, ui, initial, blueprint map[string]any) {
 	}}, "fields": fields}
 	blueprint = map[string]any{
 		"kind": "vm", "naming": "{project}-{environment}-pg{inputs.name}{seq:02}", "deployment_name": "{project}-{environment}-pg-{inputs.name}",
-		"template": "tpl-rhel9.4-2026.10", "rollback_on_failure": true,
+		"template": "tpl-rhel9.4-2026.10", "rollback_on_failure": true, "sizes": sizes,
 		"guest": map[string]any{"os_family": "linux", "domain": "corp.example", "time_zone": "Europe/Zurich"},
 		"bindings": map[string]any{
 			"vcpu": "sizes[inputs.size].vcpu", "memory_gb": "sizes[inputs.size].memory_gb", "disk_gb": "sizes[inputs.size].disk_gb",

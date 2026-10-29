@@ -135,6 +135,22 @@ func TestSeveralVCenters(t *testing.T) {
 			deref(pl.Datastore) != "vsan-zrh-dev-cl01" {
 			t.Fatalf("preview = %+v / %+v", pv.Errors, pl)
 		}
+		// A template only Geneva has: rvav chooses Geneva's cluster.
+		ubuntu := guestItem("tpl-ubuntu24.04-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example"})
+		delete(ubuntu.Blueprint["bindings"].(map[string]any), "cluster")
+		delete(ubuntu.Blueprint["bindings"].(map[string]any), "datastore")
+		var genevaOnly api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "ubuntu-anywhere", Name: "Ubuntu anywhere",
+			Summary: "Placed by rvav.", Category: "compute", Type: api.VmBlueprint, Definition: &ubuntu}, 201, &genevaOnly)
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-anywhere/versions/"+genevaOnly.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/ubuntu-anywhere/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		geneva := draft
+		geneva.CatalogItemId, geneva.VersionId = genevaOnly.Id, genevaOnly.DraftVersion.Id
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", geneva, 200, &pv)
+		if pl := (*pv.Components)[0].Placement; !pv.Valid || deref(pl.Vcenter) != "vc01.corp.example" || deref(pl.Cluster) != "GVA-DEV-CL01" {
+			t.Fatalf("Geneva's template = %+v / %+v", pv.Errors, pl)
+		}
+
 		var req api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
 		h.runWorkflow(req.Id, nil)
@@ -202,7 +218,10 @@ func TestSeveralVCenters(t *testing.T) {
 			t.Fatalf("pinned to vc01 = %+v / %+v", pv.Errors, (*pv.Components)[0].Placement)
 		}
 
-		// Without VMs there any more, Zurich can go, with its inventory.
+		// Without VMs there any more, Zurich can go, with its inventory, once
+		// no placement rule names it.
+		h.json("DELETE", "/api/v1/admin/vcenters/"+vc02, admin, nil, 409, nil)
+		h.json("DELETE", "/api/v1/admin/placement-rules/"+dev.Id, admin, nil, 204, nil)
 		h.json("DELETE", "/api/v1/admin/vcenters/"+vc02, admin, nil, 204, nil)
 		var left int
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from inv_clusters where vcenter = $1`, vc02).Scan(&left)

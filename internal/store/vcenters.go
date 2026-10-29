@@ -83,6 +83,25 @@ func (s *Store) DeleteVCenter(ctx context.Context, name string) error {
 	})
 }
 
+// PruneInventory forgets the inventory of every vCenter but those named.
+func (s *Store) PruneInventory(ctx context.Context, keep []string) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies"} {
+			if _, err := tx.Exec(ctx, `delete from `+t+` where vcenter <> all($1::text[])`, keep); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// PlacementRulesNaming counts the placement rules naming a vCenter.
+func (s *Store) PlacementRulesNaming(ctx context.Context, vcenter string) (int, error) {
+	var n int
+	err := s.Pool.QueryRow(ctx, `select count(*) from placement_rules where vcenter = $1`, vcenter).Scan(&n)
+	return n, err
+}
+
 // VCenterInventory is what the inventory sync last read from a vCenter.
 type VCenterInventory struct {
 	Clusters int

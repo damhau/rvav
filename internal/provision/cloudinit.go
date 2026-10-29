@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"text/template"
+
+	"github.com/damhau/rvav/internal/blueprint"
 )
 
 // cloud-init through guestinfo (ADR-0024): cloud-init's VMware data source
@@ -64,7 +65,7 @@ func nonNil(s []string) []string {
 // renderUserData renders a blueprint's user data template over what the
 // VM and its request are; a value it names that isn't there is an error.
 func renderUserData(text string, vars map[string]any) (string, error) {
-	t, err := template.New("user_data").Option("missingkey=error").Parse(text)
+	t, err := blueprint.ParseUserData(text)
 	if err != nil {
 		return "", err
 	}

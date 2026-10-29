@@ -144,10 +144,12 @@ func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []Comp
 				again = again || fresh[i]
 			}
 		}
-		if len(in.VMs) < 2 || info.done(in.Key) && !again {
+		in.Name = c.RuleName(in.DeploymentID)
+		// Done, unchanged and still there (a rollback that stopped halfway
+		// may have removed it).
+		if len(in.VMs) < 2 || info.done(in.Key) && !again && info.Rules[in.Name] {
 			continue
 		}
-		in.Name = c.RuleName(in.DeploymentID)
 		if err := workflow.ExecuteActivity(ctx, a.CreateDRSRule, in).Get(ctx, nil); err != nil {
 			return fail(in.Key, err)
 		}

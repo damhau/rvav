@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"text/template"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/blueprint"
@@ -65,6 +64,8 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 			add(at+"/key", "pattern", "A key of up to 16 lower-case letters and digits, starting with a letter: it goes into VM names.")
 		case keys[c.Key]:
 			add(at+"/key", "duplicate", "Another component has the key "+c.Key+".")
+		case c.Key == blueprint.SingleKey:
+			add(at+"/key", "reserved", blueprint.SingleKey+" is a single VM's: give the component another key.")
 		}
 		keys[c.Key] = true
 		literal := -1
@@ -201,7 +202,7 @@ func checkGuest(ptr string, g blueprint.Guest, publish bool) []api.FieldError {
 		}
 		if strings.TrimSpace(ci.UserData) == "" {
 			add(ptr+"/cloud_init/user_data", "required", "Give the user data, for example a #cloud-config document.")
-		} else if _, err := template.New("user_data").Option("missingkey=error").Parse(ci.UserData); err != nil {
+		} else if err := blueprint.CheckUserData(ci.UserData); err != nil {
 			add(ptr+"/cloud_init/user_data", "invalid", "The user data is not a valid template: "+err.Error())
 		}
 		if g.CustomizationSpec != "" {

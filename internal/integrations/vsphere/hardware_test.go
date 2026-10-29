@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 )
@@ -71,6 +72,42 @@ func TestDeployFromLibrary(t *testing.T) {
 			if _, err := d.CloneVM(ctx, s); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("%+v: %v", bad, err)
 			}
+		}
+	})
+}
+
+// A VM an earlier attempt cloned but didn't finish is finished like a new
+// one: its size, extra config and the disks it lacks; what its template
+// gave (here two disks) is counted, not assumed (from S12's review).
+func TestCloneFinishesAnEarlierAttempt(t *testing.T) {
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		if err := Bootstrap(ctx, c, DefaultLayout()); err != nil {
+			t.Fatal(err)
+		}
+		d := NewFromVim("vc01.corp.example", c)
+		spec := VMSpec{Name: "web-dev-half01", Template: "tpl-rhel9.4-2026.10", Cluster: "GVA-DEV-CL01", Datastore: "vsan-gva-dev-cl01",
+			Network: "dvpg-app-dev-vl310", Folder: "/GVA/vm/rvav/web/dev", VCPU: 4, MemoryMB: 8192, DiskGB: 60,
+			ExtraConfig: map[string]string{"guestinfo.rvav.deployment": "dep_half"}, Disks: []DiskSpec{{SizeGB: 10}}}
+		// The earlier attempt: cloned only, from a template of two disks.
+		w, err := d.where(ctx, c, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tpl, _ := findRef(ctx, c, "VirtualMachine", spec.Template)
+		ref, err := d.cloneTemplate(ctx, c, object.NewVirtualMachine(c, tpl), spec, w.pool, w.host, w.folder, w.datastore, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := d.AddDisk(ctx, ref.Value, 5); err != nil {
+			t.Fatal(err)
+		}
+		vm, err := d.CloneVM(ctx, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if vm.Moref != ref.Value || vm.CPUCount != 4 || vm.MemoryMB != 8192 || len(vm.Disks) != 3 || vm.Disks[0].CapacityGB != 60 ||
+			vm.Disks[2].CapacityGB != 10 {
+			t.Fatalf("finished VM = %+v / %+v", vm, vm.Disks)
 		}
 	})
 }

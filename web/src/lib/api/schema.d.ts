@@ -1935,7 +1935,7 @@ export interface paths {
         /** Change a vCenter (the password is kept when not given) */
         put: operations["updateVCenter"];
         post?: never;
-        /** Stop managing a vCenter; refused while deployments have VMs there */
+        /** Stop managing a vCenter; refused while deployments have VMs there or placement rules name it */
         delete: operations["deleteVCenter"];
         options?: never;
         head?: never;
@@ -2934,9 +2934,9 @@ export interface components {
                 expires_at?: string | null;
             };
             /**
-             * @description What each component of the blueprint builds (ADR-0024), in its
-             *     order; a single-VM item has one, `vm`. Absent for items that
-             *     build no VM.
+             * @description What each component of a VM item builds (ADR-0024), in its
+             *     order; a single-VM item has one, `vm`. Absent for other items,
+             *     composites with VM steps among them.
              */
             components?: components["schemas"]["PreviewComponent"][];
         };
@@ -8185,6 +8185,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
         };
     };

@@ -44,13 +44,13 @@ function TestResult({ test }: { test: S["IntegrationTest"] }) {
 
 function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void }) {
   const qc = useQueryClient();
-  const [f, setF] = useState({
+  const [f, setFNow] = useState({
     name: vc?.name ?? "",
     url: vc?.url ?? "",
     username: vc?.username ?? "",
     insecure: vc?.insecure ?? false,
   });
-  const [password, setPassword] = useState("");
+  const [password, setPasswordNow] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const body = (): S["VCenterWrite"] => ({ ...f, ...(password ? { password } : {}) });
   const save = useMutation({
@@ -71,11 +71,22 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
   const test = useMutation({
     mutationFn: () =>
       call(api.POST("/admin/vcenters/{name}/test", { params: { path: { name: f.name || "new" } }, body: body() })),
+    onMutate: () => setErrors({}),
+    onSuccess: () => setErrors({}),
     onError: (e) => {
       setErrors(fieldErrors(e));
       failed(e, "The test didn't run");
     },
   });
+  // A test result describes the settings it ran with: changed, it goes.
+  const setF = (next: typeof f) => {
+    setFNow(next);
+    test.reset();
+  };
+  const setPassword = (next: string) => {
+    setPasswordNow(next);
+    test.reset();
+  };
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent title={vc ? `Change ${vc.name}` : "Add a vCenter"} className="w-[min(560px,calc(100vw-32px))]">

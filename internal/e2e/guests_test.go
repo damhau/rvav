@@ -100,8 +100,32 @@ func TestGuests(t *testing.T) {
 			return vm
 		}
 
-		// A secret that doesn't exist, or of the wrong kind, is refused.
+		// A size the bindings can't work out (no sizes here) is refused,
+		// rather than a VM of the template's size.
 		var problem struct{ Errors []api.FieldError }
+		sizeless := guestItem("tpl-rhel9.4-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example"})
+		sizeless.Blueprint["bindings"].(map[string]any)["vcpu"] = "sizes[inputs.role].vcpu"
+		odd := publish("sizeless", sizeless, 200)
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: odd.Id, VersionId: odd.DraftVersion.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "odd", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}, 422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) != 1 || deref(problem.Errors[0].Code) != "invalid_size" {
+			t.Fatalf("a size not worked out = %+v", problem.Errors)
+		}
+
+		// A tag that can't be attached (its category is missing) fails the
+		// clone after the VM was made: it is recorded, and rolled back.
+		tagged := guestItem("tpl-rhel9.4-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example"})
+		tagged.Blueprint["tags"], tagged.Blueprint["rollback_on_failure"] = []any{"nosuchcategory/x"}, true
+		tagItem := publish("tagged", tagged, 200)
+		if req := request(tagItem, "tag"); req.Status != api.RequestStatusFailed || !strings.Contains(errorOf(req), "nosuchcategory") {
+			t.Fatalf("a missing tag category = %s %s", req.Status, errorOf(req))
+		}
+		if vmExists(ctx, c, "web-dev-tag01") {
+			t.Fatal("the VM whose tags failed is still in vCenter")
+		}
+
+		// A secret that doesn't exist, or of the wrong kind, is refused.
 		bad := guestItem("tpl-win2025-std-2026.09", map[string]any{"os_family": "windows", "domain": "corp.example",
 			"domain_join": map[string]any{"domain": "corp.example", "credential": "win-admin"}, "admin_password": "nope"})
 		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "win-bad", Name: "w", Summary: "w",
@@ -137,7 +161,7 @@ func TestGuests(t *testing.T) {
 
 		// Linux by cloud-init: its metadata and user data in guestinfo.
 		ubuntu := publish("ubuntu-ci", guestItem("tpl-ubuntu24.04-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example",
-			"cloud_init": map[string]any{"user_data": "#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ .inputs.role }} for {{ .request.number }}"}}), 200)
+			"cloud_init": map[string]any{"user_data": "#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ printf \"%s for %s\" .inputs.role .request.number | json }}"}}), 200)
 		// vcsim has no cloud-init to set the guest's address: the test does,
 		// as the guest would once it booted.
 		var ci api.Request
@@ -170,7 +194,7 @@ func TestGuests(t *testing.T) {
 		_ = json.Unmarshal(rawMeta, &meta)
 		var ip string
 		_ = h.store.Pool.QueryRow(ctx, `select name from resources where request_id = $1 and type = 'ipam.address'`, ci.Id).Scan(&ip)
-		if string(user) != "#cloud-config\nfqdn: web-dev-ci01.corp.example\nfinal_message: ci for "+ci.Number ||
+		if string(user) != "#cloud-config\nfqdn: web-dev-ci01.corp.example\nfinal_message: \"ci for "+ci.Number+"\"" ||
 			meta.Local != "web-dev-ci01" || len(meta.Network.Ethernets["nic0"].Addresses) != 1 ||
 			meta.Network.Ethernets["nic0"].Addresses[0] != ip+"/24" {
 			t.Fatalf("user data %q, metadata %s (address %s)", user, rawMeta, ip)

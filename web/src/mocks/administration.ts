@@ -541,6 +541,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         if (w.networks.length === 0) errors.push(err("/networks", "Name the networks VMs may connect to."));
         if (!w.folder.startsWith("/"))
           errors.push(err("/folder", "A folder's path, for example /GVA/vm/rvav/web/dev."));
+        const known = [String(st().integrations.vcenter!.settings.name), ...st().vcenters.map((v) => v.name)];
+        if (w.vcenter && !known.includes(w.vcenter))
+          errors.push(err("/vcenter", `rvav manages no vCenter ${w.vcenter}.`));
         (w.cluster_tags ?? []).forEach((t, i) => {
           if (!/^[^/]+\/[^/]+$/.test(t)) errors.push(err(`/cluster_tags/${i}`, `"${t}" is not category/tag.`));
         });
@@ -977,17 +980,26 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         const name = method === "put" ? String(params.name) : w.name;
         const current = st().vcenters.find((v) => v.name === name);
         if (method === "put" && !current) return problem(404, "Not found");
-        if (method === "post" && current) return problem(409, "Conflict", undefined, `rvav already manages ${name}.`);
+        // Checked first, as the server does; then a name taken.
         const errors: S["FieldError"][] = [];
         if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(name))
           errors.push(err("/name", "Its host name in lower case, for example vc02.corp.example."));
+        else if (name === st().integrations.vcenter!.settings.name)
+          errors.push(err("/name", `${name} is the vCenter integration's: change it in Integrations.`));
         if (!/^https:\/\/[^/]+/.test(w.url))
           errors.push(err("/url", "Its SDK address over HTTPS, for example https://vc02.corp.example/sdk."));
         if (!w.username.trim()) errors.push(err("/username", "Give the account rvav signs in with."));
         if (!current && !w.password) errors.push(err("/password", "Give the account's password."));
-        if (current && !w.password && w.url !== current.url)
-          errors.push(err("/password", "A new address needs the password again."));
+        if (current && !w.password && (w.url !== current.url || (w.insecure && !current.insecure)))
+          errors.push(
+            err(
+              "/password",
+              "A new address, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
+            ),
+          );
         if (errors.length) return invalid(errors);
+        if (method === "post" && current) return problem(409, "Conflict", undefined, `rvav already manages ${name}.`);
+        // Not synced yet: no inventory until the sync reads it.
         const vc: S["VCenter"] = {
           name,
           url: w.url,
@@ -995,7 +1007,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           insecure: w.insecure ?? false,
           password_set: true,
           primary: false,
-          inventory: current?.inventory ?? { clusters: 0, vms: 0, synced_at: null },
+          ...(current?.inventory ? { inventory: current.inventory } : {}),
         };
         st().vcenters = [...st().vcenters.filter((v) => v.name !== name), vc];
         audited(db, `vcenter.${method === "put" ? "update" : "create"}`, "vcenter", name);

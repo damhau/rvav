@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vcenters"
 	"github.com/damhau/rvav/internal/vmprops"
 )
 
@@ -75,10 +76,10 @@ func (a *Activities) vc(ctx context.Context, name string) (vsphere.Driver, error
 		return a.VSphere, nil
 	}
 	d, err := a.VCenters.Get(ctx, name)
-	if err != nil {
+	if errors.Is(err, vcenters.ErrUnknown) {
 		return nil, permanent("vCenter %s: %v", name, err)
 	}
-	return d, nil
+	return d, err
 }
 
 // Info is what the workflow loads first.
@@ -96,8 +97,9 @@ type Info struct {
 	Done  []string         `json:"done,omitempty"`
 	Built map[string]Built `json:"built,omitempty"`
 	// BuiltVMs is the same by VM name: a multi-VM deployment has several
-	// (ADR-0024).
+	// (ADR-0024); Rules are the DRS rules still recorded.
 	BuiltVMs map[string]Built `json:"built_vms,omitempty"`
+	Rules    map[string]bool  `json:"rules,omitempty"`
 	// Outputs are what composite steps already done gave, by step key.
 	Outputs map[string]map[string]any `json:"outputs,omitempty"`
 }
@@ -299,6 +301,11 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 			}
 			b, bv := info.Built[res.DeploymentID], Built{}
 			switch res.Type {
+			case "vsphere.drs_rule":
+				if info.Rules == nil {
+					info.Rules = map[string]bool{}
+				}
+				info.Rules[res.Name] = true
 			case "ipam.address":
 				b.IP = p.Address
 				bv = info.BuiltVMs[p.Hostname]
@@ -572,21 +579,29 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 			})
 			return err
 		})
-		if errors.Is(err, vsphere.ErrNotFound) {
-			return "", "", permanent("vCenter: %v", err)
-		}
 		if err != nil {
+			// A VM made before the clone failed (adding its disks, say) is
+			// recorded, so a rollback or deletion finds it.
+			if found, ferr := vc.FindVM(ctx, in.VM.Name); ferr == nil && found != nil {
+				if _, rerr := a.recordVM(ctx, vc, in, found); rerr != nil {
+					a.Log.Warn("record a VM whose clone failed", "vm", in.VM.Name, "err", rerr)
+				}
+			}
+			if errors.Is(err, vsphere.ErrNotFound) {
+				return "", "", permanent("vCenter: %v", err)
+			}
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		moref = vm.Moref
-		// Tags after the clone, before it is recorded with them.
+		if _, err := a.recordVM(ctx, vc, in, vm); err != nil {
+			return "", "", err
+		}
+		// Tags once it is recorded: a tag that can't be attached leaves a VM
+		// a rollback deletes.
 		if err := vc.AttachTags(ctx, vm.Moref, in.VM.Tags); errors.Is(err, vsphere.ErrNotFound) {
 			return "", "", permanent("vCenter: %v. Ask an administrator to create it.", err)
 		} else if err != nil {
 			return "", "", fmt.Errorf("vCenter tags: %w", err)
-		}
-		if _, err := a.recordVM(ctx, vc, in, vm); err != nil {
-			return "", "", err
 		}
 		detail := fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref)
 		if in.VM.StoragePolicy != "" {
@@ -704,9 +719,15 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	if len(vm.NICs) < 1+len(extra) {
 		return "", "", permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
 	}
+	// The first adapter, the template's others (DHCP), then those added,
+	// last.
 	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
+	added := len(vm.NICs) - len(extra)
+	for _, n := range vm.NICs[1:added] {
+		nics = append(nics, ciNIC{MAC: n.MAC})
+	}
 	for i, n := range extra {
-		c := ciNIC{MAC: vm.NICs[i+1].MAC}
+		c := ciNIC{MAC: vm.NICs[added+i].MAC}
 		if !n.DHCP {
 			c.IP, c.PrefixLength, c.DNSServers = n.IP, n.PrefixLength, n.DNSServers
 		}

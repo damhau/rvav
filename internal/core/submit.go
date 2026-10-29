@@ -68,6 +68,10 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			return err
 		}
 		req.Number = number
+		// Every name prefix the request gives names from, in one order.
+		if err := s.lockPrefixes(ctx, tx, ev); err != nil {
+			return err
+		}
 
 		switch ev.Blueprint.Kind {
 		case blueprint.KindVM:

@@ -404,10 +404,10 @@ func (p Plan) Steps(environment string) []StepDef {
 			parent := c.StepKey()
 			switch {
 			case len(c.Components) > 0:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
 				steps = append(steps, componentSteps(c.VMs, c.Components, c.keys(), parent)...)
 			case len(c.VMs) > 0:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
 				for _, vm := range c.VMs {
 					steps = append(steps,
 						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},

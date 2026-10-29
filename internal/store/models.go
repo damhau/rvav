@@ -314,6 +314,7 @@ type InvNetwork struct {
 }
 
 type InvTemplate struct {
+	VCenter string `db:"vcenter"`
 	Moref   string `db:"moref"`
 	Name    string `db:"name"`
 	GuestOS string `db:"guest_os"`
@@ -324,8 +325,9 @@ type InvTemplate struct {
 
 // InvStoragePolicy is a vCenter storage policy (SPBM).
 type InvStoragePolicy struct {
-	ID   string `db:"id"`
-	Name string `db:"name"`
+	VCenter string `db:"vcenter"`
+	ID      string `db:"id"`
+	Name    string `db:"name"`
 }
 
 type InvVM struct {

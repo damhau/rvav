@@ -43,14 +43,16 @@ job's `job_id`, a workflow's result.
 
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
-Strings in `bindings`, `count`, `disks` and `nics` are CEL over `inputs`
-and `sizes` (a literal is quoted: `'"vsan-01"'`); numbers are themselves.
+Strings in `bindings` and `count`, a disk's `size_gb` and `datastore` and
+an adapter's `network` are CEL over `inputs` and `sizes` (a literal is
+quoted: `'"vsan-01"'`); numbers are themselves. The other fields are plain
+values.
 
 | Field | What it is |
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, ending with `{seq}` or `{seq:03}` |
 | `template`, `library` | The vCenter template; with `library`, the item of that content library |
-| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm`, `.inputs`, `.project`, `.environment`, `.request`) |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm`, `.inputs`, `.project`, `.environment`, `.request`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |

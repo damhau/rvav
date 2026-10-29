@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -137,6 +138,12 @@ func (s *Service) SaveVCenter(ctx context.Context, p *auth.Principal, name strin
 func (s *Service) DeleteVCenter(ctx context.Context, p *auth.Principal, name string) error {
 	if !p.IsAdmin() {
 		return ErrForbidden
+	}
+	// Rules naming it would allow nothing once it is gone.
+	if n, err := s.Store.PlacementRulesNaming(ctx, name); err != nil {
+		return err
+	} else if n > 0 {
+		return &ConflictError{Msg: fmt.Sprintf("%d placement rules name %s: change them first.", n, name)}
 	}
 	err := s.Store.DeleteVCenter(ctx, name)
 	if errors.Is(err, store.ErrInUse) {

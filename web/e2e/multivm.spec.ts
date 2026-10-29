@@ -29,8 +29,8 @@ test("a web application: its components, then one deployment", async ({ page }) 
   await page.getByRole("link", { name: "Open deployment" }).click();
   await expect(page.getByRole("heading", { name: "web-dev-shop" })).toBeVisible();
   const vms = page.getByRole("table");
-  await expect(vms.getByRole("columnheader", { name: "web · 3 VMs" })).toBeVisible();
-  await expect(vms.getByRole("columnheader", { name: "db · 1 VM" })).toBeVisible();
+  await expect(vms.getByRole("rowheader", { name: "web · 3 VMs" })).toBeVisible();
+  await expect(vms.getByRole("rowheader", { name: "db · 1 VM" })).toBeVisible();
   await expect(vms).toContainText("web-dev-shopdb001");
   const apart = page.getByRole("list", { name: "Kept on separate hosts" });
   await expect(apart).toContainText(

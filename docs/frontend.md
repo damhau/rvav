@@ -273,7 +273,8 @@ ones they may use; auditors see them read only.
 - A **project's page**, in tabs: **Members** (add someone found by name or
   email, change a direct role, remove; roles from a group show the group),
   **Placement** (the rules for an environment, by cluster and datastore
-  name patterns or vCenter tags, and a preview of the clusters,
+  name patterns or vCenter tags, with their storage policy and vCenter
+  ([ADR-0024](adr/0024-multi-vm-blueprints.md)), and a preview of the clusters,
   datastores, networks with their subnets, and folder a request would get,
   with what would stop it), **Quotas** (limits for the project or one
   environment, refused or sent to approval when passed, saved as a whole)
@@ -286,16 +287,20 @@ ones they may use; auditors see them read only.
   and **What applies here**, which says which policy decides the approval,
   day-2 action, lease and naming for a project and environment, with the
   quota lines.
-- **Templates and networks**: VM templates and sizes, with where each is
-  offered (projects and environments), and the network mappings, from
-  EfficientIP or by hand.
+- **Templates and networks**: VM templates (a vCenter template, or an
+  item of a content library) and sizes, with where each is offered
+  (projects and environments), and the network mappings, from EfficientIP
+  or by hand.
 - **Integrations**: the vCenter, AWX and EfficientIP settings, one tab
   each (`features/admin/IntegrationSettings.tsx`). A field an environment
   variable sets is disabled and names the variable; the password or token
   is write-only (left empty, it stays as it is). **Test connection** runs
   the server's checks with the settings on screen; after a save the page
-  says the settings apply when rvav's processes restart. The EfficientIP
-  reconcile report stays below.
+  says the settings apply when rvav's processes restart. The vCenter tab
+  lists every vCenter rvav manages below its connection
+  (`features/admin/VCenters.tsx`): the others are added, tested, changed
+  and removed there, with what the sync last read from each. The
+  EfficientIP reconcile report stays below.
 
 What each person can change follows the server: auditors read every page
 without write controls, project admins manage their projects' members and

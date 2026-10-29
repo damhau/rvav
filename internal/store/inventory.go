@@ -64,23 +64,23 @@ func (s *Store) InventoryNetworks(ctx context.Context) ([]InvNetwork, error) {
 }
 
 func (s *Store) InventoryTemplates(ctx context.Context) ([]InvTemplate, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, guest_os, library from inv_templates order by library, name`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, guest_os, library from inv_templates order by library, name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTemplate])
 }
 
 // InventoryTemplatesOf and InventoryStoragePoliciesOf are one vCenter's.
 func (s *Store) InventoryTemplatesOf(ctx context.Context, vcenter string) ([]InvTemplate, error) {
-	rows, _ := s.Pool.Query(ctx, `select moref, name, guest_os, library from inv_templates where vcenter = $1`, vcenter)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, guest_os, library from inv_templates where vcenter = $1`, vcenter)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTemplate])
 }
 
 func (s *Store) InventoryStoragePoliciesOf(ctx context.Context, vcenter string) ([]InvStoragePolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, name from inv_storage_policies where vcenter = $1`, vcenter)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, id, name from inv_storage_policies where vcenter = $1`, vcenter)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvStoragePolicy])
 }
 
 func (s *Store) InventoryStoragePolicies(ctx context.Context) ([]InvStoragePolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select distinct on (name) id, name from inv_storage_policies order by name, vcenter`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, id, name from inv_storage_policies order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvStoragePolicy])
 }
 

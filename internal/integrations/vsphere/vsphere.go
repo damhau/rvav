@@ -89,8 +89,10 @@ type Customization struct {
 	PrefixLength   int
 	Gateway        string
 	DNSServers     []string
-	// Extra are the added adapters, in order.
-	Extra []NICSetting
+	// Extra are the added adapters, in order; OtherNICs the template's own
+	// after its first, which keep DHCP.
+	Extra     []NICSetting
+	OtherNICs int
 }
 
 // NICSetting is an added adapter's address: fixed, or from DHCP. Only the
@@ -416,21 +418,31 @@ func toVM(m mo.VirtualMachine) VM {
 		vm.Template = m.Config.Template
 		vm.CPUHotAdd = m.Config.CpuHotAddEnabled != nil && *m.Config.CpuHotAddEnabled
 		vm.MemoryHotAdd = m.Config.MemoryHotAddEnabled != nil && *m.Config.MemoryHotAddEnabled
-		// Disks in controller and unit order, as vCenter numbers them; other
-		// devices in the order vCenter lists them.
-		devices := slices.Clone(m.Config.Hardware.Device)
-		slices.SortStableFunc(devices, func(a, b types.BaseVirtualDevice) int {
-			_, da := a.(*types.VirtualDisk)
-			_, db := b.(*types.VirtualDisk)
-			if !da || !db {
-				return 0
+		// Disks in controller and unit order, as vCenter numbers them;
+		// adapters by key, the first adapter first; other devices in the
+		// order vCenter lists them.
+		var disks, cards, others []types.BaseVirtualDevice
+		for _, d := range m.Config.Hardware.Device {
+			switch d.(type) {
+			case *types.VirtualDisk:
+				disks = append(disks, d)
+			case types.BaseVirtualEthernetCard:
+				cards = append(cards, d)
+			default:
+				others = append(others, d)
 			}
+		}
+		slices.SortStableFunc(disks, func(a, b types.BaseVirtualDevice) int {
 			x, y := a.GetVirtualDevice(), b.GetVirtualDevice()
 			if x.ControllerKey != y.ControllerKey {
 				return int(x.ControllerKey - y.ControllerKey)
 			}
 			return int(deref32(x.UnitNumber) - deref32(y.UnitNumber))
 		})
+		slices.SortStableFunc(cards, func(a, b types.BaseVirtualDevice) int {
+			return int(a.GetVirtualDevice().Key - b.GetVirtualDevice().Key)
+		})
+		devices := slices.Concat(disks, cards, others)
 		for _, d := range devices {
 			switch dev := d.(type) {
 			case *types.VirtualDisk:
@@ -541,49 +553,76 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err != nil {
 		return nil, err
 	}
-	if existing, err := cl.FindVM(ctx, spec.Name); err != nil {
+	existing, err := cl.FindVM(ctx, spec.Name)
+	if err != nil {
 		return nil, err
-	} else if existing != nil {
-		// An earlier attempt cloned it: what it didn't add yet is added.
-		if err := cl.addHardware(ctx, object.NewVirtualMachine(c, vmRef(existing.Moref)), spec); err != nil {
-			return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
-		}
-		return cl.vmInfo(ctx, c, vmRef(existing.Moref))
 	}
-
-	var tpl *object.VirtualMachine
-	if spec.Library == "" {
-		tplRef, err := findRef(ctx, c, "VirtualMachine", spec.Template)
-		if err != nil {
-			return nil, fmt.Errorf("template: %w", err)
-		}
-		tpl = object.NewVirtualMachine(c, tplRef)
+	// A VM an earlier attempt made and booted is as it should be.
+	if existing != nil && existing.PowerState == "on" {
+		return existing, nil
 	}
 	policy, err := policyID(ctx, c, spec.StoragePolicy)
 	if err != nil {
 		return nil, err
 	}
-	clusterRef, err := findRef(ctx, c, "ClusterComputeResource", spec.Cluster)
+	w, err := cl.where(ctx, c, spec)
 	if err != nil {
 		return nil, err
+	}
+	var ref types.ManagedObjectReference
+	switch {
+	case existing != nil:
+		// An earlier attempt made it: it is finished below, as a new one is.
+		ref = vmRef(existing.Moref)
+	case spec.Library != "":
+		if ref, err = cl.deployFromLibrary(ctx, c, spec, w.pool, w.host, w.folder.Reference(), w.datastore, policy); err != nil {
+			return nil, err
+		}
+	default:
+		tplRef, err := findRef(ctx, c, "VirtualMachine", spec.Template)
+		if err != nil {
+			return nil, fmt.Errorf("template: %w", err)
+		}
+		if ref, err = cl.cloneTemplate(ctx, c, object.NewVirtualMachine(c, tplRef), spec, w.pool, w.host, w.folder, w.datastore, policy); err != nil {
+			return nil, err
+		}
+	}
+	if err := cl.finish(ctx, c, object.NewVirtualMachine(c, ref), spec, policy, w); err != nil {
+		return nil, fmt.Errorf("%s: %w", spec.Name, err)
+	}
+	return cl.vmInfo(ctx, c, ref)
+}
+
+// placed is where a VM goes: the cluster's resource pool, a host, the
+// datastore and the folder.
+type placed struct {
+	pool, host, datastore types.ManagedObjectReference
+	folder                *object.Folder
+}
+
+// where places a VM: on a connected host of the cluster that mounts the
+// datastore, so it never lands outside the cluster; VMs kept apart take the
+// eligible hosts in turn.
+func (cl *Client) where(ctx context.Context, c *vim25.Client, spec VMSpec) (placed, error) {
+	var w placed
+	clusterRef, err := findRef(ctx, c, "ClusterComputeResource", spec.Cluster)
+	if err != nil {
+		return w, err
 	}
 	pc := property.DefaultCollector(c)
 	var cluster mo.ClusterComputeResource
 	if err := pc.RetrieveOne(ctx, clusterRef, []string{"resourcePool", "host"}, &cluster); err != nil {
-		return nil, err
+		return w, err
 	}
 	if cluster.ResourcePool == nil {
-		return nil, fmt.Errorf("cluster %q has no resource pool", spec.Cluster)
+		return w, fmt.Errorf("cluster %q has no resource pool", spec.Cluster)
 	}
-	dsRef, err := findRef(ctx, c, "Datastore", spec.Datastore)
-	if err != nil {
-		return nil, err
+	if w.datastore, err = findRef(ctx, c, "Datastore", spec.Datastore); err != nil {
+		return w, err
 	}
-	// Place the VM on a connected host of the cluster that mounts the
-	// datastore, so the clone never lands outside the target cluster.
 	var ds mo.Datastore
-	if err := pc.RetrieveOne(ctx, dsRef, []string{"host"}, &ds); err != nil {
-		return nil, err
+	if err := pc.RetrieveOne(ctx, w.datastore, []string{"host"}, &ds); err != nil {
+		return w, err
 	}
 	var eligible []types.ManagedObjectReference
 	for _, h := range cluster.Host {
@@ -599,49 +638,87 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 		}
 	}
 	if len(eligible) == 0 {
-		return nil, fmt.Errorf("no connected host in %s mounts datastore %s: %w", spec.Cluster, spec.Datastore, ErrNotFound)
+		return w, fmt.Errorf("no connected host in %s mounts datastore %s: %w", spec.Cluster, spec.Datastore, ErrNotFound)
 	}
-	host := &eligible[spec.HostIndex%len(eligible)]
-	folder, err := ensureFolder(ctx, c, spec.Folder)
+	w.pool, w.host = *cluster.ResourcePool, eligible[spec.HostIndex%len(eligible)]
+	w.folder, err = ensureFolder(ctx, c, spec.Folder)
+	return w, err
+}
+
+// Extra config keeping how many disks and adapters the VM had before rvav
+// added its own (ADR-0024).
+const baseDisksKey, baseNICsKey = "rvav.base.disks", "rvav.base.nics"
+
+// finish makes a VM just cloned or deployed, or left by an earlier attempt,
+// what the spec says; every part is safe to run again. Some vCenter
+// versions (and vcsim) ignore the clone spec's hardware settings, so size
+// and extra config are applied here.
+func (cl *Client) finish(ctx context.Context, c *vim25.Client, vm *object.VirtualMachine, spec VMSpec, policy string, w placed) error {
+	// vcsim deploys a library VM template as a template: make it a VM.
+	if tpl, err := vm.IsTemplate(ctx); err != nil {
+		return err
+	} else if tpl {
+		if err := vm.MarkAsVirtualMachine(ctx, *object.NewResourcePool(c, w.pool), object.NewHostSystem(c, w.host)); err != nil {
+			return err
+		}
+	}
+	if change, err := firstNIC(ctx, c, vm, spec); err != nil {
+		return err
+	} else if change != nil {
+		if err := vm.EditDevice(ctx, change.Device); err != nil {
+			return fmt.Errorf("connect to %s: %w", spec.Network, err)
+		}
+	}
+	// What the template gave is counted once, before anything is added, and
+	// kept on the VM: a retry adds only what is still missing.
+	disks, nics, known, err := baseDevices(ctx, vm)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	pool := *cluster.ResourcePool
-	var ref types.ManagedObjectReference
-	if spec.Library != "" {
-		if ref, err = cl.deployFromLibrary(ctx, c, spec, pool, *host, folder.Reference(), dsRef, policy); err != nil {
-			return nil, err
-		}
-		vm := object.NewVirtualMachine(c, ref)
-		// vcsim deploys a library VM template as a template: make it a VM.
-		if tpl, err := vm.IsTemplate(ctx); err != nil {
-			return nil, err
-		} else if tpl {
-			poolObj := object.NewResourcePool(c, pool)
-			hostObj := object.NewHostSystem(c, *host)
-			if err := vm.MarkAsVirtualMachine(ctx, *poolObj, hostObj); err != nil {
-				return nil, err
+	extra := map[string]string{}
+	for k, v := range spec.ExtraConfig {
+		extra[k] = v
+	}
+	if !known {
+		extra[baseDisksKey], extra[baseNICsKey] = strconv.Itoa(disks), strconv.Itoa(nics)
+	}
+	s := spec
+	s.ExtraConfig = extra
+	if err := reconfigure(ctx, vm, s, policy); err != nil {
+		return fmt.Errorf("reconfigure: %w", err)
+	}
+	if err := cl.addHardware(ctx, vm, spec, disks, nics); err != nil {
+		return fmt.Errorf("add disks and adapters: %w", err)
+	}
+	return nil
+}
+
+// baseDevices are how many disks and adapters the VM had before rvav added
+// its own: as kept on the VM (known), or as it has now.
+func baseDevices(ctx context.Context, vm *object.VirtualMachine) (disks, nics int, known bool, err error) {
+	var m mo.VirtualMachine
+	if err := vm.Properties(ctx, vm.Reference(), []string{"config.extraConfig", "config.hardware.device"}, &m); err != nil {
+		return 0, 0, false, err
+	}
+	kept := map[string]string{}
+	if m.Config != nil {
+		for _, o := range m.Config.ExtraConfig {
+			if v, ok := o.GetOptionValue().Value.(string); ok {
+				kept[o.GetOptionValue().Key] = v
 			}
 		}
-		if change, err := firstNIC(ctx, c, vm, spec); err != nil {
-			return nil, err
-		} else if change != nil {
-			if err := vm.EditDevice(ctx, change.Device); err != nil {
-				return nil, fmt.Errorf("connect %s to %s: %w", spec.Name, spec.Network, err)
-			}
-		}
-	} else if ref, err = cl.cloneTemplate(ctx, c, tpl, spec, pool, *host, folder, dsRef, policy); err != nil {
-		return nil, err
 	}
-	// Some vCenter versions (and vcsim) ignore the clone spec's hardware
-	// settings, so apply size and extra config explicitly.
-	if err := reconfigure(ctx, object.NewVirtualMachine(c, ref), spec, policy); err != nil {
-		return nil, fmt.Errorf("reconfigure %s: %w", spec.Name, err)
+	d, errD := strconv.Atoi(kept[baseDisksKey])
+	n, errN := strconv.Atoi(kept[baseNICsKey])
+	if errD == nil && errN == nil {
+		return d, n, true, nil
 	}
-	if err := cl.addHardware(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
-		return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
+	if m.Config != nil {
+		devices := object.VirtualDeviceList(m.Config.Hardware.Device)
+		disks = len(devices.SelectByType((*types.VirtualDisk)(nil)))
+		nics = len(devices.SelectByType((*types.VirtualEthernetCard)(nil)))
 	}
-	return cl.vmInfo(ctx, c, ref)
+	return disks, nics, false, nil
 }
 
 // firstNIC is the change connecting the VM's (or template's) first adapter
@@ -658,17 +735,24 @@ func firstNIC(ctx context.Context, c *vim25.Client, vm *object.VirtualMachine, s
 	if len(nics) == 0 {
 		return nil, fmt.Errorf("template %q has no network adapter", spec.Template)
 	}
+	// The first is the lowest key: an edited device may move in the list.
+	first := slices.MinFunc(nics, func(a, b types.BaseVirtualDevice) int {
+		return int(a.GetVirtualDevice().Key - b.GetVirtualDevice().Key)
+	})
 	net, err := findNetwork(ctx, c, spec.Network)
 	if err != nil {
 		return nil, err
+	}
+	card := first.(types.BaseVirtualEthernetCard).GetVirtualEthernetCard()
+	if on := backingName(card.Backing); on == spec.Network || on == net.Reference().Value {
+		return nil, nil // already there
 	}
 	backing, err := net.EthernetCardBackingInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
-	card := nics[0].(types.BaseVirtualEthernetCard).GetVirtualEthernetCard()
 	card.Backing = backing
-	return &types.VirtualDeviceConfigSpec{Operation: types.VirtualDeviceConfigSpecOperationEdit, Device: nics[0]}, nil
+	return &types.VirtualDeviceConfigSpec{Operation: types.VirtualDeviceConfigSpecOperationEdit, Device: first}, nil
 }
 
 // cloneTemplate clones the VM template, its first adapter on the network.
@@ -716,8 +800,9 @@ func (cl *Client) cloneTemplate(ctx context.Context, c *vim25.Client, tpl *objec
 }
 
 // addHardware adds the spec's disks and adapters the VM doesn't have yet,
-// counting from the template's first: it is safe to run again.
-func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, spec VMSpec) error {
+// counting from the template's (baseDisks, baseNICs): it is safe to run
+// again.
+func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, spec VMSpec, baseDisks, baseNICs int) error {
 	if len(spec.Disks)+len(spec.NICs) == 0 {
 		return nil
 	}
@@ -727,7 +812,7 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 	}
 	var add []types.BaseVirtualDevice
 	nics := len(devices.SelectByType((*types.VirtualEthernetCard)(nil)))
-	for _, network := range spec.NICs[min(max(nics-1, 0), len(spec.NICs)):] {
+	for _, network := range spec.NICs[min(max(nics-baseNICs, 0), len(spec.NICs)):] {
 		backing, err := cl.networkBacking(ctx, network)
 		if err != nil {
 			return err
@@ -739,7 +824,7 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 		add = append(add, nic)
 	}
 	disks := len(devices.SelectByType((*types.VirtualDisk)(nil)))
-	if missing := spec.Disks[min(max(disks-1, 0), len(spec.Disks)):]; len(missing) > 0 {
+	if missing := spec.Disks[min(max(disks-baseDisks, 0), len(spec.Disks)):]; len(missing) > 0 {
 		c, err := cl.client(ctx)
 		if err != nil {
 			return err
@@ -831,8 +916,14 @@ func (cl *Client) Customize(ctx context.Context, moref string, cu Customization)
 	}
 	vm := object.NewVirtualMachine(c, vmRef(moref))
 	var mvm mo.VirtualMachine
-	if err := property.DefaultCollector(c).RetrieveOne(ctx, vm.Reference(), []string{"config.tools", "runtime.powerState"}, &mvm); err != nil {
+	if err := property.DefaultCollector(c).RetrieveOne(ctx, vm.Reference(), []string{"config.tools", "config.hardware.device",
+		"runtime.powerState"}, &mvm); err != nil {
 		return err
+	}
+	// Every adapter needs its setting: the template's others keep DHCP.
+	if mvm.Config != nil {
+		n := len(object.VirtualDeviceList(mvm.Config.Hardware.Device).SelectByType((*types.VirtualEthernetCard)(nil)))
+		cu.OtherNICs = max(n-1-len(cu.Extra), 0)
 	}
 	if mvm.Config != nil && mvm.Config.Tools != nil && mvm.Config.Tools.PendingCustomization != "" {
 		return nil // already applied by an earlier attempt
@@ -879,6 +970,10 @@ func CustomizationSpec(cu Customization, base *types.CustomizationSpec) types.Cu
 			DnsServerList: cu.DNSServers,
 		},
 	}}
+	for range cu.OtherNICs {
+		spec.NicSettingMap = append(spec.NicSettingMap, types.CustomizationAdapterMapping{
+			Adapter: types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}}})
+	}
 	for _, n := range cu.Extra {
 		a := types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}}
 		if !n.DHCP {
