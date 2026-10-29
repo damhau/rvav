@@ -106,6 +106,9 @@ tolerations: []
 # Replicas on different nodes when they can be.
 spreadAcrossNodes: true
 
-# Prometheus metrics (S14.5): a ServiceMonitor for the Prometheus operator.
+# Prometheus metrics (S14.5): every rvav pod serves /metrics on 9090 (and
+# has prometheus.io annotations). With the Prometheus operator, PodMonitors
+# and the alerts as a PrometheusRule.
 metrics:
-  serviceMonitor: false
+  podMonitor: false
+  prometheusRule: false

@@ -68,6 +68,9 @@ spec:
       annotations:
         # Restarted when a setting changes.
         checksum/config: {{ include (print .root.Template.BasePath "/config.yaml") .root | sha256sum }}
+        # Prometheus metrics (S14.5).
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
     spec:
       serviceAccountName: {{ include "rvav.serviceAccount" .root }}
       {{- with .root.Values.imagePullSecrets }}
@@ -97,6 +100,7 @@ spec:
           envFrom: {{ include "rvav.envFrom" .root | nindent 12 }}
           ports:
             - { name: http, containerPort: 8080 }
+            - { name: metrics, containerPort: 9090 }
           {{- if eq .component "api" }}
           readinessProbe:
             httpGet: { path: /readyz, port: http }

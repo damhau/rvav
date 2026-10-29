@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/damhau/rvav/internal/observe"
 )
 
 // HTTPClient talks to the SOLIDserver REST API. Services, methods and
@@ -155,7 +157,7 @@ func New(o Options) (*HTTPClient, error) {
 	// Redirects are not followed: the native sign-in headers would go along
 	// to whatever host the redirect names.
 	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &HTTPClient{opts: o, base: u, http: &http.Client{Transport: tr, Timeout: 30 * time.Second, CheckRedirect: noRedirect},
+	return &HTTPClient{opts: o, base: u, http: &http.Client{Transport: observe.Transport("efficientip", tr), Timeout: 30 * time.Second, CheckRedirect: noRedirect},
 		now: time.Now, subnets: map[string]subnetRef{}}, nil
 }
 

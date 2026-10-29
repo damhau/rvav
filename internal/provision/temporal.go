@@ -58,6 +58,8 @@ func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
 
 // NewWorker registers the workflow and activities on the task queue.
 func NewWorker(c client.Client, taskQueue string, a *Activities) worker.Worker {
+	// The client's tracing interceptor (app.Temporal) applies to the
+	// worker too: traces go on into workflows and activities (S14.5).
 	w := worker.New(c, taskQueue, worker.Options{})
 	w.RegisterWorkflow(Provision)
 	w.RegisterWorkflow(Housekeeping)

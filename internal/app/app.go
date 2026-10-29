@@ -37,6 +37,9 @@ import (
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vcenters"
+
+	"github.com/damhau/rvav/internal/observe"
+	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 )
 
 type App struct {
@@ -251,6 +254,10 @@ func (a *App) Temporal() (client.Client, error) {
 		if a.tcErr = TemporalSecurity(a.Cfg.Temporal, &opts); a.tcErr != nil {
 			return
 		}
+		// Traces go on from the API into workflows and activities (S14.5).
+		if ti, err := temporalotel.NewTracingInterceptor(temporalotel.TracerOptions{}); err == nil {
+			opts.Interceptors = append(opts.Interceptors, ti)
+		}
 		a.tc, a.tcErr = client.NewLazyClient(opts)
 		if a.tcErr != nil {
 			a.tcErr = fmt.Errorf("connect to Temporal at %s: %w", a.Cfg.Temporal.Address, a.tcErr)
@@ -349,6 +356,8 @@ func (a *App) RunAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// What waits in the database, at each scrape (S14.5).
+	observe.Registry.MustRegister(observe.Backlog{Pool: a.Store.Pool})
 	hub := events.NewHub(a.Store, a.Log)
 	go hub.Run(ctx)
 	go hub.Purge(ctx, 24*time.Hour)

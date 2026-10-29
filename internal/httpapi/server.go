@@ -24,6 +24,7 @@ import (
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/notify"
+	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -94,7 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, r, http.StatusNotFound, "not-found", "Not found", "There is no API endpoint at "+r.URL.Path+".", nil)
 	})
-	return s.recover(s.withRequestID(s.cors(mux)))
+	return s.recover(s.withRequestID(s.cors(observe.HTTP(mux))))
 }
 
 func (s *Server) withRequestID(next http.Handler) http.Handler {

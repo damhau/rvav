@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
+	"go.temporal.io/sdk/interceptor"
 	sdklog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
 )
@@ -26,7 +28,16 @@ func TestReplayHistories(t *testing.T) {
 	}
 	for _, f := range files {
 		t.Run(strings.TrimSuffix(filepath.Base(f), ".json"), func(t *testing.T) {
-			r := worker.NewWorkflowReplayer()
+			// As the worker runs them: with the tracing interceptor (S14.5).
+			ti, err := temporalotel.NewTracingInterceptor(temporalotel.TracerOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := worker.NewWorkflowReplayerWithOptions(worker.WorkflowReplayerOptions{
+				Interceptors: []interceptor.WorkerInterceptor{ti}})
+			if err != nil {
+				t.Fatal(err)
+			}
 			r.RegisterWorkflow(Provision)
 			r.RegisterWorkflow(Housekeeping)
 			r.RegisterWorkflow(RollbackWorkflow)

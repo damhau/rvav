@@ -1,0 +1,95 @@
+# rvav's alerts (S14.5): Prometheus rules, for Prometheus on the compose stack
+# (deploy/observability) and the Helm chart's PrometheusRule. Each names its
+# runbook (docs/operations/runbooks.md).
+groups:
+  - name: rvav
+    rules:
+      - alert: RvavAPIDown
+        expr: sum(up{job="rvav-api"}) == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: No API replica answers
+          runbook: docs/operations/runbooks.md#api-down
+      - alert: RvavReplicaDown
+        expr: up{job=~"rvav-.*"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} {{ $labels.instance }} doesn't answer"
+          runbook: docs/operations/runbooks.md#replica-down
+      - alert: RvavAPIErrors
+        expr: |
+          sum(rate(rvav_http_requests_total{code=~"5.."}[10m])) / sum(rate(rvav_http_requests_total[10m])) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 5% of API calls fail
+          runbook: docs/operations/runbooks.md#api-errors
+      - alert: RvavAPISlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(rvav_http_request_duration_seconds_bucket[15m]))) > 0.3
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: The API's 95th percentile is over 300 ms
+          runbook: docs/operations/runbooks.md#api-slow
+      - alert: RvavProvisioningFailing
+        expr: |
+          sum(increase(rvav_requests_finished_total{outcome="failed"}[1h]))
+            / sum(increase(rvav_requests_finished_total{outcome=~"succeeded|failed"}[1h])) > 0.02
+          and sum(increase(rvav_requests_finished_total{outcome=~"succeeded|failed"}[1h])) >= 10
+        labels: { severity: warning }
+        annotations:
+          summary: More than 2% of requests failed in the last hour
+          runbook: docs/operations/runbooks.md#requests-failing
+      - alert: RvavIntegrationErrors
+        expr: |
+          sum by (system) (rate(rvav_integration_calls_total{outcome="error"}[10m]))
+            / sum by (system) (rate(rvav_integration_calls_total[10m])) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 10% of calls to {{ $labels.system }} fail"
+          runbook: docs/operations/runbooks.md#integration-errors
+      - alert: RvavRequestsNotPickedUp
+        expr: max(rvav_requests_active{status="queued"}) > 0 and max(rvav_requests_active{status="running"}) == 0
+        for: 15m
+        labels: { severity: critical }
+        annotations:
+          summary: Requests wait and none runs; the workers or Temporal may be down
+          runbook: docs/operations/runbooks.md#requests-stuck
+      - alert: RvavInventoryNotFollowed
+        expr: max by (vcenter) (rvav_inventory_watch_connected) == 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "The sync doesn't follow {{ $labels.vcenter }}'s changes"
+          runbook: docs/operations/runbooks.md#inventory-stale
+      - alert: RvavInventoryStale
+        expr: max by (vcenter) (rvav_inventory_age_seconds) > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.vcenter }}'s inventory is older than 15 minutes"
+          runbook: docs/operations/runbooks.md#inventory-stale
+      - alert: RvavQueueBacklog
+        expr: max by (queue) (rvav_queue_oldest_seconds) > 600
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.queue }} have waited more than 10 minutes to go out"
+          runbook: docs/operations/runbooks.md#queue-backlog
+      - alert: RvavApprovalsOverdue
+        expr: max(rvav_approvals_pending{overdue="true"}) > 0
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: Approvals are past their due time
+          runbook: docs/operations/runbooks.md#approvals-overdue
+      - alert: RvavVMsMissing
+        expr: max(rvav_vms{sync_state="missing"}) > max(rvav_vms{sync_state="missing"} offset 1h)
+        labels: { severity: info }
+        annotations:
+          summary: VMs went missing from vCenter in the last hour
+          runbook: docs/operations/runbooks.md#vms-missing

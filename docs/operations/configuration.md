@@ -18,10 +18,17 @@ never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 |---|---|---|---|
 | `RVAV_DATABASE_URL` | `postgres://rvav:rvav@localhost:5432/rvav?sslmode=disable` | yes | rvav's PostgreSQL database. Use `sslmode=verify-full` in production. |
 | `RVAV_HTTP_ADDR` | `:8080` | | Where the API (and the fake SOLIDserver) listens. |
+| `RVAV_METRICS_ADDR` | `:9090` | | Where every process serves its Prometheus metrics (`/metrics`), apart from the API. `off` serves none. |
 | `RVAV_LOG_LEVEL` | `info` | | `debug`, `info`, `warn` or `error`. Logs are JSON on standard output. |
 | `RVAV_PUBLIC_URL` | `http://localhost:5173` | | The web app's address, for links in notifications. |
 | `RVAV_CORS_ORIGINS` | none | | Origins allowed to call the API from another site (the Vite dev server). Not needed when the web app proxies the API. |
 | `RVAV_INSTANCE_ID` | `rvav` | | Tells this rvav's objects in EfficientIP from another's on a shared SOLIDserver. |
+
+Traces use OpenTelemetry's standard variables, read by every process:
+`OTEL_EXPORTER_OTLP_ENDPOINT` (an OTLP/HTTP collector, for example
+`http://otel-collector:4318`; without it nothing is traced),
+`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER` and
+`OTEL_TRACES_SAMPLER_ARG` ([observability.md](observability.md)).
 
 ## Sign-in
 

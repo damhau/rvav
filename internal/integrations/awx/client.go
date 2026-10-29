@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/damhau/rvav/internal/observe"
 )
 
 // HTTPClient talks to the AWX REST API (/api/v2) with an OAuth2 token.
@@ -70,7 +72,7 @@ func NewHTTPClient(rawURL, token string, insecure bool) (*HTTPClient, error) {
 	if insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for lab AWX
 	}
-	return &HTTPClient{base: u, token: token, http: &http.Client{Transport: tr, Timeout: 30 * time.Second}}, nil
+	return &HTTPClient{base: u, token: token, http: &http.Client{Transport: observe.Transport("awx", tr), Timeout: 30 * time.Second}}, nil
 }
 
 func (c *HTTPClient) do(ctx context.Context, method, path string, query url.Values, body, out any) error {

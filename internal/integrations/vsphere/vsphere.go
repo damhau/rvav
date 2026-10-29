@@ -25,6 +25,10 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
+
+	"github.com/damhau/rvav/internal/observe"
+	"github.com/vmware/govmomi/vim25/methods"
+	"github.com/vmware/govmomi/vim25/soap"
 )
 
 // ErrNotFound is returned when a named inventory object does not exist.
@@ -255,6 +259,7 @@ func (cl *Client) client(ctx context.Context) (*vim25.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("log in to vCenter %s: %w", cl.url.Host, err)
 	}
+	c.Client.RoundTripper = measured{c.Client.RoundTripper}
 	cl.c = c
 	return c.Client, nil
 }
@@ -1172,4 +1177,22 @@ func Sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+// measured counts calls to vCenter (S14.5).
+type measured struct{ soap.RoundTripper }
+
+func (m measured) RoundTrip(ctx context.Context, req, res soap.HasFault) error {
+	// The inventory's long poll waits by design: not a slow call.
+	if _, wait := req.(*methods.WaitForUpdatesExBody); wait {
+		return m.RoundTripper.RoundTrip(ctx, req, res)
+	}
+	start := time.Now()
+	err := m.RoundTripper.RoundTrip(ctx, req, res)
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+	}
+	observe.Call("vcenter", outcome, time.Since(start))
+	return err
 }

@@ -25,6 +25,8 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
+
+	"github.com/damhau/rvav/internal/observe"
 )
 
 const usage = `rvav: self-service portal for vSphere
@@ -161,6 +163,17 @@ func run(ctx context.Context, cmd string, args []string) error {
 		return err
 	}
 	defer a.Close()
+
+	// Metrics and traces of the long-running processes (S14.5).
+	switch cmd {
+	case "api", "worker", "sync":
+		shutdown, err := observe.Tracing(ctx, cmd)
+		if err != nil {
+			return fmt.Errorf("tracing: %w", err)
+		}
+		defer func() { _ = shutdown(context.Background()) }()
+		observe.Serve(ctx, cfg.MetricsAddr, log)
+	}
 
 	switch cmd {
 	case "api":

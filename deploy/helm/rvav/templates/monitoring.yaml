@@ -1,0 +1,28 @@
+{{- if .Values.metrics.podMonitor }}
+{{- range $c := list "api" "worker" "sync" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $.Release.Name }}-{{ $c }}
+  labels: {{- include "rvav.labels" $ | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "rvav.selector" (dict "root" $ "component" $c) | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+      # The job the alerts and the dashboard name.
+      relabelings:
+        - { targetLabel: job, replacement: rvav-{{ $c }} }
+{{- end }}
+{{- end }}
+{{- if .Values.metrics.prometheusRule }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "rvav.labels" . | nindent 4 }}
+spec:
+{{ .Files.Get "files/alerts.yml" | indent 2 }}
+{{- end }}

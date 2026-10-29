@@ -1,0 +1,13 @@
+# Prometheus for the compose stack (docker-compose.observability.yml).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+rule_files: [/etc/prometheus/alerts.yml]
+scrape_configs:
+  # Every replica of each process, by the compose service's name.
+  - job_name: rvav-api
+    dns_sd_configs: [{ names: [api], type: A, port: 9090 }]
+  - job_name: rvav-worker
+    dns_sd_configs: [{ names: [worker], type: A, port: 9090 }]
+  - job_name: rvav-sync
+    dns_sd_configs: [{ names: [sync], type: A, port: 9090 }]

@@ -22,6 +22,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
@@ -188,7 +189,9 @@ func (a *Activities) update(ctx context.Context, requestID, projectID, key strin
 // title and detail to show when done ("" keeps the current text).
 func (a *Activities) run(ctx context.Context, requestID, projectID, key string, fn func() (title, detail string, err error)) error {
 	a.update(ctx, requestID, projectID, key, store.StepUpdate{Status: "running"})
+	start := time.Now()
 	title, detail, err := fn()
+	observe.Step(key, err != nil, time.Since(start))
 	if errors.Is(err, store.ErrTaken) {
 		err = temporal.NewNonRetryableApplicationError(err.Error(), "Permanent", err)
 	}
@@ -928,7 +931,9 @@ func (a *Activities) RunJob(ctx context.Context, in JobInput) error {
 			in.ExtraVars = extra
 		}
 	}
+	start := time.Now()
 	err := a.runJob(ctx, in)
+	observe.Step(in.StepKey, err != nil, time.Since(start))
 	if err != nil {
 		msg := errMessage(err)
 		a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "failed", Error: &msg})
@@ -1221,6 +1226,16 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	if err != nil {
 		return err
 	}
+	// Counted once, not again when the activity is retried after this.
+	defer func(was string) {
+		if err == nil && was != in.Outcome {
+			var ran time.Duration
+			if r.StartedAt != nil {
+				ran = time.Since(*r.StartedAt)
+			}
+			observe.RequestFinished(r.Kind, in.Outcome, ran)
+		}
+	}(r.Status)
 	title := "Ready"
 	if r.ItemType != "vm_blueprint" || r.Kind == "day2" {
 		title = "Done"

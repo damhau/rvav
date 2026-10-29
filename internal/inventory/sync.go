@@ -23,6 +23,8 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
+
+	"github.com/damhau/rvav/internal/observe"
 )
 
 type Syncer struct {
@@ -209,7 +211,11 @@ func (s *Syncer) lock(name string) func() {
 
 func (s *Syncer) syncTarget(ctx context.Context, t target) error {
 	defer s.lock(t.name)()
-	return s.syncVCenter(ctx, t.d, t.owns)
+	err := s.syncVCenter(ctx, t.d, t.owns)
+	if err == nil {
+		observe.FullRead(t.name, time.Now())
+	}
+	return err
 }
 
 // follow keeps one watcher on each vCenter connected to, a new one when
@@ -255,7 +261,9 @@ func (s *Syncer) watch(ctx context.Context, t target) {
 	pause := time.Second
 	for {
 		start := time.Now()
+		observe.Watching(t.name, true)
 		err := t.d.Watch(ctx, func(cs []vsphere.Change) { s.apply(ctx, t, cs, kick) })
+		observe.Watching(t.name, false)
 		if ctx.Err() != nil {
 			return
 		}

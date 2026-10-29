@@ -1,0 +1,41 @@
+# Metrics and traces for the compose stack (S14.5,
+# docs/operations/observability.md): Prometheus scrapes every rvav process
+# and evaluates the alerts, Grafana shows the dashboard, Jaeger keeps the
+# traces rvav sends over OTLP.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/observability/docker-compose.observability.yml up -d --wait
+#
+#   Prometheus  http://localhost:9091      Grafana  http://localhost:3001 (anonymous viewer)
+#   Jaeger      http://localhost:16686
+
+x-otel: &otel
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+
+services:
+  api: { environment: *otel }
+  worker: { environment: *otel }
+  sync: { environment: *otel }
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # One set of rules, also the Helm chart's PrometheusRule.
+      - ./helm/rvav/files/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_PROMETHEUS_PORT:-9091}:9090"]
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/rvav.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_GRAFANA_PORT:-3001}:3000"]
+    depends_on: [prometheus]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.72.0
+    ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_JAEGER_PORT:-16686}:16686"]

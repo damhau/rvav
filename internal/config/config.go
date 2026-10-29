@@ -11,7 +11,9 @@ import (
 )
 
 type Config struct {
-	HTTPAddr    string
+	HTTPAddr string
+	// MetricsAddr serves Prometheus metrics (S14.5); ":9090" unless set, "off" for none.
+	MetricsAddr string
 	DatabaseURL string
 	LogLevel    string
 	CORSOrigins []string
@@ -163,6 +165,7 @@ type AWXConfig struct {
 func Load() (Config, error) {
 	c := Config{
 		HTTPAddr:        env("RVAV_HTTP_ADDR", ":8080"),
+		MetricsAddr:     metricsAddr(),
 		DatabaseURL:     env("RVAV_DATABASE_URL", "postgres://rvav:rvav@localhost:5432/rvav?sslmode=disable"),
 		LogLevel:        env("RVAV_LOG_LEVEL", "info"),
 		CORSOrigins:     list("RVAV_CORS_ORIGINS"),
@@ -333,4 +336,15 @@ func list(key string) []string {
 		}
 	}
 	return out
+}
+
+func metricsAddr() string {
+	switch v := os.Getenv("RVAV_METRICS_ADDR"); v {
+	case "":
+		return ":9090"
+	case "off":
+		return ""
+	default:
+		return v
+	}
 }
