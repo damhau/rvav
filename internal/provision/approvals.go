@@ -109,7 +109,7 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 			st = LevelState{Status: "pending", DueAt: lv.DueAt}
 			notify = lv.EscalateIDs
 			if lv.EscalateGroup != nil {
-				members, err := a.Store.GroupMembers(ctx, []string{*lv.EscalateGroup})
+				members, err := a.Store.GroupMembersIn(ctx, tx, []string{*lv.EscalateGroup})
 				if err != nil {
 					return err
 				}

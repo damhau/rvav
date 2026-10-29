@@ -201,7 +201,7 @@ func (s *Service) checkAction(ctx context.Context, a *day2.Action, t day2.Target
 		return nil, nil
 	}
 	name, _ := inputs["name"].(string)
-	taken, err := s.Store.InventoryVMNames(ctx, name)
+	taken, err := s.Store.InventoryVMNames(ctx, s.Store.Pool, name)
 	if err != nil {
 		return nil, err
 	}

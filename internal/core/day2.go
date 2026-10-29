@@ -339,7 +339,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if err != nil {
 			return err
 		}
-		if d, err = s.Store.GetDeployment(ctx, d.ID); err != nil {
+		if d, err = s.Store.GetDeploymentIn(ctx, tx, d.ID); err != nil {
 			return err
 		}
 		if reason := deploymentBusy(d, active, a, target.ResourceID != ""); reason != "" {

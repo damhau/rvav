@@ -60,7 +60,12 @@ func (s *Store) InsertRequest(ctx context.Context, db DB, r Request) error {
 
 // GetRequest finds a request by ID or number.
 func (s *Store) GetRequest(ctx context.Context, idOrNumber string) (RequestRow, error) {
-	rows, _ := s.Pool.Query(ctx, requestRowSelect+` where r.id = $1 or r.number = upper($1)`, idOrNumber)
+	return s.GetRequestIn(ctx, s.Pool, idOrNumber)
+}
+
+// GetRequestIn reads a request in a transaction.
+func (s *Store) GetRequestIn(ctx context.Context, db DB, idOrNumber string) (RequestRow, error) {
+	rows, _ := db.Query(ctx, requestRowSelect+` where r.id = $1 or r.number = upper($1)`, idOrNumber)
 	r, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[RequestRow])
 	return r, notFound(err)
 }

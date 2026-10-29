@@ -247,8 +247,15 @@ func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWo
 }
 
 func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
+	// Four connections, as a small API pod has by default: a transaction
+	// that holds a lock and waits for another connection deadlocks here,
+	// whatever the machine (S14.7).
 	url := databaseURL
-	st, err := store.Open(ctx, url)
+	small := url + "?pool_max_conns=4"
+	if strings.Contains(url, "?") {
+		small = url + "&pool_max_conns=4"
+	}
+	st, err := store.Open(ctx, small)
 	if err != nil {
 		t.Fatal(err)
 	}

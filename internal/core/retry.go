@@ -208,7 +208,7 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			vms = append(vms, c.VMs...)
 		}
 		for _, vm := range vms {
-			taken, err := s.Store.InventoryVMNames(ctx, vm.Name)
+			taken, err := s.Store.InventoryVMNames(ctx, s.Store.Pool, vm.Name)
 			if err != nil {
 				return r, err
 			}

@@ -51,11 +51,11 @@ type skippedName struct{ Name, In string }
 // in vCenter, rvav or DNS (under zone) passed over, and those given (to
 // earlier components); nothing is reserved.
 func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone string, count int, given map[string]bool) ([]string, []skippedName, *nameCheck, error) {
-	vcenter, err := s.Store.InventoryVMNames(ctx, prefix)
+	vcenter, err := s.Store.InventoryVMNames(ctx, s.Store.Pool, prefix)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	ours, err := s.Store.DeploymentNames(ctx, prefix)
+	ours, err := s.Store.DeploymentNames(ctx, s.Store.Pool, prefix)
 	if err != nil {
 		return nil, nil, nil, err
 	}

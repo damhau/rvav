@@ -251,7 +251,7 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		}
 		// Read the request again under the lock: another approver of this
 		// level may have just changed its inputs.
-		req, err := s.Store.GetRequest(ctx, l.req.ID)
+		req, err := s.Store.GetRequestIn(ctx, tx, l.req.ID)
 		if err != nil {
 			return err
 		}

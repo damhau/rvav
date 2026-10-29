@@ -702,11 +702,13 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 		if p.count == 0 {
 			continue
 		}
-		taken, err := s.Store.InventoryVMNames(ctx, p.prefix)
+		// Read in the transaction: it holds the prefix's lock, and others
+		// waiting for it may hold every other connection (S14.7).
+		taken, err := s.Store.InventoryVMNames(ctx, tx, p.prefix)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		ours, err := s.Store.DeploymentNames(ctx, p.prefix)
+		ours, err := s.Store.DeploymentNames(ctx, tx, p.prefix)
 		if err != nil {
 			return nil, nil, nil, err
 		}

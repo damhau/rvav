@@ -173,7 +173,21 @@ the API from 20% CPU to 15%.
      read every time, so a change of role in rvav applies at once.
    - A change of name or groups at the identity provider shows within
      5 minutes.
-3. **Found by the test, not by load:** a day-2 policy's reason already
+3. **Submissions for one prefix could deadlock the API.** A submission's
+   transaction holds the prefix's lock, but it read the names taken (in
+   vCenter, and given by rvav) through another connection from the pool.
+   With as many submissions waiting for the lock as the pool has
+   connections (4 by default on a pod with up to 4 CPUs), the holder
+   waited for a connection that only the waiters could give back.
+   - Found when `TestConcurrentNames` hung on CI's 4-CPU runner; it passed
+     on this 32-CPU workstation.
+   - The same mistake (a read through the pool while holding a lock) was
+     in a day-2 action's check of the deployment, an approval decision, a
+     request's end, and an approval's escalation. All read in their
+     transaction now.
+   - The end-to-end tests now run on a pool of 4 connections, whatever the
+     machine, and pass.
+4. **Found by the test, not by load:** a day-2 policy's reason already
    ending with a full stop got a second one in the API's answer. Fixed.
 
 ## Not covered

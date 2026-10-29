@@ -41,7 +41,12 @@ func (s *Store) GetStep(ctx context.Context, requestID, stepID string) (Step, er
 }
 
 func (s *Store) GetStepByKey(ctx context.Context, requestID, key string) (Step, error) {
-	rows, _ := s.Pool.Query(ctx, `select `+stepCols+` from request_steps where request_id = $1 and key = $2`, requestID, key)
+	return s.GetStepByKeyIn(ctx, s.Pool, requestID, key)
+}
+
+// GetStepByKeyIn reads a step in a transaction.
+func (s *Store) GetStepByKeyIn(ctx context.Context, db DB, requestID, key string) (Step, error) {
+	rows, _ := db.Query(ctx, `select `+stepCols+` from request_steps where request_id = $1 and key = $2`, requestID, key)
 	st, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Step])
 	return st, notFound(err)
 }

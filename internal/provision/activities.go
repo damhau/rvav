@@ -1275,7 +1275,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			}
 		case "failed":
 			stepID := ""
-			if st, err := a.Store.GetStepByKey(ctx, in.RequestID, in.StepKey); err == nil {
+			if st, err := a.Store.GetStepByKeyIn(ctx, db, in.RequestID, in.StepKey); err == nil {
 				stepID = st.ID
 			}
 			if err := a.Store.SetRequestError(ctx, db, in.RequestID, stepID, in.Message); err != nil {

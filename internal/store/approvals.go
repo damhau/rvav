@@ -301,7 +301,12 @@ func (s *Store) UserGroups(ctx context.Context, userID string) ([]string, error)
 
 // GroupMembers returns the IDs of users known to be in any of the groups.
 func (s *Store) GroupMembers(ctx context.Context, groups []string) ([]string, error) {
-	rows, _ := s.Pool.Query(ctx, `select distinct user_id from user_groups where group_name = any($1) order by user_id`,
+	return s.GroupMembersIn(ctx, s.Pool, groups)
+}
+
+// GroupMembersIn reads a group's members in a transaction.
+func (s *Store) GroupMembersIn(ctx context.Context, db DB, groups []string) ([]string, error) {
+	rows, _ := db.Query(ctx, `select distinct user_id from user_groups where group_name = any($1) order by user_id`,
 		nonNil(groups))
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

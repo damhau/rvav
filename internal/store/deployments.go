@@ -43,7 +43,13 @@ func (s *Store) InsertDeployment(ctx context.Context, db DB, d Deployment) error
 }
 
 func (s *Store) GetDeployment(ctx context.Context, id string) (DeploymentRow, error) {
-	rows, _ := s.Pool.Query(ctx, deploymentRowSelect+` where d.id = $1`, id)
+	return s.GetDeploymentIn(ctx, s.Pool, id)
+}
+
+// GetDeploymentIn reads a deployment in a transaction (one that holds a
+// lock must not wait for another connection, S14.7).
+func (s *Store) GetDeploymentIn(ctx context.Context, db DB, id string) (DeploymentRow, error) {
+	rows, _ := db.Query(ctx, deploymentRowSelect+` where d.id = $1`, id)
 	d, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[DeploymentRow])
 	return d, notFound(err)
 }

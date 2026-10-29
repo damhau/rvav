@@ -89,8 +89,8 @@ const invVMCols = `moref, instance_uuid, name, power_state, guest_state, ip_addr
 	cpu_count, memory_mb, cluster, host, cpu_pct, memory_pct, snapshot_count`
 
 // InventoryVMsByName reports which of the given VM names exist in vCenter.
-func (s *Store) InventoryVMNames(ctx context.Context, prefix string) (map[string]bool, error) {
-	rows, _ := s.Pool.Query(ctx, `select name from inv_vms where name like $1 || '%'
+func (s *Store) InventoryVMNames(ctx context.Context, db DB, prefix string) (map[string]bool, error) {
+	rows, _ := db.Query(ctx, `select name from inv_vms where name like $1 || '%'
 		union select name from resources where type = 'vsphere.vm' and name like $1 || '%'`, prefix)
 	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
