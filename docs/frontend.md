@@ -401,6 +401,23 @@ A VM changed in vCenter outside rvav
 
 In the mocks, `web-dev-legacy` has more memory and a disk added in vCenter.
 
+## Onboarding
+
+**Administration → Onboarding** (`features/admin/OnboardingPage.tsx`,
+[ADR-0026](adr/0026-onboarding.md)) lists the VMs rvav doesn't manage:
+- **Filters:** search, vCenter and power, with how many match; pages of 100
+  with **Show more**.
+- **Selection:** a checkbox per VM, and one to select every VM shown.
+- **Adopting:** **Adopt N VMs…** asks for the project, environment, owner
+  (members who aren't viewers), catalog item (the project's VM items),
+  lease, and optionally one deployment for all with its name. The server's
+  errors show by field, a VM's naming it.
+- **Result:** a panel lists the deployments made, with links, and the
+  addresses and records found.
+
+The mock offers 60 VMs (`mocks/onboarding.ts`); EfficientIP knows half of
+them.
+
 ## Notifications
 
 The notification centre ([ADR-0023](adr/0023-notifications.md)) is in

@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // Administration (S9, ADR-0020).
@@ -473,5 +474,29 @@ func (s *Server) TestVCenter(w http.ResponseWriter, r *http.Request, name string
 		}
 	}
 	out, err := s.Core.TestVCenter(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) ListOnboardingVms(w http.ResponseWriter, r *http.Request, params api.ListOnboardingVmsParams) {
+	after, err := cursorOf(params.Cursor)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	f := store.UnmanagedFilter{VCenter: deref(params.Vcenter), Cluster: deref(params.Cluster), Search: deref(params.Q),
+		Limit: limitOf(params.Limit), After: after}
+	if params.PowerState != nil {
+		f.PowerState = string(*params.PowerState)
+	}
+	out, err := s.Core.OnboardingVMs(r.Context(), principal(r), f)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) AdoptVms(w http.ResponseWriter, r *http.Request) {
+	var b api.OnboardingDraft
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.AdoptVMs(r.Context(), principal(r), b)
 	s.reply(w, r, http.StatusOK, out, err)
 }

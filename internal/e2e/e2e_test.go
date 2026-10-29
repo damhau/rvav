@@ -290,7 +290,8 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	wf := &recorder{}
 	box, _ := secrets.New(base64.StdEncoding.EncodeToString([]byte("e2e-only-secrets-key-32-bytes!!!")))
 	svc := &core.Service{Store: st, IPAM: ipam, Workflows: wf, Events: pub, Log: log, AWX: fakeAWX,
-		Secrets: box, REST: core.NewRESTSources(nil)}
+		Secrets: box, REST: core.NewRESTSources(nil),
+		VSphere: func(context.Context, string) (vsphere.Driver, error) { return vc, nil }}
 	hub := events.NewHub(st, log)
 	hctx, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)

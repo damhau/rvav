@@ -192,6 +192,11 @@ function state(db: Db): AdminState {
   return d.administration;
 }
 
+/** A user's role in a project ("" when none), for other mock handlers. */
+export function memberRole(db: Db, projectId: string, userId: string): string {
+  return state(db).members[projectId]?.find((m) => m.userId === userId)?.role ?? "";
+}
+
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
   return HttpResponse.json(
     {

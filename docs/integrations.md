@@ -269,6 +269,15 @@ type Client interface {
   win (ADR-0015).
 - VM names are checked free in DNS and IPAM as well as in vCenter.
 
+### Onboarding lookups
+Adopting existing VMs ([ADR-0026](adr/0026-onboarding.md)) only reads
+EfficientIP:
+- `ip_address_list` by address, in rvav's space when one is set;
+- `dns_rr_list` for the PTR records of those addresses, then for the A
+  records of the names they give.
+
+Nothing is created or changed in EfficientIP.
+
 ## Identity (OIDC)
 
 - Any OIDC provider (Keycloak, Entra ID, Okta). Authorization code flow with

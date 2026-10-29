@@ -76,7 +76,7 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 	p := api.VmProperties{
 		Moref:      vm.Moref,
 		Vcenter:    vcenter,
-		PowerState: api.VmPropertiesPowerState(vm.PowerState),
+		PowerState: api.VmPowerState(vm.PowerState),
 		GuestState: api.VmPropertiesGuestState(vm.GuestState),
 		CpuCount:   vm.CPUCount,
 		MemoryMb:   vm.MemoryMB,

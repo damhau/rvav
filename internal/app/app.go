@@ -275,6 +275,7 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 func (a *App) Core(w core.Workflows) *core.Service {
 	svc := &core.Service{Store: a.Store, IPAM: a.IPAM, Workflows: w, Events: a.Events, Log: a.Log,
 		VCenter:    func(ctx context.Context, name string) (core.ConsoleSource, error) { return a.VCenters().Get(ctx, name) },
+		VSphere:    func(ctx context.Context, name string) (vsphere.Driver, error) { return a.VCenters().Get(ctx, name) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}

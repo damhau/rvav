@@ -766,3 +766,56 @@ func (c *HTTPClient) existing(ctx context.Context, service, key string, ids []st
 	}
 	return out, nil
 }
+
+// Find looks up an existing VM's addresses (in rvav's space when it has
+// one) and DNS records. It changes nothing.
+func (c *HTTPClient) Find(ctx context.Context, ips, names []string) ([]Address, []Record, error) {
+	var addresses []Address
+	var records []Record
+	candidates := append([]string{}, names...)
+	for _, ip := range ips {
+		where := "hostaddr=" + quote(ip)
+		if c.opts.Space != "" {
+			where += " and site_name=" + quote(c.opts.Space)
+		}
+		rows, err := c.call(ctx, http.MethodGet, "ip_address_list", list(where, 10))
+		if err != nil {
+			return nil, nil, err
+		}
+		if rows = live(rows); len(rows) > 0 {
+			r := rows[0]
+			subnet := r["subnet_name"]
+			if bits := prefixLen(r); r["subnet_start_hostaddr"] != "" && bits >= 0 {
+				subnet = r["subnet_start_hostaddr"] + "/" + strconv.Itoa(bits)
+			}
+			addresses = append(addresses, Address{ID: r["ip_id"], IP: r["hostaddr"], Subnet: subnet, Hostname: r["name"]})
+			candidates = append(candidates, r["name"])
+		}
+		ptr, err := c.records(ctx, PTRName(ip), "PTR")
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, r := range ptr {
+			records = append(records, Record{ID: r["rr_id"], FQDN: r["rr_full_name"], Type: "PTR", Value: r["value1"], Zone: r["dnszone_name"]})
+			candidates = append(candidates, r["value1"])
+		}
+	}
+	seen := map[string]bool{}
+	for _, n := range candidates {
+		n = fqdn(n)
+		if !strings.Contains(n, ".") || seen[n] {
+			continue
+		}
+		seen[n] = true
+		rows, err := c.records(ctx, n, "A")
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, r := range rows {
+			if slices.Contains(ips, r["value1"]) {
+				records = append(records, Record{ID: r["rr_id"], FQDN: r["rr_full_name"], Type: "A", Value: r["value1"], Zone: r["dnszone_name"]})
+			}
+		}
+	}
+	return addresses, records, nil
+}

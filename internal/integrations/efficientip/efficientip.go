@@ -67,6 +67,10 @@ type Client interface {
 	Managed(ctx context.Context) ([]Address, []Record, error)
 	// Existing reports which of these address and record IDs EfficientIP has.
 	Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
+	// Find looks up what EfficientIP has for a VM rvav didn't build (S13.3):
+	// the address of each of its IPs, their PTR records, and the A records
+	// pointing at them of the names those give, or of names.
+	Find(ctx context.Context, ips, names []string) ([]Address, []Record, error)
 }
 
 // PTRName returns the reverse lookup name for an IPv4 address.

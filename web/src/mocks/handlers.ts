@@ -29,6 +29,7 @@ import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
 import { catalogAdminHandlers, designerForm, notMember } from "./catalogAdmin";
 import { administrationHandlers } from "./administration";
+import { onboardingHandlers } from "./onboarding";
 import { governanceHandlers } from "./governance";
 import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
@@ -293,6 +294,7 @@ export const handlers = [
   ...catalogAdminHandlers(db, base, wait),
   ...governanceHandlers(db, base, wait),
   ...administrationHandlers(db, base, wait),
+  ...onboardingHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
   ...draftHandlers(db, base, wait),

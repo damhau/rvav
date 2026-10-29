@@ -19,6 +19,7 @@ import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
+import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
 import { Route as AdminWorkflowsRouteImport } from "./routes/admin/workflows"
 import { Route as ApprovalsApprovalIdRouteImport } from "./routes/approvals_.$approvalId"
@@ -84,6 +85,11 @@ const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
 const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
   id: "/admin/integrations",
   path: "/admin/integrations",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
+  id: "/admin/onboarding",
+  path: "/admin/onboarding",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
@@ -180,6 +186,7 @@ export interface FileRoutesByFullPath {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
+  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -208,6 +215,7 @@ export interface FileRoutesByTo {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
+  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -237,6 +245,7 @@ export interface FileRoutesById {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/integrations": typeof AdminIntegrationsRoute
+  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals_/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/infrastructure"
     | "/admin/integrations"
+    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -295,6 +305,7 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/infrastructure"
     | "/admin/integrations"
+    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -323,6 +334,7 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/infrastructure"
     | "/admin/integrations"
+    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/workflows"
     | "/approvals_/$approvalId"
@@ -352,6 +364,7 @@ export interface RootRouteChildren {
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
+  AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   ApprovalsApprovalIdRoute: typeof ApprovalsApprovalIdRoute
@@ -440,6 +453,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/integrations"
       fullPath: "/admin/integrations"
       preLoaderRoute: typeof AdminIntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/onboarding": {
+      id: "/admin/onboarding"
+      path: "/admin/onboarding"
+      fullPath: "/admin/onboarding"
+      preLoaderRoute: typeof AdminOnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/policies": {
@@ -568,6 +588,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
+  AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminWorkflowsRoute: AdminWorkflowsRoute,
   ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,

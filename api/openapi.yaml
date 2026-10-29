@@ -2596,6 +2596,55 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/onboarding/vms:
+    get:
+      tags: [admin]
+      operationId: listOnboardingVms
+      summary: VMs in vCenter that rvav doesn't manage, to adopt into deployments (S13.3)
+      parameters:
+        - { name: vcenter, in: query, schema: { type: string } }
+        - { name: cluster, in: query, schema: { type: string } }
+        - { name: power_state, in: query, schema: { $ref: "#/components/schemas/VmPowerState" } }
+        - name: q
+          in: query
+          description: Part of the VM's name, address or guest host name.
+          schema: { type: string, maxLength: 200 }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingVmPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/onboarding:
+    post:
+      tags: [admin]
+      operationId: adoptVms
+      summary: Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
+      description: |
+        Each VM becomes a deployment of its own, named after it, or all go
+        into one. Nothing changes in vCenter or EfficientIP: rvav records the
+        VMs, and the addresses and records EfficientIP has for them, as it
+        would have built them. Deleting the deployment later deletes the VMs
+        and releases those addresses and records.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingDraft" }
+      responses:
+        "200":
+          description: Adopted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/vcenters:
     get:
       tags: [admin]
@@ -4829,6 +4878,86 @@ components:
                 doesn't.
               items: { $ref: "#/components/schemas/VmDrift" }
 
+    VmPowerState:
+      type: string
+      enum: [on, off, suspended]
+
+    OnboardingVm:
+      type: object
+      required: [vcenter, moref, name, power_state, cpu_count, memory_mb]
+      properties:
+        vcenter: { type: string, examples: [vc01.corp.example] }
+        moref: { type: string, examples: [vm-2207] }
+        instance_uuid: { type: string }
+        name: { type: string }
+        power_state: { $ref: "#/components/schemas/VmPowerState" }
+        guest_os: { type: string }
+        cpu_count: { type: integer }
+        memory_mb: { type: integer }
+        cluster: { type: string }
+        host: { type: string }
+        ip_address: { type: string }
+        hostname: { type: string, description: "The guest's host name, as VMware Tools reports it." }
+
+    OnboardingVmPage:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OnboardingVm" }
+        total: { type: integer, description: How many VMs match the filters. }
+        next_cursor: { type: string }
+
+    OnboardingDraft:
+      type: object
+      required: [vms, project_id, environment, owner_id, catalog_item_id]
+      properties:
+        vms:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [vcenter, moref]
+            properties:
+              vcenter: { type: string }
+              moref: { type: string }
+        project_id: { type: string }
+        environment: { type: string }
+        owner_id: { type: string, description: "A member of the project, who owns the deployments." }
+        catalog_item_id:
+          type: string
+          description: |
+            The VM item the deployments are of (its current version): it
+            gives them their OS family and day-2 actions.
+        lease_days:
+          type: integer
+          minimum: 1
+          description: Without it, the lease policy's default for the project and environment.
+        deployment_name:
+          type: string
+          maxLength: 63
+          description: |
+            All the VMs in one deployment of this name. Without it, each VM
+            is a deployment of its own, named after it.
+
+    OnboardingResult:
+      type: object
+      required: [deployments]
+      properties:
+        deployments:
+          type: array
+          items:
+            type: object
+            required: [id, name, vms, addresses, records]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              vms: { type: array, items: { type: string } }
+              addresses: { type: integer, description: Addresses found in EfficientIP. }
+              records: { type: integer, description: DNS records found in EfficientIP. }
+
     VmDrift:
       type: object
       required: [property, label]
@@ -4856,7 +4985,7 @@ components:
         moref: { type: string, examples: [vm-48217] }
         instance_uuid: { type: string, format: uuid }
         vcenter: { type: string, examples: [vc01.corp.example] }
-        power_state: { type: string, enum: [on, off, suspended] }
+        power_state: { $ref: "#/components/schemas/VmPowerState" }
         guest_state: { type: string, enum: [running, not_running, unknown] }
         guest_os: { type: string }
         cpu_count: { type: integer }

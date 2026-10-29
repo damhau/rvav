@@ -1904,6 +1904,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/onboarding/vms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** VMs in vCenter that rvav doesn't manage, to adopt into deployments (S13.3) */
+        get: operations["listOnboardingVms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
+         * @description Each VM becomes a deployment of its own, named after it, or all go
+         *     into one. Nothing changes in vCenter or EfficientIP: rvav records the
+         *     VMs, and the addresses and records EfficientIP has for them, as it
+         *     would have built them. Deleting the deployment later deletes the VMs
+         *     and releases those addresses and records.
+         */
+        post: operations["adoptVms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/vcenters": {
         parameters: {
             query?: never;
@@ -3414,6 +3455,64 @@ export interface components {
              */
             type: "vsphere.vm";
         };
+        /** @enum {string} */
+        VmPowerState: "on" | "off" | "suspended";
+        OnboardingVm: {
+            /** @example vc01.corp.example */
+            vcenter: string;
+            /** @example vm-2207 */
+            moref: string;
+            instance_uuid?: string;
+            name: string;
+            power_state: components["schemas"]["VmPowerState"];
+            guest_os?: string;
+            cpu_count: number;
+            memory_mb: number;
+            cluster?: string;
+            host?: string;
+            ip_address?: string;
+            /** @description The guest's host name, as VMware Tools reports it. */
+            hostname?: string;
+        };
+        OnboardingVmPage: {
+            items: components["schemas"]["OnboardingVm"][];
+            /** @description How many VMs match the filters. */
+            total: number;
+            next_cursor?: string;
+        };
+        OnboardingDraft: {
+            vms: {
+                vcenter: string;
+                moref: string;
+            }[];
+            project_id: string;
+            environment: string;
+            /** @description A member of the project, who owns the deployments. */
+            owner_id: string;
+            /**
+             * @description The VM item the deployments are of (its current version): it
+             *     gives them their OS family and day-2 actions.
+             */
+            catalog_item_id: string;
+            /** @description Without it, the lease policy's default for the project and environment. */
+            lease_days?: number;
+            /**
+             * @description All the VMs in one deployment of this name. Without it, each VM
+             *     is a deployment of its own, named after it.
+             */
+            deployment_name?: string;
+        };
+        OnboardingResult: {
+            deployments: {
+                id: string;
+                name: string;
+                vms: string[];
+                /** @description Addresses found in EfficientIP. */
+                addresses: number;
+                /** @description DNS records found in EfficientIP. */
+                records: number;
+            }[];
+        };
         VmDrift: {
             /** @enum {string} */
             property: "power_state" | "cpu_count" | "memory_mb" | "disk" | "nic";
@@ -3442,8 +3541,7 @@ export interface components {
             instance_uuid: string;
             /** @example vc01.corp.example */
             vcenter: string;
-            /** @enum {string} */
-            power_state: "on" | "off" | "suspended";
+            power_state: components["schemas"]["VmPowerState"];
             /** @enum {string} */
             guest_state: "running" | "not_running" | "unknown";
             guest_os?: string;
@@ -8134,6 +8232,65 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listOnboardingVms: {
+        parameters: {
+            query?: {
+                vcenter?: string;
+                cluster?: string;
+                power_state?: components["schemas"]["VmPowerState"];
+                /** @description Part of the VM's name, address or guest host name. */
+                q?: string;
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingVmPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adoptVms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingDraft"];
+            };
+        };
+        responses: {
+            /** @description Adopted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     listVCenters: {

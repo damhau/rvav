@@ -88,7 +88,8 @@ Subscription (event → awx template | webhook)
   properties keep it as rvav last left it, and how it differs now (drift,
   [ADR-0025](adr/0025-drift.md)).
 - **InventoryVM**: cached vCenter inventory maintained by `rvav-sync`, including
-  VMs not managed by the app (they can be onboarded into a deployment later).
+  VMs not managed by the app. Administrators adopt those into deployments
+  with no request behind them ([ADR-0026](adr/0026-onboarding.md)).
 
 ### Day-2
 - **Day2Action**: key, name, icon, applicable resource types, condition (CEL,

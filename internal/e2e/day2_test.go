@@ -175,7 +175,7 @@ func TestDay2Actions(t *testing.T) {
 		// The others, in turn; guest actions once Tools runs.
 		for _, step := range []struct {
 			action string
-			power  api.VmPropertiesPowerState
+			power  api.VmPowerState
 		}{{"power_on", api.On}, {"restart_guest", api.On}, {"reset", api.On}, {"shutdown_guest", api.Off}} {
 			r := run("lmartin", step.action, 202)
 			h.runWorkflow(r.Id, nil)

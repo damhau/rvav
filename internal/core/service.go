@@ -45,6 +45,9 @@ type Service struct {
 	// VCenter gives WebMKS tickets for consoles (ADR-0012); it may connect
 	// on first use.
 	VCenter func(ctx context.Context, name string) (ConsoleSource, error)
+	// VSphere connects to a vCenter by name, the integration's for a name
+	// rvav doesn't know: onboarding reads the VMs it adopts (S13.3).
+	VSphere func(ctx context.Context, name string) (vsphere.Driver, error)
 	// ConsoleAccount, when set, is a session of a vCenter account that may
 	// only open consoles: VMRC links carry a clone ticket of it. Never
 	// rvav's own session, which a clone ticket would hand to the user.
