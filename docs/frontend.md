@@ -489,9 +489,23 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
 ## Accessibility
 
 - WCAG 2.2 AA. Radix primitives provide focus management and ARIA.
-- `eslint-plugin-jsx-a11y` in CI, axe checks in Playwright tests.
+- `eslint-plugin-jsx-a11y` in CI. `e2e/accessibility.spec.ts` runs in
+  `pnpm e2e` ([accessibility.md](accessibility.md)):
+  - axe on every page, in each of its tabs, in both themes;
+  - landmarks and headings;
+  - reflow at 320 px;
+  - a request made with the keyboard only;
+  - a dialog's focus handling.
 - Full keyboard support, visible focus rings, a skip-to-content link.
 - Colour is never the only signal: status always has an icon and text.
+- **Text colours:** the `faint` text colour keeps 4.5:1 on every background
+  it's used on, in both themes. Code is highlighted with the app's colours,
+  not CodeMirror's.
+- **A button that shows text:** its accessible name contains that text
+  (WCAG 2.5.3). Put extra context in a `sr-only` prefix, not an
+  `aria-label` that replaces the text.
+- **Wide tables** scroll inside their own `overflow-x-auto` container, never
+  the page.
 
 ## Auth
 
@@ -515,7 +529,7 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
 | Component | Vitest + Testing Library + MSW | Widgets, DataTable, Timeline, form renderer behaviour |
 | Visual and docs | Storybook (+ Chromatic or Playwright screenshots) | Every `common` component in light and dark themes and all states |
 | End to end | Playwright against docker-compose (vcsim, mock AWX, mock EfficientIP) | Login → request VM → approve → timeline → day-2 → delete |
-| Accessibility | axe in Playwright and Storybook | Key screens |
+| Accessibility | axe and keyboard checks in Playwright (`e2e/accessibility.spec.ts`) | Every page and tab, both themes, reflow at 320 px |
 
 ## Developer experience
 

@@ -176,7 +176,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               key={e}
               to="/deployments"
               search={(s: DeploymentsSearch) => ({ ...s, env: toggleEnv(e) })}
-              aria-pressed={envs.includes(e)}
+              aria-current={envs.includes(e) ? "true" : undefined}
               className={cn(chip(envs.includes(e)), "font-mono text-[11px] uppercase")}
             >
               {e}
@@ -186,7 +186,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         <Link
           to="/deployments"
           search={(s: DeploymentsSearch) => ({ ...s, expiring: s.expiring ? undefined : true })}
-          aria-pressed={Boolean(search.expiring)}
+          aria-current={search.expiring ? "true" : undefined}
           className={chip(Boolean(search.expiring))}
         >
           Lease ends ≤ 7 days

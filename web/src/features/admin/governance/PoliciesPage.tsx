@@ -282,69 +282,71 @@ function Approvals({ canEdit }: { canEdit: boolean }) {
         <EmptyState title="No approval policy" body="Every request runs at once." />
       )}
       {items.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Policy
-              </th>
-              <th scope="col" className={th}>
-                Applies when
-              </th>
-              <th scope="col" className={th}>
-                Approvers
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((p, i) => (
-              <tr key={p.id}>
-                <td className={`${td} pl-4`}>
-                  <span className="font-medium">{p.name}</span>
-                  {!p.enabled && (
-                    <Badge tone="neutral" className="ml-2">
-                      Off
-                    </Badge>
-                  )}
-                  <div className="text-xs text-faint">
-                    {p.project_id ? projects.name(p.project_id) : "Every project"} · priority {p.priority}
-                  </div>
-                </td>
-                <td className={`${td} font-mono text-xs`}>{p.condition}</td>
-                <td className={`${td} text-xs text-muted`}>
-                  {p.levels.map((l) => l.group ?? l.approvers?.join(", ") ?? l.name).join(" → ")}
-                </td>
-                <td className={`${td} text-right whitespace-nowrap`}>
-                  {canEdit && (
-                    <>
-                      <Order
-                        name={p.name}
-                        i={i}
-                        count={items.length}
-                        busy={reorder.isPending}
-                        move={(to) => reorder.mutate({ items, from: i, to })}
-                      />
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                        Change
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${p.name}`}
-                        onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Policy
+                </th>
+                <th scope="col" className={th}>
+                  Applies when
+                </th>
+                <th scope="col" className={th}>
+                  Approvers
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((p, i) => (
+                <tr key={p.id}>
+                  <td className={`${td} pl-4`}>
+                    <span className="font-medium">{p.name}</span>
+                    {!p.enabled && (
+                      <Badge tone="neutral" className="ml-2">
+                        Off
+                      </Badge>
+                    )}
+                    <div className="text-xs text-faint">
+                      {p.project_id ? projects.name(p.project_id) : "Every project"} · priority {p.priority}
+                    </div>
+                  </td>
+                  <td className={`${td} font-mono text-xs`}>{p.condition}</td>
+                  <td className={`${td} text-xs text-muted`}>
+                    {p.levels.map((l) => l.group ?? l.approvers?.join(", ") ?? l.name).join(" → ")}
+                  </td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canEdit && (
+                      <>
+                        <Order
+                          name={p.name}
+                          i={i}
+                          count={items.length}
+                          busy={reorder.isPending}
+                          move={(to) => reorder.mutate({ items, from: i, to })}
+                        />
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                          Change
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${p.name}`}
+                          onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && <ApprovalDialog policy={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
@@ -546,76 +548,78 @@ function Day2({ canEdit }: { canEdit: boolean }) {
       {policies.isPending && <SkeletonRows rows={3} cols={4} />}
       {policies.isError && <ErrorState error={policies.error} onRetry={() => void policies.refetch()} />}
       {items.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Policy
-              </th>
-              <th scope="col" className={th}>
-                Actions
-              </th>
-              <th scope="col" className={th}>
-                Who and when
-              </th>
-              <th scope="col" className={th}>
-                Effect
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((p, i) => (
-              <tr key={p.id}>
-                <td className={`${td} pl-4`}>
-                  <span className="font-medium">{p.name}</span>
-                  {!p.enabled && (
-                    <Badge tone="neutral" className="ml-2">
-                      Off
-                    </Badge>
-                  )}
-                  <div className="text-xs text-faint">priority {p.priority}</div>
-                </td>
-                <td className={`${td} font-mono text-xs`}>{(p.actions ?? []).join(", ")}</td>
-                <td className={`${td} text-xs`}>
-                  {(p.roles ?? []).length ? (p.roles ?? []).join(", ") : "Anyone"}
-                  {p.condition !== "true" && <div className="font-mono text-faint">{p.condition}</div>}
-                </td>
-                <td className={td}>
-                  <Badge tone={effectTone[p.effect]}>
-                    {p.effect === "approval" ? "Needs approval" : p.effect === "allow" ? "Allow" : "Deny"}
-                  </Badge>
-                </td>
-                <td className={`${td} text-right whitespace-nowrap`}>
-                  {canEdit && (
-                    <>
-                      <Order
-                        name={p.name}
-                        i={i}
-                        count={items.length}
-                        busy={reorder.isPending}
-                        move={(to) => reorder.mutate({ items, from: i, to })}
-                      />
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                        Change
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${p.name}`}
-                        onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Policy
+                </th>
+                <th scope="col" className={th}>
+                  Actions
+                </th>
+                <th scope="col" className={th}>
+                  Who and when
+                </th>
+                <th scope="col" className={th}>
+                  Effect
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((p, i) => (
+                <tr key={p.id}>
+                  <td className={`${td} pl-4`}>
+                    <span className="font-medium">{p.name}</span>
+                    {!p.enabled && (
+                      <Badge tone="neutral" className="ml-2">
+                        Off
+                      </Badge>
+                    )}
+                    <div className="text-xs text-faint">priority {p.priority}</div>
+                  </td>
+                  <td className={`${td} font-mono text-xs`}>{(p.actions ?? []).join(", ")}</td>
+                  <td className={`${td} text-xs`}>
+                    {(p.roles ?? []).length ? (p.roles ?? []).join(", ") : "Anyone"}
+                    {p.condition !== "true" && <div className="font-mono text-faint">{p.condition}</div>}
+                  </td>
+                  <td className={td}>
+                    <Badge tone={effectTone[p.effect]}>
+                      {p.effect === "approval" ? "Needs approval" : p.effect === "allow" ? "Allow" : "Deny"}
+                    </Badge>
+                  </td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canEdit && (
+                      <>
+                        <Order
+                          name={p.name}
+                          i={i}
+                          count={items.length}
+                          busy={reorder.isPending}
+                          move={(to) => reorder.mutate({ items, from: i, to })}
+                        />
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                          Change
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${p.name}`}
+                          onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && <Day2Dialog policy={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
@@ -767,73 +771,75 @@ function Leases({ canEdit }: { canEdit: boolean }) {
     >
       {leases.isPending && <SkeletonRows rows={3} cols={4} />}
       {leases.data && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Where
-              </th>
-              <th scope="col" className={th}>
-                Lease
-              </th>
-              <th scope="col" className={th}>
-                Extensions
-              </th>
-              <th scope="col" className={th}>
-                When it expires
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {leases.data.items.map((l) => {
-              const where = `${l.environment}${l.project_id ? `, ${projects.name(l.project_id)}` : ""}`;
-              return (
-                <tr key={`${l.environment}-${l.project_id ?? ""}`}>
-                  <td className={`${td} pl-4`}>
-                    {l.environment}
-                    {l.project_id && <span className="text-xs text-muted"> · {projects.name(l.project_id)}</span>}
-                  </td>
-                  <td className={`${td} text-xs`}>
-                    {l.default_days ? `${l.default_days} days, up to ${l.max_days ?? "—"}` : "None"}
-                  </td>
-                  <td className={`${td} text-xs`}>{l.max_extensions}</td>
-                  <td className={`${td} text-xs text-muted`}>
-                    {expiryLabels[l.expiry_action]}, {l.grace_days} days' grace
-                  </td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {canEdit && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Change the lease in ${where}`}
-                          onClick={() => setEditing(l)}
-                        >
-                          Change
-                        </Button>
-                        {l.project_id && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Where
+                </th>
+                <th scope="col" className={th}>
+                  Lease
+                </th>
+                <th scope="col" className={th}>
+                  Extensions
+                </th>
+                <th scope="col" className={th}>
+                  When it expires
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {leases.data.items.map((l) => {
+                const where = `${l.environment}${l.project_id ? `, ${projects.name(l.project_id)}` : ""}`;
+                return (
+                  <tr key={`${l.environment}-${l.project_id ?? ""}`}>
+                    <td className={`${td} pl-4`}>
+                      {l.environment}
+                      {l.project_id && <span className="text-xs text-muted"> · {projects.name(l.project_id)}</span>}
+                    </td>
+                    <td className={`${td} text-xs`}>
+                      {l.default_days ? `${l.default_days} days, up to ${l.max_days ?? "—"}` : "None"}
+                    </td>
+                    <td className={`${td} text-xs`}>{l.max_extensions}</td>
+                    <td className={`${td} text-xs text-muted`}>
+                      {expiryLabels[l.expiry_action]}, {l.grace_days} days' grace
+                    </td>
+                    <td className={`${td} text-right whitespace-nowrap`}>
+                      {canEdit && (
+                        <>
                           <Button
                             size="sm"
                             variant="ghost"
-                            aria-label={`Remove the lease in ${where}`}
-                            onClick={() =>
-                              remove.mutate({ environment: l.environment, project_id: l.project_id ?? "" })
-                            }
+                            aria-label={`Change the lease in ${where}`}
+                            onClick={() => setEditing(l)}
                           >
-                            Remove
+                            Change
                           </Button>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                          {l.project_id && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              aria-label={`Remove the lease in ${where}`}
+                              onClick={() =>
+                                remove.mutate({ environment: l.environment, project_id: l.project_id ?? "" })
+                              }
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && <LeaseDialog lease={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
@@ -1019,50 +1025,52 @@ function Naming({ canEdit }: { canEdit: boolean }) {
         <EmptyState title="No naming policy" body="Each blueprint's own template names its VMs." />
       )}
       {policies.data && policies.data.items.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Policy
-              </th>
-              <th scope="col" className={th}>
-                Template
-              </th>
-              <th scope="col" className={th}>
-                Offered to
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {policies.data.items.map((p) => (
-              <tr key={p.id}>
-                <td className={`${td} pl-4 font-medium`}>{p.name}</td>
-                <td className={`${td} font-mono text-xs`}>{p.template}</td>
-                <td className={`${td} text-xs text-muted`}>{offersText(p.offers, projects.name)}</td>
-                <td className={`${td} text-right whitespace-nowrap`}>
-                  {canEdit && (
-                    <>
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                        Change
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${p.name}`}
-                        onClick={() => remove.mutate(p.id)}
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Policy
+                </th>
+                <th scope="col" className={th}>
+                  Template
+                </th>
+                <th scope="col" className={th}>
+                  Offered to
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {policies.data.items.map((p) => (
+                <tr key={p.id}>
+                  <td className={`${td} pl-4 font-medium`}>{p.name}</td>
+                  <td className={`${td} font-mono text-xs`}>{p.template}</td>
+                  <td className={`${td} text-xs text-muted`}>{offersText(p.offers, projects.name)}</td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canEdit && (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                          Change
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${p.name}`}
+                          onClick={() => remove.mutate(p.id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && <NamingDialog policy={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>

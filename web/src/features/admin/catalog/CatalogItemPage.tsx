@@ -181,100 +181,102 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
         </div>
       }
     >
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="label text-left">
-            <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-              Version
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Changelog
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Deployments
-            </th>
-            <th scope="col" className="border-b border-line px-4 py-2">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {item.versions.map((v) => (
-            <tr key={v.id} className="hover:bg-sunken">
-              <td className="border-b border-line px-4 py-2 align-top">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-medium">{v.number}</span>
-                  <Badge tone={stateTone[v.state]}>{v.state}</Badge>
-                </div>
-                <div className="text-[11px] text-faint">
-                  {v.created_by ? `${v.created_by.name}, ` : ""}
-                  {relative(v.published_at ?? v.created_at)}
-                </div>
-              </td>
-              <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.changelog || "—"}</td>
-              <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.deployments}</td>
-              <td className="border-b border-line px-4 py-2 text-right align-top whitespace-nowrap">
-                {v.state === "draft" && (
-                  <>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="label text-left">
+              <th scope="col" className="border-b border-line px-4 py-2 font-medium">
+                Version
+              </th>
+              <th scope="col" className="border-b border-line px-3 py-2 font-medium">
+                Changelog
+              </th>
+              <th scope="col" className="border-b border-line px-3 py-2 font-medium">
+                Deployments
+              </th>
+              <th scope="col" className="border-b border-line px-4 py-2">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {item.versions.map((v) => (
+              <tr key={v.id} className="hover:bg-sunken">
+                <td className="border-b border-line px-4 py-2 align-top">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-medium">{v.number}</span>
+                    <Badge tone={stateTone[v.state]}>{v.state}</Badge>
+                  </div>
+                  <div className="text-[11px] text-faint">
+                    {v.created_by ? `${v.created_by.name}, ` : ""}
+                    {relative(v.published_at ?? v.created_at)}
+                  </div>
+                </td>
+                <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.changelog || "—"}</td>
+                <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.deployments}</td>
+                <td className="border-b border-line px-4 py-2 text-right align-top whitespace-nowrap">
+                  {v.state === "draft" && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={act.isPending || Boolean(unsaved)}
+                        title={unsaved}
+                        onClick={() => act.mutate({ v, action: "publish" })}
+                      >
+                        Publish
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={act.isPending}
+                        onClick={() =>
+                          window.confirm(`Discard draft ${v.number}? Its changes are lost.`) &&
+                          act.mutate({ v, action: "discard" })
+                        }
+                      >
+                        Discard
+                      </Button>
+                    </>
+                  )}
+                  {v.state === "deprecated" && (
                     <Button
                       size="sm"
-                      variant="primary"
-                      disabled={act.isPending || Boolean(unsaved)}
-                      title={unsaved}
+                      disabled={act.isPending}
                       onClick={() => act.mutate({ v, action: "publish" })}
+                      aria-label={`Roll back to ${v.number}`}
                     >
-                      Publish
+                      Roll back to this
                     </Button>
+                  )}
+                  {v.state === "published" && (
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="danger"
                       disabled={act.isPending}
                       onClick={() =>
-                        window.confirm(`Discard draft ${v.number}? Its changes are lost.`) &&
-                        act.mutate({ v, action: "discard" })
+                        window.confirm(
+                          `Withdraw ${item.name}? Nobody can request it until a version is published again; deployments keep theirs.`,
+                        ) && act.mutate({ v, action: "deprecate" })
                       }
                     >
-                      Discard
+                      Withdraw
                     </Button>
-                  </>
-                )}
-                {v.state === "deprecated" && (
+                  )}
                   <Button
                     size="sm"
-                    disabled={act.isPending}
-                    onClick={() => act.mutate({ v, action: "publish" })}
-                    aria-label={`Roll back to ${v.number}`}
+                    variant="ghost"
+                    onClick={() => act.mutate({ v, action: "export" })}
+                    aria-label={`Export ${v.number} as YAML`}
                   >
-                    Roll back to this
+                    Export
                   </Button>
-                )}
-                {v.state === "published" && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={act.isPending}
-                    onClick={() =>
-                      window.confirm(
-                        `Withdraw ${item.name}? Nobody can request it until a version is published again; deployments keep theirs.`,
-                      ) && act.mutate({ v, action: "deprecate" })
-                    }
-                  >
-                    Withdraw
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => act.mutate({ v, action: "export" })}
-                  aria-label={`Export ${v.number} as YAML`}
-                >
-                  Export
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {comparing && <CompareDialog item={item} onClose={() => setComparing(false)} />}
     </Panel>
   );

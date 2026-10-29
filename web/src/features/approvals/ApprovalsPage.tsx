@@ -9,7 +9,7 @@ import { EmptyState, KeyValues, Page, PageHeader } from "@/components/common/pag
 import { EnvBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Approval, ApprovalEditableField, ApprovalSummary } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
@@ -313,48 +313,52 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
           <TabsTrigger value="waiting">Waiting for you</TabsTrigger>
           <TabsTrigger value="decided">Decided</TabsTrigger>
         </TabsList>
-      </Tabs>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <section
-          aria-label={decided ? "Decided approvals" : "Waiting for you"}
-          className="rounded-lg border border-line bg-surface"
+        {/* The tab's panel: what its trigger controls. */}
+        <TabsContent
+          value={decided ? "decided" : "waiting"}
+          className="grid items-start gap-4 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]"
         >
-          <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-xs">
-            <span className="font-semibold">
-              {decided ? "Decided" : "Waiting for you"}
-              {list.data && <span className="font-normal text-faint"> · {list.data.total}</span>}
-            </span>
-            <span className="text-faint">{decided ? "Newest first" : "Oldest first"}</span>
-          </div>
-          {list.isPending ? (
-            <SkeletonRows rows={3} cols={2} />
-          ) : list.isError ? (
-            <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-          ) : items.length === 0 ? (
-            <EmptyState
-              title={decided ? "Nothing decided yet" : "Nothing is waiting for you"}
-              body={
-                decided
-                  ? "Approvals you approve or reject show up here."
-                  : "Requests that need your approval show up here, and you are notified when one arrives."
-              }
-            />
-          ) : (
-            <ul>
-              {items.map((a) => (
-                <ListItem key={a.id} a={a} selected={a.id === selected} onSelect={() => select(a.id)} />
-              ))}
-            </ul>
-          )}
-        </section>
-        <section aria-label="Selected approval" className="min-w-0 rounded-lg border border-line bg-surface">
-          {selected ? (
-            <ApprovalDetail id={selected} onDecided={next} />
-          ) : (
-            <EmptyState title="No approval selected" body="Pick one in the list to see what it asks for." />
-          )}
-        </section>
-      </div>
+          <section
+            aria-label={decided ? "Decided approvals" : "Waiting for you"}
+            className="rounded-lg border border-line bg-surface"
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-xs">
+              <span className="font-semibold">
+                {decided ? "Decided" : "Waiting for you"}
+                {list.data && <span className="font-normal text-faint"> · {list.data.total}</span>}
+              </span>
+              <span className="text-faint">{decided ? "Newest first" : "Oldest first"}</span>
+            </div>
+            {list.isPending ? (
+              <SkeletonRows rows={3} cols={2} />
+            ) : list.isError ? (
+              <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title={decided ? "Nothing decided yet" : "Nothing is waiting for you"}
+                body={
+                  decided
+                    ? "Approvals you approve or reject show up here."
+                    : "Requests that need your approval show up here, and you are notified when one arrives."
+                }
+              />
+            ) : (
+              <ul>
+                {items.map((a) => (
+                  <ListItem key={a.id} a={a} selected={a.id === selected} onSelect={() => select(a.id)} />
+                ))}
+              </ul>
+            )}
+          </section>
+          <section aria-label="Selected approval" className="min-w-0 rounded-lg border border-line bg-surface">
+            {selected ? (
+              <ApprovalDetail id={selected} onDecided={next} />
+            ) : (
+              <EmptyState title="No approval selected" body="Pick one in the list to see what it asks for." />
+            )}
+          </section>
+        </TabsContent>
+      </Tabs>
     </Page>
   );
 }

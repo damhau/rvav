@@ -182,61 +182,68 @@ function Templates({ canEdit }: { canEdit: boolean }) {
         <EmptyState title="No template" body="Blueprints name a vCenter template themselves." />
       )}
       {templates.data && templates.data.items.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Template
-              </th>
-              <th scope="col" className={th}>
-                In vCenter
-              </th>
-              <th scope="col" className={th}>
-                Offered to
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates.data.items.map((t) => (
-              <tr key={t.key}>
-                <td className={`${td} pl-4`}>
-                  <span className="font-medium">{t.label}</span>{" "}
-                  <span className="font-mono text-[11px] text-faint">{t.key}</span>
-                </td>
-                <td className={`${td} font-mono text-xs`}>
-                  {t.content_library && <span className="text-faint">{t.content_library} / </span>}
-                  {t.vcenter_template}
-                  {!t.in_inventory && (
-                    <Badge tone="warn" className="ml-2">
-                      Not found
-                    </Badge>
-                  )}
-                </td>
-                <td className={`${td} text-xs text-muted`}>{offersText(t.offers, projectName)}</td>
-                <td className={`${td} text-right whitespace-nowrap`}>
-                  {canEdit && (
-                    <>
-                      <Button size="sm" variant="ghost" aria-label={`Change ${t.label}`} onClick={() => setEditing(t)}>
-                        Change
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${t.label}`}
-                        onClick={() => remove.mutate(t.key)}
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Template
+                </th>
+                <th scope="col" className={th}>
+                  In vCenter
+                </th>
+                <th scope="col" className={th}>
+                  Offered to
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {templates.data.items.map((t) => (
+                <tr key={t.key}>
+                  <td className={`${td} pl-4`}>
+                    <span className="font-medium">{t.label}</span>{" "}
+                    <span className="font-mono text-[11px] text-faint">{t.key}</span>
+                  </td>
+                  <td className={`${td} font-mono text-xs`}>
+                    {t.content_library && <span className="text-faint">{t.content_library} / </span>}
+                    {t.vcenter_template}
+                    {!t.in_inventory && (
+                      <Badge tone="warn" className="ml-2">
+                        Not found
+                      </Badge>
+                    )}
+                  </td>
+                  <td className={`${td} text-xs text-muted`}>{offersText(t.offers, projectName)}</td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canEdit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Change ${t.label}`}
+                          onClick={() => setEditing(t)}
+                        >
+                          Change
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${t.label}`}
+                          onClick={() => remove.mutate(t.key)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && (
         <TemplateDialog template={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />
@@ -357,55 +364,62 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
     >
       {sizes.isPending && <SkeletonRows rows={3} cols={4} />}
       {sizes.data && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Size
-              </th>
-              <th scope="col" className={th}>
-                vCPU, memory, disk
-              </th>
-              <th scope="col" className={th}>
-                Offered to
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sizes.data.items.map((z) => (
-              <tr key={z.key}>
-                <td className={`${td} pl-4`}>
-                  <span className="font-medium">{z.label}</span>{" "}
-                  <span className="font-mono text-[11px] text-faint">{z.key}</span>
-                </td>
-                <td className={`${td} text-xs`}>
-                  {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
-                </td>
-                <td className={`${td} text-xs text-muted`}>{offersText(z.offers, projectName)}</td>
-                <td className={`${td} text-right whitespace-nowrap`}>
-                  {canEdit && (
-                    <>
-                      <Button size="sm" variant="ghost" aria-label={`Change ${z.label}`} onClick={() => setEditing(z)}>
-                        Change
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${z.label}`}
-                        onClick={() => remove.mutate(z.key)}
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Size
+                </th>
+                <th scope="col" className={th}>
+                  vCPU, memory, disk
+                </th>
+                <th scope="col" className={th}>
+                  Offered to
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sizes.data.items.map((z) => (
+                <tr key={z.key}>
+                  <td className={`${td} pl-4`}>
+                    <span className="font-medium">{z.label}</span>{" "}
+                    <span className="font-mono text-[11px] text-faint">{z.key}</span>
+                  </td>
+                  <td className={`${td} text-xs`}>
+                    {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
+                  </td>
+                  <td className={`${td} text-xs text-muted`}>{offersText(z.offers, projectName)}</td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canEdit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Change ${z.label}`}
+                          onClick={() => setEditing(z)}
+                        >
+                          Change
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${z.label}`}
+                          onClick={() => remove.mutate(z.key)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && <SizeDialog size={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
@@ -583,7 +597,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
                         <Button
                           size="sm"
                           variant="ghost"
-                          aria-label={`Map ${m.network} by hand`}
+                          aria-label={`Change: map ${m.network} by hand`}
                           onClick={() => setEditing(m)}
                         >
                           Change

@@ -186,61 +186,63 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
       {members.isPending && <SkeletonRows rows={3} cols={3} />}
       {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
       {members.data && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Who
-              </th>
-              <th scope="col" className={th}>
-                Role
-              </th>
-              <th scope="col" className={th}>
-                Through
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.data.items.map((m) => (
-              <tr key={m.user.id}>
-                <td className={`${td} pl-4`}>
-                  {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
-                </td>
-                <td className={td}>
-                  {m.direct && canManage ? (
-                    <Select
-                      aria-label={`Role of ${m.user.name}`}
-                      value={m.direct_role ?? m.role}
-                      onChange={(v) => set.mutate({ userId: m.user.id, role: v })}
-                      options={roleOptions}
-                      className="w-40"
-                    />
-                  ) : (
-                    roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label
-                  )}
-                </td>
-                <td className={`${td} text-xs text-muted`}>
-                  {[m.direct ? "Direct" : "", ...m.groups.map((g) => `group ${g}`)].filter(Boolean).join(", ")}
-                </td>
-                <td className={`${td} text-right`}>
-                  {m.direct && canManage && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Remove ${m.user.name}`}
-                      onClick={() => remove.mutate(m.user.id)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Who
+                </th>
+                <th scope="col" className={th}>
+                  Role
+                </th>
+                <th scope="col" className={th}>
+                  Through
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {members.data.items.map((m) => (
+                <tr key={m.user.id}>
+                  <td className={`${td} pl-4`}>
+                    {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
+                  </td>
+                  <td className={td}>
+                    {m.direct && canManage ? (
+                      <Select
+                        aria-label={`Role of ${m.user.name}`}
+                        value={m.direct_role ?? m.role}
+                        onChange={(v) => set.mutate({ userId: m.user.id, role: v })}
+                        options={roleOptions}
+                        className="w-40"
+                      />
+                    ) : (
+                      roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label
+                    )}
+                  </td>
+                  <td className={`${td} text-xs text-muted`}>
+                    {[m.direct ? "Direct" : "", ...m.groups.map((g) => `group ${g}`)].filter(Boolean).join(", ")}
+                  </td>
+                  <td className={`${td} text-right`}>
+                    {m.direct && canManage && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Remove ${m.user.name}`}
+                        onClick={() => remove.mutate(m.user.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   );
@@ -539,93 +541,95 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
       {quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
       {ready && shown.length === 0 && <p className="px-4 py-3 text-xs text-muted">No limit.</p>}
       {ready && shown.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Resource
-              </th>
-              <th scope="col" className={th}>
-                In
-              </th>
-              <th scope="col" className={th}>
-                Limit
-              </th>
-              <th scope="col" className={th}>
-                When passed
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((r, i) => (
-              <tr key={i}>
-                <td className={`${td} pl-4`}>
-                  <Select
-                    aria-label={`Limit ${i + 1}: resource`}
-                    value={r.resource}
-                    onChange={(v) => set(i, { ...r, resource: v as S["QuotaResource"] })}
-                    options={resources}
-                    disabled={!isAdmin}
-                    className="w-40"
-                  />
-                </td>
-                <td className={td}>
-                  <Select
-                    aria-label={`Limit ${i + 1}: environment`}
-                    value={r.environment || "all"}
-                    onChange={(v) => set(i, { ...r, environment: v === "all" ? "" : v })}
-                    options={[
-                      { value: "all", label: "The whole project" },
-                      ...project.environments.map((e) => ({ value: e, label: e })),
-                    ]}
-                    disabled={!isAdmin}
-                    className="w-44"
-                  />
-                </td>
-                <td className={td}>
-                  <Input
-                    aria-label={`Limit ${i + 1}: value`}
-                    type="number"
-                    min={0}
-                    className="h-8 w-24"
-                    placeholder="None"
-                    disabled={!isAdmin}
-                    value={r.limit ?? ""}
-                    onChange={(e) => set(i, { ...r, limit: e.target.value === "" ? null : Number(e.target.value) })}
-                  />
-                </td>
-                <td className={td}>
-                  <Select
-                    aria-label={`Limit ${i + 1}: enforcement`}
-                    value={r.enforcement}
-                    onChange={(v) => set(i, { ...r, enforcement: v as S["QuotaLimit"]["enforcement"] })}
-                    options={[
-                      { value: "hard", label: "Refused" },
-                      { value: "soft", label: "Needs approval" },
-                    ]}
-                    disabled={!isAdmin}
-                    className="w-40"
-                  />
-                </td>
-                <td className={`${td} text-right`}>
-                  {isAdmin && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Remove limit ${i + 1}`}
-                      onClick={() => setRows(shown.filter((_, j) => j !== i))}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Resource
+                </th>
+                <th scope="col" className={th}>
+                  In
+                </th>
+                <th scope="col" className={th}>
+                  Limit
+                </th>
+                <th scope="col" className={th}>
+                  When passed
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((r, i) => (
+                <tr key={i}>
+                  <td className={`${td} pl-4`}>
+                    <Select
+                      aria-label={`Limit ${i + 1}: resource`}
+                      value={r.resource}
+                      onChange={(v) => set(i, { ...r, resource: v as S["QuotaResource"] })}
+                      options={resources}
+                      disabled={!isAdmin}
+                      className="w-40"
+                    />
+                  </td>
+                  <td className={td}>
+                    <Select
+                      aria-label={`Limit ${i + 1}: environment`}
+                      value={r.environment || "all"}
+                      onChange={(v) => set(i, { ...r, environment: v === "all" ? "" : v })}
+                      options={[
+                        { value: "all", label: "The whole project" },
+                        ...project.environments.map((e) => ({ value: e, label: e })),
+                      ]}
+                      disabled={!isAdmin}
+                      className="w-44"
+                    />
+                  </td>
+                  <td className={td}>
+                    <Input
+                      aria-label={`Limit ${i + 1}: value`}
+                      type="number"
+                      min={0}
+                      className="h-8 w-24"
+                      placeholder="None"
+                      disabled={!isAdmin}
+                      value={r.limit ?? ""}
+                      onChange={(e) => set(i, { ...r, limit: e.target.value === "" ? null : Number(e.target.value) })}
+                    />
+                  </td>
+                  <td className={td}>
+                    <Select
+                      aria-label={`Limit ${i + 1}: enforcement`}
+                      value={r.enforcement}
+                      onChange={(v) => set(i, { ...r, enforcement: v as S["QuotaLimit"]["enforcement"] })}
+                      options={[
+                        { value: "hard", label: "Refused" },
+                        { value: "soft", label: "Needs approval" },
+                      ]}
+                      disabled={!isAdmin}
+                      className="w-40"
+                    />
+                  </td>
+                  <td className={`${td} text-right`}>
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Remove limit ${i + 1}`}
+                        onClick={() => setRows(shown.filter((_, j) => j !== i))}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   );

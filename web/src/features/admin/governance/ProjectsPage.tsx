@@ -288,83 +288,85 @@ function Environments({ canEdit }: { canEdit: boolean }) {
     <Panel title="Environments" flush>
       {envs.isPending && <SkeletonRows rows={3} cols={4} />}
       {envs.data && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Environment
-              </th>
-              <th scope="col" className={th}>
-                Production
-              </th>
-              <th scope="col" className={th}>
-                Snapshots kept
-              </th>
-              <th scope="col" className={th}>
-                Used by
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {envs.data.items.map((e) => (
-              <tr key={e.key}>
-                <td className={`${td} pl-4`}>
-                  {e.name} <span className="font-mono text-[11px] text-faint">{e.key}</span>
-                </td>
-                <td className={td}>
-                  <Checkbox
-                    id={`env-prod-${e.key}`}
-                    disabled={!canEdit}
-                    checked={e.production}
-                    onChange={(on) => update.mutate({ key: e.key, production: on })}
-                  />
-                  <label htmlFor={`env-prod-${e.key}`} className="sr-only">
-                    {e.name} is production
-                  </label>
-                </td>
-                <td className={td}>
-                  <Input
-                    aria-label={`Snapshots kept in ${e.name}`}
-                    type="number"
-                    min={0}
-                    className="h-7 w-20"
-                    disabled={!canEdit}
-                    defaultValue={e.snapshot_max_count}
-                    onBlur={(ev) => {
-                      // Empty or not a whole number: put the saved value back rather than save 0.
-                      const n = ev.target.valueAsNumber;
-                      if (ev.target.value.trim() === "" || !Number.isInteger(n) || n < 0) {
-                        ev.target.value = String(e.snapshot_max_count);
-                        return;
-                      }
-                      if (n !== e.snapshot_max_count) update.mutate({ key: e.key, snapshot_max_count: n });
-                    }}
-                  />
-                </td>
-                <td className={`${td} text-xs text-muted`}>
-                  {e.projects ?? 0} projects, {e.deployments ?? 0} deployments
-                </td>
-                <td className={`${td} text-right`}>
-                  {canEdit && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Remove ${e.name}`}
-                      disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
-                      title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
-                      onClick={() => remove.mutate(e.key)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Environment
+                </th>
+                <th scope="col" className={th}>
+                  Production
+                </th>
+                <th scope="col" className={th}>
+                  Snapshots kept
+                </th>
+                <th scope="col" className={th}>
+                  Used by
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {envs.data.items.map((e) => (
+                <tr key={e.key}>
+                  <td className={`${td} pl-4`}>
+                    {e.name} <span className="font-mono text-[11px] text-faint">{e.key}</span>
+                  </td>
+                  <td className={td}>
+                    <Checkbox
+                      id={`env-prod-${e.key}`}
+                      disabled={!canEdit}
+                      checked={e.production}
+                      onChange={(on) => update.mutate({ key: e.key, production: on })}
+                    />
+                    <label htmlFor={`env-prod-${e.key}`} className="sr-only">
+                      {e.name} is production
+                    </label>
+                  </td>
+                  <td className={td}>
+                    <Input
+                      aria-label={`Snapshots kept in ${e.name}`}
+                      type="number"
+                      min={0}
+                      className="h-7 w-20"
+                      disabled={!canEdit}
+                      defaultValue={e.snapshot_max_count}
+                      onBlur={(ev) => {
+                        // Empty or not a whole number: put the saved value back rather than save 0.
+                        const n = ev.target.valueAsNumber;
+                        if (ev.target.value.trim() === "" || !Number.isInteger(n) || n < 0) {
+                          ev.target.value = String(e.snapshot_max_count);
+                          return;
+                        }
+                        if (n !== e.snapshot_max_count) update.mutate({ key: e.key, snapshot_max_count: n });
+                      }}
+                    />
+                  </td>
+                  <td className={`${td} text-xs text-muted`}>
+                    {e.projects ?? 0} projects, {e.deployments ?? 0} deployments
+                  </td>
+                  <td className={`${td} text-right`}>
+                    {canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Remove ${e.name}`}
+                        disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
+                        title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
+                        onClick={() => remove.mutate(e.key)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {canEdit && (
         <form
@@ -438,48 +440,50 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
     <Panel title="OIDC group mappings" flush>
       {mappings.isPending && <SkeletonRows rows={3} cols={3} />}
       {mappings.data && (
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className={`${th} pl-4`}>
-                Group
-              </th>
-              <th scope="col" className={th}>
-                Gives
-              </th>
-              <th scope="col" className={th}>
-                People in it
-              </th>
-              <th scope="col" className={th}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {mappings.data.items.map((m) => (
-              <tr key={m.id}>
-                <td className={`${td} pl-4 font-mono text-xs`}>{m.oidc_group}</td>
-                <td className={`${td} text-xs`}>
-                  {[...globalRoles, ...projectRoles].find((r) => r.value === m.role)?.label ?? m.role}
-                  {m.project ? ` in ${m.project.name}` : ""}
-                </td>
-                <td className={`${td} text-xs text-muted`}>{m.users ?? 0}</td>
-                <td className={`${td} text-right`}>
-                  {canEdit && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Remove the mapping of ${m.oidc_group}`}
-                      onClick={() => remove.mutate(m.id)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="label text-left">
+                <th scope="col" className={`${th} pl-4`}>
+                  Group
+                </th>
+                <th scope="col" className={th}>
+                  Gives
+                </th>
+                <th scope="col" className={th}>
+                  People in it
+                </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {mappings.data.items.map((m) => (
+                <tr key={m.id}>
+                  <td className={`${td} pl-4 font-mono text-xs`}>{m.oidc_group}</td>
+                  <td className={`${td} text-xs`}>
+                    {[...globalRoles, ...projectRoles].find((r) => r.value === m.role)?.label ?? m.role}
+                    {m.project ? ` in ${m.project.name}` : ""}
+                  </td>
+                  <td className={`${td} text-xs text-muted`}>{m.users ?? 0}</td>
+                  <td className={`${td} text-right`}>
+                    {canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Remove the mapping of ${m.oidc_group}`}
+                        onClick={() => remove.mutate(m.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {canEdit && (
         <form

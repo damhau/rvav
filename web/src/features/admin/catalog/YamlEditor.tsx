@@ -2,10 +2,11 @@
 // lines: the catalog admin's view of a version's definition (ADR-0019).
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { yaml } from "@codemirror/lang-yaml";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { lintGutter, setDiagnostics, type Diagnostic } from "@codemirror/lint";
 import { EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef } from "react";
 
 export interface LineProblem {
@@ -24,10 +25,21 @@ export interface YamlEditorProps {
 const theme = EditorView.theme({
   "&": { backgroundColor: "var(--surface)", color: "var(--fg)", fontSize: "12px", height: "100%" },
   ".cm-content": { fontFamily: "var(--font-mono, ui-monospace, monospace)", caretColor: "var(--fg)" },
-  ".cm-gutters": { backgroundColor: "var(--sunken)", color: "var(--faint)", borderRight: "1px solid var(--line)" },
+  ".cm-gutters": { backgroundColor: "var(--sunken)", color: "var(--fg-faint)", borderRight: "1px solid var(--line)" },
   "&.cm-focused": { outline: "2px solid color-mix(in srgb, var(--accent) 40%, transparent)" },
   ".cm-scroller": { overflow: "auto" },
 });
+
+// The app's colours, which keep their contrast in both themes (S14.8);
+// CodeMirror's default style is made for a white background.
+const highlight = HighlightStyle.define([
+  { tag: [t.propertyName, t.definition(t.propertyName)], color: "var(--accent)" },
+  { tag: [t.string, t.special(t.string)], color: "var(--ok)" },
+  { tag: [t.number, t.bool, t.null, t.atom], color: "var(--run)" },
+  { tag: [t.keyword, t.meta, t.typeName, t.labelName], color: "var(--warn)" },
+  { tag: t.comment, color: "var(--fg-muted)", fontStyle: "italic" },
+  { tag: t.invalid, color: "var(--bad)" },
+]);
 
 export default function YamlEditor({ value, onChange, problems = [], readOnly, label }: YamlEditorProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -46,11 +58,12 @@ export default function YamlEditor({ value, onChange, problems = [], readOnly, l
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           yaml(),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(highlight),
           lintGutter(),
           theme,
           EditorState.readOnly.of(Boolean(readOnly)),
-          EditorView.contentAttributes.of({ "aria-label": label }),
+          // Focusable when read-only too, to scroll it from the keyboard.
+          EditorView.contentAttributes.of({ "aria-label": label, tabindex: "0" }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) changed.current?.(u.state.doc.toString());
           }),

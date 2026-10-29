@@ -82,11 +82,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
 
         <Menu>
           <MenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-md py-0.5 pr-1 pl-1 hover:bg-sunken"
-              aria-label="Account"
-            >
+            <button type="button" className="flex items-center gap-2 rounded-md py-0.5 pr-1 pl-1 hover:bg-sunken">
+              {/* Named by what it shows (WCAG 2.5.3), "Account" first. */}
+              <span className="sr-only">Account: </span>
               <span
                 aria-hidden
                 className="flex size-[26px] items-center justify-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent"

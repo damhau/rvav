@@ -14,7 +14,7 @@
   --line-strong: #b9c2c8;
   --fg: #14191c;
   --fg-muted: #4f5a63;
-  --fg-faint: #66717b;
+  --fg-faint: #5f6a74;
   --accent: #0e6488;
   --accent-fg: #ffffff;
   --accent-soft: #dcedf4;
@@ -53,7 +53,7 @@
     --line-strong: #3a454c;
     --fg: #e4e9ec;
     --fg-muted: #a3aeb6;
-    --fg-faint: #8a959e;
+    --fg-faint: #94a0a9;
     --accent: #4fb0d8;
     --accent-fg: #06222e;
     --accent-soft: #123344;
@@ -84,7 +84,7 @@
   --line-strong: #3a454c;
   --fg: #e4e9ec;
   --fg-muted: #a3aeb6;
-  --fg-faint: #8a959e;
+  --fg-faint: #94a0a9;
   --accent: #4fb0d8;
   --accent-fg: #06222e;
   --accent-soft: #123344;
@@ -168,6 +168,19 @@ h3 {
 
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+  Text for screen readers (sr-only) is positioned absolutely: in a table that
+  scrolls sideways it would escape a scroll container that isn't positioned
+  and widen the whole page (reflow at 400% zoom, S14.8). A component's own
+  position utility still wins over this base rule.
+*/
+@layer base {
+  .overflow-x-auto,
+  .overflow-auto {
+    position: relative;
+  }
 }
 
 .label {
