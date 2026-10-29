@@ -205,6 +205,15 @@ func (s *Store) VMResources(ctx context.Context) ([]Resource, error) {
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])
 }
 
+// VMResourcesOf are the VM resources of a VM, by its instance UUID, in
+// deployments not deleted.
+func (s *Store) VMResourcesOf(ctx context.Context, instanceUUID string) ([]Resource, error) {
+	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state, r.properties
+		from resources r join deployments d on d.id = r.deployment_id
+		where r.type = 'vsphere.vm' and d.status <> 'deleted' and r.external_id = $1`, instanceUUID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])
+}
+
 func (s *Store) UpdateResourceState(ctx context.Context, db DB, id, syncState string, props json.RawMessage) error {
 	_, err := db.Exec(ctx, `update resources set sync_state = $2, properties = $3, updated_at = now() where id = $1`, id, syncState, props)
 	return err

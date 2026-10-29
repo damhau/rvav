@@ -87,8 +87,20 @@ How a blueprint is built is in
   for cloud-init's VMware data source (cloud-init 21.3 and later).
 
 ### Inventory sync (`rvav-sync`)
-- PropertyCollector `WaitForUpdatesEx` on VMs, hosts, clusters, datastores,
-  networks, folders, resource pools and tags.
+- Follows each vCenter's changes with the property collector
+  (`WaitForUpdatesEx` on a container view): VMs (name, folder, power, host,
+  guest addresses and Tools, size, devices, snapshots, template or not),
+  hosts, clusters, datastores and networks (name and membership). A VM that
+  changes is read again at once, so a VM powered off in vCenter is off in
+  rvav within a second; when anything else changes, its vCenter is read
+  again in full a few seconds later, once for a burst of changes.
+- A full read every `RVAV_SYNC_INTERVAL` (2 minutes by default) brings in
+  what changes all the time and isn't followed (quick stats, free space)
+  and what has no change notifications (tags, content library items,
+  storage policies), and makes up for a change notification lost.
+- When its session breaks (vCenter restarted, the session timed out), the
+  sync signs in again, follows again and reads that vCenter in full, after
+  a pause that grows to a minute while it keeps failing.
 - Writes into cache tables used by form pickers, placement and the deployment view.
 - Changes are pushed to the UI over SSE (power state, IPs, reconfigurations made
   outside the app).

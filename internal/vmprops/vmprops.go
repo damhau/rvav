@@ -39,6 +39,27 @@ func OursOf(props json.RawMessage) Ours {
 	return p.VM
 }
 
+// UsageOf is the quick stats stored with a VM, nil when there are none.
+func UsageOf(props json.RawMessage) *Usage {
+	var p struct {
+		VM struct {
+			Usage *struct {
+				CPUPct    *float32   `json:"cpu_pct"`
+				MemoryPct *float32   `json:"memory_pct"`
+				SampledAt *time.Time `json:"sampled_at"`
+			} `json:"usage"`
+		} `json:"vm"`
+	}
+	if json.Unmarshal(props, &p) != nil || p.VM.Usage == nil {
+		return nil
+	}
+	u := &Usage{CPUPct: p.VM.Usage.CPUPct, MemoryPct: p.VM.Usage.MemoryPct}
+	if p.VM.Usage.SampledAt != nil {
+		u.SampledAt = *p.VM.Usage.SampledAt
+	}
+	return u
+}
+
 // VCenterOf is the vCenter a VM's stored properties say it is in.
 func VCenterOf(props json.RawMessage) string {
 	var p struct {

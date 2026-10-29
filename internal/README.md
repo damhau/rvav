@@ -56,8 +56,6 @@ vCenter simulator with the GVA layout for local work.
   run against a real AWX. The AWX dynamic inventory endpoint and plugin
   (docs/integrations.md) are not built yet; the workflow only refreshes the
   configured inventory source.
-- Inventory sync polls every `RVAV_SYNC_INTERVAL` rather than using
-  `WaitForUpdatesEx`.
 - Value sources `awx.*` and REST/CEL sources return 400 "not available yet".
 - `composite` items (PostgreSQL cluster) are listed but cannot be requested.
 - Optional nullable fields are omitted rather than sent as `null` (a

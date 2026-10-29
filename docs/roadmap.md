@@ -174,7 +174,6 @@ organisation's.
 
 ### Open items found in slice 1
 - EfficientIP client: endpoints confirmed against EfficientIP's own library (S7); a real SOLIDserver still has to confirm them.
-- Inventory sync polls; switch to property collector updates (S13).
 - Accessibility audit (S14), Storybook.
 
 ## Plan

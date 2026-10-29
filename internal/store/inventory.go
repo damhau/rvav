@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -105,4 +106,31 @@ func (s *Store) InventoryVMNames(ctx context.Context, prefix string) (map[string
 func (s *Store) InventoryVMs(ctx context.Context, vcenter string) ([]InvVM, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+invVMCols+` from inv_vms where vcenter = $1`, vcenter)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvVM])
+}
+
+// UpsertInventoryVM stores one VM of a vCenter's inventory as a change
+// notification says it is now; its quick stats stay those of the last full
+// sync.
+func (s *Store) UpsertInventoryVM(ctx context.Context, vcenter string, v InvVM) error {
+	_, err := s.Pool.Exec(ctx, `insert into inv_vms (vcenter, moref, instance_uuid, name, power_state, guest_state, ip_address,
+		hostname, guest_os, cpu_count, memory_mb, cluster, host, snapshot_count, synced_at)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+		on conflict (vcenter, moref) do update set instance_uuid = excluded.instance_uuid, name = excluded.name,
+		power_state = excluded.power_state, guest_state = excluded.guest_state, ip_address = excluded.ip_address,
+		hostname = excluded.hostname, guest_os = excluded.guest_os, cpu_count = excluded.cpu_count, memory_mb = excluded.memory_mb,
+		cluster = excluded.cluster, host = excluded.host, snapshot_count = excluded.snapshot_count, synced_at = now()`,
+		vcenter, v.Moref, v.InstanceUUID, v.Name, v.PowerState, v.GuestState, v.IPAddress, v.Hostname, v.GuestOS, v.CPUCount,
+		v.MemoryMB, v.Cluster, v.Host, v.SnapshotCount)
+	return err
+}
+
+// DeleteInventoryVM forgets a VM vCenter no longer has, and says which it
+// was ("" when it wasn't known).
+func (s *Store) DeleteInventoryVM(ctx context.Context, vcenter, moref string) (instanceUUID string, err error) {
+	err = s.Pool.QueryRow(ctx, `delete from inv_vms where vcenter = $1 and moref = $2 returning instance_uuid`, vcenter, moref).
+		Scan(&instanceUUID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return instanceUUID, err
 }

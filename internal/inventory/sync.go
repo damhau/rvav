@@ -1,7 +1,10 @@
 // Package inventory keeps the vCenter inventory cache and the state of VM
-// resources up to date. It polls vCenter with the property collector every
-// interval; WaitForUpdatesEx-based change tracking can replace the polling
-// later without changing what is stored.
+// resources up to date. It follows each vCenter's changes with the
+// property collector (WaitForUpdatesEx): a VM that changes is read again at
+// once, and when anything else rvav caches changes its vCenter is read
+// again in full, a moment later. A full read every interval brings in what
+// changes all the time and isn't followed: quick stats, free space, tags,
+// content library items and storage policies.
 package inventory
 
 import (
@@ -13,6 +16,7 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/damhau/rvav/internal/events"
@@ -29,7 +33,30 @@ type Syncer struct {
 	VSphere  vsphere.Driver
 	Events   *events.Publisher
 	Log      *slog.Logger
+	// Interval is the time between full reads.
 	Interval time.Duration
+	// Settle is how long a change other than a VM's waits before its
+	// vCenter is read in full, as such changes come in bursts (5s when 0).
+	Settle time.Duration
+
+	mu sync.Mutex
+	// locks keep one change at a time per vCenter, so that an older read
+	// doesn't overwrite a newer one.
+	locks    map[string]*sync.Mutex
+	watchers map[string]watcher
+}
+
+// target is a vCenter to sync: its connection and the VM resources it
+// owns, by the vCenter their properties name.
+type target struct {
+	name string
+	d    vsphere.Driver
+	owns func(vcenter string) bool
+}
+
+type watcher struct {
+	d    vsphere.Driver
+	stop context.CancelFunc
 }
 
 // VCenterSet is the vCenters rvav manages.
@@ -74,11 +101,13 @@ func (s *Syncer) Run(ctx context.Context) error {
 	defer t.Stop()
 	for {
 		start := time.Now()
-		if err := s.SyncOnce(ctx); err != nil && ctx.Err() == nil {
+		targets, names, err := s.syncAll(ctx)
+		if err != nil && ctx.Err() == nil {
 			s.Log.Warn("inventory sync failed", "err", err)
 		} else if ctx.Err() == nil {
 			s.Log.Debug("inventory synced", "duration_ms", time.Since(start).Milliseconds())
 		}
+		s.follow(ctx, targets, names)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -87,15 +116,25 @@ func (s *Syncer) Run(ctx context.Context) error {
 	}
 }
 
-// SyncOnce syncs every vCenter; one that fails doesn't stop the others.
+// SyncOnce reads every vCenter in full; one that fails doesn't stop the
+// others.
 func (s *Syncer) SyncOnce(ctx context.Context) error {
+	_, _, err := s.syncAll(ctx)
+	return err
+}
+
+// syncAll reads every vCenter in full, and says which it could connect to
+// among those rvav manages.
+func (s *Syncer) syncAll(ctx context.Context) ([]target, []string, error) {
 	if s.VCenters == nil {
-		return s.syncVCenter(ctx, s.VSphere, func(string) bool { return true })
+		t := target{name: s.VSphere.Name(), d: s.VSphere, owns: func(string) bool { return true }}
+		return []target{t}, []string{t.name}, s.syncTarget(ctx, t)
 	}
 	names, err := s.VCenters.Names(ctx)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
+	var targets []target
 	var errs []error
 	for i, name := range names {
 		// The first's VMs are those of a name rvav doesn't know too: the
@@ -103,7 +142,9 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 		owns := func(vc string) bool { return vc == name || i == 0 && !slices.Contains(names, vc) }
 		d, err := s.VCenters.Get(ctx, name)
 		if err == nil {
-			err = s.syncVCenter(ctx, d, owns)
+			t := target{name: name, d: d, owns: owns}
+			targets = append(targets, t)
+			err = s.syncTarget(ctx, t)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
@@ -115,7 +156,186 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
+	return targets, names, errors.Join(errs...)
+}
+
+// lock takes a vCenter's lock; the function it returns releases it.
+func (s *Syncer) lock(name string) func() {
+	s.mu.Lock()
+	if s.locks == nil {
+		s.locks = map[string]*sync.Mutex{}
+	}
+	m := s.locks[name]
+	if m == nil {
+		m = new(sync.Mutex)
+		s.locks[name] = m
+	}
+	s.mu.Unlock()
+	m.Lock()
+	return m.Unlock
+}
+
+func (s *Syncer) syncTarget(ctx context.Context, t target) error {
+	defer s.lock(t.name)()
+	return s.syncVCenter(ctx, t.d, t.owns)
+}
+
+// follow keeps one watcher on each vCenter connected to, a new one when
+// its connection changed, and stops those of vCenters no longer managed.
+func (s *Syncer) follow(ctx context.Context, targets []target, names []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.watchers == nil {
+		s.watchers = map[string]watcher{}
+	}
+	for _, t := range targets {
+		if w, ok := s.watchers[t.name]; ok {
+			if w.d == t.d {
+				continue
+			}
+			w.stop()
+		}
+		wctx, stop := context.WithCancel(ctx)
+		s.watchers[t.name] = watcher{d: t.d, stop: stop}
+		go s.watch(wctx, t)
+	}
+	for name, w := range s.watchers {
+		if !slices.Contains(names, name) {
+			w.stop()
+			delete(s.watchers, name)
+		}
+	}
+}
+
+// watch follows a vCenter until ctx is done, and again each time its
+// session breaks, after a pause that grows while it keeps breaking.
+func (s *Syncer) watch(ctx context.Context, t target) {
+	kick := make(chan struct{}, 1)
+	go s.settle(ctx, t, kick)
+	pause := time.Second
+	for {
+		start := time.Now()
+		err := t.d.Watch(ctx, func(cs []vsphere.Change) { s.apply(ctx, t, cs, kick) })
+		if ctx.Err() != nil {
+			return
+		}
+		if time.Since(start) > time.Minute {
+			pause = time.Second
+		}
+		s.Log.Warn("inventory: vCenter changes not followed; following again", "vcenter", t.name, "err", err,
+			"in", pause.String())
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pause):
+		}
+		pause = min(2*pause, time.Minute)
+	}
+}
+
+// settle reads a vCenter in full a moment after something other than a
+// VM changed, once for a burst of changes.
+func (s *Syncer) settle(ctx context.Context, t target, kick chan struct{}) {
+	wait := s.Settle
+	if wait == 0 {
+		wait = 5 * time.Second
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-kick:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		select {
+		case <-kick:
+		default:
+		}
+		if err := s.syncTarget(ctx, t); err != nil && ctx.Err() == nil {
+			s.Log.Warn("inventory sync failed", "vcenter", t.name, "err", err)
+		}
+	}
+}
+
+// apply brings in what a vCenter says changed: each VM read again at once,
+// the rest of its inventory a moment later.
+func (s *Syncer) apply(ctx context.Context, t target, changes []vsphere.Change, kick chan struct{}) {
+	var morefs []string
+	gone := map[string]bool{}
+	for _, c := range changes {
+		if c.Inventory {
+			select {
+			case kick <- struct{}{}:
+			default:
+			}
+		}
+		if c.VM == "" {
+			continue
+		}
+		if _, ok := gone[c.VM]; !ok {
+			morefs = append(morefs, c.VM)
+		}
+		gone[c.VM] = gone[c.VM] || c.Gone
+	}
+	for _, m := range morefs {
+		if err := s.syncVM(ctx, t, m, gone[m]); err != nil && ctx.Err() == nil {
+			s.Log.Warn("inventory: VM not read", "vcenter", t.name, "moref", m, "err", err)
+		}
+	}
+}
+
+// syncVM reads one VM again, or forgets it when vCenter no longer has it
+// (or it became a template), and refreshes its resource.
+func (s *Syncer) syncVM(ctx context.Context, t target, moref string, gone bool) error {
+	defer s.lock(t.name)()
+	vcenter := t.d.Name()
+	var vm *vsphere.InventoryVM
+	if !gone {
+		var err error
+		vm, err = t.d.InventoryVM(ctx, moref)
+		switch {
+		case errors.Is(err, vsphere.ErrNotFound):
+			gone = true
+		case err != nil:
+			return err
+		}
+	}
+	if gone || vm.Template {
+		uuid, err := s.Store.DeleteInventoryVM(ctx, vcenter, moref)
+		if err != nil || uuid == "" {
+			return err
+		}
+		return s.refreshVM(ctx, t, uuid, nil)
+	}
+	v := vm.VM
+	if err := s.Store.UpsertInventoryVM(ctx, vcenter, store.InvVM{Moref: v.Moref, InstanceUUID: v.InstanceUUID, Name: v.Name,
+		PowerState: v.PowerState, GuestState: v.GuestState, IPAddress: v.IP, Hostname: v.Hostname, GuestOS: v.GuestOS,
+		CPUCount: v.CPUCount, MemoryMB: v.MemoryMB, Cluster: v.Cluster, Host: v.Host, SnapshotCount: vm.SnapshotCount}); err != nil {
+		return err
+	}
+	return s.refreshVM(ctx, t, v.InstanceUUID, vm)
+}
+
+// refreshVM refreshes the resources of one VM (vm nil when it's gone); its
+// quick stats stay those of the last full read.
+func (s *Syncer) refreshVM(ctx context.Context, t target, instanceUUID string, vm *vsphere.InventoryVM) error {
+	resources, err := s.Store.VMResourcesOf(ctx, instanceUUID)
+	if err != nil {
+		return err
+	}
+	for _, r := range resources {
+		if !t.owns(vmprops.VCenterOf(r.Properties)) {
+			continue
+		}
+		if err := s.refreshResource(ctx, t.d.Name(), r, vm, vmprops.UsageOf(r.Properties)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // syncVCenter reads a vCenter's inventory, replaces its cache and refreshes
@@ -222,41 +442,55 @@ func (s *Syncer) refreshResources(ctx context.Context, vcenter string, owns func
 		if r.ExternalID == nil || !owns(vmprops.VCenterOf(r.Properties)) {
 			continue
 		}
-		dep, err := s.Store.GetDeployment(ctx, r.DeploymentID)
-		if err != nil {
-			continue
+		var vm *vsphere.InventoryVM
+		var usage *vmprops.Usage
+		if v, ok := byUUID[*r.ExternalID]; ok {
+			vm, usage = &v, &vmprops.Usage{CPUPct: v.CPUPct, MemoryPct: v.MemoryPct, SampledAt: now}
 		}
-		vm, ok := byUUID[*r.ExternalID]
-		if !ok {
-			if dep.Status == "provisioning" || r.SyncState == "missing" {
-				continue // not cloned yet, or already reported
-			}
-			if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "missing", r.Properties); err != nil {
-				return err
-			}
-			_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
-			r.SyncState = "missing"
-			s.Events.Resource(ctx, dep.ProjectID, r)
-			s.Events.Deployment(ctx, r.DeploymentID)
-			continue
-		}
-		var old storedVM
-		_ = json.Unmarshal(r.Properties, &old)
-		if vm.Folder == "" {
-			vm.Folder = old.VM.Folder
-		}
-		props := vmprops.Build(vcenter, vm.VM, vmprops.OursOf(r.Properties),
-			&vmprops.Usage{CPUPct: vm.CPUPct, MemoryPct: vm.MemoryPct, SampledAt: now}, vm.SnapshotCount)
-		changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != "in_sync"
-		if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "in_sync", props); err != nil {
+		if err := s.refreshResource(ctx, vcenter, r, vm, usage); err != nil {
 			return err
 		}
-		if changed {
-			_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
-			r.Properties, r.SyncState = props, "in_sync"
-			s.Events.Resource(ctx, dep.ProjectID, r)
-			s.Events.Deployment(ctx, r.DeploymentID)
+	}
+	return nil
+}
+
+// refreshResource stores what a VM resource's VM is now, or that it is
+// missing (vm nil), and tells those watching when that changed.
+func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Resource, vm *vsphere.InventoryVM, usage *vmprops.Usage) error {
+	dep, err := s.Store.GetDeployment(ctx, r.DeploymentID)
+	if err != nil {
+		return nil
+	}
+	if vm == nil {
+		// Not cloned yet, being deleted, or already reported.
+		if dep.Status == "provisioning" || dep.Status == "deleting" || r.SyncState == "missing" {
+			return nil
 		}
+		if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "missing", r.Properties); err != nil {
+			return err
+		}
+		_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
+		r.SyncState = "missing"
+		s.Events.Resource(ctx, dep.ProjectID, r)
+		s.Events.Deployment(ctx, r.DeploymentID)
+		return nil
+	}
+	var old storedVM
+	_ = json.Unmarshal(r.Properties, &old)
+	v := vm.VM
+	if v.Folder == "" {
+		v.Folder = old.VM.Folder
+	}
+	props := vmprops.Build(vcenter, v, vmprops.OursOf(r.Properties), usage, vm.SnapshotCount)
+	changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != "in_sync"
+	if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "in_sync", props); err != nil {
+		return err
+	}
+	if changed {
+		_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
+		r.Properties, r.SyncState = props, "in_sync"
+		s.Events.Resource(ctx, dep.ProjectID, r)
+		s.Events.Deployment(ctx, r.DeploymentID)
 	}
 	return nil
 }

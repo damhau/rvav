@@ -164,6 +164,9 @@ type Driver interface {
 	WaitForIP(ctx context.Context, moref string) (string, error)
 	Destroy(ctx context.Context, moref string) error
 	Inventory(ctx context.Context) (*Inventory, error)
+	// Watch follows changes until ctx is done or the session breaks (watch.go).
+	Watch(ctx context.Context, changed func([]Change)) error
+	InventoryVM(ctx context.Context, moref string) (*InventoryVM, error)
 	// AttachTags attaches vSphere tags, category/tag (tags.go).
 	AttachTags(ctx context.Context, moref string, tags []string) error
 	// DRS rules keeping VMs apart (rules.go).
@@ -338,6 +341,25 @@ func (cl *Client) GetVM(ctx context.Context, moref string) (*VM, error) {
 		return nil, err
 	}
 	return cl.vmInfo(ctx, c, vmRef(moref))
+}
+
+// InventoryVM reads one VM as the inventory has it, without quick stats
+// (the inventory sync's full read has them).
+func (cl *Client) InventoryVM(ctx context.Context, moref string) (*InventoryVM, error) {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	vm, err := cl.vmInfo(ctx, c, vmRef(moref))
+	if err != nil {
+		return nil, err
+	}
+	iv := &InventoryVM{VM: *vm}
+	var m mo.VirtualMachine
+	if err := property.DefaultCollector(c).RetrieveOne(ctx, vmRef(moref), []string{"snapshot"}, &m); err == nil && m.Snapshot != nil {
+		iv.SnapshotCount = countSnapshots(m.Snapshot.RootSnapshotList)
+	}
+	return iv, nil
 }
 
 func vmRef(moref string) types.ManagedObjectReference {

@@ -253,7 +253,7 @@ func Load() (Config, error) {
 	if c.IPAMSyncInterval, err = duration("RVAV_IPAM_SYNC_INTERVAL", 5*time.Minute); err != nil {
 		return c, err
 	}
-	if c.SyncInterval, err = duration("RVAV_SYNC_INTERVAL", 20*time.Second); err != nil {
+	if c.SyncInterval, err = duration("RVAV_SYNC_INTERVAL", 2*time.Minute); err != nil {
 		return c, err
 	}
 

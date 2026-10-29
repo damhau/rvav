@@ -4879,7 +4879,7 @@ components:
         snapshot_count: { type: integer }
         usage:
           type: object
-          description: Quick stats from vCenter, refreshed about every 20 seconds.
+          description: Quick stats from vCenter, refreshed at each full read of the inventory (every 2 minutes by default).
           properties:
             cpu_pct: { type: number }
             memory_pct: { type: number }

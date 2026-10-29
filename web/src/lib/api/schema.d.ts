@@ -3454,7 +3454,7 @@ export interface components {
             /** @description The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item. */
             component?: string;
             snapshot_count?: number;
-            /** @description Quick stats from vCenter, refreshed about every 20 seconds. */
+            /** @description Quick stats from vCenter, refreshed at each full read of the inventory (every 2 minutes by default). */
             usage?: {
                 cpu_pct?: number;
                 memory_pct?: number;
