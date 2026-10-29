@@ -46,6 +46,16 @@ type VMSpec struct {
 	// HostIndex picks the cluster's eligible hosts in turn: VMs kept apart
 	// get 0, 1, 2… so they start on separate hosts (ADR-0024).
 	HostIndex int
+	// Disks and NICs are added after the template's (networks, by name).
+	Disks []DiskSpec
+	NICs  []string
+}
+
+// DiskSpec is a disk added at provisioning, on Datastore (the VM's when
+// empty).
+type DiskSpec struct {
+	SizeGB    int
+	Datastore string
 }
 
 // Customization is the guest identity and network applied before first boot.
@@ -57,6 +67,17 @@ type Customization struct {
 	IP           string
 	PrefixLength int
 	Gateway      string
+	DNSServers   []string
+	// Extra are the added adapters, in order.
+	Extra []NICSetting
+}
+
+// NICSetting is an added adapter's address: fixed, or from DHCP. Only the
+// first adapter has the gateway.
+type NICSetting struct {
+	DHCP         bool
+	IP           string
+	PrefixLength int
 	DNSServers   []string
 }
 
@@ -119,6 +140,8 @@ type Driver interface {
 	WaitForIP(ctx context.Context, moref string) (string, error)
 	Destroy(ctx context.Context, moref string) error
 	Inventory(ctx context.Context) (*Inventory, error)
+	// AttachTags attaches vSphere tags, category/tag (tags.go).
+	AttachTags(ctx context.Context, moref string, tags []string) error
 	// DRS rules keeping VMs apart (rules.go).
 	SetAntiAffinityRule(ctx context.Context, cluster, name string, morefs []string) error
 	DeleteRule(ctx context.Context, cluster, name string) error
@@ -394,7 +417,15 @@ func toVM(m mo.VirtualMachine) VM {
 					label = dev.DeviceInfo.GetDescription().Label
 				}
 				gb := int(dev.CapacityInKB / (1024 * 1024))
-				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb})
+				// Its datastore, from its file ("[vsan-01] vm/vm_1.vmdk").
+				ds := ""
+				if b, ok := dev.Backing.(types.BaseVirtualDeviceFileBackingInfo); ok {
+					var p object.DatastorePath
+					if p.FromString(b.GetVirtualDeviceFileBackingInfo().FileName) {
+						ds = p.Datastore
+					}
+				}
+				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds})
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:
 				card := dev.GetVirtualEthernetCard()
@@ -491,7 +522,11 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if existing, err := cl.FindVM(ctx, spec.Name); err != nil {
 		return nil, err
 	} else if existing != nil {
-		return existing, nil
+		// An earlier attempt cloned it: what it didn't add yet is added.
+		if err := cl.addHardware(ctx, object.NewVirtualMachine(c, vmRef(existing.Moref)), spec); err != nil {
+			return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
+		}
+		return cl.vmInfo(ctx, c, vmRef(existing.Moref))
 	}
 
 	tplRef, err := findRef(ctx, c, "VirtualMachine", spec.Template)
@@ -603,7 +638,72 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err := reconfigure(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
 		return nil, fmt.Errorf("reconfigure %s: %w", spec.Name, err)
 	}
+	if err := cl.addHardware(ctx, object.NewVirtualMachine(c, ref), spec); err != nil {
+		return nil, fmt.Errorf("add disks and adapters to %s: %w", spec.Name, err)
+	}
 	return cl.vmInfo(ctx, c, ref)
+}
+
+// addHardware adds the spec's disks and adapters the VM doesn't have yet,
+// counting from the template's first: it is safe to run again.
+func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, spec VMSpec) error {
+	if len(spec.Disks)+len(spec.NICs) == 0 {
+		return nil
+	}
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return err
+	}
+	var add []types.BaseVirtualDevice
+	nics := len(devices.SelectByType((*types.VirtualEthernetCard)(nil)))
+	for _, network := range spec.NICs[min(max(nics-1, 0), len(spec.NICs)):] {
+		backing, err := cl.networkBacking(ctx, network)
+		if err != nil {
+			return err
+		}
+		nic, err := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", backing)
+		if err != nil {
+			return err
+		}
+		add = append(add, nic)
+	}
+	disks := len(devices.SelectByType((*types.VirtualDisk)(nil)))
+	if missing := spec.Disks[min(max(disks-1, 0), len(spec.Disks)):]; len(missing) > 0 {
+		c, err := cl.client(ctx)
+		if err != nil {
+			return err
+		}
+		controller, err := devices.FindDiskController("")
+		if err != nil {
+			return err
+		}
+		for _, d := range missing {
+			var ds types.ManagedObjectReference
+			if d.Datastore != "" {
+				if ds, err = findRef(ctx, c, "Datastore", d.Datastore); err != nil {
+					return err
+				}
+			}
+			disk := devices.CreateDisk(controller, ds, "")
+			if d.Datastore != "" {
+				// "[datastore]" alone: vCenter names the file, in the VM's
+				// folder on that datastore (CreateDisk would make it
+				// "[datastore].vmdk", one file for every VM).
+				disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo).FileName = "[" + d.Datastore + "]"
+			}
+			disk.CapacityInKB = int64(d.SizeGB) * 1024 * 1024
+			// A disk at a time: each one's file is named when it is made.
+			if err := vm.AddDevice(ctx, disk); err != nil {
+				return err
+			}
+			// The next one takes the next unit number on the controller.
+			devices = append(devices, disk)
+		}
+	}
+	if len(add) == 0 {
+		return nil
+	}
+	return vm.AddDevice(ctx, add...)
 }
 
 // reconfigure sets CPU, memory, annotation and extra config, and grows the
@@ -675,6 +775,14 @@ func (cl *Client) Customize(ctx context.Context, moref string, cu Customization)
 				DnsServerList: cu.DNSServers,
 			},
 		}},
+	}
+	for _, n := range cu.Extra {
+		a := types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}}
+		if !n.DHCP {
+			a = types.CustomizationIPSettings{Ip: &types.CustomizationFixedIp{IpAddress: n.IP},
+				SubnetMask: prefixToMask(n.PrefixLength), DnsServerList: n.DNSServers}
+		}
+		spec.NicSettingMap = append(spec.NicSettingMap, types.CustomizationAdapterMapping{Adapter: a})
 	}
 	if cu.OSFamily == "windows" {
 		spec.Identity = &types.CustomizationSysprep{

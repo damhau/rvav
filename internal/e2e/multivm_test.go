@@ -42,11 +42,15 @@ func shopApp() api.CatalogVersionDefinition {
 			"components": []any{
 				map[string]any{"key": "web", "title": "Web servers", "count": "inputs.web_nodes", "anti_affinity": true,
 					"bindings": map[string]any{"cluster": "inputs.web_cluster", "datastore": "inputs.web_datastore",
-						"post_config": `["linux-baseline"]`}},
+						"post_config": `["linux-baseline"]`, "tags": `["rvav-tier/" + inputs.app]`},
+					"disks": []any{map[string]any{"size_gb": 20}}, "tags": []any{"rvav-tier/gold"}},
 				map[string]any{"key": "db", "title": "Database", "template": "tpl-win2025-std-2026.09",
 					"guest": map[string]any{"os_family": "windows"},
 					"bindings": map[string]any{"cluster": "inputs.db_cluster", "datastore": "inputs.db_datastore", "vcpu": "4",
-						"post_config": "inputs.db_post"}},
+						"post_config": "inputs.db_post"},
+					"disks": []any{map[string]any{"size_gb": 100, "datastore": `"vsan-gva-dev-cl01"`}, map[string]any{"size_gb": 10}},
+					"nics": []any{map[string]any{"key": "backup", "network": `"dvpg-db-dev-vl320"`},
+						map[string]any{"network": "inputs.network", "ipam": "dhcp"}}},
 			},
 		},
 	}
@@ -181,6 +185,42 @@ func TestMultiVMBlueprint(t *testing.T) {
 		if err != nil || !slices.Equal(inVC, morefs) {
 			t.Fatalf("rule in vCenter = %v (%v), want %v", inVC, err, morefs)
 		}
+		// Every VM its own addresses; the database's backup adapter one more,
+		// with its records; added disks, adapters and tags (S12.3).
+		var addrs []string
+		_ = h.store.Pool.QueryRow(ctx, `select array_agg(name order by name) from resources where deployment_id = $1 and type = 'ipam.address'`,
+			dep.Id).Scan(&addrs)
+		if len(addrs) != 4 || len(slices.Compact(slices.Clone(addrs))) != 4 {
+			t.Fatalf("addresses = %v", addrs)
+		}
+		var backupA int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from resources where deployment_id = $1 and type = 'dns.record'
+			and properties->>'fqdn' like 'web-dev-shopdb01-backup.%' and properties->>'record_type' = 'A'`, dep.Id).Scan(&backupA)
+		if backupA != 1 {
+			t.Fatal("no A record for the database's backup adapter")
+		}
+		for _, r := range dep.Resources {
+			v, _ := r.ValueByDiscriminator()
+			vm, ok := v.(api.VmResource)
+			if !ok {
+				continue
+			}
+			switch deref(vm.Vm.Component) {
+			case "db":
+				if len(vm.Vm.Nics) != 3 || vm.Vm.Nics[1].Network != "dvpg-db-dev-vl320" || len(vm.Vm.Disks) != 3 ||
+					vm.Vm.Disks[1].CapacityGb != 100 || deref(vm.Vm.Disks[1].Datastore) != "vsan-gva-dev-cl01" {
+					t.Fatalf("db VM = %+v / %+v", vm.Vm.Nics, vm.Vm.Disks)
+				}
+			case "web":
+				if len(vm.Vm.Disks) != 2 || vm.Vm.Disks[1].CapacityGb != 20 {
+					t.Fatalf("web VM disks = %+v", vm.Vm.Disks)
+				}
+				if tags, err := h.vc.VMTags(ctx, vm.Vm.Moref); err != nil || !slices.Equal(tags, []string{"rvav-tier/gold", "rvav-tier/shop"}) {
+					t.Fatalf("web VM tags = %v (%v)", tags, err)
+				}
+			}
+		}
+
 		// AWX's inventory groups them by component.
 		var inv map[string]json.RawMessage
 		h.json("GET", "/api/v1/ansible/inventory", admin, nil, 200, &inv)

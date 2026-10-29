@@ -168,6 +168,54 @@ type VMUnit struct {
 	PrefixLength int      `json:"prefix_length"`
 	DNSZone      string   `json:"dns_zone"`
 	DNSServers   []string `json:"dns_servers"`
+	// Disks and NICs are added after the template's, and Tags attached
+	// (ADR-0024).
+	Disks []blueprint.DiskPlan `json:"disks,omitempty"`
+	NICs  []NICUnit            `json:"nics,omitempty"`
+	Tags  []string             `json:"tags,omitempty"`
+}
+
+// NICUnit is an adapter added after the template's: with efficientip, an
+// address in its network's subnet and records for FQDN.
+type NICUnit struct {
+	Key          string   `json:"key"`
+	Network      string   `json:"network"`
+	IPAM         string   `json:"ipam"`
+	FQDN         string   `json:"fqdn,omitempty"`
+	Subnet       string   `json:"subnet,omitempty"`
+	SubnetID     string   `json:"subnet_id,omitempty"`
+	PrefixLength int      `json:"prefix_length,omitempty"`
+	DNSZone      string   `json:"dns_zone,omitempty"`
+	DNSServers   []string `json:"dns_servers,omitempty"`
+}
+
+func (vm VMUnit) ipTitle() string {
+	if len(vm.Addressed()) > 0 {
+		return "Reserve IP addresses"
+	}
+	return "Reserve an IP address"
+}
+
+func (vm VMUnit) subnets() string {
+	list := []string{vm.Subnet}
+	for _, n := range vm.Addressed() {
+		list = append(list, n.Subnet)
+	}
+	if len(list) == 1 {
+		return "Subnet " + vm.Subnet
+	}
+	return "Subnets " + strings.Join(list, ", ")
+}
+
+// Addressed are the VM's added adapters that get an address and records.
+func (vm VMUnit) Addressed() []NICUnit {
+	var out []NICUnit
+	for _, n := range vm.NICs {
+		if n.IPAM == blueprint.IPAMEfficientIP {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Job is an AWX job template run as one step.
@@ -267,7 +315,7 @@ func (p Plan) Steps(environment string) []StepDef {
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Limit(), System: "vcenter", Status: "pending"})
 				for _, vm := range c.VMs {
 					steps = append(steps,
-						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, "Reserve an IP address", vm), Detail: "Subnet " + vm.Subnet, System: "efficientip", Status: "pending", Parent: parent},
+						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, "Clone from "+vm.Template, vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
@@ -299,7 +347,7 @@ func (p Plan) Steps(environment string) []StepDef {
 			steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(names(vms), ",", ", "), System: "vcenter", Status: "pending"})
 			for _, vm := range vms {
 				steps = append(steps,
-					StepDef{Key: c.VMKey(KeyIPAM, vm), Title: "Reserve an IP address · " + vm.Name, Detail: "Subnet " + vm.Subnet, System: "efficientip", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyClone, vm), Title: "Clone from " + vm.Template + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
 					StepDef{Key: c.VMKey(KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
@@ -327,7 +375,7 @@ func (p Plan) Steps(environment string) []StepDef {
 	}
 	for _, vm := range p.VMs {
 		steps = append(steps,
-			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle("Reserve an IP address", vm), Detail: "Subnet " + vm.Subnet, System: "efficientip", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle("Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle("Clone from "+vm.Template, vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending"},

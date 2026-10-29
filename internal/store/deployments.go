@@ -342,6 +342,7 @@ func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
 	rows, _ := s.Pool.Query(ctx, `select r.name, r.properties->'vm' as vm,
 		(select a.properties->>'address' from resources a where a.deployment_id = d.id and a.type = 'ipam.address'
 			and (a.properties->>'hostname' = r.name or a.properties->>'fqdn' = r.properties->'vm'->>'fqdn')
+			and coalesce(a.properties->>'nic', '') = ''
 			order by a.name limit 1) as address,
 		d.id as deployment_id, d.name as deployment_name, d.status, d.environment, p.code as project, i.slug as item, i.tags,
 		coalesce(u.email, '') as owner,

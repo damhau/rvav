@@ -38,17 +38,19 @@ func OneDeployment(raw json.RawMessage) *bool {
 type vmPart struct {
 	comp blueprint.Component
 	// label starts its messages ("Web servers: "); empty for a single VM.
-	label   string
-	count   int
-	vm      blueprint.VMPlan
-	guest   blueprint.Guest
-	rule    *store.PlacementRule
-	subnet  *store.NetworkSubnet
-	naming  *naming.Template
-	prefix  string
-	counter string
-	names   []string
-	check   *nameCheck
+	label  string
+	count  int
+	vm     blueprint.VMPlan
+	guest  blueprint.Guest
+	rule   *store.PlacementRule
+	subnet *store.NetworkSubnet
+	// nicSubnets are the added adapters' subnets (nil for DHCP).
+	nicSubnets []*store.NetworkSubnet
+	naming     *naming.Template
+	prefix     string
+	counter    string
+	names      []string
+	check      *nameCheck
 	// addresses is the next free address of its network, as a hint.
 	addresses []string
 }
@@ -205,6 +207,32 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("network"), "no_subnet", "No EfficientIP subnet is linked to "+plan.Network+". Ask an administrator to link one.")
 		}
 	}
+	// Added disks and adapters are placed with the VM (ADR-0024).
+	for i, d := range plan.Disks {
+		if d.Datastore != "" && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil &&
+			!slices.ContainsFunc(pl.datastoresFor(plan.Cluster), func(x store.InvDatastore) bool { return x.Name == d.Datastore }) {
+			add(bindingField(c.Disks[i].Datastore, ""), "not_allowed", fmt.Sprintf("Datastore %s cannot be used on %s.", d.Datastore, plan.Cluster))
+		}
+	}
+	part.nicSubnets = make([]*store.NetworkSubnet, len(plan.NICs))
+	for i, n := range plan.NICs {
+		at := bindingField(c.NICs[i].Network, "")
+		if n.Network == "" {
+			continue
+		}
+		if plan.Cluster != "" && pl.cluster(plan.Cluster) != nil &&
+			!slices.ContainsFunc(pl.networksFor(plan.Cluster), func(x store.InvNetwork) bool { return x.Name == n.Network }) {
+			add(at, "not_allowed", fmt.Sprintf("Network %s cannot be used on %s.", n.Network, plan.Cluster))
+		}
+		if n.IPAM != blueprint.IPAMEfficientIP {
+			continue
+		}
+		if sn, ok := pl.subnets[n.Network]; ok {
+			part.nicSubnets[i] = &sn
+		} else {
+			add(at, "no_subnet", "No EfficientIP subnet is linked to "+n.Network+". Ask an administrator to link one.")
+		}
+	}
 	if len(templates) > 0 && plan.Template != "" && !slices.ContainsFunc(templates, func(t store.InvTemplate) bool { return t.Name == plan.Template }) {
 		add("", "template_missing", fmt.Sprintf("Template %s was not found in vCenter. Ask a catalog admin to check this item.", plan.Template))
 	}
@@ -343,8 +371,12 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			first.Address = &p.addresses[0]
 		}
 		c.Nics = []nic{first}
-		for _, n := range p.vm.NICs {
-			c.Nics = append(c.Nics, nic{Key: n.Key, Network: n.Network, Ipam: api.PreviewComponentNicsIpam(n.IPAM)})
+		for i, n := range p.vm.NICs {
+			x := nic{Key: n.Key, Network: n.Network, Ipam: api.PreviewComponentNicsIpam(n.IPAM)}
+			if i < len(p.nicSubnets) && p.nicSubnets[i] != nil {
+				x.Subnet = str(p.nicSubnets[i].Subnet)
+			}
+			c.Nics = append(c.Nics, x)
 		}
 		out = append(out, c)
 	}
@@ -379,6 +411,22 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		vm.Subnet, vm.SubnetID, vm.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
 		vm.PrefixLength, vm.DNSZone, vm.DNSServers = prefixLength(sn.Subnet), sn.DNSZone, sn.DNSServers
 	}
+	for _, d := range p.vm.Disks {
+		d.Datastore = cmp.Or(d.Datastore, p.vm.Datastore)
+		vm.Disks = append(vm.Disks, d)
+	}
+	for i, n := range p.vm.NICs {
+		nu := provision.NICUnit{Key: n.Key, Network: n.Network, IPAM: n.IPAM}
+		if i < len(p.nicSubnets) && p.nicSubnets[i] != nil {
+			sn := p.nicSubnets[i]
+			// <name>-<key> in its subnet's zone.
+			nu.FQDN = name + "-" + n.Key + "." + sn.DNSZone
+			nu.Subnet, nu.SubnetID, nu.PrefixLength = sn.Subnet, sn.EfficientIPSubnetID, prefixLength(sn.Subnet)
+			nu.DNSZone, nu.DNSServers = sn.DNSZone, sn.DNSServers
+		}
+		vm.NICs = append(vm.NICs, nu)
+	}
+	vm.Tags = p.vm.Tags
 	return vm
 }
 

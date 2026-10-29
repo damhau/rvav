@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/ids"
@@ -262,11 +263,15 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 			var p struct {
 				Address  string `json:"address"`
 				Hostname string `json:"hostname"`
+				NIC      string `json:"nic"`
 				VM       struct {
 					Moref string `json:"moref"`
 				} `json:"vm"`
 			}
 			_ = json.Unmarshal(res.Properties, &p)
+			if p.NIC != "" {
+				continue // an added adapter's: found again by its VM's steps
+			}
 			if info.Built == nil {
 				info.Built, info.BuiltVMs = map[string]Built{}, map[string]Built{}
 			}
@@ -382,51 +387,107 @@ func (a *Activities) findResource(ctx context.Context, requestID, deploymentID, 
 	return nil
 }
 
+// addressOf is the address the request reserved for a VM's adapter (nic
+// "" for its first), or "" when there is none yet. A deployment may hold
+// several VMs (ADR-0024): the address is the VM's by its host name.
+func (a *Activities) addressOf(ctx context.Context, requestID string, vm VMUnit, nic string) string {
+	list, err := a.Store.ResourcesForRequest(ctx, requestID)
+	if err != nil {
+		return ""
+	}
+	for _, r := range list {
+		var p struct {
+			Address  string `json:"address"`
+			Hostname string `json:"hostname"`
+			NIC      string `json:"nic"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		if r.Type == "ipam.address" && r.DeploymentID == vm.DeploymentID && p.NIC == nic && p.Hostname == vm.Name {
+			return p.Address
+		}
+	}
+	return ""
+}
+
+// reserve reserves an address for one of a VM's adapters and records it.
+func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Subnet, subnet, fqdn, nic string) (string, error) {
+	addr, err := a.IPAM.Reserve(ctx, sn, fqdn, in.VM.DeploymentID)
+	if errors.Is(err, efficientip.ErrSubnetFull) {
+		return "", permanent("Subnet %s has no free address", subnet)
+	}
+	if errors.Is(err, efficientip.ErrNameTaken) {
+		return "", permanent("EfficientIP: %v; rvav did not reserve it for this deployment", err)
+	}
+	if err != nil {
+		return "", fmt.Errorf("EfficientIP: %w", err)
+	}
+	ext := addr.ID
+	if ext == "" {
+		ext = "ip:" + addr.IP
+	}
+	p := map[string]any{"address": addr.IP, "subnet": subnet, "efficientip_id": addr.ID, "hostname": in.VM.Name, "fqdn": fqdn}
+	if nic != "" {
+		p["nic"] = nic
+	}
+	props, _ := json.Marshal(p)
+	res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.VM.DeploymentID,
+		RequestID: &in.RequestID, Type: "ipam.address", Name: addr.IP, ExternalID: &ext, Properties: props})
+	if err != nil {
+		return "", err
+	}
+	a.Events.Resource(ctx, in.ProjectID, res)
+	return addr.IP, nil
+}
+
+// ReserveIP reserves the VM's address, and one for each added adapter with
+// efficientip; it returns the first.
 func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) {
 	var ip string
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		if r := a.findResource(ctx, in.RequestID, in.VM.DeploymentID, "ipam.address", ""); r != nil {
-			var p struct {
-				Address string `json:"address"`
+		ip = a.addressOf(ctx, in.RequestID, in.VM, "")
+		if ip == "" {
+			var err error
+			if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
+				return "", "", err
 			}
-			_ = json.Unmarshal(r.Properties, &p)
-			ip = p.Address
+		}
+		ips, subnets := []string{ip}, []string{in.VM.Subnet}
+		for _, n := range in.VM.Addressed() {
+			nip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
+			if nip == "" {
+				var err error
+				sn := efficientip.Subnet{ID: n.SubnetID, CIDR: n.Subnet}
+				if nip, err = a.reserve(ctx, in, sn, n.Subnet, n.FQDN, n.Key); err != nil {
+					return "", "", err
+				}
+			}
+			ips, subnets = append(ips, nip), append(subnets, n.Subnet)
+		}
+		if len(ips) == 1 {
 			return "Reserved " + ip, "Subnet " + in.VM.Subnet, nil
 		}
-		addr, err := a.IPAM.Reserve(ctx, a.subnet(in.VM), cmp.Or(in.VM.FQDN, in.VM.Name), in.VM.DeploymentID)
-		if errors.Is(err, efficientip.ErrSubnetFull) {
-			return "", "", permanent("Subnet %s has no free address", in.VM.Subnet)
-		}
-		if errors.Is(err, efficientip.ErrNameTaken) {
-			return "", "", permanent("EfficientIP: %v; rvav did not reserve it for this deployment", err)
-		}
-		if err != nil {
-			return "", "", fmt.Errorf("EfficientIP: %w", err)
-		}
-		ip = addr.IP
-		ext := addr.ID
-		if ext == "" {
-			ext = "ip:" + addr.IP
-		}
-		props, _ := json.Marshal(map[string]any{"address": addr.IP, "subnet": in.VM.Subnet, "efficientip_id": addr.ID,
-			"hostname": in.VM.Name, "fqdn": in.VM.FQDN})
-		res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.VM.DeploymentID,
-			RequestID: &in.RequestID, Type: "ipam.address", Name: addr.IP, ExternalID: &ext, Properties: props})
-		if err != nil {
-			return "", "", err
-		}
-		a.Events.Resource(ctx, in.ProjectID, res)
-		return "Reserved " + addr.IP, "Subnet " + in.VM.Subnet, nil
+		return "Reserved " + strings.Join(ips, ", "), "Subnets " + strings.Join(subnets, ", "), nil
 	})
 	return ip, err
 }
 
 func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		for _, rec := range []efficientip.Record{
+		records := []efficientip.Record{
 			{FQDN: in.VM.FQDN, Type: "A", Value: in.IP, Zone: in.VM.DNSZone},
 			{FQDN: efficientip.PTRName(in.IP), Type: "PTR", Value: in.VM.FQDN, Zone: "in-addr.arpa"},
-		} {
+		}
+		// Each added adapter's address has its own name (ADR-0024).
+		for _, n := range in.VM.Addressed() {
+			ip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
+			if ip == "" {
+				return "", "", fmt.Errorf("no address reserved for %s's adapter %s", in.VM.Name, n.Key)
+			}
+			records = append(records,
+				efficientip.Record{FQDN: n.FQDN, Type: "A", Value: ip, Zone: n.DNSZone},
+				efficientip.Record{FQDN: efficientip.PTRName(ip), Type: "PTR", Value: n.FQDN, Zone: "in-addr.arpa"})
+		}
+		for _, rec := range records {
 			if a.findResource(ctx, in.RequestID, in.VM.DeploymentID, "dns.record", rec.Type+" "+rec.FQDN) != nil {
 				continue
 			}
@@ -446,6 +507,9 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 				return "", "", err
 			}
 			a.Events.Resource(ctx, in.ProjectID, res)
+		}
+		if len(records) > 2 {
+			return "Created A and PTR records", fmt.Sprintf("%s → %s and %d more", in.VM.FQDN, in.IP, len(records)/2-1), nil
 		}
 		return "Created A and PTR records", in.VM.FQDN + " → " + in.IP, nil
 	})
@@ -477,7 +541,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				Network: in.VM.Network, Folder: in.VM.Folder, VCPU: in.VM.VCPU, MemoryMB: in.VM.MemoryGB * 1024,
 				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
-				HostIndex:   in.HostIndex,
+				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
 			})
 			return err
 		})
@@ -488,20 +552,45 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		moref = vm.Moref
+		// Tags after the clone, before it is recorded with them.
+		if err := a.VSphere.AttachTags(ctx, vm.Moref, in.VM.Tags); errors.Is(err, vsphere.ErrNotFound) {
+			return "", "", permanent("vCenter: %v. Ask an administrator to create it.", err)
+		} else if err != nil {
+			return "", "", fmt.Errorf("vCenter tags: %w", err)
+		}
 		if _, err := a.recordVM(ctx, in, vm); err != nil {
 			return "", "", err
 		}
-		return "Cloned from " + in.VM.Template, fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref), nil
+		detail := fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref)
+		if n := len(in.VM.Disks) + len(in.VM.NICs); n > 0 {
+			detail += fmt.Sprintf(" · %d disks, %d adapters", 1+len(in.VM.Disks), 1+len(in.VM.NICs))
+		}
+		if len(in.VM.Tags) > 0 {
+			detail += " · tags " + strings.Join(in.VM.Tags, ", ")
+		}
+		return "Cloned from " + in.VM.Template, detail, nil
 	})
 	return moref, err
 }
 
 func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		err := a.VSphere.Customize(ctx, in.Moref, vsphere.Customization{
+		cu := vsphere.Customization{
 			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
 			IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
-		})
+		}
+		for _, n := range in.VM.NICs {
+			if n.IPAM != blueprint.IPAMEfficientIP {
+				cu.Extra = append(cu.Extra, vsphere.NICSetting{DHCP: true})
+				continue
+			}
+			ip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
+			if ip == "" {
+				return "", "", fmt.Errorf("no address reserved for %s's adapter %s", in.VM.Name, n.Key)
+			}
+			cu.Extra = append(cu.Extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
+		}
+		err := a.VSphere.Customize(ctx, in.Moref, cu)
 		if err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
@@ -541,6 +630,23 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 		}
 		return "Powered on, guest IP " + ip, detail, nil
 	})
+}
+
+// diskSpecs and nicNetworks are what is added to the VM after the clone.
+func diskSpecs(vm VMUnit) []vsphere.DiskSpec {
+	var out []vsphere.DiskSpec
+	for _, d := range vm.Disks {
+		out = append(out, vsphere.DiskSpec{SizeGB: d.SizeGB, Datastore: d.Datastore})
+	}
+	return out
+}
+
+func nicNetworks(vm VMUnit) []string {
+	var out []string
+	for _, n := range vm.NICs {
+		out = append(out, n.Network)
+	}
+	return out
 }
 
 // CreateDRSRule keeps a component's VMs on separate hosts with a DRS
