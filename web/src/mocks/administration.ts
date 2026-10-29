@@ -192,6 +192,12 @@ function state(db: Db): AdminState {
   return d.administration;
 }
 
+/** The lease policy that applies to a project's environment. */
+export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeasePolicy"] | undefined {
+  const all = state(db).leases.filter((l) => l.environment === env);
+  return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
+}
+
 /** A user's role in a project ("" when none), for other mock handlers. */
 export function memberRole(db: Db, projectId: string, userId: string): string {
   return state(db).members[projectId]?.find((m) => m.userId === userId)?.role ?? "";

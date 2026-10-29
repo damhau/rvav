@@ -35,7 +35,8 @@ test("read the reports, filter them and export a section", async ({ page }) => {
   await choose(page, "Period", "Last 12 months");
   await expect(page.getByRole("combobox", { name: "By" })).toHaveText(/Month/);
   await expect(page.getByRole("heading", { name: "Requests by month" })).toBeVisible();
-  await expect(table.getByRole("row")).toHaveCount(14);
+  // Twelve whole months, the first from its 1st: twelve rows and the header.
+  await expect(table.getByRole("row")).toHaveCount(13);
 
   // One project: its quota only.
   await choose(page, "Project", "Data Engineering");

@@ -20,6 +20,7 @@ type Inputs = Record<string, unknown>;
 interface Op {
   key: string;
   title: string;
+  detail?: string;
   system: Step["system"];
   apply: (d: DeploymentDetail, vm: VmResource | undefined) => void;
 }
@@ -216,6 +217,7 @@ export const catalogue: MockAction[] = [
       {
         key: "rvav.accept",
         title: `Take ${vm?.name} as it is in vCenter`,
+        detail: (vm?.drift ?? []).map((x) => x.label).join(", "),
         system: "rvav",
         apply: (d, v) => {
           if (!v) return;
@@ -517,7 +519,7 @@ export function runAction(
         }),
   ];
   for (const op of ops) {
-    const s = step(op.key, op.title, op.system);
+    const s = step(op.key, op.title, op.system, op.detail ? { detail: op.detail } : {});
     pending.set(s.id, op);
     steps.push(s);
   }

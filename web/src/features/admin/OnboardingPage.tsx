@@ -24,6 +24,8 @@ type S = components["schemas"];
 type Vm = S["OnboardingVm"];
 
 const keyOf = (v: Vm) => `${v.vcenter}/${v.moref}`;
+/** How many VMs one adoption takes (the server's limit). */
+const MAX_ADOPT = 200;
 const memory = (mb: number) => (mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`);
 
 function AdoptDialog({
@@ -87,6 +89,16 @@ function AdoptDialog({
             Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records
             EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those.
           </p>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted">The VMs</summary>
+            <ul aria-label="VMs to adopt" className="mt-1 max-h-32 overflow-y-auto font-mono text-[11px]">
+              {vms.map((v) => (
+                <li key={keyOf(v)}>
+                  {v.name} <span className="text-faint">{v.vcenter}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Project" htmlFor="ob-project" error={errors["/project_id"]}>
               <Select
@@ -240,6 +252,9 @@ export function OnboardingPage() {
   const vms = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? 0;
   const allShown = vms.length > 0 && vms.every((v) => selected.has(keyOf(v)));
+  // A selection outlives the filters: what it holds that isn't shown is said.
+  const shown = new Set(vms.map(keyOf));
+  const hidden = [...selected.keys()].filter((k) => !shown.has(k)).length;
   const toggle = (v: Vm, on: boolean) => {
     const next = new Map(selected);
     if (on) next.set(keyOf(v), v);
@@ -252,7 +267,12 @@ export function OnboardingPage() {
         title="Onboarding"
         meta="VMs in vCenter that rvav doesn't manage. Adopt them into deployments, with an owner, a project and a lease."
         actions={
-          <Button variant="primary" size="sm" disabled={selected.size === 0} onClick={() => setAdopting(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={selected.size === 0 || selected.size > MAX_ADOPT}
+            onClick={() => setAdopting(true)}
+          >
             Adopt {selected.size || ""} VM{selected.size === 1 ? "" : "s"}…
           </Button>
         }
@@ -288,12 +308,22 @@ export function OnboardingPage() {
                 { value: "any", label: "Any" },
                 { value: "on", label: "On" },
                 { value: "off", label: "Off" },
+                { value: "suspended", label: "Suspended" },
               ]}
             />
           </Field>
-          <span className="ml-auto text-xs text-muted" aria-live="polite">
-            {list.data ? `${total} VM${total === 1 ? "" : "s"}` : ""}
-            {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+          <span className="ml-auto flex items-center gap-2 text-xs text-muted" aria-live="polite">
+            <span>
+              {list.data ? `${total} VM${total === 1 ? "" : "s"}` : ""}
+              {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+              {hidden > 0 ? `, ${hidden} not shown` : ""}
+              {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
+            </span>
+            {selected.size > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Map())}>
+                Clear
+              </Button>
+            )}
           </span>
         </div>
         {list.isPending && <SkeletonRows rows={6} cols={6} />}

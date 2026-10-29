@@ -34,7 +34,8 @@ func TestInventoryAndReportingAcceptance(t *testing.T) {
 		h := setup(t, ctx, c)
 		const admin = "mkeller"
 
-		// The sync as deployed, following vCenter; no full read during the test.
+		// The sync as deployed, following vCenter. After its first full read,
+		// none: what changes comes only from VM change notifications.
 		u := *c.URL()
 		u.User = nil
 		pass, _ := simulator.DefaultLogin.Password()
@@ -43,10 +44,12 @@ func TestInventoryAndReportingAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 		sync := &inventory.Syncer{Store: h.store, VSphere: vc, Events: h.acts.Events, Log: h.acts.Log,
-			Interval: time.Hour, Settle: 200 * time.Millisecond}
+			Interval: time.Hour, Settle: time.Hour}
 		runCtx, stop := context.WithCancel(ctx)
-		defer stop()
-		go func() { _ = sync.Run(runCtx) }()
+		stopped := make(chan struct{})
+		go func() { _ = sync.Run(runCtx); close(stopped) }()
+		// Stopped before vcsim is: its watchers release their collectors.
+		defer func() { stop(); <-stopped }()
 		within := func(what string, ok func() bool) time.Duration {
 			t.Helper()
 			start := time.Now()

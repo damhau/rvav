@@ -776,7 +776,9 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 		}
 		// Powered on by rvav, even if its address doesn't come.
 		if vm, err := vc.GetVM(ctx, in.Moref); err == nil {
-			_, _ = a.recordVM(ctx, vc, in, vm)
+			if _, err := a.recordVM(ctx, vc, in, vm); err != nil {
+				a.Log.Warn("record vm", "vm", in.VM.Name, "err", err)
+			}
 		}
 		timeout := a.IPTimeout
 		if timeout == 0 {
@@ -797,7 +799,9 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		if vm, err := vc.GetVM(ctx, in.Moref); err == nil {
-			_, _ = a.recordVM(ctx, vc, in, vm)
+			if _, err := a.recordVM(ctx, vc, in, vm); err != nil {
+				a.Log.Warn("record vm", "vm", in.VM.Name, "err", err)
+			}
 		}
 		detail := "VMware Tools reports " + ip
 		if ip != in.IP {

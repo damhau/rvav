@@ -10,10 +10,11 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 // Watch says the inventory changed once it follows, then each VM that
-// changes, and a VM deleted as gone.
+// changes (powered off, reconfigured), and a VM deleted as gone.
 func TestWatch(t *testing.T) {
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		d := NewFromVim("vc01.corp.example", c)
@@ -52,6 +53,15 @@ func TestWatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		task, _ := vm.PowerOff(ctx)
+		if err := task.Wait(ctx); err != nil {
+			t.Fatal(err)
+		}
+		seen(func(c Change) bool { return c.VM == vm.Reference().Value && !c.Gone })
+		// A reconfiguration (here more memory) is a change too.
+		mu.Lock()
+		got = nil
+		mu.Unlock()
+		task, _ = vm.Reconfigure(ctx, types.VirtualMachineConfigSpec{MemoryMB: 64})
 		if err := task.Wait(ctx); err != nil {
 			t.Fatal(err)
 		}

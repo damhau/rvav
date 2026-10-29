@@ -365,3 +365,13 @@ func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
 		where r.type = 'vsphere.vm' and d.status not in ('deleting', 'deleted') order by r.name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InventoryHost])
 }
+
+// UpdateResourceStateIf stores a resource's new state and properties only
+// if its properties are still prev, and says whether it did: a writer that
+// computed them from what it read then doesn't overwrite a newer write
+// (the sync and the worker both write a VM's).
+func (s *Store) UpdateResourceStateIf(ctx context.Context, id string, prev json.RawMessage, syncState string, props json.RawMessage) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `update resources set sync_state = $3, properties = $4, updated_at = now()
+		where id = $1 and properties = $2::jsonb`, id, prev, syncState, props)
+	return tag.RowsAffected() == 1, err
+}

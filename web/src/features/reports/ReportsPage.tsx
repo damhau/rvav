@@ -23,14 +23,26 @@ type S = components["schemas"];
 type Interval = S["Report"]["interval"];
 type Section = "requests" | "approvals" | "quota" | "leases";
 
-const ranges: { value: string; label: string; days: number; interval: Interval }[] = [
-  { value: "7", label: "Last 7 days", days: 7, interval: "day" },
-  { value: "30", label: "Last 30 days", days: 30, interval: "day" },
-  { value: "90", label: "Last 90 days", days: 90, interval: "week" },
-  { value: "365", label: "Last 12 months", days: 365, interval: "month" },
+const ranges: { value: string; label: string; periods: number; interval: Interval }[] = [
+  { value: "7", label: "Last 7 days", periods: 7, interval: "day" },
+  { value: "30", label: "Last 30 days", periods: 30, interval: "day" },
+  { value: "13w", label: "Last 13 weeks", periods: 13, interval: "week" },
+  { value: "12m", label: "Last 12 months", periods: 12, interval: "month" },
 ];
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/** The first day (UTC) of the period n periods back from today's, so that
+ * the first column counts a whole day, week (from Monday) or month. */
+export function rangeStart(today: Date, periods: number, interval: Interval): Date {
+  const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  if (interval === "month") return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - (periods - 1), 1));
+  if (interval === "week") {
+    const monday = d.getTime() - ((d.getUTCDay() + 6) % 7) * 86_400_000;
+    return new Date(monday - (periods - 1) * 7 * 86_400_000);
+  }
+  return new Date(d.getTime() - (periods - 1) * 86_400_000);
+}
 
 /** Seconds as people say them: 45 s, 7 min, 2 h 10 min, 3 days. */
 export function seconds(v?: number | null): string {
@@ -77,17 +89,26 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-/** A clean axis top: 1, 2 or 5 times a power of ten, at least max. */
-function niceMax(max: number) {
-  if (max <= 4) return 4;
-  const p = 10 ** Math.floor(Math.log10(max));
-  return [1, 2, 5, 10].map((m) => m * p).find((v) => v >= max) ?? 10 * p;
+/** Axis ticks for counts: whole numbers, five steps at most, 1, 2 or 5
+ * times a power of ten apart, the last at or above max. */
+export function countTicks(max: number): number[] {
+  const mag = 10 ** Math.floor(Math.log10(Math.max(max, 1)));
+  let step = mag * 10;
+  for (const m of [0.1, 0.2, 0.5, 1, 2, 5, 10]) {
+    const s = Math.max(1, m * mag);
+    if (Math.ceil(max / s) <= 5) {
+      step = s;
+      break;
+    }
+  }
+  const top = Math.max(1, Math.ceil(max / step)) * step;
+  return Array.from({ length: top / step + 1 }, (_, i) => i * step);
 }
 
 const series = [
   { key: "succeeded", label: "Succeeded", fill: "var(--chart-succeeded)" },
   { key: "failed", label: "Failed", fill: "var(--chart-failed)" },
-  { key: "other", label: "Rejected, cancelled or running", fill: "var(--chart-other)" },
+  { key: "other", label: "Rejected, cancelled or not finished", fill: "var(--chart-other)" },
 ] as const;
 
 type Bar = { period: string; succeeded: number; failed: number; other: number; submitted: number };
@@ -113,12 +134,12 @@ function RequestsChart({ report }: { report: S["Report"] }) {
   const bottom = 22;
   const plotW = Math.max(0, width - left - 8);
   const plotH = H - bottom - 8;
-  const top = niceMax(Math.max(0, ...data.map((d) => d.submitted)));
+  const ticks = countTicks(Math.max(0, ...data.map((d) => d.submitted)));
+  const top = ticks[ticks.length - 1]!;
   const y = (v: number) => (v / top) * plotH;
   const band = data.length ? plotW / data.length : 0;
   const barW = Math.max(2, Math.min(24, band * 0.7));
   const every = Math.max(1, Math.ceil((data.length * 46) / Math.max(plotW, 1)));
-  const ticks = [0, top / 4, top / 2, (3 * top) / 4, top];
   const a = active === null ? null : data[active];
   return (
     <div className="flex flex-col gap-2">
@@ -140,7 +161,6 @@ function RequestsChart({ report }: { report: S["Report"] }) {
             role="img"
             tabIndex={0}
             aria-label={`Requests by ${report.interval}: ${report.requests.totals.submitted} in all. Use the arrow keys to read each ${report.interval}, or the table below.`}
-            aria-describedby={a ? tipId : undefined}
             className="block outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
             onKeyDown={(e) => {
               if (e.key === "ArrowRight") setActive((i) => Math.min(data.length - 1, (i ?? -1) + 1));
@@ -213,6 +233,14 @@ function RequestsChart({ report }: { report: S["Report"] }) {
             })}
           </svg>
         )}
+        {/* What the arrow keys move to, said by screen readers. */}
+        <span className="sr-only" aria-live="polite">
+          {a
+            ? `${periodLabel(a.period, report.interval, true)}: ${a.submitted} requests, ${series
+                .map((s) => `${a[s.key]} ${s.label.toLowerCase()}`)
+                .join(", ")}`
+            : ""}
+        </span>
         {a && active !== null && (
           <div
             id={tipId}
@@ -322,6 +350,8 @@ function Quota({ lines }: { lines: S["ReportQuotaLine"][] }) {
 const th = "border-b border-line px-4 py-2 text-left font-medium";
 const td = "border-b border-line px-4 py-2";
 
+const spanDays: Record<Interval, number> = { day: 1, week: 7, month: 30.4 };
+
 export function ReportsPage() {
   const { me } = useCurrentProject();
   const [range, setRange] = useState("30");
@@ -332,7 +362,10 @@ export function ReportsPage() {
   const environments = useQuery(q.environments());
   const today = new Date();
   const filters = {
-    from: isoDay(new Date(today.getTime() - (preset.days - 1) * 86_400_000)),
+    // Whole periods of the chosen size, as many as the preset's span.
+    from: isoDay(
+      rangeStart(today, Math.ceil((preset.periods * spanDays[preset.interval]) / spanDays[interval]), interval),
+    ),
     to: isoDay(today),
     project_id: project === "any" ? undefined : project,
     environment: environment === "any" ? undefined : environment,

@@ -44,6 +44,11 @@ type Syncer struct {
 	// doesn't overwrite a newer one.
 	locks    map[string]*sync.Mutex
 	watchers map[string]watcher
+	// names are the vCenters rvav manages, as last listed.
+	names []string
+	// running counts the watchers and their settle loops, which Run waits
+	// for: they release what they hold in vCenter as they stop.
+	running sync.WaitGroup
 }
 
 // target is a vCenter to sync: its connection and the VM resources it
@@ -96,6 +101,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 	}
 	defer conn.Exec(context.Background(), `select pg_advisory_unlock($1)`, lockKey) //nolint:errcheck
+	defer s.running.Wait()                                                          // the watchers stop with ctx
 	s.Log.Info("inventory sync started", "interval", s.Interval.String())
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
@@ -107,7 +113,9 @@ func (s *Syncer) Run(ctx context.Context) error {
 		} else if ctx.Err() == nil {
 			s.Log.Debug("inventory synced", "duration_ms", time.Since(start).Milliseconds())
 		}
-		s.follow(ctx, targets, names)
+		if names != nil { // else they couldn't be listed: the watchers carry on
+			s.follow(ctx, targets, names)
+		}
 		select {
 		case <-ctx.Done():
 			return nil
@@ -134,12 +142,15 @@ func (s *Syncer) syncAll(ctx context.Context) ([]target, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	s.mu.Lock()
+	s.names = names
+	s.mu.Unlock()
 	var targets []target
 	var errs []error
-	for i, name := range names {
+	for _, name := range names {
 		// The first's VMs are those of a name rvav doesn't know too: the
 		// integration's may have been renamed since they were built.
-		owns := func(vc string) bool { return vc == name || i == 0 && !slices.Contains(names, vc) }
+		owns := s.ownsFor(name)
 		d, err := s.VCenters.Get(ctx, name)
 		if err == nil {
 			t := target{name: name, d: d, owns: owns}
@@ -157,6 +168,22 @@ func (s *Syncer) syncAll(ctx context.Context) ([]target, []string, error) {
 		}
 	}
 	return targets, names, errors.Join(errs...)
+}
+
+// ownsFor says which VM resources a vCenter's reads cover: its own, and,
+// for the first, those of a vCenter name rvav doesn't know (the
+// integration's may have been renamed since they were built). It reads the
+// vCenters rvav manages now: a watcher outlives the read that started it.
+func (s *Syncer) ownsFor(name string) func(vcenter string) bool {
+	return func(vc string) bool {
+		if vc == name {
+			return true
+		}
+		s.mu.Lock()
+		names := s.names
+		s.mu.Unlock()
+		return len(names) > 0 && names[0] == name && !slices.Contains(names, vc)
+	}
 }
 
 // lock takes a vCenter's lock; the function it returns releases it.
@@ -197,7 +224,11 @@ func (s *Syncer) follow(ctx context.Context, targets []target, names []string) {
 		}
 		wctx, stop := context.WithCancel(ctx)
 		s.watchers[t.name] = watcher{d: t.d, stop: stop}
-		go s.watch(wctx, t)
+		s.running.Add(1)
+		go func() {
+			defer s.running.Done()
+			s.watch(wctx, t)
+		}()
 	}
 	for name, w := range s.watchers {
 		if !slices.Contains(names, name) {
@@ -211,7 +242,11 @@ func (s *Syncer) follow(ctx context.Context, targets []target, names []string) {
 // session breaks, after a pause that grows while it keeps breaking.
 func (s *Syncer) watch(ctx context.Context, t target) {
 	kick := make(chan struct{}, 1)
-	go s.settle(ctx, t, kick)
+	s.running.Add(1)
+	go func() {
+		defer s.running.Done()
+		s.settle(ctx, t, kick)
+	}()
 	pause := time.Second
 	for {
 		start := time.Now()
@@ -455,25 +490,51 @@ func (s *Syncer) refreshResources(ctx context.Context, vcenter string, owns func
 }
 
 // refreshResource stores what a VM resource's VM is now, or that it is
-// missing (vm nil), and tells those watching when that changed.
+// missing (vm nil), and tells those watching when that changed. The worker
+// writes the same row as rvav changes the VM: what is stored is only
+// replaced if it is still what was read, else read again.
 func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Resource, vm *vsphere.InventoryVM, usage *vmprops.Usage) error {
 	dep, err := s.Store.GetDeployment(ctx, r.DeploymentID)
 	if err != nil {
 		return nil
 	}
-	if vm == nil {
-		// Not cloned yet, being deleted, or already reported.
-		if dep.Status == "provisioning" || dep.Status == "deleting" || r.SyncState == "missing" {
+	for attempt := 0; ; attempt++ {
+		state, props, skip := s.refreshed(vcenter, dep.Status, r, vm, usage)
+		if skip {
 			return nil
 		}
-		if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "missing", r.Properties); err != nil {
+		changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != state
+		ok, err := s.Store.UpdateResourceStateIf(ctx, r.ID, r.Properties, state, props)
+		if err != nil {
 			return err
 		}
-		_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
-		r.SyncState = "missing"
-		s.Events.Resource(ctx, dep.ProjectID, r)
-		s.Events.Deployment(ctx, r.DeploymentID)
-		return nil
+		if ok {
+			if changed {
+				_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
+				r.Properties, r.SyncState = props, state
+				s.Events.Resource(ctx, dep.ProjectID, r)
+				s.Events.Deployment(ctx, r.DeploymentID)
+			}
+			return nil
+		}
+		if attempt == 2 {
+			return nil // changing fast: the next read compares again
+		}
+		if r, err = s.Store.GetResource(ctx, r.ID); err != nil {
+			return nil // gone meanwhile
+		}
+	}
+}
+
+// refreshed is a VM resource's new state and properties from vCenter's VM
+// (nil: missing); skip when there is nothing to store.
+func (s *Syncer) refreshed(vcenter, depStatus string, r store.Resource, vm *vsphere.InventoryVM, usage *vmprops.Usage) (string, json.RawMessage, bool) {
+	if vm == nil {
+		// Not cloned yet, being deleted, or already reported.
+		if depStatus == "provisioning" || depStatus == "deleting" || r.SyncState == "missing" {
+			return "", nil, true
+		}
+		return "missing", r.Properties, false
 	}
 	var old storedVM
 	_ = json.Unmarshal(r.Properties, &old)
@@ -483,7 +544,7 @@ func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Re
 	}
 	props := vmprops.Build(vcenter, v, vmprops.OursOf(r.Properties), usage, vm.SnapshotCount)
 	state := "in_sync"
-	switch dep.Status {
+	switch depStatus {
 	case "provisioning", "updating", "deleting":
 		// While rvav changes the VM, what changes isn't drift: the action
 		// settles what it changed when it ends.
@@ -497,17 +558,7 @@ func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Re
 			state = "drifted"
 		}
 	}
-	changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != state
-	if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, state, props); err != nil {
-		return err
-	}
-	if changed {
-		_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
-		r.Properties, r.SyncState = props, state
-		s.Events.Resource(ctx, dep.ProjectID, r)
-		s.Events.Deployment(ctx, r.DeploymentID)
-	}
-	return nil
+	return state, props, false
 }
 
 // sameIgnoringUsage compares two VM property documents without quick stats,

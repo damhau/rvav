@@ -32,6 +32,9 @@ import (
 
 var deploymentNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
 
+// maxAdopt is how many VMs one adoption takes.
+const maxAdopt = 200
+
 // OnboardingVMs lists the inventory's VMs no deployment has.
 func (s *Service) OnboardingVMs(ctx context.Context, p *auth.Principal, f store.UnmanagedFilter) (api.OnboardingVmPage, error) {
 	out := api.OnboardingVmPage{Items: []api.OnboardingVm{}}
@@ -134,6 +137,10 @@ func (s *Service) AdoptVMs(ctx context.Context, p *auth.Principal, d api.Onboard
 		add("/deployment_name", "pattern", "Lower-case letters, digits, dots and dashes, up to 63, for example web-prd-erp.")
 	}
 
+	if len(d.Vms) == 0 || len(d.Vms) > maxAdopt {
+		add("/vms", "out_of_range", fmt.Sprintf("Adopt from 1 to %d VMs at once.", maxAdopt))
+		return out, &ValidationError{Errors: errs}
+	}
 	vms := make([]adoptee, len(d.Vms))
 	seen := map[string]bool{}
 	for i, ref := range d.Vms {
@@ -165,6 +172,32 @@ func (s *Service) AdoptVMs(ctx context.Context, p *auth.Principal, d api.Onboard
 	}
 	if err := g.Wait(); err != nil {
 		return out, err
+	}
+	// An address or record two VMs share (a virtual address): one
+	// deployment can hold it once; two can't both.
+	owner := map[string]int{}
+	for i := range vms {
+		a := &vms[i]
+		shared := func(key, what string) bool {
+			j, seen := owner[key]
+			if !seen {
+				owner[key] = i
+				return false
+			}
+			if !one {
+				add(fmt.Sprintf("/vms/%d", i), "shared", fmt.Sprintf("%s is %s's too: adopt them into one deployment.", what, vms[j].inv.Name))
+			}
+			return true
+		}
+		a.addresses = slices.DeleteFunc(a.addresses, func(ad efficientip.Address) bool {
+			return shared("ip:"+cmp.Or(ad.ID, ad.IP), "Its address "+ad.IP)
+		})
+		a.records = slices.DeleteFunc(a.records, func(r efficientip.Record) bool {
+			return shared("rr:"+cmp.Or(r.ID, r.Type+":"+r.FQDN), "Its DNS record "+r.Type+" "+r.FQDN)
+		})
+	}
+	if len(errs) > 0 {
+		return out, &ValidationError{Errors: errs}
 	}
 
 	// Record them: one deployment each, or one for all.
@@ -321,7 +354,7 @@ func (s *Service) lookUp(ctx context.Context, a *adoptee) error {
 
 // takenError is an address or record another deployment already has.
 type takenError struct {
-	moref, what string
+	vcenter, moref, what string
 }
 
 func (e *takenError) Error() string {
@@ -333,7 +366,7 @@ func (e *takenError) at(vms []struct {
 	Vcenter string `json:"vcenter"`
 }) string {
 	for i, v := range vms {
-		if v.Moref == e.moref {
+		if v.Vcenter == e.vcenter && v.Moref == e.moref {
 			return fmt.Sprintf("/vms/%d", i)
 		}
 	}
@@ -349,7 +382,7 @@ func (s *Service) recordAdoptee(ctx context.Context, tx pgx.Tx, depID string, a 
 	if _, err := s.Store.UpsertResource(ctx, tx, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: "vsphere.vm",
 		Name: a.vm.Name, ExternalID: &ext, Properties: props}); err != nil {
 		if errors.Is(err, store.ErrTaken) {
-			return &takenError{moref: a.inv.Moref, what: a.vm.Name}
+			return &takenError{vcenter: a.inv.VCenter, moref: a.inv.Moref, what: a.vm.Name}
 		}
 		return err
 	}
@@ -360,7 +393,7 @@ func (s *Service) recordAdoptee(ctx context.Context, tx pgx.Tx, depID string, a 
 		if _, err := s.Store.UpsertResource(ctx, tx, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: "ipam.address",
 			Name: ad.IP, ExternalID: &ext, Properties: props}); err != nil {
 			if errors.Is(err, store.ErrTaken) {
-				return &takenError{moref: a.inv.Moref, what: "Its address " + ad.IP}
+				return &takenError{vcenter: a.inv.VCenter, moref: a.inv.Moref, what: "Its address " + ad.IP}
 			}
 			return err
 		}
@@ -372,7 +405,7 @@ func (s *Service) recordAdoptee(ctx context.Context, tx pgx.Tx, depID string, a 
 		if _, err := s.Store.UpsertResource(ctx, tx, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: "dns.record",
 			Name: r.Type + " " + r.FQDN, ExternalID: &ext, Properties: props}); err != nil {
 			if errors.Is(err, store.ErrTaken) {
-				return &takenError{moref: a.inv.Moref, what: "Its DNS record " + r.Type + " " + r.FQDN}
+				return &takenError{vcenter: a.inv.VCenter, moref: a.inv.Moref, what: "Its DNS record " + r.Type + " " + r.FQDN}
 			}
 			return err
 		}

@@ -16,8 +16,10 @@ Administrators **adopt** existing VMs into deployments
 
 - **What is offered:** the inventory's VMs that no deployment has
   (`GET /admin/onboarding/vms`), with filters (name, address or host name,
-  vCenter, cluster, power) and how many match. Templates aren't offered.
-- **What the administrator gives:** the VMs (up to 200 at once), a project,
+  vCenter, cluster, power) and how many match. Templates aren't offered,
+  nor VMs a request is building: they are in vCenter before rvav records
+  them.
+- **What the administrator gives:** the VMs (1 to 200 at once), a project,
   an environment of it, an owner (a member of the project, not a viewer),
   a catalog item and a lease.
   - **Catalog item:** a published VM item offered in the project. It gives
@@ -34,7 +36,9 @@ Administrators **adopt** existing VMs into deployments
   PTR records, and the A records that point at them, of the names those
   give or of the guest's own full host name. They become the deployment's
   `ipam.address` and `dns.record` resources. Its name (FQDN) is its A
-  record's, else its PTR record's, else EfficientIP's.
+  record's, else its PTR record's, else EfficientIP's. An address or
+  record two VMs share (a virtual address) goes to the deployment holding
+  both; adopting them into separate deployments is refused.
 - **Nothing changes in vCenter or EfficientIP.** The VM keeps its name,
   folder and annotation, and the addresses and records keep their names
   and class parameters.

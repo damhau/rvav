@@ -312,7 +312,8 @@ const tileHint: Record<string, string> = {
   delete: "Releases its IP addresses and DNS records too",
 };
 
-function ActionTiles({ actions, onPick }: { actions: Day2Action[]; onPick: Pick }) {
+function ActionTiles({ actions, loading, onPick }: { actions: Day2Action[]; loading: boolean; onPick: Pick }) {
+  if (loading) return <SkeletonRows rows={2} cols={3} />;
   if (actions.length === 0) return <p className="px-4 py-6 text-xs text-muted">No actions apply here.</p>;
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-px bg-line">
@@ -410,9 +411,15 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">{v.name}</span>
               {accept && (
-                <Button size="sm" disabled={!accept.enabled} onClick={() => onPick(accept)}>
-                  Accept the changes
-                </Button>
+                <Tip
+                  content={accept.enabled ? "Take the VM as it is in vCenter" : (accept.disabled_reason ?? "Not now")}
+                >
+                  <span>
+                    <Button size="sm" disabled={!accept.enabled} onClick={() => onPick(accept)}>
+                      Accept the changes
+                    </Button>
+                  </span>
+                </Tip>
               )}
             </div>
             <table className="mt-1.5 w-full border-collapse text-xs" aria-label={`How ${v.name} differs`}>
@@ -448,7 +455,17 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
   );
 }
 
-function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
+function Overview({
+  d,
+  actions,
+  loading,
+  onPick,
+}: {
+  d: DeploymentDetail;
+  actions: Day2Action[];
+  loading: boolean;
+  onPick: Pick;
+}) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
   if (isMulti(vms)) {
@@ -475,6 +492,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
           actions={<span className="text-[11px] text-faint">More in each VM&apos;s menu</span>}
         >
           <ActionTiles
+            loading={loading}
             actions={actions.filter(
               (a) =>
                 (a.resource_id === null || a.resource_id === undefined
@@ -659,7 +677,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           </pre>
         </Panel>
       ) : (
-        <Overview d={d} actions={actions} onPick={pick} />
+        <Overview d={d} actions={actions} loading={actionsQ.isPending} onPick={pick} />
       )}
       {d && picked && <ActionDialog deployment={d} action={picked} onClose={() => setPicked(null)} />}
     </Page>

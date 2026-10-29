@@ -405,15 +405,18 @@ In the mocks, `web-dev-legacy` has more memory and a disk added in vCenter.
 
 **Reports** (`features/reports/ReportsPage.tsx`, [reports.md](reports.md))
 shows how the platform is used, for the projects the user sees.
-- **Filters:** one row above everything: period (7, 30 or 90 days, 12
-  months), by day, week or month, project and environment. While new
-  figures load, the old ones stay, dimmed.
+- **Filters:** one row above everything: period (7 or 30 days, 13 weeks,
+  12 months), by day, week or month, project and environment. The range
+  starts at the first day of a period (a Monday, the 1st), so the first
+  column counts a whole one. While new figures load, the old ones stay,
+  dimmed.
 - **Stat tiles:** requests, success rate, provisioning time (median and
   90%), approval lead time, approvals waiting.
 - **Requests chart:** an SVG column chart, stacked by how requests ended.
   - It has a legend.
   - Hovering a column, or focusing the chart and using the arrow keys,
-    shows a tooltip with every figure of that period.
+    shows a tooltip with every figure of that period; screen readers say
+    it (a polite live region).
   - **Show as a table** lists every period.
 - **Other sections:** the most requested items, approvals, quota meters
   per project and environment, and the leases ending in 30 days.
@@ -436,7 +439,10 @@ The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
 [ADR-0026](adr/0026-onboarding.md)) lists the VMs rvav doesn't manage:
 - **Filters:** search, vCenter and power, with how many match; pages of 100
   with **Show more**.
-- **Selection:** a checkbox per VM, and one to select every VM shown.
+- **Selection:** a checkbox per VM, and one to select every VM shown. A
+  selection outlives the filters: the count says how many selected VMs
+  aren't shown, **Clear** empties it, and the dialog lists them. At most
+  200 at once.
 - **Adopting:** **Adopt N VMs…** asks for the project, environment, owner
   (members who aren't viewers), catalog item (the project's VM items),
   lease, and optionally one deployment for all with its name. The server's

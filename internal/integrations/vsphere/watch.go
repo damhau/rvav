@@ -21,11 +21,13 @@ type Change struct {
 
 // watched are the properties followed, by kind: what rvav shows of a VM
 // (its quick stats are read with the full sync), and what the inventory
-// cache is made of.
+// cache is made of. A VM's config.changeVersion changes with every
+// reconfiguration, whichever of its parts changed (vcsim reports only it).
 var watched = map[string][]string{
 	"VirtualMachine": {"name", "parent", "runtime.powerState", "runtime.host", "guest.ipAddress", "guest.hostName",
-		"guest.toolsRunningStatus", "guest.net", "config.guestFullName", "config.hardware.numCPU", "config.hardware.memoryMB",
-		"config.hardware.device", "config.cpuHotAddEnabled", "config.memoryHotAddEnabled", "config.template", "snapshot"},
+		"guest.toolsRunningStatus", "guest.net", "config.changeVersion", "config.guestFullName", "config.hardware.numCPU",
+		"config.hardware.memoryMB", "config.hardware.device", "config.cpuHotAddEnabled", "config.memoryHotAddEnabled",
+		"config.template", "snapshot"},
 	"HostSystem":             {"name", "parent"},
 	"ClusterComputeResource": {"name", "host"},
 	"Datastore":              {"name", "host"},

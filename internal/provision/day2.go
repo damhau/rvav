@@ -47,7 +47,13 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		if in.ResourceID != "" && in.Moref != "" {
-			a.refreshVM(ctx, in)
+			if err := a.refreshVM(ctx, in); err != nil {
+				// Accepting the changes is only this: tried again as a whole.
+				if in.Op.Op == "accept_changes" {
+					return "", "", fmt.Errorf("record the VM: %w", err)
+				}
+				a.Log.Warn("refresh vm: given up", "resource", in.ResourceID, "err", err)
+			}
 		}
 		return "", detail, nil
 	})
@@ -162,37 +168,63 @@ var settles = map[string][]string{
 	"revert_snapshot": vmprops.All, "accept_changes": vmprops.All,
 }
 
-// refreshVM stores what vCenter reports about the VM now. A failure only
-// delays the update to the next inventory sync.
-func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
+// refreshVM stores what vCenter reports about the VM now, the aspects the
+// operation changed taken as rvav left them (S13.2). A vCenter or database
+// hiccup is tried again: left out, rvav's own change would look like drift.
+func (a *Activities) refreshVM(ctx context.Context, in OpInput) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			if serr := vsphere.Sleep(ctx, time.Duration(attempt)*time.Second); serr != nil {
+				return serr
+			}
+		}
+		if err = a.refreshVMOnce(ctx, in); err == nil {
+			return nil
+		}
+		a.Log.Warn("refresh vm", "resource", in.ResourceID, "moref", in.Moref, "attempt", attempt+1, "err", err)
+	}
+	return err
+}
+
+func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput) error {
 	res, err := a.Store.GetResource(ctx, in.ResourceID)
 	if err != nil {
-		a.Log.Warn("refresh vm: load resource", "resource", in.ResourceID, "err", err)
-		return
+		return err
 	}
 	vc, err := a.vc(ctx, vmprops.VCenterOf(res.Properties))
 	if err != nil {
-		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
-		return
+		return err
 	}
 	vm, err := vc.GetVM(ctx, in.Moref)
 	if err != nil {
-		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
-		return
+		return err
 	}
-	props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0),
-		settles[in.Op.Op]...)
-	res.Properties, res.Name, res.SyncState = props, vm.Name, "in_sync"
-	if drifted {
-		res.SyncState = "drifted"
+	// The sync writes the row too: replace it only if it is still what was
+	// read, else read it again.
+	for range 3 {
+		props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0),
+			settles[in.Op.Op]...)
+		state := "in_sync"
+		if drifted {
+			state = "drifted"
+		}
+		ok, err := a.Store.UpdateResourceStateIf(ctx, res.ID, res.Properties, state, props)
+		if err != nil {
+			return err
+		}
+		if ok {
+			res.Properties, res.Name, res.SyncState = props, vm.Name, state
+			_ = a.Store.RefreshDeploymentSyncState(ctx, a.Store.Pool, res.DeploymentID)
+			a.Events.Resource(ctx, in.ProjectID, res)
+			a.Events.Deployment(ctx, in.DeploymentID)
+			return nil
+		}
+		if res, err = a.Store.GetResource(ctx, in.ResourceID); err != nil {
+			return err
+		}
 	}
-	if err := a.Store.UpdateResourceState(ctx, a.Store.Pool, res.ID, res.SyncState, res.Properties); err != nil {
-		a.Log.Warn("refresh vm: store", "resource", res.ID, "err", err)
-		return
-	}
-	_ = a.Store.RefreshDeploymentSyncState(ctx, a.Store.Pool, res.DeploymentID)
-	a.Events.Resource(ctx, in.ProjectID, res)
-	a.Events.Deployment(ctx, in.DeploymentID)
+	return errors.New("the VM's record kept changing")
 }
 
 func argInt(args map[string]any, key string) int {

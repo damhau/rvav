@@ -206,6 +206,9 @@ func (s *Service) quotaLines(ctx context.Context, f store.ReportFilter) ([]api.R
 		}
 		scopes := []string{""}
 		if f.Environment != "" {
+			if !slices.Contains(pr.Environments, f.Environment) {
+				continue
+			}
 			scopes = []string{f.Environment}
 		} else {
 			scopes = append(scopes, pr.Environments...)

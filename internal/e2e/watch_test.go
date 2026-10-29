@@ -48,8 +48,10 @@ func TestInventoryFollowsVCenter(t *testing.T) {
 		sync := &inventory.Syncer{Store: h.store, VSphere: vc, Events: h.acts.Events, Log: h.acts.Log,
 			Interval: time.Hour, Settle: 200 * time.Millisecond}
 		runCtx, stop := context.WithCancel(ctx)
-		defer stop()
-		go func() { _ = sync.Run(runCtx) }()
+		stopped := make(chan struct{})
+		go func() { _ = sync.Run(runCtx); close(stopped) }()
+		// Stopped before vcsim is: its watchers release their collectors.
+		defer func() { stop(); <-stopped }()
 
 		within := func(what string, ok func() bool) time.Duration {
 			t.Helper()

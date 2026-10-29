@@ -133,7 +133,15 @@ func TestDrift(t *testing.T) {
 		}
 		resync()
 		expect(label+":  → 20 GB", nic+": dvpg-app-dev-vl310 → dvpg-app-tst-vl410")
+		// What a full read took before the accept can't overwrite it after.
+		stale, err := h.store.GetResource(ctx, d.resource)
+		if err != nil {
+			t.Fatal(err)
+		}
 		r := d.succeed("tnguyen", "accept_changes", nil)
+		if ok, err := h.store.UpdateResourceStateIf(ctx, stale.ID, stale.Properties, "drifted", stale.Properties); err != nil || ok {
+			t.Fatalf("a write from before the accept = %v %v", ok, err)
+		}
 		var steps struct{ Items []api.Step }
 		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", "tnguyen", nil, 200, &steps)
 		if !hasStep(steps.Items, "Take "+r.Resource.Name+" as it is in vCenter", label+", "+nic) {

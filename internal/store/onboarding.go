@@ -33,6 +33,14 @@ const unmanagedWhere = `
 	where not exists (select 1 from resources r join deployments d on d.id = r.deployment_id
 	                  where r.type = 'vsphere.vm' and d.status <> 'deleted'
 	                    and (r.external_id = v.instance_uuid or r.external_id = v.moref and v.instance_uuid = ''))
+	  -- Nor a VM a request is building: in vCenter before rvav records it.
+	  and v.name not in (select u->>'name' from requests q,
+	        jsonb_array_elements(case when jsonb_typeof(q.plan->'vms') = 'array' then q.plan->'vms' else '[]' end) u
+	        where q.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')
+	      union select u->>'name' from requests q,
+	        jsonb_array_elements(case when jsonb_typeof(q.plan->'composite') = 'array' then q.plan->'composite' else '[]' end) st,
+	        jsonb_array_elements(case when jsonb_typeof(st->'vms') = 'array' then st->'vms' else '[]' end) u
+	        where q.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling'))
 	  and ($1 = '' or v.vcenter = $1) and ($2 = '' or v.cluster = $2) and ($3 = '' or v.power_state = $3)
 	  and ($4 = '' or v.name ilike '%' || $4 || '%' or v.ip_address like $4 || '%' or v.hostname ilike '%' || $4 || '%')`
 

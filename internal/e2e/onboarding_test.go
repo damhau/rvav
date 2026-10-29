@@ -132,6 +132,14 @@ func TestOnboarding(t *testing.T) {
 			t.Fatalf("errors = %v, want %v", fields, want)
 		}
 		h.json("POST", "/api/v1/admin/onboarding", "tnguyen", draft, 403, nil)
+		// None, or a name for none: refused, not a deployment of nothing.
+		empty := draft
+		empty.DeploymentName = present.Ptr("erp-none")
+		var none struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/onboarding", admin, empty, 422, &none)
+		if len(none.Errors) != 1 || none.Errors[0].Field != "/vms" {
+			t.Fatalf("no VMs = %+v", none.Errors)
+		}
 
 		// Two VMs, each a deployment of its own.
 		draft.Vms = append(draft.Vms[:0], ref(legacy1), ref(legacy2))
@@ -191,6 +199,45 @@ func TestOnboarding(t *testing.T) {
 		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 200, &res)
 		if len(res.Deployments) != 1 || res.Deployments[0].Name != "erp-dev" || !slices.Equal(res.Deployments[0].Vms, []string{"erp-db01"}) {
 			t.Fatalf("one deployment = %+v", res.Deployments)
+		}
+
+		// A VM a request is building is in vCenter before rvav records it:
+		// not offered.
+		building := existingVM(t, ctx, h, c, model, "web-dev-new01", "10.31.10.210")
+		if err := sync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.store.Pool.Exec(ctx, `update requests set status = 'running',
+			plan = jsonb_set(plan, '{vms,0,name}', '"web-dev-new01"') where id = $1`, built.built.Id); err != nil {
+			t.Fatal(err)
+		}
+		if p := list("q=web-dev-new"); p.Total != 0 {
+			t.Fatalf("a VM being built is offered: %+v", p.Items)
+		}
+		draft.Vms, draft.DeploymentName = draft.Vms[:0], nil
+		draft.Vms = append(draft.Vms, ref(building))
+		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 422, nil)
+
+		// Two VMs sharing an address EfficientIP has (a virtual address):
+		// apart, refused; together, the address once.
+		vip, err := h.acts.IPAM.Reserve(ctx, efficientip.Subnet{CIDR: "10.31.10.0/24"}, "erp-vip.corp.example", "legacy")
+		if err != nil {
+			t.Fatal(err)
+		}
+		node1 := existingVM(t, ctx, h, c, model, "erp-node01", vip.IP)
+		node2 := existingVM(t, ctx, h, c, model, "erp-node02", vip.IP)
+		if err := sync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		draft.Vms = append(draft.Vms[:0], ref(node1), ref(node2))
+		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/vms/1" || deref(problem.Errors[0].Code) != "shared" {
+			t.Fatalf("a shared address apart = %+v", problem.Errors)
+		}
+		draft.DeploymentName = present.Ptr("erp-cluster")
+		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 200, &res)
+		if len(res.Deployments) != 1 || res.Deployments[0].Addresses != 1 {
+			t.Fatalf("a shared address together = %+v", res.Deployments)
 		}
 	}, model)
 }

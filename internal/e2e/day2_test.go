@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -224,7 +225,11 @@ func TestDay2Actions(t *testing.T) {
 		var hist api.RequestPage
 		h.json("GET", "/api/v1/deployments/"+dep+"/history", "sbrunner", nil, 200, &hist)
 		if len(hist.Items) != 7 || hist.Items[6].Id != built.Id || hist.Items[6].Kind != api.Provision {
-			t.Fatalf("history = %d items", len(hist.Items))
+			var order []string
+			for _, r := range hist.Items {
+				order = append(order, fmt.Sprintf("%s %s %s", r.Number, r.Kind, r.SubmittedAt.Format(time.RFC3339Nano)))
+			}
+			t.Fatalf("history = %d items, newest first: %v (created by %s)", len(hist.Items), order, built.Number)
 		}
 		var n int
 		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'action.run' and target_id = $1`, dep).Scan(&n); err != nil || n != 6 {

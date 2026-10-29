@@ -27,7 +27,7 @@ demo script is [demo-r1.md](demo-r1.md), and the report for the go/no-go
 is [release-r1.md](release-r1.md): what remains needs real infrastructure
 (the [Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9)).
 
-R2 (slices 10 to 14) is under way: S10 to S12 are built. S10,
+R2 (slices 10 to 14) is under way: S10 to S13 are built. S10,
 extensibility, is built and accepted on a real Temporal server and the
 compose stack. Event subscriptions are in
 [ADR-0021](adr/0021-event-subscriptions.md); custom workflows and
@@ -97,6 +97,31 @@ Temporal server, and on the compose stack
 
 What only real vCenters, guests and a domain can show is in
 [Lab acceptance](https://github.com/damhau/rvav/issues/83).
+
+S13, inventory and reporting, is built and accepted on vcsim and on the
+compose stack:
+
+- **Live inventory:** the sync follows each vCenter's change
+  notifications instead of polling. On vcsim and on the stack, a VM
+  powered off in vCenter is off in rvav within 0.2 s. A full read every
+  2 minutes brings in quick stats, tags, content libraries and storage
+  policies, and makes up for a lost notification.
+- **Drift:** a VM changed outside rvav is flagged on its deployment with
+  what differs: power, size, disks or adapters' networks
+  ([ADR-0025](adr/0025-drift.md)). rvav's own actions only settle what
+  they changed, and **Accept the changes** takes the VM as it is.
+- **Onboarding:** administrators adopt the VMs rvav doesn't manage into
+  deployments, up to 200 at once, with an owner, project, environment,
+  item and lease. Their addresses and DNS records are found in
+  EfficientIP, and nothing changes in vCenter or EfficientIP
+  ([ADR-0026](adr/0026-onboarding.md)). The acceptance adopted 50 VMs in
+  one operation.
+- **Reports:** requests over time and their success rate, provisioning
+  time, approval lead time, usage against quota and leases ending, for
+  the projects one sees, with CSV export ([reports.md](reports.md)).
+
+What a real vCenter at scale and real EfficientIP records can show is in
+[Lab acceptance](https://github.com/damhau/rvav/issues/84).
 
 S9
 projects, placement and governance is built and accepted on the compose

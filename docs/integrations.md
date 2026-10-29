@@ -89,7 +89,8 @@ How a blueprint is built is in
 ### Inventory sync (`rvav-sync`)
 - Follows each vCenter's changes with the property collector
   (`WaitForUpdatesEx` on a container view): VMs (name, folder, power, host,
-  guest addresses and Tools, size, devices, snapshots, template or not),
+  guest addresses and Tools, size, devices, snapshots, template or not, and
+  `config.changeVersion`, which every reconfiguration changes),
   hosts, clusters, datastores and networks (name and membership). A VM that
   changes is read again at once, so a VM powered off in vCenter is off in
   rvav within a second; when anything else changes, its vCenter is read

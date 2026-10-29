@@ -3,7 +3,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import type { DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
-import { memberRole } from "./administration";
+import { leasePolicyOf, memberRole } from "./administration";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -103,8 +103,21 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
             "Choose a published VM item: it gives the deployments their OS family and day-2 actions.",
           ),
         );
+      else if (project && !item.projectIds.includes(project.id))
+        errors.push(err("/catalog_item_id", "invalid", `${item.name} isn't offered in ${project.name}.`));
+      // The lease policy's default when none is given, and its maximum.
+      const policy = project ? leasePolicyOf(db, project.id, b.environment) : undefined;
+      const days = b.lease_days ?? policy?.default_days ?? undefined;
       if (b.lease_days !== undefined && b.lease_days < 1)
         errors.push(err("/lease_days", "too_short", "A lease is at least one day."));
+      else if (days && policy?.max_days && days > policy.max_days)
+        errors.push(
+          err("/lease_days", "too_long", `Leases in ${b.environment} can be at most ${policy.max_days} days.`),
+        );
+      if (b.vms.length === 0 || b.vms.length > 200) {
+        errors.push(err("/vms", "out_of_range", "Adopt from 1 to 200 VMs at once."));
+        return problem(422, "Some inputs need attention", errors);
+      }
       if (
         b.deployment_name !== undefined &&
         b.deployment_name !== "" &&
@@ -129,7 +142,7 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
       if (errors.length || !project || !item) return problem(422, "Some inputs need attention", errors);
 
       const owner = db.users.find((u) => u.id === b.owner_id)!;
-      const expires = b.lease_days ? new Date(Date.now() + b.lease_days * 86_400_000).toISOString() : null;
+      const expires = days ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
       const groups = b.deployment_name ? [picked as Unmanaged[]] : (picked as Unmanaged[]).map((x) => [x]);
       const out: S["OnboardingResult"] = { deployments: [] };
       for (const group of groups) {
@@ -166,7 +179,7 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
           project: { id: project.id, code: project.code, name: project.name }, environment: b.environment,
           catalog_item: { id: item.id, slug: item.slug, name: item.name }, version: item.version, owner,
           created_at: new Date().toISOString(),
-          lease: { expires_at: expires, extensions_used: 0, extensions_max: expires ? 2 : null, max_days: null, grace_days: 7, expiry_action: "notify_only" },
+          lease: { expires_at: expires, extensions_used: 0, extensions_max: expires ? (policy?.max_extensions ?? 0) : null, max_days: policy?.max_days ?? null, grace_days: policy?.grace_days ?? 7, expiry_action: policy?.expiry_action ?? "notify_only" },
           vm_count: vms.length, vms_powered_on: vms.filter((v) => v.vm.power_state === "on").length,
           primary_address: first.ip_address ? { ip: first.ip_address, fqdn: first.hostname ?? "" } : null,
           sync_state: "in_sync", inputs: {}, resources,

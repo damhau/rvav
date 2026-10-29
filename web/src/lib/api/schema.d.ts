@@ -3525,7 +3525,7 @@ export interface components {
             approvals: components["schemas"]["ReportApprovals"];
             /** @description Each project's usage now, project-wide and per environment with a limit. */
             quota: components["schemas"]["ReportQuotaLine"][];
-            /** @description Leases ending in the next 30 days, soonest first. */
+            /** @description Leases ending in the next 30 days, soonest first; the first 200. */
             leases: components["schemas"]["ReportLease"][];
         };
         ReportRequests: {
@@ -9051,7 +9051,7 @@ export interface operations {
     getReport: {
         parameters: {
             query?: {
-                /** @description The first day (UTC); 30 days ago by default. */
+                /** @description The first day (UTC); by default 29 days before `to`, so 30 days in all. */
                 from?: string;
                 /** @description The last day (UTC), included; today by default. */
                 to?: string;
@@ -9084,7 +9084,7 @@ export interface operations {
         parameters: {
             query: {
                 section: "requests" | "approvals" | "quota" | "leases";
-                /** @description The first day (UTC); 30 days ago by default. */
+                /** @description The first day (UTC); by default 29 days before `to`, so 30 days in all. */
                 from?: string;
                 /** @description The last day (UTC), included; today by default. */
                 to?: string;

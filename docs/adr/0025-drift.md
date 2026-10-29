@@ -47,6 +47,15 @@ compares the VM with the expected one:
   usually arrives before the action has recorded its result, and would
   flag rvav's own change.
 
+### Two writers
+The sync and the worker both write a VM's properties: the sync when it
+reads the VM, the worker when an action records what it settled. Each
+replaces them only if they are still what it read (else it reads them
+again), so a full read that started before an action ended can't undo
+what the action recorded. An action whose record fails is tried again:
+left out, rvav's own change would look like drift. **Accept the changes**
+fails if its record does.
+
 ### Accepting the changes
 A day-2 action, **Accept the changes made in vCenter**, takes the VM as it
 is. It is offered only on a drifted VM, and runs as a request like any

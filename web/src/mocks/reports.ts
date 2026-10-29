@@ -118,6 +118,7 @@ function durations(values: number[]): S["ReportDurations"] {
 }
 
 export function reportHandlers(db: Db, base: string, wait: () => Promise<void>) {
+  const code = (projectId: string) => db.projects.find((p) => p.id === projectId)?.code ?? projectId;
   const select = (u: URL) => {
     const today = Math.floor(Date.now() / DAY) * DAY;
     const to = u.searchParams.get("to") ? Date.parse(u.searchParams.get("to")!) : today;
@@ -130,18 +131,21 @@ export function reportHandlers(db: Db, base: string, wait: () => Promise<void>) 
     );
     return { from, to, projects, env, scoped, list };
   };
+  // Project-wide lines; for one environment, its share of the use, with
+  // no limit of its own (the mock has none per environment).
   const quota = (projects: string[], env: string | null): S["ReportQuotaLine"][] =>
     db.projects
-      .filter((p) => projects.includes(p.id) && !env)
+      .filter((p) => projects.includes(p.id) && (!env || p.environments.includes(env)))
       .flatMap((p) => {
         const q = db.quota[p.id];
         if (!q) return [];
-        return (["vcpu", "memory_gb", "storage_gb", "vm_count"] as const).map((r) => ({
-          project: { id: p.id, code: p.code, name: p.name },
-          resource: r,
-          used: q.used[r],
-          ...(q.limits[r] !== null ? { limit: q.limits[r] } : {}),
-        }));
+        return (["vcpu", "memory_gb", "storage_gb", "vm_count"] as const).map((r) =>
+          env
+            ? { project: { id: p.id, code: p.code, name: p.name }, environment: env, resource: r,
+                used: Math.round(q.used[r] / p.environments.length) }
+            : { project: { id: p.id, code: p.code, name: p.name }, resource: r, used: q.used[r],
+                ...(q.limits[r] !== null ? { limit: q.limits[r] } : {}) },
+        ); // prettier-ignore
       });
   const leases = (scoped: (p: string, e: string) => boolean): S["ReportLease"][] =>
     db.deployments
@@ -212,13 +216,24 @@ export function reportHandlers(db: Db, base: string, wait: () => Promise<void>) 
       let rows: (string | number)[][];
       switch (u.searchParams.get("section")) {
         case "requests":
-          rows = [["number", "item", "project", "environment", "status", "submitted_at", "run_seconds"],
-            ...list.map((f) => [f.number, f.item.slug, f.project, f.environment, f.status, t(f.submitted), f.run ?? ""])]; // prettier-ignore
+          // The server's columns (docs/reports.md).
+          rows = [["number", "kind", "title", "item", "project", "environment", "requester", "status", "submitted_at", "started_at", "finished_at", "run_seconds"],
+            ...list.map((f) => {
+              const started = f.status === "rejected" || f.status === "cancelled" ? undefined : f.submitted + 60_000;
+              const finished = started && f.status !== "running" ? started + (f.run ?? 300) * 1000 : undefined;
+              return [f.number, "provision", `${f.item.name} · ${f.number}`, f.item.slug, code(f.project), f.environment,
+                "lea.martin@corp.example", f.status, t(f.submitted), t(started), t(finished), f.run ?? ""];
+            })]; // prettier-ignore
           break;
         case "approvals": {
           const { decided, pending } = approvalsOf(u);
-          rows = [["request", "status", "opened_at", "decided_at", "lead_seconds"],
-            ...[...decided, ...pending].map((f) => [f.number, f.approval!.decided > Date.now() ? "pending" : f.approval!.status, t(f.approval!.opened), f.approval!.decided > Date.now() ? "" : t(f.approval!.decided), f.approval!.decided > Date.now() ? "" : Math.round((f.approval!.decided - f.approval!.opened) / 1000)])]; // prettier-ignore
+          rows = [["request", "level", "name", "status", "opened_at", "decided_at", "lead_seconds", "outcome"],
+            ...[...decided, ...pending].map((f) => {
+              const waiting = f.approval!.decided > Date.now();
+              return [f.number, 1, "Project admins", waiting ? "pending" : f.approval!.status, t(f.approval!.opened),
+                waiting ? "" : t(f.approval!.decided), waiting ? "" : Math.round((f.approval!.decided - f.approval!.opened) / 1000),
+                waiting ? "" : `${f.approval!.status === "approved" ? "Approved" : "Rejected"} by Léa Martin`];
+            })]; // prettier-ignore
           break;
         }
         case "quota":
