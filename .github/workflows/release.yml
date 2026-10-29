@@ -1,7 +1,7 @@
 # A release (S14.6): on a tag v1.2.3, the images scanned and pushed to
 # ghcr.io as 1.2.3, and a GitHub release with their SBOMs (CycloneDX; the
-# web app's npm dependencies apart, since its image holds only the build)
-# and the Helm chart. Run by hand, it does the same without publishing.
+# web app's npm dependencies apart, since its image holds only the build),
+# the Helm chart and the API reference. Run by hand, it does the same without publishing.
 name: Release
 
 on:
@@ -28,6 +28,11 @@ jobs:
       - run: make sbom IMAGES="$IMAGES"
       - name: Helm chart
         run: helm package deploy/helm/rvav --version "$VERSION" --app-version "$VERSION" -d dist
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: API reference
+        run: make api-docs
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ env.VERSION }}
@@ -41,4 +46,4 @@ jobs:
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for i in $IMAGES; do docker push "$i"; done
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes sbom/*.cdx.json dist/*.tgz
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes sbom/*.cdx.json dist/*.tgz dist/api-reference.html

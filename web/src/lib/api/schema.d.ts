@@ -4,6 +4,28 @@
  */
 
 export interface paths {
+    "/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This API's description (OpenAPI 3.1), for tools and generated clients
+         * @description The document this rvav serves, so a client is generated for the
+         *     version it talks to. The reference built from it is attached to
+         *     each release (`api-reference.html`, S14.10).
+         */
+        get: operations["getOpenApi"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -4846,6 +4868,29 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getOpenApi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     getMe: {
         parameters: {
             query?: never;

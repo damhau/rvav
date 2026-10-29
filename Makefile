@@ -9,7 +9,7 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
 
@@ -44,6 +44,11 @@ gen-check: gen ## Fail if the generated code is out of date
 
 lint-spec:
 	npx --yes @redocly/cli@1 lint --config api/redocly.yaml api/openapi.yaml
+
+api-docs: ## The API reference, one HTML file built from the spec, into dist/api-reference.html
+	mkdir -p dist
+	npx --yes @redocly/cli@1 build-docs --config api/redocly.yaml --disableGoogleFont \
+		--title "rvav API $$(sed -n 's/^  version: //p' api/openapi.yaml | head -1)" -o dist/api-reference.html api/openapi.yaml
 
 lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in
 	@if ! command -v helm >/dev/null; then echo "helm not installed: the chart isn't checked here (CI does)"; exit 0; fi; \

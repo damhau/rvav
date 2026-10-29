@@ -33,13 +33,16 @@ vRealize / Aria Automation (vRA).
 
 | Doc | Content |
 |---|---|
+| [User guide](docs/guides/user.md) | Requesting, following, owning VMs; approving |
+| [Administrator guide](docs/guides/admin.md) | Integrations, infrastructure, projects, policies, the catalog, automation |
+| [Operations](docs/operations/README.md) | Installing, configuring, running, watching, upgrading, backing up; runbooks; security; load test |
 | [Architecture](docs/architecture.md) | Components, tech stack, runtime flows |
 | [Domain model](docs/domain-model.md) | Core entities and relationships |
 | [Service catalog](docs/service-catalog.md) | Full catalog feature specification |
 | [Integrations](docs/integrations.md) | vSphere, AWX, EfficientIP, identity, notifications |
 | [UX](docs/ux.md) | UX principles and key screens |
 | [Frontend](docs/frontend.md) | React/TS/Vite, TanStack Router + Query, Tailwind + shadcn/ui architecture |
-| [API](api/README.md) | OpenAPI contract (`api/openapi.yaml`) and API conventions |
+| [API](api/README.md) | OpenAPI contract (`api/openapi.yaml`) and API conventions; each rvav serves it at `/api/v1/openapi.json`, each release has its reference |
 | [Implementation plan](docs/implementation-plan.md) | Path to 80% of vRA: parity table, slices, effort, calendar, risks |
 | [Roadmap](docs/roadmap.md) | Status, releases and decisions |
 | [ADRs](docs/adr/) | Architecture decision records |

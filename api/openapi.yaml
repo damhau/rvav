@@ -20,6 +20,8 @@ security:
 tags:
   - name: identity
     description: Who is calling and what they may do.
+  - name: meta
+    description: This API's own description.
   - name: projects
     description: Projects, environments and quota.
   - name: catalog
@@ -46,6 +48,23 @@ tags:
     description: How the platform is used (S13.4).
 
 paths:
+  /openapi.json:
+    get:
+      tags: [meta]
+      operationId: getOpenApi
+      summary: This API's description (OpenAPI 3.1), for tools and generated clients
+      description: |
+        The document this rvav serves, so a client is generated for the
+        version it talks to. The reference built from it is attached to
+        each release (`api-reference.html`, S14.10).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /me:
     get:
       tags: [identity]
