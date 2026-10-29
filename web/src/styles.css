@@ -34,6 +34,10 @@
   --log-ok: #6cc893;
   --log-changed: #e5b558;
   --log-bad: #f08a80;
+  /* Chart fills (reports, S13.4): validated as a set on the surface. */
+  --chart-succeeded: #3159b8;
+  --chart-failed: #b3332b;
+  --chart-other: #b9c2c8;
 
   --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-code: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -64,6 +68,9 @@
     --focus: #4fb0d8;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
     --log-bg: #0b0e10;
+    --chart-succeeded: #5a7fd8;
+    --chart-failed: #d9564c;
+    --chart-other: #4b565d;
     color-scheme: dark;
   }
 }
@@ -91,6 +98,9 @@
   --run-soft: #1b2640;
   --focus: #4fb0d8;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+  --chart-succeeded: #5a7fd8;
+  --chart-failed: #d9564c;
+  --chart-other: #4b565d;
   --log-bg: #0b0e10;
   color-scheme: dark;
 }

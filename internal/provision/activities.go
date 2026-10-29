@@ -1097,6 +1097,9 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 	if resumed {
 		_ = activity.GetHeartbeatDetails(ctx, &logged)
 	}
+	// Once the job has finished, its nodes are read once more: they may
+	// have been read just before its last one ended.
+	var finished *awx.Job
 	for {
 		nodes, err := a.AWX.WorkflowNodes(ctx, jobID)
 		if err != nil {
@@ -1146,11 +1149,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 		}
 		activity.RecordHeartbeat(ctx, logged)
 
-		job, err := a.AWX.GetJob(ctx, jobID, true)
-		if err != nil {
-			return fmt.Errorf("AWX: %w", err)
-		}
-		if job.Finished {
+		if job := finished; job != nil {
 			if job.Status == "successful" {
 				return nil
 			}
@@ -1158,6 +1157,14 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 				failedMsg = fmt.Sprintf("AWX workflow job %d ended %s", jobID, job.Status)
 			}
 			return temporal.NewNonRetryableApplicationError(failedMsg, "AWXJobFailed", nil)
+		}
+		job, err := a.AWX.GetJob(ctx, jobID, true)
+		if err != nil {
+			return fmt.Errorf("AWX: %w", err)
+		}
+		if job.Finished {
+			finished = &job
+			continue
 		}
 		if err := vsphere.Sleep(ctx, a.poll()); err != nil {
 			_ = a.AWX.Cancel(context.Background(), jobID, true)

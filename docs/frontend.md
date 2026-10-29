@@ -401,6 +401,35 @@ A VM changed in vCenter outside rvav
 
 In the mocks, `web-dev-legacy` has more memory and a disk added in vCenter.
 
+## Reports
+
+**Reports** (`features/reports/ReportsPage.tsx`, [reports.md](reports.md))
+shows how the platform is used, for the projects the user sees.
+- **Filters:** one row above everything: period (7, 30 or 90 days, 12
+  months), by day, week or month, project and environment. While new
+  figures load, the old ones stay, dimmed.
+- **Stat tiles:** requests, success rate, provisioning time (median and
+  90%), approval lead time, approvals waiting.
+- **Requests chart:** an SVG column chart, stacked by how requests ended.
+  - It has a legend.
+  - Hovering a column, or focusing the chart and using the arrow keys,
+    shows a tooltip with every figure of that period.
+  - **Show as a table** lists every period.
+- **Other sections:** the most requested items, approvals, quota meters
+  per project and environment, and the leases ending in 30 days.
+- **CSV:** each section exports as CSV.
+
+**Chart colours:** `--chart-succeeded`, `--chart-failed` and
+`--chart-other` in `styles.css`, with their own dark steps.
+- They were checked as a set against each theme's surface (lightness,
+  chroma, colour-blind separation, contrast).
+- Succeeded and failed are blue and red, not green and red, because green
+  and red can touch in a column and colour-blind readers can't tell them
+  apart.
+- Text never takes a series colour.
+
+The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
+
 ## Onboarding
 
 **Administration → Onboarding** (`features/admin/OnboardingPage.tsx`,
