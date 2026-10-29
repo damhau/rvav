@@ -4,12 +4,15 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -240,16 +243,51 @@ func (a *App) VCenters() *vcenters.Set {
 // serves reads while Temporal is down and submitting answers 502.
 func (a *App) Temporal() (client.Client, error) {
 	a.tcOnce.Do(func() {
-		a.tc, a.tcErr = client.NewLazyClient(client.Options{
+		opts := client.Options{
 			HostPort:  a.Cfg.Temporal.Address,
 			Namespace: a.Cfg.Temporal.Namespace,
 			Logger:    tlog.NewStructuredLogger(a.Log.With("component", "temporal")),
-		})
+		}
+		if a.tcErr = TemporalSecurity(a.Cfg.Temporal, &opts); a.tcErr != nil {
+			return
+		}
+		a.tc, a.tcErr = client.NewLazyClient(opts)
 		if a.tcErr != nil {
 			a.tcErr = fmt.Errorf("connect to Temporal at %s: %w", a.Cfg.Temporal.Address, a.tcErr)
 		}
 	})
 	return a.tc, a.tcErr
+}
+
+// TemporalSecurity sets TLS and the API key on Temporal client options
+// (S14.1): a Temporal cluster behind TLS, mutual TLS, or Temporal Cloud.
+func TemporalSecurity(c config.TemporalConfig, opts *client.Options) error {
+	if !c.TLS {
+		return nil
+	}
+	t := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: c.ServerName}
+	if c.CAFile != "" {
+		pem, err := os.ReadFile(c.CAFile)
+		if err != nil {
+			return fmt.Errorf("Temporal CA (RVAV_TEMPORAL_TLS_CA_FILE): %w", err)
+		}
+		t.RootCAs = x509.NewCertPool()
+		if !t.RootCAs.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("Temporal CA (RVAV_TEMPORAL_TLS_CA_FILE): no certificate in %s", c.CAFile)
+		}
+	}
+	if c.CertFile != "" || c.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return fmt.Errorf("Temporal client certificate (RVAV_TEMPORAL_TLS_CERT_FILE, RVAV_TEMPORAL_TLS_KEY_FILE): %w", err)
+		}
+		t.Certificates = []tls.Certificate{cert}
+	}
+	opts.ConnectionOptions.TLS = t
+	if c.APIKey != "" {
+		opts.Credentials = client.NewAPIKeyStaticCredentials(c.APIKey)
+	}
+	return nil
 }
 
 // Authenticator builds the configured authentication mode.

@@ -375,3 +375,23 @@ func (s *Store) UpdateResourceStateIf(ctx context.Context, id string, prev json.
 		where id = $1 and properties = $2::jsonb`, id, prev, syncState, props)
 	return tag.RowsAffected() == 1, err
 }
+
+// PutConsoleToken keeps a console token's ticket until it expires, and
+// forgets the expired ones.
+func (s *Store) PutConsoleToken(ctx context.Context, hash []byte, ticket json.RawMessage, expires time.Time) error {
+	if _, err := s.Pool.Exec(ctx, `delete from console_tokens where expires_at < now()`); err != nil {
+		return err
+	}
+	_, err := s.Pool.Exec(ctx, `insert into console_tokens (token_hash, ticket, expires_at) values ($1, $2, $3)`, hash, ticket, expires)
+	return err
+}
+
+// TakeConsoleToken returns a console token's ticket once (ErrNotFound when
+// it was never given or is already used), with when it expires.
+func (s *Store) TakeConsoleToken(ctx context.Context, hash []byte) (json.RawMessage, time.Time, error) {
+	var ticket json.RawMessage
+	var expires time.Time
+	err := s.Pool.QueryRow(ctx, `delete from console_tokens where token_hash = $1 returning ticket, expires_at`, hash).
+		Scan(&ticket, &expires)
+	return ticket, expires, notFound(err)
+}

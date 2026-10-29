@@ -13,6 +13,13 @@ server {
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
     set $api_upstream ${RVAV_API_UPSTREAM};
 
+    # With several API replicas (S14.1) the name has an address each: a
+    # replica that is gone is given up on quickly, and an idempotent request
+    # tries the next one (requests that change something have an
+    # Idempotency-Key: the client may send them again).
+    proxy_connect_timeout 3s;
+    proxy_next_upstream error timeout http_502 http_503;
+
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 

@@ -23,7 +23,9 @@ type SubnetSync struct {
 
 func (s *SubnetSync) Run(ctx context.Context) error {
 	for {
-		if err := s.SyncOnce(ctx); err != nil && ctx.Err() == nil {
+		// Every sync replica runs it: one at a time (S14.1).
+		err := s.Store.WithLock(ctx, store.LockSubnetSync, func() error { return s.SyncOnce(ctx) })
+		if err != nil && ctx.Err() == nil {
 			s.Log.Warn("EfficientIP subnet sync failed", "err", err)
 		}
 		select {

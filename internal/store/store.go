@@ -98,6 +98,8 @@ const (
 	// LockAdmins serializes changes that check who is left to administer
 	// rvav or a project, so two at once can't leave none.
 	LockAdmins int64 = 0x7276_6176_0002
+	// LockSubnetSync keeps one EfficientIP subnet sync at a time (S14.1).
+	LockSubnetSync int64 = 0x7276_6176_0003
 )
 
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever

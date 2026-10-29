@@ -1,0 +1,62 @@
+# High availability on one machine (S14.1): two of each rvav process and a
+# Temporal cluster of two nodes on the same database, to test failover with
+# deploy/ha-test.sh. In production the replicas run on separate nodes
+# (docs/operations/high-availability.md).
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ha.yml up -d --build --wait
+#   deploy/ha-test.sh
+#
+# The API isn't published: the web app's proxy spreads requests over the
+# replicas (http://localhost:3000/api/v1).
+
+x-temporal-cluster: &temporal-cluster
+  RVAV_TEMPORAL_ADDRESS: temporal-cluster:7233
+
+services:
+  api:
+    deploy: { replicas: 2 }
+    ports: !reset []
+    environment: *temporal-cluster
+
+  worker:
+    deploy: { replicas: 2 }
+    environment: *temporal-cluster
+
+  # One active, the other waits for the PostgreSQL advisory lock.
+  sync:
+    deploy: { replicas: 2 }
+    environment: *temporal-cluster
+
+  # Temporal nodes find each other through the database (cluster
+  # membership): each binds on every address and gives its own.
+  temporal:
+    entrypoint: ["/bin/sh", "-c", "export TEMPORAL_BROADCAST_ADDRESS=$$(hostname -i | cut -d' ' -f1); exec /etc/temporal/entrypoint.sh autosetup"]
+    environment:
+      BIND_ON_IP: 0.0.0.0
+    networks:
+      default: { aliases: [temporal-cluster] }
+
+  temporal-2:
+    image: temporalio/auto-setup:1.25.2
+    entrypoint: ["/bin/sh", "-c", "export TEMPORAL_BROADCAST_ADDRESS=$$(hostname -i | cut -d' ' -f1); exec /etc/temporal/entrypoint.sh autosetup"]
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: rvav
+      POSTGRES_PWD: rvav
+      POSTGRES_SEEDS: postgres
+      BIND_ON_IP: 0.0.0.0
+      # The first node set up the schema and the namespace.
+      SKIP_SCHEMA_SETUP: "true"
+      SKIP_DB_CREATE: "true"
+      SKIP_DEFAULT_NAMESPACE_CREATION: "true"
+      SKIP_ADD_CUSTOM_SEARCH_ATTRIBUTES: "true"
+    networks:
+      default: { aliases: [temporal-cluster] }
+    depends_on:
+      temporal: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "temporal operator namespace describe -n default --address $$(hostname -i | cut -d' ' -f1):7233"]
+      interval: 2s
+      start_period: 10s
+      retries: 60

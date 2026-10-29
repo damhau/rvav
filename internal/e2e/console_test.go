@@ -21,7 +21,9 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 )
 
@@ -116,14 +118,19 @@ func TestConsole(t *testing.T) {
 		}
 
 		// The WebSocket goes through rvav to the host and back.
-		dial := func(p, origin string) (net.Conn, *http.Response, *bufio.Reader) {
-			conn, err := net.Dial("tcp", strings.TrimPrefix(h.srv.URL, "http://"))
+		// Through another API replica sharing the database (S14.1): the
+		// token was given by the first.
+		other := httptest.NewServer((&httpapi.Server{Store: h.store, Core: h.svc, Hub: h.hub, Log: h.acts.Log, AuthMode: "dev",
+			Auth: &auth.Dev{Store: h.store, DefaultUser: "lmartin"}, Heartbeat: time.Second}).Handler())
+		defer other.Close()
+		dialAt := func(srv, p, origin string) (net.Conn, *http.Response, *bufio.Reader) {
+			conn, err := net.Dial("tcp", strings.TrimPrefix(srv, "http://"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			key := base64.StdEncoding.EncodeToString([]byte(uuid.NewString()[:16]))
 			fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Protocol: binary\r\n",
-				p, strings.TrimPrefix(h.srv.URL, "http://"), key)
+				p, strings.TrimPrefix(srv, "http://"), key)
 			if origin != "" {
 				fmt.Fprintf(conn, "Origin: %s\r\n", origin)
 			}
@@ -138,7 +145,8 @@ func TestConsole(t *testing.T) {
 			}
 			return conn, resp, br
 		}
-		conn, resp, br := dial(s.Web.Url, h.srv.URL)
+		dial := func(p, origin string) (net.Conn, *http.Response, *bufio.Reader) { return dialAt(h.srv.URL, p, origin) }
+		conn, resp, br := dialAt(other.URL, s.Web.Url, other.URL)
 		if resp.StatusCode != http.StatusSwitchingProtocols {
 			t.Fatalf("console socket = %s", resp.Status)
 		}

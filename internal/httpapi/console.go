@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +19,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -31,48 +32,27 @@ import (
 
 const consoleTokenTTL = time.Minute
 
-type consoleTicket struct {
-	mks     vsphere.WebMKS
-	expires time.Time
-}
-
-// consoleTokens are the open console tokens. They live in the API process:
-// with several API replicas, the WebSocket must reach the one that issued
-// the token (sticky sessions), until tokens move to the database.
-type consoleTokens struct {
-	mu sync.Mutex
-	m  map[string]consoleTicket
-}
-
-func (c *consoleTokens) put(mks vsphere.WebMKS, now time.Time) (string, time.Time) {
+// putConsole keeps a console ticket behind a new token, in the database:
+// the WebSocket may reach any API replica (S14.1).
+func (s *Server) putConsole(ctx context.Context, mks vsphere.WebMKS, now time.Time) (string, time.Time, error) {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	token := base64.RawURLEncoding.EncodeToString(b)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.m == nil {
-		c.m = map[string]consoleTicket{}
-	}
-	for k, t := range c.m {
-		if now.After(t.expires) {
-			delete(c.m, k)
-		}
-	}
+	ticket, _ := json.Marshal(mks)
 	expires := now.Add(consoleTokenTTL)
-	c.m[token] = consoleTicket{mks: mks, expires: expires}
-	return token, expires
+	hash := sha256.Sum256([]byte(token))
+	return token, expires, s.Store.PutConsoleToken(ctx, hash[:], ticket, expires)
 }
 
-// take returns the ticket of a token once, while it is valid.
-func (c *consoleTokens) take(token string, now time.Time) (vsphere.WebMKS, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	t, ok := c.m[token]
-	delete(c.m, token)
-	if !ok || now.After(t.expires) {
+// takeConsole returns the ticket of a token once, while it is valid.
+func (s *Server) takeConsole(ctx context.Context, token string, now time.Time) (vsphere.WebMKS, bool) {
+	var mks vsphere.WebMKS
+	hash := sha256.Sum256([]byte(token))
+	ticket, expires, err := s.Store.TakeConsoleToken(ctx, hash[:])
+	if err != nil || now.After(expires) || json.Unmarshal(ticket, &mks) != nil {
 		return vsphere.WebMKS{}, false
 	}
-	return t.mks, true
+	return mks, true
 }
 
 func (s *Server) OpenConsole(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath, resourceID string) {
@@ -84,7 +64,11 @@ func (s *Server) OpenConsole(w http.ResponseWriter, r *http.Request, deploymentI
 	}
 	out := api.ConsoleSession{VmrcUrl: c.VMRC}
 	if c.Web != nil {
-		token, expires := s.consoles.put(*c.Web, time.Now())
+		token, expires, err := s.putConsole(r.Context(), *c.Web, time.Now())
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
 		out.Web = &struct {
 			ExpiresAt time.Time `json:"expires_at"`
 			SdkUrls   []string  `json:"sdk_urls"`
@@ -106,7 +90,7 @@ func (s *Server) ConsoleStream(w http.ResponseWriter, r *http.Request, token str
 		s.problem(w, r, http.StatusForbidden, "forbidden", "Not allowed from this origin", "", nil)
 		return
 	}
-	mks, ok := s.consoles.take(token, time.Now())
+	mks, ok := s.takeConsole(r.Context(), token, time.Now())
 	if !ok {
 		s.problem(w, r, http.StatusNotFound, "not-found", "This console link has expired",
 			"Console links work once, for a minute. Open the console again.", nil)

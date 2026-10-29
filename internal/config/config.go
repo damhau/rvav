@@ -77,6 +77,15 @@ type TemporalConfig struct {
 	Address   string
 	Namespace string
 	TaskQueue string
+	// TLS to the frontend: a cluster behind TLS, or Temporal Cloud. CAFile
+	// trusts a private CA; CertFile and KeyFile are a client certificate
+	// (mutual TLS); ServerName checks another name than the address's.
+	TLS               bool
+	CAFile            string
+	CertFile, KeyFile string
+	ServerName        string
+	// APIKey signs in to Temporal Cloud (with TLS).
+	APIKey string
 }
 
 type VCenterConfig struct {
@@ -173,6 +182,14 @@ func Load() (Config, error) {
 			Address:   env("RVAV_TEMPORAL_ADDRESS", "localhost:7233"),
 			Namespace: env("RVAV_TEMPORAL_NAMESPACE", "default"),
 			TaskQueue: env("RVAV_TEMPORAL_TASK_QUEUE", "rvav-provision"),
+			// An API key or a client certificate means TLS.
+			TLS: boolean("RVAV_TEMPORAL_TLS") || os.Getenv("RVAV_TEMPORAL_API_KEY") != "" ||
+				os.Getenv("RVAV_TEMPORAL_TLS_CERT_FILE") != "",
+			CAFile:     env("RVAV_TEMPORAL_TLS_CA_FILE", ""),
+			CertFile:   env("RVAV_TEMPORAL_TLS_CERT_FILE", ""),
+			KeyFile:    env("RVAV_TEMPORAL_TLS_KEY_FILE", ""),
+			ServerName: env("RVAV_TEMPORAL_TLS_SERVER_NAME", ""),
+			APIKey:     env("RVAV_TEMPORAL_API_KEY", ""),
 		},
 		VCenter: VCenterConfig{
 			URL:      env("RVAV_VCENTER_URL", ""),

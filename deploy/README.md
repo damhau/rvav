@@ -75,6 +75,12 @@ member picker marks the signed-in person).
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
 as you edit and uses the same API on `:8080`.
 
+## High availability
+
+`docker-compose.ha.yml` runs two of each rvav process and a Temporal
+cluster of two nodes, and `ha-test.sh` kills them in turn under load
+([docs/operations/high-availability.md](../docs/operations/high-availability.md)).
+
 ## Without Docker
 
 You need PostgreSQL 16 and the Temporal CLI (`temporal server start-dev`).

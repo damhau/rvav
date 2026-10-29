@@ -50,8 +50,7 @@ type Server struct {
 	// Slack answers rvav's Slack app; nil when Slack isn't set up.
 	Slack *notify.Slack
 
-	secrets  sync.Map // version ID -> map[string]bool
-	consoles consoleTokens
+	secrets sync.Map // version ID -> map[string]bool
 }
 
 var _ api.ServerInterface = (*Server)(nil)

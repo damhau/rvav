@@ -70,6 +70,9 @@ type VCenterSet interface {
 	Get(ctx context.Context, name string) (vsphere.Driver, error)
 }
 
+// standbyPoll is how often a standby syncer checks whether it can take over.
+var standbyPoll = 5 * time.Second
+
 // lockKey is the Postgres advisory lock that keeps one active syncer.
 var lockKey = func() int64 {
 	h := fnv.New64a()
@@ -93,11 +96,13 @@ func (s *Syncer) Run(ctx context.Context) error {
 		if got {
 			break
 		}
+		// A standby: the lock is free as soon as the active process's
+		// connection is gone, so it takes over within seconds (S14.1).
 		s.Log.Info("another sync process is active, waiting")
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(30 * time.Second):
+		case <-time.After(standbyPoll):
 		}
 	}
 	defer conn.Exec(context.Background(), `select pg_advisory_unlock($1)`, lockKey) //nolint:errcheck
