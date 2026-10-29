@@ -1,0 +1,65 @@
+# rvav on a VM, without Kubernetes (ADR-0009, docs/operations/installation.md):
+# the rvav processes and the web app, from the released images, with the
+# organisation's PostgreSQL, Temporal and identity provider. systemd keeps
+# it running (rvav.service). Two VMs behind a load balancer, each running
+# this file, give high availability (docs/operations/high-availability.md).
+#
+# Settings: /etc/rvav/rvav.env (rvav.env.example; every setting is in
+# docs/operations/configuration.md).
+
+name: rvav
+
+x-rvav: &rvav
+  image: ghcr.io/damhau/rvav:${RVAV_VERSION:-1.0.0}
+  env_file: /etc/rvav/rvav.env
+  restart: always
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: { max-size: "50m", max-file: "5" }
+
+services:
+  # Migrations first; every process waits for them.
+  migrate:
+    <<: *rvav
+    command: ["migrate"]
+    restart: "no"
+
+  api:
+    <<: *rvav
+    command: ["api"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "rvav", "healthcheck"]
+      interval: 5s
+      retries: 30
+
+  worker:
+    <<: *rvav
+    command: ["worker"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # On two VMs, both run it: one is active, the other waits for its lock.
+  sync:
+    <<: *rvav
+    command: ["sync"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    image: ghcr.io/damhau/rvav-web:${RVAV_VERSION:-1.0.0}
+    env_file: /etc/rvav/web.env
+    environment:
+      RVAV_API_UPSTREAM: http://api:8080
+    restart: always
+    # Behind the site's TLS-terminating load balancer or reverse proxy.
+    ports: ["${RVAV_WEB_BIND:-127.0.0.1:8080}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }

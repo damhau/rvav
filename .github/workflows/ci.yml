@@ -49,6 +49,13 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
       - run: make test-python
 
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: make lint-chart
+
   spec:
     name: API spec
     runs-on: ubuntu-24.04

@@ -75,6 +75,12 @@ member picker marks the signed-in person).
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
 as you edit and uses the same API on `:8080`.
 
+## Kubernetes and VMs
+
+The Helm chart is in `helm/rvav` (tried on kind with `helm/kind/kind-test.sh`),
+and the VM installation (Compose and systemd) in `vm/`
+([docs/operations/installation.md](../docs/operations/installation.md)).
+
 ## High availability
 
 `docker-compose.ha.yml` runs two of each rvav process and a Temporal

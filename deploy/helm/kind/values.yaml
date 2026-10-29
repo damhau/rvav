@@ -1,0 +1,30 @@
+# The chart on kind (kind-test.sh), with deps.yaml: vcsim, the fake
+# SOLIDserver and the fake AWX, Keycloak through a port-forward.
+image: { tag: "1.0.0", pullPolicy: Never }
+webImage: { tag: "1.0.0", pullPolicy: Never }
+config:
+  RVAV_PUBLIC_URL: http://localhost:18080
+  RVAV_OIDC_ISSUER: http://localhost:18081/realms/rvav
+  RVAV_OIDC_DISCOVERY_URL: http://keycloak.rvav-deps.svc.cluster.local:8080/realms/rvav
+  RVAV_OIDC_CLIENT_ID: rvav
+  RVAV_TEMPORAL_ADDRESS: temporal-frontend.rvav-deps.svc.cluster.local:7233
+  RVAV_TEMPORAL_NAMESPACE: rvav
+  RVAV_VCENTER_URL: https://vcsim.rvav-deps.svc.cluster.local:8989/sdk
+  RVAV_VCENTER_USERNAME: user
+  RVAV_VCENTER_INSECURE: "1"
+  RVAV_VCENTER_NAME: vc01.corp.example
+  RVAV_EFFICIENTIP_URL: http://efficientip.rvav-deps.svc.cluster.local:8080
+  RVAV_EFFICIENTIP_USERNAME: rvav
+  RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
+  RVAV_FAKE_AWX: "1"
+  RVAV_SYNC_INTERVAL: 30s
+secret:
+  env:
+    RVAV_DATABASE_URL: postgres://rvav:rvav@postgres.rvav-deps.svc.cluster.local:5432/rvav?sslmode=disable
+    RVAV_VCENTER_PASSWORD: pass
+    RVAV_EFFICIENTIP_PASSWORD: rvav
+    RVAV_SECRETS_KEY: a2luZC1vbmx5LXNlY3JldHMta2V5LTMyLWJ5dGVzISE=
+web:
+  oidcAuthority: http://localhost:18081/realms/rvav
+migrate: { seed: true }
+ingress: { enabled: false }

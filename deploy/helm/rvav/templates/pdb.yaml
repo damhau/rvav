@@ -1,0 +1,18 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $c := list "api" "worker" "web" }}
+{{- $replicas := (index $.Values $c).replicas | int }}
+{{- if gt $replicas 1 }}
+---
+# One {{ $c }} replica keeps running through node drains (S14.1).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $.Release.Name }}-{{ $c }}
+  labels: {{- include "rvav.labels" $ | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "rvav.selector" (dict "root" $ "component" $c) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

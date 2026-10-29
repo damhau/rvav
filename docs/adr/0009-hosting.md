@@ -31,4 +31,9 @@ choice by S2 and the production setup by S14.
 - The Compose stack is for one machine: it publishes its ports on 127.0.0.1
   unless `RVAV_BIND_ADDRESS` says otherwise, and its Keycloak realm only knows
   the default web ports.
-- The Helm chart, its secrets and the HA setup are S14 work.
+- The Helm chart is `deploy/helm/rvav` and the VM installation
+  `deploy/vm` (S14.2, docs/operations/installation.md). Every rvav pod
+  applies the migrations as it starts, one at a time under a lock, instead
+  of a Helm hook (which couldn't read the chart's own Secret). The web app
+  reads its sign-in settings at run time (`/config.js`), so one image
+  serves every site.

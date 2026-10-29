@@ -1,0 +1,111 @@
+# rvav on Kubernetes (ADR-0009, docs/operations/installation.md). Every
+# setting is an environment variable: `config` for the plain ones, the
+# Secret for passwords and keys (docs/operations/configuration.md lists
+# them all).
+
+image:
+  # The Go processes: api, worker, sync and migrate.
+  repository: ghcr.io/damhau/rvav
+  tag: ""  # the chart's appVersion when empty
+  pullPolicy: IfNotPresent
+webImage:
+  repository: ghcr.io/damhau/rvav-web
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Plain settings (a ConfigMap). RVAV_AUTH_MODE is always oidc: dev
+# authentication can't be enabled from the chart.
+config:
+  RVAV_PUBLIC_URL: https://rvav.corp.example
+  RVAV_OIDC_ISSUER: https://sso.corp.example/realms/rvav
+  RVAV_OIDC_CLIENT_ID: rvav
+  RVAV_TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+  RVAV_TEMPORAL_NAMESPACE: rvav
+  RVAV_VCENTER_URL: https://vc01.corp.example/sdk
+  RVAV_VCENTER_USERNAME: svc-rvav@vsphere.local
+  RVAV_VCENTER_NAME: vc01.corp.example
+  RVAV_EFFICIENTIP_URL: https://ipam.corp.example
+  RVAV_EFFICIENTIP_USERNAME: rvav
+  RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
+  RVAV_AWX_URL: https://awx.corp.example
+  RVAV_AWX_ORGANIZATION: rvav
+
+# Passwords and keys (a Secret). Leave `create` false and name
+# `existingSecret` to use a Secret made elsewhere (sealed-secrets, External
+# Secrets...) with the same keys.
+secret:
+  create: true
+  existingSecret: ""
+  env:
+    RVAV_DATABASE_URL: ""
+    RVAV_SECRETS_KEY: ""
+    RVAV_VCENTER_PASSWORD: ""
+    RVAV_EFFICIENTIP_PASSWORD: ""
+    RVAV_AWX_TOKEN: ""
+
+# The web app's sign-in, read by the browser at run time (/config.js).
+web:
+  replicas: 2
+  oidcAuthority: https://sso.corp.example/realms/rvav
+  oidcClientId: rvav
+  oidcScope: openid profile email
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 512Mi }
+worker:
+  replicas: 2
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 512Mi }
+# One active, the others wait for its lock (S14.1).
+sync:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+# Every rvav pod applies the database migrations as it starts (one at a
+# time, under a lock), in an init container.
+migrate:
+  # Also load the demo catalogue and users (not for production).
+  seed: false
+
+ingress:
+  enabled: true
+  className: ""
+  host: rvav.corp.example
+  annotations: {}
+  # The console's WebSocket stays open while used.
+  tls:
+    secretName: ""
+
+podDisruptionBudget:
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+nodeSelector: {}
+tolerations: []
+# Replicas on different nodes when they can be.
+spreadAcrossNodes: true
+
+# Prometheus metrics (S14.5): a ServiceMonitor for the Prometheus operator.
+metrics:
+  serviceMonitor: false

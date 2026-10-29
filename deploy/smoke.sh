@@ -12,8 +12,14 @@ base="${1:-http://localhost:${RVAV_API_PORT:-8080}}/api/v1"
 timeout="${RVAV_SMOKE_TIMEOUT:-300}"
 project=prj_web
 
+# With RVAV_SMOKE_TOKEN (an OIDC access token), it signs in as that user
+# instead (deploy/helm/kind/kind-test.sh).
 call() {
-	curl -fsS -H "X-Rvav-Dev-User: lmartin" -H "Content-Type: application/json" "$@"
+	if [ -n "${RVAV_SMOKE_TOKEN:-}" ]; then
+		curl -fsS -H "Authorization: Bearer $RVAV_SMOKE_TOKEN" -H "Content-Type: application/json" "$@"
+	else
+		curl -fsS -H "X-Rvav-Dev-User: lmartin" -H "Content-Type: application/json" "$@"
+	fi
 }
 
 item=$(call "$base/catalog/items/rhel9-server?project_id=$project" | jq -r .id)

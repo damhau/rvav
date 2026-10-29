@@ -70,12 +70,26 @@ func Migrate(ctx context.Context, url string) error {
 	return migrateDB(ctx, db)
 }
 
+// migrateDB applies the migrations, one process at a time: every rvav pod
+// migrates as it starts (S14.2), and the others wait, then find nothing
+// left to do.
 func migrateDB(ctx context.Context, db *sql.DB) error {
 	goose.SetBaseFS(migrations.FS)
 	goose.SetLogger(goose.NopLogger())
 	if err := goose.SetDialect("postgres"); err != nil {
 		return err
 	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `select pg_advisory_lock($1)`, LockMigrate); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, LockMigrate)
+	}()
 	return goose.UpContext(ctx, db, ".")
 }
 
@@ -100,6 +114,8 @@ const (
 	LockAdmins int64 = 0x7276_6176_0002
 	// LockSubnetSync keeps one EfficientIP subnet sync at a time (S14.1).
 	LockSubnetSync int64 = 0x7276_6176_0003
+	// LockMigrate keeps one migration at a time (S14.2).
+	LockMigrate int64 = 0x7276_6176_0004
 )
 
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever

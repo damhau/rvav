@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web
+  labels:
+    {{- include "rvav.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels: {{- include "rvav.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rvav.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      serviceAccountName: {{ include "rvav.serviceAccount" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      # nginx as its own user (101), not root.
+      securityContext: {{ toYaml (merge (dict "runAsUser" 101 "runAsGroup" 101) .Values.podSecurityContext) | nindent 8 }}
+      {{- include "rvav.spread" (dict "root" . "component" "web") | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ .Values.webImage.repository }}:{{ .Values.webImage.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.webImage.pullPolicy }}
+          env:
+            # nginx ignores search domains: the service's full name.
+            - name: RVAV_API_UPSTREAM
+              value: http://{{ .Release.Name }}-api.{{ .Release.Namespace }}.svc.cluster.local:8080
+            - { name: RVAV_WEB_AUTH_MODE, value: oidc }
+            - { name: RVAV_WEB_OIDC_AUTHORITY, value: {{ .Values.web.oidcAuthority | quote }} }
+            - { name: RVAV_WEB_OIDC_CLIENT_ID, value: {{ .Values.web.oidcClientId | quote }} }
+            - { name: RVAV_WEB_OIDC_SCOPE, value: {{ .Values.web.oidcScope | quote }} }
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+          resources: {{ toYaml .Values.web.resources | nindent 12 }}
+          securityContext: {{ toYaml .Values.securityContext | nindent 12 }}
+          # What nginx writes, with a read-only root file system.
+          volumeMounts:
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: run, mountPath: /var/run }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: conf, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+  labels: {{- include "rvav.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "rvav.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - { name: http, port: 80, targetPort: http }

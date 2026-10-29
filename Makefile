@@ -3,9 +3,9 @@ PNPM    ?= pnpm
 BIN     := bin
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec web-check up down vcsim
+.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check up down vcsim
 
-check: gen-check lint-spec vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
+check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
 
 build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
@@ -38,6 +38,13 @@ gen-check: gen ## Fail if the generated code is out of date
 
 lint-spec:
 	npx --yes @redocly/cli@1 lint --config api/redocly.yaml api/openapi.yaml
+
+lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in
+	@if ! command -v helm >/dev/null; then echo "helm not installed: the chart isn't checked here (CI does)"; exit 0; fi; \
+	helm lint --strict deploy/helm/rvav >/dev/null && \
+	helm template rvav deploy/helm/rvav -f deploy/helm/kind/values.yaml >/dev/null && \
+	if helm template rvav deploy/helm/rvav --set config.RVAV_AUTH_MODE=dev >/dev/null 2>&1; then \
+		echo "the chart let RVAV_AUTH_MODE=dev through" >&2; exit 1; fi && echo "chart ok"
 
 web-check: ## Web app: generated types current, typecheck, lint, unit tests, build, Playwright
 	cd web && $(PNPM) gen:api

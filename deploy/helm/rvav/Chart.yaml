@@ -1,0 +1,7 @@
+apiVersion: v2
+name: rvav
+description: Self-service VMs on vSphere, with AWX and EfficientIP (ADR-0009)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/damhau/rvav

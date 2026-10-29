@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels: {{- include "rvav.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.config }}
+  {{- if or (eq $k "RVAV_AUTH_MODE") (eq $k "RVAV_ALLOW_DEV_AUTH") }}
+  {{- fail (printf "%s can't be set from the chart: rvav on Kubernetes signs in with OIDC" $k) }}
+  {{- end }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}
+  RVAV_AUTH_MODE: oidc

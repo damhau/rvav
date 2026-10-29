@@ -26,6 +26,15 @@ server {
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
 
+    # Settings the web app reads at run time (S14.2): its sign-in, from the
+    # container's RVAV_WEB_* environment (the image's build values by default).
+    location = /config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options nosniff always;
+        return 200 'window.__RVAV_CONFIG__ = {"authMode": "${RVAV_WEB_AUTH_MODE}", "oidcAuthority": "${RVAV_WEB_OIDC_AUTHORITY}", "oidcClientId": "${RVAV_WEB_OIDC_CLIENT_ID}", "oidcScope": "${RVAV_WEB_OIDC_SCOPE}"};\n';
+    }
+
     # Live events (SSE): pass each event through as soon as it is written.
     location /api/v1/events {
         proxy_pass $api_upstream;

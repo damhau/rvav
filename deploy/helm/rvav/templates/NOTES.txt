@@ -1,0 +1,12 @@
+rvav {{ .Chart.AppVersion }} is installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+Open https://{{ .Values.ingress.host }} and sign in with {{ .Values.web.oidcAuthority }}.
+{{- else }}
+The web app is the service {{ .Release.Name }}-web (port 80); put an ingress or a load balancer in front of it.
+{{- end }}
+
+Every rvav pod applies the database migrations as it starts. Check them with:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ .Release.Name }}-api -c migrate
+
+Settings: docs/operations/configuration.md. High availability: docs/operations/high-availability.md.

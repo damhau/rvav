@@ -1,0 +1,22 @@
+# /etc/systemd/system/rvav.service: rvav on a VM, with Docker Compose
+# (docs/operations/installation.md). Upgrade: change RVAV_VERSION in
+# /etc/rvav/version.env, then systemctl restart rvav.
+[Unit]
+Description=rvav
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rvav
+EnvironmentFile=-/etc/rvav/version.env
+ExecStartPre=/usr/bin/docker compose -f /opt/rvav/docker-compose.yml pull --quiet
+ExecStart=/usr/bin/docker compose -f /opt/rvav/docker-compose.yml up --remove-orphans
+ExecStop=/usr/bin/docker compose -f /opt/rvav/docker-compose.yml down
+Restart=always
+RestartSec=10
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

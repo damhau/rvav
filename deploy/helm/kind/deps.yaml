@@ -1,0 +1,151 @@
+# What rvav needs, for trying the chart on kind (kind-test.sh): PostgreSQL,
+# Temporal, Keycloak, vcsim and the fake SOLIDserver, one pod each. A real
+# installation uses the organisation's (docs/operations/installation.md).
+apiVersion: v1
+kind: Namespace
+metadata: { name: rvav-deps }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres, namespace: rvav-deps }
+spec:
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.4
+          env:
+            - { name: POSTGRES_USER, value: rvav }
+            - { name: POSTGRES_PASSWORD, value: rvav }
+            - { name: POSTGRES_DB, value: rvav }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe: { exec: { command: ["pg_isready", "-U", "rvav"] }, periodSeconds: 2 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: rvav-deps }
+spec: { selector: { app: postgres }, ports: [{ port: 5432 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: temporal, namespace: rvav-deps }
+spec:
+  selector: { matchLabels: { app: temporal } }
+  template:
+    metadata: { labels: { app: temporal } }
+    spec:
+      containers:
+        - name: temporal
+          image: temporalio/auto-setup:1.25.2
+          env:
+            - { name: DB, value: postgres12 }
+            - { name: DB_PORT, value: "5432" }
+            - { name: POSTGRES_USER, value: rvav }
+            - { name: POSTGRES_PWD, value: rvav }
+            - { name: POSTGRES_SEEDS, value: postgres.rvav-deps.svc.cluster.local }
+            - { name: DEFAULT_NAMESPACE, value: rvav }
+          ports: [{ containerPort: 7233 }]
+          readinessProbe:
+            # It listens on the pod's address.
+            exec: { command: ["sh", "-c", "temporal operator namespace describe -n rvav --address $(hostname -i):7233"] }
+            periodSeconds: 3
+            failureThreshold: 60
+---
+apiVersion: v1
+kind: Service
+metadata: { name: temporal-frontend, namespace: rvav-deps }
+spec: { selector: { app: temporal }, ports: [{ port: 7233 }] }
+# keycloak-realm (deploy/keycloak/realm-rvav.json) is made by kind-test.sh.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: keycloak, namespace: rvav-deps }
+spec:
+  selector: { matchLabels: { app: keycloak } }
+  template:
+    metadata: { labels: { app: keycloak } }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:25.0.6
+          args: ["start-dev", "--import-realm"]
+          env:
+            - { name: KEYCLOAK_ADMIN, value: admin }
+            - { name: KEYCLOAK_ADMIN_PASSWORD, value: admin }
+            # Tokens carry the issuer the test's port-forward gives.
+            - { name: KC_HOSTNAME, value: "http://localhost:18081" }
+            - { name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true" }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+          ports: [{ containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /health/ready, port: 9000 }, periodSeconds: 3, failureThreshold: 60 }
+          volumeMounts: [{ name: realm, mountPath: /opt/keycloak/data/import }]
+      volumes: [{ name: realm, configMap: { name: keycloak-realm } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: keycloak, namespace: rvav-deps }
+spec: { selector: { app: keycloak }, ports: [{ port: 8080 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: vcsim, namespace: rvav-deps }
+spec:
+  selector: { matchLabels: { app: vcsim } }
+  template:
+    metadata: { labels: { app: vcsim } }
+    spec:
+      containers:
+        - name: vcsim
+          image: vmware/vcsim:v0.52.0
+          args: ["-l", "0.0.0.0:8989"]
+          ports: [{ containerPort: 8989 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: vcsim, namespace: rvav-deps }
+spec: { selector: { app: vcsim }, ports: [{ port: 8989 }] }
+---
+# The GVA layout in vcsim, once the chart's pods have migrated.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: vcsim-bootstrap, namespace: rvav-deps }
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: ghcr.io/damhau/rvav:1.0.0
+          args: ["vcsim-bootstrap"]
+          env:
+            - { name: RVAV_VCENTER_URL, value: "https://vcsim.rvav-deps.svc.cluster.local:8989/sdk" }
+            - { name: RVAV_VCENTER_USERNAME, value: user }
+            - { name: RVAV_VCENTER_PASSWORD, value: pass }
+            - { name: RVAV_VCENTER_INSECURE, value: "1" }
+            - { name: RVAV_VCENTER_NAME, value: vc01.corp.example }
+            - { name: RVAV_DATABASE_URL, value: "postgres://rvav:rvav@postgres.rvav-deps.svc.cluster.local:5432/rvav?sslmode=disable" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: efficientip, namespace: rvav-deps }
+spec:
+  selector: { matchLabels: { app: efficientip } }
+  template:
+    metadata: { labels: { app: efficientip } }
+    spec:
+      containers:
+        - name: efficientip
+          image: ghcr.io/damhau/rvav:1.0.0
+          args: ["fake-efficientip"]
+          env:
+            - { name: RVAV_DATABASE_URL, value: "postgres://rvav:rvav@postgres.rvav-deps.svc.cluster.local:5432/rvav?sslmode=disable" }
+            - { name: RVAV_HTTP_ADDR, value: ":8080" }
+          ports: [{ containerPort: 8080 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: efficientip, namespace: rvav-deps }
+spec: { selector: { app: efficientip }, ports: [{ port: 8080 }] }

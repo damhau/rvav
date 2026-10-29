@@ -12,7 +12,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/rvav ./cmd/rvav \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/ /usr/local/bin/
-USER nonroot:nonroot
+# Numeric, so Kubernetes can check it isn't root (runAsNonRoot).
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/rvav"]
 CMD ["api"]
