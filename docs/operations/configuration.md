@@ -84,6 +84,7 @@ Traces use OpenTelemetry's standard variables, read by every process:
 | `RVAV_EFFICIENTIP_DNS_VIEW` | none | | The DNS view, when the server has views. |
 | `RVAV_IPAM_SYNC_INTERVAL` | `5m` | | How often the subnets are read for network mappings. |
 | `RVAV_FAKE_EFFICIENTIP` | off | | Uses a fake SOLIDserver in the process. For development only. |
+| `RVAV_FAKE_EFFICIENTIP_LATENCY` | none | | How long `rvav fake-efficientip` takes to answer each call, as a real SOLIDserver would. For load tests. |
 
 ## AWX
 

@@ -149,6 +149,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
+		fake.Latency = cfg.IPAM.FakeLatency
 		url, err := fake.Start(ctx, cfg.HTTPAddr)
 		if err != nil {
 			return err

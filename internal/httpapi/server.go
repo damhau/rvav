@@ -254,7 +254,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		if detail == msg {
 			detail = "You do not have permission to do this"
 		}
-		s.problem(w, r, http.StatusForbidden, "forbidden", "Not allowed", upperFirst(detail)+".", nil)
+		s.problem(w, r, http.StatusForbidden, "forbidden", "Not allowed", sentence(detail), nil)
 	case errors.As(err, &ve):
 		s.problem(w, r, http.StatusUnprocessableEntity, "validation", "Some inputs need attention", ve.Error(), ve.Errors)
 	case errors.As(err, &ce):
@@ -273,6 +273,16 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		s.problem(w, r, http.StatusInternalServerError, "internal", "Something went wrong on our side",
 			"The error was logged. Quote the request ID if you contact support.", nil)
 	}
+}
+
+// sentence starts with a capital and ends with a full stop, once: reasons
+// written by administrators (day-2 policies) have their own.
+func sentence(s string) string {
+	s = upperFirst(s)
+	if !strings.HasSuffix(s, ".") && !strings.HasSuffix(s, "?") && !strings.HasSuffix(s, "!") {
+		s += "."
+	}
+	return s
 }
 
 func upperFirst(s string) string {

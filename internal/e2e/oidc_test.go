@@ -175,6 +175,26 @@ func TestOIDCTokens(t *testing.T) {
 			m.Projects[0].Project.Id != "prj_web" || m.Projects[0].Role != "project-admin" {
 			t.Fatalf("lea: %d %+v", code, m)
 		}
+		// The same token again: its user and groups are remembered, not
+		// written again (S14.7); roles are still read each time.
+		seen := func() (at time.Time) {
+			_ = h.store.Pool.QueryRow(ctx, `select max(g.seen_at) from user_groups g join users u on u.id = g.user_id
+				where u.subject = 'kc-lea'`).Scan(&at)
+			return at
+		}
+		before := seen()
+		time.Sleep(10 * time.Millisecond)
+		if code, _, _ := me(lea); code != 200 || !seen().Equal(before) {
+			t.Fatalf("the same token again: %d, groups written again: %v", code, !seen().Equal(before))
+		}
+		if _, err := h.store.Pool.Exec(ctx, `insert into group_mappings (id, oidc_group, project_id, role)
+			values ('gm_e2e', 'rvav-web-admins', 'prj_data', 'viewer')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, m, _ := me(lea); len(m.Projects) != 2 {
+			t.Fatalf("a role given in rvav, with a remembered token: %+v", m.Projects)
+		}
+		_, _ = h.store.Pool.Exec(ctx, `delete from group_mappings where id = 'gm_e2e'`)
 		// Dev authentication on the same database still finds the seeded
 		// user that this sign-in linked to its OIDC subject.
 		devReq := httptest.NewRequestWithContext(ctx, "GET", "/api/v1/me", nil)

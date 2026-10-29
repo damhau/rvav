@@ -183,6 +183,53 @@ type OIDC struct {
 	verifier *oidc.IDTokenVerifier
 	failedAt time.Time
 	lastErr  error
+
+	// seen remembers the user and groups of a token already checked
+	// (S14.7): the user is written and its groups kept once per token, not
+	// on every call it makes.
+	seenMu sync.Mutex
+	seen   map[[32]byte]seenToken
+}
+
+type seenToken struct {
+	userID string
+	groups []string
+	until  time.Time
+}
+
+// seenFor is how long a token's user and groups are remembered, at most:
+// a change of name or groups at the provider shows within it.
+const seenFor = 5 * time.Minute
+
+func (o *OIDC) remembered(key [32]byte) (seenToken, bool) {
+	o.seenMu.Lock()
+	defer o.seenMu.Unlock()
+	t, ok := o.seen[key]
+	if ok && time.Now().After(t.until) {
+		delete(o.seen, key)
+		ok = false
+	}
+	return t, ok
+}
+
+func (o *OIDC) remember(key [32]byte, t seenToken) {
+	o.seenMu.Lock()
+	defer o.seenMu.Unlock()
+	if o.seen == nil || len(o.seen) >= 10000 {
+		now := time.Now()
+		if o.seen == nil {
+			o.seen = map[[32]byte]seenToken{}
+		}
+		for k, v := range o.seen {
+			if now.After(v.until) {
+				delete(o.seen, k)
+			}
+		}
+		if len(o.seen) >= 10000 {
+			o.seen = map[[32]byte]seenToken{}
+		}
+	}
+	o.seen[key] = t
 }
 
 // NewOIDC prepares token checks against the provider. discoveryURL, when set,
@@ -301,6 +348,16 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
+	// A token checked before: its user and groups are known; roles are
+	// read again, so a change in rvav applies at once.
+	key := sha256.Sum256([]byte(token))
+	if t, ok := o.remembered(key); ok {
+		u, err := o.Store.GetUser(ctx, t.userID)
+		if err != nil {
+			return nil, err
+		}
+		return build(ctx, o.Store, u, t.groups)
+	}
 	var claims map[string]any
 	if err := idt.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
@@ -326,6 +383,11 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if err := o.Store.SetUserGroups(ctx, u.ID, groups); err != nil {
 		return nil, err
 	}
+	until := time.Now().Add(seenFor)
+	if idt.Expiry.Before(until) {
+		until = idt.Expiry
+	}
+	o.remember(key, seenToken{userID: u.ID, groups: groups, until: until})
 	return build(ctx, o.Store, u, groups)
 }
 

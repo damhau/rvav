@@ -100,15 +100,18 @@ type VCenterConfig struct {
 }
 
 type EfficientIPConfig struct {
-	Fake      bool
-	URL       string
-	Auth      string // native, basic or token
-	Username  string // the token's key ID with token authentication
-	Password  string // the token's secret with token authentication
-	Insecure  bool
-	Space     string
-	DNSServer string
-	DNSView   string
+	Fake bool
+	// FakeLatency is how long the fake SOLIDserver takes to answer each
+	// call, as a real one would (load tests).
+	FakeLatency time.Duration
+	URL         string
+	Auth        string // native, basic or token
+	Username    string // the token's key ID with token authentication
+	Password    string // the token's secret with token authentication
+	Insecure    bool
+	Space       string
+	DNSServer   string
+	DNSView     string
 	// Instance tells this rvav's objects from another's on a shared
 	// SOLIDserver (RVAV_INSTANCE_ID).
 	Instance string
@@ -271,6 +274,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.IPAMSyncInterval, err = duration("RVAV_IPAM_SYNC_INTERVAL", 5*time.Minute); err != nil {
+		return c, err
+	}
+	if c.IPAM.FakeLatency, err = duration("RVAV_FAKE_EFFICIENTIP_LATENCY", 0); err != nil {
 		return c, err
 	}
 	if c.SyncInterval, err = duration("RVAV_SYNC_INTERVAL", 2*time.Minute); err != nil {

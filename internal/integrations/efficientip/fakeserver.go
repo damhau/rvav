@@ -33,6 +33,8 @@ type FakeServer struct {
 	FirstHost            int
 	InUse                func(ctx context.Context, cidr string) ([]string, error)
 	DeleteDelay          time.Duration
+	// Latency is added to every answer, as a real SOLIDserver's.
+	Latency time.Duration
 
 	mu        sync.Mutex
 	idBase    int
@@ -211,6 +213,7 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	time.Sleep(f.Latency)
 	w.Header().Set("Content-Type", "application/json")
 	if !f.authenticated(r) {
 		w.WriteHeader(http.StatusUnauthorized)
