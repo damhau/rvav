@@ -2230,6 +2230,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How the platform is used (S13.4)
+         * @description Requests over time and their success rate, provisioning time,
+         *     approval lead time, usage against quota and the leases ending in the
+         *     next 30 days. Administrators and auditors see every project; others
+         *     the projects they are members of.
+         */
+        get: operations["getReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A section of the report as CSV, one row per request, approval level, quota line or lease */
+        get: operations["exportReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -3457,6 +3497,90 @@ export interface components {
         };
         /** @enum {string} */
         VmPowerState: "on" | "off" | "suspended";
+        ReportCounts: {
+            submitted: number;
+            succeeded: number;
+            failed: number;
+            rejected: number;
+            cancelled: number;
+            /** @description Succeeded out of those that ran to an end (succeeded or failed), 0 to 1; absent when none did. */
+            success_rate?: number;
+        };
+        ReportDurations: {
+            count: number;
+            p50_seconds?: number;
+            p90_seconds?: number;
+            average_seconds?: number;
+        };
+        Report: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+            /** @enum {string} */
+            interval: "day" | "week" | "month";
+            requests: components["schemas"]["ReportRequests"];
+            /** @description How long new deployments took to build, from start to end, for requests that succeeded. */
+            provisioning: components["schemas"]["ReportDurations"];
+            approvals: components["schemas"]["ReportApprovals"];
+            /** @description Each project's usage now, project-wide and per environment with a limit. */
+            quota: components["schemas"]["ReportQuotaLine"][];
+            /** @description Leases ending in the next 30 days, soonest first. */
+            leases: components["schemas"]["ReportLease"][];
+        };
+        ReportRequests: {
+            totals: components["schemas"]["ReportCounts"];
+            /** @description Every period from `from` to `to`, empty ones too. */
+            over_time: components["schemas"]["ReportPeriod"][];
+            /** @description The items requested most, up to 10, with how long they took to build. */
+            by_item: components["schemas"]["ReportItem"][];
+        };
+        ReportPeriod: components["schemas"]["ReportCounts"] & {
+            /**
+             * Format: date
+             * @description The period's first day.
+             */
+            period: string;
+        };
+        ReportItem: components["schemas"]["ReportCounts"] & {
+            item: components["schemas"]["CatalogItemRef"];
+            provisioning: components["schemas"]["ReportDurations"];
+        };
+        CatalogItemRef: {
+            id: string;
+            slug: string;
+            name: string;
+        };
+        DeploymentRef: {
+            id: string;
+            name: string;
+        };
+        ReportApprovals: {
+            decided: number;
+            approved: number;
+            rejected: number;
+            /** @description From a level opening to its decision. */
+            lead_time: components["schemas"]["ReportDurations"];
+            /** @description Levels waiting for a decision now. */
+            pending: number;
+            /** Format: date-time */
+            oldest_pending_since?: string;
+        };
+        ReportQuotaLine: {
+            project: components["schemas"]["ProjectRef"];
+            environment?: string;
+            resource: components["schemas"]["QuotaResource"];
+            limit?: number;
+            used: number;
+        };
+        ReportLease: {
+            deployment: components["schemas"]["DeploymentRef"];
+            project: components["schemas"]["ProjectRef"];
+            environment: string;
+            owner: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            expires_at: string;
+        };
         OnboardingVm: {
             /** @example vc01.corp.example */
             vcenter: string;
@@ -8922,6 +9046,69 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getReport: {
+        parameters: {
+            query?: {
+                /** @description The first day (UTC); 30 days ago by default. */
+                from?: string;
+                /** @description The last day (UTC), included; today by default. */
+                to?: string;
+                project_id?: components["parameters"]["ProjectIdQuery"];
+                environment?: string;
+                /** @description The period requests are counted by. */
+                interval?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Report"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    exportReport: {
+        parameters: {
+            query: {
+                section: "requests" | "approvals" | "quota" | "leases";
+                /** @description The first day (UTC); 30 days ago by default. */
+                from?: string;
+                /** @description The last day (UTC), included; today by default. */
+                to?: string;
+                project_id?: components["parameters"]["ProjectIdQuery"];
+                environment?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     streamEvents: {

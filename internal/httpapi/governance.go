@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/store"
@@ -499,4 +501,38 @@ func (s *Server) AdoptVms(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.Core.AdoptVMs(r.Context(), principal(r), b)
 	s.reply(w, r, http.StatusOK, out, err)
+}
+
+// Reports (S13.4).
+
+func reportQuery(from, to *openapi_types.Date, project, environment *string) core.ReportQuery {
+	q := core.ReportQuery{ProjectID: deref(project), Environment: deref(environment)}
+	if from != nil {
+		q.From = &from.Time
+	}
+	if to != nil {
+		q.To = &to.Time
+	}
+	return q
+}
+
+func (s *Server) GetReport(w http.ResponseWriter, r *http.Request, params api.GetReportParams) {
+	q := reportQuery(params.From, params.To, params.ProjectId, params.Environment)
+	if params.Interval != nil {
+		q.Interval = string(*params.Interval)
+	}
+	out, err := s.Core.Report(r.Context(), principal(r), q)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) ExportReport(w http.ResponseWriter, r *http.Request, params api.ExportReportParams) {
+	q := reportQuery(params.From, params.To, params.ProjectId, params.Environment)
+	rows, err := s.Core.ReportCSV(r.Context(), principal(r), q, string(params.Section))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="rvav-`+string(params.Section)+`.csv"`)
+	_ = csv.NewWriter(w).WriteAll(rows)
 }

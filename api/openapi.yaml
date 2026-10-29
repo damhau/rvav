@@ -42,6 +42,8 @@ tags:
     description: What AWX reads from rvav.
   - name: notifications
     description: What concerns the caller, in the app and on their channels (ADR-0023).
+  - name: reports
+    description: How the platform is used (S13.4).
 
 paths:
   /me:
@@ -3068,6 +3070,70 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /reports:
+    get:
+      tags: [reports]
+      operationId: getReport
+      summary: How the platform is used (S13.4)
+      description: |
+        Requests over time and their success rate, provisioning time,
+        approval lead time, usage against quota and the leases ending in the
+        next 30 days. Administrators and auditors see every project; others
+        the projects they are members of.
+      parameters:
+        - name: from
+          in: query
+          description: The first day (UTC); 30 days ago by default.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: The last day (UTC), included; today by default.
+          schema: { type: string, format: date }
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - { name: environment, in: query, schema: { type: string } }
+        - name: interval
+          in: query
+          description: The period requests are counted by.
+          schema: { type: string, enum: [day, week, month], default: day }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /reports/export:
+    get:
+      tags: [reports]
+      operationId: exportReport
+      summary: A section of the report as CSV, one row per request, approval level, quota line or lease
+      parameters:
+        - name: section
+          in: query
+          required: true
+          schema: { type: string, enum: [requests, approvals, quota, leases] }
+        - name: from
+          in: query
+          description: The first day (UTC); 30 days ago by default.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: The last day (UTC), included; today by default.
+          schema: { type: string, format: date }
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - { name: environment, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /events:
     get:
       tags: [events]
@@ -4881,6 +4947,130 @@ components:
     VmPowerState:
       type: string
       enum: [on, off, suspended]
+
+    ReportCounts:
+      type: object
+      required: [submitted, succeeded, failed, rejected, cancelled]
+      properties:
+        submitted: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        rejected: { type: integer }
+        cancelled: { type: integer }
+        success_rate:
+          type: number
+          description: Succeeded out of those that ran to an end (succeeded or failed), 0 to 1; absent when none did.
+
+    ReportDurations:
+      type: object
+      required: [count]
+      properties:
+        count: { type: integer }
+        p50_seconds: { type: number }
+        p90_seconds: { type: number }
+        average_seconds: { type: number }
+
+    Report:
+      type: object
+      required: [from, to, interval, requests, provisioning, approvals, quota, leases]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        interval: { type: string, enum: [day, week, month] }
+        requests: { $ref: "#/components/schemas/ReportRequests" }
+        provisioning:
+          allOf:
+            - $ref: "#/components/schemas/ReportDurations"
+          description: How long new deployments took to build, from start to end, for requests that succeeded.
+        approvals: { $ref: "#/components/schemas/ReportApprovals" }
+        quota:
+          type: array
+          description: Each project's usage now, project-wide and per environment with a limit.
+          items: { $ref: "#/components/schemas/ReportQuotaLine" }
+        leases:
+          type: array
+          description: Leases ending in the next 30 days, soonest first.
+          items: { $ref: "#/components/schemas/ReportLease" }
+
+    ReportRequests:
+      type: object
+      required: [totals, over_time, by_item]
+      properties:
+        totals: { $ref: "#/components/schemas/ReportCounts" }
+        over_time:
+          type: array
+          description: Every period from `from` to `to`, empty ones too.
+          items: { $ref: "#/components/schemas/ReportPeriod" }
+        by_item:
+          type: array
+          description: The items requested most, up to 10, with how long they took to build.
+          items: { $ref: "#/components/schemas/ReportItem" }
+
+    ReportPeriod:
+      allOf:
+        - $ref: "#/components/schemas/ReportCounts"
+        - type: object
+          required: [period]
+          properties:
+            period: { type: string, format: date, description: The period's first day. }
+
+    ReportItem:
+      allOf:
+        - $ref: "#/components/schemas/ReportCounts"
+        - type: object
+          required: [item, provisioning]
+          properties:
+            item: { $ref: "#/components/schemas/CatalogItemRef" }
+            provisioning: { $ref: "#/components/schemas/ReportDurations" }
+
+    CatalogItemRef:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+
+    DeploymentRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    ReportApprovals:
+      type: object
+      required: [decided, approved, rejected, lead_time, pending]
+      properties:
+        decided: { type: integer }
+        approved: { type: integer }
+        rejected: { type: integer }
+        lead_time:
+          allOf:
+            - $ref: "#/components/schemas/ReportDurations"
+          description: From a level opening to its decision.
+        pending: { type: integer, description: Levels waiting for a decision now. }
+        oldest_pending_since: { type: string, format: date-time }
+
+    ReportQuotaLine:
+      type: object
+      required: [project, resource, used]
+      properties:
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { type: string }
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        limit: { type: integer }
+        used: { type: integer }
+
+    ReportLease:
+      type: object
+      required: [deployment, project, environment, owner, expires_at]
+      properties:
+        deployment: { $ref: "#/components/schemas/DeploymentRef" }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { type: string }
+        owner: { $ref: "#/components/schemas/UserRef" }
+        expires_at: { type: string, format: date-time }
 
     OnboardingVm:
       type: object
