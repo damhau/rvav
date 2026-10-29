@@ -27,7 +27,12 @@ demo script is [demo-r1.md](demo-r1.md), and the report for the go/no-go
 is [release-r1.md](release-r1.md): what remains needs real infrastructure
 (the [Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9)).
 
-R2 (slices 10 to 14) is under way: S10 to S13 are built. S10,
+R2 (slices 10 to 14), rvav's 1.0, is built and accepted on the lab
+stack. The report for its sign-off, with the 1.0 gate checklist and its
+evidence, is [release-r2.md](release-r2.md); the demo script is
+[demo-r2.md](demo-r2.md). What the gate still needs is the organisation's
+infrastructure, its penetration test, a person's accessibility check and
+the pilot's feedback. S10,
 extensibility, is built and accepted on a real Temporal server and the
 compose stack. Event subscriptions are in
 [ADR-0021](adr/0021-event-subscriptions.md); custom workflows and
@@ -123,6 +128,36 @@ compose stack:
 What a real vCenter at scale and real EfficientIP records can show is in
 [Lab acceptance](https://github.com/damhau/rvav/issues/84).
 
+S14, production readiness, is built and accepted on the compose stack,
+kind and CI:
+
+- **Running it:**
+  - two or more of each process, with no single point of failure
+    ([high-availability.md](operations/high-availability.md));
+  - a Helm chart and a VM installation
+    ([installation.md](operations/installation.md)), every setting
+    documented;
+  - point-in-time backups with a tested restore;
+  - upgrades with requests in flight, with recorded workflow histories
+    replayed on every build.
+- **Watching it:** Prometheus metrics, a Grafana dashboard, twelve alerts
+  with their runbooks, and traces from the API into each activity
+  ([observability.md](operations/observability.md)).
+- **Security:** a threat model and a review that sealed secret form
+  inputs out of plans and Temporal's history; scanning on every push and
+  daily; SBOMs with each release
+  ([security.md](operations/security.md)).
+- **Load:** an hour at 200 people and 500 requests an hour, with every
+  threshold passed. Three bottlenecks were found and fixed, among them a
+  deadlock ([load-test.md](operations/load-test.md)).
+- **Accessibility:** axe (WCAG 2.2 AA) on every page and tab in both
+  themes, reflow, and keyboard-only use, with nine kinds of problem fixed
+  ([accessibility.md](accessibility.md)).
+- **AWX in CI:** the contract tests on a fresh AWX 24.6.1. They found
+  three behaviours a long-lived AWX hid.
+- **Documentation:** user, administrator and operator guides, and the
+  API reference.
+
 S9
 projects, placement and governance is built and accepted on the compose
 stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
@@ -199,7 +234,7 @@ organisation's.
 
 ### Open items found in slice 1
 - EfficientIP client: endpoints confirmed against EfficientIP's own library (S7); a real SOLIDserver still has to confirm them.
-- Accessibility audit (S14), Storybook.
+- Accessibility audit (S14): done by the tools ([accessibility.md](accessibility.md)); a person's check remains. Storybook: not needed, the checks run on the real pages.
 
 ## Plan
 
