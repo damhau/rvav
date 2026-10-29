@@ -336,6 +336,11 @@ func (s *Store) ResealRequestSecret(ctx context.Context, requestID, field string
 
 // RequestSecrets are a request's sealed secret inputs.
 func (s *Store) RequestSecrets(ctx context.Context, requestID string) ([]SealedInput, error) {
-	rows, _ := s.Pool.Query(ctx, `select field, key_id, nonce, ciphertext from request_secrets where request_id = $1`, requestID)
+	return s.RequestSecretsIn(ctx, s.Pool, requestID)
+}
+
+// RequestSecretsIn reads them in a transaction.
+func (s *Store) RequestSecretsIn(ctx context.Context, db DB, requestID string) ([]SealedInput, error) {
+	rows, _ := db.Query(ctx, `select field, key_id, nonce, ciphertext from request_secrets where request_id = $1`, requestID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[SealedInput])
 }

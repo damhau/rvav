@@ -11,8 +11,9 @@ Every process serves Prometheus metrics on `RVAV_METRICS_ADDR` (`:9090`,
 the ingress. On Kubernetes the pods carry `prometheus.io/scrape`
 annotations. With the Prometheus operator, the chart makes PodMonitors
 (`metrics.podMonitor`) and the alerts as a PrometheusRule
-(`metrics.prometheusRule`). The jobs are `rvav-api`, `rvav-worker` and
-`rvav-sync`.
+(`metrics.prometheusRule`). The alerts and the dashboard expect the jobs
+`rvav-api`, `rvav-worker` and `rvav-sync`: the PodMonitors name them so;
+a scrape configuration of the site's own (from the annotations) must too.
 
 | Metric | Labels | What |
 |---|---|---|
@@ -63,7 +64,7 @@ the compose stack and the chart's PrometheusRule. Each names its runbook.
 
 | Alert | Severity | When |
 |---|---|---|
-| RvavAPIDown | critical | No API replica answers for 2 minutes. |
+| RvavAPIDown | critical | No API replica answers, or none is found, for 2 minutes. |
 | RvavReplicaDown | warning | A replica of a process doesn't answer for 5 minutes. |
 | RvavAPIErrors | warning | More than 5% of API calls fail (5xx) for 10 minutes. |
 | RvavAPISlow | warning | The API's 95th percentile is over 300 ms for 15 minutes (the 1.0 gate's service level). |

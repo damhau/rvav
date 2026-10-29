@@ -32,6 +32,13 @@ app.kubernetes.io/component: {{ .component }}
 - secretRef: { name: {{ include "rvav.secretName" . }} }
 {{- end }}
 
+{{/* SSO only: these win over the ConfigMap and the Secret (an existing
+     one included), so dev sign-in can't be turned on through either. */}}
+{{- define "rvav.ssoOnly" -}}
+- { name: RVAV_AUTH_MODE, value: oidc }
+- { name: RVAV_ALLOW_DEV_AUTH, value: "" }
+{{- end }}
+
 {{/* Replicas on different nodes when they can be. */}}
 {{- define "rvav.spread" -}}
 {{- if .root.Values.spreadAcrossNodes }}
@@ -66,13 +73,17 @@ spec:
         {{- include "rvav.labels" .root | nindent 8 }}
         app.kubernetes.io/component: {{ .component }}
       annotations:
-        # Restarted when a setting changes.
+        # Restarted when a setting changes, plain or secret (an existing
+        # Secret isn't the chart's: restart them when it changes).
         checksum/config: {{ include (print .root.Template.BasePath "/config.yaml") .root | sha256sum }}
+        checksum/secret: {{ include (print .root.Template.BasePath "/secret.yaml") .root | sha256sum }}
         # Prometheus metrics (S14.5).
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
     spec:
       serviceAccountName: {{ include "rvav.serviceAccount" .root }}
+      # rvav doesn't call the Kubernetes API, whichever account it runs as.
+      automountServiceAccountToken: false
       {{- with .root.Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -91,6 +102,7 @@ spec:
           imagePullPolicy: {{ .root.Values.image.pullPolicy }}
           args: ["migrate"{{ if and .root.Values.migrate.seed (eq .component "api") }}, "-seed"{{ end }}]
           envFrom: {{ include "rvav.envFrom" .root | nindent 12 }}
+          env: {{ include "rvav.ssoOnly" . | nindent 12 }}
           securityContext: {{ toYaml .root.Values.securityContext | nindent 12 }}
       containers:
         - name: {{ .component }}
@@ -98,6 +110,7 @@ spec:
           imagePullPolicy: {{ .root.Values.image.pullPolicy }}
           args: [{{ .component | quote }}]
           envFrom: {{ include "rvav.envFrom" .root | nindent 12 }}
+          env: {{ include "rvav.ssoOnly" . | nindent 12 }}
           ports:
             - { name: http, containerPort: 8080 }
             - { name: metrics, containerPort: 9090 }

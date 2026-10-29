@@ -39,9 +39,10 @@ func field(v any) (string, bool) {
 func Encode(v any) ([]byte, error) { return json.Marshal(v) }
 
 // Open replaces the markers in v (maps and lists, at any depth) with the
-// sealed values they stand for, in place where v is a map.
+// sealed values they stand for, in place where v is a map. A marker whose
+// value isn't sealed is an error, never passed on as it is.
 func Open(box *secrets.Box, requestID string, sealed []store.SealedInput, v map[string]any) error {
-	if box == nil {
+	if box == nil && len(sealed) > 0 {
 		return errors.New("rvav has no secrets key (RVAV_SECRETS_KEY) to open a secret input")
 	}
 	values := map[string]any{}

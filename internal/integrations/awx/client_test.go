@@ -23,7 +23,7 @@ func TestLaunchPrompts(t *testing.T) {
 		"9":  `{"ask_limit_on_launch": false, "ask_inventory_on_launch": true}`,
 		"10": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true}`,
 		"11": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true, "ask_credential_on_launch": false}`,
-		"12": `{"variables_needed_to_start": ["agent", "port", "given"]}`,
+		"12": `{"variables_needed_to_start": ["agent", "port", "given", "tags"]}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -42,7 +42,8 @@ func TestLaunchPrompts(t *testing.T) {
 		case r.Method == "GET" && len(parts) == 5 && parts[4] == "survey_spec":
 			_, _ = w.Write([]byte(`{"spec": [{"variable": "agent", "default": "node_exporter", "required": true},
 				{"variable": "port", "type": "integer", "default": 9100, "required": true},
-				{"variable": "given", "default": "x", "required": true}, {"variable": "other", "default": "y"}]}`))
+				{"variable": "given", "default": "x", "required": true}, {"variable": "other", "default": "y"},
+				{"variable": "tags", "type": "multiselect", "default": "a\nb", "required": true}]}`))
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/cancel/"):
 			cancelled = append(cancelled, r.URL.Path)
 			w.WriteHeader(http.StatusAccepted)
@@ -87,7 +88,7 @@ func TestLaunchPrompts(t *testing.T) {
 	// doesn't apply them through its API); extra variables are never null.
 	launched = nil
 	if _, err := c.Launch(ctx, 12, false, LaunchRequest{ExtraVars: map[string]any{"given": "mine"}}); err != nil ||
-		fmt.Sprint(launched["extra_vars"]) != "map[agent:node_exporter given:mine port:9100]" {
+		fmt.Sprint(launched["extra_vars"]) != "map[agent:node_exporter given:mine port:9100 tags:[a b]]" {
 		t.Fatalf("launched with %v, %v", launched["extra_vars"], err)
 	}
 	launched = nil

@@ -99,15 +99,22 @@ func HTTP(next http.Handler) http.Handler {
 		} else if _, p, ok := strings.Cut(route, " "); ok {
 			route = p
 		}
-		httpRequests.WithLabelValues(r.Method, route, strconv.Itoa(sw.code)).Inc()
+		method := r.Method
+		if !knownMethods[method] {
+			method = "_OTHER" // a caller can't make up labels (S14 review)
+		}
+		httpRequests.WithLabelValues(method, route, strconv.Itoa(sw.code)).Inc()
 		if !strings.HasSuffix(route, "/events") && !strings.Contains(route, "/console/") {
-			httpDuration.WithLabelValues(r.Method, route).Observe(time.Since(start).Seconds())
+			httpDuration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
 		}
 	})
 	return otelhttp.NewHandler(measured, "rvav-api", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 		return r.Method + " " + r.URL.Path
 	}))
 }
+
+var knownMethods = map[string]bool{http.MethodGet: true, http.MethodHead: true, http.MethodPost: true, http.MethodPut: true,
+	http.MethodPatch: true, http.MethodDelete: true, http.MethodOptions: true}
 
 type codeWriter struct {
 	http.ResponseWriter
@@ -168,10 +175,11 @@ func Call(system, outcome string, d time.Duration) {
 }
 
 // Step counts a workflow step by the system its key names (vsphere.clone,
-// awx.job:linux-baseline, step:nodes/ipam.reserve@web01...).
+// awx.job:linux-baseline, step:nodes/ipam.reserve@web01,
+// component:web/vsphere.clone@web01...).
 func Step(key string, failed bool, d time.Duration) {
-	if _, rest, ok := strings.Cut(key, "/"); ok && strings.HasPrefix(key, "step:") {
-		key = rest
+	if i := strings.LastIndex(key, "/"); i >= 0 {
+		key = key[i+1:]
 	}
 	system := key
 	if i := strings.IndexAny(key, ".:@"); i >= 0 {

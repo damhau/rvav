@@ -6,10 +6,11 @@ must neither lose nor break them (S14.4).
 
 ## Procedure
 
-- **Kubernetes:** `helm upgrade` with the new version. The pods are
-  replaced one at a time (the disruption budgets keep one of each). Each
-  new pod applies the new migrations as it starts, one pod at a time,
-  before the new code runs.
+- **Kubernetes:** `helm upgrade` with the new version. Each Deployment's
+  rolling update starts a new pod and waits for it to be ready before
+  stopping an old one, so each process keeps serving. The disruption
+  budgets do the same for node drains. Each new pod applies the new
+  migrations as it starts, one pod at a time, before the new code runs.
 - **VMs:** change `RVAV_VERSION`, then `systemctl restart rvav` on one VM,
   then on the other.
 
@@ -97,3 +98,12 @@ code that needs it, or a change to the workflow contract custom workflows
 use, ADR-0022) says so in its notes. It is upgraded with rvav's API and
 workers stopped for the migration, or in two steps across two releases.
 None has been needed so far.
+
+## Upgrading to 1.0
+
+1.0 seals secret form inputs ([security.md](security.md)). While the pods
+roll, a request whose secret inputs a new API sealed could be launched by
+a worker still on the old version: it would send AWX the marker in their
+place. Only items with secret fields are concerned. Retry such a request
+once the upgrade is done, or roll the workers before the APIs (`kubectl
+rollout` on the worker Deployment first).

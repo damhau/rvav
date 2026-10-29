@@ -50,12 +50,14 @@ api-docs: ## The API reference, one HTML file built from the spec, into dist/api
 	npx --yes @redocly/cli@1 build-docs --config api/redocly.yaml --disableGoogleFont \
 		--title "rvav API $$(sed -n 's/^  version: //p' api/openapi.yaml | head -1)" -o dist/api-reference.html api/openapi.yaml
 
-lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in
+lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in (from its values and its Secret)
 	@if ! command -v helm >/dev/null; then echo "helm not installed: the chart isn't checked here (CI does)"; exit 0; fi; \
 	helm lint --strict deploy/helm/rvav >/dev/null && \
 	helm template rvav deploy/helm/rvav -f deploy/helm/kind/values.yaml >/dev/null && \
 	if helm template rvav deploy/helm/rvav --set config.RVAV_AUTH_MODE=dev >/dev/null 2>&1; then \
-		echo "the chart let RVAV_AUTH_MODE=dev through" >&2; exit 1; fi && echo "chart ok"
+		echo "the chart let RVAV_AUTH_MODE=dev through" >&2; exit 1; fi && \
+	if [ "$$(helm template rvav deploy/helm/rvav --set secret.env.RVAV_AUTH_MODE=dev | grep -c '{ name: RVAV_AUTH_MODE, value: oidc }')" -lt 6 ]; then \
+		echo "an rvav container lacks the SSO-only override (the Secret could set dev sign-in)" >&2; exit 1; fi && echo "chart ok"
 
 web-check: ## Web app: generated types current, typecheck, lint, unit tests, build, Playwright
 	cd web && $(PNPM) gen:api

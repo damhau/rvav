@@ -16,12 +16,19 @@ spec:
         app.kubernetes.io/component: web
     spec:
       serviceAccountName: {{ include "rvav.serviceAccount" . }}
+      automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
       # nginx as its own user (101), not root.
       securityContext: {{ toYaml (merge (dict "runAsUser" 101 "runAsGroup" 101) .Values.podSecurityContext) | nindent 8 }}
       {{- include "rvav.spread" (dict "root" . "component" "web") | nindent 6 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: web
           image: {{ .Values.webImage.repository }}:{{ .Values.webImage.tag | default .Chart.AppVersion }}

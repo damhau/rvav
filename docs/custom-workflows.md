@@ -86,7 +86,7 @@ decode it leniently. The helpers do: Python keeps unknown fields in
 | `item`, `project`, `environment`, `production` | What was requested, where |
 | `requester`, `owner` | `id`, `name`, `email` |
 | `deployment`, `resources` | For day-2 actions, and for composite steps after a VM: name, FQDN, address, moref |
-| `inputs` | The form, validated against the registered input schema. A secret field arrives as `{"$secret": "<field>"}`: its value stays out of workflow histories and goes only to AWX jobs and cloud-init (S14.6). |
+| `inputs` | The form, validated against the registered input schema. A secret field arrives as `{"$secret": "<field>"}`: its value stays out of workflow histories and goes only to AWX jobs and cloud-init (S14.6). A composite's conditions and bindings see that marker too, so they can't test or transform a secret input. |
 | `steps` | A composite's earlier steps' outputs |
 | `event` | A subscription's event (`rvav.event.v1`); null otherwise |
 

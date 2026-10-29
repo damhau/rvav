@@ -59,7 +59,7 @@ The external penetration test is the organisation's (Lab acceptance).
 | Threat | Answer | What remains |
 |---|---|---|
 | **Spoofing:** a forged or replayed sign-in token | Tokens are checked against the provider's keys (issuer, audience = rvav's client, expiry). Only public-key algorithms are accepted, never a shared secret or `none` (S14.6). | A stolen access token works until it expires: keep its lifetime short at the provider (5 minutes by default in Keycloak). |
-| **Spoofing:** sign-in skipped | `dev` sign-in starts only with `RVAV_ALLOW_DEV_AUTH`, and the Helm chart refuses it. | |
+| **Spoofing:** sign-in skipped | `dev` sign-in starts only with `RVAV_ALLOW_DEV_AUTH`. The Helm chart sets OIDC on every container, which neither its values nor its Secret can change. | |
 | **Spoofing:** an API token guessed or leaked | 32 random bytes with an `rvav_pat_` prefix (secret scanners find it). Only its SHA-256 is stored. It can expire and be revoked, and its last use is recorded. A token gets no roles from groups, so it can't approve. An inventory token reads only the inventory. | A token acts as its user until revoked: give automation its own user. |
 | **Spoofing:** Teams or Slack calls | Slack calls are checked against the signing secret, Teams calls against Bot Framework's published keys. | |
 | **Tampering:** a request changed after approval | Approver edits are checked against the form and evaluated again. Every decision and change is in the request's history and the audit log. | |
@@ -72,7 +72,7 @@ The external penetration test is the organisation's (Lab acceptance).
 | **Information disclosure:** logs | Secrets are never logged. Sign-in and API tokens travel in a header, which neither the API nor nginx logs. | A console ticket is in the WebSocket's URL, so access logs have it: it is single use and valid one minute. |
 | **Denial of service:** large or slow requests | Bodies are limited (1 MB, 2 MB for catalog YAML; 10 MB at nginx), and so is the time to send headers (10 s). Workflows retry with backoff, so an integration that is down delays requests but doesn't lose them. | rvav doesn't rate-limit callers: the ingress should (per client, on `/api/`). |
 | **Elevation of privilege:** a role taken | Roles are rvav's, mapped from the provider's groups by administrators. Catalog, policy and integration changes are for administrators only. Approvers are named groups or users, and a requester can't approve their own request. | |
-| **Elevation of privilege:** code run by rvav | Policies are CEL (no I/O, with a cost limit, S14.6). Cloud-init templates are Go templates over given values. Only administrators write either. Images run without root, on a read-only file system, without a service account token. | Custom workflows run the site's own code on its own workers, with what rvav gives them. |
+| **Elevation of privilege:** code run by rvav | Policies are CEL (no I/O, with a cost limit, S14.6). Cloud-init templates are Go templates over given values. Only administrators write either. On Kubernetes the chart runs every container without root (rvav as 65532, nginx as 101), on a read-only file system, without a service account token. The VM installation's web container starts nginx as root, as nginx's image does. | Custom workflows run the site's own code on its own workers, with what rvav gives them. |
 | **Elevation of privilege:** a vulnerable dependency or image | Scanned on every push and daily (below). | |
 
 ## Review of sessions, API tokens and secrets (S14.6)

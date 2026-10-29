@@ -1,18 +1,17 @@
 openapi: 3.1.0
 info:
   title: rvav API
-  version: 0.1.0
+  version: 1.0.0
   summary: Self-service portal for VMware vSphere, with AWX for automation.
   description: |
-    Slice 1 of the rvav API: identity, projects and quota, the service catalog,
-    request forms with dynamic values, submitting and following requests, and
-    deployments with their resources. Live updates arrive on `/events`.
+    The rvav API: identity, projects and quota, the service catalog and its
+    forms, requests and approvals, deployments and their day-2 actions,
+    notifications, reports, and administration (catalog, policies, projects,
+    integrations, subscriptions, custom workflows). Live updates arrive on
+    `/events`. Every rvav serves this document at `/openapi.json`.
 
     Conventions (IDs, units, pagination, errors, idempotency, live events) are
     described in `api/README.md`.
-
-    Not in this slice yet: approvals, day-2 actions, leases and policies admin,
-    catalog administration, AWX content sources.
 servers:
   - url: /api/v1
 security:

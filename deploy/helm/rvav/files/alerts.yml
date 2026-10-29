@@ -5,7 +5,8 @@ groups:
   - name: rvav
     rules:
       - alert: RvavAPIDown
-        expr: sum(up{job="rvav-api"}) == 0
+        # absent: no API target at all (every pod gone, or none discovered).
+        expr: sum(up{job="rvav-api"}) == 0 or absent(up{job="rvav-api"})
         for: 2m
         labels: { severity: critical }
         annotations:

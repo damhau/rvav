@@ -108,7 +108,28 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 	}
 	defer conn.Exec(context.Background(), `select pg_advisory_unlock($1)`, lockKey) //nolint:errcheck
-	defer s.running.Wait()                                                          // the watchers stop with ctx
+	// The lock lives with its connection: should the connection be lost (a
+	// database failover, a dropped idle connection), so is the lock, and a
+	// standby takes over. This process then stops syncing, and exits to be
+	// started again as a standby (S14 review).
+	lost := make(chan error, 1)
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(standbyPoll):
+			}
+			if _, err := conn.Exec(ctx, `select 1`); err != nil && ctx.Err() == nil {
+				lost <- fmt.Errorf("inventory sync: lost the connection that holds the sync lock: %w", err)
+				stop()
+				return
+			}
+		}
+	}()
+	defer s.running.Wait() // the watchers stop with ctx
 	s.Log.Info("inventory sync started", "interval", s.Interval.String())
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
@@ -125,7 +146,12 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			return nil
+			select {
+			case err := <-lost:
+				return err
+			default:
+				return nil
+			}
 		case <-t.C:
 		}
 	}

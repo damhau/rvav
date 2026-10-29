@@ -374,7 +374,9 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 		return store.RequestRow{}, &UpstreamError{System: "Temporal", Err: err}
 	}
-	if err := s.Store.ReleaseRequestEvents(ctx, req.ID); err != nil {
+	// Not tied to the caller: the workflow has started. Its first activity
+	// lets them go too, should this fail.
+	if err := s.Store.ReleaseRequestEvents(context.WithoutCancel(ctx), req.ID); err != nil {
 		s.Log.Error("release the request's events", "request", req.Number, "err", err)
 	}
 	s.publishRequest(ctx, req.ID)

@@ -8,7 +8,18 @@
 #   deploy/backup/restore-test.sh
 
 services:
+  # The backup volume's directories, the postgres user's, before PostgreSQL
+  # archives its first WAL file there.
+  pgbackup-init:
+    image: postgres:16.4
+    user: root
+    entrypoint: ["sh", "-c", "mkdir -p /backups/wal /backups/base && chown -R postgres:postgres /backups"]
+    volumes:
+      - pgbackup:/backups
+
   postgres:
+    depends_on:
+      pgbackup-init: { condition: service_completed_successfully }
     command:
       - postgres
       - -c

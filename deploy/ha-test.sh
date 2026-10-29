@@ -18,7 +18,20 @@ base="${RVAV_HA_API:-http://localhost:${RVAV_WEB_PORT:-3000}}/api/v1"
 count="${RVAV_HA_REQUESTS:-24}"
 compose=(docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ha.yml)
 work=$(mktemp -d)
-trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$work"' EXIT
+# On any exit: the background loops and what they started (the event
+# stream's curl) stop, and the killed containers are started again.
+cleanup() {
+	for p in $(jobs -p); do
+		pkill -P "$p" 2>/dev/null || true
+		kill "$p" 2>/dev/null || true
+	done
+	if [ "${#killed[@]}" -gt 0 ] && [ -z "${restarted:-}" ]; then
+		"${compose[@]}" up -d --wait >/dev/null 2>&1 || true
+	fi
+	rm -rf "$work"
+}
+killed=()
+trap cleanup EXIT
 project=prj_web
 
 call() {
@@ -96,7 +109,6 @@ active_sync() {
 	done
 }
 
-killed=()
 kill_one() {
 	log "kill $1"
 	docker kill "$1" >/dev/null
@@ -129,7 +141,8 @@ while [ "$pending" -gt 0 ] && [ "$SECONDS" -lt "$deadline" ]; do
 	[ "$pending" -gt 0 ] && sleep 5
 done
 
-read -r reads_ok reads_bad <"$work/reads"
+# Written by the reads loop as it goes: read it until it holds both counts.
+until read -r reads_ok reads_bad <"$work/reads" 2>/dev/null && [ -n "${reads_bad:-}" ]; do sleep 0.2; done
 events=$(wc -l <"$work/events" 2>/dev/null || echo 0)
 standby=$(active_sync)
 synced_after=$(docker exec rvav-postgres-1 psql -U rvav -d rvav -tAc "select max(synced_at) from inv_vms")
@@ -137,6 +150,7 @@ submitted=$(wc -l <"$work/requests")
 
 log "starting the killed containers again"
 "${compose[@]}" up -d --wait >/dev/null 2>&1 || true
+restarted=1
 
 echo
 echo "requests: $submitted submitted of $count, $((submitted - pending - failed)) succeeded, $failed failed, $pending unfinished"

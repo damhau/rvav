@@ -258,7 +258,7 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		var newInputs, newPlan json.RawMessage
 		var newSteps []store.Step
 		if len(edits) > 0 {
-			if changes, newInputs, newPlan, newSteps, err = s.applyEdits(ctx, req, edits); err != nil {
+			if changes, newInputs, newPlan, newSteps, err = s.applyEdits(ctx, tx, req, edits); err != nil {
 				return err
 			}
 		}
@@ -386,7 +386,7 @@ func (l loadedLevel) isEscalationApprover(p *auth.Principal) bool {
 
 // applyEdits checks approver changes against the form and evaluates the
 // request again as its requester, keeping its names and deployments.
-func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
+func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
 	if req.Kind == "day2" {
 		return nil, nil, nil, nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_editable",
 			"Approvers can't change the inputs of a day-2 action.")}}
@@ -401,7 +401,9 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	_ = json.Unmarshal(req.Inputs, &inputs)
 	// Compared and evaluated with the secret inputs' values, sealed again
 	// after (S14.6).
-	if err := s.openSecretInputs(ctx, req.ID, inputs); err != nil {
+	// In the decision's transaction: a decision that fails leaves them as
+	// they were (S14 review).
+	if err := s.openSecretInputs(ctx, tx, req.ID, inputs); err != nil {
 		return nil, nil, nil, nil, err
 	}
 	secret := present.SecretFields(version.UISchema)
@@ -461,7 +463,7 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	}
 	plan.Quota = ev.QuotaAdd
 	// plan.ExtraVars is ev.Inputs: sealed with it.
-	if err := s.sealSecretInputs(ctx, s.Store.Pool, req.ID, ev.Version.UISchema, ev.Inputs); err != nil {
+	if _, err := s.sealSecretInputs(ctx, tx, req.ID, ev.Version.UISchema, ev.Inputs); err != nil {
 		return nil, nil, nil, nil, err
 	}
 	newInputs, _ := json.Marshal(ev.Inputs)

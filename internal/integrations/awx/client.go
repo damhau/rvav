@@ -207,6 +207,11 @@ func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, 
 		for _, q := range questions {
 			if slices.Contains(missing, q.Variable) && q.Default != nil && q.Default != "" {
 				extra[q.Variable] = q.Default
+				// A multiselect's default is stored one choice a line; its
+				// answer is a list.
+				if d, ok := q.Default.(string); ok && q.Type == "multiselect" {
+					extra[q.Variable] = slices.DeleteFunc(strings.Split(d, "\n"), func(c string) bool { return c == "" })
+				}
 			}
 		}
 	}

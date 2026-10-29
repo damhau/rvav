@@ -71,6 +71,18 @@ func TestHeldEvents(t *testing.T) {
 			t.Fatalf("once started: exists %v, held %v, dispatchable %v", exists, isHeld, dispatchable)
 		}
 
+		// The API couldn't let it go after starting the workflow: the
+		// workflow's first activity does.
+		if _, err := h.store.Pool.Exec(ctx, `update integration_events set held = true where request_id = $1`, req.Id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.acts.LoadPlan(ctx, req.Id); err != nil {
+			t.Fatal(err)
+		}
+		if _, isHeld, _ := held(req.Id); isHeld {
+			t.Fatal("still held once the workflow ran")
+		}
+
 		// Temporal refuses: the request and its event are gone, never sent.
 		h.wf.startErr = context.DeadlineExceeded
 		h.json("POST", "/api/v1/requests", "tnguyen", draft, 502, nil, "Idempotency-Key", uuid.NewString())

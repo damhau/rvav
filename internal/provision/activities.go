@@ -250,6 +250,11 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 	if err != nil {
 		return Info{}, err
 	}
+	// The workflow runs: its request.submitted goes out, whether or not the
+	// API let it go after starting it (#81).
+	if err := a.Store.ReleaseRequestEvents(ctx, requestID); err != nil {
+		return Info{}, err
+	}
 	info := Info{RequestID: r.ID, Number: r.Number, ProjectID: r.ProjectID, Status: r.Status, ScheduledAt: r.ScheduledAt}
 	if err := json.Unmarshal(r.Plan, &info.Plan); err != nil {
 		return info, permanent("request %s has no valid plan: %v", r.Number, err)
@@ -1044,6 +1049,7 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 	tasks, _ := a.countChildren(ctx, st.ID)
 	running := ""
 	failedMsg := ""
+	var finishedAt time.Time // when the job was first seen finished
 	for {
 		evs, err := a.AWX.Events(ctx, jobID, counter)
 		if err != nil {
@@ -1104,8 +1110,16 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 			return fmt.Errorf("AWX: %w", err)
 		}
 		// Done when AWX has saved all its events and none were left to read:
-		// its last events can be saved after the job ends (S14.9).
-		if job.Finished && job.EventsDone && len(evs) == 0 {
+		// its last events can be saved after the job ends (S14.9). Not for
+		// ever: an AWX that lost some never says so.
+		if job.Finished && finishedAt.IsZero() {
+			finishedAt = time.Now()
+		}
+		eventsDone := job.EventsDone || job.Finished && time.Since(finishedAt) > eventsGrace
+		if job.Finished && !job.EventsDone && eventsDone && len(evs) == 0 {
+			a.Log.Warn("AWX has not saved all of a finished job's events; going on without them", "job", jobID)
+		}
+		if job.Finished && eventsDone && len(evs) == 0 {
 			if job.Status == "successful" {
 				return nil
 			}
@@ -1132,6 +1146,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 	// Once the job has finished, its nodes are read once more: they may
 	// have been read just before its last one ended.
 	var finished *awx.Job
+	var finishedAt time.Time
 	for {
 		nodes, err := a.AWX.WorkflowNodes(ctx, jobID)
 		if err != nil {
@@ -1139,6 +1154,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 		}
 		failedMsg := ""
 		waiting := false // a node's job whose events AWX is still saving
+		late := finished != nil && time.Since(finishedAt) > eventsGrace
 		for _, n := range nodes {
 			status := "pending"
 			var errText *string
@@ -1162,7 +1178,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 			}
 			if j, err := a.AWX.GetJob(ctx, n.JobID, false); err != nil {
 				return fmt.Errorf("AWX: %w", err)
-			} else if !j.EventsDone {
+			} else if !j.EventsDone && !late {
 				waiting = true
 				continue
 			}
@@ -1204,7 +1220,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 				return fmt.Errorf("AWX: %w", err)
 			}
 			if job.Finished {
-				finished = &job
+				finished, finishedAt = &job, time.Now()
 				continue
 			}
 		}
@@ -1484,12 +1500,24 @@ func (a *Activities) checkAWXAction(ctx context.Context, key string) error {
 	return nil
 }
 
+// eventsGrace is how long a finished job's events are waited for, after
+// which rvav goes on with what AWX has saved.
+const eventsGrace = 2 * time.Minute
+
 // openSecretInputs is a copy of vars with the request's secret inputs in
 // place of their markers (S14.6); vars itself keeps the markers.
 func (a *Activities) openSecretInputs(ctx context.Context, requestID string, vars map[string]any) (map[string]any, error) {
 	sealed, err := a.Store.RequestSecrets(ctx, requestID)
-	if err != nil || len(sealed) == 0 {
-		return vars, err
+	if err != nil {
+		return nil, err
+	}
+	if len(sealed) == 0 {
+		// Nothing sealed: vars as they are, unless a marker is in them,
+		// which is an error rather than passed on (S14 review).
+		if err := secretinput.Open(a.Secrets, requestID, nil, vars); err != nil {
+			return nil, err
+		}
+		return vars, nil
 	}
 	b, err := json.Marshal(vars)
 	if err != nil {

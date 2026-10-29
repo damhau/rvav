@@ -5,14 +5,23 @@
 #
 #   deploy/backup/restore.sh '2026-10-29 15:04:05+00' [base-...]
 #
-# The latest base backup taken before the moment by default.
+# The latest base backup taken before the moment by default. Nothing is
+# stopped until the backup is found; the data it replaces is kept in the
+# backup volume (pre-restore-<time>.tar.gz) until deleted by hand.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 target="$1"
 compose=(docker compose -f deploy/docker-compose.yml -f deploy/backup/docker-compose.backup.yml)
 pg=${RVAV_PG_CONTAINER:-rvav-postgres-1}
-base="${2:-$(docker exec "$pg" ls /backups/base | sort | tail -1)}"
 log() { printf '%(%H:%M:%S)T %s\n' -1 "$*" >&2; }
+
+# Base backups are named by the UTC time they were taken.
+at=$(date -u -d "$target" +%Y%m%dT%H%M%SZ) || { log "not a moment: $target"; exit 1; }
+base="${2:-$(docker exec "$pg" ls /backups/base | sort | awk -v t="base-$at" '$0 <= t' | tail -1)}"
+if [ -z "$base" ] || ! docker exec "$pg" test -f "/backups/base/$base/base.tar.gz"; then
+  log "no base backup ${base:-taken before $target}: nothing was changed"
+  exit 1
+fi
 
 log "stopping rvav and Temporal"
 "${compose[@]}" stop web api worker sync temporal-ui temporal >/dev/null
@@ -20,7 +29,9 @@ log "stopping PostgreSQL; restoring $base, then the WAL until $target"
 "${compose[@]}" stop postgres >/dev/null
 docker run --rm --volumes-from "$pg" -u postgres --entrypoint sh postgres:16.4 -c "
 	set -e
-	cd /var/lib/postgresql/data && find . -mindepth 1 -delete
+	cd /var/lib/postgresql/data
+	tar -czf /backups/pre-restore-$(date -u +%Y%m%dT%H%M%SZ).tar.gz .
+	find . -mindepth 1 -delete
 	tar -xzf /backups/base/$base/base.tar.gz -C /var/lib/postgresql/data
 	mkdir -p /var/lib/postgresql/data/pg_wal && tar -xzf /backups/base/$base/pg_wal.tar.gz -C /var/lib/postgresql/data/pg_wal
 	cat >>/var/lib/postgresql/data/postgresql.auto.conf <<CONF

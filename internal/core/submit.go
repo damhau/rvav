@@ -74,8 +74,14 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			return err
 		}
 		// Secret inputs sealed, a marker in their place in what follows (S14.6).
-		if err := s.sealSecretInputs(ctx, tx, req.ID, ev.Version.UISchema, ev.Inputs); err != nil {
+		sealed, err := s.sealSecretInputs(ctx, tx, req.ID, ev.Version.UISchema, ev.Inputs)
+		if err != nil {
 			return err
+		}
+		for _, part := range ev.Composite {
+			if part.sub != nil && len(sealed) > 0 {
+				markSecretValues(part.sub.Inputs, sealed)
+			}
 		}
 
 		switch ev.Blueprint.Kind {
@@ -168,7 +174,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		}
 		return store.RequestRow{}, &UpstreamError{System: "Temporal", Err: err}
 	}
-	if err := s.Store.ReleaseRequestEvents(ctx, req.ID); err != nil {
+	// Not tied to the caller: the workflow has started. Its first activity
+	// lets them go too, should this fail.
+	if err := s.Store.ReleaseRequestEvents(context.WithoutCancel(ctx), req.ID); err != nil {
 		s.Log.Error("release the request's events", "request", req.Number, "err", err)
 	}
 	// Approvers hear about it when the workflow opens their level.
