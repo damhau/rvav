@@ -548,3 +548,34 @@ func TestAWXLaunchSettingsFromTheForm(t *testing.T) {
 		}
 	})
 }
+
+// TestAWXJobRelaunched: a post-configuration step whose job AWX no longer
+// knows (rvav and Temporal restored to after AWX, or AWX's history purged)
+// launches it again instead of failing the request (S14.3).
+func TestAWXJobRelaunched(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", "lmartin", nil, 200, &item)
+		var r api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.Version.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
+			202, &r, "Idempotency-Key", uuid.NewString())
+		// As restored: the step had launched job 424242, which AWX doesn't know.
+		tag, err := h.store.Pool.Exec(ctx, `update request_steps set external_id = '424242' where request_id = $1 and key = 'awx.job:linux-baseline'`, r.Id)
+		if err != nil || tag.RowsAffected() != 1 {
+			t.Fatalf("job step: %v %d", err, tag.RowsAffected())
+		}
+		h.runWorkflow(r.Id, nil)
+		h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
+		var ext string
+		if err := h.store.Pool.QueryRow(ctx, `select coalesce(external_id, '') from request_steps where request_id = $1 and key = 'awx.job:linux-baseline'`, r.Id).
+			Scan(&ext); err != nil || ext == "424242" || ext == "" {
+			t.Fatalf("job now %q (%v)", ext, err)
+		}
+	})
+}

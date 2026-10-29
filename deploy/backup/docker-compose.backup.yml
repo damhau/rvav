@@ -1,0 +1,26 @@
+# Point-in-time backups on the compose stack (S14.3,
+# docs/operations/backups.md): PostgreSQL archives its WAL to the backup
+# volume as it writes it, and at least every minute; backup.sh takes base
+# backups there; restore.sh brings the whole server (rvav's database and
+# Temporal's) back to a moment.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/backup/docker-compose.backup.yml up -d --wait
+#   deploy/backup/restore-test.sh
+
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /backups/wal/%f && cp %p /backups/wal/%f
+      - -c
+      - archive_timeout=60
+    volumes:
+      - pgbackup:/backups
+
+volumes:
+  pgbackup:

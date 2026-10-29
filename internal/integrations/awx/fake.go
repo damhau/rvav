@@ -149,7 +149,7 @@ func (f *Fake) GetJob(_ context.Context, id int, _ bool) (Job, error) {
 	defer f.mu.Unlock()
 	j, ok := f.jobs[id]
 	if !ok {
-		return Job{}, fmt.Errorf("awx job %d not found", id)
+		return Job{}, fmt.Errorf("awx job %d: %w", id, ErrJobNotFound)
 	}
 	return f.jobLocked(j), nil
 }

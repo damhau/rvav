@@ -947,6 +947,16 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 	if st.ExternalID != nil {
 		fmt.Sscan(*st.ExternalID, &jobID)
 	}
+	// A job AWX no longer knows is launched again: rvav's database and
+	// Temporal may have been restored to after AWX's, or AWX's history
+	// purged (S14.3). Playbooks are written to run again.
+	relaunched := false
+	if jobID != 0 {
+		if _, err := a.AWX.GetJob(ctx, jobID, in.Job.Workflow); errors.Is(err, awx.ErrJobNotFound) {
+			a.Log.Warn("AWX no longer knows the job; launching it again", "job", jobID, "request", in.RequestID, "step", in.StepKey)
+			jobID, relaunched = 0, true
+		}
+	}
 	if jobID == 0 {
 		if err := a.checkAWXAction(ctx, in.Action); err != nil {
 			return err
@@ -998,7 +1008,7 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 
 	// Resume from what an earlier attempt processed; without that, start
 	// over so log lines and tasks are not duplicated.
-	resumed := activity.HasHeartbeatDetails(ctx)
+	resumed := activity.HasHeartbeatDetails(ctx) && !relaunched
 	if !resumed {
 		if _, err := a.Store.Pool.Exec(ctx, `delete from step_log_lines where step_id = $1`, st.ID); err != nil {
 			return err

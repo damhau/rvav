@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -224,6 +225,10 @@ func (c *HTTPClient) GetJob(ctx context.Context, id int, workflow bool) (Job, er
 	_, jobs := kindPath(workflow)
 	var j jobJSON
 	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/", jobs, id), nil, nil, &j); err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return Job{}, fmt.Errorf("awx job %d: %w", id, ErrJobNotFound)
+		}
 		return Job{}, err
 	}
 	return c.toJob(j, workflow), nil

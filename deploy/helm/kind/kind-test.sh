@@ -39,27 +39,27 @@ k -n rvav-deps rollout restart deploy/efficientip >/dev/null
 k -n rvav-deps rollout status deploy/efficientip --timeout=300s >/dev/null
 k -n "$ns" get pods -o wide
 
-log "port-forwards: the web app on 18080, Keycloak on 18081"
-k -n "$ns" port-forward svc/rvav-web 18080:80 >/dev/null 2>&1 &
-k -n rvav-deps port-forward svc/keycloak 18081:8080 >/dev/null 2>&1 &
+log "port-forwards: the web app on 18180, Keycloak on 18181"
+k -n "$ns" port-forward svc/rvav-web 18180:80 >/dev/null 2>&1 &
+k -n rvav-deps port-forward svc/keycloak 18181:8080 >/dev/null 2>&1 &
 trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
-for _ in $(seq 1 30); do curl -fsS -o /dev/null http://localhost:18080/ 2>/dev/null && break; sleep 1; done
+for _ in $(seq 1 30); do curl -fsS -o /dev/null http://localhost:18180/ 2>/dev/null && break; sleep 1; done
 token() {
-	curl -fsS http://localhost:18081/realms/rvav/protocol/openid-connect/token \
+	curl -fsS http://localhost:18181/realms/rvav/protocol/openid-connect/token \
 		-d grant_type=password -d client_id=rvav -d username=lea -d password=rvav -d scope=openid | jq -r .access_token
 }
-curl -fsS http://localhost:18080/config.js
+curl -fsS http://localhost:18180/config.js
 echo
 
 log "smoke test through the web app, signed in as lea"
-RVAV_SMOKE_TOKEN=$(token) deploy/smoke.sh http://localhost:18080
+RVAV_SMOKE_TOKEN=$(token) deploy/smoke.sh http://localhost:18180
 
 log "an API pod killed: the other answers"
 pod=$(k -n "$ns" get pods -l app.kubernetes.io/component=api -o jsonpath='{.items[0].metadata.name}')
 k -n "$ns" delete pod "$pod" --wait=false >/dev/null
 bad=0
 for _ in $(seq 1 50); do
-	curl -fsS -o /dev/null -H "Authorization: Bearer $(token)" http://localhost:18080/api/v1/me || bad=$((bad + 1))
+	curl -fsS -o /dev/null -H "Authorization: Bearer $(token)" http://localhost:18180/api/v1/me || bad=$((bad + 1))
 	sleep 0.2
 done
 echo "reads while an API pod was replaced: $((50 - bad)) answered, $bad not"
@@ -68,6 +68,6 @@ log "upgrade with a changed setting: the pods roll"
 helm --kube-context "$ctx" upgrade rvav deploy/helm/rvav -n "$ns" -f deploy/helm/kind/values.yaml \
 	--set config.RVAV_LOG_LEVEL=debug --wait --timeout 10m >/dev/null
 k -n "$ns" rollout status deploy/rvav-api deploy/rvav-worker deploy/rvav-sync --timeout=300s
-RVAV_SMOKE_TOKEN=$(token) deploy/smoke.sh http://localhost:18080
+RVAV_SMOKE_TOKEN=$(token) deploy/smoke.sh http://localhost:18180
 [ "$bad" -le 2 ] || { echo "FAIL: $bad reads failed while an API pod was replaced" >&2; exit 1; }
 log "the chart works"

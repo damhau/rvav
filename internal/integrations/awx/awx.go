@@ -27,6 +27,10 @@ var ErrNoCredentialPrompt = errors.New("the template does not prompt for credent
 // ignored anyway; the job is cancelled at once.
 var ErrPromptIgnored = errors.New("AWX ignored the launch's limit or inventory")
 
+// ErrJobNotFound: AWX doesn't know the job (AWX restored to before it, or
+// its history purged).
+var ErrJobNotFound = errors.New("AWX doesn't know the job")
+
 type LaunchRequest struct {
 	Limit     string
 	ExtraVars map[string]any

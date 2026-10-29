@@ -98,3 +98,24 @@ func TestWorkflowNodeKinds(t *testing.T) {
 		t.Fatalf("nodes = %+v, %v", nodes, err)
 	}
 }
+
+// A job AWX doesn't know (404) is ErrJobNotFound; another error isn't.
+func TestGetJobNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/jobs/7/") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"detail": "Not found."}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c, _ := NewHTTPClient(srv.URL, "token", false)
+	if _, err := c.GetJob(context.Background(), 7, false); !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("404 = %v", err)
+	}
+	if _, err := c.GetJob(context.Background(), 8, false); err == nil || errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("500 = %v", err)
+	}
+}

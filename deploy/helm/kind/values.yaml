@@ -3,8 +3,8 @@
 image: { tag: "1.0.0", pullPolicy: Never }
 webImage: { tag: "1.0.0", pullPolicy: Never }
 config:
-  RVAV_PUBLIC_URL: http://localhost:18080
-  RVAV_OIDC_ISSUER: http://localhost:18081/realms/rvav
+  RVAV_PUBLIC_URL: http://localhost:18180
+  RVAV_OIDC_ISSUER: http://localhost:18181/realms/rvav
   RVAV_OIDC_DISCOVERY_URL: http://keycloak.rvav-deps.svc.cluster.local:8080/realms/rvav
   RVAV_OIDC_CLIENT_ID: rvav
   RVAV_TEMPORAL_ADDRESS: temporal-frontend.rvav-deps.svc.cluster.local:7233
@@ -25,6 +25,6 @@ secret:
     RVAV_EFFICIENTIP_PASSWORD: rvav
     RVAV_SECRETS_KEY: a2luZC1vbmx5LXNlY3JldHMta2V5LTMyLWJ5dGVzISE=
 web:
-  oidcAuthority: http://localhost:18081/realms/rvav
+  oidcAuthority: http://localhost:18181/realms/rvav
 migrate: { seed: true }
 ingress: { enabled: false }
