@@ -25,7 +25,13 @@ type part struct {
 var placeholder = regexp.MustCompile(`\{([a-z_.]+)(?::(\d+))?\}`)
 var validName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
-func Parse(s string) (Template, error) {
+func Parse(s string) (Template, error) { return parse(s, false) }
+
+// ParseLabel parses a template without {seq}, such as a deployment's name
+// "{project}-{environment}-{inputs.app}" (ADR-0024); Prefix renders it.
+func ParseLabel(s string) (Template, error) { return parse(s, true) }
+
+func parse(s string, label bool) (Template, error) {
 	t := Template{raw: s}
 	last := 0
 	for _, m := range placeholder.FindAllStringSubmatchIndex(s, -1) {
@@ -33,6 +39,9 @@ func Parse(s string) (Template, error) {
 			t.parts = append(t.parts, part{literal: s[last:m[0]]})
 		}
 		field := s[m[2]:m[3]]
+		if field == "seq" && label {
+			return t, fmt.Errorf("naming %q: no {seq} in a name without a sequence", s)
+		}
 		if field == "seq" {
 			if m[1] != len(s) {
 				return t, fmt.Errorf("naming %q: {seq} must be last", s)
@@ -49,14 +58,15 @@ func Parse(s string) (Template, error) {
 	if last < len(s) {
 		t.parts = append(t.parts, part{literal: s[last:]})
 	}
-	if t.seqWidth == 0 {
+	if t.seqWidth == 0 && !label {
 		return t, fmt.Errorf("naming %q: needs a {seq} placeholder", s)
 	}
 	return t, nil
 }
 
 // Prefix renders everything before the sequence number. vals holds
-// "project", "environment" and "inputs.<name>" values.
+// "project", "environment", "component" and "inputs.<name>" values; only
+// {component} may be empty (a single VM's).
 func (t Template) Prefix(vals map[string]string) (string, error) {
 	var b strings.Builder
 	for _, p := range t.parts {
@@ -65,7 +75,7 @@ func (t Template) Prefix(vals map[string]string) (string, error) {
 			continue
 		}
 		v := strings.ToLower(strings.TrimSpace(vals[p.field]))
-		if v == "" {
+		if v == "" && p.field != "component" {
 			return "", fmt.Errorf("naming: %s is empty", p.field)
 		}
 		b.WriteString(v)

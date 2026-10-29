@@ -60,13 +60,14 @@ Subscription (event → awx template | webhook)
   dynamic value sources). See [service catalog](service-catalog.md#custom-forms).
 
 ### Blueprint (for `vm_blueprint` items)
-- One or more VM components, each with: source (vSphere template or content
-  library item), size presets or custom CPU/RAM, disks, NICs (network + IPAM mode:
-  `efficientip` | `dhcp` | `static`), guest customization (customization spec or
-  cloud-init), and AWX post-config steps (ordered job templates with an
-  extra_vars mapping).
+- One or more VM components, each with: a count, source (vSphere template or
+  content library item), size presets or custom CPU/RAM, disks, NICs (network +
+  IPAM mode: `efficientip` | `dhcp`), vSphere tags, anti-affinity, guest
+  customization (customization spec or cloud-init; Windows domain join), and
+  AWX post-config steps (ordered job templates with an extra_vars mapping).
+  A blueprint with components builds one deployment
+  ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
 - Expressions (CEL) bind form inputs to component properties.
-- `count` support for multiple instances.
 
 ### Request and execution
 - **Request**: who, on behalf of whom, project, catalog item version, inputs
@@ -82,7 +83,7 @@ Subscription (event → awx template | webhook)
 - **Deployment**: logical group of resources created by one request. Has owner,
   project, catalog item version, inputs, lease expiry, and status.
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
-  `awx.job`), external ID (VM MoRef plus instance UUID, IP ID, ...),
+  `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`).
 - **InventoryVM**: cached vCenter inventory maintained by `rvav-sync`, including
   VMs not managed by the app (they can be onboarded into a deployment later).

@@ -669,20 +669,7 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 	var errs []api.FieldError
 	switch b.Kind {
 	case blueprint.KindVM:
-		if b.Template == "" && b.Bindings["template"] == "" && publish {
-			errs = append(errs, fieldErr(ptr+"/template", "required",
-				"Name the vCenter template the VMs are cloned from, or take it from an input (bindings.template, for example inputs.template with rvav.templates)."))
-		}
-		for _, k := range sortedKeys(b.Bindings) {
-			if err := policy.Check(b.Bindings[k]); err != nil {
-				errs = append(errs, fieldErr(ptr+"/bindings/"+k, "invalid", "This binding is not valid CEL: "+err.Error()))
-			}
-		}
-		for _, k := range sortedKeys(b.AWXTemplates) {
-			if b.AWXTemplates[k].JobTemplate == "" && publish {
-				errs = append(errs, fieldErr(ptr+"/awx_templates/"+k+"/job_template", "required", "Name the AWX template."))
-			}
-		}
+		errs = append(errs, checkVMBlueprint(b, ptr, publish)...)
 	case blueprint.KindWorkflow:
 		if b.Workflow == "" && publish {
 			errs = append(errs, fieldErr(ptr+"/workflow", "required", "Name the registered custom workflow it starts."))

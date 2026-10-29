@@ -41,6 +41,32 @@ its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
 job's `job_id`, a workflow's result.
 
+### VM blueprints
+A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
+Strings in `bindings`, `count`, `disks` and `nics` are CEL over `inputs`
+and `sizes` (a literal is quoted: `'"vsan-01"'`); numbers are themselves.
+
+| Field | What it is |
+|---|---|
+| `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, ending with `{seq}` or `{seq:03}` |
+| `template`, `library` | The vCenter template; with `library`, the item of that content library |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm`, `.inputs`, `.project`, `.environment`, `.request`) |
+| `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
+| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list) |
+| `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
+| `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
+| `tags` | vSphere tags, `category/tag` |
+| `awx_templates` | Post-configuration AWX templates, by key |
+| `rollback_on_failure` | Delete what was built when a step fails |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, which win over the blueprint's (guest field by field, bindings key by key) |
+| `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
+
+Without `components` the blueprint builds one VM, and a request for
+several makes one deployment per VM; with them, one deployment holding
+every component's VMs (20 at most). When a component's `cluster` isn't
+bound, rvav chooses the allowed cluster with the most free memory, and
+the datastore likewise.
+
 ### AWX import
 - A content source connects to AWX and filters templates by organisation, label or
   name pattern.

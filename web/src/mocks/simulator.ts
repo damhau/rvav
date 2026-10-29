@@ -3,6 +3,7 @@
 import type {
   DeploymentDetail,
   DnsRecordResource,
+  DrsRuleResource,
   EnvironmentKey,
   IpAddressResource,
   LiveEvent,
@@ -189,7 +190,7 @@ function publishDeployment(r: StoredRequest | null, d: DeploymentDetail) {
 function publishResource(
   r: StoredRequest | null,
   d: DeploymentDetail,
-  res: VmResource | IpAddressResource | DnsRecordResource,
+  res: VmResource | IpAddressResource | DnsRecordResource | DrsRuleResource,
 ) {
   publish(
     r,

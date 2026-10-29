@@ -19,6 +19,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/hosts"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
@@ -361,6 +362,23 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 				errs = append(errs, fieldErr(ptr+"/secret", "unknown", fmt.Sprintf("There is no secret %q.", secret)))
 			} else if err != nil {
 				return nil, err
+			}
+		}
+	}
+	// Secrets a VM blueprint names (ADR-0024).
+	raw, _ := json.Marshal(d.Blueprint)
+	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {
+		refs := blueprintSecrets(b, prefix+"/blueprint")
+		for _, at := range sortedKeys(refs) {
+			name, kind := refs[at][0], refs[at][1]
+			v, err := s.Store.GetSecret(ctx, name)
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("There is no secret %q.", name)))
+			case err != nil:
+				return nil, err
+			case kind != "" && v.Kind != kind:
+				errs = append(errs, fieldErr(at, "invalid", fmt.Sprintf("Secret %q must be a %s secret: a user name and its password.", name, kind)))
 			}
 		}
 	}

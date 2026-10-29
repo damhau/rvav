@@ -2870,6 +2870,59 @@ export interface components {
                 /** Format: date-time */
                 expires_at?: string | null;
             };
+            /**
+             * @description What each component of the blueprint builds (ADR-0024), in its
+             *     order; a single-VM item has one, `vm`. Absent for items that
+             *     build no VM.
+             */
+            components?: components["schemas"]["PreviewComponent"][];
+        };
+        PreviewComponent: {
+            /** @example web */
+            key: string;
+            /** @example Web servers */
+            title: string;
+            /** @description How many VMs it builds. */
+            count: number;
+            /** @description The names its VMs would get. */
+            names: string[];
+            /** @description Per VM. */
+            vcpu: number;
+            /** @description Per VM. */
+            memory_gb: number;
+            /** @description Per VM, every disk. */
+            storage_gb: number;
+            /** @enum {string} */
+            os_family?: "linux" | "windows";
+            template?: string;
+            placement?: {
+                vcenter?: string;
+                cluster?: string;
+                datastore?: string;
+                folder?: string;
+                storage_policy?: string;
+                /** @description rvav chose the cluster or datastore (they weren't given). */
+                chosen?: boolean;
+            };
+            /** @description Every disk, the template's first. */
+            disks: {
+                size_gb: number;
+                datastore?: string;
+                storage_policy?: string;
+            }[];
+            /** @description Every network adapter, the template's first. */
+            nics: {
+                key: string;
+                network: string;
+                /** @enum {string} */
+                ipam: "efficientip" | "dhcp";
+                subnet?: string;
+                /** @description The next free address, as a hint only. */
+                address?: string;
+            }[];
+            tags?: string[];
+            /** @description Its VMs are kept on separate hosts. */
+            anti_affinity: boolean;
         };
         QuotaImpact: {
             resource: components["schemas"]["QuotaResource"];
@@ -3273,7 +3326,7 @@ export interface components {
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
         };
-        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"];
+        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"];
         ResourceBase: {
             id: string;
             type: string;
@@ -3335,6 +3388,8 @@ export interface components {
             host?: string;
             folder?: string;
             template?: string;
+            /** @description The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item. */
+            component?: string;
             snapshot_count?: number;
             /** @description Quick stats from vCenter, refreshed about every 20 seconds. */
             usage?: {
@@ -3372,6 +3427,26 @@ export interface components {
              * @enum {string}
              */
             type: "dns.record";
+        };
+        /** @description A DRS rule keeping a component's VMs on separate hosts (ADR-0024). */
+        DrsRuleResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "vsphere.drs_rule";
+            rule: {
+                /** @enum {string} */
+                kind: "vm_anti_affinity";
+                cluster: string;
+                vcenter: string;
+                component: string;
+                /** @description The names of the VMs it keeps apart. */
+                vms: string[];
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "vsphere.drs_rule";
         };
         Event: components["schemas"]["RequestUpdatedEvent"] | components["schemas"]["RequestStepEvent"] | components["schemas"]["RequestLogEvent"] | components["schemas"]["DeploymentUpdatedEvent"] | components["schemas"]["ResourceUpdatedEvent"] | components["schemas"]["NotificationEvent"] | components["schemas"]["ApprovalUpdatedEvent"] | components["schemas"]["ControlEvent"];
         EventBase: {

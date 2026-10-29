@@ -4086,6 +4086,67 @@ components:
             default_days: { type: [integer, "null"] }
             max_days: { type: [integer, "null"] }
             expires_at: { type: [string, "null"], format: date-time }
+        components:
+          type: array
+          description: |
+            What each component of the blueprint builds (ADR-0024), in its
+            order; a single-VM item has one, `vm`. Absent for items that
+            build no VM.
+          items: { $ref: "#/components/schemas/PreviewComponent" }
+
+    PreviewComponent:
+      type: object
+      required: [key, title, count, names, vcpu, memory_gb, storage_gb, disks, nics, anti_affinity]
+      properties:
+        key: { type: string, examples: [web] }
+        title: { type: string, examples: [Web servers] }
+        count: { type: integer, description: How many VMs it builds. }
+        names:
+          type: array
+          description: The names its VMs would get.
+          items: { type: string }
+        vcpu: { type: integer, description: Per VM. }
+        memory_gb: { type: integer, description: Per VM. }
+        storage_gb: { type: integer, description: "Per VM, every disk." }
+        os_family: { type: string, enum: [linux, windows] }
+        template: { type: string }
+        placement:
+          type: object
+          properties:
+            vcenter: { type: string }
+            cluster: { type: string }
+            datastore: { type: string }
+            folder: { type: string }
+            storage_policy: { type: string }
+            chosen:
+              type: boolean
+              description: rvav chose the cluster or datastore (they weren't given).
+        disks:
+          type: array
+          description: Every disk, the template's first.
+          items:
+            type: object
+            required: [size_gb]
+            properties:
+              size_gb: { type: integer }
+              datastore: { type: string }
+              storage_policy: { type: string }
+        nics:
+          type: array
+          description: Every network adapter, the template's first.
+          items:
+            type: object
+            required: [key, network, ipam]
+            properties:
+              key: { type: string }
+              network: { type: string }
+              ipam: { type: string, enum: [efficientip, dhcp] }
+              subnet: { type: string }
+              address: { type: string, description: "The next free address, as a hint only." }
+        tags:
+          type: array
+          items: { type: string }
+        anti_affinity: { type: boolean, description: Its VMs are kept on separate hosts. }
 
     QuotaImpact:
       type: object
@@ -4638,12 +4699,14 @@ components:
         - $ref: "#/components/schemas/VmResource"
         - $ref: "#/components/schemas/IpAddressResource"
         - $ref: "#/components/schemas/DnsRecordResource"
+        - $ref: "#/components/schemas/DrsRuleResource"
       discriminator:
         propertyName: type
         mapping:
           vsphere.vm: "#/components/schemas/VmResource"
           ipam.address: "#/components/schemas/IpAddressResource"
           dns.record: "#/components/schemas/DnsRecordResource"
+          vsphere.drs_rule: "#/components/schemas/DrsRuleResource"
 
     ResourceBase:
       type: object
@@ -4715,6 +4778,9 @@ components:
         host: { type: string }
         folder: { type: string }
         template: { type: string }
+        component:
+          type: string
+          description: The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item.
         snapshot_count: { type: integer }
         usage:
           type: object
@@ -4746,6 +4812,27 @@ components:
             record_type: { type: string, enum: [A, AAAA, PTR, CNAME] }
             value: { type: string }
             zone: { type: string }
+
+    DrsRuleResource:
+      description: A DRS rule keeping a component's VMs on separate hosts (ADR-0024).
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, rule]
+          properties:
+            type: { const: vsphere.drs_rule }
+            rule:
+              type: object
+              required: [kind, cluster, vcenter, component, vms]
+              properties:
+                kind: { type: string, enum: [vm_anti_affinity] }
+                cluster: { type: string }
+                vcenter: { type: string }
+                component: { type: string }
+                vms:
+                  type: array
+                  description: The names of the VMs it keeps apart.
+                  items: { type: string }
 
     # ── Events ────────────────────────────────────────────────────────────
     Event:

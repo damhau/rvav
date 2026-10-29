@@ -23,13 +23,22 @@ const (
 type Blueprint struct {
 	Kind string `json:"kind"`
 
-	// VM blueprints
+	// VM blueprints. Without Components, the fields below are the one VM
+	// it builds; with them, what components don't set (ADR-0024).
 	Naming       string                 `json:"naming,omitempty"`
 	Template     string                 `json:"template,omitempty"`
+	Library      string                 `json:"library,omitempty"`
 	Guest        Guest                  `json:"guest,omitempty"`
 	Sizes        map[string]Size        `json:"sizes,omitempty"`
 	Bindings     map[string]string      `json:"bindings,omitempty"`
 	AWXTemplates map[string]AWXTemplate `json:"awx_templates,omitempty"`
+	Disks        []Disk                 `json:"disks,omitempty"`
+	NICs         []NIC                  `json:"nics,omitempty"`
+	Tags         []string               `json:"tags,omitempty"`
+	// Components are the groups of VMs of a multi-VM blueprint, built as
+	// one deployment named by DeploymentName.
+	Components     []Component `json:"components,omitempty"`
+	DeploymentName string      `json:"deployment_name,omitempty"`
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
@@ -50,7 +59,147 @@ type Blueprint struct {
 type Guest struct {
 	OSFamily string `json:"os_family"` // linux or windows
 	Domain   string `json:"domain"`
+	// TimeZone is a tz name for Linux, a Windows time zone index for
+	// Windows (110, W. Europe, when empty).
 	TimeZone string `json:"time_zone,omitempty"`
+	// CustomizationSpec names a vCenter customization specification used
+	// as the base of the guest customization.
+	CustomizationSpec string `json:"customization_spec,omitempty"`
+	// AdminPassword names the secret holding a Windows VM's local
+	// administrator password.
+	AdminPassword string      `json:"admin_password,omitempty"`
+	DomainJoin    *DomainJoin `json:"domain_join,omitempty"`
+	CloudInit     *CloudInit  `json:"cloud_init,omitempty"`
+}
+
+// DomainJoin joins a Windows VM to an Active Directory domain with the
+// credentials of a basic secret.
+type DomainJoin struct {
+	Domain     string `json:"domain"`
+	OU         string `json:"ou,omitempty"`
+	Credential string `json:"credential"`
+}
+
+// CloudInit configures a Linux VM with cloud-init through guestinfo
+// instead of vCenter's Linux preparation. UserData is a Go template.
+type CloudInit struct {
+	UserData string `json:"user_data"`
+}
+
+// merge returns g with the fields o sets.
+func (g Guest) merge(o *Guest) Guest {
+	if o == nil {
+		return g
+	}
+	for _, f := range []struct{ dst, src *string }{{&g.OSFamily, &o.OSFamily}, {&g.Domain, &o.Domain}, {&g.TimeZone, &o.TimeZone},
+		{&g.CustomizationSpec, &o.CustomizationSpec}, {&g.AdminPassword, &o.AdminPassword}} {
+		if *f.src != "" {
+			*f.dst = *f.src
+		}
+	}
+	if o.DomainJoin != nil {
+		g.DomainJoin = o.DomainJoin
+	}
+	if o.CloudInit != nil {
+		g.CloudInit = o.CloudInit
+	}
+	return g
+}
+
+// Component is a group of identical VMs (ADR-0024). What it doesn't set
+// comes from the blueprint.
+type Component struct {
+	Key   string `json:"key"`
+	Title string `json:"title,omitempty"`
+	// Count is a number or CEL over the inputs; 1 when absent.
+	Count    any               `json:"count,omitempty"`
+	Naming   string            `json:"naming,omitempty"`
+	Template string            `json:"template,omitempty"`
+	Library  string            `json:"library,omitempty"`
+	Guest    *Guest            `json:"guest,omitempty"`
+	Bindings map[string]string `json:"bindings,omitempty"`
+	Disks    []Disk            `json:"disks,omitempty"`
+	NICs     []NIC             `json:"nics,omitempty"`
+	Tags     []string          `json:"tags,omitempty"`
+	// AntiAffinity keeps its VMs on separate hosts.
+	AntiAffinity bool `json:"anti_affinity,omitempty"`
+}
+
+// Disk is a disk added after the template's: SizeGB is a number or CEL,
+// Datastore CEL (the VM's when empty).
+type Disk struct {
+	SizeGB        any    `json:"size_gb"`
+	Datastore     string `json:"datastore,omitempty"`
+	StoragePolicy string `json:"storage_policy,omitempty"`
+}
+
+// NIC is a network adapter added after the template's: Network is CEL.
+type NIC struct {
+	Key     string `json:"key,omitempty"`
+	Network string `json:"network"`
+	// IPAM is efficientip (the default: an address and DNS records) or dhcp.
+	IPAM string `json:"ipam,omitempty"`
+}
+
+const (
+	IPAMEfficientIP = "efficientip"
+	IPAMDHCP        = "dhcp"
+	// SingleKey is the component of a blueprint without components.
+	SingleKey = "vm"
+	// MaxVMs is the most VMs a component, and a request, builds.
+	MaxVMs = 20
+)
+
+// Multi says whether the blueprint lists components: one deployment for
+// all its VMs, rather than one per VM.
+func (b Blueprint) Multi() bool { return len(b.Components) > 0 }
+
+// ComponentList returns the components with what they inherit from the
+// blueprint; a blueprint without components is one, SingleKey.
+func (b Blueprint) ComponentList() []Component {
+	if !b.Multi() {
+		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
+			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags}}
+	}
+	out := make([]Component, len(b.Components))
+	for i, c := range b.Components {
+		r := c
+		if r.Naming == "" {
+			r.Naming = b.Naming
+		}
+		// A template and its library go together.
+		if r.Template == "" && r.Library == "" {
+			r.Template, r.Library = b.Template, b.Library
+		}
+		g := b.Guest.merge(c.Guest)
+		r.Guest = &g
+		r.Bindings = map[string]string{}
+		for k, v := range b.Bindings {
+			r.Bindings[k] = v
+		}
+		for k, v := range c.Bindings {
+			r.Bindings[k] = v
+		}
+		if r.Disks == nil {
+			r.Disks = b.Disks
+		}
+		if r.NICs == nil {
+			r.NICs = b.NICs
+		}
+		if r.Tags == nil {
+			r.Tags = b.Tags
+		}
+		out[i] = r
+	}
+	return out
+}
+
+// NICKey is the key of the i-th added adapter (the template's is first).
+func NICKey(n NIC, i int) string {
+	if n.Key != "" {
+		return n.Key
+	}
+	return fmt.Sprintf("nic%d", i+2)
 }
 
 type Size struct {
@@ -83,7 +232,33 @@ type VMPlan struct {
 	Datastore  string   `json:"datastore"`
 	Network    string   `json:"network"`
 	Template   string   `json:"template"`
+	Library    string   `json:"library,omitempty"`
 	PostConfig []string `json:"post_config"`
+	// Disks and NICs are those added after the template's first ones.
+	Disks []DiskPlan `json:"disks,omitempty"`
+	NICs  []NICPlan  `json:"nics,omitempty"`
+	Tags  []string   `json:"tags,omitempty"`
+}
+
+// StorageGB is the VM's storage: its first disk and those added.
+func (p VMPlan) StorageGB() int {
+	n := p.DiskGB
+	for _, d := range p.Disks {
+		n += d.SizeGB
+	}
+	return n
+}
+
+type DiskPlan struct {
+	SizeGB        int    `json:"size_gb"`
+	Datastore     string `json:"datastore,omitempty"`
+	StoragePolicy string `json:"storage_policy,omitempty"`
+}
+
+type NICPlan struct {
+	Key     string `json:"key"`
+	Network string `json:"network"`
+	IPAM    string `json:"ipam"`
 }
 
 func Parse(raw json.RawMessage) (Blueprint, error) {
@@ -106,12 +281,108 @@ func (b Blueprint) Vars(inputs map[string]any) policy.Vars {
 	return policy.Vars{"inputs": inputs, "sizes": sizes}
 }
 
-// EvaluateVM evaluates the bindings. Bindings that cannot be evaluated yet
-// (for example a cluster not chosen) leave their field empty and are
-// reported in missing, so a preview can still show partial results.
+// EvaluateVM evaluates the bindings of a blueprint without components.
 func (b Blueprint) EvaluateVM(inputs map[string]any) (plan VMPlan, missing []string) {
+	plan, _, missing = b.EvaluateComponent(b.ComponentList()[0], inputs)
+	return plan, missing
+}
+
+// number turns a CEL or JSON number into an int.
+func number(v any) (int, bool) {
+	switch n := v.(type) {
+	case int64:
+		return int(n), true
+	case int:
+		return n, true
+	case float64:
+		return int(math.Round(n)), true
+	}
+	return 0, false
+}
+
+// numberOrCEL is a number as it is, or a string evaluated as CEL.
+func numberOrCEL(v any, vars policy.Vars) (int, bool) {
+	if s, ok := v.(string); ok {
+		r, err := policy.Eval(s, vars)
+		if err != nil {
+			return 0, false
+		}
+		return number(r)
+	}
+	return number(v)
+}
+
+// celStrings evaluates CEL giving a string or a list of them.
+func celStrings(expr string, vars policy.Vars) ([]string, bool) {
+	v, err := policy.Eval(expr, vars)
+	if err != nil {
+		return nil, false
+	}
+	switch x := v.(type) {
+	case string:
+		return []string{x}, true
+	case []any:
+		var out []string
+		for _, e := range x {
+			s, ok := e.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// EvaluateComponent evaluates a component (from ComponentList): its VMs'
+// plan and how many. Bindings that cannot be evaluated yet (for example a
+// cluster not chosen) leave their field empty and are reported in
+// missing, so a preview can still show partial results.
+func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan VMPlan, count int, missing []string) {
 	vars := b.Vars(inputs)
-	plan.Template = b.Template
+	count = 1
+	if c.Count != nil {
+		n, ok := numberOrCEL(c.Count, vars)
+		if !ok {
+			missing = append(missing, "count")
+		} else {
+			count = n
+		}
+	}
+	plan.Template, plan.Library = c.Template, c.Library
+	plan.Tags = append(plan.Tags, c.Tags...)
+	for i, d := range c.Disks {
+		dp := DiskPlan{StoragePolicy: d.StoragePolicy}
+		n, ok := numberOrCEL(d.SizeGB, vars)
+		if !ok {
+			missing = append(missing, fmt.Sprintf("disks/%d/size_gb", i))
+		}
+		dp.SizeGB = n
+		if d.Datastore != "" {
+			if v, err := policy.Eval(d.Datastore, vars); err == nil {
+				dp.Datastore, _ = v.(string)
+			}
+			if dp.Datastore == "" {
+				missing = append(missing, fmt.Sprintf("disks/%d/datastore", i))
+			}
+		}
+		plan.Disks = append(plan.Disks, dp)
+	}
+	for i, n := range c.NICs {
+		np := NICPlan{Key: NICKey(n, i), IPAM: n.IPAM}
+		if np.IPAM == "" {
+			np.IPAM = IPAMEfficientIP
+		}
+		if v, err := policy.Eval(n.Network, vars); err == nil {
+			np.Network, _ = v.(string)
+		}
+		if np.Network == "" {
+			missing = append(missing, fmt.Sprintf("nics/%d/network", i))
+		}
+		plan.NICs = append(plan.NICs, np)
+	}
+	b.Bindings = c.Bindings
 	intField := func(key string, dst *int) {
 		expr, ok := b.Bindings[key]
 		if !ok {
@@ -122,14 +393,12 @@ func (b Blueprint) EvaluateVM(inputs map[string]any) (plan VMPlan, missing []str
 			missing = append(missing, key)
 			return
 		}
-		switch n := v.(type) {
-		case int64:
-			*dst = int(n)
-		case float64:
-			*dst = int(math.Round(n))
-		default:
+		n, ok := number(v)
+		if !ok {
 			missing = append(missing, key)
+			return
 		}
+		*dst = n
 	}
 	strField := func(key string, dst *string) {
 		expr, ok := b.Bindings[key]
@@ -167,7 +436,14 @@ func (b Blueprint) EvaluateVM(inputs map[string]any) (plan VMPlan, missing []str
 			}
 		}
 	}
-	return plan, missing
+	if expr, ok := b.Bindings["tags"]; ok {
+		if list, ok := celStrings(expr, vars); ok {
+			plan.Tags = append(plan.Tags, list...)
+		} else {
+			missing = append(missing, "tags")
+		}
+	}
+	return plan, count, missing
 }
 
 // OrderedPostConfig returns the chosen post-config templates in the order
