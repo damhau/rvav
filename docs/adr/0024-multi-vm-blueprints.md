@@ -171,7 +171,8 @@ and vCenters.
 - **Day-2**: VM actions act on one VM, deployment actions on all of them;
   deleting removes every VM, address, record and rule. A component's
   post-configuration runs on its own VMs (the AWX limit); rvav's AWX
-  inventory puts each VM in a group `rvav_component_<key>` too.
+  inventory puts each VM in a group `component_<key>` too, with
+  `rvav_component` among its variables.
 
 ### The workflow
 One timeline, with a step per component and its VMs' steps under it.
@@ -182,11 +183,13 @@ One timeline, with a step per component and its VMs' steps under it.
 3. Every VM, at the same time: customisation and power on.
 4. Each component's post-configuration, in the blueprint's order.
 
-When a VM fails, the VMs still building are cancelled; with
-`rollback_on_failure` everything is deleted, else it stays for someone to
-look at, and **Retry** resumes after what was done (ADR-0013). Workflows
-started before this change finish the way they began
-(`workflow.GetVersion`).
+When a VM fails, the others finish the phase they are in (a clone stopped
+halfway would leave a VM behind in vCenter), then the request fails: the
+failed VM's component is failed, the others not finished are cancelled.
+With `rollback_on_failure` everything is deleted, else it stays for
+someone to look at, and **Retry** resumes after what was done (ADR-0013),
+per VM. Only plans with components take this path, so workflows started
+before it finish the way they began.
 
 ### Several vCenters
 - Administrators add vCenters (Administration → Integrations → vCenters):

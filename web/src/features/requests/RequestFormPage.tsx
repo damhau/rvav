@@ -28,6 +28,7 @@ import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, newIdempotencyKey, roughDuration } from "@/lib/utils";
+import { ComponentsPreview } from "./ComponentsPreview";
 
 const quotaLabel: Record<QuotaResource, [string, string]> = {
   vcpu: ["vCPU", ""],
@@ -139,6 +140,7 @@ function Summary({
   onSaveDraft,
   savingDraft,
   scheduled,
+  oneDeployment,
 }: {
   preview: RequestPreview | undefined;
   fetching: boolean;
@@ -149,28 +151,33 @@ function Summary({
   onSaveDraft: () => void;
   savingDraft: boolean;
   scheduled: boolean;
+  /** A multi-VM item: what each component builds replaces the single VM's lines. */
+  oneDeployment: boolean;
 }) {
   const approval = preview?.approval;
-  const post = Array.isArray(values.post_config) ? (values.post_config as string[]) : [];
+  const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
+  const single = !oneDeployment;
   const rows = [
-    preview?.names?.length
+    single && preview?.names?.length
       ? { label: preview.names.length > 1 ? "Names" : "Name", value: preview.names.join(", "), mono: true }
       : null,
-    preview?.placement?.cluster
+    single && preview?.placement?.cluster
       ? {
           label: "Placement",
           value: [preview.placement.cluster, preview.placement.datastore].filter(Boolean).join(" · "),
           mono: true,
         }
       : null,
-    preview?.placement?.network
+    single && preview?.placement?.network
       ? {
           label: "Network",
           value: [preview.placement.network, preview.placement.subnet].filter(Boolean).join(" · "),
           mono: true,
         }
       : null,
-    preview?.addresses?.length ? { label: "Address", value: `${preview.addresses[0]} (next free)`, mono: true } : null,
+    single && preview?.addresses?.length
+      ? { label: "Address", value: `${preview.addresses[0]} (next free)`, mono: true }
+      : null,
     post.length
       ? { label: "After boot", value: `${post.length} AWX job${post.length === 1 ? "" : "s"}: ${post.join(", ")}` }
       : null,
@@ -207,6 +214,7 @@ function Summary({
                 ))}
               </dl>
             )}
+            {oneDeployment && preview.components && <ComponentsPreview components={preview.components} />}
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
                 <span className="label">Quota after this request</span>
@@ -315,7 +323,8 @@ function RequestFormBody({
   );
   const [savedDraft, setSavedDraft] = useState(draftId);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
-  const many = item.type === "vm_blueprint";
+  // Several deployments of a single-VM item; a multi-VM item's counts are in its form.
+  const many = item.type === "vm_blueprint" && !form.one_deployment;
 
   const draft = useMemo<RequestDraft>(
     () => ({
@@ -578,6 +587,7 @@ function RequestFormBody({
           onSaveDraft={() => saveDraft.mutate()}
           savingDraft={saveDraft.isPending}
           scheduled={later && Boolean(startAt)}
+          oneDeployment={Boolean(form.one_deployment)}
         />
       </aside>
     </div>

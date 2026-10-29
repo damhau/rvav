@@ -155,8 +155,62 @@ const windowsPost: PostConfig[] = [
   { value: "monitoring-agent", label: "Monitoring agent: windows_exporter" },
 ];
 
+/** A multi-VM blueprint (ADR-0024): web servers kept apart and a database, one deployment. */
+function webApp(itemId: string, versionId: string): RequestForm {
+  const form = build(itemId, versionId, {
+    properties: {
+      app: { type: "string", title: "Application", pattern: "^[a-z]{2,10}$", minLength: 2, maxLength: 10 },
+      web_nodes: { type: "integer", minimum: 1, maximum: 4 },
+      size: { type: "string", enum: Object.keys(sizes) },
+      cluster: { type: "string" },
+      datastore: { type: "string" },
+      network: { type: "string" },
+    },
+    required: ["app", "web_nodes", "size", "cluster", "datastore", "network"],
+    sections: [
+      { key: "app", title: "Application", columns: 2, fields: ["app", "web_nodes"] },
+      { key: "size", title: "Web server size", columns: 1, fields: ["size"] },
+      { key: "placement", title: "Placement and network", columns: 2, fields: ["cluster", "datastore", "network"] },
+    ],
+    fields: {
+      app: {
+        widget: "text",
+        label: "Application",
+        placeholder: "shop",
+        help: "Lower case, 2–10 letters. Used in the VM and deployment names.",
+      },
+      web_nodes: {
+        widget: "number",
+        label: "Web servers",
+        help: "1 to 4, kept on separate hosts. A database server comes with them.",
+      },
+      size: { widget: "radio_cards", label: "Size", options: sizeOptions },
+      cluster: {
+        widget: "vsphere_cluster",
+        label: "Cluster",
+        value_source: { kind: "builtin", name: "vsphere.clusters" },
+      },
+      datastore: {
+        widget: "vsphere_datastore",
+        label: "Datastore",
+        value_source: { kind: "builtin", name: "vsphere.datastores", params: { cluster: "${inputs.cluster}" } },
+        depends_on: ["cluster"],
+      },
+      network: {
+        widget: "vsphere_network",
+        label: "Network",
+        value_source: { kind: "builtin", name: "vsphere.networks" },
+      },
+    },
+    initial: { app: "shop", web_nodes: 2, size: "M" },
+  });
+  return { ...form, one_deployment: true };
+}
+
 export function formFor(slug: string, itemId: string, versionId: string): RequestForm {
   switch (slug) {
+    case "web-app":
+      return webApp(itemId, versionId);
     case "rhel9-server":
     case "ubuntu-server":
       return vmBlueprint(itemId, versionId, linuxPost, ["linux-baseline", "idm-join", "monitoring-agent"]);

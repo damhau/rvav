@@ -2,7 +2,6 @@ package provision
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -147,14 +146,7 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
 		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
 		return
 	}
-	var old struct {
-		VM struct {
-			Fqdn     string `json:"fqdn"`
-			Template string `json:"template"`
-		} `json:"vm"`
-	}
-	_ = json.Unmarshal(res.Properties, &old)
-	res.Properties = vmprops.Build(a.VSphere.Name(), *vm, old.VM.Fqdn, old.VM.Template, nil, 0)
+	res.Properties = vmprops.Build(a.VSphere.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0)
 	res.Name, res.SyncState = vm.Name, "in_sync"
 	if err := a.Store.UpdateResourceState(ctx, a.Store.Pool, res.ID, res.SyncState, res.Properties); err != nil {
 		a.Log.Warn("refresh vm: store", "resource", res.ID, "err", err)

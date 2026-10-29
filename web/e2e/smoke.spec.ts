@@ -77,7 +77,7 @@ for (const theme of ["light", "dark"] as const) {
     await setTheme(page, theme);
 
     await page.goto("/catalog");
-    await expect(page.getByText("9 items")).toBeVisible();
+    await expect(page.getByText("10 items")).toBeVisible();
     await page.screenshot({ path: `${shots}/catalog-${theme}.png` });
 
     await page.goto("/catalog/rhel9-server/request");

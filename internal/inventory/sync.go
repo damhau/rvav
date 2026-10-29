@@ -176,7 +176,7 @@ func (s *Syncer) refreshResources(ctx context.Context, byUUID map[string]vsphere
 		if vm.Folder == "" {
 			vm.Folder = old.VM.Folder
 		}
-		props := vmprops.Build(s.VSphere.Name(), vm.VM, old.VM.Fqdn, old.VM.Template,
+		props := vmprops.Build(s.VSphere.Name(), vm.VM, vmprops.OursOf(r.Properties),
 			&vmprops.Usage{CPUPct: vm.CPUPct, MemoryPct: vm.MemoryPct, SampledAt: now}, vm.SnapshotCount)
 		changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != "in_sync"
 		if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "in_sync", props); err != nil {

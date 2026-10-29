@@ -22,6 +22,7 @@ type FieldState = components["schemas"]["FieldState"];
 import { toText } from "@/lib/utils";
 import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
+import { MULTI_SLUG, previewComponents, webAppParts, webAppVMs } from "./components";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
 
@@ -261,13 +262,26 @@ export function validateInputs(
   return errors;
 }
 
-export function vmCount(item: StoredItem, count: number) {
+export function vmCount(item: StoredItem, count: number, inputs: Inputs = {}) {
+  if (item.slug === MULTI_SLUG) return webAppVMs(inputs);
   if (item.type === "vm_blueprint") return count;
   if (item.slug === "postgres-cluster") return 3 * count;
   return 0;
 }
 
 export function demand(item: StoredItem, inputs: Inputs, count: number): Record<QuotaResource, number> {
+  if (item.slug === MULTI_SLUG) {
+    // Every component's VMs (ADR-0024).
+    const out = { vcpu: 0, memory_gb: 0, storage_gb: 0, vm_count: 0 };
+    for (const p of webAppParts(inputs)) {
+      const size = sizes[p.size] ?? sizes.M;
+      out.vcpu += size.vcpu * p.count;
+      out.memory_gb += size.memoryGb * p.count;
+      out.storage_gb += size.diskGb * p.count;
+      out.vm_count += p.count;
+    }
+    return out;
+  }
   const vms = vmCount(item, count);
   const size = sizes[(inputs.size as SizeKey) ?? "M"] ?? sizes.M;
   return {
@@ -363,6 +377,12 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
   });
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   if (count < 1 || count > 20) errors.push({ field: "/count", code: "range", message: "Between 1 and 20." });
+  if (item.slug === MULTI_SLUG && count !== 1)
+    errors.push({
+      field: "/count",
+      code: "out_of_range",
+      message: `${item.name} builds one deployment: how many of each VM is in its form.`,
+    });
   if (draft.scheduled_at && new Date(draft.scheduled_at).getTime() < Date.now() - 60_000)
     errors.push({ field: "/scheduled_at", code: "in_past", message: "Pick a start time in the future." });
   if (!project.environments.includes(draft.environment)) {
@@ -399,9 +419,14 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
     }
   }
   const role = typeof inputs.role === "string" ? inputs.role.toLowerCase().replace(/[^a-z]/g, "") : "";
-  const vms = vmCount(item, count);
-  const names =
-    vms > 0 ? vmNames(db, project, draft.environment, item.slug === "postgres-cluster" ? `pg${role}` : role, vms) : [];
+  const vms = vmCount(item, count, inputs);
+  const components =
+    item.type === "vm_blueprint" ? previewComponents(db, item, project, draft.environment, inputs, count) : undefined;
+  const names = components
+    ? components.flatMap((c) => c.names)
+    : vms > 0
+      ? vmNames(db, project, draft.environment, item.slug === "postgres-cluster" ? `pg${role}` : role, vms)
+      : [];
   const network = typeof inputs.network === "string" ? inputs.network : "";
   const next = network ? nextFreeIp(db, network) : null;
   const production = db.environments.find((e) => e.key === draft.environment)?.production ?? false;
@@ -426,6 +451,7 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
             subnet: next?.subnet,
           }
         : undefined,
+    ...(components ? { components } : {}),
     quota,
     approval: approvalFor(db, item, draft.environment, inputs),
     lease: {

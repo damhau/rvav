@@ -48,8 +48,9 @@ func (s *Service) namingFor(ctx context.Context, projectID, environment, bluepri
 type skippedName struct{ Name, In string }
 
 // peekNames are the next names a spec gives with this prefix, those taken
-// in vCenter, rvav or DNS (under zone) passed over; nothing is reserved.
-func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone string, count int) ([]string, []skippedName, *nameCheck, error) {
+// in vCenter, rvav or DNS (under zone) passed over, and those given (to
+// earlier components); nothing is reserved.
+func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone string, count int, given map[string]bool) ([]string, []skippedName, *nameCheck, error) {
 	vcenter, err := s.Store.InventoryVMNames(ctx, prefix)
 	if err != nil {
 		return nil, nil, nil, err
@@ -57,6 +58,9 @@ func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone s
 	ours, err := s.Store.DeploymentNames(ctx, prefix)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	for n := range given {
+		ours[n] = true
 	}
 	next, err := s.Store.PeekName(ctx, spec.counterKey(prefix))
 	if err != nil {
@@ -203,7 +207,7 @@ func (s *Service) PreviewNaming(ctx context.Context, p *auth.Principal, q api.Na
 	if q.Count != nil {
 		count = *q.Count
 	}
-	names, skipped, check, err := s.peekNames(ctx, spec, prefix, "", count)
+	names, skipped, check, err := s.peekNames(ctx, spec, prefix, "", count, nil)
 	if err != nil {
 		return out, err
 	}

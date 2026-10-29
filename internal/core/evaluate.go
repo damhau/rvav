@@ -26,13 +26,19 @@ import (
 // naming, approval, quota and lease rules. Preview returns it; Submit
 // requires it to have no errors.
 type Evaluation struct {
-	Project    store.Project
-	Env        store.Environment
-	Item       store.CatalogItem
-	Version    store.ItemVersion
-	Blueprint  blueprint.Blueprint
-	Inputs     map[string]any
-	Count      int
+	Project   store.Project
+	Env       store.Environment
+	Item      store.CatalogItem
+	Version   store.ItemVersion
+	Blueprint blueprint.Blueprint
+	Inputs    map[string]any
+	// Count is the request's: how many deployments of a single-VM item.
+	Count int
+	// Parts are a VM blueprint's components, evaluated (ADR-0024); VM,
+	// Rule, Subnet, Naming… are the first's. VMCount is how many VMs all
+	// of them build.
+	Parts      []vmPart
+	VMCount    int
 	VM         blueprint.VMPlan
 	Rule       *store.PlacementRule
 	Subnet     *store.NetworkSubnet
@@ -327,109 +333,6 @@ func pickedValues(v any) (values []string, ok bool) {
 	return []string{s}, true
 }
 
-func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) error {
-	add := func(field, code, msg string) { ev.Errors = append(ev.Errors, fieldErr(field, code, msg)) }
-	// A blueprint without sizes of its own uses the presets offered here,
-	// and a template chosen from the offered ones by key is that template
-	// in vCenter, with its OS family (ADR-0020).
-	if len(ev.Blueprint.Sizes) == 0 {
-		sizes, err := s.offeredSizes(ctx, ev.Project.ID, ev.Env.Key)
-		if err != nil {
-			return err
-		}
-		ev.Blueprint.Sizes = map[string]blueprint.Size{}
-		for _, z := range sizes {
-			ev.Blueprint.Sizes[z.Key] = blueprint.Size{Label: z.Label, VCPU: z.VCPU, MemoryGB: z.MemoryGB, DiskGB: z.DiskGB}
-		}
-	}
-	plan, _ := ev.Blueprint.EvaluateVM(ev.Inputs)
-	// A template chosen in the form is an offered template's key; a
-	// blueprint that names its own vCenter template keeps it.
-	if plan.Template != "" && ev.Blueprint.Bindings["template"] != "" {
-		templates, err := s.offeredTemplates(ctx, ev.Project.ID, ev.Env.Key)
-		if err != nil {
-			return err
-		}
-		for _, t := range templates {
-			if t.Key == plan.Template {
-				plan.Template, ev.Blueprint.Guest.OSFamily = t.VCenterTemplate, t.OSFamily
-			}
-		}
-	}
-	ev.VM = plan
-
-	pl, err := s.placement(ctx, ev.Project.ID, ev.Env.Key)
-	if err != nil {
-		return err
-	}
-	if len(pl.rules) == 0 && ev.Env.Key != "" {
-		add("", "no_placement", fmt.Sprintf("%s has no placement for %s. Ask an administrator to add one.", ev.Project.Name, ev.Env.Name))
-	}
-	if plan.Cluster != "" {
-		if pl.cluster(plan.Cluster) == nil {
-			add("/inputs/cluster", "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
-		} else {
-			ev.Rule = pl.rule(plan.Cluster)
-			if plan.Datastore != "" && !slices.ContainsFunc(pl.datastoresFor(plan.Cluster), func(d store.InvDatastore) bool { return d.Name == plan.Datastore }) {
-				add("/inputs/datastore", "not_allowed", fmt.Sprintf("Datastore %s cannot be used on %s.", plan.Datastore, plan.Cluster))
-			}
-			if plan.Network != "" && !slices.ContainsFunc(pl.networksFor(plan.Cluster), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
-				add("/inputs/network", "not_allowed", fmt.Sprintf("Network %s cannot be used on %s.", plan.Network, plan.Cluster))
-			}
-		}
-	}
-	if plan.Network != "" {
-		if sn, ok := pl.subnets[plan.Network]; ok {
-			ev.Subnet = &sn
-		} else {
-			add("/inputs/network", "no_subnet", "No EfficientIP subnet is linked to this network. Ask an administrator to link one.")
-		}
-	}
-	if templates, err := s.Store.InventoryTemplates(ctx); err != nil {
-		return err
-	} else if len(templates) > 0 && !slices.ContainsFunc(templates, func(t store.InvTemplate) bool { return t.Name == plan.Template }) {
-		add("", "template_missing", fmt.Sprintf("Template %s was not found in vCenter. Ask a catalog admin to check this item.", plan.Template))
-	}
-
-	spec, err := s.namingFor(ctx, ev.Project.ID, ev.Env.Key, ev.Blueprint.Naming)
-	if err != nil {
-		return err
-	}
-	ev.Naming = &spec.Template
-	prefix, err := spec.Template.Prefix(naming.Values(ev.Project.Code, ev.Env.Key, ev.Inputs))
-	if err != nil {
-		return nil // inputs used by the name are still missing; the schema reports them
-	}
-	ev.NamePrefix, ev.CounterKey = prefix, spec.counterKey(prefix)
-	zone := ""
-	if ev.Subnet != nil {
-		zone = ev.Subnet.DNSZone
-	}
-	if ev.Names, _, ev.names, err = s.peekNames(ctx, spec, prefix, zone, ev.Count); err != nil {
-		return err
-	}
-	if err := ev.names.err; err != nil {
-		if strict {
-			return err
-		}
-		s.Log.Warn("checking VM names in DNS", "err", err)
-	}
-	if len(ev.Names) > 0 && !naming.Valid(ev.Names[0]) {
-		add("/inputs/role", "invalid_name", fmt.Sprintf("%s is not a valid host name.", ev.Names[0]))
-	}
-
-	if !strict && ev.Subnet != nil && s.IPAM != nil {
-		if ip, err := s.IPAM.NextFree(ctx, subnetRef(*ev.Subnet)); err == nil {
-			ev.Addresses = []string{ip}
-		} else if errors.Is(err, efficientip.ErrSubnetFull) {
-			add("/inputs/network", "subnet_full", fmt.Sprintf("Subnet %s has no free address. Pick another network.", ev.Subnet.Subnet))
-		} else {
-			s.Log.Warn("ipam next free address", "subnet", ev.Subnet.Subnet, "err", err)
-		}
-	}
-	return nil
-}
-
 func subnetRef(n store.NetworkSubnet) efficientip.Subnet {
 	return efficientip.Subnet{ID: n.EfficientIPSubnetID, CIDR: n.Subnet, Gateway: n.Gateway}
 }
@@ -449,7 +352,8 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"environment": ev.Env.Key,
 		"project":     map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name},
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
-		"vm":          map[string]any{"vcpu": ev.VM.VCPU, "memory_gb": ev.VM.MemoryGB, "disk_gb": ev.VM.DiskGB, "count": ev.Count},
+		"vm":          map[string]any{"vcpu": ev.VM.VCPU, "memory_gb": ev.VM.MemoryGB, "disk_gb": ev.VM.DiskGB, "count": max(ev.Count, ev.VMCount)},
+		"vms":         ev.vmVars(),
 		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles, "groups": nonNilStrings(p.Groups)},
 		"quota":       quotaVars(ev.OverSoft),
 	}
@@ -639,10 +543,7 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) error {
 	ev.QuotaAdd = map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
 	if ev.Blueprint.Kind == blueprint.KindVM {
-		ev.QuotaAdd = map[string]int{
-			"vcpu": ev.VM.VCPU * ev.Count, "memory_gb": ev.VM.MemoryGB * ev.Count,
-			"storage_gb": ev.VM.DiskGB * ev.Count, "vm_count": ev.Count,
-		}
+		ev.QuotaAdd = ev.vmQuota()
 	}
 	// A composite's VMs count together: each fitting alone isn't enough.
 	for _, part := range ev.Composite {
@@ -744,6 +645,7 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 			pl.Subnet = set(ev.Subnet.Subnet)
 		}
 		out.Placement = pl
+		out.Components = present.Ptr(ev.previewComponents())
 		out.Lease = &struct {
 			DefaultDays *int       `json:"default_days,omitempty"`
 			ExpiresAt   *time.Time `json:"expires_at,omitempty"`

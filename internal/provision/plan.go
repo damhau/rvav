@@ -33,6 +33,55 @@ type Plan struct {
 	// Composite is set on requests of composite items (ADR-0022), instead
 	// of VMs, AWX or Workflow.
 	Composite []CompositeStep `json:"composite,omitempty"`
+	// Components are a multi-VM blueprint's (ADR-0024): VMs say which they
+	// belong to, and each has its guest, anti-affinity and post-
+	// configuration (PostConfig and Guest are then unused).
+	Components []ComponentUnit `json:"components,omitempty"`
+}
+
+// ComponentUnit is one component of a multi-VM blueprint's plan.
+type ComponentUnit struct {
+	Key   string          `json:"key"`
+	Title string          `json:"title"`
+	Guest blueprint.Guest `json:"guest"`
+	// AntiAffinity: its VMs (two or more) are kept on separate hosts.
+	AntiAffinity bool  `json:"anti_affinity,omitempty"`
+	PostConfig   []Job `json:"post_config,omitempty"`
+}
+
+// KeyComponent prefixes a component's step key; its VMs' steps are under it.
+const KeyComponent = "component:"
+
+// StepKey is the component's step in the timeline.
+func (c ComponentUnit) StepKey() string { return KeyComponent + c.Key }
+
+// VMKey is the key of one of its VMs' steps.
+func (c ComponentUnit) VMKey(base string, vm VMUnit) string {
+	return c.StepKey() + "/" + base + "@" + vm.Name
+}
+
+// RuleName is the DRS rule keeping its VMs apart in the deployment.
+func (c ComponentUnit) RuleName(deploymentID string) string {
+	return "rvav-" + deploymentID + "-" + c.Key
+}
+
+// ComponentVMs are the plan's VMs of a component, in order.
+func (p Plan) ComponentVMs(key string) []VMUnit {
+	var out []VMUnit
+	for _, vm := range p.VMs {
+		if vm.Component == key {
+			out = append(out, vm)
+		}
+	}
+	return out
+}
+
+func names(vms []VMUnit) string {
+	list := make([]string, len(vms))
+	for i, vm := range vms {
+		list[i] = vm.Name
+	}
+	return strings.Join(list, ",")
 }
 
 // CompositeStep is one step of a composite item's plan. Steps of the same
@@ -77,13 +126,7 @@ func (c CompositeStep) VMKey(base string, vm VMUnit) string {
 }
 
 // Limit is the AWX host limit covering its VMs.
-func (c CompositeStep) Limit() string {
-	names := make([]string, len(c.VMs))
-	for i, vm := range c.VMs {
-		names[i] = vm.Name
-	}
-	return strings.Join(names, ",")
-}
+func (c CompositeStep) Limit() string { return names(c.VMs) }
 
 // Day2 is the plan of a day-2 request: operations on one resource, in order.
 type Day2 struct {
@@ -104,7 +147,11 @@ type Day2 struct {
 
 // VMUnit is one VM and the deployment it belongs to.
 type VMUnit struct {
-	DeploymentID string   `json:"deployment_id"`
+	DeploymentID string `json:"deployment_id"`
+	// Component is its blueprint component's key (ADR-0024), and Index its
+	// place among the component's VMs.
+	Component    string   `json:"component,omitempty"`
+	Index        int      `json:"index,omitempty"`
 	Name         string   `json:"name"`
 	FQDN         string   `json:"fqdn"`
 	VCPU         int      `json:"vcpu"`
@@ -162,6 +209,8 @@ const (
 	KeyInventory = "awx.inventory"
 	KeyJob       = "awx.job:"
 	KeyReady     = "ready"
+	// KeyDRSRule is a component's DRS rule, under its step.
+	KeyDRSRule = "vsphere.drs_rule"
 )
 
 // VMKey returns the step key for one VM of the plan.
@@ -240,6 +289,37 @@ func (p Plan) Steps(environment string) []StepDef {
 		}
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
+	if len(p.Components) > 0 {
+		for _, c := range p.Components {
+			vms := p.ComponentVMs(c.Key)
+			if len(vms) == 0 {
+				continue
+			}
+			parent := c.StepKey()
+			steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(names(vms), ",", ", "), System: "vcenter", Status: "pending"})
+			for _, vm := range vms {
+				steps = append(steps,
+					StepDef{Key: c.VMKey(KeyIPAM, vm), Title: "Reserve an IP address · " + vm.Name, Detail: "Subnet " + vm.Subnet, System: "efficientip", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyClone, vm), Title: "Clone from " + vm.Template + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
+					StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: parent},
+				)
+			}
+			if c.AntiAffinity {
+				steps = append(steps, StepDef{Key: parent + "/" + KeyDRSRule, Title: "Keep the VMs on separate hosts",
+					Detail: "DRS rule " + c.RuleName(vms[0].DeploymentID) + " in " + vms[0].Cluster, System: "vcenter", Status: "pending", Parent: parent})
+			}
+			if len(c.PostConfig) > 0 {
+				steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})
+				for _, j := range c.PostConfig {
+					steps = append(steps, StepDef{Key: parent + "/" + KeyJob + j.Key, Title: "AWX job · " + j.Template,
+						Detail: "limit=" + names(vms), System: "awx", Status: "pending", Parent: parent})
+				}
+			}
+		}
+		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
+	}
 	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {
 		return append(steps,
 			StepDef{Key: KeyWorkflow + p.Workflow.Key, Title: p.Workflow.Title, Detail: p.Workflow.Type, System: "rvav", Status: "pending"},
@@ -265,13 +345,7 @@ func (p Plan) Steps(environment string) []StepDef {
 }
 
 // Limit is the AWX host limit covering every VM of the plan.
-func (p Plan) Limit() string {
-	names := make([]string, len(p.VMs))
-	for i, vm := range p.VMs {
-		names[i] = vm.Name
-	}
-	return strings.Join(names, ",")
-}
+func (p Plan) Limit() string { return names(p.VMs) }
 
 // WorkflowID is the Temporal workflow ID of a request.
 func WorkflowID(requestID string) string { return fmt.Sprintf("request-%s", requestID) }

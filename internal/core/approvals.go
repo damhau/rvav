@@ -17,7 +17,6 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
-	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
@@ -438,10 +437,7 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	}
 	switch ev.Blueprint.Kind {
 	case blueprint.KindVM:
-		for i, vm := range plan.VMs {
-			plan.VMs[i] = vmUnit(ev, vm.DeploymentID, vm.Name)
-		}
-		if plan.PostConfig, err = postConfigJobs(ev, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
+		if err := replanVMs(ev, &plan); err != nil {
 			return nil, nil, nil, nil, err
 		}
 	case blueprint.KindAWX:
@@ -452,12 +448,12 @@ func (s *Service) applyEdits(ctx context.Context, req store.RequestRow, edits ma
 	newPlan, _ := json.Marshal(plan)
 	// The steps still to run follow the new plan (post-config jobs, placement).
 	var steps []store.Step
-	for i, sd := range plan.Steps(ev.Env.Name) {
-		if sd.Key == provision.KeySubmit || sd.Key == provision.KeyPolicy {
+	for _, st := range stepsOf(req.ID, plan.Steps(ev.Env.Name)) {
+		if st.Key == provision.KeySubmit || st.Key == provision.KeyPolicy {
 			continue
 		}
-		steps = append(steps, store.Step{ID: ids.New(ids.Step), RequestID: req.ID, Position: i, Key: sd.Key,
-			Title: sd.Title, Detail: sd.Detail, System: &sd.System, Status: "pending"})
+		st.Status, st.StartedAt, st.FinishedAt = "pending", nil, nil
+		steps = append(steps, st)
 	}
 	return changes, newInputs, newPlan, steps, nil
 }

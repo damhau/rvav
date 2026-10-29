@@ -344,7 +344,10 @@ func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
 			and (a.properties->>'hostname' = r.name or a.properties->>'fqdn' = r.properties->'vm'->>'fqdn')
 			order by a.name limit 1) as address,
 		d.id as deployment_id, d.name as deployment_name, d.status, d.environment, p.code as project, i.slug as item, i.tags,
-		coalesce(u.email, '') as owner, coalesce(v.blueprint->'guest'->>'os_family', '') as os_family,
+		coalesce(u.email, '') as owner,
+		coalesce((select c->'guest'->>'os_family' from jsonb_array_elements(case when jsonb_typeof(v.blueprint->'components') = 'array'
+			then v.blueprint->'components' else '[]' end) c where c->>'key' = r.properties->'vm'->>'component'),
+			v.blueprint->'guest'->>'os_family', '') as os_family,
 		d.inputs, coalesce(v.ui_schema, '{}') as ui_schema
 		from resources r join deployments d on d.id = r.deployment_id join projects p on p.id = d.project_id
 		join catalog_items i on i.id = d.item_id left join catalog_item_versions v on v.id = d.version_id

@@ -70,9 +70,14 @@ func (s *Store) LockNamePrefix(ctx context.Context, tx pgx.Tx, prefix string) er
 }
 
 // DeploymentNames are the names of every deployment rvav made starting
-// with the prefix, deleted ones too: a name is never given twice.
+// with the prefix, and of the VMs of its multi-VM deployments, deleted
+// ones too: a name is never given twice.
 func (s *Store) DeploymentNames(ctx context.Context, prefix string) (map[string]bool, error) {
-	rows, _ := s.Pool.Query(ctx, `select name from deployments where starts_with(name, $1)`, prefix)
+	// A multi-VM deployment's VMs are named in its request's plan (ADR-0024).
+	rows, _ := s.Pool.Query(ctx, `select name from deployments where starts_with(name, $1)
+		union select v->>'name' from requests r, jsonb_array_elements(case when jsonb_typeof(r.plan->'components') = 'array'
+			then r.plan->'vms' else '[]' end) v
+		where starts_with(v->>'name', $1)`, prefix)
 	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, err

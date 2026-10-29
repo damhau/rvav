@@ -157,6 +157,17 @@ func init() {
 			if in["lease"] == true {
 				ops = append(ops, leaseCheck()) // deleting because the lease ended
 			}
+			// The DRS rules keeping a component's VMs apart, first (ADR-0024).
+			var rules []string
+			for _, r := range t.Resources {
+				if r.Type == "vsphere.drs_rule" {
+					rules = append(rules, r.Name)
+				}
+			}
+			if len(rules) > 0 {
+				ops = append(ops, Op{Key: "vsphere.drs_rule.delete", Title: "Remove the DRS rules", Detail: strings.Join(rules, ", "),
+					System: "vcenter", Op: "delete_resources", Args: map[string]any{"type": "vsphere.drs_rule"}})
+			}
 			for _, r := range t.Resources {
 				if r.Type == vmType {
 					ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))

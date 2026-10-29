@@ -71,12 +71,17 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 
 		switch ev.Blueprint.Kind {
 		case blueprint.KindVM:
-			deps, vms, err := s.reserveVMs(ctx, tx, ev, req.ID, owner)
+			deps, vms, comps, err := s.reserveVMs(ctx, tx, ev, req.ID, owner, req.Number)
 			if err != nil {
 				return err
 			}
-			deployments, plan.VMs = append(deployments, deps...), vms
-			if plan.PostConfig, err = postConfigJobs(ev, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
+			deployments, plan.VMs, plan.Components = append(deployments, deps...), vms, comps
+			if len(comps) > 0 {
+				// A multi-VM deployment (ADR-0024): post-configuration is each component's.
+				req.Title = ev.Item.Name + " · " + deps[0].Name
+				break
+			}
+			if plan.PostConfig, err = postConfigJobs(ev, ev.VM, optionOrder(ev.Version.UISchema, "post_config")); err != nil {
 				return err
 			}
 			req.Title = ev.Item.Name + " · " + titleNames(plan.VMs)
@@ -92,12 +97,12 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				case part.sub != nil:
 					// The composite's lease is its VMs'.
 					part.sub.Lease = ev.Lease
-					deps, vms, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner)
+					deps, vms, _, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner, req.Number)
 					if err != nil {
 						return err
 					}
 					deployments, c.VMs, c.Guest = append(deployments, deps...), vms, part.sub.Blueprint.Guest
-					if c.PostConfig, err = postConfigJobs(part.sub, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
+					if c.PostConfig, err = postConfigJobs(part.sub, part.sub.VM, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
 						return err
 					}
 				case part.job != nil:
@@ -162,32 +167,6 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		}
 	}
 	return stored, err
-}
-
-// vmUnit is the plan for one VM of a deployment.
-func vmUnit(ev *Evaluation, deploymentID, name string) provision.VMUnit {
-	return provision.VMUnit{
-		DeploymentID: deploymentID, Name: name, FQDN: name + "." + ev.Subnet.DNSZone,
-		VCPU: ev.VM.VCPU, MemoryGB: ev.VM.MemoryGB, DiskGB: ev.VM.DiskGB,
-		Cluster: ev.VM.Cluster, Datastore: ev.VM.Datastore, Network: ev.VM.Network,
-		Template: ev.VM.Template, Folder: ev.Rule.Folder,
-		Subnet: ev.Subnet.Subnet, SubnetID: ev.Subnet.EfficientIPSubnetID, Gateway: ev.Subnet.Gateway,
-		PrefixLength: prefixLength(ev.Subnet.Subnet), DNSZone: ev.Subnet.DNSZone, DNSServers: ev.Subnet.DNSServers,
-	}
-}
-
-// postConfigJobs lists the AWX jobs to run after boot, in the form's order.
-func postConfigJobs(ev *Evaluation, order []string) ([]provision.Job, error) {
-	var jobs []provision.Job
-	for _, key := range ev.Blueprint.OrderedPostConfig(ev.VM.PostConfig, order) {
-		t, ok := ev.Blueprint.AWXTemplates[key]
-		if !ok {
-			return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs/post_config", "unknown_template",
-				fmt.Sprintf("%s is not configured for this item.", key))}}
-		}
-		jobs = append(jobs, provision.Job{Key: key, Title: t.Title, Template: t.JobTemplate, Workflow: t.Workflow})
-	}
-	return jobs, nil
 }
 
 // chainRows turns the approval chain into one approvals row per level; all
@@ -370,51 +349,4 @@ func awxLaunch(ev *Evaluation) (provision.Job, map[string]any) {
 		delete(vars, name)
 	}
 	return job, vars
-}
-
-// reserveVMs names a VM item's VMs for good, inside the submit transaction,
-// and makes their deployments.
-func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, requestID, owner string) ([]store.Deployment, []provision.VMUnit, error) {
-	if err := s.Store.LockNamePrefix(ctx, tx, ev.NamePrefix); err != nil {
-		return nil, nil, err
-	}
-	taken, err := s.Store.InventoryVMNames(ctx, ev.NamePrefix)
-	if err != nil {
-		return nil, nil, err
-	}
-	ours, err := s.Store.DeploymentNames(ctx, ev.NamePrefix)
-	if err != nil {
-		return nil, nil, err
-	}
-	names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: ev.Subnet.DNSZone}
-	if ev.names != nil {
-		names.dns = ev.names.dns
-	}
-	var deps []store.Deployment
-	var vms []provision.VMUnit
-	for i := 0; i < ev.Count; i++ {
-		seq, err := s.Store.NextName(ctx, tx, ev.CounterKey, func(n int) bool { return names.taken(ev.Naming.Name(ev.NamePrefix, n)) })
-		if err != nil {
-			return nil, nil, err
-		}
-		if names.err != nil {
-			return nil, nil, names.err
-		}
-		name := ev.Naming.Name(ev.NamePrefix, seq)
-		// Names from this prefix given in this request count as taken (a
-		// composite with two VM steps of one naming).
-		names.rvav[name] = true
-		dep := store.Deployment{
-			ID: ids.New(ids.Deployment), Name: name, Status: "provisioning", ProjectID: ev.Project.ID,
-			Environment: ev.Env.Key, ItemID: ev.Item.ID, VersionID: ev.Version.ID, OwnerID: owner,
-			CreatedByRequestID: &requestID, LeaseExpiresAt: ev.Lease.ExpiresAt, ExpiryAction: orDefault(ev.Lease.ExpiryAction, "notify_only"),
-		}
-		if ev.Lease.ExpiresAt != nil {
-			dep.LeaseExtensionsMax = &ev.Lease.MaxExtensions
-		}
-		dep.Inputs, _ = json.Marshal(ev.Inputs)
-		deps = append(deps, dep)
-		vms = append(vms, vmUnit(ev, dep.ID, name))
-	}
-	return deps, vms, nil
 }

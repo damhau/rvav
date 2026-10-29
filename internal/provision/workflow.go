@@ -340,6 +340,10 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
+	if len(p.Components) > 0 {
+		return runComponents(ctx, info)
+	}
+
 	vms, failed, err := buildVMs(ctx, info, p.VMs, p.Guest, p.VMKey)
 	if err != nil {
 		return failed, err

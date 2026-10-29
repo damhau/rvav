@@ -15,6 +15,7 @@ import type {
 import { completeDay2Step, day2Finished } from "./day2";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
+import { MULTI_SLUG, webAppName, webAppParts } from "./components";
 import { reserveIp, summarize, vmNames } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 
@@ -22,6 +23,8 @@ export const timing = { tickMs: 900 };
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 /** The VM name chosen when the request was planned, by request ID. */
 const hosts = new Map<string, string>();
+/** The address reserved for each VM of a multi-VM deployment, by name. */
+const ips = new Map<string, string>();
 
 const now = () => new Date().toISOString();
 const text = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -104,7 +107,38 @@ export function planSteps(
   const steps = [submitted, policy];
   const jobBase = 18240 + (db.seq.request % 50) * 3;
 
-  if (item.type === "vm_blueprint") {
+  if (item.slug === MULTI_SLUG) {
+    // One deployment for every component's VMs (ADR-0024); each VM's steps
+    // carry its name after "@".
+    host = webAppName(project, env, inputs);
+    const subnet = networks.find((n) => n.name === text(inputs.network))?.subnet ?? "";
+    for (const p of webAppParts(inputs)) {
+      const names = vmNames(db, project, env, p.role, p.count);
+      for (const name of names) {
+        steps.push(
+          step(`ipam.reserve@${name}`, `Reserve an IP address · ${name}`, "efficientip", {
+            detail: `Subnet ${subnet}`,
+          }),
+          step(`dns.create@${name}`, `Create A and PTR records · ${name}`, "efficientip", {
+            detail: `${name}.${DOMAIN}`,
+          }),
+          step(`vsphere.clone@${name}`, `Clone from ${p.template} · ${name}`, "vcenter", {
+            detail: `${text(inputs.cluster)} · ${text(inputs.datastore)}`,
+          }),
+          step(`vsphere.customize@${name}`, `Apply guest customization · ${name}`, "vcenter"),
+          step(`vsphere.power_on@${name}`, `Power on and wait for guest IP · ${name}`, "vcenter"),
+        );
+      }
+      if (p.antiAffinity) {
+        steps.push(
+          step(`vsphere.drs_rule@${p.key}`, "Keep the VMs on separate hosts", "vcenter", {
+            detail: names.join(", "),
+          }),
+        );
+      }
+      p.post.forEach((t, i) => steps.push(awxJob(t, names.join(","), jobBase + i)));
+    }
+  } else if (item.type === "vm_blueprint") {
     const name = vmNames(db, project, env, text(inputs.role, "app"), 1)[0] ?? `${project.code}-${env}-app001`;
     host = name;
     const network = text(inputs.network);
@@ -218,7 +252,14 @@ function vmOf(d: DeploymentDetail) {
   return d.resources.find((x): x is VmResource => x.type === "vsphere.vm");
 }
 
+/** Finish a step; one of several VMs' steps keeps saying which VM it was for. */
 function complete(r: StoredRequest, s: Step) {
+  completeStep(r, s);
+  const vm = s.key.split("@")[1];
+  if (vm && !s.key.startsWith("vsphere.drs_rule") && !s.title.includes(vm)) s.title = `${s.title} · ${vm}`;
+}
+
+function completeStep(r: StoredRequest, s: Step) {
   const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
   const inputs = r.request.inputs ?? {};
   s.status = "done";
@@ -231,11 +272,15 @@ function complete(r: StoredRequest, s: Step) {
     }
     return;
   }
-  const host = hosts.get(r.request.id) ?? `${d.name}001`;
-  switch (s.key) {
+  // A multi-VM deployment's steps name their VM (or component) after "@".
+  const [key, at] = s.key.split("@") as [string, string | undefined];
+  const host = at ?? hosts.get(r.request.id) ?? `${d.name}001`;
+  const multi = at !== undefined;
+  switch (key) {
     case "ipam.reserve": {
       const ip = reserveIp(db, text(inputs.network));
       if (ip) {
+        ips.set(host, ip.ip);
         s.title = `Reserved ${ip.ip}`;
         const res: IpAddressResource = {
           id: newId("res"),
@@ -252,7 +297,9 @@ function complete(r: StoredRequest, s: Step) {
       break;
     }
     case "dns.create": {
-      const ip = d.resources.find((x): x is IpAddressResource => x.type === "ipam.address")?.address ?? "";
+      const ip = multi
+        ? (ips.get(host) ?? "")
+        : (d.resources.find((x): x is IpAddressResource => x.type === "ipam.address")?.address ?? "");
       s.title = "Created A and PTR records";
       const a: DnsRecordResource = {
         id: newId("res"),
@@ -269,7 +316,10 @@ function complete(r: StoredRequest, s: Step) {
       break;
     }
     case "vsphere.clone": {
-      const size = sizes[(inputs.size as SizeKey) ?? "M"] ?? sizes.M;
+      // Its component: the one whose role is in its name.
+      const part = multi ? webAppParts(inputs).find((p) => host.includes(`-${p.role}`)) : undefined;
+      const component = part?.key ?? "vm";
+      const size = sizes[part?.size ?? (inputs.size as SizeKey) ?? "M"] ?? sizes.M;
       const template =
         r.request.catalog_item.slug === "ubuntu-server"
           ? templates.ubuntu
@@ -295,13 +345,15 @@ function complete(r: StoredRequest, s: Step) {
           nics: [{ network: text(inputs.network), mac: "00:50:56:a1:7e:3c", ip_addresses: [] }],
           fqdn: `${host}.${DOMAIN}`,
           cluster: text(inputs.cluster, clusters[0]!.name),
-          host: `esx-gva-${d.environment}-03.${DOMAIN}`,
+          host: `esx-gva-${d.environment}-0${multi ? (d.resources.filter((x) => x.type === "vsphere.vm").length % 3) + 1 : 3}.${DOMAIN}`,
+          component,
           folder: `/GVA/vm/rvav/${d.project.code}/${d.environment}`,
           template: template.name,
           snapshot_count: 0,
         },
       };
-      d.resources.unshift(vm);
+      if (multi) d.resources.push(vm);
+      else d.resources.unshift(vm);
       s.title = `Cloned from ${template.name}`;
       s.external_ref = { kind: "vcenter_vm", id: vm.vm.moref };
       publishResource(r, d, vm);
@@ -312,8 +364,10 @@ function complete(r: StoredRequest, s: Step) {
       s.title = "Applied guest customization";
       break;
     case "vsphere.power_on": {
-      const vm = vmOf(d);
-      const ip = d.resources.find((x): x is IpAddressResource => x.type === "ipam.address")?.address ?? "";
+      const vm = multi ? d.resources.find((x): x is VmResource => x.type === "vsphere.vm" && x.name === host) : vmOf(d);
+      const ip = multi
+        ? (ips.get(host) ?? "")
+        : (d.resources.find((x): x is IpAddressResource => x.type === "ipam.address")?.address ?? "");
       if (vm) {
         vm.vm.power_state = "on";
         vm.vm.guest_state = "running";
@@ -323,6 +377,27 @@ function complete(r: StoredRequest, s: Step) {
         publishResource(r, d, vm);
         publishDeployment(r, d);
       }
+      break;
+    }
+    case "vsphere.drs_rule": {
+      const vms = d.resources.filter((x): x is VmResource => x.type === "vsphere.vm" && x.vm.component === host);
+      const rule: DrsRuleResource = {
+        id: newId("res"),
+        type: "vsphere.drs_rule",
+        name: `rvav-${d.id}-${host}`,
+        sync_state: "in_sync",
+        rule: {
+          kind: "vm_anti_affinity",
+          cluster: vms[0]?.vm.cluster ?? "",
+          vcenter: VCENTER,
+          component: host,
+          vms: vms.map((v) => v.name),
+        },
+      };
+      d.resources.push(rule);
+      s.title = `Kept ${rule.rule.vms.join(", ")} on separate hosts`;
+      s.detail = `DRS rule ${rule.name} in ${rule.rule.cluster}`;
+      publishResource(r, d, rule);
       break;
     }
     case "awx.inventory_update":
@@ -436,11 +511,12 @@ function finish(r: StoredRequest) {
     return;
   }
   const vm = d ? vmOf(d) : undefined;
+  const several = (d?.resources.filter((x) => x.type === "vsphere.vm").length ?? 0) > 1;
   publish(r, {
     type: "notification",
     data: {
       id: newId("ntf"),
-      title: vm ? `${vm.name} is ready` : `${r.request.title} is done`,
+      title: vm ? `${several ? d!.name : vm.name} is ready` : `${r.request.title} is done`,
       body: `${r.request.number} · ${r.request.catalog_item.name}`,
       level: "success",
       link: `/requests/${r.request.number}`,

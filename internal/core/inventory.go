@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 )
 
 var groupUnsafe = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -40,6 +41,7 @@ func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[
 			Fqdn       string `json:"fqdn"`
 			PowerState string `json:"power_state"`
 			GuestOS    string `json:"guest_os"`
+			Component  string `json:"component"`
 		}
 		_ = json.Unmarshal(h.VM, &vm)
 		vars := map[string]any{"rvav_deployment_id": h.DeploymentID, "rvav_deployment": h.DeploymentName,
@@ -70,6 +72,11 @@ func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[
 			groupName("item", h.Item), groupName("os", family)}
 		for _, t := range h.Tags {
 			names = append(names, groupName("tag", t))
+		}
+		// A multi-VM deployment's component (ADR-0024).
+		if vm.Component != "" && vm.Component != blueprint.SingleKey {
+			vars["rvav_component"] = vm.Component
+			names = append(names, groupName("component", vm.Component))
 		}
 		for _, g := range slices.Compact(names) {
 			groups[g] = append(groups[g], h.Name)

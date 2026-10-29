@@ -70,6 +70,9 @@ type Info struct {
 	// per deployment: a retried request resumes after them (ADR-0013).
 	Done  []string         `json:"done,omitempty"`
 	Built map[string]Built `json:"built,omitempty"`
+	// BuiltVMs is the same by VM name: a multi-VM deployment has several
+	// (ADR-0024).
+	BuiltVMs map[string]Built `json:"built_vms,omitempty"`
 	// Outputs are what composite steps already done gave, by step key.
 	Outputs map[string]map[string]any `json:"outputs,omitempty"`
 }
@@ -101,6 +104,21 @@ type VMInput struct {
 	} `json:"guest"`
 	IP    string `json:"ip,omitempty"`
 	Moref string `json:"moref,omitempty"`
+	// HostIndex spreads a component's VMs kept apart over the hosts.
+	HostIndex int `json:"host_index,omitempty"`
+}
+
+// RuleInput is a component's DRS rule: its VMs by name and moref.
+type RuleInput struct {
+	RequestID    string   `json:"request_id"`
+	ProjectID    string   `json:"project_id"`
+	Key          string   `json:"key"`
+	DeploymentID string   `json:"deployment_id"`
+	Component    string   `json:"component"`
+	Name         string   `json:"name"`
+	Cluster      string   `json:"cluster"`
+	VMs          []string `json:"vms"`
+	Morefs       []string `json:"morefs"`
 }
 
 type JobInput struct {
@@ -156,6 +174,10 @@ func (a *Activities) run(ctx context.Context, requestID, projectID, key string, 
 	}
 	u := store.StepUpdate{Status: "done"}
 	if title != "" {
+		// One of several VMs' steps keeps saying which VM it was for.
+		if _, vm, ok := strings.Cut(key, "@"); ok && !strings.Contains(title, vm) {
+			title += " · " + vm
+		}
 		u.Title = &title
 	}
 	if detail != "" {
@@ -215,8 +237,9 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 		return info, err
 	}
 	for _, s := range steps {
-		// A composite step's own steps count too (step:<key>/…).
-		top := s.ParentID == nil || strings.HasPrefix(s.Key, KeyStep)
+		// A composite step's own steps count too (step:<key>/…), and a
+		// component's (component:<key>/…).
+		top := s.ParentID == nil || strings.HasPrefix(s.Key, KeyStep) || strings.HasPrefix(s.Key, KeyComponent)
 		if top && s.Status == "done" && s.Key != KeySubmit && s.Key != KeyPolicy {
 			info.Done = append(info.Done, s.Key)
 		}
@@ -237,21 +260,28 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 		}
 		for _, res := range resources {
 			var p struct {
-				Address string `json:"address"`
-				VM      struct {
+				Address  string `json:"address"`
+				Hostname string `json:"hostname"`
+				VM       struct {
 					Moref string `json:"moref"`
 				} `json:"vm"`
 			}
 			_ = json.Unmarshal(res.Properties, &p)
 			if info.Built == nil {
-				info.Built = map[string]Built{}
+				info.Built, info.BuiltVMs = map[string]Built{}, map[string]Built{}
 			}
-			b := info.Built[res.DeploymentID]
+			b, bv := info.Built[res.DeploymentID], Built{}
 			switch res.Type {
 			case "ipam.address":
 				b.IP = p.Address
+				bv = info.BuiltVMs[p.Hostname]
+				bv.IP = p.Address
+				info.BuiltVMs[p.Hostname] = bv
 			case "vsphere.vm":
 				b.Moref = p.VM.Moref
+				bv = info.BuiltVMs[res.Name]
+				bv.Moref = p.VM.Moref
+				info.BuiltVMs[res.Name] = bv
 			}
 			info.Built[res.DeploymentID] = b
 		}
@@ -422,7 +452,7 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 }
 
 func (a *Activities) recordVM(ctx context.Context, in VMInput, vm *vsphere.VM) (store.Resource, error) {
-	props := vmprops.Build(a.VSphere.Name(), *vm, in.VM.FQDN, in.VM.Template, nil, 0)
+	props := vmprops.Build(a.VSphere.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component}, nil, 0)
 	ext := vm.InstanceUUID
 	if ext == "" {
 		ext = vm.Moref
@@ -447,6 +477,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				Network: in.VM.Network, Folder: in.VM.Folder, VCPU: in.VM.VCPU, MemoryMB: in.VM.MemoryGB * 1024,
 				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
+				HostIndex:   in.HostIndex,
 			})
 			return err
 		})
@@ -509,6 +540,29 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 			detail += " (expected " + in.IP + ")"
 		}
 		return "Powered on, guest IP " + ip, detail, nil
+	})
+}
+
+// CreateDRSRule keeps a component's VMs on separate hosts with a DRS
+// rule, recorded on the deployment so deleting it removes the rule.
+func (a *Activities) CreateDRSRule(ctx context.Context, in RuleInput) error {
+	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
+		if err := a.VSphere.SetAntiAffinityRule(ctx, in.Cluster, in.Name, in.Morefs); err != nil {
+			if errors.Is(err, vsphere.ErrNotFound) {
+				return "", "", permanent("%v", err)
+			}
+			return "", "", fmt.Errorf("vCenter: %w", err)
+		}
+		props, _ := json.Marshal(map[string]any{"rule": map[string]any{"kind": "vm_anti_affinity", "cluster": in.Cluster,
+			"vcenter": a.VSphere.Name(), "component": in.Component, "vms": in.VMs}})
+		ext := a.VSphere.Name() + "/" + in.Cluster + "/" + in.Name
+		res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.DeploymentID,
+			RequestID: &in.RequestID, Type: "vsphere.drs_rule", Name: in.Name, ExternalID: &ext, Properties: props})
+		if err != nil {
+			return "", "", err
+		}
+		a.Events.Resource(ctx, in.ProjectID, res)
+		return "Kept " + strings.Join(in.VMs, ", ") + " on separate hosts", "DRS rule " + in.Name + " in " + in.Cluster, nil
 	})
 }
 
@@ -953,13 +1007,22 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	return nil
 }
 
-// deleteResource deletes a VM, DNS record or IP reservation where it lives,
-// then its row, and says what it did ("" for PTR records). Deleting
-// something already gone is not an error.
+// deleteResource deletes a DRS rule, VM, DNS record or IP reservation
+// where it lives, then its row, and says what it did ("" for PTR records).
+// Deleting something already gone is not an error.
 func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (string, error) {
 	var err error
 	what := ""
 	switch r.Type {
+	case "vsphere.drs_rule":
+		var p struct {
+			Rule struct {
+				Cluster string `json:"cluster"`
+			} `json:"rule"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		err = a.VSphere.DeleteRule(ctx, p.Rule.Cluster, r.Name)
+		what = "removed DRS rule " + r.Name
 	case "vsphere.vm":
 		var p struct {
 			VM struct {
@@ -999,8 +1062,8 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 	return what, a.Store.DeleteResource(ctx, a.Store.Pool, r.ID)
 }
 
-// Rollback deletes what the request created: VMs, DNS records and IP
-// reservations. It is safe to run again.
+// Rollback deletes what the request created: DRS rules, VMs, DNS records
+// and IP reservations. It is safe to run again.
 func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) error {
 	if projectID == "" {
 		if r, err := a.Store.GetRequest(ctx, requestID); err == nil {
@@ -1015,8 +1078,8 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		return nil
 	}
 	var done []string
-	order := map[string]int{"vsphere.vm": 0, "dns.record": 1, "ipam.address": 2}
-	for pass := 0; pass < 3; pass++ {
+	order := map[string]int{"vsphere.drs_rule": 0, "vsphere.vm": 1, "dns.record": 2, "ipam.address": 3}
+	for pass := 0; pass < 4; pass++ {
 		for _, r := range list {
 			if order[r.Type] != pass {
 				continue

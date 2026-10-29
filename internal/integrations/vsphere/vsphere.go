@@ -43,6 +43,9 @@ type VMSpec struct {
 	Annotation string
 	// ExtraConfig is written to the VM, for example rvav.deployment.
 	ExtraConfig map[string]string
+	// HostIndex picks the cluster's eligible hosts in turn: VMs kept apart
+	// get 0, 1, 2… so they start on separate hosts (ADR-0024).
+	HostIndex int
 }
 
 // Customization is the guest identity and network applied before first boot.
@@ -116,6 +119,9 @@ type Driver interface {
 	WaitForIP(ctx context.Context, moref string) (string, error)
 	Destroy(ctx context.Context, moref string) error
 	Inventory(ctx context.Context) (*Inventory, error)
+	// DRS rules keeping VMs apart (rules.go).
+	SetAntiAffinityRule(ctx context.Context, cluster, name string, morefs []string) error
+	DeleteRule(ctx context.Context, cluster, name string) error
 
 	// Day-2 operations (day2.go).
 	ShutdownGuest(ctx context.Context, moref string) error
@@ -515,22 +521,23 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err := pc.RetrieveOne(ctx, dsRef, []string{"host"}, &ds); err != nil {
 		return nil, err
 	}
-	var host *types.ManagedObjectReference
+	var eligible []types.ManagedObjectReference
 	for _, h := range cluster.Host {
 		for _, m := range ds.Host {
-			if m.Key == h && host == nil {
+			if m.Key == h {
 				var hm mo.HostSystem
 				if err := pc.RetrieveOne(ctx, h, []string{"runtime.connectionState", "runtime.inMaintenanceMode"}, &hm); err == nil &&
 					hm.Runtime.ConnectionState == types.HostSystemConnectionStateConnected && !hm.Runtime.InMaintenanceMode {
-					hh := h
-					host = &hh
+					eligible = append(eligible, h)
 				}
+				break
 			}
 		}
 	}
-	if host == nil {
+	if len(eligible) == 0 {
 		return nil, fmt.Errorf("no connected host in %s mounts datastore %s: %w", spec.Cluster, spec.Datastore, ErrNotFound)
 	}
+	host := &eligible[spec.HostIndex%len(eligible)]
 	folder, err := ensureFolder(ctx, c, spec.Folder)
 	if err != nil {
 		return nil, err

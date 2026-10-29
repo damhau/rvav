@@ -131,7 +131,7 @@ function createDeployment(
   number: string,
   leaseDays?: number | null,
 ): DeploymentDetail | null {
-  if (vmCount(item, count) === 0 || !host) return null;
+  if (vmCount(item, count, inputs) === 0 || !host) return null;
   const production = db.environments.find((e) => e.key === environment)?.production ?? false;
   const days = leaseDays ?? (production ? null : 30);
   const dep: DeploymentDetail = {

@@ -2676,6 +2676,12 @@ export interface components {
             initial_values: {
                 [key: string]: unknown;
             };
+            /**
+             * @description The item builds one deployment however many VMs (a blueprint with
+             *     components, ADR-0024): how many of each is in the form, and the
+             *     request's `count` stays 1.
+             */
+            one_deployment?: boolean;
         };
         UiSchema: {
             layout: {

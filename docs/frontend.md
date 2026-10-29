@@ -351,7 +351,9 @@ the decommission workflow. It checks webhook hosts against
 The request form (`features/requests/RequestFormPage.tsx`) has an
 **Options** section:
 
-- **How many:** VM items only, at most 20, named one after the other.
+- **How many:** single-VM items only, at most 20, named one after the
+  other. A multi-VM item (`one_deployment` on its form) has its counts in
+  the form.
 - **Start:** as soon as approved, or at a chosen time.
 - **For someone else:** project admins only. That person owns what is
   built.
@@ -363,6 +365,24 @@ secret fields (`/me/drafts`). Drafts are listed at the top of Requests
 **Request again** on a request's page opens the form with its inputs
 (`?from=REQ-…`): fields since removed, and masked secrets, stay out. A
 draft or request from another project switches to that project first.
+
+## Multi-VM items
+
+A blueprint with components builds one deployment
+([ADR-0024](adr/0024-multi-vm-blueprints.md)).
+
+- **Request form:** the summary's **What it builds**
+  (`features/requests/ComponentsPreview.tsx`) lists each component from
+  the preview: how many VMs and their names, size, disks, placement,
+  network and next free address, tags, and **On separate hosts** for
+  anti-affinity. It replaces the single VM's name, placement and address
+  lines.
+- **Deployment page:** the VMs are grouped by component (a row heading
+  per component), the placement panel gives each cluster, datastore and
+  network once, and the DRS rules keeping VMs apart.
+- **Mocks:** the **Web application** item (`mocks/components.ts`) builds
+  web servers kept apart and a database server; its steps name their VM
+  after `@`, without the component steps the server nests them under.
 
 ## Notifications
 

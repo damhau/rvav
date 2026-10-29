@@ -1,14 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plus, Power, RefreshCw, SquareTerminal } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { Page, Panel } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Tip } from "@/components/ui/tooltip";
-import type { Day2Action, DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
+import type {
+  Day2Action,
+  DeploymentDetail,
+  DnsRecordResource,
+  DrsRuleResource,
+  IpAddressResource,
+  VmResource,
+} from "@/lib/api/types";
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
@@ -60,6 +67,7 @@ function VmTable({
       <p className="px-4 py-6 text-xs text-muted">No VMs yet. They appear here as soon as vCenter creates them.</p>
     );
   }
+  const grouped = isMulti(vms);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse">
@@ -83,83 +91,101 @@ function VmTable({
           </tr>
         </thead>
         <tbody>
-          {vms.map(({ id, name, vm }) => {
+          {vms.map(({ id, name, vm }, i) => {
             const on = vm.power_state === "on";
+            // A multi-VM deployment's VMs, by component (ADR-0024).
+            const group = grouped && vm.component !== vms[i - 1]?.vm.component ? vm.component : undefined;
             const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
             const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
             const mine = actions.filter((a) => a.resource_id === id);
             const powerBtn = powerAction(mine, on);
             return (
-              <tr key={id} className="hover:bg-sunken">
-                <td className="border-b border-line px-4 py-2.5">
-                  <span className="flex items-center gap-2">
-                    <PowerDot on={on} />
-                    <span className="flex flex-col">
-                      <span className="font-medium">{name}</span>
-                      <span className="font-mono text-[11px] text-faint">
-                        {vm.moref} ·{" "}
-                        {on ? `on · tools ${vm.guest_state === "running" ? "running" : "not running"}` : vm.power_state}
+              <Fragment key={id}>
+                {group && (
+                  <tr>
+                    <th
+                      scope="colgroup"
+                      colSpan={5}
+                      className="border-b border-line bg-sunken px-4 py-1.5 text-left text-[11px] font-medium text-muted"
+                    >
+                      {group} · {vms.filter((v) => v.vm.component === group).length} VM
+                      {vms.filter((v) => v.vm.component === group).length === 1 ? "" : "s"}
+                    </th>
+                  </tr>
+                )}
+                <tr className="hover:bg-sunken">
+                  <td className="border-b border-line px-4 py-2.5">
+                    <span className="flex items-center gap-2">
+                      <PowerDot on={on} />
+                      <span className="flex flex-col">
+                        <span className="font-medium">{name}</span>
+                        <span className="font-mono text-[11px] text-faint">
+                          {vm.moref} ·{" "}
+                          {on
+                            ? `on · tools ${vm.guest_state === "running" ? "running" : "not running"}`
+                            : vm.power_state}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                </td>
-                <td className="border-b border-line px-3 py-2.5">
-                  {ip ? <CopyText value={ip} /> : <span className="text-faint">waiting for IP</span>}
-                  {vm.fqdn && <div className="font-mono text-[11px] text-faint">{vm.fqdn}</div>}
-                </td>
-                <td className="tnum border-b border-line px-3 py-2.5">
-                  {vm.cpu_count} vCPU · {Math.round(vm.memory_mb / 1024)} GB · {disk} GB
-                </td>
-                <td className="border-b border-line px-3 py-2.5">
-                  <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-[11px] text-faint">
-                    <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
-                    <Usage label="Mem" pct={vm.usage?.memory_pct} on={on} />
-                  </div>
-                </td>
-                <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
-                  <span className="inline-flex gap-1">
-                    <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? "Power")}>
-                      <span>
-                        <Button
-                          size="icon"
-                          aria-label={`${powerBtn?.name ?? "Power"} ${name}`}
-                          disabled={!powerBtn?.enabled}
-                          onClick={() => powerBtn && onPick(powerBtn)}
-                        >
-                          <Power />
-                        </Button>
-                      </span>
-                    </Tip>
-                    {on ? (
-                      <Tip content="Console">
-                        <Button size="icon" asChild>
-                          <Link
-                            to="/deployments/$deploymentId/console/$resourceId"
-                            params={{ deploymentId, resourceId: id }}
-                            aria-label={`Open the console of ${name}`}
-                          >
-                            <SquareTerminal />
-                          </Link>
-                        </Button>
-                      </Tip>
-                    ) : (
-                      <Tip content="The VM is powered off">
+                  </td>
+                  <td className="border-b border-line px-3 py-2.5">
+                    {ip ? <CopyText value={ip} /> : <span className="text-faint">waiting for IP</span>}
+                    {vm.fqdn && <div className="font-mono text-[11px] text-faint">{vm.fqdn}</div>}
+                  </td>
+                  <td className="tnum border-b border-line px-3 py-2.5">
+                    {vm.cpu_count} vCPU · {Math.round(vm.memory_mb / 1024)} GB · {disk} GB
+                  </td>
+                  <td className="border-b border-line px-3 py-2.5">
+                    <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-[11px] text-faint">
+                      <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
+                      <Usage label="Mem" pct={vm.usage?.memory_pct} on={on} />
+                    </div>
+                  </td>
+                  <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
+                    <span className="inline-flex gap-1">
+                      <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? "Power")}>
                         <span>
-                          <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
-                            <SquareTerminal />
+                          <Button
+                            size="icon"
+                            aria-label={`${powerBtn?.name ?? "Power"} ${name}`}
+                            disabled={!powerBtn?.enabled}
+                            onClick={() => powerBtn && onPick(powerBtn)}
+                          >
+                            <Power />
                           </Button>
                         </span>
                       </Tip>
-                    )}
-                    <ActionsMenu
-                      actions={mine}
-                      label={`More actions for ${name}`}
-                      onPick={onPick}
-                      consoleLink={{ deploymentId, resourceId: id }}
-                    />
-                  </span>
-                </td>
-              </tr>
+                      {on ? (
+                        <Tip content="Console">
+                          <Button size="icon" asChild>
+                            <Link
+                              to="/deployments/$deploymentId/console/$resourceId"
+                              params={{ deploymentId, resourceId: id }}
+                              aria-label={`Open the console of ${name}`}
+                            >
+                              <SquareTerminal />
+                            </Link>
+                          </Button>
+                        </Tip>
+                      ) : (
+                        <Tip content="The VM is powered off">
+                          <span>
+                            <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
+                              <SquareTerminal />
+                            </Button>
+                          </span>
+                        </Tip>
+                      )}
+                      <ActionsMenu
+                        actions={mine}
+                        label={`More actions for ${name}`}
+                        onPick={onPick}
+                        consoleLink={{ deploymentId, resourceId: id }}
+                      />
+                    </span>
+                  </td>
+                </tr>
+              </Fragment>
             );
           })}
         </tbody>
@@ -190,25 +216,67 @@ function Network({ ips, dns }: { ips: IpAddressResource[]; dns: DnsRecordResourc
   );
 }
 
-function Placement({ vm }: { vm?: VmResource }) {
+/** A multi-VM deployment: its VMs belong to blueprint components (ADR-0024). */
+const isMulti = (vms: VmResource[]) => vms.some((v) => v.vm.component && v.vm.component !== "vm");
+
+/** The values of the VMs, each once, in order. */
+const distinct = (vms: VmResource[], of: (v: VmResource) => string | undefined) =>
+  [...new Set(vms.map(of).filter((x): x is string => Boolean(x)))].join(", ");
+
+function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[] }) {
+  const vm = vms[0];
   if (!vm) return <p className="text-xs text-muted">Placement is decided when the VM is cloned.</p>;
+  // Several VMs may be in several places: each value once, the label plural then.
+  const row = (one: string, value: string) => [value.includes(", ") ? `${one}s` : one, value];
   const rows = [
-    ["Cluster", vm.vm.cluster],
-    ["Datastore", vm.vm.disks[0]?.datastore],
+    row(
+      "Cluster",
+      distinct(vms, (v) => v.vm.cluster),
+    ),
+    row(
+      "Datastore",
+      distinct(vms, (v) => v.vm.disks[0]?.datastore),
+    ),
     ["Folder", vm.vm.folder],
-    ["Network", vm.vm.nics[0]?.network],
-    ["Template", vm.vm.template],
-    ["vCenter", vm.vm.vcenter],
+    row(
+      "Network",
+      distinct(vms, (v) => v.vm.nics[0]?.network),
+    ),
+    row(
+      "Template",
+      distinct(vms, (v) => v.vm.template),
+    ),
+    row(
+      "vCenter",
+      distinct(vms, (v) => v.vm.vcenter),
+    ),
   ].filter((r): r is [string, string] => Boolean(r[1]));
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5">
-      {rows.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-muted">{k}</dt>
-          <dd className="m-0 font-mono text-[12px] break-all">{v}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-col gap-3">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-muted">{k}</dt>
+            <dd className="m-0 font-mono text-[12px] break-all">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {rules.length > 0 && (
+        <ul className="flex flex-col gap-1.5 border-t border-line pt-3" aria-label="Kept on separate hosts">
+          {rules.map((r) => (
+            <li key={r.id} className="flex flex-col">
+              <span className="text-[13px]">
+                <span className="font-medium">{r.rule.component}</span> on separate hosts:{" "}
+                <span className="font-mono text-[12px]">{r.rule.vms.join(", ")}</span>
+              </span>
+              <span className="text-[11px] text-faint">
+                DRS rule {r.name} in {r.rule.cluster}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -318,6 +386,12 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
 
 function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
+  const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
+  if (isMulti(vms)) {
+    // By component, in the order they first appear.
+    const order = [...new Set(vms.map((v) => v.vm.component))];
+    vms.sort((a, b) => order.indexOf(a.vm.component) - order.indexOf(b.vm.component));
+  }
   const ips = d.resources.filter((r): r is IpAddressResource => r.type === "ipam.address");
   const dns = d.resources.filter((r): r is DnsRecordResource => r.type === "dns.record");
   return (
@@ -349,7 +423,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
       </div>
       <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
         <Panel title="Placement">
-          <Placement vm={vms[0]} />
+          <Placement vms={vms} rules={rules} />
         </Panel>
         <Panel title="IP addresses and DNS">
           <Network ips={ips} dns={dns} />

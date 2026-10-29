@@ -314,7 +314,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 				zone = sn.DNSZone
 			}
 		}
-		next, _, names, err := s.peekNames(ctx, spec, prefix, zone, 1)
+		next, _, names, err := s.peekNames(ctx, spec, prefix, zone, 1, nil)
 		if err != nil {
 			return out, err
 		}

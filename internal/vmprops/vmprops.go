@@ -22,9 +22,25 @@ type Usage struct {
 	SampledAt time.Time
 }
 
-// Build returns the resource properties for a VM. fqdn and template come
-// from rvav because vCenter does not always know them.
-func Build(vcenter string, vm vsphere.VM, fqdn, template string, usage *Usage, snapshots int) json.RawMessage {
+// Ours is what rvav knows of a VM that vCenter does not always: its FQDN,
+// its template and its blueprint component (ADR-0024).
+type Ours struct {
+	FQDN      string `json:"fqdn"`
+	Template  string `json:"template"`
+	Component string `json:"component"`
+}
+
+// OursOf reads them back from stored properties.
+func OursOf(props json.RawMessage) Ours {
+	var p struct {
+		VM Ours `json:"vm"`
+	}
+	_ = json.Unmarshal(props, &p)
+	return p.VM
+}
+
+// Build returns the resource properties for a VM.
+func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int) json.RawMessage {
 	p := api.VmProperties{
 		Moref:      vm.Moref,
 		Vcenter:    vcenter,
@@ -43,7 +59,7 @@ func Build(vcenter string, vm vsphere.VM, fqdn, template string, usage *Usage, s
 		return &s
 	}
 	p.GuestOs, p.Cluster, p.Host, p.Folder = set(vm.GuestOS), set(vm.Cluster), set(vm.Host), set(vm.Folder)
-	p.Fqdn, p.Template = set(fqdn), set(template)
+	p.Fqdn, p.Template, p.Component = set(ours.FQDN), set(ours.Template), set(ours.Component)
 	if len(vm.Snapshots) > snapshots {
 		snapshots = len(vm.Snapshots)
 	}

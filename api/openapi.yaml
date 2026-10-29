@@ -3788,6 +3788,12 @@ components:
           type: object
           description: Defaults, including values computed for this user and project.
           additionalProperties: true
+        one_deployment:
+          type: boolean
+          description: |
+            The item builds one deployment however many VMs (a blueprint with
+            components, ADR-0024): how many of each is in the form, and the
+            request's `count` stays 1.
 
     UiSchema:
       type: object

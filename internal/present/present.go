@@ -341,6 +341,15 @@ func Resource(r store.Resource) (api.Resource, bool) {
 			Type: "dns.record", Fqdn: p.FQDN, RecordType: api.DnsRecordResourceRecordType(strings.ToUpper(p.Type)),
 			Value: p.Value, Zone: strPtr(p.Zone)})
 		return out, err == nil
+	case "vsphere.drs_rule":
+		var v api.DrsRuleResource
+		_ = json.Unmarshal(r.Properties, &v)
+		if v.Rule.Vms == nil {
+			v.Rule.Vms = []string{}
+		}
+		v.Id, v.Name, v.SyncState, v.Type = r.ID, r.Name, api.SyncState(r.SyncState), "vsphere.drs_rule"
+		err := out.FromDrsRuleResource(v)
+		return out, err == nil
 	}
 	return out, false
 }

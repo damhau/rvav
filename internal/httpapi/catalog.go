@@ -137,6 +137,7 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 	if err := json.Unmarshal(ver.InitialValues, &out.InitialValues); err != nil || out.InitialValues == nil {
 		out.InitialValues = map[string]any{}
 	}
+	out.OneDeployment = core.OneDeployment(ver.Blueprint)
 	writeJSON(w, http.StatusOK, out)
 }
 
