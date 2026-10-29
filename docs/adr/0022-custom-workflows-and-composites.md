@@ -164,3 +164,34 @@ the resource it runs on.
 - A composite's VM steps can't depend on the outputs of earlier steps: a
   VM whose size depends on an AWX job's result isn't possible. None of the
   vRA blueprints reviewed needs it.
+
+## Follow-ups (S14, #81)
+Found by the S10 reviews.
+
+**Fixed:** a decision whose signal failed was lost, and the workflow waited
+on. Approvals record when their decision reached the workflow
+(`signalled_at`). The worker sends again, every 30 seconds, the decisions
+that haven't reached it. The helpers keep a decision by its approval ID,
+so one received twice is harmless; a workflow that has ended needs none
+(`TestApprovalSignalResent`).
+
+**Decided:**
+- **The contract binds a caller to a run rvav started that is still
+  running,** by workflow ID. Temporal runs at most one workflow with an ID
+  at a time. The window left is between the child ending and rvav
+  recording it. Binding the run ID too means recording it from the parent
+  workflow, a versioned workflow change; it can come later if needed.
+- **The Go helper waits for one approval at a time** (documented); the
+  Python helper keeps every decision. Keeping them in Go needs state per
+  workflow (an `Approvals` value the workflow creates). It is for when a
+  team needs it.
+- **A manual roll back** (`POST /requests/{id}/rollback`) deletes a
+  composite's VMs, addresses and DNS records. It doesn't run its AWX and
+  workflow steps' `undo`, which runs on the automatic roll back after a
+  failure. Undo steps may assume the state the failure left; run after the
+  fact, they may not hold. Their effects are undone by the day-2 actions or
+  workflows that own them.
+- **Approvers can't change a composite's or a workflow item's inputs:**
+  refused, and the message says to reject with what should change.
+  Allowing it means planning their VM steps again and binding the rest
+  again.

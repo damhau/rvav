@@ -37,6 +37,10 @@ func TestReports(t *testing.T) {
 		// its levels was approved in an hour, another waits.
 		exec(`update requests set started_at = submitted_at, finished_at = submitted_at + interval '300 seconds' where id = $1`, ok.built.Id)
 		exec(`update requests set status = 'failed' where id = $1`, bad.built.Id)
+		// Its lease ends in 10 days, well inside the report's 30: a lease of
+		// exactly 30 days sits on the edge, and a clock stepping back a
+		// moment (WSL2) left it out.
+		exec(`update deployments set lease_expires_at = now() + interval '10 days' where id = $1`, ok.id)
 		exec(`insert into approvals (id, request_id, seq, name, status, opened_at, decided_at, outcome) values
 			('apr_r1', $1, 1, 'Project admins', 'approved', now() - interval '2 hours', now() - interval '1 hour', 'Approved by Marc Keller'),
 			('apr_r2', $1, 2, 'Infrastructure leads', 'pending', now() - interval '30 minutes', null, null)`, bad.built.Id)

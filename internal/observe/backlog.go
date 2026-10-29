@@ -49,7 +49,7 @@ func (b Backlog) Collect(ch chan<- prometheus.Metric) {
 	gauge(approvals, pending, "false")
 	gauge(approvals, overdue, "true")
 	for name, sql := range map[string]string{
-		"events":        `select count(*), coalesce(extract(epoch from now() - min(created_at)), 0) from integration_events where dispatched_at is null`,
+		"events":        `select count(*), coalesce(extract(epoch from now() - min(created_at)), 0) from integration_events where dispatched_at is null and not held`,
 		"subscriptions": `select count(*), coalesce(extract(epoch from now() - min(next_attempt_at)), 0) from subscription_runs where status = 'queued' and next_attempt_at <= now()`,
 		"notifications": `select count(*), coalesce(extract(epoch from now() - min(next_attempt_at)), 0) from notification_deliveries where status = 'queued' and next_attempt_at <= now()`,
 	} {

@@ -74,7 +74,18 @@ func ForRequest(ctx context.Context, db store.DB, topic, requestID, dedupe, outc
 	if outcome != "" {
 		data["request"].(map[string]any)["outcome"] = outcome
 	}
-	return insert(ctx, db, topic, &requestID, deploymentID, dedupe, data)
+	return insert(ctx, db, topic, &requestID, deploymentID, dedupe, data, false)
+}
+
+// Submitted writes a request's request.submitted event, held until its
+// workflow has started (store.ReleaseRequestEvents): a request Temporal
+// refuses is removed, and subscribers never hear of it (#81).
+func Submitted(ctx context.Context, db store.DB, requestID string) error {
+	data, deploymentID, err := requestData(ctx, db, requestID)
+	if err != nil {
+		return err
+	}
+	return insert(ctx, db, RequestSubmitted, &requestID, deploymentID, requestID+":"+RequestSubmitted, data, true)
 }
 
 // ForDeployment writes the topic's event about a deployment without a
@@ -84,17 +95,17 @@ func ForDeployment(ctx context.Context, db store.DB, topic, deploymentID, dedupe
 	if err != nil {
 		return err
 	}
-	return insert(ctx, db, topic, nil, &deploymentID, dedupe, data)
+	return insert(ctx, db, topic, nil, &deploymentID, dedupe, data, false)
 }
 
-func insert(ctx context.Context, db store.DB, topic string, requestID, deploymentID *string, dedupe string, data map[string]any) error {
+func insert(ctx context.Context, db store.DB, topic string, requestID, deploymentID *string, dedupe string, data map[string]any, held bool) error {
 	ev := Event{ID: ids.New(ids.Event), Topic: topic, Contract: Contract, OccurredAt: time.Now().UTC(), Data: data}
 	b, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(ctx, `insert into integration_events (id, topic, request_id, deployment_id, dedupe_key, payload)
-		values ($1, $2, $3, $4, $5, $6) on conflict (dedupe_key) do nothing`, ev.ID, topic, requestID, deploymentID, dedupe, b)
+	_, err = db.Exec(ctx, `insert into integration_events (id, topic, request_id, deployment_id, dedupe_key, payload, held)
+		values ($1, $2, $3, $4, $5, $6, $7) on conflict (dedupe_key) do nothing`, ev.ID, topic, requestID, deploymentID, dedupe, b, held)
 	return err
 }
 

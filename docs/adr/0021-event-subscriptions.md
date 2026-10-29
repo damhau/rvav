@@ -149,3 +149,32 @@ action or deletes. Each answers one of:
   the timeline shows which one stopped a request.
 - `v1` of the event is a contract: changing it means `v2`, sent alongside
   `v1` for a deprecation period, chosen per subscription.
+
+## Follow-ups (S14, #81)
+Found by the S10 reviews.
+
+**Fixed:** `request.submitted` could reach subscribers for a request that
+never started. It is written held, in the request's transaction, and let
+go once Temporal has started the workflow. A request whose start Temporal
+refuses is removed with its events; cancelling a request whose workflow
+never started drops them. The dispatcher skips held events
+(`TestHeldEvents`).
+
+**Decided:**
+- **The cut-off "events after the subscription exists" is approximate.**
+  It compares the event's time with the subscription's, both taken when
+  their transaction starts, so an event committed within a moment of the
+  subscription can go either way. A sequence number would be no better:
+  it is also taken before the commit. Receivers are idempotent by event ID
+  in any case.
+- **Conditions are evaluated on the event as published.** The properties
+  that earlier checks set reach later checks' payloads, but not their
+  conditions. A check whose relevance depends on another's result tests
+  that property in its own receiver, and passes when not concerned.
+  Evaluating conditions after earlier checks would list every blocking
+  subscription of the topic on every request.
+- **A webhook's signing secret can be any stored secret.** An allowed
+  receiver gets an HMAC of a known body under it, and could attack a weak
+  secret offline. Give each webhook its own strong secret. This adds little
+  to what REST value sources already do (they send secrets to allowed
+  hosts); a webhook-only kind of secret can come later.

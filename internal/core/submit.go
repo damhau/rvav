@@ -153,7 +153,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				return err
 			}
 		}
-		return outbox.ForRequest(ctx, tx, outbox.RequestSubmitted, req.ID, req.ID+":"+outbox.RequestSubmitted, "")
+		return outbox.Submitted(ctx, tx, req.ID)
 	})
 	if err != nil {
 		return store.RequestRow{}, err
@@ -167,6 +167,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			s.Log.Error("remove unstarted request", "request", req.Number, "err", derr)
 		}
 		return store.RequestRow{}, &UpstreamError{System: "Temporal", Err: err}
+	}
+	if err := s.Store.ReleaseRequestEvents(ctx, req.ID); err != nil {
+		s.Log.Error("release the request's events", "request", req.Number, "err", err)
 	}
 	// Approvers hear about it when the workflow opens their level.
 	s.publishRequest(ctx, req.ID)
@@ -255,6 +258,10 @@ func (s *Service) Cancel(ctx context.Context, p *auth.Principal, idOrNumber stri
 				return err
 			}
 			if err := s.Store.CancelApprovals(ctx, tx, r.ID); err != nil {
+				return err
+			}
+			// Its workflow never started: subscribers never heard of it.
+			if err := s.Store.DropHeldEvents(ctx, tx, r.ID); err != nil {
 				return err
 			}
 			return s.Store.SetDeploymentsStatusForRequest(ctx, tx, r.ID, "deleted")

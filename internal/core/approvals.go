@@ -329,9 +329,12 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	}
 	if decided && l.lv.WorkflowID != nil {
 		// An approval a custom workflow asked for (ADR-0022) goes to it.
+		// One that fails is sent again by the worker (ResendApprovalSignals).
 		if err := s.Workflows.Signal(ctx, *l.lv.WorkflowID, provision.SignalWorkflowApproval,
 			provision.WorkflowApprovalSignal{ApprovalID: id, Outcome: status, Comment: comment}); err != nil {
 			s.Log.Warn("signal workflow approval", "request", l.req.Number, "approval", id, "err", err)
+		} else if err := s.Store.MarkApprovalSignalled(ctx, id); err != nil {
+			s.Log.Warn("mark approval signalled", "approval", id, "err", err)
 		}
 	} else if decided {
 		// If the signal is lost, the workflow still finds the decision when it
@@ -780,4 +783,28 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// ResendApprovalSignals sends again the decisions of approvals custom
+// workflows asked for whose signal failed (#81); the helpers keep a
+// decision by its approval ID, so one received twice is harmless. It
+// returns how many reached their workflow.
+func (s *Service) ResendApprovalSignals(ctx context.Context) (int, error) {
+	list, err := s.Store.UnsignalledApprovals(ctx, time.Now().Add(-10*time.Second))
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, a := range list {
+		if err := s.Workflows.Signal(ctx, a.WorkflowID, provision.SignalWorkflowApproval,
+			provision.WorkflowApprovalSignal{ApprovalID: a.ID, Outcome: a.Status, Comment: a.Comment}); err != nil {
+			s.Log.Warn("signal workflow approval again", "approval", a.ID, "err", err)
+			continue
+		}
+		if err := s.Store.MarkApprovalSignalled(ctx, a.ID); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }

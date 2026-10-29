@@ -44,8 +44,14 @@ func (t *Temporal) Approval(ctx context.Context, requestID, approvalID, outcome 
 // Rollback starts the rollback of a failed request, under the request's
 // workflow ID (its earlier run has ended).
 // Signal sends a signal to any workflow by its ID.
+// Signal sends a signal; a workflow that has ended needs it no more.
 func (t *Temporal) Signal(ctx context.Context, workflowID, name string, arg any) error {
-	return t.Client.SignalWorkflow(ctx, workflowID, "", name, arg)
+	err := t.Client.SignalWorkflow(ctx, workflowID, "", name, arg)
+	var nf *serviceerror.NotFound
+	if errors.As(err, &nf) {
+		return nil
+	}
+	return err
 }
 
 func (t *Temporal) Rollback(ctx context.Context, requestID string) error {

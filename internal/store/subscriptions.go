@@ -121,8 +121,22 @@ type IntegrationEvent struct {
 // UndispatchedEvents locks the oldest events no run was made for yet.
 func (s *Store) UndispatchedEvents(ctx context.Context, tx pgx.Tx, limit int) ([]IntegrationEvent, error) {
 	rows, _ := tx.Query(ctx, `select id, seq, topic, request_id, payload, created_at from integration_events
-		where dispatched_at is null order by seq limit $1 for update skip locked`, limit)
+		where dispatched_at is null and not held order by seq limit $1 for update skip locked`, limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IntegrationEvent])
+}
+
+// ReleaseRequestEvents lets a request's held events go out, once its
+// workflow has started (#81).
+func (s *Store) ReleaseRequestEvents(ctx context.Context, requestID string) error {
+	_, err := s.Pool.Exec(ctx, `update integration_events set held = false where request_id = $1 and held`, requestID)
+	return err
+}
+
+// DropHeldEvents deletes a request's events that never went out because
+// its workflow never started: cancelled, it never was.
+func (s *Store) DropHeldEvents(ctx context.Context, db DB, requestID string) error {
+	_, err := db.Exec(ctx, `delete from integration_events where request_id = $1 and held`, requestID)
+	return err
 }
 
 // InsertEvent stores an event made up for a test run.

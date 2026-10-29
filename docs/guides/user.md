@@ -53,7 +53,8 @@ in the app and on your chosen channels.
 - **Failed:** the error names the step and the system.
   - **Retry from the failed step** once the cause is fixed: done steps
     aren't repeated.
-  - **Roll back:** removes what was made.
+  - **Roll back:** removes the VMs, addresses and DNS records it made. A
+    composite's AWX and workflow steps aren't undone by it.
 - **Request again:** a new request with the same answers.
 
 ## Your deployments

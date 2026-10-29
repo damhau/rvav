@@ -357,7 +357,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if err := s.Store.InsertApprovals(ctx, tx, chainRows(req.ID, dec.Chain)); err != nil {
 			return err
 		}
-		if err := outbox.ForRequest(ctx, tx, outbox.RequestSubmitted, req.ID, req.ID+":"+outbox.RequestSubmitted, ""); err != nil {
+		if err := outbox.Submitted(ctx, tx, req.ID); err != nil {
 			return err
 		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "action.run", TargetType: "deployment",
@@ -373,6 +373,9 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			s.Log.Error("remove unstarted request", "request", req.Number, "err", derr)
 		}
 		return store.RequestRow{}, &UpstreamError{System: "Temporal", Err: err}
+	}
+	if err := s.Store.ReleaseRequestEvents(ctx, req.ID); err != nil {
+		s.Log.Error("release the request's events", "request", req.Number, "err", err)
 	}
 	s.publishRequest(ctx, req.ID)
 	return s.Store.GetRequest(ctx, req.ID)

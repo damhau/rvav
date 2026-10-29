@@ -410,7 +410,8 @@ func (a *App) RunWorker(ctx context.Context) error {
 		return err
 	}
 	// Retention and lease policies start requests of their own.
-	acts.Housekeeper = a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
+	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
+	acts.Housekeeper = svc
 	w := provision.NewWorker(tc, a.Cfg.Temporal.TaskQueue, acts)
 	if err := w.Start(); err != nil {
 		return err
@@ -423,6 +424,21 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// channels (ADR-0023): every worker replica takes part.
 	go a.Dispatcher().Run(ctx)
 	go a.Notifier().Run(ctx)
+	// Custom workflows' approval decisions whose signal failed (#81).
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if _, err := svc.ResendApprovalSignals(ctx); err != nil {
+					a.Log.Warn("resend approval signals", "err", err)
+				}
+			}
+		}
+	}()
 	<-ctx.Done()
 	w.Stop()
 	return nil

@@ -342,3 +342,28 @@ func (s *Store) IsRequestApprover(ctx context.Context, requestID, userID string,
 		requestID, userID, nonNil(groups)).Scan(&ok)
 	return ok, err
 }
+
+// UnsignalledApproval is a decided approval a custom workflow asked for
+// whose decision hasn't reached it yet (#81).
+type UnsignalledApproval struct {
+	ID         string `db:"id"`
+	RequestID  string `db:"request_id"`
+	WorkflowID string `db:"workflow_id"`
+	Status     string `db:"status"`
+	Comment    string `db:"comment"`
+}
+
+// UnsignalledApprovals lists them, decided before a moment.
+func (s *Store) UnsignalledApprovals(ctx context.Context, before time.Time) ([]UnsignalledApproval, error) {
+	rows, _ := s.Pool.Query(ctx, `select a.id, a.request_id, a.workflow_id, a.status,
+		coalesce((select v.comment from approval_votes v where v.approval_id = a.id order by v.decided_at desc limit 1), '') as comment
+		from approvals a where a.workflow_id is not null and a.status in ('approved', 'rejected') and a.signalled_at is null
+		and a.decided_at < $1 order by a.decided_at limit 100`, before)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[UnsignalledApproval])
+}
+
+// MarkApprovalSignalled records that a decision reached its workflow.
+func (s *Store) MarkApprovalSignalled(ctx context.Context, id string) error {
+	_, err := s.Pool.Exec(ctx, `update approvals set signalled_at = now() where id = $1 and signalled_at is null`, id)
+	return err
+}
