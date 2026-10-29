@@ -135,11 +135,11 @@ func (f *Fake) jobLocked(j *fakeJob) Job {
 	job := Job{ID: j.id, Status: "running", URL: fmt.Sprintf("https://awx.corp.example/#/jobs/playbook/%d/output", j.id)}
 	switch {
 	case j.canceled:
-		job.Status, job.Finished = "canceled", true
+		job.Status, job.Finished, job.EventsDone = "canceled", true, true
 	case failedAt >= 0:
-		job.Status, job.Failed, job.Finished = "failed", true, true
+		job.Status, job.Failed, job.Finished, job.EventsDone = "failed", true, true, true
 	case done >= len(j.tasks):
-		job.Status, job.Finished = "successful", true
+		job.Status, job.Finished, job.EventsDone = "successful", true, true
 	}
 	return job
 }

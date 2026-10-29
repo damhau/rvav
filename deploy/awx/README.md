@@ -68,13 +68,48 @@ RVAV_AWX_TEST_URL=http://awx.example:8052 RVAV_AWX_TEST_TOKEN=... \
   go test -run TestContract ./internal/integrations/awx/
 ```
 
-They set the content up first (a machine credential without a secret
-included, for a launch with chosen credentials). They are not part of
-`make check` or CI, which have no AWX. Last run against AWX 24.6.1 (2026-10-27): all passing,
-launches on another inventory and the inventory and credential lists
-included.
+They set the content up first, including a machine credential without a
+secret, for a launch with chosen credentials.
+
+### In CI
+
+`.github/workflows/awx.yml` runs them against a fresh AWX 24.6.1, the
+version rvav is accepted on. It runs on changes to the AWX client or this
+content, weekly, and by hand. AWX starts in a kind cluster with
+awx-operator 2.19.1 ([ci/](ci/)), in about ten minutes, too long for every
+push. Locally:
+
+```sh
+deploy/awx/ci/up.sh > /tmp/awx.env      # RVAV_AWX_TEST_URL and _TOKEN
+set -a; . /tmp/awx.env; set +a
+go test -run TestContract -v ./internal/integrations/awx/
+deploy/awx/ci/up.sh down
+```
+
+The cluster's kubeconfig is its own file; `~/.kube/config` isn't touched.
+Last run (2026-10-29): all passing on a fresh AWX 24.6.1, locally and in
+CI.
 
 ## What they found
+- **On a fresh AWX (S14.9),** three things the long-lived test AWX had
+  hidden:
+  - **Survey defaults:** a launch through the API must answer every
+    required survey question; AWX doesn't apply the defaults. rvav's forms
+    send every answer, but a question added in AWX after rvav made its form
+    failed the launch. The client now fills what AWX lists as still needed
+    from the survey's defaults.
+  - **Null variables:** `extra_vars: null` is refused (workflow templates).
+    The client no longer sends it.
+  - **Events after the job ends:** a job's last events can be saved
+    after the job has finished. rvav stopped reading at the first empty
+    page, so a step's log could end early and miss a failed task's
+    message. It now reads until AWX says it has saved them all
+    (`event_processing_finished`), for playbook jobs and a workflow's
+    nodes.
+  - **Setting it up:** awx-operator 2.19.1's `kube-rbac-proxy` image is
+    gone from gcr.io; the upstream project's is used. A project sync
+    answers 500 until a task instance has registered, so `up.sh` waits for
+    one.
 - AWX filters job templates on labels (`labels__name__in`) but refuses to
   for workflow job templates; rvav filters those itself.
 - A survey question needs a default; AWX's "no default" is `""`.

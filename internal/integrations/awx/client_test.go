@@ -13,7 +13,7 @@ import (
 
 // TestLaunchPrompts: a launch on some hosts or on another inventory checks
 // the template prompts for them first, and a job whose limit or inventory
-// AWX ignored anyway is cancelled.
+// AWX ignored anyway is cancelled; survey defaults fill what AWX needs.
 func TestLaunchPrompts(t *testing.T) {
 	var launched map[string]any
 	var cancelled []string
@@ -23,6 +23,7 @@ func TestLaunchPrompts(t *testing.T) {
 		"9":  `{"ask_limit_on_launch": false, "ask_inventory_on_launch": true}`,
 		"10": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true}`,
 		"11": `{"ask_limit_on_launch": true, "ask_inventory_on_launch": true, "ask_credential_on_launch": false}`,
+		"12": `{"variables_needed_to_start": ["agent", "port", "given"]}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -38,6 +39,10 @@ func TestLaunchPrompts(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"id": 41, "job": 41, "status": "pending"}`))
+		case r.Method == "GET" && len(parts) == 5 && parts[4] == "survey_spec":
+			_, _ = w.Write([]byte(`{"spec": [{"variable": "agent", "default": "node_exporter", "required": true},
+				{"variable": "port", "type": "integer", "default": 9100, "required": true},
+				{"variable": "given", "default": "x", "required": true}, {"variable": "other", "default": "y"}]}`))
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/cancel/"):
 			cancelled = append(cancelled, r.URL.Path)
 			w.WriteHeader(http.StatusAccepted)
@@ -77,6 +82,20 @@ func TestLaunchPrompts(t *testing.T) {
 		if _, err := c.Launch(ctx, id, false, req); !errors.Is(err, want) || launched != nil {
 			t.Fatalf("template %d = %v (launched %v)", id, err, launched)
 		}
+	}
+	// Required survey questions not answered get their defaults (AWX
+	// doesn't apply them through its API); extra variables are never null.
+	launched = nil
+	if _, err := c.Launch(ctx, 12, false, LaunchRequest{ExtraVars: map[string]any{"given": "mine"}}); err != nil ||
+		fmt.Sprint(launched["extra_vars"]) != "map[agent:node_exporter given:mine port:9100]" {
+		t.Fatalf("launched with %v, %v", launched["extra_vars"], err)
+	}
+	launched = nil
+	if _, err := c.Launch(ctx, 7, false, LaunchRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, sent := launched["extra_vars"]; sent {
+		t.Fatalf("no variables sent as %v", launched["extra_vars"])
 	}
 	if _, err := c.Launch(ctx, 10, false, req); !errors.Is(err, ErrPromptIgnored) || len(cancelled) != 1 || !strings.HasSuffix(cancelled[0], "/jobs/42/cancel/") {
 		t.Fatalf("limit ignored = %v (cancelled %v)", err, cancelled)

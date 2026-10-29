@@ -56,7 +56,9 @@ func wait(t *testing.T, ctx context.Context, c *HTTPClient, id int, workflow boo
 	return Job{}
 }
 
-func finished(j Job) bool { return j.Finished }
+// finished: the job ended and AWX has saved all its events, as rvav waits
+// for before reading the last of them.
+func finished(j Job) bool { return j.Finished && j.EventsDone }
 
 func launch(t *testing.T, ctx context.Context, c *HTTPClient, name string, workflow bool, req LaunchRequest) Job {
 	t.Helper()
@@ -254,6 +256,8 @@ func TestContractWorkflow(t *testing.T) {
 			t.Fatalf("node %d = %+v", i, n)
 		}
 	}
+	// A node's job's events, once AWX has saved them (as rvav waits).
+	wait(t, ctx, c, nodes[1].JobID, false, finished)
 	if evs, err := c.Events(ctx, nodes[1].JobID, 0); err != nil || len(evs) == 0 {
 		t.Fatalf("events of a node's job = %d, %v", len(evs), err)
 	}

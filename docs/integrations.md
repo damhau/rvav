@@ -270,6 +270,29 @@ type Client interface {
   win (ADR-0015).
 - VM names are checked free in DNS and IPAM as well as in vCenter.
 
+### Contract tests
+`TestContract` (`internal/integrations/efficientip/contract_test.go`)
+checks what rvav relies on SOLIDserver for. It reserves an address under
+a name, again for the same owner and not for another; creates A and PTR
+records once; finds rvav's objects (tagged, by ID, by address); renames;
+deletes and releases twice.
+
+It runs against the fake in every build. Against a real SOLIDserver it
+runs when these are set, so the same assertions hold on both:
+
+```sh
+RVAV_EFFICIENTIP_TEST_URL=https://ipam.lab.example RVAV_EFFICIENTIP_TEST_USERNAME=... \
+RVAV_EFFICIENTIP_TEST_PASSWORD=... RVAV_EFFICIENTIP_TEST_DNS_SERVER=ns1.lab.example \
+RVAV_EFFICIENTIP_TEST_SUBNET=10.99.0.0/24 RVAV_EFFICIENTIP_TEST_ZONE=lab.example \
+RVAV_EFFICIENTIP_TEST_REVERSE_ZONE=0.99.10.in-addr.arpa \
+  go test -run TestContract -v ./internal/integrations/efficientip/
+```
+
+- **The subnet and zones:** use a test subnet and zones; the test cleans up
+  after itself. Its objects carry `rvav_instance=rvav-contract`.
+- **When to run it:** in the lab before 1.0, on each SOLIDserver upgrade,
+  and when the fake changes.
+
 ### Onboarding lookups
 Adopting existing VMs ([ADR-0026](adr/0026-onboarding.md)) only reads
 EfficientIP:

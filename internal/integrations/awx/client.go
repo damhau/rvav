@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -144,11 +145,12 @@ func (c *HTTPClient) LookupJobTemplate(ctx context.Context, name string, workflo
 }
 
 type jobJSON struct {
-	ID       int    `json:"id"`
-	Job      int    `json:"job"`
-	Workflow int    `json:"workflow_job"`
-	Status   string `json:"status"`
-	Failed   bool   `json:"failed"`
+	ID         int    `json:"id"`
+	Job        int    `json:"job"`
+	Workflow   int    `json:"workflow_job"`
+	Status     string `json:"status"`
+	Failed     bool   `json:"failed"`
+	EventsDone *bool  `json:"event_processing_finished"`
 }
 
 func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
@@ -166,7 +168,9 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 	u := *c.base
 	u.Path = strings.TrimSuffix(u.Path, "/") + "/"
 	u.Fragment = fmt.Sprintf("/jobs/%s/%d/output", kind, id)
-	return Job{ID: id, Status: j.Status, Failed: j.Failed, Finished: Done(j.Status), URL: u.String()}
+	// Workflow jobs have no events; an AWX without the field, as finished.
+	eventsDone := workflow || (j.EventsDone == nil && Done(j.Status)) || (j.EventsDone != nil && *j.EventsDone)
+	return Job{ID: id, Status: j.Status, Failed: j.Failed, Finished: Done(j.Status), EventsDone: eventsDone, URL: u.String()}
 }
 
 // Launch starts a job. A limit or an inventory are checked first to be
@@ -177,16 +181,41 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 // Variables not prompted for are dropped by AWX, except survey answers.
 func (c *HTTPClient) Launch(ctx context.Context, templateID int, workflow bool, req LaunchRequest) (Job, error) {
 	tpl, _ := kindPath(workflow)
-	body := map[string]any{"extra_vars": req.ExtraVars}
-	if req.Limit != "" || req.Inventory != 0 || len(req.Credentials) > 0 {
-		var prompts struct {
-			AskLimit      bool `json:"ask_limit_on_launch"`
-			AskInventory  bool `json:"ask_inventory_on_launch"`
-			AskCredential bool `json:"ask_credential_on_launch"`
-		}
-		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, nil, &prompts); err != nil {
+	var prompts struct {
+		AskLimit      bool     `json:"ask_limit_on_launch"`
+		AskInventory  bool     `json:"ask_inventory_on_launch"`
+		AskCredential bool     `json:"ask_credential_on_launch"`
+		Needed        []string `json:"variables_needed_to_start"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/%d/launch/", tpl, templateID), nil, nil, &prompts); err != nil {
+		return Job{}, err
+	}
+	// Required survey questions not answered get their defaults: AWX
+	// doesn't apply them to a launch through its API (24.6.1 as installed;
+	// found by the contract tests on a fresh AWX, S14.9). A question added
+	// in AWX after rvav made its form then doesn't fail the launch.
+	extra := req.ExtraVars
+	if missing := slices.DeleteFunc(slices.Clone(prompts.Needed), func(v string) bool { _, ok := req.ExtraVars[v]; return ok }); len(missing) > 0 {
+		questions, err := c.Survey(ctx, templateID, workflow)
+		if err != nil {
 			return Job{}, err
 		}
+		extra = maps.Clone(req.ExtraVars)
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		for _, q := range questions {
+			if slices.Contains(missing, q.Variable) && q.Default != nil && q.Default != "" {
+				extra[q.Variable] = q.Default
+			}
+		}
+	}
+	body := map[string]any{}
+	// Never null: AWX refuses it (workflow templates, 24.6.1).
+	if extra != nil {
+		body["extra_vars"] = extra
+	}
+	if req.Limit != "" || req.Inventory != 0 || len(req.Credentials) > 0 {
 		if req.Limit != "" && !prompts.AskLimit {
 			return Job{}, fmt.Errorf("awx template %d: %w", templateID, ErrNoLimitPrompt)
 		}

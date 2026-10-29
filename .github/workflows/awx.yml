@@ -1,0 +1,53 @@
+# The AWX contract tests (S14.9) against AWX 24.6.1, the version rvav is
+# accepted on, in a kind cluster (deploy/awx/ci): on changes to the AWX
+# client or rvav's AWX content, weekly (an AWX image rebuilt under the same
+# tag, GitHub's runners), and by hand. AWX takes about ten minutes to start,
+# too long for every push.
+name: AWX
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - internal/integrations/awx/**
+      - internal/awxcatalog/**
+      - deploy/awx/**
+      - .github/workflows/awx.yml
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: awx-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Contract tests on AWX 24.6.1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AWX_KUBECONFIG: ${{ github.workspace }}/../rvav-awx.kubeconfig
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: kind
+        run: |
+          go install sigs.k8s.io/kind@v0.33.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: AWX in kind
+        run: deploy/awx/ci/up.sh >> "$GITHUB_ENV"
+      - name: Contract tests
+        run: go test -run TestContract -count=1 -v ./internal/integrations/awx/
+      - name: AWX's logs
+        if: failure()
+        run: |
+          export KUBECONFIG=$AWX_KUBECONFIG
+          kubectl -n awx get pods -o wide || true
+          kubectl -n awx logs deployment/awx-web --all-containers --tail 200 || true
+          kubectl -n awx logs deployment/awx-task --all-containers --tail 200 || true

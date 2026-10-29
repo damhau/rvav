@@ -48,7 +48,11 @@ type Job struct {
 	Status   string // pending, waiting, running, successful, failed, error, canceled
 	Failed   bool
 	Finished bool
-	URL      string
+	// EventsDone: AWX has saved all of a finished job's events
+	// (event_processing_finished), which can come after the job ends.
+	// Always true for workflow jobs, which have no events.
+	EventsDone bool
+	URL        string
 }
 
 // Event is one AWX job event, in counter order.

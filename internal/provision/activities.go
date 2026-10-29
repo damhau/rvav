@@ -1103,7 +1103,9 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		if err != nil {
 			return fmt.Errorf("AWX: %w", err)
 		}
-		if job.Finished && len(evs) == 0 {
+		// Done when AWX has saved all its events and none were left to read:
+		// its last events can be saved after the job ends (S14.9).
+		if job.Finished && job.EventsDone && len(evs) == 0 {
 			if job.Status == "successful" {
 				return nil
 			}
@@ -1136,6 +1138,7 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 			return fmt.Errorf("AWX: %w", err)
 		}
 		failedMsg := ""
+		waiting := false // a node's job whose events AWX is still saving
 		for _, n := range nodes {
 			status := "pending"
 			var errText *string
@@ -1155,6 +1158,12 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 			// Only playbook runs have events; an inventory sync or an
 			// approval node only has its status.
 			if n.JobID == 0 || !awx.Done(n.Status) || slices.Contains(logged, n.JobID) || n.Kind != "" && n.Kind != "job" {
+				continue
+			}
+			if j, err := a.AWX.GetJob(ctx, n.JobID, false); err != nil {
+				return fmt.Errorf("AWX: %w", err)
+			} else if !j.EventsDone {
+				waiting = true
 				continue
 			}
 			evs, err := a.AWX.Events(ctx, n.JobID, 0)
@@ -1180,21 +1189,24 @@ func (a *Activities) followWorkflow(ctx context.Context, in JobInput, stepID str
 		activity.RecordHeartbeat(ctx, logged)
 
 		if job := finished; job != nil {
-			if job.Status == "successful" {
-				return nil
+			if !waiting {
+				if job.Status == "successful" {
+					return nil
+				}
+				if failedMsg == "" {
+					failedMsg = fmt.Sprintf("AWX workflow job %d ended %s", jobID, job.Status)
+				}
+				return temporal.NewNonRetryableApplicationError(failedMsg, "AWXJobFailed", nil)
 			}
-			if failedMsg == "" {
-				failedMsg = fmt.Sprintf("AWX workflow job %d ended %s", jobID, job.Status)
+		} else {
+			job, err := a.AWX.GetJob(ctx, jobID, true)
+			if err != nil {
+				return fmt.Errorf("AWX: %w", err)
 			}
-			return temporal.NewNonRetryableApplicationError(failedMsg, "AWXJobFailed", nil)
-		}
-		job, err := a.AWX.GetJob(ctx, jobID, true)
-		if err != nil {
-			return fmt.Errorf("AWX: %w", err)
-		}
-		if job.Finished {
-			finished = &job
-			continue
+			if job.Finished {
+				finished = &job
+				continue
+			}
 		}
 		if err := vsphere.Sleep(ctx, a.poll()); err != nil {
 			_ = a.AWX.Cancel(context.Background(), jobID, true)
