@@ -23,6 +23,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
 )
@@ -55,6 +56,9 @@ type Activities struct {
 	TaskQueue string
 	// Now is the housekeeping clock (time.Now when nil); tests move it on.
 	Now func() time.Time
+	// Secrets opens the secrets a guest names: a domain join's account, a
+	// local administrator's password (ADR-0024).
+	Secrets *secrets.Box
 }
 
 // Info is what the workflow loads first.
@@ -98,13 +102,10 @@ type VMInput struct {
 	ProjectID string `json:"project_id"`
 	Key       string `json:"key"`
 	VM        VMUnit `json:"vm"`
-	Guest     struct {
-		OSFamily string `json:"os_family"`
-		Domain   string `json:"domain"`
-		TimeZone string `json:"time_zone"`
-	} `json:"guest"`
-	IP    string `json:"ip,omitempty"`
-	Moref string `json:"moref,omitempty"`
+	// Guest is the VM's: its secrets by name only, read when customizing.
+	Guest blueprint.Guest `json:"guest"`
+	IP    string          `json:"ip,omitempty"`
+	Moref string          `json:"moref,omitempty"`
 	// HostIndex spreads a component's VMs kept apart over the hosts.
 	HostIndex int `json:"host_index,omitempty"`
 }
@@ -575,27 +576,130 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 
 func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		cu := vsphere.Customization{
-			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
-			IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
-		}
+		var extra []vsphere.NICSetting
 		for _, n := range in.VM.NICs {
 			if n.IPAM != blueprint.IPAMEfficientIP {
-				cu.Extra = append(cu.Extra, vsphere.NICSetting{DHCP: true})
+				extra = append(extra, vsphere.NICSetting{DHCP: true})
 				continue
 			}
 			ip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
 			if ip == "" {
 				return "", "", fmt.Errorf("no address reserved for %s's adapter %s", in.VM.Name, n.Key)
 			}
-			cu.Extra = append(cu.Extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
+			extra = append(extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
+		}
+		if in.Guest.CloudInit != nil && in.Guest.OSFamily != "windows" {
+			return a.cloudInit(ctx, in, extra)
+		}
+		cu := vsphere.Customization{
+			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
+			IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
+			Spec: in.Guest.CustomizationSpec, Extra: extra,
+		}
+		detail := fmt.Sprintf("Hostname %s, static IP %s/%d", in.VM.Name, in.IP, in.VM.PrefixLength)
+		if in.Guest.OSFamily == "windows" {
+			if name := in.Guest.AdminPassword; name != "" {
+				_, pw, err := a.secret(ctx, name)
+				if err != nil {
+					return "", "", err
+				}
+				cu.AdminPassword = pw
+			}
+			if j := in.Guest.DomainJoin; j != nil {
+				user, pw, err := a.secret(ctx, j.Credential)
+				if err != nil {
+					return "", "", err
+				}
+				cu.JoinDomain, cu.DomainOU, cu.DomainUser, cu.DomainPassword = j.Domain, j.OU, user, pw
+				detail += ", joins " + j.Domain
+				if j.OU != "" {
+					detail += " in " + j.OU
+				}
+			}
+		}
+		if cu.Spec != "" {
+			detail += ", from specification " + cu.Spec
 		}
 		err := a.VSphere.Customize(ctx, in.Moref, cu)
+		if errors.Is(err, vsphere.ErrNotFound) {
+			return "", "", permanent("vCenter: %v. Ask a catalog admin to check this item.", err)
+		}
 		if err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
-		return "Applied guest customization", fmt.Sprintf("Hostname %s, static IP %s/%d", in.VM.Name, in.IP, in.VM.PrefixLength), nil
+		return "Applied guest customization", detail, nil
 	})
+}
+
+// secret opens a stored secret: its user name and value. The value never
+// goes into a step, a log or an error.
+func (a *Activities) secret(ctx context.Context, name string) (username, value string, err error) {
+	if a.Secrets == nil {
+		return "", "", permanent("rvav has no secrets key (RVAV_SECRETS_KEY), so it can't open the secret %s", name)
+	}
+	v, err := a.Store.GetSecret(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", "", permanent("There is no secret %s any more. Ask a catalog admin to check this item.", name)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	plain, err := a.Secrets.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext)
+	if err != nil {
+		return "", "", permanent("The secret %s can't be opened with rvav's key", name)
+	}
+	return v.Username, string(plain), nil
+}
+
+// cloudInit gives a Linux VM its host name, addresses and user data
+// through guestinfo, for cloud-init, instead of vCenter's customization.
+func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (string, string, error) {
+	vm, err := a.VSphere.GetVM(ctx, in.Moref)
+	if err != nil {
+		return "", "", fmt.Errorf("vCenter: %w", err)
+	}
+	if vm.PowerState == "on" {
+		return "", "", nil // cloud-init already ran on first boot
+	}
+	if len(vm.NICs) < 1+len(extra) {
+		return "", "", permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
+	}
+	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
+	for i, n := range extra {
+		c := ciNIC{MAC: vm.NICs[i+1].MAC}
+		if !n.DHCP {
+			c.IP, c.PrefixLength, c.DNSServers = n.IP, n.PrefixLength, n.DNSServers
+		}
+		nics = append(nics, c)
+	}
+	meta, err := cloudInitMetadata(in.VM.DeploymentID+"/"+in.VM.Name, in.VM.Name, in.Guest.Domain, nics)
+	if err != nil {
+		return "", "", err
+	}
+	r, err := a.Store.GetRequest(ctx, in.RequestID)
+	if err != nil {
+		return "", "", err
+	}
+	inputs := map[string]any{}
+	_ = json.Unmarshal(r.Inputs, &inputs)
+	ips := []string{in.IP}
+	for _, n := range nics[1:] {
+		ips = append(ips, n.IP)
+	}
+	user, err := renderUserData(in.Guest.CloudInit.UserData, map[string]any{
+		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.IP, "ips": ips, "domain": in.Guest.Domain,
+			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID},
+		"inputs": inputs, "project": r.ProjectCode, "environment": r.Environment,
+		"request": map[string]any{"id": r.ID, "number": r.Number},
+	})
+	if err != nil {
+		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
+	}
+	if err := a.VSphere.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
+		return "", "", fmt.Errorf("vCenter: %w", err)
+	}
+	return "Wrote cloud-init metadata and user data", fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo",
+		in.VM.Name, in.IP, in.VM.PrefixLength), nil
 }
 
 func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {

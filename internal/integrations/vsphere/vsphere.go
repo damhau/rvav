@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,14 +62,26 @@ type DiskSpec struct {
 
 // Customization is the guest identity and network applied before first boot.
 type Customization struct {
-	OSFamily     string // linux or windows
-	Hostname     string
-	Domain       string
-	TimeZone     string
-	IP           string
-	PrefixLength int
-	Gateway      string
-	DNSServers   []string
+	OSFamily string // linux or windows
+	Hostname string
+	Domain   string
+	// TimeZone is a tz name for Linux, a Windows time zone index for
+	// Windows (110, W. Europe, when empty).
+	TimeZone string
+	// Spec names a vCenter customization specification used as the base
+	// (ADR-0024): rvav sets the host name and adapters on it.
+	Spec string
+	// Windows: the local administrator's password, and the domain to join
+	// (in OU) with an account allowed to.
+	AdminPassword  string
+	JoinDomain     string
+	DomainOU       string
+	DomainUser     string
+	DomainPassword string
+	IP             string
+	PrefixLength   int
+	Gateway        string
+	DNSServers     []string
 	// Extra are the added adapters, in order.
 	Extra []NICSetting
 }
@@ -135,6 +149,7 @@ type Driver interface {
 	GetVM(ctx context.Context, moref string) (*VM, error)
 	CloneVM(ctx context.Context, spec VMSpec) (*VM, error)
 	Customize(ctx context.Context, moref string, c Customization) error
+	SetGuestInfo(ctx context.Context, moref string, values map[string]string) error
 	PowerOn(ctx context.Context, moref string) error
 	PowerOff(ctx context.Context, moref string) error
 	WaitForIP(ctx context.Context, moref string) (string, error)
@@ -760,22 +775,45 @@ func (cl *Client) Customize(ctx context.Context, moref string, cu Customization)
 	if mvm.Runtime.PowerState == types.VirtualMachinePowerStatePoweredOn {
 		return nil // customization already ran on first boot
 	}
-
-	spec := types.CustomizationSpec{
-		GlobalIPSettings: types.CustomizationGlobalIPSettings{
-			DnsServerList: cu.DNSServers,
-			DnsSuffixList: []string{cu.Domain},
-		},
-		NicSettingMap: []types.CustomizationAdapterMapping{{
-			Adapter: types.CustomizationIPSettings{
-				Ip:            &types.CustomizationFixedIp{IpAddress: cu.IP},
-				SubnetMask:    prefixToMask(cu.PrefixLength),
-				Gateway:       []string{cu.Gateway},
-				DnsDomain:     cu.Domain,
-				DnsServerList: cu.DNSServers,
-			},
-		}},
+	var base *types.CustomizationSpec
+	if cu.Spec != "" {
+		item, err := object.NewCustomizationSpecManager(c).GetCustomizationSpec(ctx, cu.Spec)
+		if err != nil {
+			if isNotFoundFault(err) || strings.Contains(err.Error(), "NotFound") {
+				return fmt.Errorf("customization specification %q: %w", cu.Spec, ErrNotFound)
+			}
+			return err
+		}
+		base = &item.Spec
 	}
+	task, err := vm.Customize(ctx, CustomizationSpec(cu, base))
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
+// CustomizationSpec is the specification applied: base (a vCenter
+// specification, or nil) with the host name, adapters, and for Windows the
+// domain join and administrator password, set from cu.
+func CustomizationSpec(cu Customization, base *types.CustomizationSpec) types.CustomizationSpec {
+	var spec types.CustomizationSpec
+	if base != nil {
+		spec = *base
+	}
+	spec.GlobalIPSettings.DnsServerList = cu.DNSServers
+	if cu.Domain != "" {
+		spec.GlobalIPSettings.DnsSuffixList = []string{cu.Domain}
+	}
+	spec.NicSettingMap = []types.CustomizationAdapterMapping{{
+		Adapter: types.CustomizationIPSettings{
+			Ip:            &types.CustomizationFixedIp{IpAddress: cu.IP},
+			SubnetMask:    prefixToMask(cu.PrefixLength),
+			Gateway:       []string{cu.Gateway},
+			DnsDomain:     cu.Domain,
+			DnsServerList: cu.DNSServers,
+		},
+	}}
 	for _, n := range cu.Extra {
 		a := types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}}
 		if !n.DHCP {
@@ -785,24 +823,61 @@ func (cl *Client) Customize(ctx context.Context, moref string, cu Customization)
 		spec.NicSettingMap = append(spec.NicSettingMap, types.CustomizationAdapterMapping{Adapter: a})
 	}
 	if cu.OSFamily == "windows" {
-		spec.Identity = &types.CustomizationSysprep{
-			UserData: types.CustomizationUserData{
-				FullName:     "rvav",
-				OrgName:      "rvav",
-				ComputerName: &types.CustomizationFixedName{Name: cu.Hostname},
-			},
-			GuiUnattended:  types.CustomizationGuiUnattended{TimeZone: 110},
-			Identification: types.CustomizationIdentification{JoinWorkgroup: "WORKGROUP"},
+		sp, ok := spec.Identity.(*types.CustomizationSysprep)
+		if !ok {
+			sp = &types.CustomizationSysprep{
+				UserData:       types.CustomizationUserData{FullName: "rvav", OrgName: "rvav"},
+				GuiUnattended:  types.CustomizationGuiUnattended{TimeZone: 110},
+				Identification: types.CustomizationIdentification{JoinWorkgroup: "WORKGROUP"},
+			}
+		} else {
+			copied := *sp
+			sp = &copied
 		}
+		sp.UserData.ComputerName = &types.CustomizationFixedName{Name: cu.Hostname}
+		if tz, err := strconv.Atoi(cu.TimeZone); err == nil {
+			sp.GuiUnattended.TimeZone = int32(tz)
+		}
+		if cu.AdminPassword != "" {
+			sp.GuiUnattended.Password = &types.CustomizationPassword{Value: cu.AdminPassword, PlainText: true}
+		}
+		if cu.JoinDomain != "" {
+			sp.Identification = types.CustomizationIdentification{JoinDomain: cu.JoinDomain, DomainAdmin: cu.DomainUser,
+				DomainAdminPassword: &types.CustomizationPassword{Value: cu.DomainPassword, PlainText: true}, DomainOU: cu.DomainOU}
+		}
+		spec.Identity = sp
+		return spec
+	}
+	lp, ok := spec.Identity.(*types.CustomizationLinuxPrep)
+	if !ok {
+		lp = &types.CustomizationLinuxPrep{TimeZone: orDefault(cu.TimeZone, "Europe/Zurich"), HwClockUTC: types.NewBool(true)}
 	} else {
-		spec.Identity = &types.CustomizationLinuxPrep{
-			HostName:   &types.CustomizationFixedName{Name: cu.Hostname},
-			Domain:     cu.Domain,
-			TimeZone:   orDefault(cu.TimeZone, "Europe/Zurich"),
-			HwClockUTC: types.NewBool(true),
+		copied := *lp
+		lp = &copied
+		if cu.TimeZone != "" {
+			lp.TimeZone = cu.TimeZone
 		}
 	}
-	task, err := vm.Customize(ctx, spec)
+	lp.HostName = &types.CustomizationFixedName{Name: cu.Hostname}
+	if cu.Domain != "" {
+		lp.Domain = cu.Domain
+	}
+	spec.Identity = lp
+	return spec
+}
+
+// SetGuestInfo writes guestinfo keys (cloud-init's VMware data source
+// reads its metadata and user data there; ADR-0024).
+func (cl *Client) SetGuestInfo(ctx context.Context, moref string, values map[string]string) error {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return err
+	}
+	var cfg types.VirtualMachineConfigSpec
+	for _, k := range slices.Sorted(maps.Keys(values)) {
+		cfg.ExtraConfig = append(cfg.ExtraConfig, &types.OptionValue{Key: k, Value: values[k]})
+	}
+	task, err := object.NewVirtualMachine(c, vmRef(moref)).Reconfigure(ctx, cfg)
 	if err != nil {
 		return err
 	}

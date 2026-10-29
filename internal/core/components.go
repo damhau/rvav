@@ -166,15 +166,20 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 	}
 	// A template chosen in the form is an offered template's key; a
-	// blueprint that names its own vCenter template keeps it.
-	if plan.Template != "" && c.Bindings["template"] != "" {
+	// blueprint that names its own vCenter template keeps it. An offered
+	// template's customization specification is the guest's base, unless
+	// the blueprint names one (ADR-0024).
+	if plan.Template != "" {
 		offered, err := s.offeredTemplates(ctx, ev.Project.ID, ev.Env.Key)
 		if err != nil {
 			return part, err
 		}
 		for _, t := range offered {
-			if t.Key == plan.Template {
+			if c.Bindings["template"] != "" && t.Key == plan.Template {
 				plan.Template, part.guest.OSFamily = t.VCenterTemplate, t.OSFamily
+			}
+			if t.VCenterTemplate == plan.Template && part.guest.CustomizationSpec == "" && t.Customization != "" {
+				part.guest.CustomizationSpec = t.Customization
 			}
 		}
 	}

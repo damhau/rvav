@@ -28,13 +28,36 @@ type VSphereDriver interface {
 ```
 
 ### Provisioning
-- Source: VM template or content library item (OVF or VM template).
-- Guest customization: vSphere customization specs (Linux and Windows) or
-  cloud-init through `guestinfo` metadata and userdata.
-- Network: NIC → port group or distributed port group. Static IP from EfficientIP
-  is injected through the customization spec or cloud-init network config.
-- Tags and custom attributes are written to the VM: `rvav.deployment`,
-  `rvav.project`, `rvav.owner`. They are used by sync and drift detection.
+How a blueprint is built is in
+[ADR-0024](adr/0024-multi-vm-blueprints.md); what vCenter sees:
+
+- **Clone:** from the VM template, into the cluster's resource pool, on a
+  connected host that mounts the datastore (VMs kept apart start on
+  separate hosts), in the placement rule's folder. CPU, memory and the
+  first disk's size are set; `guestinfo.rvav.deployment` and
+  `guestinfo.rvav.request` are written to the VM.
+- **Disks and adapters** added by the blueprint, after the clone: a disk
+  on another datastore gets the path `[datastore]` alone, and vCenter
+  names its file in the VM's folder there. A retry adds only what is
+  missing.
+- **Tags:** `category/tag`, attached through the tagging service (vCenter's
+  REST API, same account). A tag missing from its category is created; the
+  category must exist.
+- **DRS rules:** a VM anti-affinity rule `rvav-<deployment>-<component>`
+  per component kept apart, created before the VMs power on, removed with
+  the deployment.
+- **Guest customization:** vCenter's Linux preparation or Sysprep, with
+  the host name, every adapter's address (EfficientIP's, or DHCP; only the
+  first has the gateway) and the DNS servers. A vCenter customization
+  specification named by the template (Templates and networks) or the
+  blueprint is the base. Windows can join a domain, in an OU (vCenter
+  8.0.2 and later), with the account of a `basic` secret, and get its
+  local administrator's password from a secret; the worker opens them
+  when it customizes.
+- **cloud-init** instead, for Linux: `guestinfo.metadata` (host name, and
+  the network as version 2, adapters matched by MAC address) and
+  `guestinfo.userdata` (the blueprint's template, rendered), both base64,
+  for cloud-init's VMware data source (cloud-init 21.3 and later).
 
 ### Inventory sync (`rvav-sync`)
 - PropertyCollector `WaitForUpdatesEx` on VMs, hosts, clusters, datastores,
@@ -47,8 +70,11 @@ type VSphereDriver interface {
 A custom role on the target folders, clusters and datastores, with: Virtual
 machine (inventory, configuration, interaction, provisioning, snapshot
 management), Datastore allocate space, Network assign, Resource assign to resource
-pool, Content library read, vSphere tagging, and Sessions validate (for console
-tickets). The exact privilege list will be documented once the driver is built.
+pool, Content library read, vSphere tagging (assign, and create tags for
+tags made on the fly), Host configuration of the cluster (for DRS rules:
+Host → Inventory → Modify cluster), VM guest customization (and Read
+customization specifications), and Sessions validate (for console
+tickets).
 
 ## AWX
 

@@ -332,7 +332,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	}
 	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
-		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue}, nil
+		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets}, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.

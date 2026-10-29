@@ -49,7 +49,7 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 	input := func(vm VMUnit) VMInput {
 		c := comps[vm.Component]
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
-		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = c.Guest.OSFamily, c.Guest.Domain, c.Guest.TimeZone
+		in.Guest = c.Guest
 		if c.AntiAffinity {
 			in.HostIndex = vm.Index
 		}

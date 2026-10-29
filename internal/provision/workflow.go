@@ -365,7 +365,7 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 	var vms []builtVM
 	for _, vm := range list {
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
-		in.Guest.OSFamily, in.Guest.Domain, in.Guest.TimeZone = guest.OSFamily, guest.Domain, guest.TimeZone
+		in.Guest = guest
 
 		// Steps done before a retry are skipped, with what they built. When
 		// that is gone (deleted since), it is built again, and so is what

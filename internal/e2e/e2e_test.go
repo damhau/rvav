@@ -301,7 +301,7 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	t.Cleanup(srv.Close)
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
-		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test"}
+		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test", Secrets: box}
 	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
 	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},
