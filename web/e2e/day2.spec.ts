@@ -100,3 +100,21 @@ test("run an AWX action on a VM", async ({ page }) => {
   await expect(dialog).toBeHidden();
   await expect(page.getByText(/^REQ-\d+ has started\.$/)).toBeVisible();
 });
+
+test("a VM changed outside rvav: what differs, then accepted (S13.2)", async ({ page }) => {
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-legacy", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-dev-legacy" })).toBeVisible();
+  await expect(page.getByText("Changed outside rvav", { exact: true }).first()).toBeVisible();
+
+  const drift = page.getByRole("region", { name: "Changed outside rvav" });
+  const table = drift.getByRole("table", { name: "How web-dev-legacy001 differs" });
+  await expect(table.getByRole("row", { name: "Memory 16 GB 32 GB" })).toBeVisible();
+  await expect(table.getByRole("row", { name: "Hard disk 2 none 200 GB" })).toBeVisible();
+
+  // No form and nothing lost: it runs at once, as a request.
+  await drift.getByRole("button", { name: "Accept the changes" }).click();
+  await expect(page.getByText(/^REQ-\d+ has started\.$/)).toBeVisible();
+  await expect(drift).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByText("Changed outside rvav", { exact: true })).toHaveCount(0);
+});

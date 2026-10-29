@@ -84,7 +84,9 @@ Subscription (event → awx template | webhook)
   project, catalog item version, inputs, lease expiry, and status.
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
   `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
-  properties (JSONB), sync state (`in_sync` | `drifted` | `missing`).
+  properties (JSONB), sync state (`in_sync` | `drifted` | `missing`). A VM's
+  properties keep it as rvav last left it, and how it differs now (drift,
+  [ADR-0025](adr/0025-drift.md)).
 - **InventoryVM**: cached vCenter inventory maintained by `rvav-sync`, including
   VMs not managed by the app (they can be onboarded into a deployment later).
 

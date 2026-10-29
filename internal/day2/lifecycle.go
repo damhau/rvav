@@ -50,6 +50,23 @@ func init() {
 		},
 	})
 	register(&Action{
+		Key: "accept_changes", Name: "Accept the changes made in vCenter", Group: GroupConfiguration, Types: []string{vmType},
+		Unavailable: func(t Target, _ Choices) string {
+			if len(t.Drift) == 0 {
+				return "The VM is as rvav left it."
+			}
+			return ""
+		},
+		Ops: func(t Target, _ map[string]any) []Op {
+			var what []string
+			for _, d := range t.Drift {
+				what = append(what, d.Label)
+			}
+			return []Op{{Key: "rvav.accept", Title: "Take " + t.ResourceName + " as it is in vCenter", Detail: strings.Join(what, ", "),
+				System: "rvav", Op: "accept_changes"}}
+		},
+	})
+	register(&Action{
 		Key: "iso_mount", Name: "Mount an ISO image", Group: GroupConfiguration, Types: []string{vmType},
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			iso := text("iso", "ISO image", 500, "")

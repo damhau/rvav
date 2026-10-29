@@ -31,9 +31,11 @@ type Target struct {
 	ResourceName string
 	Type         string
 	VM           api.VmProperties
-	Resources    []Resource
-	OwnerID      string
-	Lease        Lease
+	// Drift is how the VM differs from how rvav left it (S13.2).
+	Drift     []api.VmDrift
+	Resources []Resource
+	OwnerID   string
+	Lease     Lease
 }
 
 // Lease is the deployment's lease now.
@@ -175,6 +177,18 @@ func VM(properties json.RawMessage) api.VmProperties {
 	}
 	_ = json.Unmarshal(properties, &p)
 	return p.VM
+}
+
+// DriftOf is how a drifted VM differs from how rvav left it.
+func DriftOf(syncState string, properties json.RawMessage) []api.VmDrift {
+	if syncState != "drifted" {
+		return nil
+	}
+	var p struct {
+		Drift []api.VmDrift `json:"drift"`
+	}
+	_ = json.Unmarshal(properties, &p)
+	return p.Drift
 }
 
 const vmType = "vsphere.vm"

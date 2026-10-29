@@ -109,6 +109,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "", heartbeatWhile(ctx, func() error { return v.RevertSnapshot(ctx, in.Moref, argStr(args, "name")) })
 	case "delete_snapshot":
 		return "", heartbeatWhile(ctx, func() error { return v.DeleteSnapshot(ctx, in.Moref, argStr(args, "name")) })
+	case "accept_changes":
+		return "", nil // refreshVM takes the VM as it is
 	case "power_on":
 		return "", v.PowerOn(ctx, in.Moref)
 	case "power_off":
@@ -149,6 +151,17 @@ func (a *Activities) resourceVC(ctx context.Context, resourceID string) (vsphere
 	return a.vc(ctx, vmprops.VCenterOf(res.Properties))
 }
 
+// settles are what of a VM each operation changes: rvav takes them as they
+// are now, and keeps the rest as it left them, to flag changes made
+// outside rvav (S13.2).
+var settles = map[string][]string{
+	"power_on": {vmprops.Power}, "power_off": {vmprops.Power}, "reset": {vmprops.Power},
+	"restart_guest": {vmprops.Power}, "shutdown_guest": {vmprops.Power},
+	"reconfigure": {vmprops.Size}, "add_disk": {vmprops.Disks}, "extend_disk": {vmprops.Disks},
+	"add_nic": {vmprops.Networks}, "set_nic_network": {vmprops.Networks}, "remove_nic": {vmprops.Networks},
+	"revert_snapshot": vmprops.All, "accept_changes": vmprops.All,
+}
+
 // refreshVM stores what vCenter reports about the VM now. A failure only
 // delays the update to the next inventory sync.
 func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
@@ -167,12 +180,17 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) {
 		a.Log.Warn("refresh vm", "moref", in.Moref, "err", err)
 		return
 	}
-	res.Properties = vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0)
-	res.Name, res.SyncState = vm.Name, "in_sync"
+	props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0),
+		settles[in.Op.Op]...)
+	res.Properties, res.Name, res.SyncState = props, vm.Name, "in_sync"
+	if drifted {
+		res.SyncState = "drifted"
+	}
 	if err := a.Store.UpdateResourceState(ctx, a.Store.Pool, res.ID, res.SyncState, res.Properties); err != nil {
 		a.Log.Warn("refresh vm: store", "resource", res.ID, "err", err)
 		return
 	}
+	_ = a.Store.RefreshDeploymentSyncState(ctx, a.Store.Pool, res.DeploymentID)
 	a.Events.Resource(ctx, in.ProjectID, res)
 	a.Events.Deployment(ctx, in.DeploymentID)
 }

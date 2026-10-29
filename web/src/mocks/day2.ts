@@ -208,6 +208,29 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "accept_changes",
+    name: "Accept the changes made in vCenter",
+    group: "configuration",
+    unavailable: (vm) => (vm?.drift?.length ? null : "The VM is as rvav left it."),
+    ops: (vm) => [
+      {
+        key: "rvav.accept",
+        title: `Take ${vm?.name} as it is in vCenter`,
+        system: "rvav",
+        apply: (d, v) => {
+          if (!v) return;
+          delete v.drift;
+          v.sync_state = "in_sync";
+          d.sync_state = d.resources.some((r) => r.sync_state === "missing")
+            ? "missing"
+            : d.resources.some((r) => r.sync_state === "drifted")
+              ? "drifted"
+              : "in_sync";
+        },
+      },
+    ],
+  },
+  {
     // An AWX template with the day2 label (ADR-0018).
     key: "awx.install-monitoring-agent",
     name: "Install monitoring agent",

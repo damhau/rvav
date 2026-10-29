@@ -589,6 +589,18 @@ export function createDb(now = Date.now()): Db {
       inputs: { role: "ledger", size: "XL", pg_version: "16.6", backup_retention_days: 35 },
     }),
   ];
+  // Changed in vCenter outside rvav (S13.2): more memory, and a disk.
+  {
+    const legacy = deployments.find((d) => d.name === "web-dev-legacy")!;
+    const vm = legacy.resources.find((r): r is VmResource => r.type === "vsphere.vm")!;
+    vm.vm.memory_mb = 32 * 1024;
+    vm.vm.disks.push({ label: "Hard disk 2", capacity_gb: 200, datastore: vm.vm.disks[0]?.datastore });
+    vm.sync_state = legacy.sync_state = "drifted";
+    vm.drift = [
+      { property: "memory_mb", label: "Memory", rvav: "16 GB", vcenter: "32 GB" },
+      { property: "disk", label: "Hard disk 2", vcenter: "200 GB" },
+    ];
+  }
 
   // ── Requests ──────────────────────────────────────────────────────────
   const step = (o: Partial<Step> & Pick<Step, "key" | "title" | "status">): Step => ({

@@ -136,7 +136,7 @@ available on demand.
   before cloning, and IPAM reservations are keyed by request ID.
 - Events going out (webhooks, notifications) use the outbox pattern.
 - `rvav-sync` reconciles: VMs deleted or changed outside the app are flagged
-  (drift) rather than silently diverging.
+  (drift, [ADR-0025](adr/0025-drift.md)) rather than silently diverging.
 
 ## Security
 

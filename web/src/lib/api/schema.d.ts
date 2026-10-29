@@ -3374,8 +3374,9 @@ export interface components {
             expiry_action?: components["schemas"]["LeaseExpiryAction"];
         };
         /**
-         * @description `drifted`: changed in vCenter outside rvav. `missing`: no longer found
-         *     in vCenter.
+         * @description `drifted`: changed in vCenter outside rvav (size, disks, adapters'
+         *     networks or power), until changed back or accepted. `missing`: no
+         *     longer found in vCenter.
          * @enum {string}
          */
         SyncState: "in_sync" | "drifted" | "missing";
@@ -3400,12 +3401,39 @@ export interface components {
             /** @constant */
             type: "vsphere.vm";
             vm: components["schemas"]["VmProperties"];
+            /**
+             * @description How the VM differs in vCenter from how rvav left it (its sync
+             *     state is `drifted`): changed outside rvav. Absent when it
+             *     doesn't.
+             */
+            drift?: components["schemas"]["VmDrift"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             type: "vsphere.vm";
+        };
+        VmDrift: {
+            /** @enum {string} */
+            property: "power_state" | "cpu_count" | "memory_mb" | "disk" | "nic";
+            /**
+             * @description What differs, as people call it.
+             * @example Memory
+             * @example Hard disk 2
+             * @example Network adapter 1
+             */
+            label: string;
+            /**
+             * @description As rvav left it; absent for a disk or adapter added outside rvav.
+             * @example 8 GB
+             */
+            rvav?: string;
+            /**
+             * @description As it is in vCenter; absent for a disk or adapter removed outside rvav.
+             * @example 16 GB
+             */
+            vcenter?: string;
         };
         VmProperties: {
             /** @example vm-48217 */

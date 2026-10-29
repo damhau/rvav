@@ -546,6 +546,8 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 
 func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput, vm *vsphere.VM) (store.Resource, error) {
 	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component}, nil, 0)
+	// The VM as rvav built it: what drift is measured from (S13.2).
+	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := vm.InstanceUUID
 	if ext == "" {
 		ext = vm.Moref
@@ -771,6 +773,10 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 		}
 		if err := vc.PowerOn(ctx, in.Moref); err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
+		}
+		// Powered on by rvav, even if its address doesn't come.
+		if vm, err := vc.GetVM(ctx, in.Moref); err == nil {
+			_, _ = a.recordVM(ctx, vc, in, vm)
 		}
 		timeout := a.IPTimeout
 		if timeout == 0 {

@@ -57,7 +57,7 @@ func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
 	for _, r := range resources {
 		t := day2.Target{ResourceID: r.ID, ResourceName: r.Name, Type: r.Type, OwnerID: d.OwnerID}
 		if r.Type == "vsphere.vm" {
-			t.VM = day2.VM(r.Properties)
+			t.VM, t.Drift = day2.VM(r.Properties), day2.DriftOf(r.SyncState, r.Properties)
 		}
 		dep.Resources = append(dep.Resources, day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, VM: t.VM})
 		out = append(out, t)

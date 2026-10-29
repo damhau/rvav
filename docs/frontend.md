@@ -389,6 +389,18 @@ A blueprint with components builds one deployment
   web servers kept apart and a database server; its steps name their VM
   after `@`, without the component steps the server nests them under.
 
+## Drift
+
+A VM changed in vCenter outside rvav
+([ADR-0025](adr/0025-drift.md)) shows in three places:
+- **Header:** the deployment page's header says **Changed outside rvav**.
+- **Changed outside rvav panel:** above the VMs, a table per drifted VM:
+  what differs, as rvav left it and in vCenter.
+- **Accept the changes:** a button that runs that day-2 action at once.
+  The VM's actions menu offers it too.
+
+In the mocks, `web-dev-legacy` has more memory and a disk added in vCenter.
+
 ## Notifications
 
 The notification centre ([ADR-0023](adr/0023-notifications.md)) is in

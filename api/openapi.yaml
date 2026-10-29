@@ -4761,8 +4761,9 @@ components:
     SyncState:
       type: string
       description: |
-        `drifted`: changed in vCenter outside rvav. `missing`: no longer found
-        in vCenter.
+        `drifted`: changed in vCenter outside rvav (size, disks, adapters'
+        networks or power), until changed back or accepted. `missing`: no
+        longer found in vCenter.
       enum: [in_sync, drifted, missing]
 
     DeploymentDetail:
@@ -4820,6 +4821,33 @@ components:
           properties:
             type: { const: vsphere.vm }
             vm: { $ref: "#/components/schemas/VmProperties" }
+            drift:
+              type: array
+              description: |
+                How the VM differs in vCenter from how rvav left it (its sync
+                state is `drifted`): changed outside rvav. Absent when it
+                doesn't.
+              items: { $ref: "#/components/schemas/VmDrift" }
+
+    VmDrift:
+      type: object
+      required: [property, label]
+      properties:
+        property:
+          type: string
+          enum: [power_state, cpu_count, memory_mb, disk, nic]
+        label:
+          type: string
+          description: What differs, as people call it.
+          examples: [Memory, Hard disk 2, Network adapter 1]
+        rvav:
+          type: string
+          description: As rvav left it; absent for a disk or adapter added outside rvav.
+          examples: [8 GB]
+        vcenter:
+          type: string
+          description: As it is in vCenter; absent for a disk or adapter removed outside rvav.
+          examples: [16 GB]
 
     VmProperties:
       type: object

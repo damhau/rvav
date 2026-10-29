@@ -482,13 +482,28 @@ func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Re
 		v.Folder = old.VM.Folder
 	}
 	props := vmprops.Build(vcenter, v, vmprops.OursOf(r.Properties), usage, vm.SnapshotCount)
-	changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != "in_sync"
-	if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, "in_sync", props); err != nil {
+	state := "in_sync"
+	switch dep.Status {
+	case "provisioning", "updating", "deleting":
+		// While rvav changes the VM, what changes isn't drift: the action
+		// settles what it changed when it ends.
+		props = vmprops.Carry(r.Properties, props)
+		if r.SyncState == "drifted" {
+			state = "drifted"
+		}
+	default:
+		var drifted bool
+		if props, drifted = vmprops.Compare(r.Properties, props); drifted {
+			state = "drifted"
+		}
+	}
+	changed := !sameIgnoringUsage(r.Properties, props) || r.SyncState != state
+	if err := s.Store.UpdateResourceState(ctx, s.Store.Pool, r.ID, state, props); err != nil {
 		return err
 	}
 	if changed {
 		_ = s.Store.RefreshDeploymentSyncState(ctx, s.Store.Pool, r.DeploymentID)
-		r.Properties, r.SyncState = props, "in_sync"
+		r.Properties, r.SyncState = props, state
 		s.Events.Resource(ctx, dep.ProjectID, r)
 		s.Events.Deployment(ctx, r.DeploymentID)
 	}
@@ -499,11 +514,13 @@ func (s *Syncer) refreshResource(ctx context.Context, vcenter string, r store.Re
 // which change on every poll and would flood the event stream.
 func sameIgnoringUsage(a, b json.RawMessage) bool {
 	strip := func(raw json.RawMessage) []byte {
-		var m map[string]map[string]any
+		var m map[string]any
 		if json.Unmarshal(raw, &m) != nil {
 			return raw
 		}
-		delete(m["vm"], "usage")
+		if vm, ok := m["vm"].(map[string]any); ok {
+			delete(vm, "usage")
+		}
 		out, _ := json.Marshal(m)
 		return out
 	}

@@ -290,6 +290,10 @@ func DeploymentDetail(d store.DeploymentRow, resources []store.Resource, secret 
 // VMResourceProps is how a vsphere.vm resource stores its properties.
 type VMResourceProps struct {
 	VM api.VmProperties `json:"vm"`
+	// Expected is the VM as rvav last left it, and Drift how it differs
+	// now (S13.2, vmprops).
+	Expected json.RawMessage `json:"expected,omitempty"`
+	Drift    []api.VmDrift   `json:"drift,omitempty"`
 }
 
 // Resource maps a resource to the API union type.
@@ -316,8 +320,11 @@ func Resource(r store.Resource) (api.Resource, bool) {
 				Network     string    `json:"network"`
 			}{}
 		}
-		err := out.FromVmResource(api.VmResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState),
-			Type: "vsphere.vm", Vm: p.VM})
+		vr := api.VmResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "vsphere.vm", Vm: p.VM}
+		if len(p.Drift) > 0 && r.SyncState == "drifted" {
+			vr.Drift = &p.Drift
+		}
+		err := out.FromVmResource(vr)
 		return out, err == nil
 	case "ipam.address":
 		var p struct {

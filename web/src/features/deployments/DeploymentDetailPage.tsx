@@ -392,6 +392,62 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
   );
 }
 
+/** VMs changed in vCenter outside rvav, with what differs (S13.2). */
+function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Action[]; onPick: Pick }) {
+  const drifted = vms.filter((v) => v.sync_state === "drifted" && v.drift?.length);
+  if (drifted.length === 0) return null;
+  return (
+    <Panel title="Changed outside rvav" flush className="border-warn/40">
+      <p className="px-4 pt-2.5 text-xs text-muted">
+        {drifted.length === 1 ? "This VM differs" : "These VMs differ"} in vCenter from how rvav left{" "}
+        {drifted.length === 1 ? "it" : "them"}. Change {drifted.length === 1 ? "it" : "them"} back in vCenter, or accept
+        the changes.
+      </p>
+      {drifted.map((v) => {
+        const accept = actions.find((a) => a.key === "accept_changes" && a.resource_id === v.id);
+        return (
+          <div key={v.id} className="border-b border-line px-4 py-2.5 last:border-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">{v.name}</span>
+              {accept && (
+                <Button size="sm" disabled={!accept.enabled} onClick={() => onPick(accept)}>
+                  Accept the changes
+                </Button>
+              )}
+            </div>
+            <table className="mt-1.5 w-full border-collapse text-xs" aria-label={`How ${v.name} differs`}>
+              <thead>
+                <tr className="label text-left">
+                  <th scope="col" className="py-1 pr-3 font-medium">
+                    What
+                  </th>
+                  <th scope="col" className="py-1 pr-3 font-medium">
+                    As rvav left it
+                  </th>
+                  <th scope="col" className="py-1 font-medium">
+                    In vCenter
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {v.drift!.map((x) => (
+                  <tr key={x.property + x.label}>
+                    <th scope="row" className="py-1 pr-3 text-left font-normal">
+                      {x.label}
+                    </th>
+                    <td className="tnum py-1 pr-3 text-muted">{x.rvav ?? "none"}</td>
+                    <td className="tnum py-1 font-medium">{x.vcenter ?? "removed"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </Panel>
+  );
+}
+
 function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
@@ -405,6 +461,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
   return (
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
+        <Drift vms={vms} actions={actions} onPick={onPick} />
         <Panel
           title="Virtual machines"
           flush
