@@ -78,3 +78,22 @@ test("a deployment's segment and security groups; a VM put back in its group (N1
   await expect(groups.getByRole("status")).toBeHidden({ timeout: 15_000 });
   expect(errors).toEqual([]);
 });
+
+test("a composite's request form says what its VM steps build, with their security groups (N2.1)", async ({ page }) => {
+  await page.goto("/catalog/postgres-cluster/request");
+  await expect(page.getByRole("heading", { name: /Request PostgreSQL 16 cluster/ })).toBeVisible();
+  const builds = page.getByRole("group", { name: "What it builds" });
+  await expect(builds).toContainText("What it builds · 3 VMs");
+  const nodes = builds.getByRole("listitem", { name: "Database nodes · PostgreSQL nodes" });
+  await expect(nodes).toContainText("On separate hosts");
+  await expect(nodes).toContainText("Security groups Database servers (new), grp-backup-clients");
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.reload();
+    await expect(builds).toBeVisible();
+    const axe = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    expect(axe.violations.map((v) => `${scheme}: ${v.id} ${v.help}`)).toEqual([]);
+  }
+});

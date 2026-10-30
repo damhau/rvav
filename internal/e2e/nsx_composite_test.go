@@ -89,6 +89,9 @@ func TestCompositeNSX(t *testing.T) {
 			comp.NsxGroups == nil || !slices.Equal(*comp.NsxGroups, []string{"Web servers (new)", "grp-web-servers"}) {
 			t.Fatalf("the VM step's preview = %+v %v", comp, comp.NsxGroups)
 		}
+		if pv.Lease == nil {
+			t.Fatal("a composite with a VM step has a lease, and the preview says it")
+		}
 
 		// Failing in its post-configuration: the segment and groups are made.
 		h.awx.FailTask = "baseline : harden sshd"

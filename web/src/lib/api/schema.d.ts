@@ -3179,15 +3179,23 @@ export interface components {
             };
             /**
              * @description What each component of a VM item builds (ADR-0024), in its
-             *     order; a single-VM item has one, `vm`. Absent for other items,
-             *     composites with VM steps among them.
+             *     order; a single-VM item has one, `vm`. A composite has one
+             *     per component of each of its VM steps, in the steps' order.
+             *     Absent for AWX and workflow items, and composites without
+             *     VM steps.
              */
             components?: components["schemas"]["PreviewComponent"][];
         };
         PreviewComponent: {
-            /** @example web */
+            /**
+             * @description The component's key; in a composite, `<step key>/<component key>` (`vm/vm` for a single-VM step `vm`).
+             * @example web
+             */
             key: string;
-            /** @example Web servers */
+            /**
+             * @description Its title; in a composite, its step's (its item's name when the step has none), followed by ` · <component title>` for a multi-VM step's.
+             * @example Web servers
+             */
             title: string;
             /** @description How many VMs it builds. */
             count: number;
@@ -3199,7 +3207,7 @@ export interface components {
             memory_gb: number;
             /** @description Per VM, every disk. */
             storage_gb: number;
-            /** @description The NSX security groups its VMs join (ADR-0028): those made for the deployment by their titles, existing ones by their names. */
+            /** @description The NSX security groups its VMs join (ADR-0028), as labels to show, not keys: a group made for the deployment by its title (else its key) followed by " (new)"; an existing one by its NSX display name, else its ID. */
             nsx_groups?: string[];
             /** @enum {string} */
             os_family?: "linux" | "windows";

@@ -22,6 +22,8 @@ export interface Part {
   template: string;
   antiAffinity: boolean;
   post: string[];
+  /** Its NSX security groups, as the preview labels them (ADR-0028). */
+  nsxGroups?: string[];
 }
 
 const text = (v: unknown, fallback = "") => (typeof v === "string" && v ? v : fallback);
@@ -82,24 +84,42 @@ export function previewComponents(
   const parts: Part[] =
     item.slug === MULTI_SLUG
       ? webAppParts(inputs)
-      : [
-          {
-            key: "vm",
-            title: item.name,
-            count,
-            role: text(inputs.role, "app"),
-            size: (inputs.size as SizeKey) ?? "M",
-            os: item.slug === "windows-server" ? "windows" : "linux",
-            template:
-              item.slug === "ubuntu-server"
-                ? templates.ubuntu.name
-                : item.slug === "windows-server"
-                  ? templates.windows.name
-                  : templates.rhel9.name,
-            antiAffinity: false,
-            post: [],
-          },
-        ];
+      : item.slug === "postgres-cluster"
+        ? // A composite: its VM step's components, keyed and titled under it.
+          [
+            {
+              key: "nodes/node",
+              title: "Database nodes · PostgreSQL nodes",
+              count: 3 * count,
+              role: `pg${text(inputs.name)
+                .toLowerCase()
+                .replace(/[^a-z]/g, "")}`,
+              size: (inputs.size as SizeKey) ?? "M",
+              os: "linux",
+              template: templates.rhel9.name,
+              antiAffinity: true,
+              post: [],
+              nsxGroups: ["Database servers (new)", "grp-backup-clients"],
+            },
+          ]
+        : [
+            {
+              key: "vm",
+              title: item.name,
+              count,
+              role: text(inputs.role, "app"),
+              size: (inputs.size as SizeKey) ?? "M",
+              os: item.slug === "windows-server" ? "windows" : "linux",
+              template:
+                item.slug === "ubuntu-server"
+                  ? templates.ubuntu.name
+                  : item.slug === "windows-server"
+                    ? templates.windows.name
+                    : templates.rhel9.name,
+              antiAffinity: false,
+              post: [],
+            },
+          ];
   return parts.map((p) => {
     const size = sizes[p.size] ?? sizes.M;
     return {
@@ -125,6 +145,7 @@ export function previewComponents(
       ],
       tags: [],
       anti_affinity: p.antiAffinity,
+      ...(p.nsxGroups ? { nsx_groups: p.nsxGroups } : {}),
     };
   });
 }

@@ -109,7 +109,7 @@ check it) or *unmapped* (left out).
 | `customizationSpec` | The guest's vCenter customization specification. |
 | `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}` and `${input.x}` are translated; others are reported. |
 | `Cloud.vSphere.Disk` attached by `attachedDisks` | An added disk of its `capacityGb`. |
-| `Cloud.vSphere.Network` (existing) | The item asks for cluster, datastore and network, within rvav's placement rules. |
+| `Cloud.vSphere.Network` (existing) | The item asks for cluster, datastore and network, within rvav's placement rules. A machine's other adapters on existing networks are reported (a warning): add them to the blueprint's `nics`. |
 | Constraint tags | Reported: write rvav placement rules for them. |
 | The project's machine naming template | The item's naming, when every part of it translates. |
 | `Cloud.NSX.Network`, `Cloud.Network` or `Cloud.vSphere.Network`, `networkType` routed, outbound or private | An NSX segment made for each deployment (`segments`; the VMs' adapters on it, the first by the `network` binding, the others as `nics`). A placement rule says where: its Tier-1 and EfficientIP block ([ADR-0028](../adr/0028-nsx-networking.md)). A private network gets the rule's Tier-1 too. When every VM is on one, the form asks for no network. |

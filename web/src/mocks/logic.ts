@@ -442,8 +442,12 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
   }
   const role = typeof inputs.role === "string" ? inputs.role.toLowerCase().replace(/[^a-z]/g, "") : "";
   const vms = vmCount(item, count, inputs);
+  // A composite's are its VM steps' (the server's own names and placement
+  // are a VM item's).
   const components =
-    item.type === "vm_blueprint" ? previewComponents(db, item, project, draft.environment, inputs, count) : undefined;
+    item.type === "vm_blueprint" || item.slug === "postgres-cluster"
+      ? previewComponents(db, item, project, draft.environment, inputs, count)
+      : undefined;
   const names = components
     ? components.flatMap((c) => c.names)
     : vms > 0
@@ -460,7 +464,7 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
     names,
     addresses: next ? [next.ip] : [],
     placement:
-      vms > 0
+      vms > 0 && item.type === "vm_blueprint"
         ? {
             cluster:
               typeof inputs.cluster === "string"

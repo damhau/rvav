@@ -665,7 +665,15 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 			MaxDays     *int       `json:"max_days,omitempty"`
 		}{DefaultDays: ev.Lease.DefaultDays, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
 	}
-	// A composite's VM steps: what each builds, under the step's title.
+	// A composite's VM steps: what each builds, under the step's title, and
+	// their lease.
+	if ev.Blueprint.Kind == blueprint.KindComposite && ev.compositeVMs() {
+		out.Lease = &struct {
+			DefaultDays *int       `json:"default_days,omitempty"`
+			ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+			MaxDays     *int       `json:"max_days,omitempty"`
+		}{DefaultDays: ev.Lease.DefaultDays, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
+	}
 	if ev.Blueprint.Kind == blueprint.KindComposite {
 		var comps []api.PreviewComponent
 		for _, part := range ev.Composite {

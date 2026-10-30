@@ -281,8 +281,8 @@ criteria, effort, calendar, risks and decisions.
 | R1 Pilot | Real AWX and EfficientIP, catalog and admin UI (S6–S9) | Month 6 |
 | R2 1.0 | Extensibility, notifications, advanced provisioning, inventory, production readiness (S10–S14); 83% of vRA | Month 10 |
 | R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2); built, the organisation's vRA to confirm | Month 13 |
-| After R3 | NSX networks and security groups, natively (N1, [ADR-0028](adr/0028-nsx-networking.md)): built, against a fake NSX Manager and on the compose stack ([milestone 10](https://github.com/damhau/rvav/milestone/10)); its Lab acceptance on the organisation's NSX is [#91](https://github.com/damhau/rvav/issues/91) | – |
-| Next | N2 NSX gaps, C1 the catalog in Git, D1 one canvas (an item's topology, the composite designer, a request's run), A1 custom roles, D2 composite step kinds ([plan](implementation-plan.md#n2-nsx-gaps-after-n1)); about 91% of vRA by the plan's count | – |
+| After R3 | NSX networks and security groups, natively (N1, [ADR-0028](adr/0028-nsx-networking.md)), in composite items and on added adapters too (N2): built, against a fake NSX Manager and on the compose stack ([milestone 10](https://github.com/damhau/rvav/milestone/10), [milestone 11](https://github.com/damhau/rvav/milestone/11)); its Lab acceptance on the organisation's NSX is [#91](https://github.com/damhau/rvav/issues/91) | – |
+| Next | C1 the catalog in Git, D1 one canvas (an item's topology, the composite designer, a request's run), A1 custom roles, D2 composite step kinds ([plan](implementation-plan.md#n2-nsx-gaps-after-n1)); about 91% of vRA by the plan's count | – |
 
 ## Decided
 

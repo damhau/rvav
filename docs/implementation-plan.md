@@ -379,11 +379,11 @@ Decided after 1.0, instead of AWX playbooks ([ADR-0028](adr/0028-nsx-networking.
 
 **Acceptance** (`TestN1Acceptance`, `TestMapNSXTemplate`; the organisation's NSX: [#91](https://github.com/damhau/rvav/issues/91)): a three-tier item builds its VMs on a new segment of the project's Tier-1, each tier in its own security group with the firewall rules between them; deleting the deployment removes the segment, groups and rules; a day-2 action moves a VM into another group; a vRA template with NSX networks and security groups imports without them left out.
 
-### N2 NSX gaps (after N1)
-- NSX segments and security groups in composite items' VMs (refused today).
+### N2 NSX gaps (after N1, built)
+- NSX segments and security groups in composite items' VMs.
 - A VM's added adapters on a segment made for its deployment.
 
-**Acceptance:** a composite whose VM step is on its own segment and in a
+**Acceptance** (`TestN2Acceptance`, `TestCompositeNSX`, `TestSegmentAddedAdapter`; the organisation's NSX: [#91](https://github.com/damhau/rvav/issues/91)): a composite whose VM step is on its own segment and in a
 security group builds, and deletes, as a VM item does; a VM with two
 adapters, the second on the deployment's segment, gets an address there.
 

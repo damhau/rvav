@@ -4466,16 +4466,24 @@ components:
           type: array
           description: |
             What each component of a VM item builds (ADR-0024), in its
-            order; a single-VM item has one, `vm`. Absent for other items,
-            composites with VM steps among them.
+            order; a single-VM item has one, `vm`. A composite has one
+            per component of each of its VM steps, in the steps' order.
+            Absent for AWX and workflow items, and composites without
+            VM steps.
           items: { $ref: "#/components/schemas/PreviewComponent" }
 
     PreviewComponent:
       type: object
       required: [key, title, count, names, vcpu, memory_gb, storage_gb, disks, nics, anti_affinity]
       properties:
-        key: { type: string, examples: [web] }
-        title: { type: string, examples: [Web servers] }
+        key:
+          type: string
+          description: "The component's key; in a composite, `<step key>/<component key>` (`vm/vm` for a single-VM step `vm`)."
+          examples: [web]
+        title:
+          type: string
+          description: "Its title; in a composite, its step's (its item's name when the step has none), followed by ` · <component title>` for a multi-VM step's."
+          examples: [Web servers]
         count: { type: integer, description: How many VMs it builds. }
         names:
           type: array
@@ -4486,7 +4494,7 @@ components:
         storage_gb: { type: integer, description: "Per VM, every disk." }
         nsx_groups:
           type: array
-          description: "The NSX security groups its VMs join (ADR-0028): those made for the deployment by their titles, existing ones by their names."
+          description: "The NSX security groups its VMs join (ADR-0028), as labels to show, not keys: a group made for the deployment by its title (else its key) followed by \" (new)\"; an existing one by its NSX display name, else its ID."
           items: { type: string }
         os_family: { type: string, enum: [linux, windows] }
         template: { type: string }
