@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -209,6 +210,12 @@ func TestSegmentAddedAdapter(t *testing.T) {
 		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return strings.Contains(e.Message, "no DHCP") }) {
 			t.Fatalf("DHCP on a segment: %+v", pv.Errors)
 		}
+		// Refused once: not also as a vSphere network it isn't.
+		if slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool {
+			return strings.Contains(e.Message, "cannot be used on") || strings.Contains(e.Message, "No EfficientIP subnet")
+		}) {
+			t.Fatalf("misleading errors besides: %+v", pv.Errors)
+		}
 		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
 		if !pv.Valid || pv.Components == nil {
 			t.Fatalf("preview: %+v", pv.Errors)
@@ -250,5 +257,151 @@ func TestSegmentAddedAdapter(t *testing.T) {
 		if record != "A "+vmName+"-back.corp.example" {
 			t.Fatalf("the added adapter's record = %q", record)
 		}
+	}, simulator.VPX())
+}
+
+// compositeNSX publishes a composite whose VM step is the NSX item (on its
+// own segment, in groups), then monitoring on it: its ID and version.
+func compositeNSX(h *harness, slug string, approverSize bool) (string, string) {
+	h.t.Helper()
+	nsxItem(h)
+	def := vmWithDBUser()
+	def.Blueprint = map[string]any{"kind": "composite", "rollback_on_failure": true, "steps": []any{
+		map[string]any{"key": "vm", "title": "The VM", "item": "rhel9-nsx", "with": map[string]any{
+			"role": "inputs.role", "size": "inputs.size", "cluster": "inputs.cluster", "datastore": "inputs.datastore",
+			"network": "inputs.network", "post_config": []any{"linux-baseline"}}},
+		map[string]any{"key": "monitoring", "awx": map[string]any{"job_template": "monitoring-agent", "title": "Monitoring"},
+			"with": map[string]any{"target": "steps.vm.fqdn"}},
+	}}
+	if approverSize {
+		f := def.UiSchema.Fields["size"]
+		f.ApproverEditable = new(true)
+		def.UiSchema.Fields["size"] = f
+	}
+	var item api.AdminCatalogItem
+	h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: slug, Name: "A VM on NSX, monitored",
+		Summary: "Its own segment and groups.", Category: "compute", Type: api.Composite, Definition: &def}, 201, &item)
+	h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions/"+item.DraftVersion.Id+"/publish", "mkeller", nil, 200, nil)
+	h.json("PUT", "/api/v1/admin/catalog/items/"+slug+"/entitlements", "mkeller", api.CatalogEntitlements{AllProjects: true,
+		ProjectIds: []string{}}, 200, nil)
+	return item.Id, item.DraftVersion.Id
+}
+
+func compositeInputs(env string) map[string]any {
+	return map[string]any{"role": "web", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+		"network": "dvpg-app-dev-vl310", "database": "orders", "role_name": "orders_ro"}
+}
+
+// TestCompositeRetryAfterPartialRollback: a composite whose rollback
+// stopped halfway (NSX still had the segment's ports) has its VM step,
+// done but whose VM, groups and rules the rollback deleted, run again on
+// the retry: the VM rebuilt, its groups and rules made again (N2 review).
+func TestCompositeRetryAfterPartialRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		fakeNSX := nsx.NewFakeServer()
+		fakeNSX.RealizeAfter, fakeNSX.AnyVM, fakeNSX.SeeAfter = 1, true, 1
+		fakeNSX.OnSegment = portGroups(t, ctx, c)
+		client := useFakeNSX(h, fakeNSX)
+		h.acts.NSX, h.acts.NSXTimeout, h.acts.PollInterval = client, time.Second, 100*time.Millisecond
+		segmentRule(h)
+		item, version := compositeNSX(h, "vm-on-nsx-retry", false)
+
+		// Monitoring fails; the rollback deletes the VM, its groups and rules,
+		// then stops at the segment NSX won't delete yet.
+		h.awx.FailTask, fakeNSX.SegmentsInUse = "monitoring : install node_exporter", true
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web",
+			Environment: "dev", Inputs: compositeInputs("dev")}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusFailed)
+		h.awx.FailTask, fakeNSX.SegmentsInUse = "", false
+		var raw []byte
+		_ = h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw)
+		var plan provision.Plan
+		if err := json.Unmarshal(raw, &plan); err != nil {
+			t.Fatal(err)
+		}
+		vm := plan.Composite[0].VMs[0]
+		web := provision.GroupName(vm.DeploymentID, "web")
+		if vmExists(ctx, c, vm.Name) {
+			t.Fatal("the rollback left the VM")
+		}
+		if _, err := client.Group(ctx, web); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("the rollback left the group: %v", err)
+		}
+		if _, err := client.Segment(ctx, provision.SegmentName(vm.DeploymentID, "app")); err != nil {
+			t.Fatalf("the segment, which stopped the rollback: %v", err)
+		}
+
+		// The retry builds the VM step again, then monitoring.
+		h.json("POST", "/api/v1/requests/"+req.Id+"/retry", "tnguyen", nil, 202, nil)
+		h.runWorkflow(req.Id, nil)
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		if !vmExists(ctx, c, vm.Name) {
+			t.Fatal("the VM wasn't built again")
+		}
+		if _, err := client.Group(ctx, web); err != nil {
+			t.Fatalf("the group wasn't made again: %v", err)
+		}
+		if _, err := client.SecurityPolicy(ctx, provision.PolicyName(vm.DeploymentID)); err != nil {
+			t.Fatalf("the rules weren't made again: %v", err)
+		}
+	}, simulator.VPX())
+}
+
+// TestCompositeApproverChange: an approver can't change a composite's
+// inputs (its VM steps, their segments and groups, are planned at submit):
+// the change is refused and the plan stays as submitted (N2 review).
+func TestCompositeApproverChange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		useFakeNSX(h, nsx.NewFakeServer())
+		segmentRule(h)
+		item, version := compositeNSX(h, "vm-on-nsx-approved", true)
+		h.json("POST", "/api/v1/admin/approval-policies", "mkeller", api.ApprovalPolicyWrite{Name: "Small composites",
+			Condition: `inputs.size == "S" && inputs.role_name == "orders_ro"`,
+			Levels:    []api.ApprovalLevel{{Name: "Infrastructure leads", Group: new("rvav-infra-leads")}}, Priority: new(5)}, 201, nil)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web",
+			Environment: "dev", Inputs: compositeInputs("dev")}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusPendingApproval)
+		plan := func() provision.CompositeStep {
+			t.Helper()
+			var raw []byte
+			_ = h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw)
+			var p provision.Plan
+			if err := json.Unmarshal(raw, &p); err != nil {
+				t.Fatal(err)
+			}
+			return p.Composite[0]
+		}
+		before := plan()
+		// Its first level opened, as the workflow does.
+		var level string
+		if err := h.store.Pool.QueryRow(ctx, `select id from approvals where request_id = $1 order by seq limit 1`, req.Id).Scan(&level); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.acts.OpenApproval(ctx, level); err != nil {
+			t.Fatal(err)
+		}
+		var problem api.Problem
+		h.json("POST", "/api/v1/approvals/"+level+"/decision", "mkeller", api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove,
+			Inputs: &map[string]any{"size": "M"}}, 422, &problem)
+		if problem.Detail == nil || !strings.Contains(*problem.Detail, "can't be changed when approving") {
+			t.Fatalf("an approver's change = %+v", problem)
+		}
+		after := plan()
+		if after.VMs[0].VCPU != before.VMs[0].VCPU || len(after.Segments) != 1 || len(after.Security) != 1 || len(after.VMs[0].NSXGroups) != 2 {
+			t.Fatalf("the plan changed: %+v", after)
+		}
+		// Approved as submitted.
+		h.json("POST", "/api/v1/approvals/"+level+"/decision", "mkeller", api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove}, 200, nil)
 	}, simulator.VPX())
 }

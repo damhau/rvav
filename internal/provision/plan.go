@@ -409,12 +409,19 @@ func (vm VMUnit) ipTitle() string {
 }
 
 func (vm VMUnit) subnets() string {
-	list := []string{vm.Subnet}
+	// On a segment made for the deployment, its subnet is carved later.
+	subnet := func(cidr, segment string) string {
+		if cidr == "" && segment != "" {
+			return "segment " + segment + "'s"
+		}
+		return cidr
+	}
+	list := []string{subnet(vm.Subnet, vm.Segment)}
 	for _, n := range vm.Addressed() {
-		list = append(list, n.Subnet)
+		list = append(list, subnet(n.Subnet, n.Segment))
 	}
 	if len(list) == 1 {
-		return "Subnet " + vm.Subnet
+		return "Subnet " + list[0]
 	}
 	return "Subnets " + strings.Join(list, ", ")
 }

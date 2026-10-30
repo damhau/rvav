@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -217,8 +218,28 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			}
 		}
 	}
+	// A composite VM step done, whose VMs a rollback that stopped halfway
+	// deleted, runs again (with its NSX segments and groups).
+	var lost []string
+	if !rolledBack && len(plan.Composite) > 0 {
+		resources, err := s.Store.ResourcesForRequest(ctx, r.ID)
+		if err != nil {
+			return r, err
+		}
+		for _, c := range plan.Composite {
+			gone := slices.ContainsFunc(c.VMs, func(vm provision.VMUnit) bool {
+				return !slices.ContainsFunc(resources, func(x store.Resource) bool { return x.Type == "vsphere.vm" && x.Name == vm.Name })
+			})
+			if gone && slices.ContainsFunc(steps, func(st store.Step) bool { return st.Key == c.StepKey() && st.Status == "done" }) {
+				lost = append(lost, c.StepKey())
+			}
+		}
+	}
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
 		if err := s.lockForRetry(ctx, tx, r, rolledBack); err != nil {
+			return err
+		}
+		if err := s.Store.FailSteps(ctx, tx, r.ID, lost); err != nil {
 			return err
 		}
 		// A composite VM step runs again with its own steps: those done stay

@@ -174,6 +174,16 @@ func (s *Store) ReplacePendingSteps(ctx context.Context, db DB, requestID string
 // sub-steps named in keep that were done stay, unless all goes (a composite
 // VM step's: its VM is reused). A rollback step goes. The request is
 // queued, without its error.
+// FailSteps marks top-level steps failed, for a retry to run them again.
+func (s *Store) FailSteps(ctx context.Context, db DB, requestID string, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := db.Exec(ctx, `update request_steps set status = 'failed' where request_id = $1 and parent_id is null
+		and key = any($2::text[])`, requestID, keys)
+	return err
+}
+
 func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool, keep []string) error {
 	reset := `request_id = $1 and parent_id is null and status in ('failed', 'running', 'cancelled')`
 	if all {

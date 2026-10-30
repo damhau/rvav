@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -21,11 +22,13 @@ import (
 // EfficientIP block, the segment made on the Tier-1, its port group waited
 // for in vCenter, before the VMs; deleted after them.
 
-// SegmentInput is a segment to make, in the vCenter its VMs go to.
+// SegmentInput is a segment to make, in the vCenters its VMs go to (its
+// port group waited for in each; VCenter alone in plans before VCenters).
 type SegmentInput struct {
 	RequestID, ProjectID, Key string
 	Segment                   SegmentUnit
 	VCenter                   string
+	VCenters                  []string `json:",omitempty"`
 }
 
 // SegmentResult is the subnet the segment was given.
@@ -95,10 +98,18 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 			return "", "", err
 		}
 
-		// Realised by NSX, then a port group in vCenter VMs can join.
-		vc, err := a.vc(ctx, in.VCenter)
-		if err != nil {
-			return "", "", err
+		// Realised by NSX, then a port group in each vCenter its VMs go to.
+		vcenters := in.VCenters
+		if len(vcenters) == 0 {
+			vcenters = []string{in.VCenter}
+		}
+		var vcs []vsphere.Driver
+		for _, name := range vcenters {
+			vc, err := a.vc(ctx, name)
+			if err != nil {
+				return "", "", err
+			}
+			vcs = append(vcs, vc)
 		}
 		wait := a.nsxTimeout()
 		deadline := time.Now().Add(wait)
@@ -111,11 +122,15 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 				return "", "", permanent("NSX couldn't realise segment %s (%s)", sg.Name, state)
 			}
 			if state == "success" {
-				ok, err := vc.NetworkExists(ctx, sg.Name)
-				if err != nil {
-					return "", "", err
+				ready := true
+				for _, vc := range vcs {
+					ok, err := vc.NetworkExists(ctx, sg.Name)
+					if err != nil {
+						return "", "", err
+					}
+					ready = ready && ok
 				}
-				if ok {
+				if ready {
 					break
 				}
 			}

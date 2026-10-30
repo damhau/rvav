@@ -367,13 +367,9 @@ func makeSegments(ctx workflow.Context, info Info, segments []SegmentUnit, vms [
 	for _, sg := range segments {
 		key := keyOf(sg)
 		in := SegmentInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Segment: sg}
-		// The vCenter of a VM on it, by any adapter.
-		for _, vm := range vms {
-			if vm.DeploymentID == sg.DeploymentID && (vm.Segment == sg.Key ||
-				slices.ContainsFunc(vm.NICs, func(n NICUnit) bool { return n.Segment == sg.Key })) {
-				in.VCenter = vm.VCenter
-				break
-			}
+		// The vCenters of its VMs, by any adapter: its port group in each.
+		if in.VCenters = segmentVCenters(sg, vms); len(in.VCenters) > 0 {
+			in.VCenter = in.VCenters[0]
 		}
 		var res SegmentResult
 		if err := workflow.ExecuteActivity(ctx, a.MakeSegment, in).Get(ctx, &res); err != nil {
@@ -422,6 +418,19 @@ func joinGroups(ctx workflow.Context, info Info, in VMInput, key string, again b
 	}
 	in.Key = key
 	return key, workflow.ExecuteActivity(ctx, a.JoinGroups, in).Get(ctx, nil)
+}
+
+// segmentVCenters are the vCenters of the VMs on a segment, by any of their
+// adapters, each once, in the VMs' order.
+func segmentVCenters(sg SegmentUnit, vms []VMUnit) []string {
+	var out []string
+	for _, vm := range vms {
+		on := vm.Segment == sg.Key || slices.ContainsFunc(vm.NICs, func(n NICUnit) bool { return n.Segment == sg.Key })
+		if vm.DeploymentID == sg.DeploymentID && on && !slices.Contains(out, vm.VCenter) {
+			out = append(out, vm.VCenter)
+		}
+	}
+	return out
 }
 
 // builtVM is a VM a request built.

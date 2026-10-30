@@ -37,6 +37,9 @@ type FakeServer struct {
 	// NewVMTags are the tags such a VM has when NSX sees it: another
 	// tool's.
 	NewVMTags []Tag
+	// SegmentsInUse: segments can't be deleted, as when NSX still has the
+	// ports of VMs deleted a moment ago.
+	SegmentsInUse bool
 
 	mu       sync.Mutex
 	tier1s   map[string]Tier1
@@ -299,6 +302,10 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		case http.MethodDelete:
+			if _, ok := f.segments[sid]; ok && f.SegmentsInUse {
+				nsxError(w, http.StatusBadRequest, 503040, "Segment "+sid+" still has ports: it can't be deleted.")
+				return
+			}
 			if s, ok := f.segments[sid]; ok {
 				delete(f.segments, sid)
 				if f.OnSegment != nil {

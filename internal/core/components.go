@@ -232,7 +232,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return key
 	}
 	part.segment = segmentOf(plan.Network, field("network"))
-	onSegment := part.segment != ""
+	// Where a missing placement rule for segments is said: the first adapter
+	// on one.
+	needsSegments, segmentAt := part.segment != "", field("network")
 	part.nicSegments = make([]string, len(plan.NICs))
 	for i, n := range plan.NICs {
 		at := bindingField(c.NICs[i].Network, "")
@@ -242,10 +244,13 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				add(at, "not_allowed", "A segment made for the deployment has no DHCP: its adapters get their addresses from EfficientIP.")
 				continue
 			}
-			part.nicSegments[i], onSegment = key, true
+			part.nicSegments[i] = key
+			if !needsSegments {
+				needsSegments, segmentAt = true, at
+			}
 		}
 	}
-	if onSegment {
+	if needsSegments {
 		for _, r := range pl.rules {
 			if r.Segments != nil {
 				sg := *r.Segments
@@ -254,15 +259,15 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			}
 		}
 		if part.segments == nil && len(pl.rules) > 0 {
-			add(field("network"), "no_segments", fmt.Sprintf("No placement rule of %s in %s makes NSX segments. Ask an administrator to add one.",
+			add(segmentAt, "no_segments", fmt.Sprintf("No placement rule of %s in %s makes NSX segments. Ask an administrator to add one.",
 				ev.Project.Name, ev.Env.Name))
 		}
 	}
 	// Its port group doesn't exist until the request makes it: clusters are
 	// chosen, and checked, without it.
 	placed := plan
-	if part.segment != "" {
-		placed.Network = ""
+	if _, ok := blueprint.SegmentKey(plan.Network); ok {
+		placed.Network = "" // refused above if it isn't the item's
 	}
 	// A size the bindings can't work out is the blueprint's fault once the
 	// inputs are all there: never a VM of the template's size by default.
@@ -343,8 +348,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	for i, n := range plan.NICs {
 		at := bindingField(c.NICs[i].Network, "")
 		// On a segment made for the deployment: its subnet is carved when the
-		// request runs, its port group made then.
-		if n.Network == "" || part.nicSegments[i] != "" {
+		// request runs, its port group made then; refused above, no more said.
+		if _, onSegment := blueprint.SegmentKey(n.Network); n.Network == "" || onSegment {
 			continue
 		}
 		if plan.Cluster != "" && pl.cluster(plan.Cluster) != nil &&

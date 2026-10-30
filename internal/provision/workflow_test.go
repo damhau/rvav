@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -371,5 +372,33 @@ func TestHousekeepingExpiresSnapshots(t *testing.T) {
 	// Leases failing (three attempts) does not stop snapshots.
 	if err := env.GetWorkflowError(); err == nil || fake.calls != 4 {
 		t.Fatalf("housekeeping: %v, %d calls", err, fake.calls)
+	}
+}
+
+// TestSegmentVCenters: a segment's port group is waited for in every
+// vCenter one of its VMs goes to, by any adapter (N2 review).
+func TestSegmentVCenters(t *testing.T) {
+	sg := SegmentUnit{DeploymentID: "dep_1", Key: "app"}
+	vms := []VMUnit{
+		{DeploymentID: "dep_1", Name: "web01", VCenter: "vc-a", Segment: "app"},
+		{DeploymentID: "dep_1", Name: "web02", VCenter: "vc-a", Segment: "app"},
+		{DeploymentID: "dep_1", Name: "db01", VCenter: "vc-b", NICs: []NICUnit{{Key: "back", Segment: "app"}}},
+		{DeploymentID: "dep_1", Name: "other01", VCenter: "vc-c"},
+		{DeploymentID: "dep_2", Name: "web01", VCenter: "vc-d", Segment: "app"},
+	}
+	if got := segmentVCenters(sg, vms); !slices.Equal(got, []string{"vc-a", "vc-b"}) {
+		t.Fatalf("vCenters = %v", got)
+	}
+}
+
+// TestSubnetsDetail: the address step names a segment's subnet, carved
+// later, rather than leaving an empty entry (N2 review).
+func TestSubnetsDetail(t *testing.T) {
+	vm := VMUnit{Subnet: "10.31.10.0/24", NICs: []NICUnit{{Key: "back", IPAM: "efficientip", Segment: "back"}}}
+	if got := vm.subnets(); got != "Subnets 10.31.10.0/24, segment back's" {
+		t.Fatalf("detail = %q", got)
+	}
+	if got := (VMUnit{Segment: "app"}).subnets(); got != "Subnet segment app's" {
+		t.Fatalf("detail = %q", got)
 	}
 }
