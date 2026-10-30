@@ -66,6 +66,20 @@ type PlacementRule struct {
 	// VCenter the vCenter its clusters are in ("" for any; ADR-0024).
 	StoragePolicy string `db:"storage_policy"`
 	VCenter       string `db:"vcenter"`
+	// Segments: what NSX segments made for a deployment placed by the
+	// rule are (ADR-0028); nil when it makes none.
+	Segments *PlacementSegments `db:"segments"`
+}
+
+// PlacementSegments are the NSX segments made for a deployment: on a
+// Tier-1, their subnets of PrefixLength bits carved from an EfficientIP
+// block, the VMs on them in a DNS zone.
+type PlacementSegments struct {
+	Tier1        string   `json:"tier1"`
+	IPBlock      string   `json:"ip_block"`
+	PrefixLength int      `json:"prefix_length"`
+	DNSZone      string   `json:"dns_zone"`
+	DNSServers   []string `json:"dns_servers"`
 }
 
 type NetworkSubnet struct {

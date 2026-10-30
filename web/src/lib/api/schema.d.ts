@@ -4405,6 +4405,8 @@ export interface components {
             datastore_tags: string[];
             /** @description The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none. */
             storage_policy: string;
+            /** @description NSX segments made for a deployment placed by the rule (ADR-0028); none when it makes none. */
+            segments?: components["schemas"]["PlacementSegments"] | null;
             /** @description The vCenter its clusters are in; empty for any (ADR-0024). Needed when a cluster's name is in two vCenters. */
             vcenter: string;
         };
@@ -4421,6 +4423,30 @@ export interface components {
             datastore_tags?: string[];
             storage_policy?: string;
             vcenter?: string;
+            segments?: components["schemas"]["PlacementSegments"] | null;
+        };
+        PlacementSegments: {
+            /**
+             * @description The ID of the Tier-1 gateway they connect to.
+             * @example t1-gva-dev
+             */
+            tier1: string;
+            /**
+             * @description The EfficientIP block their subnets are carved from: its name or range.
+             * @example nsx-gva-dev
+             */
+            ip_block: string;
+            /**
+             * @description Each segment's subnet size.
+             * @example 26
+             */
+            prefix_length: number;
+            /**
+             * @description The DNS zone of the VMs on them.
+             * @example corp.example
+             */
+            dns_zone: string;
+            dns_servers?: string[];
         };
         PlacementRuleList: {
             items: components["schemas"]["PlacementRule"][];

@@ -16,7 +16,7 @@ type PlacementRuleRow struct {
 }
 
 const placementRuleRowSelect = `select r.id, r.project_id, r.environment, r.priority, r.cluster_patterns, r.datastore_patterns,
-	r.network_patterns, r.folder, r.cluster_tags, r.datastore_tags, r.storage_policy, r.vcenter, p.code as project_code, p.name as project_name
+	r.network_patterns, r.folder, r.cluster_tags, r.datastore_tags, r.storage_policy, r.vcenter, r.segments, p.code as project_code, p.name as project_name
 	from placement_rules r join projects p on p.id = r.project_id`
 
 // AllPlacementRules lists the rules of a project, or of all ("" for all).
@@ -34,15 +34,21 @@ func (s *Store) GetPlacementRule(ctx context.Context, id string) (PlacementRuleR
 
 // SavePlacementRule creates the rule or replaces it.
 func (s *Store) SavePlacementRule(ctx context.Context, r PlacementRule) error {
+	// No segments is SQL NULL, not JSON null.
+	var segments any
+	if r.Segments != nil {
+		segments = r.Segments
+	}
 	_, err := s.Pool.Exec(ctx, `insert into placement_rules (id, project_id, environment, priority, cluster_patterns,
-		datastore_patterns, network_patterns, folder, cluster_tags, datastore_tags, storage_policy, vcenter)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		datastore_patterns, network_patterns, folder, cluster_tags, datastore_tags, storage_policy, vcenter, segments)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		on conflict (id) do update set project_id = excluded.project_id, environment = excluded.environment,
 		priority = excluded.priority, cluster_patterns = excluded.cluster_patterns, datastore_patterns = excluded.datastore_patterns,
 		network_patterns = excluded.network_patterns, folder = excluded.folder, cluster_tags = excluded.cluster_tags,
-		datastore_tags = excluded.datastore_tags, storage_policy = excluded.storage_policy, vcenter = excluded.vcenter`,
+		datastore_tags = excluded.datastore_tags, storage_policy = excluded.storage_policy, vcenter = excluded.vcenter,
+		segments = excluded.segments`,
 		r.ID, r.ProjectID, r.Environment, r.Priority, nonNil(r.ClusterPatterns), nonNil(r.DatastorePatterns),
-		nonNil(r.NetworkPatterns), r.Folder, nonNil(r.ClusterTags), nonNil(r.DatastoreTags), r.StoragePolicy, r.VCenter)
+		nonNil(r.NetworkPatterns), r.Folder, nonNil(r.ClusterTags), nonNil(r.DatastoreTags), r.StoragePolicy, r.VCenter, segments)
 	return err
 }
 

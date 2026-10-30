@@ -6014,6 +6014,11 @@ components:
         storage_policy:
           type: string
           description: The storage policy (SPBM) of VMs placed by the rule, unless their blueprint names one (ADR-0024); empty for none.
+        segments:
+          description: "NSX segments made for a deployment placed by the rule (ADR-0028); none when it makes none."
+          oneOf:
+            - $ref: "#/components/schemas/PlacementSegments"
+            - type: "null"
         vcenter:
           type: string
           description: The vCenter its clusters are in; empty for any (ADR-0024). Needed when a cluster's name is in two vCenters.
@@ -6033,6 +6038,20 @@ components:
         datastore_tags: { type: array, items: { type: string } }
         storage_policy: { type: string }
         vcenter: { type: string }
+        segments:
+          oneOf:
+            - $ref: "#/components/schemas/PlacementSegments"
+            - type: "null"
+    PlacementSegments:
+      type: object
+      required: [tier1, ip_block, prefix_length, dns_zone]
+      additionalProperties: false
+      properties:
+        tier1: { type: string, description: "The ID of the Tier-1 gateway they connect to.", examples: [t1-gva-dev] }
+        ip_block: { type: string, description: "The EfficientIP block their subnets are carved from: its name or range.", examples: [nsx-gva-dev] }
+        prefix_length: { type: integer, minimum: 16, maximum: 29, description: "Each segment's subnet size.", examples: [26] }
+        dns_zone: { type: string, description: "The DNS zone of the VMs on them.", examples: [corp.example] }
+        dns_servers: { type: array, items: { type: string } }
     PlacementRuleList:
       type: object
       required: [items]

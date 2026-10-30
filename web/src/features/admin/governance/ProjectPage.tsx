@@ -271,6 +271,15 @@ function RuleDialog({
     vcenter: rule?.vcenter ?? "",
     priority: String(rule?.priority ?? 100),
   });
+  // NSX segments made for deployments (ADR-0028).
+  const [segOn, setSegOn] = useState(Boolean(rule?.segments));
+  const [seg, setSeg] = useState({
+    tier1: rule?.segments?.tier1 ?? "",
+    ip_block: rule?.segments?.ip_block ?? "",
+    prefix_length: String(rule?.segments?.prefix_length ?? 26),
+    dns_zone: rule?.segments?.dns_zone ?? "",
+    dns_servers: rule?.segments?.dns_servers?.join(", ") ?? "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => {
@@ -286,6 +295,15 @@ function RuleDialog({
         folder: f.folder,
         storage_policy: f.storage_policy.trim(),
         vcenter: f.vcenter.trim(),
+        segments: segOn
+          ? {
+              tier1: seg.tier1.trim(),
+              ip_block: seg.ip_block.trim(),
+              prefix_length: Number(seg.prefix_length),
+              dns_zone: seg.dns_zone.trim(),
+              dns_servers: list(seg.dns_servers),
+            }
+          : null,
       };
       return rule
         ? call(api.PUT("/admin/placement-rules/{id}", { params: { path: { id: rule.id } }, body }))
@@ -309,6 +327,16 @@ function RuleDialog({
         className={mono ? "font-mono text-xs" : undefined}
         value={f[k]}
         onChange={(e) => setF({ ...f, [k]: e.target.value })}
+      />
+    </Field>
+  );
+  const segField = (k: keyof typeof seg, label: string, hint?: string) => (
+    <Field label={label} htmlFor={`rule-seg-${k}`} error={errorAt(errors, `/segments/${k}`)} hint={hint}>
+      <Input
+        id={`rule-seg-${k}`}
+        className="font-mono text-xs"
+        value={seg[k]}
+        onChange={(e) => setSeg({ ...seg, [k]: e.target.value })}
       />
     </Field>
   );
@@ -340,6 +368,22 @@ function RuleDialog({
             {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
             {field("priority", "Priority", "Lower first", false)}
           </div>
+          <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-[13px]">
+            <Checkbox id="rule-seg-on" checked={segOn} onChange={setSegOn} />
+            NSX segments made for deployments
+          </label>
+          {segOn && (
+            <fieldset className="grid grid-cols-2 gap-3 rounded-md border border-line p-3">
+              <legend className="px-1 text-xs text-muted">
+                Items that make their own networks get segments on this Tier-1, their subnets from this block
+              </legend>
+              {segField("tier1", "Tier-1 gateway", "Its NSX ID, for example t1-gva-dev")}
+              {segField("ip_block", "EfficientIP block", "Its name or range")}
+              {segField("prefix_length", "Subnet size", "Prefix length, 16 to 29")}
+              {segField("dns_zone", "DNS zone")}
+              {segField("dns_servers", "DNS servers", "Comma-separated")}
+            </fieldset>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
@@ -419,6 +463,14 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
                 <>
                   <dt className="text-faint">vCenter</dt>
                   <dd className="font-mono">{r.vcenter}</dd>
+                </>
+              )}
+              {r.segments && (
+                <>
+                  <dt className="text-faint">NSX segments</dt>
+                  <dd className="font-mono">
+                    {r.segments.tier1} · {r.segments.ip_block} /{r.segments.prefix_length} · {r.segments.dns_zone}
+                  </dd>
                 </>
               )}
             </dl>

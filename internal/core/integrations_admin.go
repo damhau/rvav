@@ -420,6 +420,13 @@ func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfi
 	check("DNS", err, fmt.Sprintf("%d forward zones on %s.", len(zones), c.DNSServer))
 }
 
+// nsx is a client of the NSX Manager rvav is configured with.
+func (s *Service) nsx() (*nsx.Client, error) {
+	c := s.Config.NSX
+	return nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile, KeyFile: c.KeyFile,
+		Insecure: c.Insecure})
+}
+
 func (s *Service) testNSX(ctx context.Context, c config.NSXConfig, check checkFunc) {
 	if c.URL == "" {
 		check("Settings", errors.New("give the NSX Manager's URL"), "")

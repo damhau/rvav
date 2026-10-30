@@ -13,6 +13,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -20,11 +21,62 @@ import (
 // (ADR-0020).
 
 func presentPlacementRule(r store.PlacementRuleRow) api.PlacementRule {
-	return api.PlacementRule{Id: r.ID, Project: api.ProjectRef{Id: r.ProjectID, Code: r.ProjectCode, Name: r.ProjectName},
+	out := api.PlacementRule{Id: r.ID, Project: api.ProjectRef{Id: r.ProjectID, Code: r.ProjectCode, Name: r.ProjectName},
 		Environment: r.Environment, Priority: r.Priority, Clusters: nonNilStrings(r.ClusterPatterns),
 		Datastores: nonNilStrings(r.DatastorePatterns), Networks: nonNilStrings(r.NetworkPatterns), Folder: r.Folder,
 		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags), StoragePolicy: r.StoragePolicy,
 		Vcenter: r.VCenter}
+	if sg := r.Segments; sg != nil {
+		servers := nonNilStrings(sg.DNSServers)
+		out.Segments = &api.PlacementSegments{Tier1: sg.Tier1, IpBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DnsZone: sg.DNSZone,
+			DnsServers: &servers}
+	}
+	return out
+}
+
+// checkSegments says what is wrong with a rule's segments made for
+// deployments (ADR-0028): NSX must be set up and have the Tier-1.
+func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments) (*store.PlacementSegments, []api.FieldError) {
+	if w == nil {
+		return nil, nil
+	}
+	var errs []api.FieldError
+	add := func(field, code, msg string) { errs = append(errs, fieldErr("/segments/"+field, code, msg)) }
+	sg := &store.PlacementSegments{Tier1: strings.TrimSpace(w.Tier1), IPBlock: strings.TrimSpace(w.IpBlock), PrefixLength: w.PrefixLength,
+		DNSZone: strings.TrimSuffix(strings.TrimSpace(w.DnsZone), "."), DNSServers: derefSlice(w.DnsServers)}
+	if sg.IPBlock == "" {
+		add("ip_block", "required", "Name the EfficientIP block the segments' subnets are carved from, or give its range.")
+	}
+	if sg.PrefixLength < 16 || sg.PrefixLength > 29 {
+		add("prefix_length", "range", "A subnet of /16 to /29.")
+	}
+	if sg.DNSZone == "" {
+		add("dns_zone", "required", "The DNS zone of the VMs on these segments.")
+	}
+	for i, ip := range sg.DNSServers {
+		if _, err := netip.ParseAddr(ip); err != nil {
+			add(fmt.Sprintf("dns_servers/%d", i), "pattern", fmt.Sprintf("%q is not an IP address.", ip))
+		}
+	}
+	switch {
+	case sg.Tier1 == "":
+		add("tier1", "required", "The Tier-1 gateway the segments connect to.")
+	case !s.Config.NSX.Configured():
+		add("tier1", "no_nsx", "rvav has no NSX Manager: set one in Integrations first.")
+	default:
+		client, err := s.nsx()
+		if err != nil {
+			add("tier1", "nsx", "NSX can't be reached: "+err.Error())
+			break
+		}
+		tier1s, err := client.Tier1s(ctx)
+		if err != nil {
+			add("tier1", "nsx", "NSX can't be reached: "+err.Error())
+		} else if !slices.ContainsFunc(tier1s, func(t nsx.Tier1) bool { return t.ID == sg.Tier1 }) {
+			add("tier1", "unknown", "NSX has no Tier-1 gateway "+sg.Tier1+".")
+		}
+	}
+	return sg, errs
 }
 
 // canSeeSettings: administrators and auditors everywhere; a project's
@@ -135,6 +187,8 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 			errs = append(errs, fieldErr("/storage_policy", "unknown", "vCenter has no storage policy "+policy+"."))
 		}
 	}
+	segments, segErrs := s.checkSegments(ctx, w.Segments)
+	errs = append(errs, segErrs...)
 	if len(errs) > 0 {
 		return api.PlacementRule{}, &ValidationError{Errors: errs}
 	}
@@ -148,7 +202,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	}
 	r := store.PlacementRule{ID: id, ProjectID: proj.ID, Environment: w.Environment, Priority: priority,
 		ClusterPatterns: w.Clusters, DatastorePatterns: w.Datastores, NetworkPatterns: w.Networks, Folder: w.Folder,
-		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy, VCenter: vcenter}
+		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy, VCenter: vcenter, Segments: segments}
 	if err := s.Store.SavePlacementRule(ctx, r); err != nil {
 		return api.PlacementRule{}, err
 	}

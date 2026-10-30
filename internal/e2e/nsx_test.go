@@ -62,3 +62,56 @@ func TestNSXIntegration(t *testing.T) {
 			"app_id": "a1", "tenant_id": "t1"}, Secret: new("s")}, 200, nil)
 	})
 }
+
+// TestPlacementSegments: a placement rule's segments made for deployments
+// (N1.2): refused without an NSX Manager, or with a Tier-1 NSX doesn't
+// have, a subnet size out of range or a DNS server that isn't an address;
+// saved, read back, and cleared.
+func TestPlacementSegments(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		segments := &api.PlacementSegments{Tier1: "t1-gva-dev", IpBlock: "nsx-gva-dev", PrefixLength: 26, DnsZone: "corp.example",
+			DnsServers: &[]string{"10.10.0.53"}}
+		rule := api.PlacementRuleWrite{ProjectId: "prj_web", Environment: "dev", Clusters: []string{"GVA-DEV-*"},
+			Datastores: []string{"vsan-gva-dev-*"}, Networks: []string{"dvpg-app-dev-*"}, Folder: "/GVA/vm/rvav/web/dev", Segments: segments}
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/placement-rules", admin, rule, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/segments/tier1" || deref(problem.Errors[0].Code) != "no_nsx" {
+			t.Fatalf("without NSX = %+v", problem.Errors)
+		}
+
+		fake := httptest.NewServer(nsx.NewFakeServer())
+		defer fake.Close()
+		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = fake.URL, nsx.FakeUser, nsx.FakePassword
+		bad := *segments
+		bad.Tier1, bad.PrefixLength, bad.DnsServers = "t1-nope", 30, &[]string{"ns1"}
+		rule.Segments = &bad
+		h.json("POST", "/api/v1/admin/placement-rules", admin, rule, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Equal(fields, []string{"/segments/prefix_length", "/segments/dns_servers/0", "/segments/tier1"}) {
+			t.Fatalf("bad segments = %v", fields)
+		}
+
+		rule.Segments = segments
+		var saved api.PlacementRule
+		h.json("POST", "/api/v1/admin/placement-rules", admin, rule, 201, &saved)
+		if saved.Segments == nil || saved.Segments.Tier1 != "t1-gva-dev" || saved.Segments.PrefixLength != 26 ||
+			(*saved.Segments.DnsServers)[0] != "10.10.0.53" {
+			t.Fatalf("saved = %+v", saved.Segments)
+		}
+		var rules api.PlacementRuleList
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
+		if i := slices.IndexFunc(rules.Items, func(r api.PlacementRule) bool { return r.Id == saved.Id }); i < 0 || rules.Items[i].Segments == nil {
+			t.Fatalf("listed = %+v", rules.Items)
+		}
+		rule.Segments = nil
+		var cleared api.PlacementRule
+		h.json("PUT", "/api/v1/admin/placement-rules/"+saved.Id, admin, rule, 200, &cleared)
+		if cleared.Segments != nil {
+			t.Fatalf("cleared = %+v", cleared.Segments)
+		}
+	})
+}
