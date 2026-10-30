@@ -721,7 +721,8 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 		var depState string
 		_ = h.store.Pool.QueryRow(ctx, `select sync_state from deployments where id = $1`, depID).Scan(&depState)
 		if _, raw, _ := h.do("GET", "/api/v1/deployments/"+depID, "tnguyen", nil); depState != "drifted" ||
-			!strings.Contains(string(raw), `"missing":["role|web"]`) {
+			!strings.Contains(string(raw), `"missing":["role|web"]`) ||
+			!strings.Contains(string(raw), `"out_of":[{"id":"grp-web-servers","name":"grp-web-servers"}]`) {
 			t.Fatalf("after the tag was removed: %s, %s", depState, raw)
 		}
 		// Joining it again restores the tag.

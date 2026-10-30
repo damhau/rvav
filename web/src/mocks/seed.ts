@@ -654,7 +654,7 @@ export function createDb(now = Date.now()): Db {
             { id: grp, name: grp },
             { id: "grp-web-servers", name: "grp-web-servers" },
           ],
-          ...(i === 1 ? { missing: ["role|web"] } : {}),
+          ...(i === 1 ? { missing: ["role|web"], out_of: [{ id: "grp-web-servers", name: "grp-web-servers" }] } : {}),
         },
       })),
     ];

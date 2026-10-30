@@ -68,8 +68,8 @@ stands by answers too: it is down, not idle.
      [api-down](#api-down).
    - `500`: a bug or the database. The log has the error; a database
      error names its constraint or the connection.
-3. **An integration's errors:** the API calls EfficientIP, AWX and vCenter
-   for forms and checks. Their failures answer 502 with the system named;
+3. **An integration's errors:** the API calls EfficientIP, AWX, vCenter and
+   NSX for forms and checks. Their failures answer 502 with the system named;
    see [integration-errors](#integration-errors).
 
 ## api-slow
@@ -107,8 +107,14 @@ hour (the 1.0 gate wants 98% to succeed).
 
 ## integration-errors
 
-**RvavIntegrationErrors:** more than 10% of calls to vCenter, EfficientIP
-or AWX fail.
+**RvavIntegrationErrors:** more than 10% of calls to vCenter, EfficientIP,
+AWX or NSX fail.
+
+When NSX fails: placement rules that make segments can't be saved, the
+`nsx.*` form fields have no options, items on NSX can't be requested,
+their segment and security group steps wait and retry, and the tag sync
+(drift) pauses. Requests for items that don't ask NSX for anything are
+untouched.
 
 1. **Which system:** the `system` label.
 2. **Its log lines:** messages name it.

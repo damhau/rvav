@@ -406,8 +406,9 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		var p struct {
 			VM     string `json:"vm"`
 			Groups []struct {
-				ID   string `json:"id"`
-				Name string `json:"name"`
+				ID   string    `json:"id"`
+				Name string    `json:"name"`
+				Tags []nsx.Tag `json:"tags"`
 			} `json:"groups"`
 			Missing []nsx.Tag `json:"missing"`
 		}
@@ -424,6 +425,14 @@ func Resource(r store.Resource) (api.Resource, bool) {
 				missing[i] = t.Scope + "|" + t.Tag
 			}
 			v.Membership.Missing = &missing
+			// The groups a missing tag puts it in.
+			out := []api.GroupRef{}
+			for _, g := range p.Groups {
+				if slices.ContainsFunc(g.Tags, func(t nsx.Tag) bool { return slices.Contains(p.Missing, t) }) {
+					out = append(out, api.GroupRef{Id: g.ID, Name: g.Name})
+				}
+			}
+			v.Membership.OutOf = &out
 		}
 		err := out.FromGroupMembershipResource(v)
 		return out, err == nil

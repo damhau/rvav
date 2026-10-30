@@ -21,9 +21,9 @@ a scrape configuration of the site's own (from the annotations) must too.
 | `rvav_http_request_duration_seconds` | method, route | How long they take. The live stream and the console are left out. |
 | `rvav_requests_finished_total` | kind, outcome | Requests that ran to an end: succeeded, failed or cancelled. |
 | `rvav_request_duration_seconds` | kind | From the start of the run to its end. |
-| `rvav_steps_total` | system, outcome | Workflow steps by the system they act on (vsphere, ipam, dns, awx, rvav…), done or failed. |
+| `rvav_steps_total` | system, outcome | Workflow steps by the system they act on (vsphere, ipam, dns, awx, nsx, rvav…), done or failed. |
 | `rvav_step_duration_seconds` | system | How long they take. |
-| `rvav_integration_calls_total` | system, outcome | Calls to vCenter, EfficientIP and AWX. An error is a failed call, or a 5xx from an HTTP API. |
+| `rvav_integration_calls_total` | system, outcome | Calls to vCenter, EfficientIP, AWX and NSX (`nsx`). An error is a failed call, or a 5xx from an HTTP API. |
 | `rvav_integration_call_duration_seconds` | system | How long they take. |
 | `rvav_inventory_watch_connected` | vcenter | 1 while the sync follows the vCenter's changes (sync). |
 | `rvav_inventory_last_full_read_timestamp_seconds` | vcenter | The last full read (sync). |

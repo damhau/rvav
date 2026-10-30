@@ -58,7 +58,7 @@ values.
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. Only the first adapter, and not in composite items yet |
-| `security_groups` | NSX groups made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to eight: `key`, `title`, and the firewall `rules` into each: `from` (`any`, another group's key, or `nsx:<group ID>`), `services` (NSX service IDs, or `any`), `action` (`allow`, the default, `drop`, `reject`) |
+| `security_groups` | NSX groups made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to eight: `key`, `title`, and the firewall `rules` into each: `from` (`any`, another group's key, or `nsx:<group ID>`), `services` (NSX service IDs, or `any`), `action` (`allow`, the default, `drop`, `reject`). Not in composite items yet: such a composite saves, and requests for it are refused |
 | `groups` | The NSX groups the VMs are in: keys of `security_groups`, or existing groups that select VMs by tag, as `nsx:<group ID>`; a component may name its own |
 | `tags` | vSphere tags, `category/tag` |
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |

@@ -376,6 +376,7 @@ export const catalogue: MockAction[] = [
         // Its tags set again: no longer drifted.
         m.sync_state = "in_sync";
         delete m.membership.missing;
+        delete m.membership.out_of;
         if (!dep.resources.some((r) => r.sync_state === "drifted")) dep.sync_state = "in_sync";
       }),
     ],

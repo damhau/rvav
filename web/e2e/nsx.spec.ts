@@ -45,13 +45,13 @@ test("a deployment's segment and security groups; a VM put back in its group (N1
   await expect(page.getByRole("heading", { name: "web-tst-search" })).toBeVisible();
 
   // The segment with the addresses, the group with the rules into it.
-  await expect(page.getByRole("region", { name: "IP addresses and DNS" })).toContainText(
+  await expect(page.getByRole("region", { name: "Network and addresses" })).toContainText(
     "NSX segment · t1-gva-prd · 10.41.10.0/26",
   );
   const groups = page.getByRole("region", { name: "Security groups" });
-  await expect(groups).toContainText("Allows HTTPS from ANY");
+  await expect(groups).toContainText("Allows HTTPS from anywhere");
   await expect(groups).toContainText("Allows SSH from grp-backup-clients");
-  await expect(groups.getByRole("status")).toContainText("Tag role|web removed in NSX");
+  await expect(groups.getByRole("status")).toContainText("Its tags for grp-web-servers were removed in NSX");
   // In both themes, as the accessibility sweep checks the other pages
   // (loaded again in each: the mock database is the same once reloaded).
   for (const scheme of ["dark", "light"] as const) {

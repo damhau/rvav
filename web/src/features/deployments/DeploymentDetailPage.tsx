@@ -213,7 +213,7 @@ function Network({
   segments: SegmentResource[];
 }) {
   if (ips.length + dns.length + segments.length === 0)
-    return <p className="text-xs text-muted">No addresses reserved yet.</p>;
+    return <p className="text-xs text-muted">No network resources yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
       {/* NSX segments made for the deployment (ADR-0028). */}
@@ -254,7 +254,12 @@ function SecurityGroups({
   policies: FirewallRulesResource[];
   members: GroupMembershipResource[];
 }) {
-  const rules = policies.flatMap((p) => p.rules);
+  // NSX rule IDs are unique within their policy.
+  const rules = policies.flatMap((p) => p.rules.map((r) => ({ ...r, key: `${p.id}/${r.id}` })));
+  // The deployment's groups by their titles; ANY as people say it.
+  const title = (id: string) => groups.find((g) => g.group.id === id)?.group.title ?? id;
+  const where = (ids: string[]) => (ids.includes("ANY") ? "anywhere" : ids.map(title).join(", "));
+  const what = (services: string[]) => (services.includes("ANY") ? "any service" : services.join(", "));
   return (
     <div className="flex flex-col gap-3 text-xs">
       {groups.length > 0 && (
@@ -262,18 +267,17 @@ function SecurityGroups({
           {groups.map((g) => (
             <li key={g.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <span className="min-w-0 font-mono text-[12px] break-all">{g.group.id}</span>
-                {g.group.title && <span className="text-[11px] text-faint">{g.group.title}</span>}
+                <span className="text-[13px] font-medium">{g.group.title ?? g.group.key ?? g.group.id}</span>
+                <span className="min-w-0 font-mono text-[11px] break-all text-faint">{g.group.id}</span>
               </div>
               <ul className="mt-0.5 flex flex-col gap-0.5 text-[11px] text-muted">
                 {/* Every rule naming the group: into it, out of it, or enforced on it. */}
                 {rules
                   .filter((r) => [...r.from, ...r.to, ...(r.scope ?? [])].includes(g.group.id))
                   .map((r) => (
-                    <li key={r.id}>
-                      {r.action === "ALLOW" ? "Allows" : r.action === "DROP" ? "Drops" : "Rejects"}{" "}
-                      {r.services.join(", ")}{" "}
-                      {r.to.includes(g.group.id) ? `from ${r.from.join(", ")}` : `to ${r.to.join(", ")}`}
+                    <li key={r.key}>
+                      {r.action === "ALLOW" ? "Allows" : r.action === "DROP" ? "Drops" : "Rejects"} {what(r.services)}{" "}
+                      {r.to.includes(g.group.id) ? `from ${where(r.from)}` : `to ${where(r.to)}`}
                     </li>
                   ))}
               </ul>
@@ -291,9 +295,13 @@ function SecurityGroups({
               </span>
             </div>
             {m.sync_state === "drifted" && m.membership.missing && (
-              <p role="status" className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-[11px] text-warn">
-                Tag {m.membership.missing.join(", ")} removed in NSX: the VM is out of a group. Add it to the group
-                again to restore its tags.
+              <p
+                role="status"
+                title={m.membership.missing.join(", ")}
+                className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-[11px] text-warn"
+              >
+                Its tags for {m.membership.out_of?.map((g) => title(g.id)).join(", ") || "a group"} were removed in NSX,
+                so the group's firewall rules no longer apply to it. Use Add to a security group to put it back.
               </p>
             )}
           </li>
@@ -594,7 +602,7 @@ function Overview({
         <Panel title="Placement">
           <Placement vms={vms} rules={rules} />
         </Panel>
-        <Panel title="IP addresses and DNS">
+        <Panel title="Network and addresses">
           <Network ips={ips} dns={dns} segments={segments} />
         </Panel>
         {groups.length + members.length > 0 && (

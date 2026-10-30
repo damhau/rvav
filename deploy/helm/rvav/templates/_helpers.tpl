@@ -96,6 +96,11 @@ spec:
       {{- with .root.Values.tolerations }}
       tolerations: {{ toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .root.Values.nsx.certSecret }}
+      volumes:
+        - name: nsx-identity
+          secret: { secretName: {{ . | quote }}, defaultMode: 0440 }
+      {{- end }}
       initContainers:
         - name: migrate
           image: {{ include "rvav.image" .root }}
@@ -125,4 +130,8 @@ spec:
           {{- end }}
           resources: {{ toYaml $v.resources | nindent 12 }}
           securityContext: {{ toYaml .root.Values.securityContext | nindent 12 }}
+          {{- if .root.Values.nsx.certSecret }}
+          volumeMounts:
+            - { name: nsx-identity, mountPath: /etc/rvav/nsx, readOnly: true }
+          {{- end }}
 {{- end }}

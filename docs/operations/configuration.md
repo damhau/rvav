@@ -115,7 +115,7 @@ The NSX Manager rvav makes networks and security groups in
 | `RVAV_NSX_USERNAME` | none | | rvav's NSX user, to sign in with a password. |
 | `RVAV_NSX_PASSWORD` | none | yes | Its password. |
 | `RVAV_NSX_CERT_FILE` | none | | Or a principal identity: its certificate, a PEM file on rvav's hosts. NSX recommends this for automation. |
-| `RVAV_NSX_KEY_FILE` | none | | The principal identity's private key, a PEM file. Mount it from a Secret. |
+| `RVAV_NSX_KEY_FILE` | none | | The principal identity's private key, a PEM file. With the Helm chart, name a `kubernetes.io/tls` Secret in `nsx.certSecret`: it is mounted at `/etc/rvav/nsx` (`tls.crt`, `tls.key`). |
 | `RVAV_NSX_INSECURE` | off | | Doesn't check the certificate. For labs only. |
 
 rvav's NSX account needs a role that can:
@@ -125,9 +125,16 @@ rvav's NSX account needs a role that can:
   domain;
 - **tag:** VMs.
 
-It needs nothing on Tier-0 or Tier-1 gateways, NAT, VPN or the gateway
-firewall. NSX's built-in *Network Engineer* plus *Security Engineer*
-cover this; a custom role can narrow it.
+It needs only to read Tier-1 gateways (and attach segments to them), and
+nothing on Tier-0s, NAT, VPN or the gateway firewall. NSX's built-in
+*Network Engineer* plus *Security Engineer* cover this; a custom role can
+narrow it.
+
+**Choose one way to sign in, and keep it:** what a principal identity
+makes in NSX, only that identity can change or delete. Moving between a
+password and a certificate, or making the identity again under another
+name, leaves rvav unable to delete what it made, and deleting those
+deployments fails.
 
 `rvav fake-nsx` serves a fake NSX Manager for development: the compose
 stack runs one as `nsx`.

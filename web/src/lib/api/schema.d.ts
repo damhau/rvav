@@ -4231,6 +4231,8 @@ export interface components {
                 groups: components["schemas"]["GroupRef"][];
                 /** @description Tags rvav set that the VM no longer has in NSX (drift): scope|tag. */
                 missing?: string[];
+                /** @description The groups those missing tags take the VM out of, their firewall rules no longer applying to it. */
+                out_of?: components["schemas"]["GroupRef"][];
             };
         } & {
             /**
@@ -4969,6 +4971,8 @@ export interface components {
              * @description vcenter: url, username, insecure, name. awx: url, organization,
              *     catalog_labels, action_labels, inventory_source_id, insecure.
              *     efficientip: url, username, dns_server, instance_id, insecure.
+             *     nsx: url, username, cert_file, key_file, insecure (the secret:
+             *     the user's password; ADR-0028).
              *     smtp: host, port, tls (starttls, tls, none), from, username.
              *     teams: app_id, tenant_id. slack: (none besides its secrets).
              *     The secret is the SMTP password, the Teams app's client secret

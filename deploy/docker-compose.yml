@@ -182,6 +182,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
+      nsx: { condition: service_healthy }
       temporal: { condition: service_healthy }
     healthcheck:
       # With Keycloak sign-in, ready once Keycloak answers too.
@@ -197,6 +198,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
+      nsx: { condition: service_healthy }
       vcsim-bootstrap: { condition: service_completed_successfully }
       temporal: { condition: service_healthy }
 
@@ -208,6 +210,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
+      nsx: { condition: service_healthy }
       vcsim-bootstrap: { condition: service_completed_successfully }
 
   # The web app, served by nginx, which proxies /api to the api service.

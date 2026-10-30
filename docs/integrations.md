@@ -302,6 +302,32 @@ EfficientIP:
 
 Nothing is created or changed in EfficientIP.
 
+## NSX (native, Policy API; ADR-0028)
+
+- **Client** (`internal/integrations/nsx`): NSX 4.x's Policy API
+  (`/policy/api/v1`, NSX-T 3.x too), signed in with a user and password,
+  or a principal identity's certificate (`RVAV_NSX_*`, or
+  Administration › Integrations › NSX, whose test signs in and lists the
+  Tier-1s, transport zones and services). Lists are read by cursor;
+  PATCH makes or updates by ID; calls are counted as system `nsx`.
+- **Reads, never changes:** Tier-1 gateways, transport zones, services,
+  existing segments (port groups in vCenter, placed like any network) and
+  groups (VMs join them by the tags their conditions select).
+- **Makes, for each deployment** (IDs from the deployment's, tagged
+  `rvav`=instance and `rvav-deployment`=deployment, deleted only when
+  they still carry both): a segment on a placement rule's Tier-1, its
+  subnet carved from an EfficientIP block, waited for until vCenter has
+  its port group; groups selecting the VMs tagged
+  `rvav-group|<group ID>`; a security policy of the firewall rules into
+  them; the VMs' tags, once NSX sees them. Adopted vRA deployments bring
+  their segment and groups, tagged the same way.
+- **Tag sync:** with the inventory sync, every `RVAV_SYNC_INTERVAL`, each
+  VM's tags are compared with those rvav set; one removed shows the VM
+  and its deployment as changed outside rvav.
+- **Fake:** `rvav fake-nsx` (the compose stack's `nsx` service) answers
+  the same calls, with an organisation's sample infrastructure, and makes
+  a segment's port group in the stack's vcsim as NSX does in vCenter.
+
 ## Identity (OIDC)
 
 - Any OIDC provider (Keycloak, Entra ID, Okta). Authorization code flow with

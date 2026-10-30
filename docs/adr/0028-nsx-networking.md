@@ -96,14 +96,33 @@ rvav needs an NSX role that can:
   domain);
 - tag VMs.
 
-It needs nothing on gateways. `docs/operations/configuration.md` lists the
-role.
+It only reads Tier-1 gateways (and attaches segments to them), and needs
+nothing on Tier-0s, NAT, VPN or the gateway firewall.
+`docs/operations/configuration.md` lists the role. What a principal
+identity makes, only it can change or delete: rvav keeps one way of
+signing in.
+
+### Adopted from vRA
+A vRA deployment adopted by the importer (ADR-0027) brings what vRA made
+for it in NSX, the one exception to the rules above:
+- its on-demand network's segment and its new security groups, found by
+  the name vRA recorded for them in NSX, when exactly one object has it
+  and no rvav has it already;
+- their policies, when their rules name only those groups and vRA's
+  account made them too.
+
+They keep vRA's IDs; only their tags are written (rvav's instance and
+the deployment), so they are deleted with the deployment. A group another
+policy uses is left as it is, and existing groups (vRA's
+`securityGroupType: existing`) are never taken.
 
 ## Consequences
 - **Plan coverage:** NSX (feature 27, weight M) moves from "No" to
-  built, about 89% of vRA by the plan's count. The importer maps
-  `Cloud.NSX.Network` and `Cloud.SecurityGroup` instead of reporting
-  them.
+  built, half of it with load balancers out: with the stretch items and
+  P2's importer, 95 + 1 + 1 = 97 / 110, about 88% of vRA by the plan's
+  count. The importer maps `Cloud.NSX.Network` and new
+  `Cloud.SecurityGroup`s instead of reporting them; existing security
+  groups are still reported.
 - **One more integration to run and watch:** its own metrics, and its
   checks under Integrations.
 - **A real NSX Manager must confirm the calls.** They follow NSX 4.x's
