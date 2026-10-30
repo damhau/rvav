@@ -191,6 +191,19 @@ func (s *Service) adoptPlans(ctx context.Context, p *auth.Principal, plans []vra
 				return plans, err
 			}
 		}
+		// Its NSX segments and groups come with it (ADR-0028).
+		if len(res.Deployments) > 0 {
+			notes, err := s.adoptNSX(ctx, res.Deployments[0].Id, pl)
+			var ue *UpstreamError
+			switch {
+			case errors.As(err, &ue):
+				plans[i].Notes = append(plans[i].Notes, vraimport.Note{Level: vraimport.Warning, Where: "nsx",
+					Text: "Its NSX segments and groups weren't adopted: " + err.Error() + "."})
+			case err != nil:
+				return plans, err
+			}
+			plans[i].Notes = append(plans[i].Notes, notes...)
+		}
 	}
 	return plans, nil
 }

@@ -73,6 +73,28 @@ every component's VMs (20 at most). When a component's `cluster` isn't
 bound, rvav chooses the allowed cluster with the most free memory, and
 the datastore likewise.
 
+**NSX** ([ADR-0028](adr/0028-nsx-networking.md)): an item can put its VMs
+on a segment made for each deployment, in groups made for it with the
+firewall rules into them, and in existing groups:
+
+```yaml
+blueprint:
+  kind: vm
+  segments: [{key: app, title: Application}]
+  bindings: {network: segments.app, groups: "inputs.extra_groups"}   # nsx.groups in the form
+  groups: [web, "nsx:grp-backup-clients"]
+  security_groups:
+    - key: web
+      title: Web servers
+      rules:
+        - {from: [any], services: [HTTPS]}
+        - {from: ["nsx:grp-admin-jump"], services: [SSH]}
+```
+
+The placement rule of the project and environment says where the segment
+goes (its Tier-1 and EfficientIP block). Without an NSX Manager, such an
+item can't be saved.
+
 The seeded **PostgreSQL 16 cluster** is the reference: a composite whose
 first step is the `pg-node` item (one component of three nodes kept on
 separate hosts, each with a data disk, made a Patroni cluster by the AWX

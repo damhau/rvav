@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"regexp"
@@ -87,6 +88,10 @@ type DeploymentPlan struct {
 	LeaseDays     *int     `json:"lease_days,omitempty"`
 	VMs           []VMRef  `json:"vms,omitempty"`
 	Deployments   []string `json:"deployments,omitempty"` // once adopted
+	// NSXSegments and NSXGroups are the NSX segments and security groups
+	// vRA made for it, by name: adopted with it (ADR-0028).
+	NSXSegments []string `json:"nsx_segments,omitempty"`
+	NSXGroups   []string `json:"nsx_groups,omitempty"`
 }
 
 // PlanDeployments says, for each vRA deployment, whether and how rvav
@@ -152,7 +157,23 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 		}
 	}
 	for _, res := range d.Resources {
-		if res.Type != vra.MachineType && !strings.HasPrefix(res.Type, "Cloud.vSphere.Disk") && !strings.HasPrefix(res.Type, "Cloud.vSphere.Network") {
+		name, _ := res.Properties["resourceName"].(string)
+		if name == "" {
+			name, _ = res.Properties["name"].(string)
+		}
+		name = cmp.Or(name, res.Name)
+		nt, _ := res.Properties["networkType"].(string)
+		sg, _ := res.Properties["securityGroupType"].(string)
+		switch {
+		case slices.Contains(networkTypes, res.Type) && slices.Contains(onDemand, nt):
+			p.NSXSegments = append(p.NSXSegments, name)
+			note(Info, "resources."+res.Name, "Its NSX segment "+name+" is adopted with it, when NSX has it: rvav deletes it with the deployment.")
+		case res.Type == "Cloud.SecurityGroup" && sg != "existing":
+			p.NSXGroups = append(p.NSXGroups, name)
+			note(Info, "resources."+res.Name, "Its NSX security group "+name+" is adopted with it, with its firewall rules, when NSX has them: rvav deletes them with the deployment.")
+		case res.Type == "Cloud.SecurityGroup":
+			note(Info, "resources."+res.Name, "An existing security group: it stays as it is in NSX.")
+		case res.Type != vra.MachineType && !strings.HasPrefix(res.Type, "Cloud.vSphere.Disk") && !slices.Contains(networkTypes, res.Type):
 			note(Warning, "resources."+res.Name, res.Type+" stays in vRA's records only: rvav adopts VMs.")
 		}
 	}

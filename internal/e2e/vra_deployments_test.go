@@ -2,16 +2,19 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vra"
@@ -112,6 +115,114 @@ func TestVRADeployments(t *testing.T) {
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from deployments where name like 'vra-%' and status <> 'deleted'`).Scan(&n)
 		if n != 3 {
 			t.Fatalf("%d vra deployments in rvav, want 3", n)
+		}
+	}, model)
+}
+
+// TestVRADeploymentNSX: a vRA deployment's NSX segment and security group
+// adopted with it (N1.4): found by name, tagged as rvav's, recorded on the
+// deployment with the group's firewall rules, and deleted with it; a group
+// other rules use is left as it is.
+func TestVRADeploymentNSX(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	model := simulator.VPX()
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		client := useFakeNSX(h, nsx.NewFakeServer())
+		h.acts.NSX = client
+		e := vra.SampleEstate(time.Now())
+		items := importVRAItems(h, &e)
+		publishVRAItem(h, items["bp-rhel9"])
+		existingVM(t, ctx, h, c, model, "vra-web-001", "10.31.10.41")
+		if err := (&inventory.Syncer{Store: h.store, VSphere: h.vc, Events: h.acts.Events, Log: h.acts.Log}).SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		// What vRA made in NSX for vra-web-001: a segment, two groups, the
+		// rules into the first, and a policy sharing the second.
+		seg := nsx.Segment{ID: "vra-seg-1", DisplayName: "web-net-mcm81", ConnectivityPath: nsx.Tier1Path + "t1-gva-dev",
+			Subnets: []nsx.SegmentSubnet{{GatewayAddress: "10.70.0.1/26", Network: "10.70.0.0/26"}}}
+		for _, err := range []error{client.PutSegment(ctx, seg),
+			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-1", DisplayName: "web-sg-mcm82"}),
+			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-2", DisplayName: "admin-sg-mcm83"}),
+			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "vra-pol-1", DisplayName: "web-sg-mcm82", Rules: []nsx.Rule{{ID: "r1",
+				SourceGroups: []string{"ANY"}, DestinationGroups: []string{nsx.GroupPath + "vra-grp-1"}, Services: []string{"ANY"}, Action: "ALLOW"}}}),
+			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "shared", DisplayName: "Shared", Rules: []nsx.Rule{{ID: "r1",
+				SourceGroups: []string{nsx.GroupPath + "vra-grp-2"}, DestinationGroups: []string{nsx.GroupPath + "grp-web-servers"},
+				Services: []string{"ANY"}, Action: "ALLOW"}}}),
+		} {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		for i := range e.Deployments {
+			if e.Deployments[i].Name == "vra-web-001" {
+				e.Deployments[i].Resources = append(e.Deployments[i].Resources,
+					vra.Resource{ID: "r-net", Name: "web_net", Type: "Cloud.NSX.Network", Properties: map[string]any{
+						"resourceName": "web-net-mcm81", "networkType": "outbound"}},
+					vra.Resource{ID: "r-sg", Name: "web_sg", Type: "Cloud.SecurityGroup", Properties: map[string]any{
+						"resourceName": "web-sg-mcm82", "securityGroupType": "new"}},
+					vra.Resource{ID: "r-sg2", Name: "admin_sg", Type: "Cloud.SecurityGroup", Properties: map[string]any{
+						"resourceName": "admin-sg-mcm83", "securityGroupType": "new"}})
+			}
+		}
+		admin, err := auth.ForUser(ctx, h.store, "usr_mkeller")
+		if err != nil {
+			t.Fatal(err)
+		}
+		plans, err := h.svc.AdoptVRADeployments(ctx, admin, &e, map[string]string{"vra-prj-data": "prj_data"}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(plans, func(p vraimport.DeploymentPlan) bool { return p.Name == "vra-web-001" })
+		p := plans[i]
+		if p.Status != vraimport.Adopted || !slices.Equal(p.NSXSegments, []string{"web-net-mcm81"}) || len(p.NSXGroups) != 2 {
+			t.Fatalf("plan = %+v", p)
+		}
+		if !slices.ContainsFunc(p.Notes, func(n vraimport.Note) bool { return strings.Contains(n.Text, "also used by security policy shared") }) {
+			t.Fatalf("notes = %+v", p.Notes)
+		}
+		depID := p.Deployments[0]
+		owned := []nsx.Tag{{Scope: nsx.OwnerScope, Tag: "rvav"}, {Scope: nsx.DeployScope, Tag: depID}}
+		if s, _ := client.Segment(ctx, "vra-seg-1"); !slices.Equal(s.Tags, owned) || s.ConnectivityPath != seg.ConnectivityPath {
+			t.Fatalf("segment = %+v", s)
+		}
+		if g, _ := client.Group(ctx, "vra-grp-1"); !slices.Equal(g.Tags, owned) {
+			t.Fatalf("group = %+v", g)
+		}
+		if g, _ := client.Group(ctx, "vra-grp-2"); len(g.Tags) != 0 {
+			t.Fatalf("the shared group = %+v", g)
+		}
+		kinds := map[string]string{}
+		rows, _ := h.store.Pool.Query(ctx, `select type, name from resources where deployment_id = $1 and type like 'nsx.%'`, depID)
+		for rows.Next() {
+			var typ, name string
+			_ = rows.Scan(&typ, &name)
+			kinds[typ] = name
+		}
+		rows.Close()
+		if kinds["nsx.segment"] != "web-net-mcm81" || kinds["nsx.group"] != "vra-grp-1" || kinds["nsx.policy"] != "vra-pol-1" || len(kinds) != 3 {
+			t.Fatalf("resources = %v", kinds)
+		}
+
+		// Deleted with the deployment; the shared group stays.
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+depID+"/actions", "lmartin", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},
+			202, &del, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(del.Id, nil)
+		h.waitStatus(del.Id, "lmartin", api.RequestStatusSucceeded)
+		if _, err := client.Segment(ctx, "vra-seg-1"); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("segment after delete: %v", err)
+		}
+		if _, err := client.SecurityPolicy(ctx, "vra-pol-1"); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("policy after delete: %v", err)
+		}
+		if _, err := client.Group(ctx, "vra-grp-1"); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("group after delete: %v", err)
+		}
+		if _, err := client.Group(ctx, "vra-grp-2"); err != nil {
+			t.Fatalf("the shared group: %v", err)
 		}
 	}, model)
 }
