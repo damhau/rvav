@@ -123,6 +123,112 @@ func (f *FakeServer) AddSubnet(space, cidr, name string, params map[string]strin
 	return id, nil
 }
 
+// AddBlock adds a block (a non-terminal subnet) to an IPAM space, for the
+// subnets of NSX segments to be carved from, and returns its ID.
+func (f *FakeServer) AddBlock(space, cidr, name string) (string, error) {
+	p, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return "", err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p = p.Masked()
+	id := f.id()
+	f.subnets = append(f.subnets, row{"subnet_id": id, "subnet_name": name, "start_hostaddr": p.Addr().String(),
+		"end_hostaddr": lastAddr(p).String(), "subnet_size": strconv.Itoa(1 << (32 - p.Bits())), "subnet_prefix": strconv.Itoa(p.Bits()),
+		"is_terminal": "0", "subnet_level": "0", "parent_subnet_id": "0", "site_id": f.site(space), "site_name": space,
+		"subnet_class_name": "", "subnet_class_parameters": ""})
+	return id, nil
+}
+
+func lastAddr(p netip.Prefix) netip.Addr {
+	end := p.Addr()
+	for next := end.Next(); p.Contains(next); next = next.Next() {
+		end = next
+	}
+	return end
+}
+
+func prefixOf(r row) netip.Prefix {
+	p, _ := netip.ParsePrefix(cidrOf(r))
+	return p
+}
+
+// findFreeSubnet offers the first ranges of the prefix asked inside a
+// block that overlap no subnet in it, as ip_find_free_subnet does.
+func (f *FakeServer) findFreeSubnet(q url.Values) ([]row, *fakeError) {
+	b := f.subnetByID(q.Get("block_id"))
+	if b == nil || b["is_terminal"] != "0" {
+		return nil, failf(http.StatusBadRequest, "1101", "block %s not found", q.Get("block_id"))
+	}
+	bits, err := strconv.Atoi(q.Get("prefix"))
+	block := prefixOf(b)
+	if err != nil || bits < block.Bits() || bits > 32 {
+		return nil, failf(http.StatusBadRequest, "1102", "prefix %q does not fit in %s", q.Get("prefix"), cidrOf(b))
+	}
+	most, _ := strconv.Atoi(q.Get("max_find"))
+	var out []row
+	for cand := netip.PrefixFrom(block.Addr(), bits); block.Contains(cand.Addr()) && (most <= 0 || len(out) < most); {
+		free := true
+		for _, s := range f.subnets {
+			if s["parent_subnet_id"] == b["subnet_id"] && prefixOf(s).Overlaps(cand) {
+				free = false
+				break
+			}
+		}
+		if free {
+			out = append(out, row{"start_hostaddr": cand.Addr().String(), "subnet_prefix": strconv.Itoa(bits)})
+		}
+		next := lastAddr(cand).Next()
+		if !next.IsValid() {
+			break
+		}
+		cand = netip.PrefixFrom(next, bits)
+	}
+	return out, nil
+}
+
+// addSubnet adds a terminal subnet inside a block, refusing one that
+// overlaps another, as ip_subnet_add does.
+func (f *FakeServer) addSubnet(q url.Values) ([]row, *fakeError) {
+	b := f.subnetByID(q.Get("parent_subnet_id"))
+	if b == nil {
+		return nil, failf(http.StatusBadRequest, "1101", "parent subnet %s not found", q.Get("parent_subnet_id"))
+	}
+	p, err := netip.ParsePrefix(q.Get("subnet_addr") + "/" + q.Get("subnet_prefix"))
+	if err != nil || !prefixOf(b).Contains(p.Addr()) || p.Bits() < prefixOf(b).Bits() {
+		return nil, failf(http.StatusBadRequest, "1103", "subnet %s/%s is not inside %s", q.Get("subnet_addr"), q.Get("subnet_prefix"), cidrOf(b))
+	}
+	p = p.Masked()
+	for _, s := range f.subnets {
+		if s["parent_subnet_id"] == b["subnet_id"] && prefixOf(s).Overlaps(p) {
+			return nil, failf(http.StatusBadRequest, "1104", "subnet %s overlaps %s", p, cidrOf(s))
+		}
+	}
+	id := f.id()
+	f.subnets = append(f.subnets, row{"subnet_id": id, "subnet_name": q.Get("subnet_name"), "start_hostaddr": p.Addr().String(),
+		"end_hostaddr": lastAddr(p).String(), "subnet_size": strconv.Itoa(1 << (32 - p.Bits())), "subnet_prefix": strconv.Itoa(p.Bits()),
+		"is_terminal": cmp.Or(q.Get("is_terminal"), "1"), "subnet_level": "1", "parent_subnet_id": b["subnet_id"], "site_id": b["site_id"],
+		"site_name": b["site_name"], "subnet_class_name": "", "subnet_class_parameters": q.Get("subnet_class_parameters")})
+	return []row{{"ret_oid": id}}, nil
+}
+
+// deleteSubnet deletes a subnet; SOLIDserver refuses one that still has
+// addresses.
+func (f *FakeServer) deleteSubnet(q url.Values) ([]row, *fakeError) {
+	id := q.Get("subnet_id")
+	if f.subnetByID(id) == nil {
+		return nil, failf(http.StatusBadRequest, "1101", "subnet %s not found", id)
+	}
+	for _, a := range f.addresses {
+		if a["subnet_id"] == id {
+			return nil, failf(http.StatusBadRequest, "1105", "subnet %s still has address %s", id, a["hostaddr"])
+		}
+	}
+	f.subnets = slices.DeleteFunc(f.subnets, func(s row) bool { return s["subnet_id"] == id })
+	return []row{{"ret_oid": id}}, nil
+}
+
 // SetSubnetParams replaces a subnet's class parameters.
 func (f *FakeServer) SetSubnetParams(id string, params map[string]string) {
 	f.mu.Lock()
@@ -264,6 +370,12 @@ func (f *FakeServer) serve(ctx context.Context, method, path string, q url.Value
 		return f.addAddress(method, q)
 	case "DELETE /rest/ip_delete":
 		return f.deleteAddress(q)
+	case "OPTIONS /rpc/ip_find_free_subnet":
+		return f.findFreeSubnet(q)
+	case "POST /rest/ip_subnet_add":
+		return f.addSubnet(q)
+	case "DELETE /rest/ip_subnet_delete":
+		return f.deleteSubnet(q)
 	case "GET /rest/dns_zone_list":
 		return listRows(f.zones, q)
 	case "GET /rest/dns_rr_list":

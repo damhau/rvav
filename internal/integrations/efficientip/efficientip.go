@@ -67,6 +67,12 @@ type Client interface {
 	Managed(ctx context.Context) ([]Address, []Record, error)
 	// Existing reports which of these address and record IDs EfficientIP has.
 	Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
+	// AllocateSubnet returns the subnet named name in a block (its name or
+	// range), or carves the first free one of prefix bits from it, for an
+	// NSX segment made for a deployment (ADR-0028). DeleteSubnet deletes
+	// one; already gone is no error.
+	AllocateSubnet(ctx context.Context, block string, prefix int, name string, params map[string]string) (SubnetInfo, error)
+	DeleteSubnet(ctx context.Context, id string) error
 	// Find looks up what EfficientIP has for a VM rvav didn't build (S13.3):
 	// the address of each of its IPs, their PTR records, and the A records
 	// pointing at them of the names those give, or of names.
