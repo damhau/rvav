@@ -279,6 +279,14 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 			allowed, err = s.Store.OfferedKeys(ctx, "template", ev.Project.ID, ev.Env.Key)
 		case "rvav.sizes":
 			allowed, err = s.Store.OfferedKeys(ctx, "size", ev.Project.ID, ev.Env.Key)
+		case "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services":
+			// What NSX offers, without what rvav made for deployments
+			// (ADR-0028): a groups binding can't take another's group.
+			var opts []api.Option
+			opts, err = s.nsxOptions(ctx, *src.Name, resolveParams(src.Params, ev.Inputs))
+			for _, o := range opts {
+				allowed = append(allowed, o.Value)
+			}
 		default:
 			continue
 		}

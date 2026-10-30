@@ -139,18 +139,28 @@ func TestVRADeploymentNSX(t *testing.T) {
 		if err := (&inventory.Syncer{Store: h.store, VSphere: h.vc, Events: h.acts.Events, Log: h.acts.Log}).SyncOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		// What vRA made in NSX for vra-web-001: a segment, two groups, the
-		// rules into the first, and a policy sharing the second.
+		// What vRA's account made in NSX for vra-web-001: a segment, three
+		// groups, the rules into the first. The security team's policies
+		// use the second (with another group) and the third.
+		const vraUser = "svc-vra"
 		seg := nsx.Segment{ID: "vra-seg-1", DisplayName: "web-net-mcm81", ConnectivityPath: nsx.Tier1Path + "t1-gva-dev",
 			Subnets: []nsx.SegmentSubnet{{GatewayAddress: "10.70.0.1/26", Network: "10.70.0.0/26"}}}
+		rule := func(from, to string) nsx.Rule {
+			return nsx.Rule{ID: "r1", SourceGroups: []string{from}, DestinationGroups: []string{to}, Services: []string{"ANY"}, Action: "ALLOW"}
+		}
 		for _, err := range []error{client.PutSegment(ctx, seg),
-			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-1", DisplayName: "web-sg-mcm82"}),
-			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-2", DisplayName: "admin-sg-mcm83"}),
-			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "vra-pol-1", DisplayName: "web-sg-mcm82", Rules: []nsx.Rule{{ID: "r1",
-				SourceGroups: []string{"ANY"}, DestinationGroups: []string{nsx.GroupPath + "vra-grp-1"}, Services: []string{"ANY"}, Action: "ALLOW"}}}),
-			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "shared", DisplayName: "Shared", Rules: []nsx.Rule{{ID: "r1",
-				SourceGroups: []string{nsx.GroupPath + "vra-grp-2"}, DestinationGroups: []string{nsx.GroupPath + "grp-web-servers"},
-				Services: []string{"ANY"}, Action: "ALLOW"}}}),
+			// Two segments of one name: which is the deployment's can't be told.
+			client.PutSegment(ctx, nsx.Segment{ID: "dup-1", DisplayName: "dup-net-mcm85"}),
+			client.PutSegment(ctx, nsx.Segment{ID: "dup-2", DisplayName: "dup-net-mcm85"}),
+			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-1", DisplayName: "web-sg-mcm82", CreateUser: vraUser}),
+			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-2", DisplayName: "admin-sg-mcm83", CreateUser: vraUser}),
+			client.PutGroup(ctx, nsx.Group{ID: "vra-grp-3", DisplayName: "db-sg-mcm84", CreateUser: vraUser}),
+			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "vra-pol-1", DisplayName: "web-sg-mcm82", CreateUser: vraUser,
+				Rules: []nsx.Rule{rule("ANY", nsx.GroupPath+"vra-grp-1")}}),
+			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "shared", DisplayName: "Shared", CreateUser: "secteam",
+				Rules: []nsx.Rule{rule(nsx.GroupPath+"vra-grp-2", nsx.GroupPath+"grp-web-servers")}}),
+			client.PutSecurityPolicy(ctx, nsx.SecurityPolicy{ID: "app-team", DisplayName: "App team", CreateUser: "secteam",
+				Rules: []nsx.Rule{rule("ANY", nsx.GroupPath+"vra-grp-3")}}),
 		} {
 			if err != nil {
 				t.Fatal(err)
@@ -164,7 +174,14 @@ func TestVRADeploymentNSX(t *testing.T) {
 					vra.Resource{ID: "r-sg", Name: "web_sg", Type: "Cloud.SecurityGroup", Properties: map[string]any{
 						"resourceName": "web-sg-mcm82", "securityGroupType": "new"}},
 					vra.Resource{ID: "r-sg2", Name: "admin_sg", Type: "Cloud.SecurityGroup", Properties: map[string]any{
-						"resourceName": "admin-sg-mcm83", "securityGroupType": "new"}})
+						"resourceName": "admin-sg-mcm83", "securityGroupType": "new"}},
+					vra.Resource{ID: "r-sg3", Name: "db_sg", Type: "Cloud.SecurityGroup", Properties: map[string]any{
+						"resourceName": "db-sg-mcm84", "securityGroupType": "new"}},
+					vra.Resource{ID: "r-net2", Name: "dup_net", Type: "Cloud.NSX.Network", Properties: map[string]any{
+						"resourceName": "dup-net-mcm85", "networkType": "routed"}},
+					// Its NSX name not recorded: "app_net" could be any segment's.
+					vra.Resource{ID: "r-net3", Name: "app_net", Type: "Cloud.NSX.Network", Properties: map[string]any{
+						"networkType": "outbound"}})
 			}
 		}
 		admin, err := auth.ForUser(ctx, h.store, "usr_mkeller")
@@ -177,11 +194,22 @@ func TestVRADeploymentNSX(t *testing.T) {
 		}
 		i := slices.IndexFunc(plans, func(p vraimport.DeploymentPlan) bool { return p.Name == "vra-web-001" })
 		p := plans[i]
-		if p.Status != vraimport.Adopted || !slices.Equal(p.NSXSegments, []string{"web-net-mcm81"}) || len(p.NSXGroups) != 2 {
+		if p.Status != vraimport.Adopted || !slices.Equal(p.NSXSegments, []string{"web-net-mcm81", "dup-net-mcm85"}) || len(p.NSXGroups) != 3 {
 			t.Fatalf("plan = %+v", p)
 		}
-		if !slices.ContainsFunc(p.Notes, func(n vraimport.Note) bool { return strings.Contains(n.Text, "also used by security policy shared") }) {
-			t.Fatalf("notes = %+v", p.Notes)
+		for _, text := range []string{"also used by security policy shared", "also used by security policy app-team",
+			"2 segments named dup-net-mcm85", "didn't record its name in NSX"} {
+			if !slices.ContainsFunc(p.Notes, func(n vraimport.Note) bool { return strings.Contains(n.Text, text) }) {
+				t.Fatalf("no note %q: %+v", text, p.Notes)
+			}
+		}
+		for _, id := range []string{"dup-1", "dup-2"} {
+			if s, _ := client.Segment(ctx, id); len(s.Tags) != 0 {
+				t.Fatalf("%s taken: %+v", id, s)
+			}
+		}
+		if g, _ := client.Group(ctx, "vra-grp-3"); len(g.Tags) != 0 {
+			t.Fatalf("the app team's group taken: %+v", g)
 		}
 		depID := p.Deployments[0]
 		owned := []nsx.Tag{{Scope: nsx.OwnerScope, Tag: "rvav"}, {Scope: nsx.DeployScope, Tag: depID}}

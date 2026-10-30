@@ -216,7 +216,11 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	}
 	// A network made for the deployment: an NSX segment, on the Tier-1 of
 	// the first placement rule that makes them (ADR-0028).
-	if key, ok := blueprint.SegmentKey(plan.Network); ok {
+	if key, ok := blueprint.SegmentKey(plan.Network); ok && !slices.ContainsFunc(ev.Blueprint.Segments,
+		func(sg blueprint.Segment) bool { return sg.Key == key }) {
+		// Only the item's own segments: never one an input names.
+		add(field("network"), "unknown_segment", fmt.Sprintf("%q is none of the item's segments.", key))
+	} else if ok {
 		part.segment = key
 		for _, r := range pl.rules {
 			if r.Segments != nil {
@@ -922,13 +926,21 @@ func (s *Service) evaluateNSXGroups(ctx context.Context, ev *Evaluation) error {
 		case err != nil:
 			add("nsx_unavailable", "NSX couldn't be read: "+err.Error())
 			return nil
-		}
-		tags, ok := g.JoinTags()
-		if !ok {
-			add("not_by_tag", fmt.Sprintf("NSX group %s doesn't select VMs by tag: rvav can't put VMs in it.", cmp.Or(g.DisplayName, id)))
+		case g.RvavMade():
+			add("rvav_group", fmt.Sprintf("NSX group %s is one rvav made for a deployment: no item may name it.", cmp.Or(g.DisplayName, id)))
 			continue
 		}
-		ev.nsxGroups[id] = provision.VMGroup{ID: id, Name: cmp.Or(g.DisplayName, id), Tags: tags}
+		vg := provision.VMGroup{ID: id, Name: cmp.Or(g.DisplayName, id)}
+		// Those VMs join select them by tag; a rule's source needn't.
+		if slices.Contains(ev.joinable, id) {
+			tags, ok := g.JoinTags()
+			if !ok {
+				add("not_by_tag", fmt.Sprintf("NSX group %s doesn't select VMs by tag: rvav can't put VMs in it.", vg.Name))
+				continue
+			}
+			vg.Tags = tags
+		}
+		ev.nsxGroups[id] = vg
 	}
 	if len(services) > 0 {
 		known, err := client.Services(ctx)

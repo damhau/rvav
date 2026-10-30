@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.temporal.io/sdk/activity"
+
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/store"
@@ -34,6 +36,21 @@ type Membership struct {
 	Groups       []VMGroup `json:"groups"`
 	Tags         []nsx.Tag `json:"tags"`
 	Offered      []VMGroup `json:"offered,omitempty"`
+	// Added are the tags rvav set that the VM didn't have: only those are
+	// taken off it, not one another tool had set (a CMDB's role|web).
+	Added []nsx.Tag `json:"added,omitempty"`
+}
+
+// ours says whether rvav's instance made an NSX object for this
+// deployment: only those does it change or delete.
+func (a *Activities) ours(tags []nsx.Tag, deploymentID string) bool {
+	return nsx.Owned(tags, a.instance()) && slices.Contains(tags, nsx.Tag{Scope: nsx.DeployScope, Tag: deploymentID})
+}
+
+// leftAlone is what a deletion says of an NSX object no longer rvav's: it
+// is forgotten, not deleted, and the rest goes on.
+func leftAlone(what, name string) string {
+	return fmt.Sprintf("left %s %s alone in NSX: it isn't this deployment's any more", what, name)
 }
 
 // ownerTags are the tags of everything rvav makes for a deployment.
@@ -140,7 +157,16 @@ func (a *Activities) JoinGroups(ctx context.Context, in VMInput) error {
 		if err := a.NSX.SetVMTags(ctx, uuid, withTags(vm.Tags, want)); err != nil {
 			return "", "", fmt.Errorf("NSX: %w", err)
 		}
-		m := Membership{VM: in.VM.Name, InstanceUUID: uuid, Groups: in.VM.NSXGroups, Tags: want, Offered: in.VM.NSXOffered}
+		// What it had already isn't rvav's to take off; what an earlier
+		// run of this step added is.
+		added := withoutTags(want, vm.Tags)
+		if old := a.findDeploymentResource(ctx, in.VM.DeploymentID, "nsx.membership", in.VM.Name); old != nil {
+			var before Membership
+			if json.Unmarshal(old.Properties, &before) == nil && before.InstanceUUID == uuid {
+				added = uniqueTags(append(before.Added, added...))
+			}
+		}
+		m := Membership{VM: in.VM.Name, InstanceUUID: uuid, Groups: in.VM.NSXGroups, Tags: want, Offered: in.VM.NSXOffered, Added: added}
 		if err := a.recordMembership(ctx, in.RequestID, in.ProjectID, in.VM.DeploymentID, m); err != nil {
 			return "", "", err
 		}
@@ -194,8 +220,10 @@ func (a *Activities) changeGroups(ctx context.Context, in OpInput) (string, stri
 		want = append(want, x.Tags...)
 	}
 	want = uniqueTags(want)
-	// What rvav set and no longer needs goes; what it needs is added.
-	tags := withTags(withoutTags(vm.Tags, withoutTags(m.Tags, want)), want)
+	// What rvav added and no longer needs goes; what it needs is added.
+	drop := slices.DeleteFunc(withoutTags(m.Tags, want), func(t nsx.Tag) bool { return !slices.Contains(m.Added, t) })
+	m.Added = uniqueTags(append(withoutTags(m.Added, drop), withoutTags(want, vm.Tags)...))
+	tags := withTags(withoutTags(vm.Tags, drop), want)
 	if err := a.NSX.SetVMTags(ctx, m.InstanceUUID, tags); err != nil {
 		return "", "", fmt.Errorf("NSX: %w", err)
 	}
@@ -220,6 +248,7 @@ func (a *Activities) waitForVM(ctx context.Context, uuid, name string) (nsx.VM, 
 		if !errors.Is(err, nsx.ErrNotFound) {
 			return nsx.VM{}, fmt.Errorf("NSX: %w", err)
 		}
+		activity.RecordHeartbeat(ctx)
 		if time.Now().After(deadline) {
 			return nsx.VM{}, fmt.Errorf("NSX hasn't seen VM %s in vCenter after %s", name, a.nsxTimeout())
 		}
@@ -321,7 +350,7 @@ func (a *Activities) leaveGroups(ctx context.Context, r store.Resource) (string,
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
 	}
-	if err := a.NSX.SetVMTags(ctx, m.InstanceUUID, withoutTags(vm.Tags, m.Tags)); err != nil {
+	if err := a.NSX.SetVMTags(ctx, m.InstanceUUID, withoutTags(vm.Tags, m.Added)); err != nil {
 		return "", fmt.Errorf("NSX: %w", err)
 	}
 	return "took " + r.Name + " out of its NSX groups", nil
@@ -338,10 +367,15 @@ func (a *Activities) deleteGroup(ctx context.Context, r store.Resource) (string,
 		return "", nil
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
-	case !nsx.Owned(g.Tags, a.instance()):
-		return "", permanent("group %s isn't rvav's in NSX any more: left alone", r.Name)
+	case !a.ours(g.Tags, r.DeploymentID):
+		return leftAlone("group", r.Name), nil
 	}
-	if err := a.NSX.DeleteGroup(ctx, r.Name); err != nil {
+	// NSX refuses while a rule rvav didn't write still names it: left
+	// there, and said so, rather than keeping the deployment from going.
+	var apiErr *nsx.APIError
+	if err := a.NSX.DeleteGroup(ctx, r.Name); errors.As(err, &apiErr) && apiErr.Status == 400 {
+		return fmt.Sprintf("left NSX group %s in NSX: %s", r.Name, apiErr.Message), nil
+	} else if err != nil {
 		return "", fmt.Errorf("NSX: %w", err)
 	}
 	return "deleted NSX group " + r.Name, nil
@@ -358,8 +392,8 @@ func (a *Activities) deletePolicy(ctx context.Context, r store.Resource) (string
 		return "", nil
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
-	case !nsx.Owned(p.Tags, a.instance()):
-		return "", permanent("security policy %s isn't rvav's in NSX any more: left alone", r.Name)
+	case !a.ours(p.Tags, r.DeploymentID):
+		return leftAlone("security policy", r.Name), nil
 	}
 	if err := a.NSX.DeleteSecurityPolicy(ctx, r.Name); err != nil {
 		return "", fmt.Errorf("NSX: %w", err)

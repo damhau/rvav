@@ -503,7 +503,7 @@ func (s *Service) nsxOptions(ctx context.Context, name string, params map[string
 		}
 		for _, g := range groups {
 			tags, ok := g.JoinTags()
-			if !ok || ours(g.Tags) {
+			if !ok || g.RvavMade() {
 				continue
 			}
 			var by []string

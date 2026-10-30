@@ -520,7 +520,44 @@ func TestSecurityGroupPlanning(t *testing.T) {
 			t.Fatalf("bound groups = %v, offered %v", ids, offered)
 		}
 
-		// The form designer's NSX pickers.
+		// A rule from a group of addresses: its members needn't be by tag.
+		if err := client.PutGroup(ctx, nsx.Group{ID: "grp-mgmt-ips", DisplayName: "Management addresses",
+			Expression: []nsx.Condition{{ResourceType: "IPAddressExpression"}}}); err != nil {
+			t.Fatal(err)
+		}
+		ips, ipsVersion := rhelVariant(h, "rhel9-groups-ips", "RHEL 9 reached from management", groupBlueprint("nsx:grp-mgmt-ips", "SSH"))
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: ips, VersionId: ipsVersion,
+			ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}, 200, &pv)
+		if !pv.Valid {
+			t.Fatalf("a rule from a group of addresses: %+v", pv.Errors)
+		}
+		// Another deployment's group, through a groups binding: refused.
+		if err := client.PutGroup(ctx, nsx.Group{ID: "othergrp", Tags: []nsx.Tag{{Scope: nsx.OwnerScope, Tag: "rvav"},
+			{Scope: nsx.DeployScope, Tag: "dep_other"}}, Expression: []nsx.Condition{nsx.TagCondition(provision.GroupTag("othergrp"))}}); err != nil {
+			t.Fatal(err)
+		}
+		from, fromVersion := rhelVariant(h, "rhel9-groups-input", "RHEL 9 in a group from its role", func(bp map[string]any) {
+			groupBlueprint("any", "SSH")(bp)
+			bp["bindings"].(map[string]any)["groups"] = `["nsx:" + inputs.role]`
+		})
+		other := segmentInputs()
+		other["role"] = "othergrp"
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: from, VersionId: fromVersion,
+			ProjectId: "prj_web", Environment: "dev", Inputs: other}, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "rvav_group" }) {
+			t.Fatalf("another deployment's group: %+v", pv.Errors)
+		}
+		// A segment an input names, on an item that has none: refused.
+		named := segmentInputs()
+		named["network"] = "segment:app"
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: item, VersionId: version,
+			ProjectId: "prj_web", Environment: "dev", Inputs: named}, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "unknown_segment" }) {
+			t.Fatalf("a segment from an input: %+v", pv.Errors)
+		}
+
+		// The form designer's NSX pickers: neither rvav's groups nor one of
+		// addresses are offered.
 		if _, err := h.store.Pool.Exec(ctx, `update catalog_item_versions set ui_schema = jsonb_set(jsonb_set(jsonb_set(jsonb_set(ui_schema,
 			'{fields,pick_segment}', '{"widget": "select", "label": "Segment", "value_source": {"kind": "builtin", "name": "nsx.segments", "params": {"tier1": "t1-gva-dev"}}}'),
 			'{fields,pick_tier1}', '{"widget": "select", "label": "Tier-1", "value_source": {"kind": "builtin", "name": "nsx.tier1s"}}'),
@@ -570,6 +607,8 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 		h := setup(t, ctx, c)
 		fakeNSX := nsx.NewFakeServer()
 		fakeNSX.AnyVM, fakeNSX.SeeAfter = true, 2
+		// A CMDB tagged it role|web before rvav: grp-web-servers' tag.
+		fakeNSX.NewVMTags = []nsx.Tag{{Scope: "role", Tag: "web"}}
 		client := useFakeNSX(h, fakeNSX)
 		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
 		item, version := groupItem(h)
@@ -598,7 +637,7 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 		}
 		vm, _ := fakeNSX.VM(uuidVM)
 		want := append(slices.Clone(owner), nsx.Tag{Scope: nsx.GroupScope, Tag: web}, nsx.Tag{Scope: "role", Tag: "web"})
-		if !slices.Equal(vm.Tags, want) {
+		if !sameTags(vm.Tags, want) {
 			t.Fatalf("VM tags = %+v, want %+v", vm.Tags, want)
 		}
 		types := map[string]int{}
@@ -646,15 +685,19 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
 		}
 		change("nsx_group_remove", "grp-web-servers")
-		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want[:3]) {
-			t.Fatalf("VM tags out of grp-web-servers = %+v", vm.Tags)
+		var groups int
+		_ = h.store.Pool.QueryRow(ctx, `select jsonb_array_length(properties->'groups') from resources
+			where deployment_id = $1 and type = 'nsx.membership'`, depID).Scan(&groups)
+		// role|web was the CMDB's, not rvav's: it stays.
+		if vm, _ := fakeNSX.VM(uuidVM); !sameTags(vm.Tags, want) || groups != 1 {
+			t.Fatalf("VM tags out of grp-web-servers = %+v, %d groups", vm.Tags, groups)
 		}
 		h.json("GET", "/api/v1/deployments/"+depID+"/actions", "tnguyen", nil, 200, &actions)
 		if ok, why := offered("nsx_group_add"); !ok {
 			t.Fatalf("nsx_group_add: %q", why)
 		}
 		change("nsx_group_add", "grp-web-servers")
-		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want) {
+		if vm, _ := fakeNSX.VM(uuidVM); !sameTags(vm.Tags, want) {
 			t.Fatalf("VM tags back in grp-web-servers = %+v", vm.Tags)
 		}
 		code, raw, _ := h.do("POST", "/api/v1/deployments/"+depID+"/actions", "tnguyen", api.Day2Draft{Action: "nsx_group_add",
@@ -663,7 +706,8 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			t.Fatalf("a group the item doesn't offer = %d %s", code, raw)
 		}
 
-		// Drift: role|web removed in NSX takes the VM out of grp-web-servers.
+		// Drift: role|web removed in NSX takes the VM out of grp-web-servers;
+		// putting it back makes it rvav's.
 		fakeNSX.SetVMTagsDirectly(uuidVM, want[:3])
 		tagSync := &inventory.NSXTagSync{Store: h.store, NSX: client, Events: h.acts.Events, Log: h.acts.Log}
 		if err := tagSync.SyncOnce(ctx); err != nil {
@@ -681,7 +725,7 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			t.Fatalf("nsx_group_add while drifted: %q", why)
 		}
 		change("nsx_group_add", "grp-web-servers")
-		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want) {
+		if vm, _ := fakeNSX.VM(uuidVM); !sameTags(vm.Tags, want) {
 			t.Fatalf("VM tags restored = %+v", vm.Tags)
 		}
 		if err := tagSync.SyncOnce(ctx); err != nil {
@@ -724,4 +768,9 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			t.Fatalf("the existing group: %v", err)
 		}
 	}, simulator.VPX())
+}
+
+// sameTags says whether two tag lists hold the same tags, in any order.
+func sameTags(a, b []nsx.Tag) bool {
+	return len(a) == len(b) && !slices.ContainsFunc(a, func(t nsx.Tag) bool { return !slices.Contains(b, t) })
 }

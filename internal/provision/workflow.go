@@ -387,15 +387,14 @@ func makeSegments(ctx workflow.Context, info Info) (string, error) {
 }
 
 // makeSecurity makes the NSX groups and firewall rules of the plan's
-// deployments (ADR-0028), before their VMs; done, they aren't made again.
+// deployments (ADR-0028), before their VMs. It runs again on a retry, as
+// making segments does: a rollback that stopped halfway may have deleted
+// them.
 func makeSecurity(ctx workflow.Context, info Info) (string, error) {
 	var a *Activities
 	p := info.Plan
 	for _, u := range p.Security {
 		key := p.SecurityKey(u)
-		if info.done(key) {
-			continue
-		}
 		in := SecurityInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Security: u}
 		if err := workflow.ExecuteActivity(ctx, a.MakeSecurity, in).Get(ctx, nil); err != nil {
 			return key, err

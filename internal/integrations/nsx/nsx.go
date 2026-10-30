@@ -61,6 +61,8 @@ type Group struct {
 	Path        string      `json:"path,omitempty"`
 	Expression  []Condition `json:"expression,omitempty"`
 	Tags        []Tag       `json:"tags,omitempty"`
+	// CreateUser is the account that made it (NSX's, read only).
+	CreateUser string `json:"_create_user,omitempty"`
 }
 
 // Rule is a distributed firewall rule.
@@ -88,6 +90,7 @@ type SecurityPolicy struct {
 	SequenceNumber int      `json:"sequence_number,omitempty"`
 	Rules          []Rule   `json:"rules,omitempty"`
 	Tags           []Tag    `json:"tags,omitempty"`
+	CreateUser     string   `json:"_create_user,omitempty"`
 }
 
 // Service is a protocol and ports firewall rules name (HTTPS, SSH...).
@@ -164,4 +167,18 @@ func (g Group) JoinTags() (tags []Tag, ok bool) {
 		tags = tags[:1]
 	}
 	return tags, true
+}
+
+// RvavMade says whether an rvav made the group for a deployment, or it
+// selects VMs by the tags rvav sets: no item may name it, as its members
+// and rules are that deployment's.
+func (g Group) RvavMade() bool {
+	rvav := func(scope string) bool { return scope == OwnerScope || scope == DeployScope || scope == GroupScope }
+	if slices.ContainsFunc(g.Tags, func(t Tag) bool { return rvav(t.Scope) }) {
+		return true
+	}
+	return slices.ContainsFunc(g.Expression, func(c Condition) bool {
+		scope, _, found := strings.Cut(c.Value, "|")
+		return c.Key == ConditionTag && found && rvav(scope)
+	})
 }

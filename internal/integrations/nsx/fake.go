@@ -34,6 +34,9 @@ type FakeServer struct {
 	// vcsim isn't NSX's compute manager).
 	AnyVM    bool
 	SeeAfter int
+	// NewVMTags are the tags such a VM has when NSX sees it: another
+	// tool's.
+	NewVMTags []Tag
 
 	mu       sync.Mutex
 	tier1s   map[string]Tier1
@@ -265,7 +268,9 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			reply(w, s)
 		case http.MethodPatch:
-			var s Segment
+			// PATCH keeps what it doesn't give, as NSX does.
+			s := f.segments[sid]
+			s.Subnets, s.Tags = slices.Clone(s.Subnets), slices.Clone(s.Tags)
 			if !decode(&s) {
 				return
 			}
@@ -314,7 +319,8 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			reply(w, g)
 		case http.MethodPatch:
-			var g Group
+			g := f.groups[gid]
+			g.Expression, g.Tags = slices.Clone(g.Expression), slices.Clone(g.Tags)
 			if !decode(&g) {
 				return
 			}
@@ -355,7 +361,8 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			reply(w, pol)
 		case http.MethodPatch:
-			var pol SecurityPolicy
+			pol := f.policies[pid]
+			pol.Rules, pol.Scope, pol.Tags = nil, slices.Clone(pol.Scope), slices.Clone(pol.Tags)
 			if !decode(&pol) {
 				return
 			}
@@ -367,7 +374,7 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			// PATCH: the rules given are made or updated, the others kept.
 			old := f.policies[pid]
-			rules := old.Rules
+			rules := slices.Clone(old.Rules)
 			for _, rule := range pol.Rules {
 				if i := slices.IndexFunc(rules, func(x Rule) bool { return x.ID == rule.ID }); i >= 0 {
 					rules[i] = rule
@@ -388,7 +395,7 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if want, ok := strings.CutPrefix(q.Get("query"), "external_id:"); ok {
 			if _, known := f.vms[want]; !known && f.AnyVM {
 				if f.reads["vm:"+want]++; f.reads["vm:"+want] > f.SeeAfter {
-					f.vms[want] = VM{ExternalID: want, DisplayName: want}
+					f.vms[want] = VM{ExternalID: want, DisplayName: want, Tags: slices.Clone(f.NewVMTags)}
 				}
 			}
 			all = slices.DeleteFunc(sorted(f.vms), func(v VM) bool { return v.ExternalID != want })

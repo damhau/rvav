@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.temporal.io/sdk/activity"
+
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
@@ -117,6 +119,7 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 					break
 				}
 			}
+			activity.RecordHeartbeat(ctx)
 			if time.Now().After(deadline) {
 				return "", "", fmt.Errorf("segment %s isn't a port group in vCenter after %s (NSX: %s)", sg.Name, wait, state)
 			}
@@ -174,11 +177,30 @@ func (a *Activities) deleteSegment(ctx context.Context, r store.Resource) (strin
 	case errors.Is(err, nsx.ErrNotFound):
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
-	case !nsx.Owned(seg.Tags, a.instance()):
-		return "", permanent("segment %s isn't rvav's in NSX any more: left alone", r.Name)
+	case !a.ours(seg.Tags, r.DeploymentID):
+		if err := a.Store.DeleteSegmentSubnet(ctx, r.Name); err != nil {
+			return "", err
+		}
+		return leftAlone("segment", r.Name), nil
 	default:
-		if err := a.NSX.DeleteSegment(ctx, id); err != nil {
-			return "", fmt.Errorf("NSX: %w", err)
+		// NSX refuses while the deleted VMs' ports are still on it: they
+		// go within a while.
+		deadline := time.Now().Add(a.nsxTimeout())
+		for {
+			err := a.NSX.DeleteSegment(ctx, id)
+			var apiErr *nsx.APIError
+			if err == nil {
+				break
+			}
+			if !errors.As(err, &apiErr) || apiErr.Status != 400 && apiErr.Status != 409 || time.Now().After(deadline) {
+				return "", fmt.Errorf("NSX: %w", err)
+			}
+			activity.RecordHeartbeat(ctx)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(a.pollInterval()):
+			}
 		}
 	}
 	if err := a.Store.DeleteSegmentSubnet(ctx, r.Name); err != nil {

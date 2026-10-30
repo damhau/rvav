@@ -458,6 +458,8 @@ func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr s
 		switch g := read[id]; {
 		case g == nil:
 			errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("NSX has no group %s.", id)))
+		case g.RvavMade():
+			errs = append(errs, fieldErr(at, "rvav_group", fmt.Sprintf("NSX group %s is one rvav made for a deployment: no item may name it.", id)))
 		case !strings.Contains(at, "/rules/"):
 			if _, ok := g.JoinTags(); !ok {
 				errs = append(errs, fieldErr(at, "not_by_tag", fmt.Sprintf("NSX group %s doesn't select VMs by tag: rvav can't put VMs in it.", id)))

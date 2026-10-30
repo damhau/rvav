@@ -161,9 +161,16 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 		if name == "" {
 			name, _ = res.Properties["name"].(string)
 		}
-		name = cmp.Or(name, res.Name)
 		nt, _ := res.Properties["networkType"].(string)
 		sg, _ := res.Properties["securityGroupType"].(string)
+		// An NSX object is found by the name vRA gave it in NSX; the
+		// template's own name for it could be any shared segment's.
+		nsxObject := slices.Contains(networkTypes, res.Type) && slices.Contains(onDemand, nt) || res.Type == "Cloud.SecurityGroup" && sg != "existing"
+		if nsxObject && name == "" {
+			note(Warning, "resources."+res.Name, "vRA didn't record its name in NSX: rvav can't adopt it, and doesn't delete it with the deployment.")
+			continue
+		}
+		name = cmp.Or(name, res.Name)
 		switch {
 		case slices.Contains(networkTypes, res.Type) && slices.Contains(onDemand, nt):
 			p.NSXSegments = append(p.NSXSegments, name)

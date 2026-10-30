@@ -262,6 +262,15 @@ func (c *Client) PutSecurityPolicy(ctx context.Context, p SecurityPolicy) error 
 	return c.do(ctx, http.MethodPatch, policy+PolicyPath+url.PathEscape(p.ID), nil, p, nil)
 }
 
+// Tag sets an object's tags, and only them: PATCH keeps the rest as it is
+// (path: SegmentPath, GroupPath or PolicyPath, then its ID).
+func (c *Client) Tag(ctx context.Context, path, id string, tags []Tag) error {
+	if tags == nil {
+		tags = []Tag{}
+	}
+	return c.do(ctx, http.MethodPatch, policy+path+url.PathEscape(id), nil, map[string]any{"tags": tags}, nil)
+}
+
 // DeleteSecurityPolicy deletes the policy and its rules.
 func (c *Client) DeleteSecurityPolicy(ctx context.Context, id string) error {
 	return c.del(ctx, policy+PolicyPath+url.PathEscape(id))
