@@ -240,9 +240,10 @@ Verified so far:
   against fake Teams and SMTP), email, Teams and Slack against fakes of
   their protocols; the Go and Python helpers and the example on Temporal's
   time-skipping test server; web
-  typecheck, lint, unit tests, build and Playwright on mock data (day-2
+  typecheck, lint, unit tests and build. Playwright on mock data (day-2
   menus, dialogs and bulk actions, the catalog admin pages and the form
-  designer included).
+  designer included, and the accessibility checks) runs daily
+  (`browser.yml`).
 - The Docker Compose stack, run locally: it starts in order with health
   checks, `deploy/smoke.sh` gets a request to succeeded through the real
   Temporal server, and `pnpm e2e:stack` requests a VM in the browser,

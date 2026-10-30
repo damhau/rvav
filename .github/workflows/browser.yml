@@ -1,0 +1,42 @@
+# The browser tests (Playwright, on the mock API): the screens' journeys and
+# the accessibility checks (axe, WCAG 2.2 AA, both themes, reflow, the
+# keyboard). Daily rather than on every push: they take minutes, and the
+# per-push CI covers the web app's types, lint, unit tests and build. Run
+# them by hand (Actions › Browser tests › Run workflow) before a release or
+# after a large change to the screens.
+name: Browser tests
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    name: Playwright
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright
+          path: web/test-results
+          if-no-files-found: ignore

@@ -9,9 +9,10 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick web-quick web-e2e build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
-check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks; must pass before every push
+check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
+check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
 
 build: ## Build rvav and rvav-vcsim into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
@@ -59,13 +60,22 @@ lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in (from its 
 	if [ "$$(helm template rvav deploy/helm/rvav --set secret.env.RVAV_AUTH_MODE=dev | grep -c '{ name: RVAV_AUTH_MODE, value: oidc }')" -lt 6 ]; then \
 		echo "an rvav container lacks the SSO-only override (the Secret could set dev sign-in)" >&2; exit 1; fi && echo "chart ok"
 
-web-check: ## Web app: generated types current, typecheck, lint, unit tests, build, Playwright
+web-quick: ## Web app without its build and Playwright: generated types current, typecheck, lint, unit tests
+	cd web && $(PNPM) gen:api
+	git diff --exit-code -- web/src/lib/api/schema.d.ts
+	cd web && $(PNPM) typecheck
+	cd web && $(PNPM) lint
+	cd web && $(PNPM) test
+
+web-check: ## Web app: generated types current, typecheck, lint, unit tests, build
 	cd web && $(PNPM) gen:api
 	git diff --exit-code -- web/src/lib/api/schema.d.ts
 	cd web && $(PNPM) typecheck
 	cd web && $(PNPM) lint
 	cd web && $(PNPM) test
 	cd web && $(PNPM) build
+
+web-e2e: ## The browser tests (Playwright on the mock API, accessibility included); CI runs them daily
 	cd web && $(PNPM) e2e
 
 vuln: vuln-go vuln-web vuln-images ## Known vulnerabilities in the Go code, the web app's dependencies and the images (CI, daily)

@@ -7,7 +7,8 @@ and fixed, and what still needs a person.
 ## Checked on every change
 
 `web/e2e/accessibility.spec.ts` runs with the other Playwright tests in
-`pnpm e2e`, so in `make check` and CI. It runs on the mock API.
+`pnpm e2e` (`make web-e2e`): in CI daily, and by hand before a release
+(Actions › Browser tests). It runs on the mock API.
 
 - **axe** (WCAG 2.0, 2.1 and 2.2, levels A and AA):
   - on all 20 pages and in each of their tabs;
