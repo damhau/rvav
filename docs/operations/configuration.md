@@ -103,6 +103,20 @@ Traces use OpenTelemetry's standard variables, read by every process:
 | `RVAV_FAKE_AWX_FAIL_TASK` | none | | A simulated task that fails, to try failures. |
 | `RVAV_INVENTORY_TOKEN` | none | yes | `rvav awx-bootstrap`: the rvav API token AWX's inventory source uses. |
 
+## vRA (the importer)
+
+What the importer reads (P2, [ADR-0027](../adr/0027-vra-importer.md)). It
+only reads.
+
+| Setting | Default | Secret | What |
+|---|---|---|---|
+| `RVAV_VRA_URL` | none | | vRA 8 / Aria Automation's address (`https://vra.corp.example`). |
+| `RVAV_VRA_TOKEN` | none | yes | A refresh token (API token) of a vRA user who may read the organisation. |
+| `RVAV_VRA_USERNAME` | none | | Or a user's name, to sign in with a password. |
+| `RVAV_VRA_PASSWORD` | none | yes | Its password. |
+| `RVAV_VRA_DOMAIN` | none | | Its identity source's domain (`corp.example`). |
+| `RVAV_VRA_INSECURE` | off | | Doesn't check the certificate. For labs only. |
+
 ## Secrets, value sources and webhooks
 
 | Setting | Default | Secret | What |

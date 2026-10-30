@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vra"
 
 	"github.com/damhau/rvav/internal/observe"
 )
@@ -49,6 +50,9 @@ Usage:
                            and owned ones EfficientIP no longer has (JSON)
   rvav secrets rotate      seal every stored secret again with RVAV_SECRETS_KEY, so the
                            keys in RVAV_SECRETS_OLD_KEYS can then be removed
+  rvav vra-export [-o FILE] read the vRA at RVAV_VRA_URL (projects, cloud templates, forms,
+                           catalog items and sharing, policies, deployments) into JSON
+  rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
@@ -80,7 +84,8 @@ func run(ctx context.Context, cmd string, args []string) error {
 		return healthcheck(ctx)
 	}
 	// migrate, seed and the development helpers work without auth settings.
-	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" {
+	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" ||
+		cmd == "vra-export" || cmd == "fake-vra" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -105,6 +110,39 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return nil
 		}
 		return runSeed(ctx, cfg, log)
+	case "vra-export":
+		fs := flag.NewFlagSet("vra-export", flag.ExitOnError)
+		out := fs.String("o", "", "write to this file (standard output by default)")
+		_ = fs.Parse(args)
+		c, err := vra.New(vra.Options{URL: cfg.VRA.URL, Token: cfg.VRA.Token, Username: cfg.VRA.Username,
+			Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure})
+		if err != nil {
+			return err
+		}
+		e, err := c.Read(ctx)
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(e, "", "  ")
+		if err != nil {
+			return err
+		}
+		log.Info("vRA read", "projects", len(e.Projects), "templates", len(e.Blueprints), "forms", len(e.Forms),
+			"items", len(e.CatalogItems), "policies", len(e.Policies), "deployments", len(e.Deployments))
+		if *out == "" {
+			_, err = os.Stdout.Write(append(b, '\n'))
+			return err
+		}
+		return os.WriteFile(*out, b, 0o600)
+	case "fake-vra":
+		url, err := vra.NewFakeServer(vra.SampleEstate(time.Now())).Start(ctx, cfg.HTTPAddr)
+		if err != nil {
+			return err
+		}
+		log.Warn("serving a fake vRA with a sample estate", "url", url, "user", "rvav-importer", "password", "vra",
+			"domain", "corp.example", "refresh_token", vra.FakeRefreshToken)
+		<-ctx.Done()
+		return nil
 	case "seed":
 		return runSeed(ctx, cfg, log)
 	case "vcsim-bootstrap":

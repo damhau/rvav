@@ -24,6 +24,8 @@ type Config struct {
 	VCenter  VCenterConfig
 	IPAM     EfficientIPConfig
 	AWX      AWXConfig
+	// VRA is the vRA the importer reads (P2, ADR-0027).
+	VRA VRAConfig
 	// Notification channels (ADR-0023).
 	SMTP  SMTPConfig
 	Teams TeamsConfig
@@ -97,6 +99,17 @@ type VCenterConfig struct {
 	Insecure bool
 	// Name is how the vCenter appears in the UI and API, for example vc01.corp.example.
 	Name string
+}
+
+// VRAConfig is where vRA is and how rvav signs in there: a refresh token, or
+// a user and password in a domain.
+type VRAConfig struct {
+	URL      string
+	Token    string
+	Username string
+	Password string
+	Domain   string
+	Insecure bool
 }
 
 type EfficientIPConfig struct {
@@ -241,6 +254,14 @@ func Load() (Config, error) {
 			From:     env("RVAV_SMTP_FROM", "rvav <rvav@localhost>"),
 			Username: env("RVAV_SMTP_USERNAME", ""),
 			Password: env("RVAV_SMTP_PASSWORD", ""),
+		},
+		VRA: VRAConfig{
+			URL:      env("RVAV_VRA_URL", ""),
+			Token:    env("RVAV_VRA_TOKEN", ""),
+			Username: env("RVAV_VRA_USERNAME", ""),
+			Password: env("RVAV_VRA_PASSWORD", ""),
+			Domain:   env("RVAV_VRA_DOMAIN", ""),
+			Insecure: boolean("RVAV_VRA_INSECURE"),
 		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
