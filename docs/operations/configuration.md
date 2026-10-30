@@ -103,6 +103,35 @@ Traces use OpenTelemetry's standard variables, read by every process:
 | `RVAV_FAKE_AWX_FAIL_TASK` | none | | A simulated task that fails, to try failures. |
 | `RVAV_INVENTORY_TOKEN` | none | yes | `rvav awx-bootstrap`: the rvav API token AWX's inventory source uses. |
 
+## NSX
+
+The NSX Manager rvav makes networks and security groups in
+([ADR-0028](../adr/0028-nsx-networking.md)), through its Policy API
+(NSX 4.x, or NSX-T 3.x). Also set from Administration › Integrations.
+
+| Setting | Default | Secret | What |
+|---|---|---|---|
+| `RVAV_NSX_URL` | none | | The NSX Manager's address (`https://nsx.corp.example`), or its cluster's virtual IP. |
+| `RVAV_NSX_USERNAME` | none | | rvav's NSX user, to sign in with a password. |
+| `RVAV_NSX_PASSWORD` | none | yes | Its password. |
+| `RVAV_NSX_CERT_FILE` | none | | Or a principal identity: its certificate, a PEM file on rvav's hosts. NSX recommends this for automation. |
+| `RVAV_NSX_KEY_FILE` | none | | The principal identity's private key, a PEM file. Mount it from a Secret. |
+| `RVAV_NSX_INSECURE` | off | | Doesn't check the certificate. For labs only. |
+
+rvav's NSX account needs a role that can:
+- **read:** Tier-1 gateways, segments, groups, services, transport zones
+  and the VM inventory;
+- **write:** segments, groups and security policies in the `default`
+  domain;
+- **tag:** VMs.
+
+It needs nothing on Tier-0 or Tier-1 gateways, NAT, VPN or the gateway
+firewall. NSX's built-in *Network Engineer* plus *Security Engineer*
+cover this; a custom role can narrow it.
+
+`rvav fake-nsx` serves a fake NSX Manager for development: the compose
+stack runs one as `nsx`.
+
 ## vRA (the importer)
 
 What the importer reads (P2, [ADR-0027](../adr/0027-vra-importer.md)). It

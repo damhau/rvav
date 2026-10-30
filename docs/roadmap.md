@@ -280,6 +280,7 @@ criteria, effort, calendar, risks and decisions.
 | R1 Pilot | Real AWX and EfficientIP, catalog and admin UI (S6–S9) | Month 6 |
 | R2 1.0 | Extensibility, notifications, advanced provisioning, inventory, production readiness (S10–S14); 83% of vRA | Month 10 |
 | R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2); built, the organisation's vRA to confirm | Month 13 |
+| After R3 | NSX networks and security groups, natively (N1, [ADR-0028](adr/0028-nsx-networking.md)); in progress | – |
 
 ## Decided
 

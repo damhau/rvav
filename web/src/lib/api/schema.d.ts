@@ -4827,7 +4827,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "vcenter" | "awx" | "efficientip" | "smtp" | "teams" | "slack";
+        IntegrationKind: "vcenter" | "awx" | "efficientip" | "nsx" | "smtp" | "teams" | "slack";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;

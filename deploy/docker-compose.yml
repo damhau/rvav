@@ -39,6 +39,10 @@ x-rvav-env: &rvav-env
   RVAV_EFFICIENTIP_USERNAME: rvav
   RVAV_EFFICIENTIP_PASSWORD: rvav
   RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
+  # A fake NSX Manager (ADR-0028), the nsx service below.
+  RVAV_NSX_URL: ${RVAV_NSX_URL-http://nsx:8080}
+  RVAV_NSX_USERNAME: ${RVAV_NSX_USERNAME:-rvav-nsx}
+  RVAV_NSX_PASSWORD: ${RVAV_NSX_PASSWORD:-nsx}
   RVAV_FAKE_AWX: "1"
   RVAV_FAKE_AWX_FAIL_TASK: ${RVAV_FAKE_AWX_FAIL_TASK:-}
   RVAV_FAKE_EFFICIENTIP_LATENCY: ${RVAV_FAKE_EFFICIENTIP_LATENCY:-}
@@ -152,6 +156,16 @@ services:
     restart: on-failure
     depends_on:
       migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "rvav", "healthcheck"]
+      interval: 2s
+      retries: 30
+
+  nsx:
+    build: { context: .., dockerfile: Dockerfile }
+    command: ["fake-nsx"]
+    environment: *rvav-env
+    restart: on-failure
     healthcheck:
       test: ["CMD", "rvav", "healthcheck"]
       interval: 2s

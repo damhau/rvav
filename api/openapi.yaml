@@ -6542,7 +6542,7 @@ components:
         value: { type: object, additionalProperties: true }
     IntegrationKind:
       type: string
-      enum: [vcenter, awx, efficientip, smtp, teams, slack]
+      enum: [vcenter, awx, efficientip, nsx, smtp, teams, slack]
     Integration:
       type: object
       required: [kind, configured, settings, secret_set, locked, restart_needed]

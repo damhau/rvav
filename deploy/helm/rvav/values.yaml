@@ -30,6 +30,12 @@ config:
   RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
   RVAV_AWX_URL: https://awx.corp.example
   RVAV_AWX_ORGANIZATION: rvav
+  # The NSX Manager rvav makes networks and security groups in (ADR-0028):
+  # a user and password, or a principal identity's certificate and key.
+  # RVAV_NSX_URL: https://nsx.corp.example
+  # RVAV_NSX_USERNAME: svc-rvav
+  # RVAV_NSX_CERT_FILE: /etc/rvav/nsx/tls.crt
+  # RVAV_NSX_KEY_FILE: /etc/rvav/nsx/tls.key
   # The vRA the importer reads, while projects move from it (ADR-0027);
   # remove once vRA is switched off.
   # RVAV_VRA_URL: https://vra.corp.example
@@ -48,6 +54,7 @@ secret:
     RVAV_VCENTER_PASSWORD: ""
     RVAV_EFFICIENTIP_PASSWORD: ""
     RVAV_AWX_TOKEN: ""
+    RVAV_NSX_PASSWORD: ""
     # The vRA importer's account: an API token, or a user's password.
     RVAV_VRA_TOKEN: ""
     RVAV_VRA_PASSWORD: ""

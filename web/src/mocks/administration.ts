@@ -184,6 +184,7 @@ function state(db: Db): AdminState {
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
       efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false }, secret: true },
+      nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false }, secret: true },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea" }, secret: false },
       slack: { settings: {}, secret: false, signing: false },
@@ -1053,7 +1054,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
       return HttpResponse.json({
-        items: (["vcenter", "awx", "efficientip", "smtp", "teams", "slack"] as const).map((kind) => {
+        items: (["vcenter", "awx", "efficientip", "nsx", "smtp", "teams", "slack"] as const).map((kind) => {
           const it = st().integrations[kind]!;
           return {
             kind,

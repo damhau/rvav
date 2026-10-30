@@ -13,6 +13,7 @@ import (
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/secretinput"
@@ -25,7 +26,7 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip", "smtp", "teams", "slack"}
+var integrationKinds = []string{"vcenter", "awx", "efficientip", "nsx", "smtp", "teams", "slack"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -269,6 +270,8 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		s.testAWX(ctx, cfg.AWX, check)
 	case "efficientip":
 		s.testEfficientIP(ctx, cfg.IPAM, check)
+	case "nsx":
+		s.testNSX(ctx, cfg.NSX, check)
 	case "smtp":
 		if cfg.SMTP.Host == "" {
 			check("Mail server", errors.New("no SMTP host is set"), "")
@@ -415,6 +418,31 @@ func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfi
 	}
 	zones, err := client.Zones(ctx)
 	check("DNS", err, fmt.Sprintf("%d forward zones on %s.", len(zones), c.DNSServer))
+}
+
+func (s *Service) testNSX(ctx context.Context, c config.NSXConfig, check checkFunc) {
+	if c.URL == "" {
+		check("Settings", errors.New("give the NSX Manager's URL"), "")
+		return
+	}
+	client, err := nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile, KeyFile: c.KeyFile,
+		Insecure: c.Insecure})
+	if err != nil {
+		check("Settings", err, "")
+		return
+	}
+	version, err := client.Version(ctx)
+	if !check("Sign in", err, "Signed in to NSX "+version+".") {
+		return
+	}
+	tier1s, err := client.Tier1s(ctx)
+	if !check("Tier-1 gateways", err, fmt.Sprintf("%d Tier-1 gateways, for segments made for deployments.", len(tier1s))) {
+		return
+	}
+	segments, err := client.Segments(ctx)
+	check("Segments", err, fmt.Sprintf("%d segments.", len(segments)))
+	groups, err := client.Groups(ctx)
+	check("Groups", err, fmt.Sprintf("%d groups in the default domain.", len(groups)))
 }
 
 // RotateSecrets seals every stored secret again with the current key, so

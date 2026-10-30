@@ -49,6 +49,16 @@ var Fields = map[string][]Field{
 		{"instance_id", "RVAV_INSTANCE_ID", "string", false},
 		{"insecure", "RVAV_EFFICIENTIP_INSECURE", "bool", false},
 	},
+	// The NSX Manager (ADR-0028): a user and password, or a principal
+	// identity's certificate and key files.
+	"nsx": {
+		{"url", "RVAV_NSX_URL", "string", false},
+		{"username", "RVAV_NSX_USERNAME", "string", false},
+		{"password", "RVAV_NSX_PASSWORD", "string", true},
+		{"cert_file", "RVAV_NSX_CERT_FILE", "string", false},
+		{"key_file", "RVAV_NSX_KEY_FILE", "string", false},
+		{"insecure", "RVAV_NSX_INSECURE", "bool", false},
+	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
 		{"port", "RVAV_SMTP_PORT", "int", false},
@@ -169,6 +179,13 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("dns_view", &c.IPAM.DNSView)
 		str("instance_id", &c.IPAM.Instance)
 		flag("insecure", &c.IPAM.Insecure)
+	case "nsx":
+		str("url", &c.NSX.URL)
+		str("username", &c.NSX.Username)
+		secret("password", &c.NSX.Password)
+		str("cert_file", &c.NSX.CertFile)
+		str("key_file", &c.NSX.KeyFile)
+		flag("insecure", &c.NSX.Insecure)
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -209,6 +226,9 @@ func (c Config) Settings(kind string) map[string]any {
 		return map[string]any{"url": c.IPAM.URL, "auth": c.IPAM.Auth, "username": c.IPAM.Username, "space": c.IPAM.Space,
 			"dns_server": c.IPAM.DNSServer, "dns_view": c.IPAM.DNSView, "instance_id": c.IPAM.Instance, "insecure": c.IPAM.Insecure,
 			"fake": c.IPAM.Fake}
+	case "nsx":
+		return map[string]any{"url": c.NSX.URL, "username": c.NSX.Username, "cert_file": c.NSX.CertFile, "key_file": c.NSX.KeyFile,
+			"insecure": c.NSX.Insecure}
 	case "smtp":
 		return map[string]any{"host": c.SMTP.Host, "port": c.SMTP.Port, "tls": c.SMTP.TLS, "from": c.SMTP.From,
 			"username": c.SMTP.Username}
@@ -229,6 +249,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.AWX.Token != ""
 	case "efficientip":
 		return c.IPAM.Password != ""
+	case "nsx":
+		return c.NSX.Password != ""
 	case "smtp":
 		return c.SMTP.Password != ""
 	case "teams":

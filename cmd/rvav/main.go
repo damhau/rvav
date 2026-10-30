@@ -23,6 +23,7 @@ import (
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
@@ -63,6 +64,8 @@ Usage:
                            vRO's workflows and actions sorted into ADR-0007's groups A to D,
                            with what uses each and why (JSON, or Markdown with -md)
   rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
+  rvav fake-nsx            serve a fake NSX Manager with sample gateways, segments and groups on
+                           RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
 Configuration comes from RVAV_* environment variables; see .env.example.
@@ -95,7 +98,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	// migrate, seed and the development helpers work without auth settings.
 	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" ||
-		cmd == "vra-export" || cmd == "vra-plan" || cmd == "vro-triage" || cmd == "fake-vra" {
+		cmd == "vra-export" || cmd == "vra-plan" || cmd == "vro-triage" || cmd == "fake-vra" || cmd == "fake-nsx" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -188,6 +191,17 @@ func run(ctx context.Context, cmd string, args []string) error {
 		}
 		log.Warn("serving a fake vRA with a sample estate", "url", url, "user", "rvav-importer", "password", "vra",
 			"domain", "corp.example", "refresh_token", vra.FakeRefreshToken)
+		<-ctx.Done()
+		return nil
+	case "fake-nsx":
+		f := nsx.NewFakeServer()
+		// Its vcsim isn't NSX's compute manager: VMs are taken as they are tagged.
+		f.AnyVM = true
+		url, err := f.Start(ctx, cfg.HTTPAddr)
+		if err != nil {
+			return err
+		}
+		log.Warn("serving a fake NSX Manager; nothing is made in a real NSX", "url", url, "user", nsx.FakeUser, "password", nsx.FakePassword)
 		<-ctx.Done()
 		return nil
 	case "seed":

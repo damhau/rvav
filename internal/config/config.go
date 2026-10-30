@@ -26,6 +26,9 @@ type Config struct {
 	AWX      AWXConfig
 	// VRA is the vRA the importer reads (P2, ADR-0027).
 	VRA VRAConfig
+	// NSX is the NSX Manager rvav makes networks and security groups in
+	// (ADR-0028).
+	NSX NSXConfig
 	// Notification channels (ADR-0023).
 	SMTP  SMTPConfig
 	Teams TeamsConfig
@@ -111,6 +114,20 @@ type VRAConfig struct {
 	Domain   string
 	Insecure bool
 }
+
+// NSXConfig: where the NSX Manager is, and rvav's account there, a user
+// and password or a client certificate (a principal identity).
+type NSXConfig struct {
+	URL      string
+	Username string
+	Password string
+	CertFile string
+	KeyFile  string
+	Insecure bool
+}
+
+// Configured says whether rvav has an NSX Manager.
+func (c NSXConfig) Configured() bool { return c.URL != "" }
 
 type EfficientIPConfig struct {
 	Fake bool
@@ -254,6 +271,14 @@ func Load() (Config, error) {
 			From:     env("RVAV_SMTP_FROM", "rvav <rvav@localhost>"),
 			Username: env("RVAV_SMTP_USERNAME", ""),
 			Password: env("RVAV_SMTP_PASSWORD", ""),
+		},
+		NSX: NSXConfig{
+			URL:      env("RVAV_NSX_URL", ""),
+			Username: env("RVAV_NSX_USERNAME", ""),
+			Password: env("RVAV_NSX_PASSWORD", ""),
+			CertFile: env("RVAV_NSX_CERT_FILE", ""),
+			KeyFile:  env("RVAV_NSX_KEY_FILE", ""),
+			Insecure: boolean("RVAV_NSX_INSECURE"),
 		},
 		VRA: VRAConfig{
 			URL:      env("RVAV_VRA_URL", ""),

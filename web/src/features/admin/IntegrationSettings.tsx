@@ -1,4 +1,4 @@
-// vCenter, AWX and EfficientIP settings (S9, ADR-0020): saved from the UI,
+// vCenter, AWX, EfficientIP and NSX settings (S9, ADR-0020, ADR-0028): saved from the UI,
 // an environment variable winning and locking its field; the password or
 // token is write-only; saved settings apply when rvav's processes restart.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -90,6 +90,30 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
         hint: "Tags what this rvav creates",
       },
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_EFFICIENTIP_INSECURE", type: "bool" },
+    ],
+  },
+  // NSX networking (ADR-0028): a user and password, or a principal identity.
+  nsx: {
+    title: "NSX",
+    secret: { name: "password", label: "Password", env: "RVAV_NSX_PASSWORD", type: "string" },
+    settings: [
+      {
+        name: "url",
+        label: "URL",
+        env: "RVAV_NSX_URL",
+        type: "string",
+        hint: "The NSX Manager, for example https://nsx.corp.example",
+      },
+      { name: "username", label: "User", env: "RVAV_NSX_USERNAME", type: "string" },
+      {
+        name: "cert_file",
+        label: "Certificate file",
+        env: "RVAV_NSX_CERT_FILE",
+        type: "string",
+        hint: "A principal identity instead of a password: its PEM certificate on rvav's hosts",
+      },
+      { name: "key_file", label: "Key file", env: "RVAV_NSX_KEY_FILE", type: "string" },
+      { name: "insecure", label: "Skip TLS verification", env: "RVAV_NSX_INSECURE", type: "bool" },
     ],
   },
   // Notification channels (S11, ADR-0023).
