@@ -38,7 +38,7 @@ type tmpl struct {
 // Resource types rvav builds from; anything else is reported.
 var (
 	machineTypes = []string{vra.MachineType, "Cloud.Machine"}
-	networkTypes = []string{"Cloud.vSphere.Network", "Cloud.Network"}
+	networkTypes = []string{"Cloud.vSphere.Network", "Cloud.Network", "Cloud.NSX.Network"}
 	diskTypes    = []string{"Cloud.vSphere.Disk", "Cloud.Volume"}
 )
 
@@ -154,9 +154,12 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		case slices.Contains(diskTypes, r.Type):
 			disks[name] = r.Properties
 		case slices.Contains(networkTypes, r.Type):
-			if nt, _ := r.Properties["networkType"].(string); nt != "" && nt != "existing" {
-				note(Unmapped, "resources."+name, fmt.Sprintf("A %s network (networkType %s): rvav attaches VMs to existing networks only.", r.Type, nt))
+			// Those made for each deployment are NSX segments (mapNSX).
+			if nt, _ := r.Properties["networkType"].(string); nt != "" && nt != "existing" && nt != "public" && !slices.Contains(onDemand, nt) {
+				note(Unmapped, "resources."+name, fmt.Sprintf("A %s network (networkType %s): rvav has no such network.", r.Type, nt))
 			}
+		case r.Type == "Cloud.SecurityGroup":
+			// mapNSX
 		default:
 			unmapped = append(unmapped, name)
 			note(Unmapped, "resources."+name, fmt.Sprintf("%s has no equivalent in rvav: it is left out. An AWX job after the VMs, in a composite item, can do what it did.", r.Type))
@@ -166,6 +169,8 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		note(Unmapped, "resources", "No vSphere machine: rvav builds VMs, and this template builds none.")
 		return VersionDoc{}, false
 	}
+
+	nx := mapNSX(t, note)
 
 	// Each machine is a component; one machine without a count is the
 	// item's VM itself.
@@ -239,6 +244,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		for _, k := range placementFields {
 			bindings[k] = "inputs." + k
 		}
+		nx.machine(r.Properties, where, c, bindings, note)
 		c["bindings"] = bindings
 		if count, ok := r.Properties["count"]; ok {
 			c["count"] = countExpr(count)
@@ -252,12 +258,22 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		note(Unmapped, "resources."+name, "A disk attached to no machine: left out.")
 	}
 
-	// The placement inputs rvav's VM items ask for.
-	for _, f := range placementFields {
+	// The placement inputs rvav's VM items ask for: no network when every
+	// VM is on a segment made for the deployment.
+	placed := placementFields
+	if !slices.ContainsFunc(comps, func(c map[string]any) bool {
+		return !strings.HasPrefix(fmt.Sprint(c["bindings"].(map[string]any)["network"]), "segments.")
+	}) {
+		placed = []string{"cluster", "datastore"}
+	}
+	for _, f := range placed {
 		props[f] = map[string]any{"type": "string", "minLength": 1}
 		required = append(required, f)
 	}
 	maps.Copy(fields, placementUI())
+	if len(placed) < len(placementFields) {
+		delete(fields, "network")
+	}
 
 	blueprint := map[string]any{"kind": "vm", "naming": naming(e, bp, order, note),
 		"guest": map[string]any{"os_family": osFamily, "domain": ""}}
@@ -283,18 +299,19 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		blueprint["deployment_name"] = "{project}-{environment}-" + slug(bp.Name)
 		note(Info, "resources", fmt.Sprintf("%d machines: a multi-VM item, one component each (ADR-0024).", len(comps)))
 	}
+	nx.apply(blueprint)
 	if osFamily == "windows" {
 		note(Warning, "guest", "A Windows guest: set its domain join (domain, OU and the secret of the joining account) in the blueprint.")
 	}
 
-	order = append(order, placementFields...)
+	order = append(order, placed...)
 	vd.FormSchema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
 		"additionalProperties": false, "required": required, "properties": props}
 	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": []map[string]any{
 		{"key": "inputs", "title": "Request", "columns": 2, "fields": slices.DeleteFunc(slices.Clone(order), func(f string) bool {
-			return slices.Contains(placementFields, f)
+			return slices.Contains(placed, f)
 		})},
-		{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placementFields},
+		{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placed},
 	}}}
 	if withForm && form != nil {
 		applyForm(form, props, fields, &required, initial, ui, note)

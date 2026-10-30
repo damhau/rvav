@@ -86,3 +86,130 @@ func TestMapTemplates(t *testing.T) {
 		t.Fatalf("draft = %+v", d)
 	}
 }
+
+// TestMapNSXTemplate: a template's network made for each deployment is an
+// NSX segment, its new security groups groups made for each deployment
+// with the inbound rules rvav can write; what it can't is reported (N1.4).
+func TestMapNSXTemplate(t *testing.T) {
+	const content = `formatVersion: 1
+resources:
+  web:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: small
+      count: 2
+      networks:
+        - network: ${resource.app_net.id}
+          securityGroups: ['${resource.web_sg.id}', '${resource.backup_sg.id}']
+  db:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: large
+      networks:
+        - network: ${resource.app_net.id}
+          securityGroups: ['${resource.db_sg.id}']
+        - network: ${resource.app_net.id}
+  app_net:
+    type: Cloud.NSX.Network
+    properties:
+      networkType: outbound
+  web_sg:
+    type: Cloud.SecurityGroup
+    properties:
+      securityGroupType: new
+      rules:
+        - name: https
+          direction: inbound
+          source: ANY
+          protocol: TCP
+          ports: 443
+          access: Allow
+        - name: out
+          direction: outbound
+          destination: ANY
+          service: HTTPS
+        - name: office
+          direction: inbound
+          source: 10.0.0.0/8
+          service: SSH
+  db_sg:
+    type: Cloud.SecurityGroup
+    properties:
+      securityGroupType: new
+      rules:
+        - name: pg
+          source: ${resource.web_sg.id}
+          protocol: TCP
+          ports: "5432"
+        - name: nope
+          source: ANY
+          protocol: TCP
+          ports: "8443"
+          access: Drop
+  backup_sg:
+    type: Cloud.SecurityGroup
+    properties:
+      securityGroupType: existing
+      constraints:
+        - tag: sg:backup
+  lb:
+    type: Cloud.NSX.LoadBalancer
+    properties:
+      instances: ${resource.web[*].id}
+`
+	e := vra.SampleEstate(time.Now())
+	p := MapTemplate(&e, vra.Blueprint{ID: "bp-nsx", Name: "Three tier", Versions: []vra.BlueprintVersion{
+		{Version: "1", Status: "RELEASED", Content: content}}})
+	if p.Status != Partial || p.Doc == nil {
+		t.Fatalf("plan = %s %+v", p.Status, p.Notes)
+	}
+	v := p.Doc.Versions[0]
+	bp := v.Blueprint
+	segs, _ := bp["segments"].([]any)
+	if len(segs) != 1 || segs[0].(map[string]any)["key"] != "appnet" {
+		t.Fatalf("segments = %+v", bp["segments"])
+	}
+	comps := bp["components"].([]map[string]any)
+	for _, c := range comps {
+		if c["bindings"].(map[string]any)["network"] != "segments.appnet" {
+			t.Fatalf("%s network = %v", c["key"], c["bindings"])
+		}
+	}
+	if g := comps[1]["groups"]; !slices.Equal(g.([]any), []any{"websg"}) || !slices.Equal(comps[0]["groups"].([]any), []any{"dbsg"}) {
+		t.Fatalf("groups = %v, %v", comps[0]["groups"], comps[1]["groups"])
+	}
+	sgs := bp["security_groups"].([]any)
+	if len(sgs) != 2 {
+		t.Fatalf("security groups = %+v", sgs)
+	}
+	db, web := sgs[0].(map[string]any), sgs[1].(map[string]any)
+	dbRules, webRules := db["rules"].([]any), web["rules"].([]any)
+	if db["key"] != "dbsg" || len(dbRules) != 1 || !slices.Equal(dbRules[0].(map[string]any)["from"].([]any), []any{"websg"}) ||
+		!slices.Equal(dbRules[0].(map[string]any)["services"].([]any), []any{"PostgreSQL"}) {
+		t.Fatalf("db_sg = %+v", db)
+	}
+	if web["key"] != "websg" || len(webRules) != 1 || !slices.Equal(webRules[0].(map[string]any)["services"].([]any), []any{"HTTPS"}) ||
+		!slices.Equal(webRules[0].(map[string]any)["from"].([]any), []any{"any"}) {
+		t.Fatalf("web_sg = %+v", web)
+	}
+	// Every VM on the segment: the form asks for no network.
+	if _, ok := v.FormSchema["properties"].(map[string]any)["network"]; ok {
+		t.Fatal("the form still asks for a network")
+	}
+	for _, want := range []struct{ level, where, text string }{
+		{Info, "resources.app_net", "NSX segment made for each deployment (appnet)"},
+		{Info, "resources.web_sg", "with 1 of its 3 rules"},
+		{Unmapped, "resources.web_sg.rules[1]", "outbound"},
+		{Unmapped, "resources.web_sg.rules[2]", "from addresses (10.0.0.0/8)"},
+		{Unmapped, "resources.db_sg.rules[1]", "TCP port 8443"},
+		{Unmapped, "resources.backup_sg", "can't tell which NSX group"},
+		{Unmapped, "resources.db.networks", "added adapter"},
+		{Unmapped, "resources.lb", "Cloud.NSX.LoadBalancer"},
+	} {
+		if !has(p, want.level, want.where, want.text) {
+			t.Errorf("no %s note at %s with %q: %+v", want.level, want.where, want.text, p.Notes)
+		}
+	}
+}

@@ -367,7 +367,7 @@ Decided after 1.0, instead of AWX playbooks ([ADR-0028](adr/0028-nsx-networking.
 - An NSX client for the Policy API, an NSX Manager in Integrations, a fake NSX for tests and the compose stack.
 - Networks: existing segments by placement, and segments made for a deployment on a Tier-1, their subnets from EfficientIP.
 - Security groups: existing ones by tag, and groups made for a deployment with their distributed firewall rules; day-2 actions add and remove VMs.
-- NSX in item YAML and the form designer; the vRA importer maps `Cloud.NSX.Network` and `Cloud.SecurityGroup`.
+- NSX in item YAML and the form designer; the vRA importer maps `Cloud.NSX.Network` and `Cloud.SecurityGroup` (N1.4).
 
 **Acceptance:** a three-tier item builds its VMs on a new segment of the project's Tier-1, each tier in its own security group with the firewall rules between them; deleting the deployment removes the segment, groups and rules; a day-2 action moves a VM into another group; a vRA template with NSX networks and security groups imports without them left out.
 
