@@ -17,6 +17,7 @@ import (
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vapi/vcenter"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -531,4 +532,52 @@ func ensureTemplate(ctx context.Context, c *vim25.Client, t TemplateSpec) error 
 	}
 	vm := object.NewVirtualMachine(c, info.Result.(types.ManagedObjectReference))
 	return vm.MarkAsTemplate(ctx)
+}
+
+// SegmentPortGroup makes, or removes, an NSX segment's port group in a
+// development vCenter, as NSX does once it has realised the segment (ADR-
+// 0028): on the distributed switch of the port group like. For vcsim with
+// the fake NSX; a real NSX makes its own.
+func SegmentPortGroup(ctx context.Context, c *vim25.Client, name, like string, remove bool) error {
+	v, err := view.NewManager(c).CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"DistributedVirtualPortgroup"}, true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = v.Destroy(ctx) }()
+	var pgs []mo.DistributedVirtualPortgroup
+	if err := v.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name", "config.distributedVirtualSwitch"}, &pgs); err != nil {
+		return err
+	}
+	byName := func(n string) *mo.DistributedVirtualPortgroup {
+		for i := range pgs {
+			if pgs[i].Name == n {
+				return &pgs[i]
+			}
+		}
+		return nil
+	}
+	if remove {
+		pg := byName(name)
+		if pg == nil {
+			return nil
+		}
+		task, err := object.NewDistributedVirtualPortgroup(c, pg.Reference()).Destroy(ctx)
+		if err != nil {
+			return err
+		}
+		return task.Wait(ctx)
+	}
+	if byName(name) != nil {
+		return nil
+	}
+	model := byName(like)
+	if model == nil || model.Config.DistributedVirtualSwitch == nil {
+		return fmt.Errorf("vCenter has no port group %s to put segment %s beside", like, name)
+	}
+	task, err := object.NewDistributedVirtualSwitch(c, *model.Config.DistributedVirtualSwitch).AddPortgroup(ctx,
+		[]types.DVPortgroupConfigSpec{{Name: name, Type: string(types.DistributedVirtualPortgroupPortgroupTypeEarlyBinding), NumPorts: 16}})
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
 }

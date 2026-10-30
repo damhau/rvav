@@ -57,6 +57,7 @@ values.
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
+| `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. Only the first adapter, and not in composite items yet |
 | `tags` | vSphere tags, `category/tag` |
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `awx_templates` | Post-configuration AWX templates, by key |

@@ -349,6 +349,29 @@ func Resource(r store.Resource) (api.Resource, bool) {
 			Type: "dns.record", Fqdn: p.FQDN, RecordType: api.DnsRecordResourceRecordType(strings.ToUpper(p.Type)),
 			Value: p.Value, Zone: strPtr(p.Zone)})
 		return out, err == nil
+	case "nsx.segment":
+		var p struct {
+			ID      string `json:"segment_id"`
+			Tier1   string `json:"tier1"`
+			Subnet  string `json:"subnet"`
+			Gateway string `json:"gateway"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		v := api.SegmentResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.segment"}
+		v.Segment.Id, v.Segment.Tier1, v.Segment.Subnet, v.Segment.Gateway = p.ID, p.Tier1, p.Subnet, p.Gateway
+		err := out.FromSegmentResource(v)
+		return out, err == nil
+	case "ipam.subnet":
+		var p struct {
+			Subnet string `json:"subnet"`
+			Block  string `json:"block"`
+			ID     string `json:"efficientip_id"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		v := api.SubnetResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "ipam.subnet"}
+		v.Subnet.Cidr, v.Subnet.Block, v.Subnet.EfficientipId = p.Subnet, p.Block, strPtr(p.ID)
+		err := out.FromSubnetResource(v)
+		return out, err == nil
 	case "vsphere.drs_rule":
 		var v api.DrsRuleResource
 		_ = json.Unmarshal(r.Properties, &v)

@@ -9,6 +9,7 @@ import type {
   LiveEvent,
   LogLine,
   Project,
+  Resource,
   Step,
   VmResource,
 } from "@/lib/api/types";
@@ -221,11 +222,7 @@ function publishDeployment(r: StoredRequest | null, d: DeploymentDetail) {
   publish(r, { type: "deployment.updated", data: summarize(d) } as Omit<LiveEvent, "id" | "at">, d);
 }
 
-function publishResource(
-  r: StoredRequest | null,
-  d: DeploymentDetail,
-  res: VmResource | IpAddressResource | DnsRecordResource | DrsRuleResource,
-) {
+function publishResource(r: StoredRequest | null, d: DeploymentDetail, res: Resource) {
   publish(
     r,
     { type: "resource.updated", data: { deployment_id: d.id, resource: structuredClone(res) } } as Omit<

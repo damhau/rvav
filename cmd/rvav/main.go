@@ -197,6 +197,22 @@ func run(ctx context.Context, cmd string, args []string) error {
 		f := nsx.NewFakeServer()
 		// Its vcsim isn't NSX's compute manager: VMs are taken as they are tagged.
 		f.AnyVM = true
+		// A segment's port group in the stack's vcsim, as NSX makes one in vCenter.
+		if cfg.VCenter.URL != "" {
+			vc, err := vsphere.New(ctx, cfg.VCenter.Name, cfg.VCenter.URL, cfg.VCenter.Username, cfg.VCenter.Password, cfg.VCenter.Insecure)
+			if err != nil {
+				return err
+			}
+			f.OnSegment = func(s nsx.Segment, deleted bool) {
+				c, err := vc.Vim(ctx)
+				if err == nil {
+					err = vsphere.SegmentPortGroup(ctx, c, s.DisplayName, "dvpg-app-dev-vl310", deleted)
+				}
+				if err != nil {
+					log.Error("segment port group", "segment", s.DisplayName, "err", err)
+				}
+			}
+		}
 		url, err := f.Start(ctx, cfg.HTTPAddr)
 		if err != nil {
 			return err

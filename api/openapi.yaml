@@ -5075,6 +5075,8 @@ components:
         - $ref: "#/components/schemas/IpAddressResource"
         - $ref: "#/components/schemas/DnsRecordResource"
         - $ref: "#/components/schemas/DrsRuleResource"
+        - $ref: "#/components/schemas/SegmentResource"
+        - $ref: "#/components/schemas/SubnetResource"
       discriminator:
         propertyName: type
         mapping:
@@ -5082,6 +5084,8 @@ components:
           ipam.address: "#/components/schemas/IpAddressResource"
           dns.record: "#/components/schemas/DnsRecordResource"
           vsphere.drs_rule: "#/components/schemas/DrsRuleResource"
+          nsx.segment: "#/components/schemas/SegmentResource"
+          ipam.subnet: "#/components/schemas/SubnetResource"
 
     ResourceBase:
       type: object
@@ -5683,6 +5687,37 @@ components:
             value: { type: string }
             zone: { type: string }
 
+    SegmentResource:
+      description: "An NSX segment made for the deployment (ADR-0028): its VMs' network, deleted with it."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, segment]
+          properties:
+            type: { const: nsx.segment }
+            segment:
+              type: object
+              required: [id, tier1, subnet, gateway]
+              properties:
+                id: { type: string, description: Its NSX ID. }
+                tier1: { type: string }
+                subnet: { type: string }
+                gateway: { type: string }
+    SubnetResource:
+      description: "The subnet carved from an EfficientIP block for an NSX segment made for the deployment (ADR-0028)."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, subnet]
+          properties:
+            type: { const: ipam.subnet }
+            subnet:
+              type: object
+              required: [cidr, block]
+              properties:
+                cidr: { type: string }
+                block: { type: string }
+                efficientip_id: { type: string }
     DrsRuleResource:
       description: A DRS rule keeping a component's VMs on separate hosts (ADR-0024).
       allOf:

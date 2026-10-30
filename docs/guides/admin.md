@@ -36,6 +36,25 @@ The order that gets a first request through:
 4. **Policies.**
 5. **The catalog.**
 
+## NSX networks
+
+With an NSX Manager set in **Integrations**
+([ADR-0028](../adr/0028-nsx-networking.md)):
+- **Existing segments** are port groups in vCenter: placement rules name
+  them like any network, and their subnets come from EfficientIP as
+  usual.
+- **Segments made for a deployment:** an item can ask for its own network
+  (`segments` in its blueprint, and `network: segments.<key>`). A
+  placement rule then says where they go, under **NSX segments made for
+  deployments**:
+  - the Tier-1 gateway they connect to;
+  - the EfficientIP block their subnets are carved from, and their size;
+  - the DNS zone and servers of the VMs on them.
+
+  Each request makes its segment before its VMs, and deleting the
+  deployment deletes it after them, with its subnet. rvav only ever
+  deletes segments it made: they carry its tag.
+
 ## Policies
 
 **Policies** has a tab each. **What applies here** shows, for a project

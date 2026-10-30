@@ -161,11 +161,14 @@ services:
       interval: 2s
       retries: 30
 
+  # It makes a segment's port group in vcsim, as NSX does in vCenter.
   nsx:
     build: { context: .., dockerfile: Dockerfile }
     command: ["fake-nsx"]
     environment: *rvav-env
     restart: on-failure
+    depends_on:
+      vcsim: { condition: service_started }
     healthcheck:
       test: ["CMD", "rvav", "healthcheck"]
       interval: 2s

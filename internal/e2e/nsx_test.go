@@ -13,16 +13,13 @@ import (
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
-	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
-	"github.com/vmware/govmomi/vim25/mo"
-	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/provision"
 )
 
@@ -231,48 +228,10 @@ func segmentInputs() map[string]any {
 }
 
 // portGroups makes and removes an NSX segment's port group in vcsim, as
-// NSX does in vCenter once it has realised the segment: on the switch of
-// the development port groups.
+// NSX does in vCenter once it has realised the segment.
 func portGroups(t *testing.T, ctx context.Context, c *vim25.Client) func(nsx.Segment, bool) {
-	byName := func(name string) *mo.DistributedVirtualPortgroup {
-		v, err := view.NewManager(c).CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"DistributedVirtualPortgroup"}, true)
-		if err != nil {
-			t.Error(err)
-			return nil
-		}
-		defer func() { _ = v.Destroy(ctx) }()
-		var pgs []mo.DistributedVirtualPortgroup
-		if err := v.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name", "config.distributedVirtualSwitch"}, &pgs); err != nil {
-			t.Error(err)
-			return nil
-		}
-		for i := range pgs {
-			if pgs[i].Name == name {
-				return &pgs[i]
-			}
-		}
-		return nil
-	}
 	return func(s nsx.Segment, deleted bool) {
-		if deleted {
-			if pg := byName(s.DisplayName); pg != nil {
-				if task, err := object.NewDistributedVirtualPortgroup(c, pg.Reference()).Destroy(ctx); err == nil {
-					_ = task.Wait(ctx)
-				}
-			}
-			return
-		}
-		dev := byName("dvpg-app-dev-vl310")
-		if dev == nil {
-			t.Error("no dvpg-app-dev-vl310 in vcsim")
-			return
-		}
-		task, err := object.NewDistributedVirtualSwitch(c, *dev.Config.DistributedVirtualSwitch).AddPortgroup(ctx,
-			[]types.DVPortgroupConfigSpec{{Name: s.DisplayName, Type: string(types.DistributedVirtualPortgroupPortgroupTypeEarlyBinding), NumPorts: 16}})
-		if err == nil {
-			err = task.Wait(ctx)
-		}
-		if err != nil {
+		if err := vsphere.SegmentPortGroup(ctx, c, s.DisplayName, "dvpg-app-dev-vl310", deleted); err != nil {
 			t.Error(err)
 		}
 	}
@@ -341,6 +300,11 @@ func TestSegmentProvisioning(t *testing.T) {
 		rows.Close()
 		if types["nsx.segment"] != segID || types["ipam.subnet"] != "10.60.0.0/26" || !strings.HasPrefix(types["ipam.address"], "10.60.0.") {
 			t.Fatalf("resources = %v", types)
+		}
+		// The deployment's page lists it.
+		if _, raw, _ := h.do("GET", "/api/v1/deployments/"+dep.Id, "tnguyen", nil); !strings.Contains(string(raw), `"type":"nsx.segment"`) ||
+			!strings.Contains(string(raw), `"tier1":"t1-gva-dev"`) || !strings.Contains(string(raw), `"type":"ipam.subnet"`) {
+			t.Fatalf("deployment = %s", raw)
 		}
 		vm, err := h.vc.FindVM(ctx, dep.Name)
 		if err != nil || len(vm.NICs) == 0 || vm.NICs[0].Network != segID {

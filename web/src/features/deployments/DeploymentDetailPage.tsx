@@ -14,6 +14,7 @@ import type {
   DnsRecordResource,
   DrsRuleResource,
   IpAddressResource,
+  SegmentResource,
   VmResource,
 } from "@/lib/api/types";
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
@@ -199,10 +200,28 @@ function VmTable({
   );
 }
 
-function Network({ ips, dns }: { ips: IpAddressResource[]; dns: DnsRecordResource[] }) {
-  if (ips.length + dns.length === 0) return <p className="text-xs text-muted">No addresses reserved yet.</p>;
+function Network({
+  ips,
+  dns,
+  segments,
+}: {
+  ips: IpAddressResource[];
+  dns: DnsRecordResource[];
+  segments: SegmentResource[];
+}) {
+  if (ips.length + dns.length + segments.length === 0)
+    return <p className="text-xs text-muted">No addresses reserved yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
+      {/* NSX segments made for the deployment (ADR-0028). */}
+      {segments.map((r) => (
+        <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span className="min-w-0 font-mono text-[12px] break-all">{r.name}</span>
+          <span className="text-[11px] text-faint">
+            NSX segment · {r.segment.tier1} · {r.segment.subnet}
+          </span>
+        </li>
+      ))}
       {ips.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
           <span className="font-mono text-[12px]">{r.address}</span>
@@ -475,6 +494,7 @@ function Overview({
   }
   const ips = d.resources.filter((r): r is IpAddressResource => r.type === "ipam.address");
   const dns = d.resources.filter((r): r is DnsRecordResource => r.type === "dns.record");
+  const segments = d.resources.filter((r): r is SegmentResource => r.type === "nsx.segment");
   return (
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
@@ -509,7 +529,7 @@ function Overview({
           <Placement vms={vms} rules={rules} />
         </Panel>
         <Panel title="IP addresses and DNS">
-          <Network ips={ips} dns={dns} />
+          <Network ips={ips} dns={dns} segments={segments} />
         </Panel>
         <Panel title="Lease">
           <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />

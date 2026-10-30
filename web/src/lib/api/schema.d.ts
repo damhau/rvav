@@ -3632,7 +3632,7 @@ export interface components {
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
         };
-        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"];
+        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"];
         ResourceBase: {
             id: string;
             type: string;
@@ -4157,6 +4157,40 @@ export interface components {
              * @enum {string}
              */
             type: "dns.record";
+        };
+        /** @description An NSX segment made for the deployment (ADR-0028): its VMs' network, deleted with it. */
+        SegmentResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "nsx.segment";
+            segment: {
+                /** @description Its NSX ID. */
+                id: string;
+                tier1: string;
+                subnet: string;
+                gateway: string;
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "nsx.segment";
+        };
+        /** @description The subnet carved from an EfficientIP block for an NSX segment made for the deployment (ADR-0028). */
+        SubnetResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "ipam.subnet";
+            subnet: {
+                cidr: string;
+                block: string;
+                efficientip_id?: string;
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ipam.subnet";
         };
         /** @description A DRS rule keeping a component's VMs on separate hosts (ADR-0024). */
         DrsRuleResource: components["schemas"]["ResourceBase"] & {
