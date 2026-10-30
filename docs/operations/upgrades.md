@@ -65,6 +65,8 @@ workflows in flight fails there, not in production. The histories in
 
 - provisioning: one VM, approved, cancelled while waiting, failed;
 - the PostgreSQL cluster composite;
+- NSX (N1, N2): a VM on its own segment in security groups, and a
+  composite whose VM step is (recorded on the compose stack's fake NSX);
 - day-2 actions;
 - housekeeping.
 
