@@ -172,7 +172,7 @@ func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []Comp
 				return in.Key, err
 			}
 		}
-		return "", nil
+		return joinGroups(ctx, info, in, keys.vm(c, KeyNSXTags, vm), fresh[i])
 	})
 	if err != nil {
 		return fail(failed, err)

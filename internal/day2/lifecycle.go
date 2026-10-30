@@ -185,29 +185,37 @@ func init() {
 				ops = append(ops, Op{Key: "vsphere.drs_rule.delete", Title: "Remove the DRS rules", Detail: strings.Join(rules, ", "),
 					System: "vcenter", Op: "delete_resources", Args: map[string]any{"type": "vsphere.drs_rule"}})
 			}
+			deleteAll := func(typ, key, title, system string) {
+				var names []string
+				for _, r := range t.Resources {
+					if r.Type == typ {
+						names = append(names, r.Name)
+					}
+				}
+				if len(names) > 0 {
+					ops = append(ops, Op{Key: key, Title: title, Detail: strings.Join(names, ", "), System: system,
+						Op: "delete_resources", Args: map[string]any{"type": typ}})
+				}
+			}
+			// The VMs out of their NSX groups first (ADR-0028).
+			deleteAll("nsx.membership", "nsx.membership.delete", "Take the VMs out of their NSX groups", "nsx")
 			for _, r := range t.Resources {
 				if r.Type == vmType {
 					ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))
 				}
 			}
-			// NSX segments made for the deployment after the addresses on
-			// them, their subnets last (ADR-0028).
+			// The firewall rules, then the groups they name; NSX segments
+			// made for the deployment after the addresses on them, their
+			// subnets last (ADR-0028).
 			for _, typ := range []struct{ typ, key, title, system string }{
 				{"dns.record", "dns.delete", "Delete the DNS records", "efficientip"},
 				{"ipam.address", "ipam.release", "Release the IP addresses", "efficientip"},
+				{"nsx.policy", "nsx.policy.delete", "Delete the firewall rules", "nsx"},
+				{"nsx.group", "nsx.group.delete", "Delete the NSX security groups", "nsx"},
 				{"nsx.segment", "nsx.segment.delete", "Delete the NSX segments", "nsx"},
 				{"ipam.subnet", "ipam.subnet.delete", "Delete the segments' subnets", "efficientip"},
 			} {
-				var names []string
-				for _, r := range t.Resources {
-					if r.Type == typ.typ {
-						names = append(names, r.Name)
-					}
-				}
-				if len(names) > 0 {
-					ops = append(ops, Op{Key: typ.key, Title: typ.title, Detail: strings.Join(names, ", "), System: typ.system,
-						Op: "delete_resources", Args: map[string]any{"type": typ.typ}})
-				}
+				deleteAll(typ.typ, typ.key, typ.title, typ.system)
 			}
 			return ops
 		},

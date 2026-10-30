@@ -66,12 +66,13 @@ type Activities struct {
 	// VCenters connects to the vCenter a VM is in (ADR-0024); without it,
 	// VSphere is the only one.
 	VCenters VCenterSet
-	// NSX makes the segments of deployments (ADR-0028); nil without an NSX
-	// Manager. Instance tags what rvav makes there, and SegmentTimeout
-	// bounds the wait for a segment's port group (5 minutes by default).
-	NSX            *nsx.Client
-	Instance       string
-	SegmentTimeout time.Duration
+	// NSX makes the segments and security groups of deployments (ADR-0028);
+	// nil without an NSX Manager. Instance tags what rvav makes there, and
+	// NSXTimeout bounds the wait for a segment's port group, or for NSX to
+	// see a new VM (5 minutes by default).
+	NSX        *nsx.Client
+	Instance   string
+	NSXTimeout time.Duration
 }
 
 // VCenterSet is the vCenters rvav manages, by name ("" for the first).
@@ -1431,6 +1432,14 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 			return "", err
 		}
 		what = w
+	case "nsx.membership", "nsx.group", "nsx.policy":
+		del := map[string]func(context.Context, store.Resource) (string, error){
+			"nsx.membership": a.leaveGroups, "nsx.group": a.deleteGroup, "nsx.policy": a.deletePolicy}[r.Type]
+		w, err := del(ctx, r)
+		if err != nil {
+			return "", err
+		}
+		what = w
 	case "ipam.address":
 		var p struct {
 			Address  string `json:"address"`
@@ -1465,9 +1474,12 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		return nil
 	}
 	var done []string
-	// NSX segments after the VMs and addresses on them, their subnets last.
-	order := map[string]int{"vsphere.drs_rule": 0, "vsphere.vm": 1, "dns.record": 2, "ipam.address": 3, "nsx.segment": 4, "ipam.subnet": 5}
-	for pass := 0; pass < 6; pass++ {
+	// VMs out of their NSX groups first; the firewall rules after the VMs,
+	// then the groups they name; NSX segments after the VMs and addresses
+	// on them, their subnets last.
+	order := map[string]int{"vsphere.drs_rule": 0, "nsx.membership": 1, "vsphere.vm": 2, "dns.record": 3, "ipam.address": 4,
+		"nsx.policy": 5, "nsx.group": 6, "nsx.segment": 7, "ipam.subnet": 8}
+	for pass := 0; pass < 9; pass++ {
 		for _, r := range list {
 			if order[r.Type] != pass {
 				continue

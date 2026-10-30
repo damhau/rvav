@@ -343,6 +343,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	if key, err := makeSegments(ctx, info); err != nil {
 		return key, err
 	}
+	if key, err := makeSecurity(ctx, info); err != nil {
+		return key, err
+	}
 
 	if len(p.Components) > 0 {
 		return runComponents(ctx, info)
@@ -381,6 +384,35 @@ func makeSegments(ctx workflow.Context, info Info) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// makeSecurity makes the NSX groups and firewall rules of the plan's
+// deployments (ADR-0028), before their VMs; done, they aren't made again.
+func makeSecurity(ctx workflow.Context, info Info) (string, error) {
+	var a *Activities
+	p := info.Plan
+	for _, u := range p.Security {
+		key := p.SecurityKey(u)
+		if info.done(key) {
+			continue
+		}
+		in := SecurityInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Security: u}
+		if err := workflow.ExecuteActivity(ctx, a.MakeSecurity, in).Get(ctx, nil); err != nil {
+			return key, err
+		}
+	}
+	return "", nil
+}
+
+// joinGroups tags a VM so that it is in its NSX groups, if it joins any:
+// again when it was built again.
+func joinGroups(ctx workflow.Context, info Info, in VMInput, key string, again bool) (string, error) {
+	var a *Activities
+	if len(in.VM.NSXGroups) == 0 || info.done(key) && !again {
+		return "", nil
+	}
+	in.Key = key
+	return key, workflow.ExecuteActivity(ctx, a.JoinGroups, in).Get(ctx, nil)
 }
 
 // builtVM is a VM a request built.
@@ -436,6 +468,9 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {
 				return nil, in.Key, err
 			}
+		}
+		if failed, err := joinGroups(ctx, info, in, key(KeyNSXTags, vm), newVM); err != nil {
+			return nil, failed, err
 		}
 		vms = append(vms, builtVM{vm: vm, ip: in.IP, moref: in.Moref})
 	}

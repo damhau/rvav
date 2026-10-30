@@ -267,7 +267,7 @@ func TestSegmentProvisioning(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.acts.NSX, h.acts.SegmentTimeout = client, 20*time.Second
+		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
 		if _, err := h.ipam.AddBlock(efficientip.FakeSpace, "10.60.0.0/22", "nsx-gva-dev"); err != nil {
 			t.Fatal(err)
 		}
@@ -442,4 +442,95 @@ func TestSecurityGroupPlanning(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestSecurityGroupProvisioning: a VM built in NSX security groups (N1.3):
+// its deployment's group made, tagged as rvav's and selecting the VMs of
+// its tag, the firewall rules into it in a policy of their own; the VM
+// tagged once NSX sees it, joining that group and an existing one; all of
+// it deleted with the deployment, the VM's tags first.
+func TestSecurityGroupProvisioning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		fakeNSX := nsx.NewFakeServer()
+		fakeNSX.AnyVM, fakeNSX.SeeAfter = true, 2
+		srv := httptest.NewServer(fakeNSX)
+		defer srv.Close()
+		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = srv.URL, nsx.FakeUser, nsx.FakePassword
+		client, err := nsx.New(nsx.Options{URL: srv.URL, Username: nsx.FakeUser, Password: nsx.FakePassword})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
+		item, version := groupItem(h)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web",
+			Environment: "dev", Inputs: segmentInputs()}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		req = h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+
+		var depID, uuidVM string
+		if err := h.store.Pool.QueryRow(ctx, `select d.id, r.external_id from deployments d join resources r on r.deployment_id = d.id
+			where d.created_by_request_id = $1 and r.type = 'vsphere.vm'`, req.Id).Scan(&depID, &uuidVM); err != nil {
+			t.Fatal(err)
+		}
+		web := provision.GroupName(depID, "web")
+		owner := []nsx.Tag{{Scope: nsx.OwnerScope, Tag: "rvav"}, {Scope: nsx.DeployScope, Tag: depID}}
+		g, err := client.Group(ctx, web)
+		if err != nil || !slices.Equal(g.Tags, owner) || len(g.Expression) != 1 ||
+			g.Expression[0] != nsx.TagCondition(nsx.Tag{Scope: nsx.GroupScope, Tag: web}) {
+			t.Fatalf("group = %+v, %v", g, err)
+		}
+		pol, err := client.SecurityPolicy(ctx, provision.PolicyName(depID))
+		if err != nil || !slices.Equal(pol.Tags, owner) || len(pol.Rules) != 2 || pol.Rules[0].Services[0] != "/infra/services/HTTPS" ||
+			!slices.Equal(pol.Scope, []string{nsx.GroupPath + web}) {
+			t.Fatalf("policy = %+v, %v", pol, err)
+		}
+		vm, _ := fakeNSX.VM(uuidVM)
+		want := append(slices.Clone(owner), nsx.Tag{Scope: nsx.GroupScope, Tag: web}, nsx.Tag{Scope: "role", Tag: "web"})
+		if !slices.Equal(vm.Tags, want) {
+			t.Fatalf("VM tags = %+v, want %+v", vm.Tags, want)
+		}
+		types := map[string]int{}
+		rows, _ := h.store.Pool.Query(ctx, `select type from resources where deployment_id = $1`, depID)
+		for rows.Next() {
+			var typ string
+			_ = rows.Scan(&typ)
+			types[typ]++
+		}
+		rows.Close()
+		if types["nsx.group"] != 1 || types["nsx.policy"] != 1 || types["nsx.membership"] != 1 {
+			t.Fatalf("resources = %v", types)
+		}
+		for _, key := range []string{"nsx.security", "nsx.tags"} {
+			var status string
+			_ = h.store.Pool.QueryRow(ctx, `select status from request_steps where request_id = $1 and key = $2`, req.Id, key).Scan(&status)
+			if status != "done" {
+				t.Fatalf("step %s: %q", key, status)
+			}
+		}
+
+		// Deleted with the deployment: the VM out of its groups first, the
+		// rules, then the group.
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+depID+"/actions", "tnguyen", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},
+			202, &del, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(del.Id, nil)
+		h.waitStatus(del.Id, "tnguyen", api.RequestStatusSucceeded)
+		if vm, _ := fakeNSX.VM(uuidVM); len(vm.Tags) != 0 {
+			t.Fatalf("VM tags after delete = %+v", vm.Tags)
+		}
+		if _, err := client.SecurityPolicy(ctx, provision.PolicyName(depID)); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("policy after delete: %v", err)
+		}
+		if _, err := client.Group(ctx, web); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("group after delete: %v", err)
+		}
+		if _, err := client.Group(ctx, "grp-web-servers"); err != nil {
+			t.Fatalf("the existing group: %v", err)
+		}
+	}, simulator.VPX())
 }

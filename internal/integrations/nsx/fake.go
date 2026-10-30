@@ -29,9 +29,11 @@ type FakeServer struct {
 	// OnSegment is called when a segment is made or deleted, as NSX makes
 	// or removes its port group in vCenter.
 	OnSegment func(s Segment, deleted bool)
-	// AnyVM: tags set on a VM NSX doesn't know make it known (the compose
-	// stack, whose vcsim isn't NSX's compute manager).
-	AnyVM bool
+	// AnyVM: any VM looked up by its instance UUID is known, after SeeAfter
+	// lookups, and so is one tags are set on (the compose stack, whose
+	// vcsim isn't NSX's compute manager).
+	AnyVM    bool
+	SeeAfter int
 
 	mu       sync.Mutex
 	tier1s   map[string]Tier1
@@ -41,7 +43,7 @@ type FakeServer struct {
 	services map[string]Service
 	zones    map[string]TransportZone
 	vms      map[string]VM
-	reads    map[string]int // segment ID → state reads
+	reads    map[string]int // segment ID → state reads; "vm:" + UUID → lookups
 	// Calls counts the requests by method and path prefix, for tests.
 	Calls map[string]int
 }
@@ -384,7 +386,12 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == vms && r.Method == http.MethodGet:
 		all := sorted(f.vms)
 		if want, ok := strings.CutPrefix(q.Get("query"), "external_id:"); ok {
-			all = slices.DeleteFunc(all, func(v VM) bool { return v.ExternalID != want })
+			if _, known := f.vms[want]; !known && f.AnyVM {
+				if f.reads["vm:"+want]++; f.reads["vm:"+want] > f.SeeAfter {
+					f.vms[want] = VM{ExternalID: want, DisplayName: want}
+				}
+			}
+			all = slices.DeleteFunc(sorted(f.vms), func(v VM) bool { return v.ExternalID != want })
 		}
 		page(w, q, all)
 	case p == vms && r.Method == http.MethodPost && q.Get("action") == "update_tags":

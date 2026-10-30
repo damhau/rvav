@@ -98,10 +98,7 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 		if err != nil {
 			return "", "", err
 		}
-		wait := a.SegmentTimeout
-		if wait <= 0 {
-			wait = 5 * time.Minute
-		}
+		wait := a.nsxTimeout()
 		deadline := time.Now().Add(wait)
 		for {
 			state, err := a.NSX.SegmentState(ctx, sg.ID)
