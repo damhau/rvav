@@ -82,6 +82,11 @@ func NewFakeEfficientIP(ctx context.Context, st *store.Store) (*efficientip.Fake
 	fake := efficientip.NewFakeServer()
 	fake.UniqueIDs()
 	fake.InUse = st.IPAddressesInUse
+	// A block for the subnets of NSX segments made for deployments
+	// (ADR-0028), as docs/guides/admin.md's placement rule names it.
+	if _, err := fake.AddBlock(efficientip.FakeSpace, "10.60.0.0/22", "nsx-gva-dev"); err != nil {
+		return nil, err
+	}
 	networks, err := st.NetworkSubnets(ctx)
 	if err != nil {
 		return nil, err

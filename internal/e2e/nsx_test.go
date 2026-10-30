@@ -290,9 +290,7 @@ func TestSegmentProvisioning(t *testing.T) {
 		fakeNSX.OnSegment = portGroups(t, ctx, c)
 		client := useFakeNSX(h, fakeNSX)
 		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
-		if _, err := h.ipam.AddBlock(efficientip.FakeSpace, "10.60.0.0/22", "nsx-gva-dev"); err != nil {
-			t.Fatal(err)
-		}
+		// The development EfficientIP has the nsx-gva-dev block (10.60.0.0/22).
 		item, version := segmentItem(h)
 		var rules api.PlacementRuleList
 		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
