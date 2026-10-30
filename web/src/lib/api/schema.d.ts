@@ -2581,6 +2581,33 @@ export interface components {
             requested: boolean;
             /** Format: date-time */
             created_at: string;
+            git?: components["schemas"]["CatalogItemGit"];
+        };
+        /** @description The item's file in the catalog's Git repository (ADR-0029), when rvav keeps its catalog in Git. */
+        CatalogItemGit: {
+            /** @example catalog/rhel9.yaml */
+            path: string;
+            /**
+             * @description synced: the repository has what rvav has. waiting: rvav's change waits to be committed. failing: committing it failed; it is tried again. draft: the repository's change is a draft in rvav. conflict: rvav and the repository both changed it. refused: the import refused the repository's file. deleted: the file was deleted in the repository.
+             * @enum {string}
+             */
+            state: "synced" | "waiting" | "failing" | "draft" | "conflict" | "refused" | "deleted";
+            /** @description Why the last commit failed. */
+            error?: string;
+            /** @description Failed commits of the change. */
+            attempts: number;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            note?: string;
+            last_commit?: components["schemas"]["GitCommit"];
+        };
+        GitCommit: {
+            sha: string;
+            message: string;
+            author: string;
+            email?: string;
+            /** Format: date-time */
+            when: string;
         };
         CatalogItemVersion: {
             id: string;

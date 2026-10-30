@@ -6,7 +6,13 @@ set -euo pipefail
 shard=${1:?usage: e2e-shard.sh SHARD TOTAL}
 total=${2:?usage: e2e-shard.sh SHARD TOTAL}
 go=${GO:-go}
-tests=$($go test ./internal/e2e/ -list '^Test' | grep '^Test' | sort)
+# Listing runs TestMain, which starts PostgreSQL: should that fail, say why
+# (go test prints the binary's errors on stdout).
+if ! list=$($go test ./internal/e2e/ -list '^Test' 2>&1); then
+	echo "$list"
+	exit 1
+fi
+tests=$(grep '^Test' <<<"$list" | sort)
 mine=$(awk -v s="$shard" -v t="$total" '(NR-1) % t == s-1' <<<"$tests" | paste -sd'|' -)
 if [ -z "$mine" ]; then
 	echo "shard $shard of $total: no tests"

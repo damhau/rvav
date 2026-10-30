@@ -517,6 +517,11 @@ func (a *App) RunSync(ctx context.Context) error {
 		tags := &inventory.NSXTagSync{Store: a.Store, NSX: client, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 		go func() { _ = tags.Run(ctx) }()
 	}
+	// The catalog's repository (ADR-0029).
+	if a.Cfg.Git.Configured() {
+		catalog := a.Core(nil)
+		go func() { _ = catalog.RunCatalogGit(ctx) }()
+	}
 	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 	return s.Run(ctx)
 }

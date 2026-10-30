@@ -186,21 +186,31 @@ func (s *Service) ExportCatalogItem(ctx context.Context, p *auth.Principal, idOr
 	if err != nil {
 		return nil, "", err
 	}
+	out, err := s.itemYAML(ctx, it, func(row store.VersionRow) bool { return versionID == "" || row.ID == versionID })
+	if err != nil {
+		return nil, "", err
+	}
+	return out, it.Slug + ".yaml", nil
+}
+
+// itemYAML is the item as YAML, with the versions keep keeps (oldest
+// first); ErrNotFound when it keeps none.
+func (s *Service) itemYAML(ctx context.Context, it store.AdminItem, keep func(store.VersionRow) bool) ([]byte, error) {
 	doc := itemDoc{APIVersion: docAPIVersion, Kind: docKind, Metadata: itemMetadata{Slug: it.Slug, Name: it.Name,
 		Summary: it.Summary, Description: it.DescriptionMD, Category: it.Category, Type: it.Type, Icon: it.Icon, Tags: it.Tags,
 		Featured: it.Featured}}
 	rows, err := s.Store.ItemVersions(ctx, it.ID)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	slices.Reverse(rows)
 	for _, row := range rows {
-		if versionID != "" && row.ID != versionID {
+		if !keep(row) {
 			continue
 		}
 		v, err := s.Store.GetVersion(ctx, row.ID)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		vd := versionDoc{Number: row.Number, State: row.State, Changelog: row.Changelog}
 		for _, part := range []struct {
@@ -208,7 +218,7 @@ func (s *Service) ExportCatalogItem(ctx context.Context, p *auth.Principal, idOr
 			to  *map[string]any
 		}{{v.FormSchema, &vd.FormSchema}, {v.UISchema, &vd.UISchema}, {v.InitialValues, &vd.InitialValues}, {v.Blueprint, &vd.Blueprint}} {
 			if err := json.Unmarshal(part.raw, part.to); err != nil {
-				return nil, "", err
+				return nil, err
 			}
 		}
 		if len(vd.InitialValues) == 0 {
@@ -216,16 +226,16 @@ func (s *Service) ExportCatalogItem(ctx context.Context, p *auth.Principal, idOr
 		}
 		doc.Versions = append(doc.Versions, vd)
 	}
-	if versionID != "" && len(doc.Versions) == 0 {
-		return nil, "", ErrNotFound
+	if len(doc.Versions) == 0 {
+		return nil, ErrNotFound
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(doc); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return buf.Bytes(), it.Slug + ".yaml", nil
+	return buf.Bytes(), nil
 }
 
 // ImportCatalogItem makes an item from YAML, or a new draft of one.

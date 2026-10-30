@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -70,6 +71,14 @@ func (s *Service) presentAdminItem(ctx context.Context, it store.AdminItem) (api
 			out.PublishedVersion = present.Ptr(pv)
 		case "draft":
 			out.DraftVersion = present.Ptr(pv)
+		}
+	}
+	if s.gitTracks(it) {
+		f, err := s.Store.GitFileOfItem(ctx, it.ID)
+		if err == nil {
+			out.Git = presentGitFile(f)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return out, err
 		}
 	}
 	ent, err := s.entitlements(ctx, it)
@@ -214,6 +223,7 @@ func (s *Service) UpdateCatalogItem(ctx context.Context, p *auth.Principal, idOr
 		return api.AdminCatalogItem{}, err
 	}
 	s.auditCatalog(ctx, p, "catalog.item.update", it.ID, map[string]any{"changes": u})
+	s.markGit(ctx, p, it.ID, "Update "+cmp.Or(deref(u.Slug), it.Slug)+"'s details")
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }
 
@@ -223,12 +233,19 @@ func (s *Service) DeleteCatalogItem(ctx context.Context, p *auth.Principal, idOr
 	if err != nil {
 		return err
 	}
+	file, fileErr := s.Store.GitFileOfItem(ctx, it.ID)
 	if err := s.Store.DeleteItem(ctx, it.ID); errors.Is(err, store.ErrInUse) {
 		return &ConflictError{Msg: it.Name + " was requested: withdraw it instead (deprecate its published version)."}
 	} else if err != nil {
 		return err
 	}
 	s.auditCatalog(ctx, p, "catalog.item.delete", it.ID, map[string]any{"slug": it.Slug, "name": it.Name})
+	// Its file is removed from the repository.
+	if fileErr == nil && s.gitTracks(it) {
+		if err := s.Store.MarkGitRemove(ctx, file.Path, p.User.ID, "Remove "+it.Slug); err != nil {
+			s.Log.Error("catalog in Git: mark the item's removal", "item", it.ID, "err", err)
+		}
+	}
 	return nil
 }
 
@@ -406,11 +423,12 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	} else if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	action := "catalog.version.publish"
+	action, message := "catalog.version.publish", gitMessage("Publish "+it.Slug+" "+row.Number, cmp.Or(deref(changelog), row.Changelog))
 	if row.State == "deprecated" {
-		action = "catalog.version.rollback"
+		action, message = "catalog.version.rollback", "Roll "+it.Slug+" back to "+row.Number
 	}
 	s.auditCatalog(ctx, p, action, it.ID, map[string]any{"version": row.Number, "version_id": versionID})
+	s.markGit(ctx, p, it.ID, message)
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }
 
@@ -430,6 +448,7 @@ func (s *Service) DeprecateCatalogItemVersion(ctx context.Context, p *auth.Princ
 		return api.AdminCatalogItem{}, err
 	}
 	s.auditCatalog(ctx, p, "catalog.version.deprecate", it.ID, map[string]any{"version": row.Number, "version_id": versionID})
+	s.markGit(ctx, p, it.ID, "Deprecate "+it.Slug+" "+row.Number)
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }
 

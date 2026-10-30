@@ -3613,6 +3613,39 @@ components:
           type: boolean
           description: Requests were made from it, so it can't be deleted.
         created_at: { type: string, format: date-time }
+        git: { $ref: "#/components/schemas/CatalogItemGit" }
+    CatalogItemGit:
+      type: object
+      description: >
+        The item's file in the catalog's Git repository (ADR-0029), when rvav
+        keeps its catalog in Git.
+      required: [path, state, attempts]
+      properties:
+        path: { type: string, examples: ["catalog/rhel9.yaml"] }
+        state:
+          type: string
+          enum: [synced, waiting, failing, draft, conflict, refused, deleted]
+          description: >
+            synced: the repository has what rvav has. waiting: rvav's change
+            waits to be committed. failing: committing it failed; it is tried
+            again. draft: the repository's change is a draft in rvav.
+            conflict: rvav and the repository both changed it. refused: the
+            import refused the repository's file. deleted: the file was
+            deleted in the repository.
+        error: { type: string, description: Why the last commit failed. }
+        attempts: { type: integer, description: Failed commits of the change. }
+        next_attempt_at: { type: string, format: date-time }
+        note: { type: string }
+        last_commit: { $ref: "#/components/schemas/GitCommit" }
+    GitCommit:
+      type: object
+      required: [sha, message, author, when]
+      properties:
+        sha: { type: string }
+        message: { type: string }
+        author: { type: string }
+        email: { type: string }
+        when: { type: string, format: date-time }
     CatalogItemVersion:
       type: object
       required: [id, number, state, changelog, created_at, deployments, revision]

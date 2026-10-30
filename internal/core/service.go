@@ -69,6 +69,9 @@ type Service struct {
 	// Dispatcher delivers events to subscriptions: their test runs here
 	// (ADR-0021).
 	Dispatcher *dispatch.Dispatcher
+	// GitBeforeCommit runs before each commit to the catalog's repository:
+	// tests move the branch with it.
+	GitBeforeCommit func(path string)
 }
 
 // ConsoleSource is what the web console needs from vCenter.

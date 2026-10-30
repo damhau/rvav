@@ -88,6 +88,11 @@ type Change struct {
 	Content []byte
 }
 
+// BlobHash is the hash Git gives a file of that content.
+func BlobHash(content []byte) string {
+	return plumbing.ComputeHash(plumbing.BlobObject, content).String()
+}
+
 // ErrRejected: the branch moved since it was read; read it again.
 var ErrRejected = errors.New("the branch moved since rvav read it")
 
