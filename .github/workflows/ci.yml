@@ -1,5 +1,8 @@
-# The same gate as `make check`, split into jobs that run in parallel. The
-# compose stack checks (deploy/smoke.sh, pnpm e2e:stack) run locally for now.
+# The same gate as `make check`, split into jobs that run in parallel, so
+# that every push is checked in about two minutes: the end-to-end tests in
+# three shards. The browser tests (browser.yml) and the images' scan
+# (security.yml) run daily and by hand at the end of a milestone; the
+# compose stack checks (deploy/smoke.sh, pnpm e2e:stack) run locally.
 name: CI
 
 on:
@@ -28,10 +31,23 @@ jobs:
       - run: make vet
       - run: make gen-check
       - run: make test
+
+  e2e:
+    name: End-to-end (${{ matrix.shard }}/3)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
       # The S10 acceptance test runs the Python example worker (uv).
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - name: End-to-end tests (embedded PostgreSQL, vcsim, a Temporal dev server)
-        run: make test-e2e
+      - name: A third of the end-to-end tests (embedded PostgreSQL, vcsim, a Temporal dev server)
+        run: make test-e2e-shard SHARD=${{ matrix.shard }} TOTAL=3
 
   ansible:
     name: Ansible collection

@@ -9,7 +9,7 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check check-quick web-quick web-e2e build test test-e2e test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick web-quick web-e2e build test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
@@ -23,6 +23,11 @@ test: ## Unit tests, plus vcsim and workflow tests (no database needed)
 
 test-e2e: ## End-to-end tests on their own PostgreSQL, or on RVAV_TEST_DATABASE_URL (wiped)
 	$(GO) test ./internal/e2e/ -count=1 -v
+
+SHARD ?= 1
+TOTAL ?= 3
+test-e2e-shard: ## One of TOTAL shards of the end-to-end tests (SHARD=1 TOTAL=3), as CI runs them in parallel
+	GO=$(GO) scripts/e2e-shard.sh $(SHARD) $(TOTAL)
 
 test-ansible: ## The rvav.platform collection: it builds, and its inventory plugin works through ansible-inventory (uv)
 	export ANSIBLE_HOME=$$(mktemp -d) && cd ansible && uv run --frozen -- ansible-galaxy collection build --force \

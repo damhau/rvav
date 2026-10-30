@@ -1,6 +1,7 @@
-# Known vulnerabilities (S14.6): in the Go code, the web app's dependencies
-# and the two images. On every push, and daily: a vulnerability published
-# today fails tomorrow's run even when nothing changed.
+# Known vulnerabilities (S14.6): in the Go code and the web app's
+# dependencies on every push and daily, in the two images daily and by hand.
+# Daily, a vulnerability published today fails tomorrow's run even when
+# nothing changed.
 name: Security
 
 on:
@@ -42,8 +43,12 @@ jobs:
           node-version: 22
       - run: make vuln-web
 
+  # Building and scanning both images takes minutes: daily, and by hand at
+  # the end of a milestone (Actions › Security › Run workflow), not on
+  # every push.
   images:
     name: Images (Trivy) and SBOMs
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
