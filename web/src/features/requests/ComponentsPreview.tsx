@@ -48,6 +48,10 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                   {c.tags && c.tags.length > 0 && (
                     <span className="text-[11px] text-faint">Tags {c.tags.join(", ")}</span>
                   )}
+                  {/* NSX security groups (ADR-0028). */}
+                  {c.nsx_groups && c.nsx_groups.length > 0 && (
+                    <span className="text-[11px] text-faint">Security groups {c.nsx_groups.join(", ")}</span>
+                  )}
                 </>
               )}
             </li>

@@ -185,9 +185,38 @@ type CompositeStep struct {
 	VMs        []VMUnit        `json:"vms,omitempty"`
 	Guest      blueprint.Guest `json:"guest,omitempty"`
 	PostConfig []Job           `json:"post_config,omitempty"`
-	AWX        *Job            `json:"awx,omitempty"`
-	Workflow   *WorkflowCall   `json:"workflow,omitempty"`
-	Undo       *CompositeUndo  `json:"undo,omitempty"`
+	// Segments and Security are the NSX segments and security groups made
+	// for a VM step's deployments, before its VMs (ADR-0028).
+	Segments []SegmentUnit  `json:"segments,omitempty"`
+	Security []SecurityUnit `json:"security,omitempty"`
+	AWX      *Job           `json:"awx,omitempty"`
+	Workflow *WorkflowCall  `json:"workflow,omitempty"`
+	Undo     *CompositeUndo `json:"undo,omitempty"`
+}
+
+// SegmentKey is the step key of one of its segments, under its own.
+func (c CompositeStep) SegmentKey(s SegmentUnit) string {
+	return c.StepKey() + "/" + Plan{Segments: c.Segments}.SegmentKey(s)
+}
+
+// SecurityKey is the step key of one of its deployments' groups and rules.
+func (c CompositeStep) SecurityKey(u SecurityUnit) string {
+	return c.StepKey() + "/" + Plan{Security: c.Security}.SecurityKey(u)
+}
+
+// nsxSteps are a VM step's steps making its segments, groups and rules,
+// under it.
+func (c CompositeStep) nsxSteps(parent string) []StepDef {
+	var steps []StepDef
+	for _, s := range (Plan{Segments: c.Segments}).segmentSteps() {
+		s.Key, s.Parent = parent+"/"+s.Key, parent
+		steps = append(steps, s)
+	}
+	for _, s := range (Plan{Security: c.Security}).securitySteps() {
+		s.Key, s.Parent = parent+"/"+s.Key, parent
+		steps = append(steps, s)
+	}
+	return steps
 }
 
 // CompositeUndo undoes a step when a later one fails.
@@ -560,9 +589,11 @@ func (p Plan) Steps(environment string) []StepDef {
 			switch {
 			case len(c.Components) > 0:
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
+				steps = append(steps, c.nsxSteps(parent)...)
 				steps = append(steps, componentSteps(c.VMs, c.Components, c.keys(), parent)...)
 			case len(c.VMs) > 0:
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
+				steps = append(steps, c.nsxSteps(parent)...)
 				for _, vm := range c.VMs {
 					steps = append(steps,
 						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
@@ -571,6 +602,7 @@ func (p Plan) Steps(environment string) []StepDef {
 						StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
 						StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
 					)
+					steps = append(steps, tagStep(c.VMKey(KeyNSXTags, vm), vmTitle(c.VMs, "Join NSX security groups", vm), vm, parent)...)
 				}
 				if len(c.PostConfig) > 0 {
 					steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})

@@ -534,6 +534,23 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		if !ev.Blueprint.Multi() {
 			c.Title = ev.Item.Name
 		}
+		// Its NSX groups: the deployment's by their titles, existing ones by
+		// their names.
+		var groups []string
+		for _, g := range p.vm.Groups {
+			if id, ok := blueprint.ExistingGroup(g); ok {
+				groups = append(groups, cmp.Or(ev.nsxGroups[id].Name, id))
+				continue
+			}
+			for _, sg := range ev.Blueprint.SecurityGroups {
+				if sg.Key == g {
+					groups = append(groups, cmp.Or(sg.Title, sg.Key)+" (new)")
+				}
+			}
+		}
+		if len(groups) > 0 {
+			c.NsxGroups = &groups
+		}
 		if p.guest.OSFamily == "linux" || p.guest.OSFamily == "windows" {
 			c.OsFamily = present.Ptr(api.PreviewComponentOsFamily(p.guest.OSFamily))
 		}

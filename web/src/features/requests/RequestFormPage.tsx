@@ -141,6 +141,7 @@ function Summary({
   savingDraft,
   scheduled,
   oneDeployment,
+  composite,
 }: {
   preview: RequestPreview | undefined;
   fetching: boolean;
@@ -153,6 +154,8 @@ function Summary({
   scheduled: boolean;
   /** A multi-VM item: what each component builds replaces the single VM's lines. */
   oneDeployment: boolean;
+  /** A composite item: what each of its VM steps builds. */
+  composite: boolean;
 }) {
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
@@ -214,7 +217,9 @@ function Summary({
                 ))}
               </dl>
             )}
-            {oneDeployment && preview.components && <ComponentsPreview components={preview.components} />}
+            {(oneDeployment || composite) && preview.components && (
+              <ComponentsPreview components={preview.components} />
+            )}
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
                 <span className="label">Quota after this request</span>
@@ -588,6 +593,7 @@ function RequestFormBody({
           savingDraft={saveDraft.isPending}
           scheduled={later && Boolean(startAt)}
           oneDeployment={Boolean(form.one_deployment)}
+          composite={item.type === "composite"}
         />
       </aside>
     </div>

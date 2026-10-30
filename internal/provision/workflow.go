@@ -340,10 +340,10 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
-	if key, err := makeSegments(ctx, info); err != nil {
+	if key, err := makeSegments(ctx, info, p.Segments, p.VMs, p.SegmentKey); err != nil {
 		return key, err
 	}
-	if key, err := makeSecurity(ctx, info); err != nil {
+	if key, err := makeSecurity(ctx, info, p.Security, p.SecurityKey); err != nil {
 		return key, err
 	}
 
@@ -358,16 +358,16 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	return postConfig(ctx, info, vms, p.PostConfig, KeyInventory, func(j Job) string { return KeyJob + j.Key }, p.Limit(), p.Context)
 }
 
-// makeSegments makes the NSX segments of the plan's deployments (ADR-0028),
-// or finds what an earlier run made, and gives their VMs the segments'
-// subnets. It runs again on a retry: it is how the VMs get their subnet.
-func makeSegments(ctx workflow.Context, info Info) (string, error) {
+// makeSegments makes the NSX segments of the deployments of these VMs
+// (ADR-0028), or finds what an earlier run made, and gives their VMs the
+// segments' subnets: the plan's, or a composite VM step's. It runs again on
+// a retry: it is how the VMs get their subnet.
+func makeSegments(ctx workflow.Context, info Info, segments []SegmentUnit, vms []VMUnit, keyOf func(SegmentUnit) string) (string, error) {
 	var a *Activities
-	p := info.Plan
-	for _, sg := range p.Segments {
-		key := p.SegmentKey(sg)
+	for _, sg := range segments {
+		key := keyOf(sg)
 		in := SegmentInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Segment: sg}
-		for _, vm := range p.VMs {
+		for _, vm := range vms {
 			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
 				in.VCenter = vm.VCenter
 				break
@@ -377,9 +377,9 @@ func makeSegments(ctx workflow.Context, info Info) (string, error) {
 		if err := workflow.ExecuteActivity(ctx, a.MakeSegment, in).Get(ctx, &res); err != nil {
 			return key, err
 		}
-		for i, vm := range p.VMs {
+		for i, vm := range vms {
 			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
-				p.VMs[i].Subnet, p.VMs[i].SubnetID, p.VMs[i].Gateway, p.VMs[i].PrefixLength = res.CIDR, res.SubnetID, res.Gateway, res.PrefixLength
+				vms[i].Subnet, vms[i].SubnetID, vms[i].Gateway, vms[i].PrefixLength = res.CIDR, res.SubnetID, res.Gateway, res.PrefixLength
 			}
 		}
 	}
@@ -390,11 +390,10 @@ func makeSegments(ctx workflow.Context, info Info) (string, error) {
 // deployments (ADR-0028), before their VMs. It runs again on a retry, as
 // making segments does: a rollback that stopped halfway may have deleted
 // them.
-func makeSecurity(ctx workflow.Context, info Info) (string, error) {
+func makeSecurity(ctx workflow.Context, info Info, units []SecurityUnit, keyOf func(SecurityUnit) string) (string, error) {
 	var a *Activities
-	p := info.Plan
-	for _, u := range p.Security {
-		key := p.SecurityKey(u)
+	for _, u := range units {
+		key := keyOf(u)
 		in := SecurityInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Security: u}
 		if err := workflow.ExecuteActivity(ctx, a.MakeSecurity, in).Get(ctx, nil); err != nil {
 			return key, err

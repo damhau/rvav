@@ -4484,6 +4484,10 @@ components:
         vcpu: { type: integer, description: Per VM. }
         memory_gb: { type: integer, description: Per VM. }
         storage_gb: { type: integer, description: "Per VM, every disk." }
+        nsx_groups:
+          type: array
+          description: "The NSX security groups its VMs join (ADR-0028): those made for the deployment by their titles, existing ones by their names."
+          items: { type: string }
         os_family: { type: string, enum: [linux, windows] }
         template: { type: string }
         placement:

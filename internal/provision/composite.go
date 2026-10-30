@@ -115,12 +115,21 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 		var vms []builtVM
 		var failed string
 		var err error
-		if len(c.Components) > 0 {
+		// Its deployments' NSX segments and groups first (ADR-0028), again
+		// on a retry: they give the VMs their subnet.
+		if failed, err = makeSegments(ctx, info, c.Segments, c.VMs, c.SegmentKey); err == nil {
+			failed, err = makeSecurity(ctx, info, c.Security, c.SecurityKey)
+		}
+		switch {
+		case err != nil:
+		case len(c.Components) > 0:
 			// A multi-VM item (ADR-0024): its components' steps are this step's.
 			vms, failed, err = buildComponents(ctx, info, c.VMs, c.Components, c.keys())
-		} else if vms, failed, err = buildVMs(ctx, info, c.VMs, c.Guest, c.VMKey); err == nil {
-			failed, err = postConfig(ctx, info, vms, c.PostConfig, key+"/"+KeyInventory,
-				func(j Job) string { return key + "/" + KeyJob + j.Key }, c.Limit(), info.Plan.Context)
+		default:
+			if vms, failed, err = buildVMs(ctx, info, c.VMs, c.Guest, c.VMKey); err == nil {
+				failed, err = postConfig(ctx, info, vms, c.PostConfig, key+"/"+KeyInventory,
+					func(j Job) string { return key + "/" + KeyJob + j.Key }, c.Limit(), info.Plan.Context)
+			}
 		}
 		if err != nil {
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)

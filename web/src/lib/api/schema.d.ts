@@ -3199,6 +3199,8 @@ export interface components {
             memory_gb: number;
             /** @description Per VM, every disk. */
             storage_gb: number;
+            /** @description The NSX security groups its VMs join (ADR-0028): those made for the deployment by their titles, existing ones by their names. */
+            nsx_groups?: string[];
             /** @enum {string} */
             os_family?: "linux" | "windows";
             template?: string;
