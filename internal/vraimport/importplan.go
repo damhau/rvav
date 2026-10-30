@@ -43,6 +43,9 @@ type ImportState struct {
 	Slugs map[string]string    // slug → item ID
 	// Cutover: the vRA projects marked moved.
 	Cutover map[string]Moved
+	// Shared: what earlier imports shared, "itemID/projectID": one an
+	// administrator removed since isn't shared again.
+	Shared map[string]bool
 }
 
 // ItemImport is what the import does with a cloud template.
@@ -108,11 +111,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		if proj != nil {
 			pp.RvavProjectID, pp.RvavProjectName = proj.ID, proj.Name
 		}
-		for _, en := range e.Entitlements {
-			if en.ProjectID == vp.ID && en.Definition.Type == "CatalogItemIdentifier" {
-				pp.Items++
-			}
-		}
+		pp.Items = len(e.ItemsFor(vp.ID))
 		for _, d := range e.Deployments {
 			if d.ProjectID == vp.ID {
 				pp.Deployments++
@@ -124,8 +123,17 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	if r.TemplateItems == nil {
 		r.TemplateItems = map[string]string{}
 	}
+	// The items as the import leaves them: shared with more projects.
+	after := map[string]ItemState{}
+	for id, s := range st.Items {
+		after[id] = s
+	}
 	for _, bp := range e.Blueprints {
 		it := planItem(e, r, st, bp)
+		if s, ok := after[it.RvavItemID]; ok && len(it.ShareAdd) > 0 {
+			s.Projects = slices.Concat(s.Projects, it.ShareAdd)
+			after[it.RvavItemID] = s
+		}
 		p.Items = append(p.Items, it)
 		// Deployments of a template about to be imported find its item
 		// once it is.
@@ -143,6 +151,9 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 			p.Summary.ItemsBlocked++
 		}
 		p.Summary.SharesAdd += len(it.ShareAdd)
+	}
+	if r.ItemStates == nil {
+		r.ItemStates = after
 	}
 	p.Deployments = PlanDeployments(e, r)
 	p.Cutover = planCutover(e, r, st, p.Items, p.Deployments)
@@ -189,6 +200,8 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImpor
 				it.Reason = s.Slug + " has a draft in rvav: publish or discard it, then import again for the template's changes."
 			default:
 				it.Action = ActionUpdate
+				it.Notes = append(it.Notes, Note{Warning, "versions", "The new draft is mapped from vRA's template again: " +
+					"what was changed in rvav since (value sources, templates, sizes) is in the published version, not in it. Compare them."})
 			}
 		}
 	}
@@ -203,32 +216,38 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImpor
 		it.Action = ActionCreate
 	}
 
-	// Sharing: the rvav projects of the vRA projects it is shared with.
+	// Sharing: the rvav projects of the vRA projects it is offered to, on
+	// its own or through its content source.
 	shared := map[string]bool{}
 	for _, ci := range e.CatalogItems {
-		if ci.Type.ID != "com.vmw.blueprint" || ci.SourceID != bp.ID {
-			continue
-		}
-		for _, en := range e.Entitlements {
-			if en.Definition.Type == "CatalogItemIdentifier" && en.Definition.ID == ci.ID {
-				shared[en.ProjectID] = true
+		if ci.Type.ID == "com.vmw.blueprint" && e.SourceOf(ci) == bp.ID {
+			for _, id := range e.SharedWith(ci) {
+				shared[id] = true
 			}
 		}
 	}
+	var removed []string
 	for _, vp := range e.Projects {
 		if !shared[vp.ID] {
 			continue
 		}
-		proj, _ := mapProject(r, vp.ID, vp.Name)
+		proj, how := mapProject(r, vp.ID, vp.Name)
 		switch {
+		case how == HowStays:
 		case proj == nil:
 			it.ShareUnmapped = append(it.ShareUnmapped, vp.Name)
 		case item != nil && (item.AllProjects || slices.Contains(item.Projects, proj.ID)):
+		case item != nil && st.Shared[item.ID+"/"+proj.ID]:
+			removed = append(removed, proj.Name)
 		case !slices.Contains(it.ShareAdd, proj.ID):
 			it.ShareAdd = append(it.ShareAdd, proj.ID)
 		}
 	}
 	slices.Sort(it.ShareAdd)
+	if len(removed) > 0 {
+		it.Notes = append(it.Notes, Note{Info, "sharing", "Not shared again with " + strings.Join(removed, ", ") +
+			": the import shared it before, and an administrator has taken it away since."})
+	}
 	if len(it.ShareUnmapped) > 0 {
 		it.Notes = append(it.Notes, Note{Warning, "sharing", "Shared in vRA with " + strings.Join(it.ShareUnmapped, ", ") +
 			", which map to no rvav project: map them to share it there too."})

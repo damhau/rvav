@@ -51,7 +51,7 @@ var placementFields = []string{"cluster", "datastore", "network"}
 // form, into a catalog item. A template with no released version, or with
 // no vSphere machine, is skipped.
 func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
-	p := ItemPlan{BlueprintID: bp.ID, Name: bp.Name, Slug: slug(bp.Name)}
+	p := ItemPlan{BlueprintID: bp.ID, Name: bp.Name, Slug: TemplateSlugs(e)[bp.ID]}
 	note := func(level, where, text string) { p.Notes = append(p.Notes, Note{level, where, text}) }
 	var released []vra.BlueprintVersion
 	for _, v := range bp.Versions {
@@ -70,6 +70,7 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 		Summary: firstLine(bp.Description, bp.Name), Description: bp.Description, Category: "compute", Type: "vm_blueprint",
 		Icon: "server", Tags: []string{"vra"}}}
 	worst := Complete
+	taken := map[string]bool{}
 	for i, v := range released {
 		latest := i == len(released)-1
 		var vnotes []Note
@@ -93,6 +94,13 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 		if slices.ContainsFunc(vnotes, func(n Note) bool { return n.Level == Unmapped }) && latest {
 			worst = Partial
 		}
+		// rvav numbers versions major.minor: vRA's 1.0.1 and 1.0.2 take the
+		// next free minor.
+		if n := freeNumber(vd.Number, taken); n != vd.Number {
+			note(Info, "versions", fmt.Sprintf("vRA's version %s is %s in rvav, which numbers versions major.minor.", v.Version, n))
+			vd.Number = n
+		}
+		taken[vd.Number] = true
 		doc.Versions = append(doc.Versions, vd)
 	}
 	p.Status, p.Doc = worst, doc
@@ -666,7 +674,8 @@ func flavorSize(e *vra.Estate, name string) (vra.FlavorMapping, bool) {
 
 func formFor(e *vra.Estate, blueprintID string) *vra.Form {
 	for i, f := range e.Forms {
-		if f.SourceID == blueprintID && f.SourceType == "com.vmw.blueprint" && f.Type == "requestForm" && f.Status != "OFF" {
+		if f.SourceID == blueprintID && f.SourceType == "com.vmw.blueprint" && strings.EqualFold(f.Type, "requestForm") &&
+			!strings.EqualFold(f.Status, "off") {
 			return &e.Forms[i]
 		}
 	}
@@ -710,6 +719,47 @@ func countExpr(v any) any {
 }
 
 // versionNumber is vRA's version as rvav's major.minor.
+// freeNumber is n, or the next minor version not taken.
+func freeNumber(n string, taken map[string]bool) string {
+	major, minor, _ := strings.Cut(n, ".")
+	m, err := strconv.Atoi(minor)
+	for err == nil && taken[n] {
+		m++
+		n = major + "." + strconv.Itoa(m)
+	}
+	return n
+}
+
+// TemplateSlugs are the templates' item slugs: from their names, with the
+// project's name too where names repeat, then the template's ID.
+func TemplateSlugs(e *vra.Estate) map[string]string {
+	out := map[string]string{}
+	count := map[string]int{}
+	for _, bp := range e.Blueprints {
+		count[trimSlug(slug(bp.Name))]++
+	}
+	used := map[string]bool{}
+	for _, bp := range e.Blueprints {
+		s := trimSlug(slug(bp.Name))
+		if count[s] > 1 {
+			s = trimSlug(s + "-" + slug(projectName(e, bp.ProjectID)))
+			if used[s] {
+				s = trimSlug(s + "-" + slug(bp.ID))
+			}
+		}
+		used[s] = true
+		out[bp.ID] = s
+	}
+	return out
+}
+
+func trimSlug(s string) string {
+	if len(s) > 63 {
+		s = s[:63]
+	}
+	return strings.TrimRight(s, "-")
+}
+
 func versionNumber(v string) string {
 	if regexp.MustCompile(`^\d+$`).MatchString(v) {
 		return v + ".0"

@@ -63,10 +63,20 @@ type VRASnapshot struct {
 }
 
 func (s *Store) SaveVRASnapshot(ctx context.Context, v VRASnapshot) error {
-	_, err := s.Pool.Exec(ctx, `insert into vra_snapshots (id, read_at, source, url, estate, counts, created_by)
-		values ($1, $2, $3, $4, $5, $6, $7)`, v.ID, v.ReadAt, v.Source, v.URL, v.Estate, v.Counts, v.CreatedBy)
-	return err
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `insert into vra_snapshots (id, read_at, source, url, estate, counts, created_by)
+			values ($1, $2, $3, $4, $5, $6, $7)`, v.ID, v.ReadAt, v.Source, v.URL, v.Estate, v.Counts, v.CreatedBy); err != nil {
+			return err
+		}
+		// Only the latest reads are kept: each holds a whole estate.
+		_, err := tx.Exec(ctx, `delete from vra_snapshots where id in (select id from vra_snapshots
+			order by created_at desc, id desc offset $1)`, keepSnapshots)
+		return err
+	})
 }
+
+// keepSnapshots is how many reads of vRA are kept.
+const keepSnapshots = 5
 
 // LatestVRASnapshot is the estate read last; ErrNotFound when none was.
 func (s *Store) LatestVRASnapshot(ctx context.Context, withEstate bool) (VRASnapshot, error) {
@@ -83,22 +93,24 @@ func (s *Store) LatestVRASnapshot(ctx context.Context, withEstate bool) (VRASnap
 	return v, err
 }
 
-// VRAProjectMap is the vRA projects administrators mapped: vRA ID → rvav ID.
+// VRAProjectMap is the vRA projects administrators mapped: vRA ID → rvav
+// ID, "" for one kept in vRA.
 func (s *Store) VRAProjectMap(ctx context.Context) (map[string]string, error) {
-	rows, _ := s.Pool.Query(ctx, `select vra_project_id, rvav_project_id from vra_project_map`)
+	rows, _ := s.Pool.Query(ctx, `select vra_project_id, coalesce(rvav_project_id, '') from vra_project_map`)
 	out := map[string]string{}
 	var k, v string
 	_, err := pgx.ForEachRow(rows, []any{&k, &v}, func() error { out[k] = v; return nil })
 	return out, err
 }
 
-// SetVRAProjectMap maps a vRA project, or clears its mapping (rvavID "").
-func (s *Store) SetVRAProjectMap(ctx context.Context, vraID, rvavID, by string) error {
-	if rvavID == "" {
+// SetVRAProjectMap maps a vRA project to an rvav project, keeps it in vRA
+// (stay), or clears its mapping (neither).
+func (s *Store) SetVRAProjectMap(ctx context.Context, vraID, rvavID string, stay bool, by string) error {
+	if rvavID == "" && !stay {
 		_, err := s.Pool.Exec(ctx, `delete from vra_project_map where vra_project_id = $1`, vraID)
 		return err
 	}
-	_, err := s.Pool.Exec(ctx, `insert into vra_project_map (vra_project_id, rvav_project_id, updated_by) values ($1, $2, $3)
+	_, err := s.Pool.Exec(ctx, `insert into vra_project_map (vra_project_id, rvav_project_id, updated_by) values ($1, nullif($2, ''), $3)
 		on conflict (vra_project_id) do update set rvav_project_id = excluded.rvav_project_id, updated_at = now(), updated_by = excluded.updated_by`,
 		vraID, rvavID, by)
 	return err
@@ -130,9 +142,21 @@ func (s *Store) SaveVRALink(ctx context.Context, l VRALink, by string) error {
 	return err
 }
 
-// DeleteVRALink forgets a link (its rvav object is gone).
-func (s *Store) DeleteVRALink(ctx context.Context, kind, vraID, rvavID string) error {
-	_, err := s.Pool.Exec(ctx, `delete from vra_links where kind = $1 and vra_id = $2 and rvav_id = $3`, kind, vraID, rvavID)
+// AdoptedVRADeployments are the rvav deployments, not deleted, each vRA
+// deployment became.
+func (s *Store) AdoptedVRADeployments(ctx context.Context) (map[string][]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select l.vra_id, l.rvav_id from vra_links l join deployments d on d.id = l.rvav_id
+		where l.kind = 'deployment' and d.status <> 'deleted' order by l.vra_id, l.rvav_id`)
+	out := map[string][]string{}
+	var k, v string
+	_, err := pgx.ForEachRow(rows, []any{&k, &v}, func() error { out[k] = append(out[k], v); return nil })
+	return out, err
+}
+
+// AddEntitlements offers an item to more projects, leaving those it has.
+func (s *Store) AddEntitlements(ctx context.Context, itemID string, projectIDs []string) error {
+	_, err := s.Pool.Exec(ctx, `insert into catalog_entitlements (item_id, project_id) select $1, unnest($2::text[])
+		on conflict do nothing`, itemID, projectIDs)
 	return err
 }
 
@@ -192,4 +216,21 @@ func (s *Store) SetVRAMoved(ctx context.Context, vraID string, moved bool, note,
 	_, err := s.Pool.Exec(ctx, `insert into vra_cutover (vra_project_id, moved_by, note) values ($1, $2, $3)
 		on conflict (vra_project_id) do update set note = excluded.note`, vraID, by, note)
 	return err
+}
+
+// TryLock takes a session advisory lock, if it is free: it holds one
+// connection until unlock.
+func (s *Store) TryLock(ctx context.Context, key int64) (unlock func(), ok bool, err error) {
+	conn, err := s.Pool.Acquire(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := conn.QueryRow(ctx, `select pg_try_advisory_lock($1)`, key).Scan(&ok); err != nil || !ok {
+		conn.Release()
+		return nil, false, err
+	}
+	return func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, key)
+		conn.Release()
+	}, true, nil
 }

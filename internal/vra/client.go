@@ -2,6 +2,7 @@ package vra
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -168,7 +169,8 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 		}
 		return &APIError{Method: method, Path: path, Status: resp.StatusCode, Message: msg[:min(len(msg), 300)]}
 	}
-	if out == nil {
+	// An empty answer (a 204, say) leaves out as it is.
+	if out == nil || len(bytes.TrimSpace(b)) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(b, out); err != nil {
@@ -179,11 +181,19 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 
 const pageSize = 100
 
+// maxPages stops a list whose server ignores paging.
+const maxPages = 5000
+
+var errPaging = errors.New("vRA keeps answering with more pages: it may ignore the paging parameters")
+
 // listTop pages through the services that take $top and $skip (iaas,
 // blueprint).
 func listTop[T any](ctx context.Context, c *Client, path string, q url.Values) ([]T, error) {
 	var all []T
-	for skip := 0; ; skip += pageSize {
+	for n, skip := 0, 0; ; n, skip = n+1, skip+pageSize {
+		if n == maxPages {
+			return nil, fmt.Errorf("%s: %w", path, errPaging)
+		}
 		qq := url.Values{}
 		for k, v := range q {
 			qq[k] = v
@@ -198,7 +208,9 @@ func listTop[T any](ctx context.Context, c *Client, path string, q url.Values) (
 			return nil, err
 		}
 		all = append(all, page.Content...)
-		if len(page.Content) < pageSize || len(all) >= page.TotalElements {
+		// totalElements "may not be populated": only an empty or short page
+		// ends the list then.
+		if len(page.Content) == 0 || len(page.Content) < pageSize || page.TotalElements > 0 && len(all) >= page.TotalElements {
 			return all, nil
 		}
 	}
@@ -209,6 +221,9 @@ func listTop[T any](ctx context.Context, c *Client, path string, q url.Values) (
 func listPages[T any](ctx context.Context, c *Client, path string, q url.Values) ([]T, error) {
 	var all []T
 	for p := 0; ; p++ {
+		if p == maxPages {
+			return nil, fmt.Errorf("%s: %w", path, errPaging)
+		}
 		qq := url.Values{}
 		for k, v := range q {
 			qq[k] = v
@@ -216,14 +231,28 @@ func listPages[T any](ctx context.Context, c *Client, path string, q url.Values)
 		qq.Set("page", strconv.Itoa(p))
 		qq.Set("size", strconv.Itoa(pageSize))
 		var page struct {
-			Content []T  `json:"content"`
-			Last    bool `json:"last"`
+			Content    []T   `json:"content"`
+			Last       *bool `json:"last"`
+			TotalPages *int  `json:"totalPages"`
 		}
 		if err := c.get(ctx, path, qq, &page); err != nil {
 			return nil, err
 		}
 		all = append(all, page.Content...)
-		if page.Last || len(page.Content) < pageSize {
+		// The server may give smaller pages than asked: its last or
+		// totalPages say when it ends; a short page only without them.
+		switch {
+		case len(page.Content) == 0:
+			return all, nil
+		case page.Last != nil:
+			if *page.Last {
+				return all, nil
+			}
+		case page.TotalPages != nil:
+			if p+1 >= *page.TotalPages {
+				return all, nil
+			}
+		case len(page.Content) < pageSize:
 			return all, nil
 		}
 	}
@@ -272,7 +301,8 @@ func (c *Client) RequestForm(ctx context.Context, sourceType, sourceID string) (
 	var f Form
 	err := c.get(ctx, "/form-service/api/forms/search", url.Values{"sourceType": {sourceType}, "sourceId": {sourceID},
 		"formType": {"requestForm"}}, &f)
-	if errors.Is(err, ErrNotFound) {
+	// No form: a 404, or an empty answer.
+	if errors.Is(err, ErrNotFound) || err == nil && f.ID == "" && f.Form == "" {
 		return nil, nil
 	}
 	if err != nil {
@@ -390,11 +420,48 @@ func (c *Client) Workflows(ctx context.Context) ([]VROWorkflow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// vRO lists a workflow's folder by its own name only: its path (Library/
+	// vCenter/...) is the category's, read once per category.
+	paths := map[string]string{}
+	categoryPath := func(l vroLink) (string, error) {
+		id := l.attr("categoryId")
+		if id == "" {
+			if href := strings.TrimSuffix(l.attr("categoryHref"), "/"); href != "" {
+				id = href[strings.LastIndex(href, "/")+1:]
+			}
+		}
+		if id == "" {
+			return l.attr("categoryName"), nil
+		}
+		if p, ok := paths[id]; ok {
+			return p, nil
+		}
+		var cat struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		}
+		if err := c.get(ctx, "/vco/api/categories/"+url.PathEscape(id)+"/", nil, &cat); err != nil && !errors.Is(err, ErrNotFound) {
+			return "", err
+		}
+		p := cmp.Or(cat.Path, cat.Name, l.attr("categoryName"))
+		paths[id] = p
+		return p, nil
+	}
 	var out []VROWorkflow
 	for _, l := range links {
 		id := l.attr("id")
-		w := VROWorkflow{ID: id, Name: l.attr("name"), Category: l.attr("categoryName"), Description: l.attr("description"),
+		category, err := categoryPath(l)
+		if err != nil {
+			return nil, err
+		}
+		w := VROWorkflow{ID: id, Name: l.attr("name"), Category: category, Description: l.attr("description"),
 			Version: l.attr("version")}
+		if IsVROLibrary(category) {
+			// vRO's own: the triage leaves them out, so their content and
+			// runs (some thousand workflows) aren't read.
+			out = append(out, w)
+			continue
+		}
 		base := "/vco/api/workflows/" + url.PathEscape(id)
 		var detail struct {
 			Inputs vroParams `json:"input-parameters"`
@@ -431,6 +498,11 @@ func (c *Client) Actions(ctx context.Context) ([]VROAction, error) {
 	}
 	var out []VROAction
 	for _, l := range links {
+		if IsVROLibrary(l.attr("module")) {
+			// vRO's own: left out of the triage, so not read one by one.
+			out = append(out, VROAction{ID: l.attr("id"), Name: l.attr("name"), Module: l.attr("module"), Version: l.attr("version")})
+			continue
+		}
 		var a struct {
 			ID         string    `json:"id"`
 			Name       string    `json:"name"`
@@ -495,7 +567,8 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		if ci.Type.ID != "com.vmw.vro.workflow" {
 			continue
 		}
-		f, err := c.RequestForm(ctx, ci.Type.ID, ci.SourceID)
+		// The workflow's ID is the item's (vRA 8).
+		f, err := c.RequestForm(ctx, ci.Type.ID, ci.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -516,4 +589,10 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	return e, nil
+}
+
+// IsVROLibrary: vRO ships it (a workflow's category path, or an action's
+// module).
+func IsVROLibrary(category string) bool {
+	return category == "Library" || strings.HasPrefix(category, "Library/") || strings.HasPrefix(category, "com.vmware.")
 }

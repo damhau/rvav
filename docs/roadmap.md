@@ -158,6 +158,38 @@ kind and CI:
 - **Documentation:** user, administrator and operator guides, and the
   API reference.
 
+P2, the vRA importer and the cutover (R3), is built and accepted on the
+compose stack against a fake vRA that answers vRA 8's documented API
+([ADR-0027](adr/0027-vra-importer.md)). vRA is only ever read:
+
+- **Reading vRA:**
+  - projects, cloud templates with every version, custom forms, the
+    catalog and its sharing, policies, deployments, subscriptions,
+    custom day-2 actions, and vRO's workflows and actions;
+  - from vRA directly, or from the file `rvav vra-export` writes where vRA
+    is reachable.
+- **The catalog:** each cloud template becomes a catalog item, imported
+  as drafts. A plan says what it carried over, what to check and what it
+  left out, never approximating
+  ([vra-import.md](operations/vra-import.md)).
+- **Deployments:** adopted through onboarding, with their owner, project,
+  environment, item and what remains of their lease. Those left in vRA
+  say why.
+- **vRO:** each workflow and action is sorted into ADR-0007's groups (A
+  native, B AWX, C custom workflow, D retire), with what uses it, its
+  last run and why.
+- **Policies:** reported with the rvav setting each becomes, not imported.
+- **The importer's page** (Administration › vRA import):
+  - the dry run, project mapping, and an import that can run again (only
+    what changed is imported);
+  - the cutover, project by project, with the checks rvav can make on
+    vRA after a project moves
+    ([vra-cutover.md](operations/vra-cutover.md)).
+
+What only the organisation's vRA can confirm (its API's answers, its
+templates, its vRO) is in the
+[Lab acceptance milestone](https://github.com/damhau/rvav/milestone/9).
+
 S9
 projects, placement and governance is built and accepted on the compose
 stack ([ADR-0020](adr/0020-administration.md)): administrators set a new
@@ -247,7 +279,7 @@ criteria, effort, calendar, risks and decisions.
 | R0 Lab | Running for real, approvals, day-2 actions, leases and quotas (S2–S5) | Month 3 |
 | R1 Pilot | Real AWX and EfficientIP, catalog and admin UI (S6–S9) | Month 6 |
 | R2 1.0 | Extensibility, notifications, advanced provisioning, inventory, production readiness (S10–S14); 83% of vRA | Month 10 |
-| R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2) | Month 13 |
+| R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2); built, the organisation's vRA to confirm | Month 13 |
 
 ## Decided
 

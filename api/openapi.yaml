@@ -2702,6 +2702,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/vra/plan:
     get:
@@ -2784,6 +2785,8 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/vra/triage:
     get:
       tags: [admin]
@@ -3449,6 +3452,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     UpstreamError:
       description: vCenter, EfficientIP or AWX did not answer or returned an error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    PayloadTooLarge:
+      description: The request body is larger than the operation takes
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -5349,7 +5357,8 @@ components:
       required: [rvav_project_id]
       additionalProperties: false
       properties:
-        rvav_project_id: { type: [string, "null"], description: Null clears the mapping. }
+        rvav_project_id: { type: [string, "null"], description: "Null clears the mapping: it maps by name then." }
+        stays_in_vra: { type: boolean, default: false, description: "Keep it in vRA, even if rvav has a project of its name (rvav_project_id null)." }
     VraPlan:
       type: object
       required: [snapshot, projects, items, deployments, policies, triage, summary, cutover]
@@ -5363,7 +5372,7 @@ components:
             items_update: { type: integer }
             items_unchanged: { type: integer }
             items_blocked: { type: integer, description: "Skipped, or in conflict with rvav." }
-            shares_add: { type: integer, description: Projects items would be shared with. }
+            shares_add: { type: integer, description: "Shares to add: an item offered to one more project." }
             deployments_adopt: { type: integer }
             deployments_adopted: { type: integer }
             deployments_skipped: { type: integer }
@@ -5430,7 +5439,7 @@ components:
         name: { type: string }
         rvav_project_id: { type: string }
         rvav_project_name: { type: string }
-        how: { type: string, enum: [mapped, same_name, none], description: "Mapped by an administrator, by the same name, or not at all." }
+        how: { type: string, enum: [mapped, same_name, stays, none], description: "Mapped by an administrator, by the same name, kept in vRA by an administrator, or not at all." }
         items: { type: integer, description: Catalog items shared with it in vRA. }
         deployments: { type: integer }
     VraItemPlan:
@@ -5464,6 +5473,7 @@ components:
         name: { type: string }
         vra_project: { type: string }
         owner: { type: string, description: Its owner in vRA (an email). }
+        rvav_name: { type: string, description: "Its name in rvav: vRA's, in lower case with other characters as dashes." }
         status: { type: string, enum: [adopt, adopted, skipped, failed] }
         notes:
           type: array
@@ -5501,13 +5511,17 @@ components:
       properties:
         catalog: { type: boolean, default: true, description: Import catalog items and their sharing. }
         deployments: { type: boolean, default: false, description: Adopt deployments. }
+        projects:
+          type: array
+          items: { type: string }
+          description: "Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent."
     VraImportResult:
       type: object
       required: [created, updated, shared, adopted, failed, plan]
       properties:
         created: { type: array, items: { type: string }, description: Items made (their names). }
         updated: { type: array, items: { type: string }, description: Items given a new draft. }
-        shared: { type: integer, description: Projects items were shared with. }
+        shared: { type: integer, description: "Shares added: an item offered to one more project." }
         adopted: { type: array, items: { type: string }, description: Deployments adopted. }
         failed:
           type: array

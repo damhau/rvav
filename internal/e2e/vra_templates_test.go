@@ -93,9 +93,16 @@ func importVRAItems(h *harness, e *vra.Estate) map[string]api.CatalogImportResul
 // publishVRAItem publishes an imported item's draft for every project.
 func publishVRAItem(h *harness, res api.CatalogImportResult) string {
 	h.t.Helper()
-	draft := res.Versions[len(res.Versions)-1]
-	h.json("POST", "/api/v1/admin/catalog/items/"+res.ItemId+"/versions/"+draft.Id+"/publish", "mkeller", nil, 200, nil)
+	id := publishDraft(h, res)
 	h.json("PUT", "/api/v1/admin/catalog/items/"+res.ItemId+"/entitlements", "mkeller",
 		api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+	return id
+}
+
+// publishDraft publishes an imported item's draft, its sharing as it is.
+func publishDraft(h *harness, res api.CatalogImportResult) string {
+	h.t.Helper()
+	draft := res.Versions[len(res.Versions)-1]
+	h.json("POST", "/api/v1/admin/catalog/items/"+res.ItemId+"/versions/"+draft.Id+"/publish", "mkeller", nil, 200, nil)
 	return draft.Id
 }

@@ -30,6 +30,11 @@ config:
   RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
   RVAV_AWX_URL: https://awx.corp.example
   RVAV_AWX_ORGANIZATION: rvav
+  # The vRA the importer reads, while projects move from it (ADR-0027);
+  # remove once vRA is switched off.
+  # RVAV_VRA_URL: https://vra.corp.example
+  # RVAV_VRA_USERNAME: svc-rvav-import
+  # RVAV_VRA_DOMAIN: corp.example
 
 # Passwords and keys (a Secret). Leave `create` false and name
 # `existingSecret` to use a Secret made elsewhere (sealed-secrets, External
@@ -43,6 +48,9 @@ secret:
     RVAV_VCENTER_PASSWORD: ""
     RVAV_EFFICIENTIP_PASSWORD: ""
     RVAV_AWX_TOKEN: ""
+    # The vRA importer's account: an API token, or a user's password.
+    RVAV_VRA_TOKEN: ""
+    RVAV_VRA_PASSWORD: ""
 
 # The web app's sign-in, read by the browser at run time (/config.js).
 web:
@@ -84,7 +92,14 @@ ingress:
   enabled: true
   className: ""
   host: rvav.corp.example
-  annotations: {}
+  # For ingress-nginx: live updates unbuffered, the console's WebSocket
+  # and long vRA imports kept open, vra-export files up to 64 MB. Other
+  # controllers ignore these and need their own (installation.md).
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: 64m
   # The console's WebSocket stays open while used.
   tls:
     secretName: ""

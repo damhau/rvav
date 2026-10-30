@@ -20,9 +20,10 @@ Administration › **vRA import** is where it happens, for administrators:
    - **Policies:** what each becomes in rvav, with the values to set;
    - **vRO:** the triage report, also as Markdown.
 3. **Projects.** Each vRA project maps to the rvav project of the same
-   name. Choose another where names differ. A vRA project without an rvav
-   project stays in vRA: its items aren't shared there, its deployments
-   aren't adopted.
+   name. Choose another where names differ, or **Stays in vRA** to keep
+   it there even if rvav has a project of its name. A vRA project without
+   an rvav project stays in vRA: its items aren't shared there, its
+   deployments aren't adopted.
 4. **Import…** the catalog, the deployments, or both.
 5. **Cutover:** project by project, what is ready, the mark that a
    project moved, and what the next read of vRA says about it. The
@@ -37,12 +38,24 @@ to the item it became:
 - **Conflict:** the item already has a draft. Publish or discard it,
   then import again. An rvav item not made from this template has the
   slug: rename one of them.
-- **Sharing** is only ever added, never removed.
-- **Deployments:** a deployment rvav manages already isn't adopted again.
-  An item must be published for its deployments to be adopted.
+- **Sharing** is only ever added, never removed. Each share the import
+  made is recorded: one an administrator takes away later isn't made
+  again, and the plan says so.
+- **Twice the same name:** two templates of the same name get the
+  project's name in their slug.
+- **A new draft** is mapped from vRA's template again: what was changed
+  in rvav since is in the published version, not in it. The plan warns
+  to compare them.
+- **Deployments:** a deployment rvav manages already isn't adopted again,
+  whether the import adopted it or someone did from Onboarding.
+- **One import at a time:** a second one started meanwhile is refused.
+  An import finishes even if the page is closed.
 
 Policies aren't imported: they decide who may do what, so an
 administrator sets each from what the plan says.
+
+**Import…** adopts every project's deployments; the Cutover tab adopts
+one project's (`projects` in the API).
 
 The same through the API: `GET /api/v1/admin/vra/plan`,
 `POST /api/v1/admin/vra/snapshots`,
@@ -63,6 +76,12 @@ rvav vra-plan                    # the same, reading vRA directly
 
 `vra-export` can run where vRA is reachable. Its file is then all the
 importer needs.
+
+The page takes files of up to 64 MB (some 100,000 deployments). The API
+needs about four times the file's size in memory while it reads it. With
+ingress-nginx, the chart sets the body size and timeouts the upload and
+a long read of vRA need; another ingress controller needs the same
+([installation.md](installation.md)).
 
 ## What becomes what
 
@@ -127,7 +146,9 @@ onboarding ([ADR-0026](../adr/0026-onboarding.md)):
 | Its `environment` (or `env`) input | Its environment, which must be one of the project's. |
 | Its owner (or who created it) | The rvav user of that email, who must be a member of the project (not a viewer). |
 | The catalog item it was requested from | The item imported from that cloud template. Its published version is the deployment's. |
-| `leaseExpireAt` | What remains of the lease, at least a day. A lease already ended gives a day to decide. No lease in vRA: the project's lease policy. |
+| Its name | The same, made valid for rvav: lower case, other characters as dashes ("Web Server for Thomas" is web-server-for-thomas). |
+| The item | Must be published in rvav and offered to the project: the plan says when it isn't. |
+| `leaseExpireAt` | What remains of the lease, at least a day, at most what rvav's lease policy allows. A lease already ended gives a day to decide. No lease in vRA: the policy's default, with a warning, since it ends in a deletion. |
 | NSX and other resources | Stay in vRA's records; reported. |
 
 Each plan is **adopt**, **adopted** (rvav manages its VMs already),

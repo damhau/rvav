@@ -171,11 +171,12 @@ func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(st
 	}
 	var groups, users []string
 	for _, a := range strs(def["approvers"]) {
+		kind, name, ok := strings.Cut(a, ":")
 		switch {
-		case strings.HasPrefix(a, "group:"):
-			groups = append(groups, strings.TrimPrefix(a, "group:"))
-		case strings.HasPrefix(a, "user:"):
-			users = append(users, strings.TrimPrefix(a, "user:"))
+		case ok && strings.EqualFold(kind, "group"):
+			groups = append(groups, name)
+		case ok && strings.EqualFold(kind, "user"):
+			users = append(users, name)
 		default:
 			users = append(users, a)
 		}

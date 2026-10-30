@@ -95,10 +95,7 @@ var systems = []struct {
 var moduleCall = regexp.MustCompile(`System\.getModule\(\s*["']([\w.]+)["']\s*\)\s*\.\s*(\w+)\s*\(`)
 
 // isLibrary: vRO ships it.
-func isLibrary(category string) bool {
-	return category == "Library" || strings.HasPrefix(category, "Library/") || strings.HasPrefix(category, "com.vmware.library") ||
-		strings.HasPrefix(category, "com.vmware.")
-}
+func isLibrary(category string) bool { return vra.IsVROLibrary(category) }
 
 // wfContent is the part of a workflow's content the triage reads.
 type wfContent struct {
@@ -122,16 +119,16 @@ func TriageVRO(e *vra.Estate) Triage {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	t := Triage{ReadAt: now, Groups: map[string]int{}}
+	t := Triage{ReadAt: now, Groups: map[string]int{}, Items: []TriageItem{}}
 	uses := map[string][]Use{} // "workflow:ID", "action:module/name", "abx:ID" → uses
 	add := func(key string, u Use) { uses[key] = append(uses[key], u) }
 
 	for _, ci := range e.CatalogItems {
 		switch ci.Type.ID {
 		case "com.vmw.vro.workflow":
-			add("workflow:"+ci.SourceID, Use{Kind: "catalog_item", Name: ci.Name, Detail: projectsOf(e, ci.ProjectIDs)})
+			add("workflow:"+e.SourceOf(ci), Use{Kind: "catalog_item", Name: ci.Name, Detail: projectsOf(e, e.SharedWith(ci))})
 		case "com.vmw.abx.actions":
-			add("abx:"+ci.SourceID, Use{Kind: "catalog_item", Name: ci.Name, Detail: projectsOf(e, ci.ProjectIDs)})
+			add("abx:"+e.SourceOf(ci), Use{Kind: "catalog_item", Name: ci.Name, Detail: projectsOf(e, e.SharedWith(ci))})
 		}
 	}
 	for _, s := range e.Subscriptions {

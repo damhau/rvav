@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -61,6 +62,12 @@ func TestRead(t *testing.T) {
 		}
 		for i, w := range e.Workflows {
 			x := want.Workflows[i]
+			if IsVROLibrary(x.Category) {
+				if w.Category != x.Category || w.Content != "" || w.Runs != 0 {
+					t.Fatalf("%s: the library's %+v was read whole", name, w)
+				}
+				continue
+			}
 			if w.ID != x.ID || w.Category != x.Category || len(w.Inputs) != len(x.Inputs) || w.Content != x.Content || w.Runs != x.Runs ||
 				(x.LastRun == nil) != (w.LastRun == nil) || x.LastRun != nil && !w.LastRun.Equal(*x.LastRun) {
 				t.Fatalf("%s: workflow %+v, want %+v", name, w, x)
@@ -106,5 +113,48 @@ func TestPagesAndSignIn(t *testing.T) {
 	}
 	if _, err := New(Options{URL: url}); err == nil {
 		t.Fatal("no credentials accepted")
+	}
+}
+
+// TestPagingWithoutTotals: a list without totalElements, pages smaller
+// than asked, vRO's lists, and a server that ignores paging (P2.7).
+func TestPagingWithoutTotals(t *testing.T) {
+	ctx := context.Background()
+	items := func(from, n int) []map[string]string {
+		out := []map[string]string{}
+		for i := from; i < min(from+n, 250); i++ {
+			out = append(out, map[string]string{"id": fmt.Sprintf("x%03d", i), "name": fmt.Sprintf("X %d", i)})
+		}
+		return out
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /iaas/api/login", func(w http.ResponseWriter, _ *http.Request) { write(w, map[string]string{"token": "t"}) })
+	// No totalElements.
+	mux.HandleFunc("GET /iaas/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		write(w, map[string]any{"content": items(intParam(r.URL.Query(), "$skip", 0), 100)})
+	})
+	// Pages of 40, though 100 were asked, with last and totalPages.
+	mux.HandleFunc("GET /deployment/api/deployments", func(w http.ResponseWriter, r *http.Request) {
+		p := intParam(r.URL.Query(), "page", 0)
+		write(w, map[string]any{"content": items(p*40, 40), "last": (p+1)*40 >= 250, "totalPages": 7})
+	})
+	// Ignores paging: the same page for ever.
+	mux.HandleFunc("GET /policy/api/policies", func(w http.ResponseWriter, _ *http.Request) {
+		write(w, map[string]any{"content": items(0, 100), "last": false})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	c, err := New(Options{URL: srv.URL, Token: "r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := c.Projects(ctx); err != nil || len(ps) != 250 {
+		t.Fatalf("without totals: %d, %v", len(ps), err)
+	}
+	if ds, err := c.Deployments(ctx); err != nil || len(ds) != 250 || ds[249].ID != "x249" {
+		t.Fatalf("small pages: %d, %v", len(ds), err)
+	}
+	if _, err := c.Policies(ctx); !errors.Is(err, errPaging) {
+		t.Fatalf("a server ignoring paging: %v", err)
 	}
 }

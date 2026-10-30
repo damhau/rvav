@@ -53,19 +53,21 @@ func SampleEstate(now time.Time) Estate {
 				Status: "ON", Form: dbForm},
 		},
 		CatalogItems: []CatalogItem{
-			{ID: "ci-rhel9", Name: "RHEL 9 Server", Description: "A RHEL 9 VM.", Type: Ref{ID: "com.vmw.blueprint", Name: "VMware Cloud Templates"},
-				SourceID: "bp-rhel9", SourceName: "RHEL 9 Server", ProjectIDs: []string{"vra-prj-web", "vra-prj-data", "vra-prj-legacy"},
+			// As vRA 8 names them: a template's or workflow's item has its ID;
+			// sourceId is the content source.
+			{ID: "bp-rhel9", Name: "RHEL 9 Server", Description: "A RHEL 9 VM.", Type: Ref{ID: "com.vmw.blueprint", Name: "VMware Cloud Templates"},
+				SourceID: "cs-templates", SourceName: "Cloud templates", ProjectIDs: []string{"vra-prj-web", "vra-prj-data"},
 				BulkRequestLimit: 5, FormID: "form-rhel9"},
-			{ID: "ci-win", Name: "Windows Server 2022", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "bp-win",
+			{ID: "bp-win", Name: "Windows Server 2022", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "cs-templates",
 				ProjectIDs: []string{"vra-prj-web"}, BulkRequestLimit: 1},
-			{ID: "ci-app", Name: "Three-tier application", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "bp-app",
+			{ID: "bp-app", Name: "Three-tier application", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "cs-templates",
 				ProjectIDs: []string{"vra-prj-web"}, BulkRequestLimit: 1},
-			{ID: "ci-db", Name: "Database server", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "bp-db",
+			{ID: "bp-db", Name: "Database server", Type: Ref{ID: "com.vmw.blueprint"}, SourceID: "cs-templates",
 				ProjectIDs: []string{"vra-prj-data"}, BulkRequestLimit: 1, FormID: "form-db"},
-			{ID: "ci-adgroup", Name: "Create AD group", Type: Ref{ID: "com.vmw.vro.workflow", Name: "vRealize Orchestrator Workflow"},
-				SourceID: "wf-ad-group", ProjectIDs: []string{"vra-prj-web", "vra-prj-data"}},
-			{ID: "ci-abx", Name: "Rotate backup key", Type: Ref{ID: "com.vmw.abx.actions", Name: "Extensibility actions"},
-				SourceID: "abx-rotate", ProjectIDs: []string{"vra-prj-data"}},
+			{ID: "wf-ad-group", Name: "Create AD group", Type: Ref{ID: "com.vmw.vro.workflow", Name: "vRealize Orchestrator Workflow"},
+				SourceID: "cs-vro", ProjectIDs: []string{"vra-prj-web", "vra-prj-data"}},
+			{ID: "abx-rotate", Name: "Rotate backup key", Type: Ref{ID: "com.vmw.abx.actions", Name: "Extensibility actions"},
+				SourceID: "cs-abx", ProjectIDs: []string{"vra-prj-data"}},
 		},
 		Policies: []Policy{
 			policy("pol-approval-prd", "Production needs a lead", PolicyApproval, "HARD", "",
@@ -80,16 +82,16 @@ func SampleEstate(now time.Time) Estate {
 			policy("pol-limit", "Deployment limit", PolicyLimit, "HARD", "", "", `{"limits":{"cpu":16,"memory":64}}`),
 		},
 		Deployments: []Deployment{
-			deployment("dep-vra-1", "vra-web-001", "vra-prj-web", "ci-rhel9", "bp-rhel9", "2", "thomas.nguyen@corp.example", days(20), now,
+			deployment("dep-vra-1", "vra-web-001", "vra-prj-web", "bp-rhel9", "bp-rhel9", "2", "thomas.nguyen@corp.example", days(20), now,
 				map[string]any{"size": "small", "environment": "dev", "role": "web"}, machine("vra-web-001", "10.31.10.141", 2, 4096)),
-			deployment("dep-vra-2", "vra-web-pair", "vra-prj-web", "ci-rhel9", "bp-rhel9", "1", "lea.martin@corp.example", days(45), now,
+			deployment("dep-vra-2", "vra-web-pair", "vra-prj-web", "bp-rhel9", "bp-rhel9", "1", "lea.martin@corp.example", days(45), now,
 				map[string]any{"size": "medium", "environment": "dev", "role": "api"},
 				machine("vra-api-001", "10.31.10.142", 4, 16384), machine("vra-api-002", "10.31.10.143", 4, 16384)),
-			deployment("dep-vra-3", "vra-db-001", "vra-prj-data", "ci-db", "bp-db", "1", "lea.martin@corp.example", nil, now,
+			deployment("dep-vra-3", "vra-db-001", "vra-prj-data", "bp-db", "bp-db", "1", "lea.martin@corp.example", nil, now,
 				map[string]any{"environment": "dev", "dbVersion": "16"}, machine("vra-db-001", "10.31.10.144", 4, 16384)),
-			deployment("dep-vra-4", "vra-gone", "vra-prj-web", "ci-rhel9", "bp-rhel9", "2", "thomas.nguyen@corp.example", days(10), now,
+			deployment("dep-vra-4", "vra-gone", "vra-prj-web", "bp-rhel9", "bp-rhel9", "2", "thomas.nguyen@corp.example", days(10), now,
 				map[string]any{"size": "small", "environment": "dev", "role": "old"}, machine("vra-gone-001", "10.31.10.145", 2, 4096)),
-			deployment("dep-vra-5", "vra-legacy", "vra-prj-legacy", "ci-rhel9", "bp-rhel9", "1", "former.admin@corp.example", nil, now,
+			deployment("dep-vra-5", "vra-legacy", "vra-prj-legacy", "bp-rhel9", "bp-rhel9", "1", "former.admin@corp.example", nil, now,
 				map[string]any{"size": "small", "environment": "dev", "role": "leg"}, machine("vra-leg-001", "10.31.10.146", 2, 4096)),
 		},
 	}
@@ -100,6 +102,12 @@ func SampleEstate(now time.Time) Estate {
 		"medium": {CPUCount: 4, MemoryInMB: 16384}, "large": {CPUCount: 8, MemoryInMB: 32768}}
 	e.Images, e.Flavors = []ImageProfile{img}, []FlavorProfile{flv}
 	sampleExtensibility(&e, days)
+	// Legacy Apps is offered the templates' whole content source, as vRA's
+	// administrators usually share.
+	var src Entitlement
+	src.ID, src.ProjectID = "ent-legacy-templates", "vra-prj-legacy"
+	src.Definition.Type, src.Definition.ID, src.Definition.Name = "CatalogSourceIdentifier", "cs-templates", "Cloud templates"
+	e.Entitlements = append(e.Entitlements, src)
 	for _, p := range e.Projects {
 		for _, ci := range e.CatalogItems {
 			for _, id := range ci.ProjectIDs {

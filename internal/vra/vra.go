@@ -11,6 +11,7 @@ package vra
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -190,6 +191,10 @@ type Subscription struct {
 	RunnableID   string `json:"runnableId"`
 	Blocking     bool   `json:"blocking,omitempty"`
 	Disabled     bool   `json:"disabled,omitempty"`
+	// Constraints narrow it: to some projects (none: every project).
+	Constraints struct {
+		ProjectID []string `json:"projectId,omitempty"`
+	} `json:"constraints"`
 }
 
 // ResourceAction is a custom day-2 action: a vRO workflow or an ABX action
@@ -265,4 +270,58 @@ type Estate struct {
 	ResourceActions []ResourceAction `json:"resource_actions"`
 	Workflows       []VROWorkflow    `json:"vro_workflows"`
 	Actions         []VROAction      `json:"vro_actions"`
+}
+
+// SourceOf is what a catalog item offers: the cloud template or vRO
+// workflow of its own ID, as vRA 8 names them, or else of its sourceId
+// (which vRA gives the item's content source); an ABX action's ID.
+func (e *Estate) SourceOf(ci CatalogItem) string {
+	has := func(id string) bool {
+		switch ci.Type.ID {
+		case "com.vmw.blueprint":
+			return slices.ContainsFunc(e.Blueprints, func(b Blueprint) bool { return b.ID == id })
+		case "com.vmw.vro.workflow":
+			return slices.ContainsFunc(e.Workflows, func(w VROWorkflow) bool { return w.ID == id })
+		}
+		return false
+	}
+	if !has(ci.ID) && ci.SourceID != "" && has(ci.SourceID) {
+		return ci.SourceID
+	}
+	return ci.ID
+}
+
+// SharedWith are the projects a catalog item is offered to: shared on its
+// own, through its content source, or as the item lists them.
+func (e *Estate) SharedWith(ci CatalogItem) []string {
+	shared := map[string]bool{}
+	for _, id := range ci.ProjectIDs {
+		shared[id] = true
+	}
+	for _, en := range e.Entitlements {
+		switch en.Definition.Type {
+		case "CatalogItemIdentifier":
+			shared[en.ProjectID] = shared[en.ProjectID] || en.Definition.ID == ci.ID
+		case "CatalogSourceIdentifier":
+			shared[en.ProjectID] = shared[en.ProjectID] || ci.SourceID != "" && en.Definition.ID == ci.SourceID
+		}
+	}
+	var out []string
+	for _, p := range e.Projects {
+		if shared[p.ID] {
+			out = append(out, p.ID)
+		}
+	}
+	return out
+}
+
+// ItemsFor are the catalog items offered to a project.
+func (e *Estate) ItemsFor(projectID string) []CatalogItem {
+	var out []CatalogItem
+	for _, ci := range e.CatalogItems {
+		if slices.Contains(e.SharedWith(ci), projectID) {
+			out = append(out, ci)
+		}
+	}
+	return out
 }

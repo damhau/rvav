@@ -139,8 +139,45 @@ vRA is switched off when no project is left in it (P2.6, with its runbook).
 - **vRA can be switched off** once every project has moved and every
   deployment is adopted. The runbook says how.
 
+### As built (P2.7, after its review)
+Two independent reviews of P2 found what the fake vRA couldn't. Fixed:
+- **Catalog items:** a cloud template's or vRO workflow's catalog item
+  has the template's or workflow's ID; `sourceId` is the item's content
+  source. vRA 8's catalog API says so.
+- **Sharing:** items are offered to projects on their own, through a
+  content source (the usual way), or as the item lists them. All three
+  are read.
+- **What onboarding would refuse, the plan says first:**
+  - an item not published, or not offered to the project;
+  - a lease longer than rvav's policy allows (it is shortened, with a
+    warning);
+  - a name rvav can't take (it is made valid: "Web Server for Thomas"
+    is web-server-for-thomas).
+  It also warns when rvav's lease policy would give a lease to a
+  deployment vRA never leased.
+- **Adopted** means linked to the rvav deployment it became, whoever
+  adopted it, or that rvav manages its VMs.
+- **Shares:** each share the import makes is recorded (`vra_links`), so
+  one an administrator takes away isn't made again. Shares are added,
+  never set.
+- **A project can stay in vRA** even when rvav has a project of its name.
+  The import can be limited to some projects, to go project by project.
+- **One import at a time** (an advisory lock), finished even if the page
+  that started it closes.
+- **Names and numbers:**
+  - templates of the same name get the project's name in their slug;
+  - vRA's patch versions become distinct minor versions.
+- **Reading vRA:**
+  - lists are read whole even when vRA leaves out its totals;
+  - a server that ignores paging is reported;
+  - vRO's library isn't read one workflow or action at a time;
+  - the file vra-export wrote is read as it comes, up to 64 MB, and only
+    an administrator's.
+
 ## Consequences
-- **A real vRA must confirm the API calls.** They follow vRA 8's
+- **A real vRA must confirm the API calls**, among them the catalog
+  item's ID and `sourceId`, the forms' and approvers' spellings, and
+  vRO's category paths. They follow vRA 8's
   reference and are tested against a fake that answers them the same way
   (`vra.FakeServer`, with a sample estate); the Lab acceptance runs them
   against the organisation's vRA.

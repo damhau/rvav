@@ -2,7 +2,7 @@
 // wrote; see what an import would do (the dry run) and map vRA's projects;
 // then import the catalog as drafts with its sharing, and adopt
 // deployments. It can run again. vRA is only read.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
 import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -63,8 +63,11 @@ const kinds: Record<string, string> = {
   day2_action: "Day-2 action",
   form_field: "Form field",
 };
-/** The Select value of "no mapping": by name, or none. */
+/** The Select values of "no mapping" (by name, or none) and of "stays in vRA". */
 const AUTO = "_auto";
+const STAYS = "_stays";
+/** Every mutation of the page: one at a time. */
+const busyKey = ["vra"];
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 function Notes({ notes }: { notes: S["VraNote"][] }) {
@@ -83,13 +86,24 @@ function Notes({ notes }: { notes: S["VraNote"][] }) {
 }
 
 /** What a row's notes hold, as a button that shows them. */
-function NotesButton({ notes, open, onToggle }: { notes: S["VraNote"][]; open: boolean; onToggle: () => void }) {
+function NotesButton({
+  of,
+  notes,
+  open,
+  onToggle,
+}: {
+  of: string;
+  notes: S["VraNote"][];
+  open: boolean;
+  onToggle: () => void;
+}) {
   const check = notes.filter((n) => n.level === "warning").length;
   const out = notes.filter((n) => n.level === "unmapped").length;
   const parts = [check ? `${check} to check` : "", out ? `${out} left out` : ""].filter(Boolean);
+  const text = parts.length ? parts.join(" · ") : plural(notes.length, "note");
   return (
-    <Button size="sm" variant="ghost" aria-expanded={open} onClick={onToggle}>
-      {parts.length ? parts.join(" · ") : plural(notes.length, "note")}
+    <Button size="sm" variant="ghost" aria-expanded={open} aria-label={`Notes on ${of}: ${text}`} onClick={onToggle}>
+      {text}
     </Button>
   );
 }
@@ -110,7 +124,7 @@ function Summary({ plan }: { plan: Plan }) {
           {stat("new drafts", s.items_update)}
           {stat("unchanged", s.items_unchanged)}
           {stat("not imported", s.items_blocked, s.items_blocked ? "text-warn" : "")}
-          {stat("projects to share with", s.shares_add)}
+          {stat("shares to add", s.shares_add)}
         </div>
       </Panel>
       <Panel title="Deployments">
@@ -128,16 +142,18 @@ function ProjectsTab({ plan }: { plan: Plan }) {
   const qc = useQueryClient();
   const projects = useQuery(adm.projects("", false));
   const map = useMutation({
-    mutationFn: ({ vra, rvav }: { vra: string; rvav: string | null }) =>
+    mutationFn: ({ vra, to }: { vra: string; to: string }) =>
       call(
         api.PUT("/admin/vra/projects/{vraProjectId}", {
           params: { path: { vraProjectId: vra } },
-          body: { rvav_project_id: rvav },
+          body: { rvav_project_id: to === AUTO || to === STAYS ? null : to, stays_in_vra: to === STAYS },
         }),
       ),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] }),
+    // The row stays busy until the plan shows the new mapping.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] }),
     onError: (e) => failed(e, "The project was not mapped"),
   });
+  const namesake = (name: string) => projects.data?.items.find((x) => x.name.toLowerCase() === name.toLowerCase());
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-[13px]" aria-label="vRA projects">
@@ -167,14 +183,17 @@ function ProjectsTab({ plan }: { plan: Plan }) {
               <td className={td}>
                 <Select
                   aria-label={`rvav project for ${p.name}`}
-                  value={p.how === "mapped" ? (p.rvav_project_id ?? AUTO) : AUTO}
-                  disabled={map.isPending}
-                  onChange={(v) => map.mutate({ vra: p.vra_id, rvav: v === AUTO ? null : v })}
+                  value={p.how === "mapped" ? (p.rvav_project_id ?? AUTO) : p.how === "stays" ? STAYS : AUTO}
+                  loading={map.isPending && map.variables.vra === p.vra_id}
+                  onChange={(v) => map.mutate({ vra: p.vra_id, to: v })}
                   options={[
                     {
                       value: AUTO,
-                      label: p.how === "same_name" ? `By name: ${p.rvav_project_name}` : "None: stays in vRA",
+                      label: namesake(p.name)
+                        ? `By name: ${namesake(p.name)?.name}`
+                        : "By name: none, so it stays in vRA",
                     },
+                    { value: STAYS, label: "Stays in vRA" },
                     ...(projects.data?.items ?? []).map((x) => ({ value: x.id, label: x.name })),
                   ]}
                 />
@@ -185,6 +204,14 @@ function ProjectsTab({ plan }: { plan: Plan }) {
           ))}
         </tbody>
       </table>
+      {projects.isError && (
+        <p className="px-4 py-2 text-xs text-bad">
+          rvav's projects couldn't be loaded, so only "by name" and "stays in vRA" can be chosen.{" "}
+          <Button size="sm" variant="ghost" onClick={() => void projects.refetch()}>
+            Retry
+          </Button>
+        </p>
+      )}
     </div>
   );
 }
@@ -247,6 +274,7 @@ function ItemsTab({ plan }: { plan: Plan }) {
                 </td>
                 <td className={td}>
                   <NotesButton
+                    of={it.name}
                     notes={it.notes}
                     open={open === it.blueprint_id}
                     onToggle={() => setOpen(open === it.blueprint_id ? null : it.blueprint_id)}
@@ -303,6 +331,7 @@ function DeploymentsTab({ plan }: { plan: Plan }) {
                     <div className="text-[11px] text-faint">
                       {d.vra_project}
                       {d.environment ? ` · ${d.environment}` : ""}
+                      {d.rvav_name && d.rvav_name !== d.name ? ` · ${d.rvav_name} in rvav` : ""}
                     </div>
                   </td>
                   <td className={td + " text-xs"}>{d.owner}</td>
@@ -315,6 +344,7 @@ function DeploymentsTab({ plan }: { plan: Plan }) {
                   </td>
                   <td className={td}>
                     <NotesButton
+                      of={d.name}
                       notes={d.notes}
                       open={open === d.vra_id}
                       onToggle={() => setOpen(open === d.vra_id ? null : d.vra_id)}
@@ -425,8 +455,9 @@ function VroTab({ plan }: { plan: Plan }) {
                 <td className={td + " text-xs"}>
                   {it.used_by.length === 0 && <span className="text-faint">Nothing</span>}
                   {it.used_by.map((u, i) => (
-                    <div key={i} className={u.disabled ? "text-faint line-through" : ""}>
+                    <div key={i} className={u.disabled ? "text-faint" : ""}>
                       {kinds[u.kind] ?? u.kind} {u.name}
+                      {u.disabled ? " (disabled)" : ""}
                     </div>
                   ))}
                 </td>
@@ -467,8 +498,8 @@ function MoveDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
           body: { moved: true, ...(note.trim() ? { note: note.trim() } : {}) },
         }),
       ),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
       toast.success(`${project.name} moved to rvav`);
       onClose();
     },
@@ -512,21 +543,76 @@ function MoveDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
   );
 }
 
-function CutoverTab({ plan }: { plan: Plan }) {
+function UndoDialog({ project, onClose }: { project: S["VraCutoverProject"]; onClose: () => void }) {
   const qc = useQueryClient();
-  const c = plan.cutover;
-  const [moving, setMoving] = useState<S["VraCutoverProject"] | null>(null);
   const undo = useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: () =>
       call(
         api.PUT("/admin/vra/projects/{vraProjectId}/cutover", {
-          params: { path: { vraProjectId: id } },
+          params: { path: { vraProjectId: project.vra_id } },
           body: { moved: false },
         }),
       ),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
+      onClose();
+    },
     onError: (e) => failed(e, "It was not changed"),
   });
+  return (
+    <Dialog open onOpenChange={(o) => !o && !undo.isPending && onClose()}>
+      <DialogContent title={`${project.name} not moved`} className="w-[min(480px,calc(100vw-32px))]">
+        <div className="flex flex-col gap-3 text-[13px]">
+          <p>
+            Its move date and note are cleared; marking it moved again starts the "Nothing new in vRA" check from then.
+            Its adopted deployments stay in rvav.
+          </p>
+          <p className="text-warn">
+            If vRA's administrators give its people vRA back, warn them: deleting an adopted deployment in vRA deletes
+            its VMs.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={undo.isPending} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" disabled={undo.isPending} onClick={() => undo.mutate()}>
+              Not moved
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
+  const qc = useQueryClient();
+  const c = plan.cutover;
+  const [moving, setMoving] = useState<S["VraCutoverProject"] | null>(null);
+  const [undoing, setUndoing] = useState<S["VraCutoverProject"] | null>(null);
+  // One project's deployments, adopted on their own.
+  const adopt = useMutation({
+    mutationKey: busyKey,
+    mutationFn: (cp: S["VraCutoverProject"]) =>
+      call(api.POST("/admin/vra/import", { body: { catalog: false, deployments: true, projects: [cp.vra_id] } })),
+    onSuccess: (r, cp) => {
+      qc.setQueryData(["admin", "vra", "plan"], r.plan);
+      void qc.invalidateQueries({ queryKey: ["deployments"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
+      if (r.adopted.length) toast.success(`Adopted ${plural(r.adopted.length, "deployment")} of ${cp.name}`);
+      if (r.failed.length)
+        toast.error(`${plural(r.failed.length, "deployment")} not adopted`, {
+          description: r.failed.map((f) => `${f.name}: ${f.reason}`).join(" "),
+        });
+      if (!r.adopted.length && !r.failed.length) toast(`Nothing of ${cp.name}'s to adopt`);
+    },
+    onError: (e) => {
+      void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
+      failed(e, "The adoption stopped; what was adopted is kept");
+    },
+  });
+  const toAdopt = (cp: S["VraCutoverProject"]) =>
+    plan.deployments.filter((d) => d.vra_project === cp.name && d.status === "adopt").length;
   return (
     <div className="flex flex-col gap-3 p-4">
       <p className="text-[13px]" aria-live="polite">
@@ -561,13 +647,30 @@ function CutoverTab({ plan }: { plan: Plan }) {
             ) : (
               <Badge tone="outline">Not ready</Badge>
             )}
-            <span className="ml-auto">
+            <span className="ml-auto flex gap-1">
+              {toAdopt(cp) > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  aria-label={`Adopt ${plural(toAdopt(cp), "deployment")} (${cp.name})`}
+                  onClick={() => adopt.mutate(cp)}
+                >
+                  Adopt {plural(toAdopt(cp), "deployment")}
+                </Button>
+              )}
               {cp.moved_at ? (
-                <Button size="sm" variant="ghost" disabled={undo.isPending} onClick={() => undo.mutate(cp.vra_id)}>
-                  Not moved
+                <Button size="sm" variant="ghost" aria-label={`Not moved… (${cp.name})`} onClick={() => setUndoing(cp)}>
+                  Not moved…
                 </Button>
               ) : (
-                <Button size="sm" variant="ghost" disabled={!cp.rvav_project_id} onClick={() => setMoving(cp)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!cp.rvav_project_id}
+                  aria-label={`Mark as moved… (${cp.name})`}
+                  onClick={() => setMoving(cp)}
+                >
                   Mark as moved…
                 </Button>
               )}
@@ -590,6 +693,7 @@ function CutoverTab({ plan }: { plan: Plan }) {
         </section>
       ))}
       {moving && <MoveDialog project={moving} onClose={() => setMoving(null)} />}
+      {undoing && <UndoDialog project={undoing} onClose={() => setUndoing(null)} />}
     </div>
   );
 }
@@ -606,13 +710,20 @@ function ImportDialog({
   const s = plan.summary;
   const [catalog, setCatalog] = useState(true);
   const [deployments, setDeployments] = useState(false);
+  const qc = useQueryClient();
   const run = useMutation({
+    mutationKey: busyKey,
     mutationFn: () => call(api.POST("/admin/vra/import", { body: { catalog, deployments } })),
     onSuccess: onDone,
-    onError: (e) => failed(e, "Nothing was imported"),
+    onError: (e) => {
+      // It may have stopped half way: what it did is kept, and shown.
+      for (const key of [["admin", "vra", "plan"], ["admin", "catalog"], ["deployments"], ["admin", "onboarding"]])
+        void qc.invalidateQueries({ queryKey: key });
+      failed(e, "The import stopped; what was done is kept");
+    },
   });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && !run.isPending && onClose()}>
       <DialogContent title="Import from vRA" className="w-[min(520px,calc(100vw-32px))]">
         <form
           className="flex flex-col gap-4"
@@ -626,8 +737,8 @@ function ImportDialog({
             <span>
               <span className="font-medium">Catalog items</span>
               <span className="block text-xs text-muted">
-                {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;
-                shared with {plural(s.shares_add, "more project")}.
+                {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
+                {plural(s.shares_add, "share")} to add (an item offered to one more project).
               </span>
             </span>
           </label>
@@ -636,8 +747,8 @@ function ImportDialog({
             <span>
               <span className="font-medium">Deployments</span>
               <span className="block text-xs text-muted">
-                {plural(s.deployments_adopt, "deployment")} to adopt through onboarding, nothing changed in vCenter or
-                EfficientIP. An item must be published for its deployments to be adopted.
+                {plural(s.deployments_adopt, "deployment")} to adopt through onboarding, every project's, nothing
+                changed in vCenter or EfficientIP. To adopt one project's, use its Cutover section.
               </span>
             </span>
           </label>
@@ -645,7 +756,7 @@ function ImportDialog({
             It can run again: only what changed in vRA, or isn't yet in rvav, is imported.
           </p>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" disabled={run.isPending} onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={(!catalog && !deployments) || run.isPending}>
@@ -677,7 +788,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
       <section aria-label="Imported" className="flex flex-col gap-1 text-[13px]">
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
-        {r.shared > 0 && <p>Shared with {plural(r.shared, "more project")}.</p>}
+        {r.shared > 0 && <p>{plural(r.shared, "share")} added: items offered to more projects.</p>}
         {line("Deployments adopted", r.adopted)}
         {r.failed.map((f) => (
           <p key={f.name} className="text-bad">
@@ -685,7 +796,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
           </p>
         ))}
         {r.created.length + r.updated.length + r.shared + r.adopted.length + r.failed.length === 0 && (
-          <p className="text-muted">Nothing to do: rvav has it all already.</p>
+          <p className="text-muted">Nothing new to import. What is left, and why, is in the plan below.</p>
         )}
       </section>
     </Panel>
@@ -697,55 +808,68 @@ export function VraImportPage() {
   const file = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<S["VraImportResult"] | null>(null);
+  const [tab, setTab] = useState("items");
+  const busy = useIsMutating({ mutationKey: busyKey }) > 0;
   const status = useQuery({
     queryKey: ["admin", "vra", "status"],
     queryFn: ({ signal }) => call(api.GET("/admin/vra", { signal })),
   });
   const snap = status.data?.snapshot ?? null;
+  // One key for every read: a new read refreshes the plan in place.
   const plan = useQuery({
-    queryKey: ["admin", "vra", "plan", snap?.id],
+    queryKey: ["admin", "vra", "plan"],
     queryFn: ({ signal }) => call(api.GET("/admin/vra/plan", { signal })),
     enabled: snap !== null,
   });
   const read = useMutation({
-    mutationFn: async (f?: File) => {
-      if (!f) return call(api.POST("/admin/vra/snapshots", {}));
-      let body: Record<string, unknown>;
-      try {
-        body = JSON.parse(await f.text()) as Record<string, unknown>;
-      } catch {
-        throw new Error(`${f.name} is not JSON: give the file rvav vra-export wrote.`);
-      }
-      return call(api.POST("/admin/vra/snapshots", { body }));
-    },
+    mutationKey: busyKey,
+    mutationFn: (f?: File) =>
+      f
+        ? // The file as it is: the server reads it as it comes, and says what is wrong with it.
+          call(
+            api.POST("/admin/vra/snapshots", {
+              body: f as unknown as Record<string, unknown>,
+              bodySerializer: (b: unknown) => b as BodyInit,
+              headers: { "Content-Type": "application/json" },
+            }),
+          )
+        : call(api.POST("/admin/vra/snapshots", {})),
     onSuccess: (s) => {
       setResult(null);
       void qc.invalidateQueries({ queryKey: ["admin", "vra"] });
       toast.success(s.source === "vra" ? "vRA read" : "The file was read");
     },
-    onError: (e) =>
-      e instanceof Error && !isApiError(e) ? toast.error(e.message) : failed(e, "vRA could not be read"),
+    onError: (e) => failed(e, "vRA could not be read"),
   });
   const p = plan.data;
+  // What the plan was made from; the status's until there is one.
+  const shown = p?.snapshot ?? snap;
   return (
     <Page>
       <PageHeader
         title="vRA import"
         meta={
-          snap ? (
-            <>
-              <span>
-                Read <Time iso={snap.read_at} /> {snap.source === "file" ? "from a file" : `from ${snap.url ?? "vRA"}`}
-                {snap.created_by ? ` by ${snap.created_by}` : ""}
-              </span>
-              <span>
-                {plural(snap.counts.projects, "project")} · {plural(snap.counts.templates, "template")} ·{" "}
-                {plural(snap.counts.deployments, "deployment")} · {plural(snap.counts.vro_workflows, "vRO workflow")}
-              </span>
-            </>
-          ) : (
-            "Move vRA's catalog and deployments to rvav. vRA is only read."
-          )
+          <>
+            {shown ? (
+              <>
+                <span>
+                  Read <Time iso={shown.read_at} />{" "}
+                  {shown.source === "file" ? "from a file" : `from ${shown.url ?? "vRA"}`}
+                  {shown.created_by ? ` by ${shown.created_by}` : ""}
+                </span>
+                <span>
+                  {plural(shown.counts.projects, "project")} · {plural(shown.counts.templates, "template")} ·{" "}
+                  {plural(shown.counts.deployments, "deployment")} ·{" "}
+                  {plural(shown.counts.vro_workflows, "vRO workflow")}
+                </span>
+              </>
+            ) : (
+              <span>Move vRA's catalog and deployments to rvav. vRA is only read.</span>
+            )}
+            {status.data && !status.data.configured && (
+              <span>rvav reads no vRA itself (RVAV_VRA_URL isn't set): upload the file rvav vra-export wrote.</span>
+            )}
+          </>
         }
         actions={
           <>
@@ -761,19 +885,18 @@ export function VraImportPage() {
                 e.target.value = "";
               }}
             />
-            <Button size="sm" variant="ghost" disabled={read.isPending} onClick={() => file.current?.click()}>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => file.current?.click()}>
               <FileUp /> Upload file…
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              disabled={!status.data?.configured || read.isPending}
-              title={status.data?.configured ? undefined : "Set RVAV_VRA_URL for rvav to read vRA itself"}
+              disabled={!status.data?.configured || busy}
               onClick={() => read.mutate(undefined)}
             >
               <RefreshCw /> {read.isPending ? "Reading…" : "Read vRA"}
             </Button>
-            <Button size="sm" variant="primary" disabled={!p} onClick={() => setImporting(true)}>
+            <Button size="sm" variant="primary" disabled={!p || busy} onClick={() => setImporting(true)}>
               Import…
             </Button>
           </>
@@ -799,7 +922,7 @@ export function VraImportPage() {
         <>
           <Summary plan={p} />
           <Panel flush>
-            <Tabs defaultValue="items">
+            <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="px-4 pt-2">
                 <TabsTrigger value="projects">Projects</TabsTrigger>
                 <TabsTrigger value="items">Catalog items ({p.items.length})</TabsTrigger>
@@ -826,7 +949,7 @@ export function VraImportPage() {
                 <VroTab plan={p} />
               </TabsContent>
               <TabsContent value="cutover">
-                <CutoverTab plan={p} />
+                <CutoverTab plan={p} busy={busy} />
               </TabsContent>
             </Tabs>
           </Panel>
@@ -839,9 +962,10 @@ export function VraImportPage() {
           onDone={(r) => {
             setImporting(false);
             setResult(r);
-            qc.setQueryData(["admin", "vra", "plan", snap?.id], r.plan);
+            qc.setQueryData(["admin", "vra", "plan"], r.plan);
             void qc.invalidateQueries({ queryKey: ["admin", "catalog"] });
             void qc.invalidateQueries({ queryKey: ["deployments"] });
+            void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
             toast.success("Imported from vRA");
           }}
         />

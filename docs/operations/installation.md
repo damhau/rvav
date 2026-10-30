@@ -69,10 +69,15 @@ applies the database migrations as it starts, one at a time.
    the group mapped to `admin`) and check Integrations.
 
 **Ingress:** the ingress sends everything to the web app, which proxies
-`/api/` to the API. Keep it from buffering the live updates (SSE) and from
-closing the console's WebSocket. With ingress-nginx:
-`nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"` and
-`proxy-buffering: "off"`.
+`/api/` to the API. It must not buffer the live updates (SSE), close the
+console's WebSocket or a long vRA import, or refuse a vra-export file of
+up to 64 MB. For ingress-nginx the chart sets this by default
+(`ingress.annotations`):
+- `proxy-read-timeout` and `proxy-send-timeout`: `"3600"`;
+- `proxy-buffering`: `"off"`;
+- `proxy-body-size`: `64m`.
+
+Another controller needs the same settings in its own annotations.
 
 **Upgrades:** `helm upgrade` with the new image tag. The pods roll one at
 a time, and the new ones migrate before they start

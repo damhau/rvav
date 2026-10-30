@@ -103,9 +103,10 @@ func TestVRADeployments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		first := s["vra-web-001"].Deployments
 		s = status(again)
 		if s["vra-db-001"].Status != vraimport.Adopted || len(s["vra-db-001"].Deployments) != 1 ||
-			s["vra-web-001"].Status != vraimport.Adopted || len(s["vra-web-001"].Deployments) != 0 {
+			s["vra-web-001"].Status != vraimport.Adopted || !slices.Equal(s["vra-web-001"].Deployments, first) {
 			t.Fatalf("again: db %+v, web %+v", s["vra-db-001"], s["vra-web-001"])
 		}
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from deployments where name like 'vra-%' and status <> 'deleted'`).Scan(&n)

@@ -208,11 +208,22 @@ func (f *FakeServer) vro(w http.ResponseWriter, q url.Values, parts []string) {
 	case len(parts) == 1 && parts[0] == "workflows":
 		var links []link
 		for _, x := range e.Workflows {
+			leaf := x.Category[strings.LastIndex(x.Category, "/")+1:]
 			links = append(links, link{Href: "/vco/api/workflows/" + x.ID + "/", Rel: "down", Attributes: []attr{{"id", x.ID},
-				{"name", x.Name}, {"categoryName", x.Category}, {"description", x.Description}, {"version", x.Version}}})
+				{"name", x.Name}, {"categoryName", leaf}, {"categoryHref", "/vco/api/categories/" + categoryID(x.Category) + "/"},
+				{"description", x.Description}, {"version", x.Version}}})
 		}
 		part, total := list(links)
 		write(w, map[string]any{"link": part, "total": total, "start": intParam(q, "startIndex", 0)})
+	case len(parts) == 2 && parts[0] == "categories":
+		for _, x := range e.Workflows {
+			if categoryID(x.Category) == parts[1] {
+				write(w, map[string]any{"id": parts[1], "name": x.Category[strings.LastIndex(x.Category, "/")+1:], "path": x.Category,
+					"type": "WorkflowCategory"})
+				return
+			}
+		}
+		fail(w, http.StatusNotFound, "Category not found")
 	case len(parts) >= 2 && parts[0] == "workflows":
 		i := slices.IndexFunc(e.Workflows, func(x VROWorkflow) bool { return x.ID == parts[1] })
 		if i < 0 {
@@ -309,4 +320,9 @@ func window[T any](all []T, from, n int) []T {
 		return []T{}
 	}
 	return all[from:min(from+n, len(all))]
+}
+
+// categoryID is a fake vRO category's ID, from its path.
+func categoryID(path string) string {
+	return "cat-" + strings.NewReplacer("/", "-", " ", "_").Replace(strings.ToLower(path))
 }

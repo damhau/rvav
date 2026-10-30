@@ -1,10 +1,11 @@
 package httpapi
 
 import (
-	"io"
+	"errors"
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
 )
 
 // The vRA importer (ADR-0027, P2.5).
@@ -14,14 +15,23 @@ func (s *Server) GetVraImport(w http.ResponseWriter, r *http.Request) {
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+// maxEstate is the largest vra-export file taken: a vRA of some 100,000
+// deployments. The API needs about four times it in memory to take it.
+const maxEstate = 64 << 20
+
 func (s *Server) ReadVra(w http.ResponseWriter, r *http.Request) {
-	// vra-export's file: a large vRA's deployments with their resources.
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 128<<20))
-	if err != nil {
-		s.problem(w, r, http.StatusBadRequest, "bad-request", "The file could not be read", err.Error(), nil)
+	// Only administrators get their file read at all.
+	if p := principal(r); !p.IsAdmin() {
+		s.fail(w, r, core.ErrForbidden)
 		return
 	}
-	out, err := s.Core.ReadVRA(r.Context(), principal(r), body)
+	out, err := s.Core.ReadVRA(r.Context(), principal(r), http.MaxBytesReader(w, r.Body, maxEstate))
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		s.problem(w, r, http.StatusRequestEntityTooLarge, "too-large", "The file is too large",
+			"rvav takes vra-export files of up to 64 MB.", nil)
+		return
+	}
 	s.reply(w, r, http.StatusCreated, out, err)
 }
 

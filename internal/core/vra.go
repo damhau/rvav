@@ -1,13 +1,17 @@
 package core
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -65,13 +69,29 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		return r, err
 	}
 	for _, v := range vms {
-		if _, dup := r.VMs[v.Name]; dup {
+		if prev, dup := r.VMs[v.Name]; dup {
 			// Two vCenters have a VM of that name: which one vRA built isn't
-			// known by name alone.
-			r.VMs[v.Name] = vraimport.VMRef{Name: v.Name, Ambiguous: true}
+			// known by name alone. One rvav manages is adopted, though.
+			r.VMs[v.Name] = vraimport.VMRef{Name: v.Name, Ambiguous: true, Managed: prev.Managed || v.Managed}
 			continue
 		}
 		r.VMs[v.Name] = vraimport.VMRef{VCenter: v.VCenter, Moref: v.Moref, Name: v.Name, Managed: v.Managed}
+	}
+	if r.Adopted, err = s.Store.AdoptedVRADeployments(ctx); err != nil {
+		return r, err
+	}
+	// The lease policies adoption will apply.
+	r.Leases = map[string]vraimport.Lease{}
+	for _, p := range r.Projects {
+		for _, env := range p.Environments {
+			l, err := s.Store.LeasePolicy(ctx, p.ID, env)
+			if errors.Is(err, store.ErrNotFound) {
+				continue
+			} else if err != nil {
+				return r, err
+			}
+			r.Leases[p.ID+"/"+env] = vraimport.Lease{Default: l.DefaultDays, Max: l.MaxDays}
+		}
 	}
 	return r, nil
 }
@@ -112,6 +132,14 @@ func (s *Service) vraPlan(ctx context.Context, e *vra.Estate, extra map[string]s
 	if err != nil {
 		return vraimport.ImportPlan{}, r, err
 	}
+	shares, err := s.Store.VRALinks(ctx, "share")
+	if err != nil {
+		return vraimport.ImportPlan{}, r, err
+	}
+	st.Shared = map[string]bool{}
+	for _, l := range shares {
+		st.Shared[l.RvavID] = true
+	}
 	// The latest link of a template whose item is still there.
 	for _, l := range links {
 		if _, ok := st.Items[l.RvavID]; ok {
@@ -129,7 +157,7 @@ func (s *Service) adoptPlans(ctx context.Context, p *auth.Principal, plans []vra
 			continue
 		}
 		d := api.OnboardingDraft{ProjectId: pl.ProjectID, Environment: pl.Environment, OwnerId: pl.OwnerID,
-			CatalogItemId: pl.CatalogItemID, LeaseDays: pl.LeaseDays, DeploymentName: &plans[i].Name}
+			CatalogItemId: pl.CatalogItemID, LeaseDays: pl.LeaseDays, DeploymentName: &plans[i].RvavName}
 		for _, vm := range pl.VMs {
 			d.Vms = append(d.Vms, struct {
 				Moref   string `json:"moref"`
@@ -139,11 +167,19 @@ func (s *Service) adoptPlans(ctx context.Context, p *auth.Principal, plans []vra
 		res, err := s.AdoptVMs(ctx, p, d)
 		var ve *ValidationError
 		var ce *ConflictError
+		var ue *UpstreamError
 		switch {
 		case errors.As(err, &ve), errors.As(err, &ce):
 			plans[i].Status = vraimport.Failed
 			plans[i].Notes = append(plans[i].Notes, vraimport.Note{Level: vraimport.Unmapped, Where: "adoption",
 				Text: "Onboarding refused it: " + err.Error() + " " + fieldMessages(ve)})
+			continue
+		case errors.As(err, &ue):
+			// vCenter or EfficientIP didn't answer: this one waits for the
+			// next run, the others go on.
+			plans[i].Status = vraimport.Failed
+			plans[i].Notes = append(plans[i].Notes, vraimport.Note{Level: vraimport.Unmapped, Where: "adoption",
+				Text: "Not adopted: " + err.Error() + ". Run the import again."})
 			continue
 		case err != nil:
 			return plans, err
@@ -239,15 +275,32 @@ func (s *Service) VRAImportStatus(ctx context.Context, p *auth.Principal) (api.V
 	return out, nil
 }
 
-// ReadVRA reads vRA (no body) or takes the estate vra-export wrote, as the
-// estate the plan and import work from.
-func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body []byte) (api.VraSnapshot, error) {
+// ReadVRA reads vRA (an empty body) or takes the estate vra-export wrote,
+// as the estate the plan and import work from. The file is decoded as it
+// comes, not held whole.
+func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body io.Reader) (api.VraSnapshot, error) {
 	if !p.IsAdmin() {
 		return api.VraSnapshot{}, ErrForbidden
 	}
 	var e *vra.Estate
 	snap := store.VRASnapshot{ID: ids.New(ids.VRASnapshot), CreatedBy: &p.User.ID}
-	if len(bytes.TrimSpace(body)) == 0 {
+	in := bufio.NewReader(body)
+	empty := true
+	for {
+		c, err := in.ReadByte()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return api.VraSnapshot{}, err
+			}
+			break
+		}
+		if !unicode.IsSpace(rune(c)) {
+			_ = in.UnreadByte()
+			empty = false
+			break
+		}
+	}
+	if empty {
 		c := s.Config.VRA
 		if c.URL == "" {
 			return api.VraSnapshot{}, &ValidationError{Errors: []api.FieldError{fieldErr("", "not_configured",
@@ -264,7 +317,11 @@ func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body []byte) (
 		snap.Source = "vra"
 	} else {
 		e = &vra.Estate{}
-		if err := json.Unmarshal(body, e); err != nil {
+		if err := json.NewDecoder(in).Decode(e); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				return api.VraSnapshot{}, err
+			}
 			return api.VraSnapshot{}, &ValidationError{Errors: []api.FieldError{fieldErr("", "invalid",
 				"This is not what rvav vra-export writes: "+err.Error())}}
 		}
@@ -335,7 +392,11 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 	if !slices.ContainsFunc(e.Projects, func(x vra.Project) bool { return x.ID == vraID }) {
 		return ErrNotFound
 	}
-	to := ""
+	to, stay := "", m.StaysInVra != nil && *m.StaysInVra
+	if stay && m.RvavProjectId != nil {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("/stays_in_vra", "invalid",
+			"A project that stays in vRA has no rvav project.")}}
+	}
 	if m.RvavProjectId != nil {
 		to = *m.RvavProjectId
 		unknown, err := s.Store.UnknownProjects(ctx, []string{to})
@@ -346,10 +407,10 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 			return &ValidationError{Errors: []api.FieldError{fieldErr("/rvav_project_id", "unknown", "No such project: "+to+".")}}
 		}
 	}
-	if err := s.Store.SetVRAProjectMap(ctx, vraID, to, p.User.ID); err != nil {
+	if err := s.Store.SetVRAProjectMap(ctx, vraID, to, stay, p.User.ID); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "vra.project.map", "vra_project", vraID, nil, map[string]any{"rvav_project_id": to})
+	s.audit(ctx, p, "vra.project.map", "vra_project", vraID, nil, map[string]any{"rvav_project_id": to, "stays_in_vra": stay})
 	return nil
 }
 
@@ -365,10 +426,29 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 	if !p.IsAdmin() {
 		return out, ErrForbidden
 	}
+	// One import at a time, finished even if whoever started it leaves:
+	// an item made and not yet linked would be in its template's way.
+	ctx = context.WithoutCancel(ctx)
+	unlock, ok, err := s.Store.TryLock(ctx, vraImportLock)
+	if err != nil {
+		return out, err
+	}
+	if !ok {
+		return out, &ConflictError{Msg: "Another import from vRA is running: wait for it, then look at the plan again."}
+	}
+	defer unlock()
 	v, e, err := s.latestEstate(ctx)
 	if err != nil {
 		return out, err
 	}
+	// Only some vRA projects: their sharing and their deployments.
+	only := map[string]bool{}
+	if req.Projects != nil {
+		for _, id := range *req.Projects {
+			only[id] = true
+		}
+	}
+	chosen := func(vraProjectID string) bool { return req.Projects == nil || only[vraProjectID] }
 	fail := func(name string, err error) {
 		out.Failed = append(out.Failed, struct {
 			Name   string `json:"name"`
@@ -378,6 +458,12 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 	plan, _, err := s.vraPlan(ctx, e, nil)
 	if err != nil {
 		return out, err
+	}
+	shareTo := map[string]bool{} // rvav projects of the chosen vRA projects
+	for _, pp := range plan.Projects {
+		if pp.RvavProjectID != "" && chosen(pp.VRAID) {
+			shareTo[pp.RvavProjectID] = true
+		}
 	}
 	if req.Catalog == nil || *req.Catalog {
 		for _, it := range plan.Items {
@@ -417,21 +503,23 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 			default:
 				continue
 			}
-			if len(it.ShareAdd) == 0 {
+			// Sharing is only added, and each share recorded: one an
+			// administrator removes later isn't made again.
+			add := slices.DeleteFunc(slices.Clone(it.ShareAdd), func(id string) bool { return !shareTo[id] })
+			if len(add) == 0 {
 				continue
 			}
-			cur, err := s.CatalogItemEntitlements(ctx, p, itemID)
-			if err != nil {
+			if err := s.Store.AddEntitlements(ctx, itemID, add); err != nil {
 				return out, err
 			}
-			if cur.AllProjects {
-				continue
+			s.auditCatalog(ctx, p, "catalog.item.entitlements", itemID, map[string]any{"added": add, "by": "vra import"})
+			for _, id := range add {
+				if err := s.Store.SaveVRALink(ctx, store.VRALink{Kind: "share", VRAID: it.BlueprintID, RvavID: itemID + "/" + id},
+					p.User.ID); err != nil {
+					return out, err
+				}
 			}
-			cur.ProjectIds = slices.Compact(slices.Sorted(slices.Values(append(cur.ProjectIds, it.ShareAdd...))))
-			if _, err := s.SetCatalogItemEntitlements(ctx, p, itemID, cur); err != nil {
-				return out, err
-			}
-			out.Shared += len(it.ShareAdd)
+			out.Shared += len(add)
 		}
 	}
 	if req.Deployments != nil && *req.Deployments {
@@ -440,7 +528,12 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		if err != nil {
 			return out, err
 		}
-		adopted, err := s.adoptPlans(ctx, p, again.Deployments)
+		projectOf := map[string]string{}
+		for _, d := range e.Deployments {
+			projectOf[d.ID] = d.ProjectID
+		}
+		todo := slices.DeleteFunc(again.Deployments, func(d vraimport.DeploymentPlan) bool { return !chosen(projectOf[d.VRAID]) })
+		adopted, err := s.adoptPlans(ctx, p, todo)
 		if err != nil {
 			return out, err
 		}
@@ -516,9 +609,16 @@ func (s *Service) SetVRACutover(ctx context.Context, p *auth.Principal, vraID st
 				e.Projects[i].Name+" has no rvav project: map it first.")}}
 		}
 	}
-	if err := s.Store.SetVRAMoved(ctx, vraID, w.Moved, strings.TrimSpace(deref(w.Note)), p.User.ID); err != nil {
+	note := strings.TrimSpace(deref(w.Note))
+	if utf8.RuneCountInString(note) > 500 {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("/note", "too_long", "A note is at most 500 characters.")}}
+	}
+	if err := s.Store.SetVRAMoved(ctx, vraID, w.Moved, note, p.User.ID); err != nil {
 		return err
 	}
 	s.audit(ctx, p, "vra.project.cutover", "vra_project", vraID, nil, map[string]any{"moved": w.Moved, "note": deref(w.Note)})
 	return nil
 }
+
+// vraImportLock is the advisory lock one import holds.
+const vraImportLock = 0x76726169 // "vrai"

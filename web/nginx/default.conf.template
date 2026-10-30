@@ -79,6 +79,20 @@ server {
         gzip off;
     }
 
+    # The vRA importer (ADR-0027): the file vra-export wrote can be large
+    # (the API takes 64 MB), and reading a large vRA, or importing it,
+    # takes minutes.
+    location ~ ^/api/v1/admin/vra/(snapshots|import)$ {
+        proxy_pass $api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 64m;
+        proxy_read_timeout 15m;
+        proxy_send_timeout 15m;
+    }
+
     location /api/ {
         proxy_pass $api_upstream;
         proxy_http_version 1.1;

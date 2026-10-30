@@ -3846,8 +3846,13 @@ export interface components {
             text: string;
         };
         VraProjectMapping: {
-            /** @description Null clears the mapping. */
+            /** @description Null clears the mapping: it maps by name then. */
             rvav_project_id: string | null;
+            /**
+             * @description Keep it in vRA, even if rvav has a project of its name (rvav_project_id null).
+             * @default false
+             */
+            stays_in_vra: boolean;
         };
         VraPlan: {
             snapshot: components["schemas"]["VraSnapshot"];
@@ -3857,7 +3862,7 @@ export interface components {
                 items_unchanged: number;
                 /** @description Skipped, or in conflict with rvav. */
                 items_blocked: number;
-                /** @description Projects items would be shared with. */
+                /** @description Shares to add: an item offered to one more project. */
                 shares_add: number;
                 deployments_adopt: number;
                 deployments_adopted: number;
@@ -3910,10 +3915,10 @@ export interface components {
             rvav_project_id?: string;
             rvav_project_name?: string;
             /**
-             * @description Mapped by an administrator, by the same name, or not at all.
+             * @description Mapped by an administrator, by the same name, kept in vRA by an administrator, or not at all.
              * @enum {string}
              */
-            how: "mapped" | "same_name" | "none";
+            how: "mapped" | "same_name" | "stays" | "none";
             /** @description Catalog items shared with it in vRA. */
             items: number;
             deployments: number;
@@ -3951,6 +3956,8 @@ export interface components {
             vra_project: string;
             /** @description Its owner in vRA (an email). */
             owner: string;
+            /** @description Its name in rvav: vRA's, in lower case with other characters as dashes. */
+            rvav_name?: string;
             /** @enum {string} */
             status: "adopt" | "adopted" | "skipped" | "failed";
             notes: components["schemas"]["VraNote"][];
@@ -3989,13 +3996,15 @@ export interface components {
              * @default false
              */
             deployments: boolean;
+            /** @description Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent. */
+            projects?: string[];
         };
         VraImportResult: {
             /** @description Items made (their names). */
             created: string[];
             /** @description Items given a new draft. */
             updated: string[];
-            /** @description Projects items were shared with. */
+            /** @description Shares added: an item offered to one more project. */
             shared: number;
             /** @description Deployments adopted. */
             adopted: string[];
@@ -5212,6 +5221,15 @@ export interface components {
         };
         /** @description vCenter, EfficientIP or AWX did not answer or returned an error */
         UpstreamError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request body is larger than the operation takes */
+        PayloadTooLarge: {
             headers: {
                 [name: string]: unknown;
             };
@@ -8896,6 +8914,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
             422: components["responses"]["ValidationFailed"];
             502: components["responses"]["UpstreamError"];
         };
@@ -9004,6 +9023,8 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     getVroTriage: {

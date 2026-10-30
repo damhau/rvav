@@ -138,7 +138,7 @@ func TestVRAImport(t *testing.T) {
 		// vRA releases version 3 of the RHEL template: its item gets a new
 		// draft once the earlier one is published; while a draft is open,
 		// the import doesn't touch it.
-		publishVRAItem(h, api.CatalogImportResult{ItemId: rhel, Versions: it.Versions})
+		publishDraft(h, api.CatalogImportResult{ItemId: rhel, Versions: it.Versions})
 		bp := &e.Blueprints[0]
 		v3 := bp.Versions[1]
 		v3.ID, v3.Version, v3.VersionDescription = "bp-rhel9-v3", "3", "Larger default"
@@ -174,13 +174,30 @@ func TestVRAImport(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.json("PUT", "/api/v1/projects/prj_data/members/usr_lmartin", admin, api.ProjectMemberWrite{Role: api.Member}, 200, nil)
-		if s := plan().Summary; s.DeploymentsAdopt != 2 {
-			t.Fatalf("deployments to adopt = %+v", s)
+		dep := func(p api.VraPlan, vraID string) api.VraDeploymentPlan {
+			t.Helper()
+			return p.Deployments[slices.IndexFunc(p.Deployments, func(d api.VraDeploymentPlan) bool { return d.VraId == vraID })]
 		}
-		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{Catalog: ptr(false), Deployments: ptr(true)}, 200, &res)
-		if !slices.Equal(res.Adopted, []string{"vra-web-001"}) || len(res.Failed) != 1 || res.Failed[0].Name != "vra-db-001" ||
-			res.Plan.Summary.DeploymentsAdopted != 1 {
-			t.Fatalf("deployments = %+v %+v", res, res.Plan.Summary)
+		// The plan says what onboarding would refuse: the database's item
+		// is a draft. The web one's item is published and the import shared
+		// it with Web Platform.
+		p = plan()
+		if db := dep(p, "dep-vra-3"); p.Summary.DeploymentsAdopt != 1 || db.Status != "skipped" ||
+			!strings.Contains(db.Notes[len(db.Notes)-1].Text, "isn't published") || db.Owner != "lea.martin@corp.example" {
+			t.Fatalf("deployments planned = %+v %+v", p.Summary, db)
+		}
+		// Project by project: Data Services' deployments first, none of
+		// which can go; then Web Platform's.
+		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{Catalog: ptr(false), Deployments: ptr(true),
+			Projects: &[]string{"vra-prj-data"}}, 200, &res)
+		if len(res.Adopted)+len(res.Failed) != 0 {
+			t.Fatalf("Data Services only = %+v", res)
+		}
+		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{Catalog: ptr(false), Deployments: ptr(true),
+			Projects: &[]string{"vra-prj-web"}}, 200, &res)
+		if !slices.Equal(res.Adopted, []string{"vra-web-001"}) || len(res.Failed) != 0 || res.Plan.Summary.DeploymentsAdopted != 1 ||
+			dep(res.Plan, "dep-vra-1").Vms == nil || len(*dep(res.Plan, "dep-vra-1").Vms) != 1 {
+			t.Fatalf("Web Platform = %+v %+v", res, res.Plan.Summary)
 		}
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from vra_links where kind = 'deployment' and vra_id = 'dep-vra-1'`).Scan(&n)
 		if n != 1 {
@@ -210,6 +227,8 @@ func TestVRAImport(t *testing.T) {
 		e.Entitlements = slices.DeleteFunc(e.Entitlements, func(en vra.Entitlement) bool { return en.ProjectID == "vra-prj-web" })
 		late := e.Deployments[0]
 		late.ID, late.Name, late.CreatedAt = "dep-vra-9", "vra-late", time.Now().Add(time.Minute)
+		late.Resources = []vra.Resource{{ID: "res-late", Name: "Cloud_vSphere_Machine_1", Type: vra.MachineType,
+			Properties: map[string]any{"resourceName": "vra-late-001"}}}
 		e.Deployments = append(e.Deployments, late)
 		upload(e)
 		p = plan()
@@ -220,6 +239,37 @@ func TestVRAImport(t *testing.T) {
 		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web/cutover", admin, api.VraCutoverWrite{Moved: false}, 204, nil)
 		if p = plan(); p.Cutover.Moved != 0 || cutover(p, "vra-prj-web")["vra_offer"].Key != "" {
 			t.Fatalf("not moved = %+v", p.Cutover)
+		}
+
+		// A share the import made, taken away by an administrator, isn't
+		// made again.
+		h.json("PUT", "/api/v1/admin/catalog/items/"+rhel+"/entitlements", admin, api.CatalogEntitlements{ProjectIds: []string{"prj_web"}}, 200, nil)
+		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{}, 200, &res)
+		if res.Shared != 0 || !slices.ContainsFunc(item(res.Plan, "bp-rhel9").Notes, func(n api.VraNote) bool { return strings.Contains(n.Text, "taken it away") }) {
+			t.Fatalf("a removed share = %+v %+v", res.Shared, item(res.Plan, "bp-rhel9").Notes)
+		}
+		// A project kept in vRA, though rvav has one of its name.
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web", admin, api.VraProjectMapping{StaysInVra: ptr(true)}, 204, nil)
+		p = plan()
+		if i := slices.IndexFunc(p.Projects, func(x api.VraProjectPlan) bool { return x.VraId == "vra-prj-web" }); p.Projects[i].How != "stays" ||
+			p.Projects[i].RvavProjectId != nil {
+			t.Fatalf("kept in vRA = %+v", p.Projects[i])
+		}
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web", admin, api.VraProjectMapping{StaysInVra: ptr(true), RvavProjectId: ptr("prj_web")}, 422, nil)
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web", admin, api.VraProjectMapping{}, 204, nil)
+
+		// One import at a time.
+		unlock, ok, err := h.store.TryLock(ctx, 0x76726169)
+		if err != nil || !ok {
+			t.Fatalf("lock: %v %v", ok, err)
+		}
+		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{}, 409, nil)
+		unlock()
+
+		// A member's upload isn't read; a file too large is refused.
+		h.json("POST", "/api/v1/admin/vra/snapshots", "tnguyen", e, 403, nil)
+		if code, body, _ := h.do("POST", "/api/v1/admin/vra/snapshots", admin, rawYAML(strings.Repeat(" ", 65<<20)+"{}")); code != 413 {
+			t.Fatalf("too large = %d %s", code, body)
 		}
 
 		// The vRO triage, as Markdown.

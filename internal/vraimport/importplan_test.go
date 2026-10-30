@@ -50,7 +50,7 @@ func TestPlanImport(t *testing.T) {
 	if it := got["bp-app"]; it.Action != ActionConflict || it.RvavItemID != "" || it.Reason == "" {
 		t.Fatalf("app = %+v", it)
 	}
-	if it := got["bp-db"]; it.Action != ActionCreate || !slices.Equal(it.ShareUnmapped, []string{"Data Services"}) {
+	if it := got["bp-db"]; it.Action != ActionCreate || !slices.Equal(it.ShareUnmapped, []string{"Data Services", "Legacy Apps"}) {
 		t.Fatalf("db = %+v", it)
 	}
 	// The Windows item has a draft: the template's change waits.
