@@ -27,34 +27,14 @@ func TestVRATemplates(t *testing.T) {
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
-		const admin = "mkeller"
 		e := vra.SampleEstate(time.Now())
-		imported := map[string]api.CatalogImportResult{}
-		for _, bp := range e.Blueprints {
-			p := vraimport.MapTemplate(&e, bp)
-			if p.Status == vraimport.Skipped {
-				continue
-			}
-			y, err := p.Doc.YAML()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var res api.CatalogImportResult
-			h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(y), 200, &res, "Content-Type", "application/yaml")
-			if !res.Created || len(res.Versions) == 0 {
-				t.Fatalf("%s imported as %+v", bp.Name, res)
-			}
-			imported[bp.ID] = res
-		}
+		imported := importVRAItems(h, &e)
 		if len(imported) != 4 {
 			t.Fatalf("%d items imported, want 4 (the draft template skipped)", len(imported))
 		}
 
 		rhel := imported["bp-rhel9"]
-		draft := rhel.Versions[len(rhel.Versions)-1]
-		h.json("POST", "/api/v1/admin/catalog/items/"+rhel.ItemId+"/versions/"+draft.Id+"/publish", admin, nil, 200, nil)
-		h.json("PUT", "/api/v1/admin/catalog/items/"+rhel.ItemId+"/entitlements", admin,
-			api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		draft := struct{ Id string }{publishVRAItem(h, rhel)}
 		var pv api.RequestPreview
 		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: rhel.ItemId, VersionId: draft.Id,
 			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"size": "medium", "role": "api",
@@ -84,4 +64,38 @@ func TestVRATemplates(t *testing.T) {
 			t.Fatalf("the VM is %s with %d vCPU, %d MB", vm.Name, vm.Config.Hardware.NumCPU, vm.Config.Hardware.MemoryMB)
 		}
 	})
+}
+
+// importVRAItems imports the estate's mapped templates through the
+// catalog's YAML import, as drafts; by template ID.
+func importVRAItems(h *harness, e *vra.Estate) map[string]api.CatalogImportResult {
+	h.t.Helper()
+	imported := map[string]api.CatalogImportResult{}
+	for _, bp := range e.Blueprints {
+		p := vraimport.MapTemplate(e, bp)
+		if p.Status == vraimport.Skipped {
+			continue
+		}
+		y, err := p.Doc.YAML()
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		var res api.CatalogImportResult
+		h.json("POST", "/api/v1/admin/catalog/import", "mkeller", rawYAML(y), 200, &res, "Content-Type", "application/yaml")
+		if !res.Created || len(res.Versions) == 0 {
+			h.t.Fatalf("%s imported as %+v", bp.Name, res)
+		}
+		imported[bp.ID] = res
+	}
+	return imported
+}
+
+// publishVRAItem publishes an imported item's draft for every project.
+func publishVRAItem(h *harness, res api.CatalogImportResult) string {
+	h.t.Helper()
+	draft := res.Versions[len(res.Versions)-1]
+	h.json("POST", "/api/v1/admin/catalog/items/"+res.ItemId+"/versions/"+draft.Id+"/publish", "mkeller", nil, 200, nil)
+	h.json("PUT", "/api/v1/admin/catalog/items/"+res.ItemId+"/entitlements", "mkeller",
+		api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+	return draft.Id
 }

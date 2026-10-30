@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +56,9 @@ Usage:
                            catalog items and sharing, policies, deployments) into JSON
   rvav vra-plan [-f FILE]  what the importer would make of the vRA (or of vra-export's FILE):
                            each cloud template's catalog item and what it couldn't map (JSON)
+  rvav vra-adopt [-f FILE] [-project VRA_ID=RVAV_ID,...] [-apply]
+                           which of vRA's deployments rvav would adopt, and why not (JSON);
+                           -apply adopts them through onboarding
   rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
@@ -285,6 +289,33 @@ func run(ctx context.Context, cmd string, args []string) error {
 		fmt.Printf("%d secret(s) sealed again with key %s; RVAV_SECRETS_OLD_KEYS can be emptied once every process has the new key\n",
 			n, a.Secrets.KeyID())
 		return nil
+	case "vra-adopt":
+		fs := flag.NewFlagSet("vra-adopt", flag.ExitOnError)
+		file := fs.String("f", "", "an estate vra-export wrote (the vRA at RVAV_VRA_URL by default)")
+		projects := fs.String("project", "", "vRA projects mapped to rvav's: VRA_ID=RVAV_ID,... (by name otherwise)")
+		apply := fs.Bool("apply", false, "adopt them; without it, only the plan")
+		_ = fs.Parse(args)
+		e, err := readEstate(ctx, cfg, *file)
+		if err != nil {
+			return err
+		}
+		pm := map[string]string{}
+		for _, kv := range strings.Split(*projects, ",") {
+			if k, v, ok := strings.Cut(kv, "="); ok {
+				pm[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			}
+		}
+		plans, err := a.Core(nil).AdoptVRADeployments(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID},
+			GlobalRoles: []string{"admin"}}, e, pm, *apply)
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(plans, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(append(b, '\n'))
+		return err
 	case "ipam-reconcile":
 		report, err := a.Core(nil).ReconcileIPAM(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID}, GlobalRoles: []string{"admin"}})
 		if err != nil {
