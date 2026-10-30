@@ -3632,7 +3632,7 @@ export interface components {
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
         };
-        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"];
+        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"] | components["schemas"]["SecurityGroupResource"] | components["schemas"]["FirewallRulesResource"] | components["schemas"]["GroupMembershipResource"];
         ResourceBase: {
             id: string;
             type: string;
@@ -4175,6 +4175,70 @@ export interface components {
              * @enum {string}
              */
             type: "nsx.segment";
+        };
+        /** @description An NSX security group made for the deployment (ADR-0028): the VMs carrying its tag, deleted with it. */
+        SecurityGroupResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "nsx.group";
+            group: {
+                /** @description Its NSX ID. */
+                id: string;
+                /** @description The blueprint's key of the group. */
+                key: string;
+                title?: string;
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "nsx.group";
+        };
+        /** @description The NSX security policy of the firewall rules into the deployment's groups (ADR-0028). */
+        FirewallRulesResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "nsx.policy";
+            rules: components["schemas"]["FirewallRule"][];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "nsx.policy";
+        };
+        /** @description A distributed firewall rule into one of the deployment's groups. */
+        FirewallRule: {
+            id: string;
+            /** @description Group IDs, or ANY. */
+            from: string[];
+            /** @description Group IDs. */
+            to: string[];
+            /** @description NSX service IDs, or ANY. */
+            services: string[];
+            /** @enum {string} */
+            action: "ALLOW" | "DROP" | "REJECT";
+        };
+        /** @description The NSX security groups a VM of the deployment is in, by the tags rvav set on it (ADR-0028). */
+        GroupMembershipResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "nsx.membership";
+            membership: {
+                vm: string;
+                groups: components["schemas"]["GroupRef"][];
+                /** @description Tags rvav set that the VM no longer has in NSX (drift): scope|tag. */
+                missing?: string[];
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "nsx.membership";
+        };
+        /** @description An NSX security group, by its ID and name. */
+        GroupRef: {
+            id: string;
+            name: string;
         };
         /** @description The subnet carved from an EfficientIP block for an NSX segment made for the deployment (ADR-0028). */
         SubnetResource: components["schemas"]["ResourceBase"] & {

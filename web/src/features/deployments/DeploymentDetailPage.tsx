@@ -15,6 +15,9 @@ import type {
   DrsRuleResource,
   IpAddressResource,
   SegmentResource,
+  SecurityGroupResource,
+  FirewallRulesResource,
+  GroupMembershipResource,
   VmResource,
 } from "@/lib/api/types";
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
@@ -237,6 +240,64 @@ function Network({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The NSX security groups made for the deployment, the firewall rules into
+ * them, and the groups each VM is in; tags removed in NSX are drift (ADR-0028). */
+function SecurityGroups({
+  groups,
+  policies,
+  members,
+}: {
+  groups: SecurityGroupResource[];
+  policies: FirewallRulesResource[];
+  members: GroupMembershipResource[];
+}) {
+  const rules = policies.flatMap((p) => p.rules);
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      {groups.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {groups.map((g) => (
+            <li key={g.id}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span className="min-w-0 font-mono text-[12px] break-all">{g.group.id}</span>
+                {g.group.title && <span className="text-[11px] text-faint">{g.group.title}</span>}
+              </div>
+              <ul className="mt-0.5 flex flex-col gap-0.5 text-[11px] text-muted">
+                {rules
+                  .filter((r) => r.to.includes(g.group.id))
+                  .map((r) => (
+                    <li key={r.id}>
+                      {r.action === "ALLOW" ? "Allows" : r.action === "DROP" ? "Drops" : "Rejects"}{" "}
+                      {r.services.join(", ")} from {r.from.join(", ")}
+                    </li>
+                  ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ul className="flex flex-col gap-1.5">
+        {members.map((m) => (
+          <li key={m.id}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span className="font-mono text-[12px]">{m.membership.vm}</span>
+              <span className="min-w-0 text-[11px] break-all text-faint">
+                {m.membership.groups.map((g) => g.name).join(", ") || "No group"}
+              </span>
+            </div>
+            {m.sync_state === "drifted" && m.membership.missing && (
+              <p role="status" className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-[11px] text-warn">
+                Tag {m.membership.missing.join(", ")} removed in NSX: the VM is out of a group. Add it to the group
+                again to restore its tags.
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -495,6 +556,9 @@ function Overview({
   const ips = d.resources.filter((r): r is IpAddressResource => r.type === "ipam.address");
   const dns = d.resources.filter((r): r is DnsRecordResource => r.type === "dns.record");
   const segments = d.resources.filter((r): r is SegmentResource => r.type === "nsx.segment");
+  const groups = d.resources.filter((r): r is SecurityGroupResource => r.type === "nsx.group");
+  const policies = d.resources.filter((r): r is FirewallRulesResource => r.type === "nsx.policy");
+  const members = d.resources.filter((r): r is GroupMembershipResource => r.type === "nsx.membership");
   return (
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
@@ -531,6 +595,11 @@ function Overview({
         <Panel title="IP addresses and DNS">
           <Network ips={ips} dns={dns} segments={segments} />
         </Panel>
+        {groups.length + members.length > 0 && (
+          <Panel title="Security groups">
+            <SecurityGroups groups={groups} policies={policies} members={members} />
+          </Panel>
+        )}
         <Panel title="Lease">
           <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />
         </Panel>

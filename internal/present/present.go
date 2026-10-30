@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -372,6 +373,55 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		v.Subnet.Cidr, v.Subnet.Block, v.Subnet.EfficientipId = p.Subnet, p.Block, strPtr(p.ID)
 		err := out.FromSubnetResource(v)
 		return out, err == nil
+	case "nsx.group":
+		var p struct {
+			ID    string `json:"group_id"`
+			Key   string `json:"key"`
+			Title string `json:"title"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		v := api.SecurityGroupResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.group"}
+		v.Group.Id, v.Group.Key, v.Group.Title = p.ID, p.Key, strPtr(p.Title)
+		err := out.FromSecurityGroupResource(v)
+		return out, err == nil
+	case "nsx.policy":
+		var p struct {
+			Rules []nsx.Rule `json:"rules"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		v := api.FirewallRulesResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.policy"}
+		v.Rules = make([]api.FirewallRule, 0, len(p.Rules))
+		for _, x := range p.Rules {
+			v.Rules = append(v.Rules, api.FirewallRule{Id: x.ID, From: nsxNames(x.SourceGroups), To: nsxNames(x.DestinationGroups),
+				Services: nsxNames(x.Services), Action: api.FirewallRuleAction(x.Action)})
+		}
+		err := out.FromFirewallRulesResource(v)
+		return out, err == nil
+	case "nsx.membership":
+		var p struct {
+			VM     string `json:"vm"`
+			Groups []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"groups"`
+			Missing []nsx.Tag `json:"missing"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		v := api.GroupMembershipResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.membership"}
+		v.Membership.Vm = p.VM
+		v.Membership.Groups = []api.GroupRef{}
+		for _, g := range p.Groups {
+			v.Membership.Groups = append(v.Membership.Groups, api.GroupRef{Id: g.ID, Name: g.Name})
+		}
+		if len(p.Missing) > 0 {
+			missing := make([]string, len(p.Missing))
+			for i, t := range p.Missing {
+				missing[i] = t.Scope + "|" + t.Tag
+			}
+			v.Membership.Missing = &missing
+		}
+		err := out.FromGroupMembershipResource(v)
+		return out, err == nil
 	case "vsphere.drs_rule":
 		var v api.DrsRuleResource
 		_ = json.Unmarshal(r.Properties, &v)
@@ -397,4 +447,14 @@ func actionName(r store.RequestRow) string {
 		return plan.Day2.Name
 	}
 	return day2.Name(*r.Action)
+}
+
+// nsxNames are NSX paths as people read them: a group's or service's ID,
+// or ANY.
+func nsxNames(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = p[strings.LastIndex(p, "/")+1:]
+	}
+	return out
 }

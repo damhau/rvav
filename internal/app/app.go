@@ -399,16 +399,24 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
 		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets, VCenters: a.VCenters(),
 		Instance: a.Cfg.IPAM.Instance}
-	// NSX makes deployments' segments (ADR-0028), when rvav has a Manager.
-	if c := a.Cfg.NSX; c.Configured() {
-		client, err := nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile,
-			KeyFile: c.KeyFile, Insecure: c.Insecure})
-		if err != nil {
-			return nil, err
-		}
-		acts.NSX = client
+	// NSX makes deployments' segments and security groups (ADR-0028), when
+	// rvav has a Manager.
+	client, err := a.NSX()
+	if err != nil {
+		return nil, err
 	}
+	acts.NSX = client
 	return acts, nil
+}
+
+// NSX is rvav's NSX Manager; nil when it has none (ADR-0028).
+func (a *App) NSX() (*nsx.Client, error) {
+	c := a.Cfg.NSX
+	if !c.Configured() {
+		return nil, nil
+	}
+	return nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile,
+		KeyFile: c.KeyFile, Insecure: c.Insecure})
 }
 
 // RunWorker runs the Temporal worker until ctx is done.
@@ -497,6 +505,13 @@ func (a *App) RunSync(ctx context.Context) error {
 	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval}
 	go func() { _ = subnets.Run(ctx) }()
 	go func() { _ = a.awxCatalog().Run(ctx) }()
+	// VMs' tags changed in NSX are drift (ADR-0028).
+	if client, err := a.NSX(); err != nil {
+		return err
+	} else if client != nil {
+		tags := &inventory.NSXTagSync{Store: a.Store, NSX: client, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
+		go func() { _ = tags.Run(ctx) }()
+	}
 	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
 	return s.Run(ctx)
 }

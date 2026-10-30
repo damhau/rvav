@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/provision"
 )
 
@@ -554,6 +555,47 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			ResourceId: &vmRes, Inputs: map[string]any{"group": "grp-backup-clients"}}, "Idempotency-Key", uuid.NewString())
 		if code != 409 && code != 422 {
 			t.Fatalf("a group the item doesn't offer = %d %s", code, raw)
+		}
+
+		// Drift: role|web removed in NSX takes the VM out of grp-web-servers.
+		fakeNSX.SetVMTagsDirectly(uuidVM, want[:3])
+		tagSync := &inventory.NSXTagSync{Store: h.store, NSX: client, Events: h.acts.Events, Log: h.acts.Log}
+		if err := tagSync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var depState string
+		_ = h.store.Pool.QueryRow(ctx, `select sync_state from deployments where id = $1`, depID).Scan(&depState)
+		if _, raw, _ := h.do("GET", "/api/v1/deployments/"+depID, "tnguyen", nil); depState != "drifted" ||
+			!strings.Contains(string(raw), `"missing":["role|web"]`) {
+			t.Fatalf("after the tag was removed: %s, %s", depState, raw)
+		}
+		// Joining it again restores the tag.
+		h.json("GET", "/api/v1/deployments/"+depID+"/actions", "tnguyen", nil, 200, &actions)
+		if ok, why := offered("nsx_group_add"); !ok {
+			t.Fatalf("nsx_group_add while drifted: %q", why)
+		}
+		change("nsx_group_add", "grp-web-servers")
+		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want) {
+			t.Fatalf("VM tags restored = %+v", vm.Tags)
+		}
+		if err := tagSync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		_ = h.store.Pool.QueryRow(ctx, `select sync_state from deployments where id = $1`, depID).Scan(&depState)
+		if depState != "in_sync" {
+			t.Fatalf("after joining again: %s", depState)
+		}
+		// The page's resources: the group, its rules, the VM's groups.
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+depID, "tnguyen", nil, 200, &dep)
+		kinds := map[string]bool{}
+		for _, r := range dep.Resources {
+			if d, err := r.Discriminator(); err == nil {
+				kinds[d] = true
+			}
+		}
+		if !kinds["nsx.group"] || !kinds["nsx.policy"] || !kinds["nsx.membership"] {
+			t.Fatalf("deployment resources = %v", kinds)
 		}
 
 		// Deleted with the deployment: the VM out of its groups first, the

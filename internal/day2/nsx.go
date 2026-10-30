@@ -16,32 +16,40 @@ import (
 // groups.
 const membershipType = "nsx.membership"
 
-// nsxGroup is a group as a membership records it.
-type nsxGroup struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+// nsxTag is an NSX tag.
+type nsxTag struct {
+	Scope string `json:"scope,omitempty"`
+	Tag   string `json:"tag"`
 }
 
-// membership is a VM's groups, and those it may join.
-func membership(t Target) (id string, joined, offered []nsxGroup, ok bool) {
+// nsxGroup is a group as a membership records it.
+type nsxGroup struct {
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	Tags []nsxTag `json:"tags"`
+}
+
+// membership is a VM's groups, and those it may join: the offered groups
+// it isn't in, or no longer is since its tags were changed in NSX.
+func membership(t Target) (id string, joined, joinable []nsxGroup, ok bool) {
 	for _, r := range t.Resources {
 		if r.Type == membershipType && r.Name == t.ResourceName {
 			var m struct {
 				Groups  []nsxGroup `json:"groups"`
 				Offered []nsxGroup `json:"offered"`
+				Missing []nsxTag   `json:"missing"`
 			}
 			_ = json.Unmarshal(r.Properties, &m)
-			return r.ID, m.Groups, m.Offered, true
+			for _, g := range m.Offered {
+				i := slices.IndexFunc(m.Groups, func(j nsxGroup) bool { return j.ID == g.ID })
+				if i < 0 || slices.ContainsFunc(m.Groups[i].Tags, func(t nsxTag) bool { return slices.Contains(m.Missing, t) }) {
+					joinable = append(joinable, g)
+				}
+			}
+			return r.ID, m.Groups, joinable, true
 		}
 	}
 	return "", nil, nil, false
-}
-
-// joinable are the offered groups a VM isn't in.
-func joinable(joined, offered []nsxGroup) []nsxGroup {
-	return slices.DeleteFunc(slices.Clone(offered), func(g nsxGroup) bool {
-		return slices.ContainsFunc(joined, func(j nsxGroup) bool { return j.ID == g.ID })
-	})
 }
 
 func groupOptions(groups []nsxGroup) []api.Option {
@@ -65,23 +73,23 @@ func init() {
 	register(&Action{
 		Key: "nsx_group_add", Name: "Add to a security group", Group: GroupConfiguration, Types: []string{vmType},
 		Unavailable: func(t Target, _ Choices) string {
-			_, joined, offered, ok := membership(t)
+			_, _, joinable, ok := membership(t)
 			switch {
 			case !ok:
 				return "The VM isn't in NSX security groups."
-			case len(joinable(joined, offered)) == 0:
+			case len(joinable) == 0:
 				return "The VM is in every security group its item offers."
 			}
 			return ""
 		},
 		Form: func(t Target, _ Choices) *api.ActionForm {
-			_, joined, offered, _ := membership(t)
-			return form("Security group", choice("group", "Group", groupOptions(joinable(joined, offered)), ""))
+			_, _, joinable, _ := membership(t)
+			return form("Security group", choice("group", "Group", groupOptions(joinable), ""))
 		},
 		Ops: func(t Target, in map[string]any) []Op {
-			id, _, offered, _ := membership(t)
+			id, _, joinable, _ := membership(t)
 			group := strInput(in, "group")
-			return []Op{{Key: "nsx.group_add", Title: "Add " + t.ResourceName + " to NSX group " + groupName(offered, group),
+			return []Op{{Key: "nsx.group_add", Title: "Add " + t.ResourceName + " to NSX group " + groupName(joinable, group),
 				System: "nsx", Op: "nsx_join", Args: map[string]any{"membership": id, "group": group}}}
 		},
 	})

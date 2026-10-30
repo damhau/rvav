@@ -54,6 +54,19 @@ With an NSX Manager set in **Integrations**
   Each request makes its segment before its VMs, and deleting the
   deployment deletes it after them, with its subnet. rvav only ever
   deletes segments it made: they carry its tag.
+- **Security groups:** an item can put its VMs in groups made for each
+  deployment (`security_groups`, with the firewall rules into them), and
+  in existing groups that select VMs by tag (`groups: [nsx:<ID>]`).
+  - rvav makes the groups and a security policy of their rules before the
+    VMs, and tags each VM once NSX sees it. A deployment's groups hold the
+    VMs with its tag; an existing group is joined by the tags its
+    conditions select.
+  - Deleting the deployment takes the VMs out first, then deletes the
+    rules and the groups. Existing groups are never changed.
+  - Day-2 actions add a VM to a group its item offers, or remove it:
+    who may is up to the **Day-2** policies (`nsx_group_add`,
+    `nsx_group_remove`).
+  - A tag removed in NSX shows the deployment as changed outside rvav.
 
 ## Policies
 

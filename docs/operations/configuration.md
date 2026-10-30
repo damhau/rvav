@@ -68,7 +68,7 @@ Traces use OpenTelemetry's standard variables, read by every process:
 | `RVAV_CONSOLE_VCENTER_USERNAME` | none | | An account that may only open consoles: VMRC links carry a clone ticket of it (ADR-0012). |
 | `RVAV_CONSOLE_VCENTER_PASSWORD` | none | yes | Its password. |
 | `RVAV_WMKS_SDK_URLS` | none | | The WebMKS SDK's scripts, which turn on the console in the browser. |
-| `RVAV_SYNC_INTERVAL` | `2m` | | The time between full reads of the inventory; changes come in between from vCenter's notifications. |
+| `RVAV_SYNC_INTERVAL` | `2m` | | The time between full reads of the inventory; changes come in between from vCenter's notifications. VMs' tags in NSX are compared as often. |
 
 ## EfficientIP SOLIDserver
 

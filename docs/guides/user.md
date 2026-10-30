@@ -74,6 +74,10 @@ their own steps:
   - add or extend a disk;
   - add, move or remove a network adapter;
   - mount or unmount an ISO.
+- **NSX security groups:** add the VM to a group its item offers, or
+  remove it from one. A deployment's page shows its groups, the firewall
+  rules into them, and a VM taken out of a group in NSX; adding it again
+  puts it back.
 - **Rename, extend the lease.**
 - **Ownership:** hand over to someone else, or move to another project.
 - **The AWX actions your organisation offers** (install an agent, and so

@@ -5077,6 +5077,9 @@ components:
         - $ref: "#/components/schemas/DrsRuleResource"
         - $ref: "#/components/schemas/SegmentResource"
         - $ref: "#/components/schemas/SubnetResource"
+        - $ref: "#/components/schemas/SecurityGroupResource"
+        - $ref: "#/components/schemas/FirewallRulesResource"
+        - $ref: "#/components/schemas/GroupMembershipResource"
       discriminator:
         propertyName: type
         mapping:
@@ -5086,6 +5089,9 @@ components:
           vsphere.drs_rule: "#/components/schemas/DrsRuleResource"
           nsx.segment: "#/components/schemas/SegmentResource"
           ipam.subnet: "#/components/schemas/SubnetResource"
+          nsx.group: "#/components/schemas/SecurityGroupResource"
+          nsx.policy: "#/components/schemas/FirewallRulesResource"
+          nsx.membership: "#/components/schemas/GroupMembershipResource"
 
     ResourceBase:
       type: object
@@ -5703,6 +5709,69 @@ components:
                 tier1: { type: string }
                 subnet: { type: string }
                 gateway: { type: string }
+    SecurityGroupResource:
+      description: "An NSX security group made for the deployment (ADR-0028): the VMs carrying its tag, deleted with it."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, group]
+          properties:
+            type: { const: nsx.group }
+            group:
+              type: object
+              required: [id, key]
+              properties:
+                id: { type: string, description: Its NSX ID. }
+                key: { type: string, description: The blueprint's key of the group. }
+                title: { type: string }
+    FirewallRulesResource:
+      description: "The NSX security policy of the firewall rules into the deployment's groups (ADR-0028)."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, rules]
+          properties:
+            type: { const: nsx.policy }
+            rules:
+              type: array
+              items: { $ref: "#/components/schemas/FirewallRule" }
+    FirewallRule:
+      description: A distributed firewall rule into one of the deployment's groups.
+      type: object
+      required: [id, from, to, services, action]
+      properties:
+        id: { type: string }
+        from: { type: array, items: { type: string }, description: "Group IDs, or ANY." }
+        to: { type: array, items: { type: string }, description: Group IDs. }
+        services: { type: array, items: { type: string }, description: "NSX service IDs, or ANY." }
+        action: { type: string, enum: [ALLOW, DROP, REJECT] }
+    GroupMembershipResource:
+      description: "The NSX security groups a VM of the deployment is in, by the tags rvav set on it (ADR-0028)."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, membership]
+          properties:
+            type: { const: nsx.membership }
+            membership:
+              type: object
+              required: [vm, groups]
+              properties:
+                vm: { type: string }
+                groups:
+                  type: array
+                  items: { $ref: "#/components/schemas/GroupRef" }
+                missing:
+                  type: array
+                  description: "Tags rvav set that the VM no longer has in NSX (drift): scope|tag."
+                  items: { type: string }
+    GroupRef:
+      description: An NSX security group, by its ID and name.
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
     SubnetResource:
       description: "The subnet carved from an EfficientIP block for an NSX segment made for the deployment (ADR-0028)."
       allOf:

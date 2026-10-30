@@ -116,6 +116,8 @@ const (
 	LockSubnetSync int64 = 0x7276_6176_0003
 	// LockMigrate keeps one migration at a time (S14.2).
 	LockMigrate int64 = 0x7276_6176_0004
+	// LockNSXSync keeps one NSX tag sync at a time (ADR-0028).
+	LockNSXSync int64 = 0x7276_6176_0005
 )
 
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever

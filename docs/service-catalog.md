@@ -58,11 +58,13 @@ values.
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. Only the first adapter, and not in composite items yet |
+| `security_groups` | NSX groups made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to eight: `key`, `title`, and the firewall `rules` into each: `from` (`any`, another group's key, or `nsx:<group ID>`), `services` (NSX service IDs, or `any`), `action` (`allow`, the default, `drop`, `reject`) |
+| `groups` | The NSX groups the VMs are in: keys of `security_groups`, or existing groups that select VMs by tag, as `nsx:<group ID>`; a component may name its own |
 | `tags` | vSphere tags, `category/tag` |
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, which win over the blueprint's (guest field by field, bindings key by key) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `groups`, which win over the blueprint's (guest field by field, bindings key by key) |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for

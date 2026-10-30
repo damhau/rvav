@@ -181,6 +181,12 @@ func (s *Store) GetResource(ctx context.Context, id string) (Resource, error) {
 	return r, notFound(err)
 }
 
+// ResourcesOfType lists every deployment's resources of a type.
+func (s *Store) ResourcesOfType(ctx context.Context, typ string) ([]Resource, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+resourceCols+` from resources where type = $1 order by id`, typ)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])
+}
+
 func (s *Store) ListResources(ctx context.Context, deploymentID string) ([]Resource, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+resourceCols+` from resources where deployment_id = $1
 		order by case type when 'vsphere.vm' then 0 when 'ipam.address' then 1 else 2 end, name, id`, deploymentID)

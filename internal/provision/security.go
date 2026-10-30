@@ -167,9 +167,11 @@ func (a *Activities) changeGroups(ctx context.Context, in OpInput) (string, stri
 	switch {
 	case join && has(m.Offered) < 0:
 		return "", "", permanent("The VM's item doesn't offer NSX group %s.", id)
-	case join && has(m.Groups) >= 0, !join && has(m.Groups) < 0:
+	case !join && has(m.Groups) < 0:
 		return "", "", nil // already so
 	}
+	// Joining a group the VM is in sets its tags again: they were changed
+	// in NSX.
 	vm, err := a.NSX.VM(ctx, m.InstanceUUID)
 	if errors.Is(err, nsx.ErrNotFound) {
 		return "", "", permanent("NSX no longer has VM %s.", m.VM)
@@ -177,10 +179,13 @@ func (a *Activities) changeGroups(ctx context.Context, in OpInput) (string, stri
 		return "", "", fmt.Errorf("NSX: %w", err)
 	}
 	var g VMGroup
-	if join {
+	switch {
+	case join && has(m.Groups) >= 0:
+		g = m.Groups[has(m.Groups)]
+	case join:
 		g = m.Offered[has(m.Offered)]
 		m.Groups = append(m.Groups, g)
-	} else {
+	default:
 		g = m.Groups[has(m.Groups)]
 		m.Groups = slices.Delete(m.Groups, has(m.Groups), has(m.Groups)+1)
 	}
@@ -265,7 +270,10 @@ func (a *Activities) recordMembership(ctx context.Context, requestID, projectID,
 	if err != nil {
 		return err
 	}
+	// As rvav left it: no longer drifted.
+	_ = a.Store.RefreshDeploymentSyncState(ctx, a.Store.Pool, deploymentID)
 	a.Events.Resource(ctx, projectID, res)
+	a.Events.Deployment(ctx, deploymentID)
 	return nil
 }
 
