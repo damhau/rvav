@@ -59,6 +59,18 @@ var Fields = map[string][]Field{
 		{"key_file", "RVAV_NSX_KEY_FILE", "string", false},
 		{"insecure", "RVAV_NSX_INSECURE", "bool", false},
 	},
+	// The catalog's repository (ADR-0029): a token over HTTPS, or a deploy
+	// key (its private key) over SSH, with the server's host keys.
+	"git": {
+		{"url", "RVAV_GIT_URL", "string", false},
+		{"branch", "RVAV_GIT_BRANCH", "string", false},
+		{"dir", "RVAV_GIT_DIR", "string", false},
+		{"username", "RVAV_GIT_USERNAME", "string", false},
+		{"credential", "RVAV_GIT_CREDENTIAL", "string", true},
+		{"known_hosts", "RVAV_GIT_KNOWN_HOSTS", "string", false},
+		{"insecure", "RVAV_GIT_INSECURE", "bool", false},
+		{"committer", "RVAV_GIT_COMMITTER", "string", false},
+	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
 		{"port", "RVAV_SMTP_PORT", "int", false},
@@ -186,6 +198,15 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("cert_file", &c.NSX.CertFile)
 		str("key_file", &c.NSX.KeyFile)
 		flag("insecure", &c.NSX.Insecure)
+	case "git":
+		str("url", &c.Git.URL)
+		str("branch", &c.Git.Branch)
+		str("dir", &c.Git.Dir)
+		str("username", &c.Git.Username)
+		secret("credential", &c.Git.Credential)
+		str("known_hosts", &c.Git.KnownHosts)
+		flag("insecure", &c.Git.Insecure)
+		str("committer", &c.Git.Committer)
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -229,6 +250,9 @@ func (c Config) Settings(kind string) map[string]any {
 	case "nsx":
 		return map[string]any{"url": c.NSX.URL, "username": c.NSX.Username, "cert_file": c.NSX.CertFile, "key_file": c.NSX.KeyFile,
 			"insecure": c.NSX.Insecure}
+	case "git":
+		return map[string]any{"url": c.Git.URL, "branch": c.Git.Branch, "dir": c.Git.Dir, "username": c.Git.Username,
+			"known_hosts": c.Git.KnownHosts, "insecure": c.Git.Insecure, "committer": c.Git.Committer}
 	case "smtp":
 		return map[string]any{"host": c.SMTP.Host, "port": c.SMTP.Port, "tls": c.SMTP.TLS, "from": c.SMTP.From,
 			"username": c.SMTP.Username}
@@ -251,6 +275,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.IPAM.Password != ""
 	case "nsx":
 		return c.NSX.Password != ""
+	case "git":
+		return c.Git.Credential != ""
 	case "smtp":
 		return c.SMTP.Password != ""
 	case "teams":
@@ -293,6 +319,9 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 	}
 	for _, key := range []string{"url", "service_url"} {
+		if kind == "git" {
+			break // an SSH URL too: gitrepo.CheckURL
+		}
 		if u, ok := settings[key].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			errs[key] = "An http or https URL."
 		}

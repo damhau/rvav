@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -13,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/gitrepo"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/notify"
@@ -26,7 +28,7 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip", "nsx", "smtp", "teams", "slack"}
+var integrationKinds = []string{"vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -140,7 +142,14 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		}
 	}
 	var errs []api.FieldError
-	for field, msg := range config.CheckSettings(kind, settings) {
+	bad := config.CheckSettings(kind, settings)
+	if u, ok := settings["url"].(string); ok && u != "" && kind == "git" {
+		if err := gitrepo.CheckURL(u); err != nil {
+			msg := err.Error()
+			bad["url"] = strings.ToUpper(msg[:1]) + msg[1:] + "."
+		}
+	}
+	for field, msg := range bad {
 		errs = append(errs, fieldErr("/settings/"+field, "invalid", msg))
 	}
 	if len(errs) > 0 {
@@ -272,6 +281,8 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		s.testEfficientIP(ctx, cfg.IPAM, check)
 	case "nsx":
 		s.testNSX(ctx, cfg.NSX, check)
+	case "git":
+		testGit(ctx, cfg.Git, check)
 	case "smtp":
 		if cfg.SMTP.Host == "" {
 			check("Mail server", errors.New("no SMTP host is set"), "")
@@ -418,6 +429,34 @@ func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfi
 	}
 	zones, err := client.Zones(ctx)
 	check("DNS", err, fmt.Sprintf("%d forward zones on %s.", len(zones), c.DNSServer))
+}
+
+// GitRepo is the catalog's repository as configured (ADR-0029), its clone
+// kept under cache.
+func GitRepo(c config.GitConfig, cache string) (*gitrepo.Repo, error) {
+	return gitrepo.New(gitrepo.Options{URL: c.URL, Branch: c.Branch, Dir: c.Dir, Username: c.Username, Credential: c.Credential,
+		KnownHosts: c.KnownHosts, Insecure: c.Insecure, Committer: gitrepo.Person{Name: "rvav", Email: c.Committer}, Cache: cache})
+}
+
+// testGit signs in to the catalog's repository and reads its branch.
+func testGit(ctx context.Context, c config.GitConfig, check checkFunc) {
+	if c.URL == "" {
+		check("Settings", errors.New("give the repository's URL"), "")
+		return
+	}
+	repo, err := GitRepo(c, "")
+	if !check("Settings", err, "A repository on "+gitrepo.Scheme(c.URL)+".") {
+		return
+	}
+	head, err := repo.Check(ctx)
+	if !check("Sign in", err, "Signed in to "+c.URL+".") {
+		return
+	}
+	if head == "" {
+		check("Branch "+repo.Branch(), nil, "Empty: rvav's first commit makes it.")
+		return
+	}
+	check("Branch "+repo.Branch(), nil, "At "+head[:12]+"; items are files in "+repo.Dir()+"/.")
 }
 
 // nsx is a client of the NSX Manager rvav is configured with.

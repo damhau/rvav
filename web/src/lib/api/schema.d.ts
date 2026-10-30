@@ -4979,7 +4979,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "vcenter" | "awx" | "efficientip" | "nsx" | "smtp" | "teams" | "slack";
+        IntegrationKind: "vcenter" | "awx" | "efficientip" | "nsx" | "git" | "smtp" | "teams" | "slack";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
@@ -4987,6 +4987,9 @@ export interface components {
              * @description vcenter: url, username, insecure, name. awx: url, organization,
              *     catalog_labels, action_labels, inventory_source_id, insecure.
              *     efficientip: url, username, dns_server, instance_id, insecure.
+             *     git: url, branch, dir, username, known_hosts, insecure, committer
+             *     (the secret: an HTTPS token, or an SSH deploy key's private key;
+             *     ADR-0029).
              *     nsx: url, username, cert_file, key_file, insecure (the secret:
              *     the user's password; ADR-0028).
              *     smtp: host, port, tls (starttls, tls, none), from, username.

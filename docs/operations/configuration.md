@@ -139,6 +139,28 @@ deployments fails.
 `rvav fake-nsx` serves a fake NSX Manager for development: the compose
 stack runs one as `nsx`.
 
+## Git (the catalog in a repository)
+
+The repository the catalog is kept in, one YAML file per item
+([ADR-0029](../adr/0029-catalog-in-git.md)): rvav commits what it
+publishes, and makes drafts of what changes in the repository. Also set
+from Administration › Integrations. rvav needs to read the branch and push
+to it, never to force a push.
+
+| Setting | Default | Secret | What |
+|---|---|---|---|
+| `RVAV_GIT_URL` | none | | The repository: `https://git.corp.example/infra/catalog.git`, or `ssh://git@git.corp.example/infra/catalog.git` (`git@git.corp.example:infra/catalog.git` too). |
+| `RVAV_GIT_BRANCH` | `main` | | The branch rvav reads and commits to. A protected branch must let rvav's account push. |
+| `RVAV_GIT_DIR` | `catalog` | | The directory of item files in the repository: `<slug>.yaml`. |
+| `RVAV_GIT_USERNAME` | `rvav` (HTTPS), `git` (SSH) | | The user name to sign in with: some servers want a fixed one with a token (GitLab: anything; Bitbucket: `x-token-auth`). |
+| `RVAV_GIT_CREDENTIAL` | none | yes | HTTPS: a token that may read and write the repository (a project access token, a fine-grained token). SSH: a deploy key with write access, its private key in PEM (no passphrase). |
+| `RVAV_GIT_KNOWN_HOSTS` | none | | SSH: the server's host keys, `known_hosts` lines (`ssh-keyscan git.corp.example`). Required over SSH unless `RVAV_GIT_INSECURE`. |
+| `RVAV_GIT_INSECURE` | off | | Doesn't check the certificate (HTTPS) or the host key (SSH). For labs only. |
+| `RVAV_GIT_COMMITTER` | `rvav@localhost` | | The address of rvav's commits. Their author is the administrator who published. |
+| `RVAV_GIT_SYNC_INTERVAL` | `5m` | | How often the repository is read. |
+| `RVAV_GIT_WEBHOOK_SECRET` | none | yes | The secret the Git server's webhook signs its calls with: the repository is read as soon as it changes. |
+| `RVAV_GIT_CACHE` | the system's temporary directory | | Where the worker keeps its clone. It is made again when missing. |
+
 ## vRA (the importer)
 
 What the importer reads (P2, [ADR-0027](../adr/0027-vra-importer.md)). It

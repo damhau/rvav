@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ type Config struct {
 	// NSX is the NSX Manager rvav makes networks and security groups in
 	// (ADR-0028).
 	NSX NSXConfig
+	// Git is the repository the catalog is kept in (ADR-0029).
+	Git GitConfig
 	// Notification channels (ADR-0023).
 	SMTP  SMTPConfig
 	Teams TeamsConfig
@@ -128,6 +131,28 @@ type NSXConfig struct {
 
 // Configured says whether rvav has an NSX Manager.
 func (c NSXConfig) Configured() bool { return c.URL != "" }
+
+// GitConfig: the repository the catalog is kept in (ADR-0029), and how rvav
+// signs in: a token over HTTPS, or a deploy key over SSH (Credential).
+type GitConfig struct {
+	URL        string
+	Branch     string
+	Dir        string
+	Username   string
+	Credential string
+	KnownHosts string
+	Insecure   bool
+	// Committer is the address of rvav's commits; WebhookSecret checks the
+	// Git server's calls; Interval is how often the repository is read;
+	// Cache is where the clone is kept.
+	Committer     string
+	WebhookSecret string
+	Interval      time.Duration
+	Cache         string
+}
+
+// Configured says whether rvav keeps the catalog in Git.
+func (c GitConfig) Configured() bool { return c.URL != "" }
 
 type EfficientIPConfig struct {
 	Fake bool
@@ -280,6 +305,18 @@ func Load() (Config, error) {
 			KeyFile:  env("RVAV_NSX_KEY_FILE", ""),
 			Insecure: boolean("RVAV_NSX_INSECURE"),
 		},
+		Git: GitConfig{
+			URL:           env("RVAV_GIT_URL", ""),
+			Branch:        env("RVAV_GIT_BRANCH", "main"),
+			Dir:           env("RVAV_GIT_DIR", "catalog"),
+			Username:      env("RVAV_GIT_USERNAME", ""),
+			Credential:    env("RVAV_GIT_CREDENTIAL", ""),
+			KnownHosts:    env("RVAV_GIT_KNOWN_HOSTS", ""),
+			Insecure:      boolean("RVAV_GIT_INSECURE"),
+			Committer:     env("RVAV_GIT_COMMITTER", "rvav@localhost"),
+			WebhookSecret: env("RVAV_GIT_WEBHOOK_SECRET", ""),
+			Cache:         env("RVAV_GIT_CACHE", filepath.Join(os.TempDir(), "rvav-git")),
+		},
 		VRA: VRAConfig{
 			URL:      env("RVAV_VRA_URL", ""),
 			Token:    env("RVAV_VRA_TOKEN", ""),
@@ -320,6 +357,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.IPAMSyncInterval, err = duration("RVAV_IPAM_SYNC_INTERVAL", 5*time.Minute); err != nil {
+		return c, err
+	}
+	if c.Git.Interval, err = duration("RVAV_GIT_SYNC_INTERVAL", 5*time.Minute); err != nil {
 		return c, err
 	}
 	if c.IPAM.FakeLatency, err = duration("RVAV_FAKE_EFFICIENTIP_LATENCY", 0); err != nil {

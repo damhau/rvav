@@ -1,4 +1,4 @@
-// vCenter, AWX, EfficientIP and NSX settings (S9, ADR-0020, ADR-0028): saved from the UI,
+// vCenter, AWX, EfficientIP, NSX and Git settings (S9, ADR-0020, ADR-0028, ADR-0029): saved from the UI,
 // an environment variable winning and locking its field; the password or
 // token is write-only; saved settings apply when rvav's processes restart.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,7 @@ import { Panel } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -27,6 +27,8 @@ interface Setting {
   env: string;
   type: "string" | "bool" | "int" | "list";
   hint?: string;
+  // Several lines: a private key, known_hosts lines.
+  multiline?: boolean;
 }
 
 // The settings of each integration, as the server's config.Fields; Slack
@@ -114,6 +116,53 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
       },
       { name: "key_file", label: "Key file", env: "RVAV_NSX_KEY_FILE", type: "string" },
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_NSX_INSECURE", type: "bool" },
+    ],
+  },
+  // The catalog's repository (ADR-0029): a token over HTTPS, or a deploy
+  // key over SSH with the server's host keys.
+  git: {
+    title: "Git",
+    secret: {
+      name: "credential",
+      label: "Token or deploy key",
+      env: "RVAV_GIT_CREDENTIAL",
+      type: "string",
+      multiline: true,
+      hint: "HTTPS: a token. SSH: the deploy key's private key (PEM)",
+    },
+    settings: [
+      {
+        name: "url",
+        label: "Repository",
+        env: "RVAV_GIT_URL",
+        type: "string",
+        hint: "https://git.corp.example/infra/catalog.git or git@git.corp.example:infra/catalog.git",
+      },
+      { name: "branch", label: "Branch", env: "RVAV_GIT_BRANCH", type: "string" },
+      { name: "dir", label: "Directory", env: "RVAV_GIT_DIR", type: "string", hint: "One file per item in it" },
+      {
+        name: "username",
+        label: "User",
+        env: "RVAV_GIT_USERNAME",
+        type: "string",
+        hint: "HTTPS: as the server wants it with a token",
+      },
+      {
+        name: "committer",
+        label: "Committer address",
+        env: "RVAV_GIT_COMMITTER",
+        type: "string",
+        hint: "rvav's commits; the author is the administrator",
+      },
+      {
+        name: "known_hosts",
+        label: "SSH host keys",
+        env: "RVAV_GIT_KNOWN_HOSTS",
+        type: "string",
+        multiline: true,
+        hint: "known_hosts lines, from ssh-keyscan",
+      },
+      { name: "insecure", label: "Skip TLS or host key verification", env: "RVAV_GIT_INSECURE", type: "bool" },
     ],
   },
   // Notification channels (S11, ADR-0023).
@@ -270,6 +319,20 @@ function Integration({ it }: { it: S["Integration"] }) {
                   {locked && <span className="text-xs text-faint">{lockedHint(f)}</span>}
                 </div>
               );
+            if (f.multiline)
+              return (
+                <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
+                  <Textarea
+                    id={id}
+                    rows={3}
+                    spellCheck={false}
+                    className="font-mono text-xs"
+                    disabled={locked}
+                    value={String(values[f.name] ?? "")}
+                    onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                  />
+                </Field>
+              );
             return (
               <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
                 <Input
@@ -288,18 +351,35 @@ function Integration({ it }: { it: S["Integration"] }) {
             htmlFor={`${it.kind}-secret`}
             error={errors["/secret"]}
             hint={
-              secretLocked ? lockedHint(def.secret) : it.secret_set ? "Set; type a new one to replace it" : "Not set"
+              secretLocked
+                ? lockedHint(def.secret)
+                : `${it.secret_set ? "Set; type a new one to replace it" : "Not set"}${def.secret.hint ? `. ${def.secret.hint}` : ""}`
             }
           >
-            <Input
-              id={`${it.kind}-secret`}
-              type="password"
-              autoComplete="new-password"
-              disabled={secretLocked}
-              placeholder={it.secret_set ? "••••••••" : undefined}
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-            />
+            {def.secret.multiline ? (
+              // A key keeps its lines; it is shown while typed, never after.
+              <Textarea
+                id={`${it.kind}-secret`}
+                rows={3}
+                spellCheck={false}
+                autoComplete="off"
+                className="font-mono text-xs"
+                disabled={secretLocked}
+                placeholder={it.secret_set ? "••••••••" : undefined}
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+              />
+            ) : (
+              <Input
+                id={`${it.kind}-secret`}
+                type="password"
+                autoComplete="new-password"
+                disabled={secretLocked}
+                placeholder={it.secret_set ? "••••••••" : undefined}
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+              />
+            )}
           </Field>
           {def.signing && (
             <Field

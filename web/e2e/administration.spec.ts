@@ -274,6 +274,34 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await expect(page.getByRole("button", { name: "Run the check" })).toBeVisible();
 });
 
+test("the catalog's Git repository: an SSH deploy key keeps its lines, and the test reads the branch (C1.1)", async ({
+  page,
+}) => {
+  await open(page, "Integrations", "Integrations");
+  await page.getByRole("tab", { name: "Git" }).click();
+  const git = page.getByRole("region", { name: "Git connection" });
+  await expect(git.getByRole("textbox", { name: "Branch" })).toHaveValue("main");
+  await expect(git.getByRole("textbox", { name: "Directory" })).toHaveValue("catalog");
+  await git.getByRole("textbox", { name: "Repository" }).fill("git@git.corp.example:infra/catalog.git");
+  const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----";
+  await git.getByRole("textbox", { name: "Token or deploy key" }).fill(key);
+  await git
+    .getByRole("textbox", { name: "SSH host keys" })
+    .fill("git.corp.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA");
+  await git.getByRole("button", { name: "Test connection" }).click();
+  await expect(page.getByRole("region", { name: "Git test" })).toContainText("items are files in catalog/");
+  const put = page.waitForRequest((r) => r.method() === "PUT" && r.url().endsWith("/admin/integrations/git"));
+  await git.getByRole("button", { name: "Save settings" }).click();
+  const sent = (await put).postDataJSON() as { secret?: string; settings: Record<string, unknown> };
+  expect(sent.secret).toBe(key);
+  expect(sent.settings.url).toBe("git@git.corp.example:infra/catalog.git");
+  await expect(page.getByText("Git settings saved")).toBeVisible();
+  await expect(git.getByRole("textbox", { name: "Token or deploy key" })).toHaveValue("");
+  await git.getByRole("textbox", { name: "Repository" }).fill("/srv/git/catalog");
+  await git.getByRole("button", { name: "Save settings" }).click();
+  await expect(git.getByText("An https:// or ssh:// URL, or git@host:path.")).toBeVisible();
+});
+
 test("what a project admin and an auditor see", async ({ page }) => {
   // A project admin of Web Platform, not an administrator.
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));

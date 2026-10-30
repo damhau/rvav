@@ -185,6 +185,7 @@ function state(db: Db): AdminState {
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
       efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false }, secret: true },
       nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false }, secret: true },
+      git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example" }, secret: false },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea" }, secret: false },
       slack: { settings: {}, secret: false, signing: false },
@@ -1062,7 +1063,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
       return HttpResponse.json({
-        items: (["vcenter", "awx", "efficientip", "nsx", "smtp", "teams", "slack"] as const).map((kind) => {
+        items: (["vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"] as const).map((kind) => {
           const it = st().integrations[kind]!;
           return {
             kind,
@@ -1085,8 +1086,17 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const kind = String(params.kind);
       const w = (await request.json()) as S["IntegrationWrite"];
       const url = w.settings.url;
-      if (typeof url === "string" && url && !/^https?:\/\//.test(url))
-        return invalid([err("/settings/url", "An http or https URL.")]);
+      if (
+        typeof url === "string" &&
+        url &&
+        !(kind === "git" ? /^(https?:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:)/ : /^https?:\/\//).test(url)
+      )
+        return invalid([
+          err(
+            "/settings/url",
+            kind === "git" ? "An https:// or ssh:// URL, or git@host:path." : "An http or https URL.",
+          ),
+        ]);
       const it = st().integrations[kind]!;
       const locked = kind === "vcenter" ? ["url"] : [];
       const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
@@ -1132,6 +1142,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           message: reachable ? `Signed in to ${url}.` : `dial tcp: lookup ${url}: no such host`,
         },
       ];
+      if (reachable && kind === "git")
+        checks.push({ name: "Branch main", ok: true, message: "At 3f9c2a1b7d40; items are files in catalog/." });
       if (reachable && kind === "vcenter") {
         checks.push({ name: "Inventory", ok: true, message: "4 clusters, 6 datastores, 4 networks and 3 templates." });
         checks.push({ name: "Tagging service", ok: true, message: "Tags can be read, for placement by tag." });
