@@ -50,6 +50,8 @@ type Lease struct {
 type Resource struct {
 	ID, Type, Name string
 	VM             api.VmProperties
+	// Properties are what rvav recorded of it.
+	Properties json.RawMessage
 }
 
 // DeploymentType is the target type of actions on a whole deployment.

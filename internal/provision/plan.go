@@ -273,6 +273,9 @@ type VMUnit struct {
 	// NSXGroups are the NSX security groups it joins, by the tags it is
 	// given once NSX sees it (ADR-0028).
 	NSXGroups []VMGroup `json:"nsx_groups,omitempty"`
+	// NSXOffered are the groups it may join by a day-2 action: its
+	// deployment's, and the existing groups its item's VMs join.
+	NSXOffered []VMGroup `json:"nsx_offered,omitempty"`
 }
 
 // VMGroup is an NSX group a VM joins: one made for its deployment (Key),

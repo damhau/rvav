@@ -59,8 +59,13 @@ func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
 		if r.Type == "vsphere.vm" {
 			t.VM, t.Drift = day2.VM(r.Properties), day2.DriftOf(r.SyncState, r.Properties)
 		}
-		dep.Resources = append(dep.Resources, day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, VM: t.VM})
+		dep.Resources = append(dep.Resources, day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, VM: t.VM, Properties: r.Properties})
 		out = append(out, t)
+	}
+	// A VM's actions see its deployment's other resources too: its NSX
+	// groups (ADR-0028).
+	for i := range out {
+		out[i].Resources = dep.Resources
 	}
 	return append([]day2.Target{dep}, out...)
 }

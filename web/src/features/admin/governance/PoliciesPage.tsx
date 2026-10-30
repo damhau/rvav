@@ -36,7 +36,7 @@ type S = components["schemas"];
 const day2Actions = [
   "power_on", "power_off", "shutdown_guest", "restart_guest", "reset", "console", "resize", "disk_add", "disk_extend",
   "nic_add", "nic_move", "nic_remove", "iso_mount", "iso_unmount", "snapshot_create", "snapshot_revert", "snapshot_delete",
-  "rename", "change_owner", "change_project", "extend_lease", "delete",
+  "nsx_group_add", "nsx_group_remove", "rename", "change_owner", "change_project", "extend_lease", "delete",
 ]; // prettier-ignore
 
 const list = (s: string) =>

@@ -31,6 +31,9 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 		in.Moref, in.ResourceID = m, argStr(in.Op.Args, "resource")
 	}
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Op.Key, func() (string, string, error) {
+		if in.Op.Op == "nsx_join" || in.Op.Op == "nsx_leave" {
+			return a.changeGroups(ctx, in)
+		}
 		detail, err := a.op(ctx, in)
 		if err != nil {
 			var refused *vsphere.Refused

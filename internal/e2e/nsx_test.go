@@ -513,6 +513,49 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 			}
 		}
 
+		// Day-2: out of grp-web-servers, and back in; only the groups its
+		// item offers.
+		var vmRes string
+		_ = h.store.Pool.QueryRow(ctx, `select id from resources where deployment_id = $1 and type = 'vsphere.vm'`, depID).Scan(&vmRes)
+		var actions struct{ Items []api.Day2Action }
+		h.json("GET", "/api/v1/deployments/"+depID+"/actions", "tnguyen", nil, 200, &actions)
+		offered := func(key string) (bool, string) {
+			for _, a := range actions.Items {
+				if a.Key == key && deref(a.ResourceId) == vmRes {
+					return a.Enabled, deref(a.DisabledReason)
+				}
+			}
+			return false, "not listed"
+		}
+		if ok, why := offered("nsx_group_add"); ok || why != "The VM is in every security group its item offers." {
+			t.Fatalf("nsx_group_add: %v %q", ok, why)
+		}
+		change := func(action, group string) {
+			t.Helper()
+			var r api.Request
+			h.json("POST", "/api/v1/deployments/"+depID+"/actions", "tnguyen", api.Day2Draft{Action: action, ResourceId: &vmRes,
+				Inputs: map[string]any{"group": group}}, 202, &r, "Idempotency-Key", uuid.NewString())
+			h.runWorkflow(r.Id, nil)
+			h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
+		}
+		change("nsx_group_remove", "grp-web-servers")
+		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want[:3]) {
+			t.Fatalf("VM tags out of grp-web-servers = %+v", vm.Tags)
+		}
+		h.json("GET", "/api/v1/deployments/"+depID+"/actions", "tnguyen", nil, 200, &actions)
+		if ok, why := offered("nsx_group_add"); !ok {
+			t.Fatalf("nsx_group_add: %q", why)
+		}
+		change("nsx_group_add", "grp-web-servers")
+		if vm, _ := fakeNSX.VM(uuidVM); !slices.Equal(vm.Tags, want) {
+			t.Fatalf("VM tags back in grp-web-servers = %+v", vm.Tags)
+		}
+		code, raw, _ := h.do("POST", "/api/v1/deployments/"+depID+"/actions", "tnguyen", api.Day2Draft{Action: "nsx_group_add",
+			ResourceId: &vmRes, Inputs: map[string]any{"group": "grp-backup-clients"}}, "Idempotency-Key", uuid.NewString())
+		if code != 409 && code != 422 {
+			t.Fatalf("a group the item doesn't offer = %d %s", code, raw)
+		}
+
 		// Deleted with the deployment: the VM out of its groups first, the
 		// rules, then the group.
 		var del api.Request

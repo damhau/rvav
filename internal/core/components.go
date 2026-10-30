@@ -635,6 +635,19 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		id := provision.GroupName(deploymentID, g)
 		vm.NSXGroups = append(vm.NSXGroups, provision.VMGroup{ID: id, Name: id, Key: g, Tags: []nsx.Tag{provision.GroupTag(id)}})
 	}
+	// Those a day-2 action may put it in: its deployment's, and the
+	// existing ones its item's VMs join.
+	if len(vm.NSXGroups) > 0 {
+		for _, g := range ev.Blueprint.SecurityGroups {
+			id := provision.GroupName(deploymentID, g.Key)
+			vm.NSXOffered = append(vm.NSXOffered, provision.VMGroup{ID: id, Name: id, Key: g.Key, Tags: []nsx.Tag{provision.GroupTag(id)}})
+		}
+		for _, id := range ev.joinable {
+			if eg, ok := ev.nsxGroups[id]; ok {
+				vm.NSXOffered = append(vm.NSXOffered, eg)
+			}
+		}
+	}
 	if sn := p.subnet; sn != nil {
 		vm.FQDN = name + "." + sn.DNSZone
 		vm.Subnet, vm.SubnetID, vm.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
@@ -859,8 +872,12 @@ func (s *Service) evaluateNSXGroups(ctx context.Context, ev *Evaluation) error {
 		}
 	}
 	services := map[string]bool{}
+	ev.joinable = nil
 	for _, c := range b.ComponentList() {
 		for _, g := range c.Groups {
+			if id, ok := blueprint.ExistingGroup(g); ok && !existing[id] {
+				ev.joinable = append(ev.joinable, id)
+			}
 			note(g)
 		}
 	}

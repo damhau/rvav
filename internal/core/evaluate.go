@@ -47,8 +47,10 @@ type Evaluation struct {
 	NamePrefix string
 	// Workflow is the custom workflow a workflow item starts.
 	Workflow *store.WorkflowRegistration
-	// nsxGroups are the existing NSX groups its VMs join, by ID (ADR-0028).
+	// nsxGroups are the existing NSX groups its VMs join or its rules name,
+	// by ID; joinable those its VMs join, in order (ADR-0028).
 	nsxGroups map[string]provision.VMGroup
+	joinable  []string
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
 	// CounterKey is the name counter VM names advance: the prefix, or the

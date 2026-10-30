@@ -26,12 +26,14 @@ type SecurityInput struct {
 }
 
 // Membership is what a VM was given to join its NSX groups: the groups, and
-// the tags rvav set on it (drift is measured from them).
+// the tags rvav set on it (drift is measured from them); Offered are the
+// groups its item lets it join, by a day-2 action.
 type Membership struct {
 	VM           string    `json:"vm"`
 	InstanceUUID string    `json:"instance_uuid"`
 	Groups       []VMGroup `json:"groups"`
 	Tags         []nsx.Tag `json:"tags"`
+	Offered      []VMGroup `json:"offered,omitempty"`
 }
 
 // ownerTags are the tags of everything rvav makes for a deployment.
@@ -138,12 +140,68 @@ func (a *Activities) JoinGroups(ctx context.Context, in VMInput) error {
 		if err := a.NSX.SetVMTags(ctx, uuid, withTags(vm.Tags, want)); err != nil {
 			return "", "", fmt.Errorf("NSX: %w", err)
 		}
-		m := Membership{VM: in.VM.Name, InstanceUUID: uuid, Groups: in.VM.NSXGroups, Tags: want}
+		m := Membership{VM: in.VM.Name, InstanceUUID: uuid, Groups: in.VM.NSXGroups, Tags: want, Offered: in.VM.NSXOffered}
 		if err := a.recordMembership(ctx, in.RequestID, in.ProjectID, in.VM.DeploymentID, m); err != nil {
 			return "", "", err
 		}
 		return "Joined NSX security groups", in.VM.groupNames(), nil
 	})
+}
+
+// changeGroups puts a VM in one more of the groups its item offers, or
+// takes it out of one (a day-2 action): the group's tags added, or those no
+// other group of the VM needs removed.
+func (a *Activities) changeGroups(ctx context.Context, in OpInput) (string, string, error) {
+	if a.NSX == nil {
+		return "", "", permanent("rvav has no NSX Manager: set one in Integrations")
+	}
+	res, err := a.Store.GetResource(ctx, argStr(in.Op.Args, "membership"))
+	if err != nil || res.Type != "nsx.membership" {
+		return "", "", permanent("The VM isn't in NSX security groups.")
+	}
+	var m Membership
+	_ = json.Unmarshal(res.Properties, &m)
+	id := argStr(in.Op.Args, "group")
+	has := func(list []VMGroup) int { return slices.IndexFunc(list, func(g VMGroup) bool { return g.ID == id }) }
+	join := in.Op.Op == "nsx_join"
+	switch {
+	case join && has(m.Offered) < 0:
+		return "", "", permanent("The VM's item doesn't offer NSX group %s.", id)
+	case join && has(m.Groups) >= 0, !join && has(m.Groups) < 0:
+		return "", "", nil // already so
+	}
+	vm, err := a.NSX.VM(ctx, m.InstanceUUID)
+	if errors.Is(err, nsx.ErrNotFound) {
+		return "", "", permanent("NSX no longer has VM %s.", m.VM)
+	} else if err != nil {
+		return "", "", fmt.Errorf("NSX: %w", err)
+	}
+	var g VMGroup
+	if join {
+		g = m.Offered[has(m.Offered)]
+		m.Groups = append(m.Groups, g)
+	} else {
+		g = m.Groups[has(m.Groups)]
+		m.Groups = slices.Delete(m.Groups, has(m.Groups), has(m.Groups)+1)
+	}
+	want := a.ownerTags(in.DeploymentID)
+	for _, x := range m.Groups {
+		want = append(want, x.Tags...)
+	}
+	want = uniqueTags(want)
+	// What rvav set and no longer needs goes; what it needs is added.
+	tags := withTags(withoutTags(vm.Tags, withoutTags(m.Tags, want)), want)
+	if err := a.NSX.SetVMTags(ctx, m.InstanceUUID, tags); err != nil {
+		return "", "", fmt.Errorf("NSX: %w", err)
+	}
+	m.Tags = want
+	if err := a.recordMembership(ctx, in.RequestID, in.ProjectID, in.DeploymentID, m); err != nil {
+		return "", "", err
+	}
+	if join {
+		return "", "In NSX group " + g.Name, nil
+	}
+	return "", "No longer in NSX group " + g.Name, nil
 }
 
 // waitForVM waits until NSX has seen a VM in vCenter.
