@@ -74,6 +74,29 @@ func TestCheckVMBlueprint(t *testing.T) {
 		t.Fatalf("21 VMs = %v", got)
 	}
 
+	// NSX security groups (ADR-0028): made for the deployment, or existing.
+	groups := `{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "groups": ["web", "nsx:grp-web-servers"],
+		"security_groups": [{"key": "web", "rules": [{"from": ["any"], "services": ["HTTPS"]},
+		  {"from": ["nsx:grp-backup-clients", "web"], "services": ["SSH"], "action": "drop"}]}]}`
+	if got := check(groups, true); len(got) > 0 {
+		t.Fatalf("good groups: %v", got)
+	}
+	if got := check(`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "groups": ["db", "nsx:bad id"],
+		"security_groups": [{"key": "Web", "rules": [{"from": [], "services": ["HTTPS x"], "action": "permit"}]},
+		  {"key": "app", "rules": [{"from": ["web"], "services": []}]}, {"key": "app"}]}`, true); !slices.Equal(got, []string{
+		"/blueprint/groups/0 unknown",
+		"/blueprint/groups/1 pattern",
+		"/blueprint/security_groups/0/key pattern",
+		"/blueprint/security_groups/0/rules/0/action invalid",
+		"/blueprint/security_groups/0/rules/0/from required",
+		"/blueprint/security_groups/0/rules/0/services/0 pattern",
+		"/blueprint/security_groups/1/rules/0/from/0 unknown",
+		"/blueprint/security_groups/1/rules/0/services required",
+		"/blueprint/security_groups/2/key duplicate",
+	}) {
+		t.Fatalf("bad groups = %v", got)
+	}
+
 	// A single VM doesn't name a deployment; a draft may lack its template.
 	if got := check(`{"kind": "vm", "deployment_name": "x", "guest": {"os_family": "linux"}}`, false); !slices.Equal(got, []string{"/blueprint/deployment_name invalid"}) {
 		t.Fatalf("single VM = %v", got)

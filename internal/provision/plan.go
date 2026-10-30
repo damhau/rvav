@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 )
 
 // Plan is everything the workflow needs, computed when the request is
@@ -40,6 +41,9 @@ type Plan struct {
 	// Segments are the NSX segments made for its deployments before their
 	// VMs (ADR-0028).
 	Segments []SegmentUnit `json:"segments,omitempty"`
+	// Security are the NSX security groups and firewall rules made for its
+	// deployments before their VMs (ADR-0028).
+	Security []SecurityUnit `json:"security,omitempty"`
 }
 
 // ComponentUnit is one component of a multi-VM blueprint's plan.
@@ -129,6 +133,7 @@ func componentSteps(vms []VMUnit, comps []ComponentUnit, keys vmKeys, parent str
 				StepDef{Key: keys.vm(c, KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: under},
 				StepDef{Key: keys.vm(c, KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: under},
 			)
+			steps = append(steps, tagStep(keys.vm(c, KeyNSXTags, vm), "Join NSX security groups · "+vm.Name, vm, under)...)
 		}
 		if c.AntiAffinity {
 			steps = append(steps, StepDef{Key: keys.rule(c), Title: "Keep " + c.Title + " on separate hosts",
@@ -265,6 +270,58 @@ type VMUnit struct {
 	// its network is (ADR-0028): its subnet is known once the request has
 	// carved it.
 	Segment string `json:"segment,omitempty"`
+	// NSXGroups are the NSX security groups it joins, by the tags it is
+	// given once NSX sees it (ADR-0028).
+	NSXGroups []VMGroup `json:"nsx_groups,omitempty"`
+}
+
+// VMGroup is an NSX group a VM joins: one made for its deployment (Key),
+// or an existing one; Tags are what put the VM in it.
+type VMGroup struct {
+	ID   string    `json:"id"`
+	Name string    `json:"name"`
+	Key  string    `json:"key,omitempty"`
+	Tags []nsx.Tag `json:"tags"`
+}
+
+// SecurityUnit is what NSX makes for a deployment's security groups
+// (ADR-0028): the groups, each holding the VMs carrying its tag, and the
+// security policy of the distributed firewall rules into them.
+type SecurityUnit struct {
+	DeploymentID string      `json:"deployment_id"`
+	Groups       []GroupUnit `json:"groups"`
+	Policy       string      `json:"policy"`
+	Rules        []nsx.Rule  `json:"rules,omitempty"`
+}
+
+// GroupUnit is a group made for a deployment.
+type GroupUnit struct {
+	Key   string  `json:"key"`
+	ID    string  `json:"id"`
+	Title string  `json:"title,omitempty"`
+	Tag   nsx.Tag `json:"tag"`
+}
+
+// GroupName is the name, and NSX ID, of a group made for a deployment:
+// rvav-<deployment>-<key>, as its segments'.
+func GroupName(deploymentID, key string) string { return SegmentName(deploymentID, key) }
+
+// PolicyName is the NSX ID of the security policy holding a deployment's
+// firewall rules: rvav-<deployment>.
+func PolicyName(deploymentID string) string {
+	return "rvav-" + strings.ReplaceAll(deploymentID, "_", "-")
+}
+
+// GroupTag is the tag of a group made for a deployment: its VMs carry it.
+func GroupTag(groupID string) nsx.Tag { return nsx.Tag{Scope: nsx.GroupScope, Tag: groupID} }
+
+// groupNames are the names of the groups a VM joins.
+func (vm VMUnit) groupNames() string {
+	var names []string
+	for _, g := range vm.NSXGroups {
+		names = append(names, g.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // SegmentUnit is an NSX segment made for a deployment (ADR-0028): its ID
@@ -382,7 +439,49 @@ const (
 	// KeySegment is an NSX segment made for a deployment (ADR-0028):
 	// nsx.segment:<key>, with @<deployment> when there are several.
 	KeySegment = "nsx.segment:"
+	// KeySecurity makes a deployment's NSX groups and firewall rules
+	// (ADR-0028), with @<deployment> when there are several; KeyNSXTags
+	// tags a VM so that it joins its groups.
+	KeySecurity = "nsx.security"
+	KeyNSXTags  = "nsx.tags"
 )
+
+// SecurityKey is the step key of a deployment's groups and rules.
+func (p Plan) SecurityKey(s SecurityUnit) string {
+	if len(p.Security) > 1 {
+		return KeySecurity + "@" + s.DeploymentID
+	}
+	return KeySecurity
+}
+
+// securitySteps are the steps making the plan's groups and rules, before
+// its VMs'.
+func (p Plan) securitySteps() []StepDef {
+	var steps []StepDef
+	for _, s := range p.Security {
+		var names []string
+		for _, g := range s.Groups {
+			names = append(names, g.ID)
+		}
+		detail := strings.Join(names, ", ")
+		switch n := len(s.Rules); {
+		case n == 1:
+			detail += " · 1 firewall rule"
+		case n > 1:
+			detail += fmt.Sprintf(" · %d firewall rules", n)
+		}
+		steps = append(steps, StepDef{Key: p.SecurityKey(s), Title: "Make NSX security groups", Detail: detail, System: "nsx", Status: "pending"})
+	}
+	return steps
+}
+
+// tagStep is a VM's step joining its NSX groups, if it joins any.
+func tagStep(key, title string, vm VMUnit, parent string) []StepDef {
+	if len(vm.NSXGroups) == 0 {
+		return nil
+	}
+	return []StepDef{{Key: key, Title: title, Detail: vm.groupNames(), System: "nsx", Status: "pending", Parent: parent}}
+}
 
 // SegmentKey is the step key of a segment of the plan.
 func (p Plan) SegmentKey(s SegmentUnit) string {
@@ -486,6 +585,7 @@ func (p Plan) Steps(environment string) []StepDef {
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	steps = append(steps, p.segmentSteps()...)
+	steps = append(steps, p.securitySteps()...)
 	if len(p.Components) > 0 {
 		steps = append(steps, componentSteps(p.VMs, p.Components, planKeys(), "")...)
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
@@ -503,6 +603,7 @@ func (p Plan) Steps(environment string) []StepDef {
 			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyPowerOn, vm), Title: p.vmTitle("Power on and wait for guest IP", vm), System: "vcenter", Status: "pending"},
 		)
+		steps = append(steps, tagStep(p.VMKey(KeyNSXTags, vm), p.vmTitle("Join NSX security groups", vm), vm, "")...)
 	}
 	if len(p.PostConfig) > 0 {
 		steps = append(steps, StepDef{Key: KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending"})

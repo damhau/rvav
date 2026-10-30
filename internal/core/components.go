@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
@@ -140,6 +142,9 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 		case ev.VMCount == 0:
 			add("", "out_of_range", "Every component has a count of 0: there would be nothing to build.")
 		}
+	}
+	if err := s.evaluateNSXGroups(ctx, ev); err != nil {
+		return err
 	}
 	// The first component is what single-VM code and policies read.
 	f := ev.Parts[0]
@@ -618,6 +623,18 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 			vm.FQDN, vm.DNSZone, vm.DNSServers = name+"."+sg.DNSZone, sg.DNSZone, sg.DNSServers
 		}
 	}
+	// The NSX groups it joins: its deployment's, by their tag, and existing
+	// ones, by the tags they select VMs by (ADR-0028).
+	for _, g := range p.comp.Groups {
+		if id, ok := blueprint.ExistingGroup(g); ok {
+			if eg, ok := ev.nsxGroups[id]; ok {
+				vm.NSXGroups = append(vm.NSXGroups, eg)
+			}
+			continue
+		}
+		id := provision.GroupName(deploymentID, g)
+		vm.NSXGroups = append(vm.NSXGroups, provision.VMGroup{ID: id, Name: id, Key: g, Tags: []nsx.Tag{provision.GroupTag(id)}})
+	}
 	if sn := p.subnet; sn != nil {
 		vm.FQDN = name + "." + sn.DNSZone
 		vm.Subnet, vm.SubnetID, vm.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
@@ -701,7 +718,7 @@ func replanVMs(ev *Evaluation, plan *provision.Plan) error {
 		counts[key]++
 		plan.VMs[i] = vmUnit(ev, p, vm.DeploymentID, vm.Name, vm.Index)
 	}
-	plan.Segments = planSegments(ev, plan.VMs)
+	plan.Segments, plan.Security = planSegments(ev, plan.VMs), planSecurity(ev, plan.VMs)
 	order := optionOrder(ev.Version.UISchema, "post_config")
 	if !ev.Blueprint.Multi() {
 		var err error
@@ -823,6 +840,145 @@ func planSegments(ev *Evaluation, vms []provision.VMUnit) []provision.SegmentUni
 		sg, name := p.segments, provision.SegmentName(vm.DeploymentID, vm.Segment)
 		out = append(out, provision.SegmentUnit{DeploymentID: vm.DeploymentID, Key: vm.Segment, ID: name, Name: name, Tier1: sg.Tier1,
 			IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers})
+	}
+	return out
+}
+
+// evaluateNSXGroups reads from NSX what the blueprint's security groups
+// refer to (ADR-0028): the existing groups its VMs join, and the tags that
+// put a VM in them; the groups and services its rules name.
+func (s *Service) evaluateNSXGroups(ctx context.Context, ev *Evaluation) error {
+	add := func(code, msg string) { ev.Errors = append(ev.Errors, fieldErr("", code, msg)) }
+	b := ev.Blueprint
+	existing := map[string]bool{}
+	var order []string
+	note := func(name string) {
+		if id, ok := blueprint.ExistingGroup(name); ok && !existing[id] {
+			existing[id] = true
+			order = append(order, id)
+		}
+	}
+	services := map[string]bool{}
+	for _, c := range b.ComponentList() {
+		for _, g := range c.Groups {
+			note(g)
+		}
+	}
+	for _, g := range b.SecurityGroups {
+		for _, r := range g.Rules {
+			for _, f := range r.From {
+				note(f)
+			}
+			for _, sv := range r.Services {
+				if sv != "any" {
+					services[sv] = true
+				}
+			}
+		}
+	}
+	ev.nsxGroups = map[string]provision.VMGroup{}
+	if len(b.SecurityGroups) == 0 && len(order) == 0 {
+		return nil
+	}
+	if s.Config.NSX.URL == "" {
+		add("no_nsx", "This item puts its VMs in NSX security groups, and rvav has no NSX Manager. Ask an administrator to set one in Integrations.")
+		return nil
+	}
+	client, err := s.nsx()
+	if err != nil {
+		return err
+	}
+	for _, id := range order {
+		g, err := client.Group(ctx, id)
+		switch {
+		case errors.Is(err, nsx.ErrNotFound):
+			add("unknown_group", fmt.Sprintf("NSX has no group %s. Ask a catalog admin to check this item.", id))
+			continue
+		case err != nil:
+			add("nsx_unavailable", "NSX couldn't be read: "+err.Error())
+			return nil
+		}
+		tags, ok := g.JoinTags()
+		if !ok {
+			add("not_by_tag", fmt.Sprintf("NSX group %s doesn't select VMs by tag: rvav can't put VMs in it.", cmp.Or(g.DisplayName, id)))
+			continue
+		}
+		ev.nsxGroups[id] = provision.VMGroup{ID: id, Name: cmp.Or(g.DisplayName, id), Tags: tags}
+	}
+	if len(services) > 0 {
+		known, err := client.Services(ctx)
+		if err != nil {
+			add("nsx_unavailable", "NSX couldn't be read: "+err.Error())
+			return nil
+		}
+		for _, k := range known {
+			delete(services, k.ID)
+		}
+		for _, sv := range slices.Sorted(maps.Keys(services)) {
+			add("unknown_service", fmt.Sprintf("NSX has no service %s. Ask a catalog admin to check this item.", sv))
+		}
+	}
+	return nil
+}
+
+// planSecurity is what NSX makes for the security groups of the
+// deployments of these VMs (ADR-0028): the blueprint's groups for each,
+// and the firewall rules into them, in a security policy of their own.
+func planSecurity(ev *Evaluation, vms []provision.VMUnit) []provision.SecurityUnit {
+	b := ev.Blueprint
+	if len(b.SecurityGroups) == 0 {
+		return nil
+	}
+	var out []provision.SecurityUnit
+	seen := map[string]bool{}
+	for _, vm := range vms {
+		dep := vm.DeploymentID
+		if seen[dep] {
+			continue
+		}
+		seen[dep] = true
+		path := func(name string) string {
+			if id, ok := blueprint.ExistingGroup(name); ok {
+				return nsx.GroupPath + id
+			}
+			if name == "any" {
+				return "ANY"
+			}
+			return nsx.GroupPath + provision.GroupName(dep, name)
+		}
+		// ANY with others is ANY.
+		anyOf := func(list []string) []string {
+			if slices.Contains(list, "ANY") {
+				return []string{"ANY"}
+			}
+			return list
+		}
+		u := provision.SecurityUnit{DeploymentID: dep, Policy: provision.PolicyName(dep)}
+		seq := 0
+		for _, g := range b.SecurityGroups {
+			id := provision.GroupName(dep, g.Key)
+			u.Groups = append(u.Groups, provision.GroupUnit{Key: g.Key, ID: id, Title: g.Title, Tag: provision.GroupTag(id)})
+			for j, r := range g.Rules {
+				seq += 10
+				rule := nsx.Rule{ID: fmt.Sprintf("%s-%d", g.Key, j+1), DisplayName: "Into " + cmp.Or(g.Title, g.Key),
+					DestinationGroups: []string{nsx.GroupPath + id}, Scope: []string{nsx.GroupPath + id},
+					Action: strings.ToUpper(cmp.Or(r.Action, "allow")), SequenceNumber: seq}
+				for _, f := range r.From {
+					rule.SourceGroups = append(rule.SourceGroups, path(f))
+				}
+				for _, sv := range r.Services {
+					if sv == "any" {
+						sv = "ANY"
+					} else {
+						sv = nsx.ServicePath + sv
+					}
+					rule.Services = append(rule.Services, sv)
+				}
+				rule.SourceGroups, rule.Services = anyOf(rule.SourceGroups), anyOf(rule.Services)
+				u.Rules = append(u.Rules, rule)
+			}
+		}
+		out = append(out, u)
 	}
 	return out
 }

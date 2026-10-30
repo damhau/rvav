@@ -73,6 +73,8 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		segKeys[sg.Key] = true
 	}
 
+	errs = append(errs, checkSecurityGroups(b, ptr)...)
+
 	keys := map[string]bool{}
 	total := 0
 	resolved := b.ComponentList()
@@ -248,4 +250,78 @@ func blueprintSecrets(b blueprint.Blueprint, ptr string) map[string][2]string {
 		}
 	}
 	return out
+}
+
+// maxSecurityGroups is how many NSX groups one deployment can have made.
+const maxSecurityGroups = 8
+
+var nsxID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,255}$`)
+
+// checkSecurityGroups checks the NSX groups made for a deployment and the
+// groups its VMs are in (ADR-0028); existing groups and services are
+// checked against NSX when requested.
+func checkSecurityGroups(b blueprint.Blueprint, ptr string) []api.FieldError {
+	var errs []api.FieldError
+	add := func(at, code, msg string) { errs = append(errs, fieldErr(at, code, msg)) }
+	keys := map[string]bool{}
+	if len(b.SecurityGroups) > maxSecurityGroups {
+		add(ptr+"/security_groups", "out_of_range", fmt.Sprintf("At most %d groups for a deployment.", maxSecurityGroups))
+	}
+	for i, g := range b.SecurityGroups {
+		at := fmt.Sprintf("%s/security_groups/%d/key", ptr, i)
+		switch {
+		case !componentKey.MatchString(g.Key):
+			add(at, "pattern", "A key of up to 16 lower-case letters and digits, starting with a letter: it goes into the group's name.")
+		case keys[g.Key]:
+			add(at, "duplicate", "Another group has the key "+g.Key+".")
+		}
+		keys[g.Key] = true
+	}
+	group := func(at, name string, anyOK bool) {
+		if id, ok := blueprint.ExistingGroup(name); ok {
+			if !nsxID.MatchString(id) {
+				add(at, "pattern", fmt.Sprintf("%q is not an NSX group ID.", id))
+			}
+			return
+		}
+		if anyOK && name == "any" {
+			return
+		}
+		if !keys[name] {
+			add(at, "unknown", fmt.Sprintf("%q is none of the item's security groups (or nsx:<group ID> for an existing one).", name))
+		}
+	}
+	for i, g := range b.SecurityGroups {
+		for j, r := range g.Rules {
+			at := fmt.Sprintf("%s/security_groups/%d/rules/%d", ptr, i, j)
+			if len(r.From) == 0 {
+				add(at+"/from", "required", "Say where the traffic comes from: any, a group, or nsx:<group ID>.")
+			}
+			for k, f := range r.From {
+				group(fmt.Sprintf("%s/from/%d", at, k), f, true)
+			}
+			if len(r.Services) == 0 {
+				add(at+"/services", "required", "Name NSX services (HTTPS, SSH), or any.")
+			}
+			for k, sv := range r.Services {
+				if sv != "any" && !nsxID.MatchString(sv) {
+					add(fmt.Sprintf("%s/services/%d", at, k), "pattern", fmt.Sprintf("%q is not an NSX service ID.", sv))
+				}
+			}
+			switch r.Action {
+			case "", "allow", "drop", "reject":
+			default:
+				add(at+"/action", "invalid", "allow, drop or reject.")
+			}
+		}
+	}
+	for i, g := range b.Groups {
+		group(fmt.Sprintf("%s/groups/%d", ptr, i), g, false)
+	}
+	for i, c := range b.Components {
+		for j, g := range c.Groups {
+			group(fmt.Sprintf("%s/components/%d/groups/%d", ptr, i, j), g, false)
+		}
+	}
+	return errs
 }

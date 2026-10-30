@@ -232,6 +232,12 @@ func (c *Client) Groups(ctx context.Context) ([]Group, error) {
 	return list[Group](ctx, c, policy+"/infra/domains/default/groups", nil)
 }
 
+func (c *Client) Group(ctx context.Context, id string) (Group, error) {
+	var g Group
+	err := c.do(ctx, http.MethodGet, policy+GroupPath+url.PathEscape(id), nil, nil, &g)
+	return g, err
+}
+
 func (c *Client) PutGroup(ctx context.Context, g Group) error {
 	return c.do(ctx, http.MethodPatch, policy+GroupPath+url.PathEscape(g.ID), nil, g, nil)
 }
@@ -266,6 +272,21 @@ const vms = policy + "/infra/realized-state/enforcement-points/default/virtual-m
 // VMs are the VMs NSX knows, with their tags.
 func (c *Client) VMs(ctx context.Context) ([]VM, error) {
 	return list[VM](ctx, c, vms, nil)
+}
+
+// VM is the VM of a vCenter instance UUID, once NSX has seen it:
+// ErrNotFound before.
+func (c *Client) VM(ctx context.Context, externalID string) (VM, error) {
+	found, err := list[VM](ctx, c, vms, url.Values{"query": {"external_id:" + externalID}})
+	if err != nil {
+		return VM{}, err
+	}
+	for _, v := range found {
+		if v.ExternalID == externalID {
+			return v, nil
+		}
+	}
+	return VM{}, ErrNotFound
 }
 
 // SetVMTags sets a VM's tags, all of them: those not given are removed.

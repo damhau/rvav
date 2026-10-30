@@ -5,7 +5,10 @@
 // the tests and the compose stack.
 package nsx
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Tag is an NSX tag: a scope and a value.
 type Tag struct {
@@ -119,6 +122,7 @@ const (
 	ServicePath  = "/infra/services/"
 	OwnerScope   = "rvav"            // the tag scope of what rvav makes: its instance
 	DeployScope  = "rvav-deployment" // and the deployment it is for
+	GroupScope   = "rvav-group"      // a VM's tag putting it in a group made for its deployment
 	ConditionTag = "Tag"
 )
 
@@ -131,4 +135,33 @@ func Owned(tags []Tag, instance string) bool {
 func TagCondition(t Tag) Condition {
 	return Condition{ResourceType: "Condition", MemberType: "VirtualMachine", Key: ConditionTag, Operator: "EQUALS",
 		Value: t.Scope + "|" + t.Tag}
+}
+
+// JoinTags are the tags a VM needs to be in the group: those its
+// expression's conditions select, all of them when they are ANDed, the
+// first when ORed. ok is false when it selects members otherwise (by name,
+// address, or nested expressions): VMs can't join it by a tag.
+func (g Group) JoinTags() (tags []Tag, ok bool) {
+	and := false
+	for _, c := range g.Expression {
+		switch {
+		case c.ResourceType == "ConjunctionOperator":
+			and = and || c.ConjunctionOperator == "AND"
+		case c.ResourceType == "Condition" && c.MemberType == "VirtualMachine" && c.Key == ConditionTag && c.Operator == "EQUALS":
+			scope, tag, found := strings.Cut(c.Value, "|")
+			if !found {
+				scope, tag = "", c.Value
+			}
+			tags = append(tags, Tag{Scope: scope, Tag: tag})
+		default:
+			return nil, false
+		}
+	}
+	if len(tags) == 0 {
+		return nil, false
+	}
+	if !and {
+		tags = tags[:1]
+	}
+	return tags, true
 }

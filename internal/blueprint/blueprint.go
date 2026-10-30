@@ -45,6 +45,12 @@ type Blueprint struct {
 	// VM's network binding names one as segments.<key>.
 	Segments       []Segment `json:"segments,omitempty"`
 	DeploymentName string    `json:"deployment_name,omitempty"`
+	// SecurityGroups are NSX groups made for each deployment, with the
+	// distributed firewall rules into them (ADR-0028); Groups are those its
+	// VMs are in: keys of SecurityGroups, or existing NSX groups as
+	// nsx:<group ID>. Components may name their own.
+	SecurityGroups []SecurityGroup `json:"security_groups,omitempty"`
+	Groups         []string        `json:"groups,omitempty"`
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
@@ -68,6 +74,27 @@ type Segment struct {
 	Key   string `json:"key"`
 	Title string `json:"title,omitempty"`
 }
+
+// SecurityGroup is an NSX group made for a deployment: the VMs naming it
+// in their groups, and the firewall rules into it.
+type SecurityGroup struct {
+	Key   string         `json:"key"`
+	Title string         `json:"title,omitempty"`
+	Rules []FirewallRule `json:"rules,omitempty"`
+}
+
+// FirewallRule lets traffic into its group, or stops it: from any, from
+// another of the deployment's groups (its key), or from an existing NSX
+// group (nsx:<group ID>); on NSX services by ID (HTTPS, SSH), or any.
+type FirewallRule struct {
+	From     []string `json:"from"`
+	Services []string `json:"services"`
+	Action   string   `json:"action,omitempty"` // allow (the default), drop, reject
+}
+
+// ExistingGroup is the NSX group a group name refers to, if it is an
+// existing one (nsx:<group ID>).
+func ExistingGroup(name string) (string, bool) { return strings.CutPrefix(name, "nsx:") }
 
 // SegmentRef is what segments.<key> evaluates to in a binding: a
 // reference the request's planning turns into the segment's name.
@@ -147,6 +174,8 @@ type Component struct {
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
+	// Groups are the NSX security groups its VMs are in (ADR-0028).
+	Groups []string `json:"groups,omitempty"`
 }
 
 // Disk is a disk added after the template's: SizeGB is a number or CEL,
@@ -183,7 +212,7 @@ func (b Blueprint) Multi() bool { return len(b.Components) > 0 }
 func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
-			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy}}
+			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -206,6 +235,9 @@ func (b Blueprint) ComponentList() []Component {
 		}
 		if r.Disks == nil {
 			r.Disks = b.Disks
+		}
+		if r.Groups == nil {
+			r.Groups = b.Groups
 		}
 		if r.NICs == nil {
 			r.NICs = b.NICs

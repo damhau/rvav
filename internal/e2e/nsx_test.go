@@ -131,6 +131,16 @@ func TestPlacementSegments(t *testing.T) {
 // its version's.
 func segmentItem(h *harness) (string, string) {
 	h.t.Helper()
+	return rhelVariant(h, "rhel9-segment", "RHEL 9 on its own segment", func(bp map[string]any) {
+		bp["bindings"].(map[string]any)["network"] = "segments.app"
+		bp["segments"] = []any{map[string]any{"key": "app", "title": "Application"}}
+	})
+}
+
+// rhelVariant is the seeded RHEL item with its blueprint changed, imported
+// under another slug and published for every project.
+func rhelVariant(h *harness, slug, name string, change func(bp map[string]any)) (string, string) {
+	h.t.Helper()
 	code, raw, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-server/export", "mkeller", nil)
 	if code != 200 {
 		h.t.Fatalf("export = %d %s", code, raw)
@@ -140,12 +150,10 @@ func segmentItem(h *harness) (string, string) {
 		h.t.Fatal(err)
 	}
 	meta := doc["metadata"].(map[string]any)
-	meta["slug"], meta["name"] = "rhel9-segment", "RHEL 9 on its own segment"
+	meta["slug"], meta["name"] = slug, name
 	versions := doc["versions"].([]any)
 	last := versions[len(versions)-1].(map[string]any)
-	bp := last["blueprint"].(map[string]any)
-	bp["bindings"].(map[string]any)["network"] = "segments.app"
-	bp["segments"] = []any{map[string]any{"key": "app", "title": "Application"}}
+	change(last["blueprint"].(map[string]any))
 	doc["versions"] = []any{last}
 	out, err := yaml.Marshal(doc)
 	if err != nil {
@@ -345,4 +353,93 @@ func TestSegmentProvisioning(t *testing.T) {
 			t.Fatal("the mapping is still there")
 		}
 	}, simulator.VPX())
+}
+
+// groupItem is the seeded RHEL item whose VM is in a security group made
+// for its deployment, with its firewall rules, and in an existing one.
+func groupItem(h *harness, extra ...string) (string, string) {
+	h.t.Helper()
+	return rhelVariant(h, "rhel9-groups"+strings.Join(extra, ""), "RHEL 9 in security groups", func(bp map[string]any) {
+		bp["groups"] = []any{"web", "nsx:grp-web-servers"}
+		from := "nsx:grp-backup-clients"
+		if len(extra) > 0 {
+			from = "nsx:grp-gone"
+		}
+		bp["security_groups"] = []any{map[string]any{"key": "web", "title": "Web servers", "rules": []any{
+			map[string]any{"from": []any{"any"}, "services": []any{"HTTPS"}},
+			map[string]any{"from": []any{from}, "services": []any{"SSH"}},
+		}}}
+	})
+}
+
+// TestSecurityGroupPlanning: a request for an item whose VM is in NSX
+// security groups (N1.3): refused without an NSX Manager, or when NSX
+// lacks a group it names; else planned with its deployment's group, the
+// firewall rules into it, and the tags putting the VM in both groups.
+func TestSecurityGroupPlanning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		item, version := groupItem(h)
+		draft := api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web", Environment: "dev",
+			Inputs: segmentInputs()}
+		var pv api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "no_nsx" }) {
+			t.Fatalf("without NSX: %+v", pv.Errors)
+		}
+
+		fake := httptest.NewServer(nsx.NewFakeServer())
+		defer fake.Close()
+		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = fake.URL, nsx.FakeUser, nsx.FakePassword
+		gone, goneVersion := groupItem(h, "-gone")
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: gone, VersionId: goneVersion,
+			ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "unknown_group" }) {
+			t.Fatalf("a group NSX lacks: %+v", pv.Errors)
+		}
+
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		if !pv.Valid {
+			t.Fatalf("preview: %+v", pv.Errors)
+		}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		var raw []byte
+		if err := h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var plan provision.Plan
+		if err := json.Unmarshal(raw, &plan); err != nil {
+			t.Fatal(err)
+		}
+		if len(plan.Security) != 1 || len(plan.VMs) != 1 {
+			t.Fatalf("plan: %d security units, %d VMs", len(plan.Security), len(plan.VMs))
+		}
+		sec, vm := plan.Security[0], plan.VMs[0]
+		web := provision.GroupName(vm.DeploymentID, "web")
+		if sec.DeploymentID != vm.DeploymentID || sec.Policy != provision.PolicyName(vm.DeploymentID) || len(sec.Groups) != 1 ||
+			sec.Groups[0].ID != web || sec.Groups[0].Tag != (nsx.Tag{Scope: nsx.GroupScope, Tag: web}) || len(sec.Rules) != 2 {
+			t.Fatalf("security = %+v", sec)
+		}
+		r1, r2 := sec.Rules[0], sec.Rules[1]
+		if !slices.Equal(r1.SourceGroups, []string{"ANY"}) || !slices.Equal(r1.Services, []string{nsx.ServicePath + "HTTPS"}) ||
+			!slices.Equal(r1.DestinationGroups, []string{nsx.GroupPath + web}) || r1.Action != "ALLOW" ||
+			!slices.Equal(r2.SourceGroups, []string{nsx.GroupPath + "grp-backup-clients"}) || r2.ID != "web-2" {
+			t.Fatalf("rules = %+v", sec.Rules)
+		}
+		if len(vm.NSXGroups) != 2 || vm.NSXGroups[0].ID != web || vm.NSXGroups[1].ID != "grp-web-servers" ||
+			!slices.Equal(vm.NSXGroups[1].Tags, []nsx.Tag{{Scope: "role", Tag: "web"}}) {
+			t.Fatalf("vm groups = %+v", vm.NSXGroups)
+		}
+		for _, key := range []string{"nsx.security", "nsx.tags"} {
+			var system string
+			if err := h.store.Pool.QueryRow(ctx, `select system from request_steps where request_id = $1 and key = $2`, req.Id, key).
+				Scan(&system); err != nil || system != "nsx" {
+				t.Fatalf("step %s: %q %v", key, system, err)
+			}
+		}
+	})
 }

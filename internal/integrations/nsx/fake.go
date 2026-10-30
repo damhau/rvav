@@ -382,7 +382,11 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			delete(f.policies, pid)
 		}
 	case p == vms && r.Method == http.MethodGet:
-		page(w, q, sorted(f.vms))
+		all := sorted(f.vms)
+		if want, ok := strings.CutPrefix(q.Get("query"), "external_id:"); ok {
+			all = slices.DeleteFunc(all, func(v VM) bool { return v.ExternalID != want })
+		}
+		page(w, q, all)
 	case p == vms && r.Method == http.MethodPost && q.Get("action") == "update_tags":
 		var in struct {
 			ID   string `json:"virtual_machine_id"`

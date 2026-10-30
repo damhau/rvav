@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -91,7 +92,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				return err
 			}
 			deployments, plan.VMs, plan.Components = append(deployments, deps...), vms, comps
-			plan.Segments = planSegments(ev, vms)
+			plan.Segments, plan.Security = planSegments(ev, vms), planSecurity(ev, vms)
 			if len(comps) > 0 {
 				// A multi-VM deployment (ADR-0024): post-configuration is each component's.
 				req.Title = ev.Item.Name + " · " + deps[0].Name
@@ -120,6 +121,10 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					if len(planSegments(part.sub, vms)) > 0 {
 						return &ValidationError{Errors: []api.FieldError{fieldErr("", "not_allowed",
 							part.title+": a composite item's VMs can't be on NSX segments made for their deployment yet.")}}
+					}
+					if slices.ContainsFunc(vms, func(vm provision.VMUnit) bool { return len(vm.NSXGroups) > 0 }) {
+						return &ValidationError{Errors: []api.FieldError{fieldErr("", "not_allowed",
+							part.title+": a composite item's VMs can't be in NSX security groups yet.")}}
 					}
 					deployments, c.VMs, c.Guest, c.Components = append(deployments, deps...), vms, part.sub.Blueprint.Guest, comps
 					// A multi-VM item's post-configuration is its components' (ADR-0024).

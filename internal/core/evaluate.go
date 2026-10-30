@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/present"
+	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -46,6 +47,8 @@ type Evaluation struct {
 	NamePrefix string
 	// Workflow is the custom workflow a workflow item starts.
 	Workflow *store.WorkflowRegistration
+	// nsxGroups are the existing NSX groups its VMs join, by ID (ADR-0028).
+	nsxGroups map[string]provision.VMGroup
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
 	// CounterKey is the name counter VM names advance: the prefix, or the
