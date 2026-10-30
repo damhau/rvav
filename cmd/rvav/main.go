@@ -26,6 +26,7 @@ import (
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vra"
+	"github.com/damhau/rvav/internal/vraimport"
 
 	"github.com/damhau/rvav/internal/observe"
 )
@@ -52,6 +53,8 @@ Usage:
                            keys in RVAV_SECRETS_OLD_KEYS can then be removed
   rvav vra-export [-o FILE] read the vRA at RVAV_VRA_URL (projects, cloud templates, forms,
                            catalog items and sharing, policies, deployments) into JSON
+  rvav vra-plan [-f FILE]  what the importer would make of the vRA (or of vra-export's FILE):
+                           each cloud template's catalog item and what it couldn't map (JSON)
   rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
@@ -85,7 +88,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	// migrate, seed and the development helpers work without auth settings.
 	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" ||
-		cmd == "vra-export" || cmd == "fake-vra" {
+		cmd == "vra-export" || cmd == "vra-plan" || cmd == "fake-vra" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -134,6 +137,21 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		return os.WriteFile(*out, b, 0o600)
+	case "vra-plan":
+		fs := flag.NewFlagSet("vra-plan", flag.ExitOnError)
+		file := fs.String("f", "", "an estate vra-export wrote (the vRA at RVAV_VRA_URL by default)")
+		_ = fs.Parse(args)
+		e, err := readEstate(ctx, cfg, *file)
+		if err != nil {
+			return err
+		}
+		plan := vraimport.MakePlan(e)
+		b, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(append(b, '\n'))
+		return err
 	case "fake-vra":
 		url, err := vra.NewFakeServer(vra.SampleEstate(time.Now())).Start(ctx, cfg.HTTPAddr)
 		if err != nil {
@@ -320,6 +338,24 @@ func healthcheck(ctx context.Context) error {
 		return fmt.Errorf("readyz answered %s", resp.Status)
 	}
 	return nil
+}
+
+// readEstate reads vRA, or an estate vra-export wrote.
+func readEstate(ctx context.Context, cfg config.Config, file string) (*vra.Estate, error) {
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		var e vra.Estate
+		return &e, json.Unmarshal(b, &e)
+	}
+	c, err := vra.New(vra.Options{URL: cfg.VRA.URL, Token: cfg.VRA.Token, Username: cfg.VRA.Username,
+		Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure})
+	if err != nil {
+		return nil, err
+	}
+	return c.Read(ctx)
 }
 
 func runSeed(ctx context.Context, cfg config.Config, log *slog.Logger) error {

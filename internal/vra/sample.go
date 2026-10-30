@@ -92,6 +92,12 @@ func SampleEstate(now time.Time) Estate {
 				map[string]any{"size": "small", "environment": "dev", "role": "leg"}, machine("vra-leg-001", "10.31.10.146", 2, 4096)),
 		},
 	}
+	img := ImageProfile{ID: "img-gva", Name: "GVA images", RegionID: "region-gva"}
+	img.ImageMappings.Mapping = map[string]ImageMapping{"rhel9": {Name: "tpl-rhel9.4-2026.10"}, "win2022": {Name: "tpl-win2025-std-2026.09"}}
+	flv := FlavorProfile{ID: "flv-gva", Name: "GVA sizes", RegionID: "region-gva"}
+	flv.FlavorMappings.Mapping = map[string]FlavorMapping{"small": {CPUCount: 2, MemoryInMB: 4096},
+		"medium": {CPUCount: 4, MemoryInMB: 16384}, "large": {CPUCount: 8, MemoryInMB: 32768}}
+	e.Images, e.Flavors = []ImageProfile{img}, []FlavorProfile{flv}
 	for _, p := range e.Projects {
 		for _, ci := range e.CatalogItems {
 			for _, id := range ci.ProjectIDs {

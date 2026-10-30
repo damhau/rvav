@@ -101,6 +101,10 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch parts := strings.Split(strings.Trim(p, "/"), "/"); {
 	case p == "/iaas/api/projects":
 		top(w, q, e.Projects)
+	case p == "/iaas/api/image-profiles":
+		top(w, q, e.Images)
+	case p == "/iaas/api/flavor-profiles":
+		top(w, q, e.Flavors)
 	case p == "/blueprint/api/blueprints":
 		list := make([]Blueprint, len(e.Blueprints))
 		for i, b := range e.Blueprints {

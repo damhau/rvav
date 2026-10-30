@@ -32,6 +32,39 @@ type Project struct {
 	MachineNamingTemplate string            `json:"machineNamingTemplate,omitempty"`
 }
 
+// ImageProfile maps image names (what templates ask for) to a region's
+// vCenter templates.
+type ImageProfile struct {
+	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
+	RegionID      string `json:"regionId,omitempty"`
+	ImageMappings struct {
+		Mapping map[string]ImageMapping `json:"mapping"`
+	} `json:"imageMappings"`
+}
+
+// ImageMapping is the template an image name stands for.
+type ImageMapping struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"` // the vCenter template
+}
+
+// FlavorProfile maps flavor names (sizes) to CPU and memory.
+type FlavorProfile struct {
+	ID             string `json:"id"`
+	Name           string `json:"name,omitempty"`
+	RegionID       string `json:"regionId,omitempty"`
+	FlavorMappings struct {
+		Mapping map[string]FlavorMapping `json:"mapping"`
+	} `json:"flavorMappings"`
+}
+
+// FlavorMapping is a flavor's size.
+type FlavorMapping struct {
+	CPUCount   int `json:"cpuCount"`
+	MemoryInMB int `json:"memoryInMB"`
+}
+
 // Blueprint is a cloud template; Content is its YAML. A template shared
 // with every project of the organisation has RequestScopeOrg.
 type Blueprint struct {
@@ -154,13 +187,15 @@ const MachineType = "Cloud.vSphere.Machine"
 // Estate is everything the importer reads from vRA, also what `rvav vra
 // export` writes, to import from a file.
 type Estate struct {
-	ReadAt       time.Time     `json:"read_at"`
-	URL          string        `json:"url"`
-	Projects     []Project     `json:"projects"`
-	Blueprints   []Blueprint   `json:"blueprints"`
-	Forms        []Form        `json:"forms"`
-	CatalogItems []CatalogItem `json:"catalog_items"`
-	Entitlements []Entitlement `json:"entitlements"`
-	Policies     []Policy      `json:"policies"`
-	Deployments  []Deployment  `json:"deployments"`
+	ReadAt       time.Time       `json:"read_at"`
+	URL          string          `json:"url"`
+	Projects     []Project       `json:"projects"`
+	Images       []ImageProfile  `json:"image_profiles"`
+	Flavors      []FlavorProfile `json:"flavor_profiles"`
+	Blueprints   []Blueprint     `json:"blueprints"`
+	Forms        []Form          `json:"forms"`
+	CatalogItems []CatalogItem   `json:"catalog_items"`
+	Entitlements []Entitlement   `json:"entitlements"`
+	Policies     []Policy        `json:"policies"`
+	Deployments  []Deployment    `json:"deployments"`
 }

@@ -233,6 +233,14 @@ func (c *Client) Projects(ctx context.Context) ([]Project, error) {
 	return listTop[Project](ctx, c, "/iaas/api/projects", url.Values{"apiVersion": {"2021-07-15"}})
 }
 
+func (c *Client) ImageProfiles(ctx context.Context) ([]ImageProfile, error) {
+	return listTop[ImageProfile](ctx, c, "/iaas/api/image-profiles", url.Values{"apiVersion": {"2021-07-15"}})
+}
+
+func (c *Client) FlavorProfiles(ctx context.Context) ([]FlavorProfile, error) {
+	return listTop[FlavorProfile](ctx, c, "/iaas/api/flavor-profiles", url.Values{"apiVersion": {"2021-07-15"}})
+}
+
 // Blueprints lists the cloud templates with their content and versions.
 func (c *Client) Blueprints(ctx context.Context) ([]Blueprint, error) {
 	list, err := listTop[Blueprint](ctx, c, "/blueprint/api/blueprints", nil)
@@ -297,6 +305,12 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 	e := &Estate{ReadAt: time.Now().UTC(), URL: c.base.String()}
 	var err error
 	if e.Projects, err = c.Projects(ctx); err != nil {
+		return nil, err
+	}
+	if e.Images, err = c.ImageProfiles(ctx); err != nil {
+		return nil, err
+	}
+	if e.Flavors, err = c.FlavorProfiles(ctx); err != nil {
 		return nil, err
 	}
 	if e.Blueprints, err = c.Blueprints(ctx); err != nil {
