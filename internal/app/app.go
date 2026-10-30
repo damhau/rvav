@@ -30,6 +30,7 @@ import (
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/notify"
@@ -394,9 +395,20 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
+	acts := &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
-		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets, VCenters: a.VCenters()}, nil
+		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets, VCenters: a.VCenters(),
+		Instance: a.Cfg.IPAM.Instance}
+	// NSX makes deployments' segments (ADR-0028), when rvav has a Manager.
+	if c := a.Cfg.NSX; c.Configured() {
+		client, err := nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile,
+			KeyFile: c.KeyFile, Insecure: c.Insecure})
+		if err != nil {
+			return nil, err
+		}
+		acts.NSX = client
+	}
+	return acts, nil
 }
 
 // RunWorker runs the Temporal worker until ctx is done.

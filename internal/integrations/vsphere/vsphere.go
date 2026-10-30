@@ -196,6 +196,9 @@ type Driver interface {
 	MountISO(ctx context.Context, moref, path string) error
 	UnmountISO(ctx context.Context, moref string) error
 	CloneTicket(ctx context.Context) (string, error)
+	// NetworkExists says whether vCenter has a network (a port group) of
+	// this name: an NSX segment's, once NSX has realised it (ADR-0028).
+	NetworkExists(ctx context.Context, name string) (bool, error)
 	Host() string
 	WebMKSTicket(ctx context.Context, moref string) (*WebMKS, error)
 }
@@ -280,6 +283,18 @@ func findRef(ctx context.Context, c *vim25.Client, kind, name string) (types.Man
 		return types.ManagedObjectReference{}, fmt.Errorf("%s %q: %w", kind, name, ErrNotFound)
 	}
 	return refs[0], nil
+}
+
+func (cl *Client) NetworkExists(ctx context.Context, name string) (bool, error) {
+	c, err := cl.client(ctx)
+	if err != nil {
+		return false, err
+	}
+	_, err = findNetwork(ctx, c, name)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func findNetwork(ctx context.Context, c *vim25.Client, name string) (object.NetworkReference, error) {

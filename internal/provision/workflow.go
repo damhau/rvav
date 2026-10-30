@@ -340,6 +340,10 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
+	if key, err := makeSegments(ctx, info); err != nil {
+		return key, err
+	}
+
 	if len(p.Components) > 0 {
 		return runComponents(ctx, info)
 	}
@@ -349,6 +353,34 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return failed, err
 	}
 	return postConfig(ctx, info, vms, p.PostConfig, KeyInventory, func(j Job) string { return KeyJob + j.Key }, p.Limit(), p.Context)
+}
+
+// makeSegments makes the NSX segments of the plan's deployments (ADR-0028),
+// or finds what an earlier run made, and gives their VMs the segments'
+// subnets. It runs again on a retry: it is how the VMs get their subnet.
+func makeSegments(ctx workflow.Context, info Info) (string, error) {
+	var a *Activities
+	p := info.Plan
+	for _, sg := range p.Segments {
+		key := p.SegmentKey(sg)
+		in := SegmentInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Segment: sg}
+		for _, vm := range p.VMs {
+			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
+				in.VCenter = vm.VCenter
+				break
+			}
+		}
+		var res SegmentResult
+		if err := workflow.ExecuteActivity(ctx, a.MakeSegment, in).Get(ctx, &res); err != nil {
+			return key, err
+		}
+		for i, vm := range p.VMs {
+			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
+				p.VMs[i].Subnet, p.VMs[i].SubnetID, p.VMs[i].Gateway, p.VMs[i].PrefixLength = res.CIDR, res.SubnetID, res.Gateway, res.PrefixLength
+			}
+		}
+	}
+	return "", nil
 }
 
 // builtVM is a VM a request built.

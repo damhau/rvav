@@ -234,3 +234,21 @@ func (s *Store) TryLock(ctx context.Context, key int64) (unlock func(), ok bool,
 		conn.Release()
 	}, true, nil
 }
+
+// SaveSegmentSubnet maps an NSX segment rvav made to its subnet (ADR-0028):
+// the EfficientIP sync leaves the mapping alone.
+func (s *Store) SaveSegmentSubnet(ctx context.Context, n NetworkSubnet) error {
+	_, err := s.Pool.Exec(ctx, `insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id,
+		subnet_name, source, synced_at) values ($1, $2, $3, $4, $5, $6, $7, 'nsx', now())
+		on conflict (network) do update set subnet = excluded.subnet, gateway = excluded.gateway, dns_zone = excluded.dns_zone,
+		dns_servers = excluded.dns_servers, efficientip_subnet_id = excluded.efficientip_subnet_id, subnet_name = excluded.subnet_name,
+		source = 'nsx', synced_at = now()`,
+		n.Network, n.Subnet, n.Gateway, n.DNSZone, nonNil(n.DNSServers), n.EfficientIPSubnetID, n.SubnetName)
+	return err
+}
+
+// DeleteSegmentSubnet removes a segment's mapping, once the segment is gone.
+func (s *Store) DeleteSegmentSubnet(ctx context.Context, network string) error {
+	_, err := s.Pool.Exec(ctx, `delete from network_subnets where network = $1 and source = 'nsx'`, network)
+	return err
+}

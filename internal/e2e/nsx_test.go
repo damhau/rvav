@@ -3,18 +3,25 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/provision"
 )
@@ -221,4 +228,157 @@ func TestSegmentPlanning(t *testing.T) {
 func segmentInputs() map[string]any {
 	return map[string]any{"role": "web", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
 		"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}
+}
+
+// portGroups makes and removes an NSX segment's port group in vcsim, as
+// NSX does in vCenter once it has realised the segment: on the switch of
+// the development port groups.
+func portGroups(t *testing.T, ctx context.Context, c *vim25.Client) func(nsx.Segment, bool) {
+	byName := func(name string) *mo.DistributedVirtualPortgroup {
+		v, err := view.NewManager(c).CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"DistributedVirtualPortgroup"}, true)
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		defer func() { _ = v.Destroy(ctx) }()
+		var pgs []mo.DistributedVirtualPortgroup
+		if err := v.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name", "config.distributedVirtualSwitch"}, &pgs); err != nil {
+			t.Error(err)
+			return nil
+		}
+		for i := range pgs {
+			if pgs[i].Name == name {
+				return &pgs[i]
+			}
+		}
+		return nil
+	}
+	return func(s nsx.Segment, deleted bool) {
+		if deleted {
+			if pg := byName(s.DisplayName); pg != nil {
+				if task, err := object.NewDistributedVirtualPortgroup(c, pg.Reference()).Destroy(ctx); err == nil {
+					_ = task.Wait(ctx)
+				}
+			}
+			return
+		}
+		dev := byName("dvpg-app-dev-vl310")
+		if dev == nil {
+			t.Error("no dvpg-app-dev-vl310 in vcsim")
+			return
+		}
+		task, err := object.NewDistributedVirtualSwitch(c, *dev.Config.DistributedVirtualSwitch).AddPortgroup(ctx,
+			[]types.DVPortgroupConfigSpec{{Name: s.DisplayName, Type: string(types.DistributedVirtualPortgroupPortgroupTypeEarlyBinding), NumPorts: 16}})
+		if err == nil {
+			err = task.Wait(ctx)
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// TestSegmentProvisioning: a VM built on a segment made for its deployment
+// (N1.2): the subnet carved from the block, the segment made on the Tier-1
+// and tagged as rvav's, its port group waited for, the VM's address in that
+// subnet and its adapter on the segment; all of it deleted with the
+// deployment, after the VM.
+func TestSegmentProvisioning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		fakeNSX := nsx.NewFakeServer()
+		fakeNSX.RealizeAfter = 2
+		fakeNSX.OnSegment = portGroups(t, ctx, c)
+		srv := httptest.NewServer(fakeNSX)
+		defer srv.Close()
+		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = srv.URL, nsx.FakeUser, nsx.FakePassword
+		client, err := nsx.New(nsx.Options{URL: srv.URL, Username: nsx.FakeUser, Password: nsx.FakePassword})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.acts.NSX, h.acts.SegmentTimeout = client, 20*time.Second
+		if _, err := h.ipam.AddBlock(efficientip.FakeSpace, "10.60.0.0/22", "nsx-gva-dev"); err != nil {
+			t.Fatal(err)
+		}
+		item, version := segmentItem(h)
+		var rules api.PlacementRuleList
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
+		r := rules.Items[slices.IndexFunc(rules.Items, func(r api.PlacementRule) bool { return r.Environment == "dev" })]
+		h.json("PUT", "/api/v1/admin/placement-rules/"+r.Id, admin, api.PlacementRuleWrite{ProjectId: "prj_web", Environment: "dev",
+			Priority: &r.Priority, Clusters: r.Clusters, Datastores: r.Datastores, Networks: r.Networks, Folder: r.Folder,
+			ClusterTags: &r.ClusterTags, DatastoreTags: &r.DatastoreTags, Segments: &api.PlacementSegments{Tier1: "t1-gva-dev",
+				IpBlock: "nsx-gva-dev", PrefixLength: 26, DnsZone: "corp.example", DnsServers: &[]string{"10.10.0.53"}}}, 200, nil)
+
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web",
+			Environment: "dev", Inputs: segmentInputs()}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		req = h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+
+		var depID string
+		if err := h.store.Pool.QueryRow(ctx, `select id from deployments where created_by_request_id = $1`, req.Id).Scan(&depID); err != nil {
+			t.Fatal(err)
+		}
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+depID, "tnguyen", nil, 200, &dep)
+		segID := provision.SegmentName(dep.Id, "app")
+		seg, err := client.Segment(ctx, segID)
+		if err != nil || seg.ConnectivityPath != "/infra/tier-1s/t1-gva-dev" || seg.Subnets[0].GatewayAddress != "10.60.0.1/26" ||
+			!nsx.Owned(seg.Tags, "rvav") || !slices.Contains(seg.Tags, nsx.Tag{Scope: nsx.DeployScope, Tag: dep.Id}) {
+			t.Fatalf("segment = %+v, %v", seg, err)
+		}
+		types := map[string]string{}
+		rows, _ := h.store.Pool.Query(ctx, `select type, name from resources where deployment_id = $1`, dep.Id)
+		for rows.Next() {
+			var typ, name string
+			_ = rows.Scan(&typ, &name)
+			types[typ] = name
+		}
+		rows.Close()
+		if types["nsx.segment"] != segID || types["ipam.subnet"] != "10.60.0.0/26" || !strings.HasPrefix(types["ipam.address"], "10.60.0.") {
+			t.Fatalf("resources = %v", types)
+		}
+		vm, err := h.vc.FindVM(ctx, dep.Name)
+		if err != nil || len(vm.NICs) == 0 || vm.NICs[0].Network != segID {
+			t.Fatalf("vm = %+v, %v", vm, err)
+		}
+		var mapped string
+		_ = h.store.Pool.QueryRow(ctx, `select subnet from network_subnets where network = $1 and source = 'nsx'`, segID).Scan(&mapped)
+		if mapped != "10.60.0.0/26" {
+			t.Fatalf("mapping = %q", mapped)
+		}
+		var status, system string
+		_ = h.store.Pool.QueryRow(ctx, `select status, system from request_steps where request_id = $1 and key = 'nsx.segment:app'`,
+			req.Id).Scan(&status, &system)
+		if status != "done" || system != "nsx" {
+			t.Fatalf("segment step: %q %q", status, system)
+		}
+
+		// Deleted with the deployment, after the VM: the segment, its port
+		// group, its subnet and its mapping.
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+dep.Id+"/actions", "tnguyen", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},
+			202, &del, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(del.Id, nil)
+		h.waitStatus(del.Id, "tnguyen", api.RequestStatusSucceeded)
+		if _, err := client.Segment(ctx, segID); !errors.Is(err, nsx.ErrNotFound) {
+			t.Fatalf("segment after delete: %v", err)
+		}
+		if ok, _ := h.vc.NetworkExists(ctx, segID); ok {
+			t.Fatal("the port group is still in vCenter")
+		}
+		subnets, _ := h.acts.IPAM.Subnets(ctx)
+		if slices.ContainsFunc(subnets, func(s efficientip.SubnetInfo) bool { return s.Name == segID }) {
+			t.Fatal("the subnet is still in EfficientIP")
+		}
+		var n int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from network_subnets where network = $1`, segID).Scan(&n)
+		if n != 0 {
+			t.Fatal("the mapping is still there")
+		}
+	}, simulator.VPX())
 }

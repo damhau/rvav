@@ -379,7 +379,32 @@ const (
 	KeyReady     = "ready"
 	// KeyDRSRule is a component's DRS rule, under its step.
 	KeyDRSRule = "vsphere.drs_rule"
+	// KeySegment is an NSX segment made for a deployment (ADR-0028):
+	// nsx.segment:<key>, with @<deployment> when there are several.
+	KeySegment = "nsx.segment:"
 )
+
+// SegmentKey is the step key of a segment of the plan.
+func (p Plan) SegmentKey(s SegmentUnit) string {
+	deployments := map[string]bool{}
+	for _, x := range p.Segments {
+		deployments[x.DeploymentID] = true
+	}
+	if len(deployments) > 1 {
+		return KeySegment + s.Key + "@" + s.DeploymentID
+	}
+	return KeySegment + s.Key
+}
+
+// segmentSteps are the steps making the plan's segments, before its VMs'.
+func (p Plan) segmentSteps() []StepDef {
+	var steps []StepDef
+	for _, s := range p.Segments {
+		steps = append(steps, StepDef{Key: p.SegmentKey(s), Title: "Make NSX segment " + s.Name,
+			Detail: fmt.Sprintf("On %s · a /%d from %s", s.Tier1, s.PrefixLength, s.IPBlock), System: "nsx", Status: "pending"})
+	}
+	return steps
+}
 
 // VMKey returns the step key for one VM of the plan.
 func (p Plan) VMKey(base string, vm VMUnit) string {
@@ -460,6 +485,7 @@ func (p Plan) Steps(environment string) []StepDef {
 		}
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
+	steps = append(steps, p.segmentSteps()...)
 	if len(p.Components) > 0 {
 		steps = append(steps, componentSteps(p.VMs, p.Components, planKeys(), "")...)
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})

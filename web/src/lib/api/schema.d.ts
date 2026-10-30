@@ -3525,7 +3525,7 @@ export interface components {
             title: string;
             detail?: string;
             /** @enum {string} */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx";
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;

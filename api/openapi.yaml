@@ -4927,7 +4927,7 @@ components:
         detail: { type: string }
         system:
           type: string
-          enum: [rvav, policy, vcenter, efficientip, awx]
+          enum: [rvav, policy, vcenter, efficientip, awx, nsx]
         status: { $ref: "#/components/schemas/StepStatus" }
         started_at: { type: [string, "null"], format: date-time }
         finished_at: { type: [string, "null"], format: date-time }

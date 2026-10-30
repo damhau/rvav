@@ -190,9 +190,13 @@ func init() {
 					ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))
 				}
 			}
-			for _, typ := range []struct{ typ, key, title string }{
-				{"dns.record", "dns.delete", "Delete the DNS records"},
-				{"ipam.address", "ipam.release", "Release the IP addresses"},
+			// NSX segments made for the deployment after the addresses on
+			// them, their subnets last (ADR-0028).
+			for _, typ := range []struct{ typ, key, title, system string }{
+				{"dns.record", "dns.delete", "Delete the DNS records", "efficientip"},
+				{"ipam.address", "ipam.release", "Release the IP addresses", "efficientip"},
+				{"nsx.segment", "nsx.segment.delete", "Delete the NSX segments", "nsx"},
+				{"ipam.subnet", "ipam.subnet.delete", "Delete the segments' subnets", "efficientip"},
 			} {
 				var names []string
 				for _, r := range t.Resources {
@@ -201,7 +205,7 @@ func init() {
 					}
 				}
 				if len(names) > 0 {
-					ops = append(ops, Op{Key: typ.key, Title: typ.title, Detail: strings.Join(names, ", "), System: "efficientip",
+					ops = append(ops, Op{Key: typ.key, Title: typ.title, Detail: strings.Join(names, ", "), System: typ.system,
 						Op: "delete_resources", Args: map[string]any{"type": typ.typ}})
 				}
 			}

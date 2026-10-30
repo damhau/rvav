@@ -21,6 +21,7 @@ import (
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/outbox"
@@ -65,6 +66,12 @@ type Activities struct {
 	// VCenters connects to the vCenter a VM is in (ADR-0024); without it,
 	// VSphere is the only one.
 	VCenters VCenterSet
+	// NSX makes the segments of deployments (ADR-0028); nil without an NSX
+	// Manager. Instance tags what rvav makes there, and SegmentTimeout
+	// bounds the wait for a segment's port group (5 minutes by default).
+	NSX            *nsx.Client
+	Instance       string
+	SegmentTimeout time.Duration
 }
 
 // VCenterSet is the vCenters rvav manages, by name ("" for the first).
@@ -1412,6 +1419,18 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 		if p.Type == "A" {
 			what = "removed DNS for " + p.FQDN
 		}
+	case "nsx.segment":
+		w, err := a.deleteSegment(ctx, r)
+		if err != nil {
+			return "", err
+		}
+		what = w
+	case "ipam.subnet":
+		w, err := a.deleteSubnet(ctx, r)
+		if err != nil {
+			return "", err
+		}
+		what = w
 	case "ipam.address":
 		var p struct {
 			Address  string `json:"address"`
@@ -1446,8 +1465,9 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		return nil
 	}
 	var done []string
-	order := map[string]int{"vsphere.drs_rule": 0, "vsphere.vm": 1, "dns.record": 2, "ipam.address": 3}
-	for pass := 0; pass < 4; pass++ {
+	// NSX segments after the VMs and addresses on them, their subnets last.
+	order := map[string]int{"vsphere.drs_rule": 0, "vsphere.vm": 1, "dns.record": 2, "ipam.address": 3, "nsx.segment": 4, "ipam.subnet": 5}
+	for pass := 0; pass < 6; pass++ {
 		for _, r := range list {
 			if order[r.Type] != pass {
 				continue

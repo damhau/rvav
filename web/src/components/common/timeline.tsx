@@ -8,6 +8,7 @@ const systemLabel: Record<NonNullable<Step["system"]>, string> = {
   vcenter: "vCenter",
   efficientip: "EfficientIP",
   awx: "AWX",
+  nsx: "NSX",
 };
 
 const systemTone: Record<NonNullable<Step["system"]>, string> = {
@@ -16,6 +17,7 @@ const systemTone: Record<NonNullable<Step["system"]>, string> = {
   vcenter: "text-ok",
   efficientip: "text-warn",
   awx: "text-bad",
+  nsx: "text-run",
 };
 
 const statusText: Record<StepStatus, string> = {
