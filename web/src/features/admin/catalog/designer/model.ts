@@ -55,6 +55,10 @@ export const builtinSources = [
   "naming.preview",
   "rvav.templates",
   "rvav.sizes",
+  "nsx.segments",
+  "nsx.tier1s",
+  "nsx.groups",
+  "nsx.services",
 ];
 
 /** The built-in source a widget is made for, set when the field is added. */

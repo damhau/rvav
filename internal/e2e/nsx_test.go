@@ -142,6 +142,25 @@ func segmentItem(h *harness) (string, string) {
 // under another slug and published for every project.
 func rhelVariant(h *harness, slug, name string, change func(bp map[string]any)) (string, string) {
 	h.t.Helper()
+	res := importRHELVariant(h, slug, name, change)
+	version := publishVRAItem(h, res)
+	return res.ItemId, version
+}
+
+// importRHELVariant imports the seeded RHEL item with its blueprint
+// changed, under another slug, as a draft.
+func importRHELVariant(h *harness, slug, name string, change func(bp map[string]any)) api.CatalogImportResult {
+	h.t.Helper()
+	var res api.CatalogImportResult
+	h.json("POST", "/api/v1/admin/catalog/import", "mkeller", rawYAML(rhelYAML(h, slug, name, change)), 200, &res,
+		"Content-Type", "application/yaml")
+	return res
+}
+
+// rhelYAML is the seeded RHEL item's export with its blueprint changed,
+// under another slug.
+func rhelYAML(h *harness, slug, name string, change func(bp map[string]any)) []byte {
+	h.t.Helper()
 	code, raw, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-server/export", "mkeller", nil)
 	if code != 200 {
 		h.t.Fatalf("export = %d %s", code, raw)
@@ -160,10 +179,20 @@ func rhelVariant(h *harness, slug, name string, change func(bp map[string]any)) 
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	var res api.CatalogImportResult
-	h.json("POST", "/api/v1/admin/catalog/import", "mkeller", rawYAML(out), 200, &res, "Content-Type", "application/yaml")
-	version := publishVRAItem(h, res)
-	return res.ItemId, version
+	return out
+}
+
+// useFakeNSX makes rvav's NSX Manager a fake one, for the API.
+func useFakeNSX(h *harness, f *nsx.FakeServer) *nsx.Client {
+	h.t.Helper()
+	srv := httptest.NewServer(f)
+	h.t.Cleanup(srv.Close)
+	h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = srv.URL, nsx.FakeUser, nsx.FakePassword
+	client, err := nsx.New(nsx.Options{URL: srv.URL, Username: nsx.FakeUser, Password: nsx.FakePassword})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return client
 }
 
 // TestSegmentPlanning: a request for an item whose VM is on a segment made
@@ -177,6 +206,7 @@ func TestSegmentPlanning(t *testing.T) {
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
 		const admin = "mkeller"
+		useFakeNSX(h, nsx.NewFakeServer())
 		item, version := segmentItem(h)
 		draft := api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web", Environment: "dev",
 			Inputs: segmentInputs()}
@@ -187,9 +217,6 @@ func TestSegmentPlanning(t *testing.T) {
 		}
 
 		// Web Platform's dev rule makes them.
-		fake := httptest.NewServer(nsx.NewFakeServer())
-		defer fake.Close()
-		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = fake.URL, nsx.FakeUser, nsx.FakePassword
 		var rules api.PlacementRuleList
 		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
 		i := slices.IndexFunc(rules.Items, func(r api.PlacementRule) bool { return r.Environment == "dev" })
@@ -261,13 +288,7 @@ func TestSegmentProvisioning(t *testing.T) {
 		fakeNSX := nsx.NewFakeServer()
 		fakeNSX.RealizeAfter = 2
 		fakeNSX.OnSegment = portGroups(t, ctx, c)
-		srv := httptest.NewServer(fakeNSX)
-		defer srv.Close()
-		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = srv.URL, nsx.FakeUser, nsx.FakePassword
-		client, err := nsx.New(nsx.Options{URL: srv.URL, Username: nsx.FakeUser, Password: nsx.FakePassword})
-		if err != nil {
-			t.Fatal(err)
-		}
+		client := useFakeNSX(h, fakeNSX)
 		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
 		if _, err := h.ipam.AddBlock(efficientip.FakeSpace, "10.60.0.0/22", "nsx-gva-dev"); err != nil {
 			t.Fatal(err)
@@ -358,19 +379,22 @@ func TestSegmentProvisioning(t *testing.T) {
 
 // groupItem is the seeded RHEL item whose VM is in a security group made
 // for its deployment, with its firewall rules, and in an existing one.
-func groupItem(h *harness, extra ...string) (string, string) {
+func groupItem(h *harness) (string, string) {
 	h.t.Helper()
-	return rhelVariant(h, "rhel9-groups"+strings.Join(extra, ""), "RHEL 9 in security groups", func(bp map[string]any) {
+	return rhelVariant(h, "rhel9-groups", "RHEL 9 in security groups", groupBlueprint("nsx:grp-backup-clients", "SSH"))
+}
+
+// groupBlueprint puts the VM in a group of its deployment, with rules into
+// it from any on HTTPS and from what ssh names on service, and in
+// grp-web-servers.
+func groupBlueprint(from, service string) func(bp map[string]any) {
+	return func(bp map[string]any) {
 		bp["groups"] = []any{"web", "nsx:grp-web-servers"}
-		from := "nsx:grp-backup-clients"
-		if len(extra) > 0 {
-			from = "nsx:grp-gone"
-		}
 		bp["security_groups"] = []any{map[string]any{"key": "web", "title": "Web servers", "rules": []any{
 			map[string]any{"from": []any{"any"}, "services": []any{"HTTPS"}},
-			map[string]any{"from": []any{from}, "services": []any{"SSH"}},
+			map[string]any{"from": []any{from}, "services": []any{service}},
 		}}}
-	})
+	}
 }
 
 // TestSecurityGroupPlanning: a request for an item whose VM is in NSX
@@ -383,23 +407,53 @@ func TestSecurityGroupPlanning(t *testing.T) {
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
+		// Saved published only with an NSX Manager that has what it names.
+		gone := rhelYAML(h, "rhel9-groups-gone", "RHEL 9 in groups NSX lacks", groupBlueprint("nsx:grp-gone", "NOPE"))
+		refused := func() []string {
+			t.Helper()
+			var problem api.Problem
+			h.json("POST", "/api/v1/admin/catalog/import", "mkeller", rawYAML(gone), 422, &problem, "Content-Type", "application/yaml")
+			var out []string
+			for _, e := range *problem.Errors {
+				out = append(out, e.Field+" "+deref(e.Code))
+			}
+			slices.Sort(out)
+			return out
+		}
+		if got := refused(); !slices.Equal(got, []string{"/versions/0/blueprint no_nsx"}) {
+			t.Fatalf("saved without NSX: %v", got)
+		}
+		client := useFakeNSX(h, nsx.NewFakeServer())
+		if got := refused(); !slices.Equal(got, []string{"/versions/0/blueprint/security_groups/0/rules/1/from/0 unknown",
+			"/versions/0/blueprint/security_groups/0/rules/1/services/0 unknown"}) {
+			t.Fatalf("saved with what NSX lacks: %v", got)
+		}
+
 		item, version := groupItem(h)
 		draft := api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web", Environment: "dev",
 			Inputs: segmentInputs()}
 		var pv api.RequestPreview
+		url := h.svc.Config.NSX.URL
+		h.svc.Config.NSX.URL = ""
 		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
 		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "no_nsx" }) {
 			t.Fatalf("without NSX: %+v", pv.Errors)
 		}
-
-		fake := httptest.NewServer(nsx.NewFakeServer())
-		defer fake.Close()
-		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = fake.URL, nsx.FakeUser, nsx.FakePassword
-		gone, goneVersion := groupItem(h, "-gone")
-		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: gone, VersionId: goneVersion,
-			ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}, 200, &pv)
+		h.svc.Config.NSX.URL = url
+		// A group deleted in NSX since.
+		backup, err := client.Group(ctx, "grp-backup-clients")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.DeleteGroup(ctx, "grp-backup-clients"); err != nil {
+			t.Fatal(err)
+		}
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
 		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "unknown_group" }) {
 			t.Fatalf("a group NSX lacks: %+v", pv.Errors)
+		}
+		if err := client.PutGroup(ctx, backup); err != nil {
+			t.Fatal(err)
 		}
 
 		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
@@ -442,6 +496,66 @@ func TestSecurityGroupPlanning(t *testing.T) {
 				t.Fatalf("step %s: %q %v", key, system, err)
 			}
 		}
+
+		// Groups the form chose, through the groups binding.
+		bound, boundVersion := rhelVariant(h, "rhel9-groups-bound", "RHEL 9 in chosen groups", func(bp map[string]any) {
+			groupBlueprint("any", "SSH")(bp)
+			bp["bindings"].(map[string]any)["groups"] = `inputs.role == "web" ? ["nsx:grp-backup-clients", "web"] : []`
+		})
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: bound, VersionId: boundVersion,
+			ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}, 202, &req, "Idempotency-Key", uuid.NewString())
+		_ = h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw)
+		plan = provision.Plan{}
+		if err := json.Unmarshal(raw, &plan); err != nil {
+			t.Fatal(err)
+		}
+		var ids, offered []string
+		for _, g := range plan.VMs[0].NSXGroups {
+			ids = append(ids, g.ID)
+		}
+		for _, g := range plan.VMs[0].NSXOffered {
+			offered = append(offered, g.ID)
+		}
+		web = provision.GroupName(plan.VMs[0].DeploymentID, "web")
+		if !slices.Equal(ids, []string{web, "grp-web-servers", "grp-backup-clients"}) ||
+			!slices.Equal(offered, []string{web, "grp-web-servers", "grp-backup-clients"}) {
+			t.Fatalf("bound groups = %v, offered %v", ids, offered)
+		}
+
+		// The form designer's NSX pickers.
+		if _, err := h.store.Pool.Exec(ctx, `update catalog_item_versions set ui_schema = jsonb_set(jsonb_set(jsonb_set(jsonb_set(ui_schema,
+			'{fields,pick_segment}', '{"widget": "select", "label": "Segment", "value_source": {"kind": "builtin", "name": "nsx.segments", "params": {"tier1": "t1-gva-dev"}}}'),
+			'{fields,pick_tier1}', '{"widget": "select", "label": "Tier-1", "value_source": {"kind": "builtin", "name": "nsx.tier1s"}}'),
+			'{fields,pick_group}', '{"widget": "multiselect", "label": "Groups", "value_source": {"kind": "builtin", "name": "nsx.groups"}}'),
+			'{fields,pick_service}', '{"widget": "select", "label": "Service", "value_source": {"kind": "builtin", "name": "nsx.services"}}')
+			where id = $1`, version); err != nil {
+			t.Fatal(err)
+		}
+		dev := api.EnvironmentKey("dev")
+		pick := func(field string) []string {
+			t.Helper()
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: version, ProjectId: "prj_web",
+				Environment: &dev, Field: field, Inputs: map[string]any{}}, 200, &out)
+			var values []string
+			for _, o := range *out.Options {
+				values = append(values, o.Value)
+			}
+			return values
+		}
+		// Segments on the Tier-1 asked for; groups VMs can join by tag.
+		if got := pick("pick_segment"); !slices.Equal(got, []string{"seg-gva-dev-app"}) {
+			t.Fatalf("nsx.segments = %v", got)
+		}
+		if got := pick("pick_tier1"); len(got) != 3 || !slices.Contains(got, "t1-gva-dev") {
+			t.Fatalf("nsx.tier1s = %v", got)
+		}
+		if got := pick("pick_group"); !slices.Equal(got, []string{"nsx:grp-backup-clients", "nsx:grp-web-servers"}) {
+			t.Fatalf("nsx.groups = %v", got)
+		}
+		if got := pick("pick_service"); len(got) != 8 || !slices.Contains(got, "HTTPS") {
+			t.Fatalf("nsx.services = %v", got)
+		}
 	})
 }
 
@@ -458,13 +572,7 @@ func TestSecurityGroupProvisioning(t *testing.T) {
 		h := setup(t, ctx, c)
 		fakeNSX := nsx.NewFakeServer()
 		fakeNSX.AnyVM, fakeNSX.SeeAfter = true, 2
-		srv := httptest.NewServer(fakeNSX)
-		defer srv.Close()
-		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = srv.URL, nsx.FakeUser, nsx.FakePassword
-		client, err := nsx.New(nsx.Options{URL: srv.URL, Username: nsx.FakeUser, Password: nsx.FakePassword})
-		if err != nil {
-			t.Fatal(err)
-		}
+		client := useFakeNSX(h, fakeNSX)
 		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
 		item, version := groupItem(h)
 		var req api.Request

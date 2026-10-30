@@ -54,7 +54,7 @@ values.
 | `template`, `library` | The vCenter template; with `library`, the item of that content library |
 | `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm`, `.inputs`, `.project`, `.environment`, `.request`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
-| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list) |
+| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list), `groups` (a list of NSX groups, added to `groups`) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network`, `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. Only the first adapter, and not in composite items yet |
@@ -162,6 +162,13 @@ Markdown or info block, and resource pickers:
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
   project, user and environment). Dependencies re-resolve a field when the
   inputs it depends on change.
+- NSX's ([ADR-0028](adr/0028-nsx-networking.md)): `nsx.segments` (existing
+  segments, by the port group name a `network` binding takes; `tier1` to
+  keep one Tier-1's), `nsx.tier1s`, `nsx.groups` (groups VMs can join by
+  tag, as `nsx:<ID>` for a `groups` binding) and `nsx.services`. What rvav
+  made for deployments isn't offered. Saving an item that asks NSX for
+  networks or groups needs an NSX Manager, and checks the groups and
+  services it names.
 - Rules are evaluated on the server, in the preview and again on submit:
   a computed value becomes the input, and a field a rule makes required is
   checked.

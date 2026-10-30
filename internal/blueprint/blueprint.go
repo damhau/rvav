@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/damhau/rvav/internal/policy"
@@ -299,6 +300,9 @@ type VMPlan struct {
 	Disks []DiskPlan `json:"disks,omitempty"`
 	NICs  []NICPlan  `json:"nics,omitempty"`
 	Tags  []string   `json:"tags,omitempty"`
+	// Groups are the NSX security groups it is in: the component's, and
+	// those its groups binding gives (ADR-0028).
+	Groups []string `json:"groups,omitempty"`
 }
 
 // StorageGB is the VM's storage: its first disk and those added.
@@ -417,6 +421,7 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 	}
 	plan.Template, plan.Library, plan.StoragePolicy = c.Template, c.Library, c.StoragePolicy
 	plan.Tags = append(plan.Tags, c.Tags...)
+	plan.Groups = append(plan.Groups, c.Groups...)
 	for i, d := range c.Disks {
 		dp := DiskPlan{StoragePolicy: d.StoragePolicy}
 		n, ok := numberOrCEL(d.SizeGB, vars)
@@ -506,6 +511,18 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 			plan.Tags = append(plan.Tags, list...)
 		} else {
 			missing = append(missing, "tags")
+		}
+	}
+	// Groups chosen in the form: existing ones as nsx:<ID>, or keys.
+	if expr, ok := b.Bindings["groups"]; ok {
+		if list, ok := celStrings(expr, vars); ok {
+			for _, g := range list {
+				if g != "" && !slices.Contains(plan.Groups, g) {
+					plan.Groups = append(plan.Groups, g)
+				}
+			}
+		} else {
+			missing = append(missing, "groups")
 		}
 	}
 	return plan, count, missing

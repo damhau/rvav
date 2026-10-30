@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -360,6 +362,14 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		out.Options = &opts
 		cache(60)
 
+	case "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services":
+		opts, err := s.nsxOptions(ctx, *src.Name, params)
+		if err != nil {
+			return out, err
+		}
+		out.Options = &opts
+		cache(60)
+
 	case "dns.zones":
 		zones, err := s.dnsZones(ctx)
 		if err != nil {
@@ -443,4 +453,74 @@ func (s *Service) awxChoices(ctx context.Context, source string, params map[stri
 		out[i] = o.Value
 	}
 	return out, err
+}
+
+// nsxOptions are what NSX offers a form (ADR-0028): existing segments, by
+// the port group's name a network binding takes (on a Tier-1, with tier1);
+// Tier-1 gateways; groups VMs can join by tag, as nsx:<ID> a groups binding
+// takes; services. What rvav made for deployments isn't offered.
+func (s *Service) nsxOptions(ctx context.Context, name string, params map[string]string) ([]api.Option, error) {
+	if !s.Config.NSX.Configured() {
+		return nil, &BadRequestError{Msg: "rvav has no NSX Manager: " + name + " needs one, set in Integrations."}
+	}
+	client, err := s.nsx()
+	if err != nil {
+		return nil, err
+	}
+	ours := func(tags []nsx.Tag) bool {
+		return slices.ContainsFunc(tags, func(t nsx.Tag) bool { return t.Scope == nsx.OwnerScope })
+	}
+	opts := []api.Option{}
+	switch name {
+	case "nsx.segments":
+		segs, err := client.Segments(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "NSX", Err: err}
+		}
+		for _, sg := range segs {
+			t1 := strings.TrimPrefix(sg.ConnectivityPath, nsx.Tier1Path)
+			if ours(sg.Tags) || params["tier1"] != "" && t1 != params["tier1"] {
+				continue
+			}
+			meta := cmp.Or(t1, "No Tier-1")
+			if len(sg.Subnets) > 0 {
+				meta += " · " + sg.Subnets[0].GatewayAddress
+			}
+			opts = append(opts, option(sg.DisplayName, sg.DisplayName, meta))
+		}
+	case "nsx.tier1s":
+		t1s, err := client.Tier1s(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "NSX", Err: err}
+		}
+		for _, t := range t1s {
+			opts = append(opts, option(t.ID, cmp.Or(t.DisplayName, t.ID), ""))
+		}
+	case "nsx.groups":
+		groups, err := client.Groups(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "NSX", Err: err}
+		}
+		for _, g := range groups {
+			tags, ok := g.JoinTags()
+			if !ok || ours(g.Tags) {
+				continue
+			}
+			var by []string
+			for _, t := range tags {
+				by = append(by, t.Scope+"|"+t.Tag)
+			}
+			opts = append(opts, option("nsx:"+g.ID, cmp.Or(g.DisplayName, g.ID), "Tag "+strings.Join(by, ", ")))
+		}
+	case "nsx.services":
+		svcs, err := client.Services(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "NSX", Err: err}
+		}
+		for _, sv := range svcs {
+			opts = append(opts, option(sv.ID, cmp.Or(sv.DisplayName, sv.ID), ""))
+		}
+	}
+	sort.Slice(opts, func(i, j int) bool { return opts[i].Label < opts[j].Label })
+	return opts, nil
 }

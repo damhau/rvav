@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/hosts"
+	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -379,6 +381,97 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 				return nil, err
 			case kind != "" && v.Kind != kind:
 				errs = append(errs, fieldErr(at, "invalid", fmt.Sprintf("Secret %q must be a %s secret: a user name and its password.", name, kind)))
+			}
+		}
+		nsxErrs, err := s.checkNSXRefs(ctx, b, prefix+"/blueprint")
+		if err != nil {
+			return nil, err
+		}
+		errs = append(errs, nsxErrs...)
+	}
+	return errs, nil
+}
+
+// checkNSXRefs checks what a VM blueprint asks of NSX against it
+// (ADR-0028): an NSX Manager to ask; the existing groups it names, which
+// must select VMs by tag; the services of its rules.
+func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr string) ([]api.FieldError, error) {
+	groups, services := map[string]string{}, map[string]string{} // pointer → ID
+	for i, g := range b.Groups {
+		groups[fmt.Sprintf("%s/groups/%d", ptr, i)] = g
+	}
+	for i, c := range b.Components {
+		for j, g := range c.Groups {
+			groups[fmt.Sprintf("%s/components/%d/groups/%d", ptr, i, j)] = g
+		}
+	}
+	for i, g := range b.SecurityGroups {
+		for j, r := range g.Rules {
+			at := fmt.Sprintf("%s/security_groups/%d/rules/%d", ptr, i, j)
+			for k, f := range r.From {
+				groups[fmt.Sprintf("%s/from/%d", at, k)] = f
+			}
+			for k, sv := range r.Services {
+				if sv != "any" {
+					services[fmt.Sprintf("%s/services/%d", at, k)] = sv
+				}
+			}
+		}
+	}
+	for at, g := range groups {
+		if id, ok := blueprint.ExistingGroup(g); ok {
+			groups[at] = id
+		} else {
+			delete(groups, at)
+		}
+	}
+	_, binds := b.Bindings["groups"]
+	for _, c := range b.Components {
+		_, bound := c.Bindings["groups"]
+		binds = binds || bound
+	}
+	if len(b.Segments)+len(b.SecurityGroups)+len(groups) == 0 && !binds {
+		return nil, nil
+	}
+	if !s.Config.NSX.Configured() {
+		return []api.FieldError{fieldErr(ptr, "no_nsx", "This item asks NSX for networks or security groups, and rvav has no NSX Manager. Set one in Integrations first.")}, nil
+	}
+	client, err := s.nsx()
+	if err != nil {
+		return nil, err
+	}
+	var errs []api.FieldError
+	read := map[string]*nsx.Group{}
+	for _, at := range sortedKeys(groups) {
+		id := groups[at]
+		if _, done := read[id]; !done {
+			g, err := client.Group(ctx, id)
+			switch {
+			case errors.Is(err, nsx.ErrNotFound):
+				read[id] = nil
+			case err != nil:
+				return nil, &UpstreamError{System: "NSX", Err: err}
+			default:
+				read[id] = &g
+			}
+		}
+		switch g := read[id]; {
+		case g == nil:
+			errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("NSX has no group %s.", id)))
+		case !strings.Contains(at, "/rules/"):
+			if _, ok := g.JoinTags(); !ok {
+				errs = append(errs, fieldErr(at, "not_by_tag", fmt.Sprintf("NSX group %s doesn't select VMs by tag: rvav can't put VMs in it.", id)))
+			}
+		}
+	}
+	if len(services) > 0 {
+		known, err := client.Services(ctx)
+		if err != nil {
+			return nil, &UpstreamError{System: "NSX", Err: err}
+		}
+		for _, at := range sortedKeys(services) {
+			if !slices.ContainsFunc(known, func(k nsx.Service) bool { return k.ID == services[at] }) {
+				errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("NSX has no service %s.", services[at])))
 			}
 		}
 	}

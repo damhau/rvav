@@ -3042,9 +3042,11 @@ export interface components {
              * @description For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
              *     `vsphere.networks`, `vsphere.templates`, `vsphere.folders`,
              *     `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
-             *     `awx.inventories`, `awx.credentials`, `naming.preview`, and
+             *     `awx.inventories`, `awx.credentials`, `naming.preview`,
              *     `rvav.templates` and `rvav.sizes` (what is offered to the
-             *     project and environment; ADR-0020).
+             *     project and environment; ADR-0020), and `nsx.segments`
+             *     (`tier1` param), `nsx.tier1s`, `nsx.groups` (as `nsx:<ID>`)
+             *     and `nsx.services` (ADR-0028).
              * @example vsphere.datastores
              */
             name?: string;

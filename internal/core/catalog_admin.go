@@ -562,7 +562,7 @@ var itemKinds = map[string]string{"vm_blueprint": blueprint.KindVM, "awx_job_tem
 // builtinSources are the builtin value sources (docs: ValueSource in the spec).
 var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
 	"ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
-	"rvav.templates", "rvav.sizes"}
+	"rvav.templates", "rvav.sizes", "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services"}
 
 // checkDefinition checks a version's definition as a whole, with pointers
 // under prefix. A draft may be incomplete (no template named yet); to
