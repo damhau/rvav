@@ -11,6 +11,7 @@ interface State {
   map: Record<string, string>;
   imported: Set<string>;
   adopted: Set<string>;
+  moved: Record<string, { at: string; by: string; note?: string }>;
 }
 
 const templates: { id: string; name: string; slug: string; status: S["VraItemPlan"]["status"]; version?: string; shared: string[]; notes: S["VraNote"][] }[] = [
@@ -44,6 +45,7 @@ function state(db: Db): State {
     map: {},
     imported: new Set(),
     adopted: new Set(),
+    moved: {},
   }; // prettier-ignore
   return d.vra;
 }
@@ -98,6 +100,37 @@ function plan(db: Db, st: State): S["VraPlan"] {
     dep("dep-vra-5", "vra-legacy", "Legacy Apps", "former.admin@corp.example", [], "vRA project Legacy Apps has no rvav project: map it to one, or create it."),
   ]; // prettier-ignore
   const count = (f: (x: S["VraItemPlan"]) => boolean) => items.filter(f).length;
+  const cutover: S["VraCutover"] = {
+    total: projects.length,
+    moved: Object.keys(st.moved).length,
+    deployments_left: deployments.filter((d) => d.status !== "adopted").map((d) => d.name),
+    switch_off: false,
+    projects: projects.map((p) => {
+      const mine = templates.filter((t) => t.shared.includes(p.vra_id) && t.status !== "skipped");
+      const pending = mine.filter((t) => !st.imported.has(t.id));
+      const deps = deployments.filter((d) => d.vra_project === p.name);
+      const left = deps.filter((d) => d.status !== "adopted");
+      const m = st.moved[p.vra_id];
+      const checks: S["VraCheck"][] = [
+        p.rvav_project_id
+          ? { key: "project", label: "rvav project", state: "ok", detail: `${p.rvav_project_name}, ${p.how === "mapped" ? "mapped" : "by name"}.` }
+          : { key: "project", label: "rvav project", state: "todo", detail: "Map it to an rvav project, or create one." },
+        pending.length === 0
+          ? { key: "items", label: "Catalog items", state: mine.length ? "warn" : "ok", detail: mine.length ? `0 of ${mine.length} published in rvav. Not yet: ${mine.map((t) => `${t.name} (a draft)`).join(", ")}.` : "vRA offers it no cloud template." }
+          : { key: "items", label: "Catalog items", state: "warn", detail: `0 of ${mine.length} published in rvav. Not yet: ${pending.map((t) => `${t.name} (not imported)`).join(", ")}.` },
+        left.length === 0
+          ? { key: "deployments", label: "Deployments adopted", state: "ok", detail: deps.length ? `All ${deps.length} adopted.` : "It has none in vRA." }
+          : { key: "deployments", label: "Deployments adopted", state: "warn", detail: `${deps.length - left.length} of ${deps.length} adopted. Still in vRA: ${left.map((d) => d.name).join(", ")}.` },
+        { key: "people", label: "People", state: "ok", detail: "All 2 have signed in to rvav." },
+        { key: "policies", label: "Policies", state: "manual", detail: "Set by hand from the plan: Production needs a lead, Deployment limit." },
+        ...(m ? [{ key: "vra_offer", label: "vRA offers it nothing", state: "warn", detail: `vRA still offers it ${mine.length} items: vRA's administrators remove them.` }] : []),
+      ]; // prettier-ignore
+      return {
+        vra_id: p.vra_id, name: p.name, rvav_project_id: p.rvav_project_id, rvav_project_name: p.rvav_project_name,
+        moved_at: m?.at, moved_by: m?.by, note: m?.note, ready: false, checks,
+      }; // prettier-ignore
+    }),
+  };
   return {
     snapshot: st.snapshot,
     summary: {
@@ -106,7 +139,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
       deployments_adopt: deployments.filter((d) => d.status === "adopt").length, deployments_adopted: deployments.filter((d) => d.status === "adopted").length,
       deployments_skipped: deployments.filter((d) => d.status === "skipped").length,
     },
-    projects, items, deployments,
+    projects, items, deployments, cutover,
     policies: [
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
@@ -182,6 +215,21 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
         return problem(422, "Not valid", [{ field: "/rvav_project_id", code: "unknown", message: "No such project." }]);
       if (b.rvav_project_id) st.map[id] = b.rvav_project_id;
       else delete st.map[id];
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.put(`${base}/admin/vra/projects/:id/cutover`, async ({ params, request }) => {
+      await wait();
+      const st = state(db);
+      const id = String(params.id);
+      const vp = vraProjects.find((p) => p.id === id);
+      if (!vp) return problem(404, "Not found");
+      const b = (await request.json()) as S["VraCutoverWrite"];
+      if (b.moved && rvavOf(db, st, vp)[0] === "none")
+        return problem(422, "Not valid", [
+          { field: "/moved", code: "unmapped", message: `${vp.name} has no rvav project: map it first.` },
+        ]);
+      if (b.moved) st.moved[id] = { at: new Date().toISOString(), by: "Marc Keller", note: b.note };
+      else delete st.moved[id];
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/vra/import`, async ({ request }) => {

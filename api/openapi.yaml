@@ -2735,6 +2735,30 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/vra/projects/{vraProjectId}/cutover:
+    put:
+      tags: [admin]
+      operationId: setVraCutover
+      summary: Mark a vRA project moved to rvav, or not (P2.6)
+      description: |
+        Moved means new requests go to rvav: vRA's administrators stop
+        offering the project's items in vRA (the cutover runbook), and the
+        next read of vRA checks they did. vRA keeps the project's
+        deployments not adopted yet. Nothing in rvav or vRA changes; the
+        project must be mapped.
+      parameters:
+        - { name: vraProjectId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VraCutoverWrite" }
+      responses:
+        "204": { description: Recorded }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/vra/import:
     post:
       tags: [admin]
@@ -5328,7 +5352,7 @@ components:
         rvav_project_id: { type: [string, "null"], description: Null clears the mapping. }
     VraPlan:
       type: object
-      required: [snapshot, projects, items, deployments, policies, triage, summary]
+      required: [snapshot, projects, items, deployments, policies, triage, summary, cutover]
       properties:
         snapshot: { $ref: "#/components/schemas/VraSnapshot" }
         summary:
@@ -5356,6 +5380,48 @@ components:
           type: array
           items: { $ref: "#/components/schemas/VraPolicyPlan" }
         triage: { $ref: "#/components/schemas/VroTriage" }
+        cutover: { $ref: "#/components/schemas/VraCutover" }
+    VraCutover:
+      type: object
+      required: [projects, moved, total, deployments_left, switch_off]
+      properties:
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/VraCutoverProject" }
+        moved: { type: integer, description: vRA projects marked moved. }
+        total: { type: integer }
+        deployments_left: { type: array, items: { type: string }, description: vRA's deployments not adopted. }
+        switch_off: { type: boolean, description: "Every project moved and every deployment adopted: vRA can be switched off." }
+    VraCutoverProject:
+      type: object
+      required: [vra_id, name, ready, checks]
+      properties:
+        vra_id: { type: string }
+        name: { type: string }
+        rvav_project_id: { type: string }
+        rvav_project_name: { type: string }
+        moved_at: { type: string, format: date-time }
+        moved_by: { type: string }
+        note: { type: string }
+        ready: { type: boolean, description: "Mapped, its items published in rvav and shared with it." }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/VraCheck" }
+    VraCheck:
+      type: object
+      required: [key, label, state, detail]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        state: { type: string, description: "ok (done), warn (to do, or gone wrong), todo (not yet) or manual (people check it)." }
+        detail: { type: string }
+    VraCutoverWrite:
+      type: object
+      required: [moved]
+      additionalProperties: false
+      properties:
+        moved: { type: boolean }
+        note: { type: string, maxLength: 500 }
     VraProjectPlan:
       type: object
       required: [vra_id, name, how, items, deployments]

@@ -21,7 +21,8 @@ import (
 // the import makes the items as drafts with their sharing; run again it
 // changes nothing; a template's new version gives its item a new draft,
 // and one more while that draft is open is a conflict; deployments are
-// adopted once their item is published, and refused while it isn't.
+// adopted once their item is published, and refused while it isn't; a
+// project moved, and what the next read of vRA says about it (P2.6).
 func TestVRAImport(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -184,6 +185,41 @@ func TestVRAImport(t *testing.T) {
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from vra_links where kind = 'deployment' and vra_id = 'dep-vra-1'`).Scan(&n)
 		if n != 1 {
 			t.Fatalf("%d links for dep-vra-1", n)
+		}
+
+		// The cutover: Web Platform moves. vRA still offers it items until
+		// vRA's administrators remove them; a deployment made in vRA after
+		// it moved is reported.
+		cutover := func(p api.VraPlan, vraID string) map[string]api.VraCheck {
+			t.Helper()
+			i := slices.IndexFunc(p.Cutover.Projects, func(c api.VraCutoverProject) bool { return c.VraId == vraID })
+			out := map[string]api.VraCheck{}
+			for _, c := range p.Cutover.Projects[i].Checks {
+				out[c.Key] = c
+			}
+			return out
+		}
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-legacy/cutover", admin, api.VraCutoverWrite{Moved: true}, 422, nil)
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web/cutover", "tnguyen", api.VraCutoverWrite{Moved: true}, 403, nil)
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web/cutover", admin, api.VraCutoverWrite{Moved: true, Note: ptr("Cutover weekend")}, 204, nil)
+		p = plan()
+		if web := cutover(p, "vra-prj-web"); p.Cutover.Moved != 1 || p.Cutover.Total != 3 || p.Cutover.SwitchOff ||
+			web["vra_offer"].State != "warn" || web["vra_new"].State != "ok" || web["vra_lease"].State != "warn" {
+			t.Fatalf("cutover = %+v %+v", p.Cutover, web)
+		}
+		e.Entitlements = slices.DeleteFunc(e.Entitlements, func(en vra.Entitlement) bool { return en.ProjectID == "vra-prj-web" })
+		late := e.Deployments[0]
+		late.ID, late.Name, late.CreatedAt = "dep-vra-9", "vra-late", time.Now().Add(time.Minute)
+		e.Deployments = append(e.Deployments, late)
+		upload(e)
+		p = plan()
+		if web := cutover(p, "vra-prj-web"); web["vra_offer"].State != "ok" || web["vra_new"].State != "warn" ||
+			!strings.Contains(web["vra_new"].Detail, "vra-late") {
+			t.Fatalf("after vRA's cleanup = %+v", web)
+		}
+		h.json("PUT", "/api/v1/admin/vra/projects/vra-prj-web/cutover", admin, api.VraCutoverWrite{Moved: false}, 204, nil)
+		if p = plan(); p.Cutover.Moved != 0 || cutover(p, "vra-prj-web")["vra_offer"].Key != "" {
+			t.Fatalf("not moved = %+v", p.Cutover)
 		}
 
 		// The vRO triage, as Markdown.

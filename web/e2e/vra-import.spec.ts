@@ -77,3 +77,28 @@ test("see the dry run, map a project, import, and import again", async ({ page }
   await expect(imported.getByText("Nothing to do: rvav has it all already.")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("mark a project moved, then not", async ({ page }) => {
+  await page.goto("/admin/vra-import");
+  await page.getByRole("tab", { name: /Cutover/ }).click();
+  await expect(page.getByText("0 of 3 projects moved")).toBeVisible();
+  const legacy = page.getByRole("region", { name: "Legacy Apps" });
+  await expect(legacy.getByText("Map it to an rvav project, or create one.")).toBeVisible();
+  await expect(legacy.getByRole("button", { name: "Mark as moved…" })).toBeDisabled();
+
+  const web = page.getByRole("region", { name: "Web Platform" });
+  await expect(web.getByText("Not ready")).toBeVisible();
+  await web.getByRole("button", { name: "Mark as moved…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Move Web Platform to rvav" });
+  await expect(dialog.getByText("Not everything is ready")).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Note" }).fill("Cutover weekend");
+  await dialog.getByRole("button", { name: "Mark as moved" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("1 of 3 projects moved")).toBeVisible();
+  await expect(web.getByText(/Moved .* by Marc Keller/)).toBeVisible();
+  await expect(web.getByText("Cutover weekend")).toBeVisible();
+  await expect(web.getByText(/vRA still offers it 3 items/)).toBeVisible();
+
+  await web.getByRole("button", { name: "Not moved" }).click();
+  await expect(page.getByText("0 of 3 projects moved")).toBeVisible();
+});

@@ -26,6 +26,7 @@ const (
 type ItemState struct {
 	ID, Slug    string
 	HasDraft    bool
+	Published   bool
 	AllProjects bool
 	Projects    []string
 }
@@ -40,6 +41,8 @@ type ImportState struct {
 	Links map[string]Link      // template ID → its item
 	Items map[string]ItemState // item ID → state
 	Slugs map[string]string    // slug → item ID
+	// Cutover: the vRA projects marked moved.
+	Cutover map[string]Moved
 }
 
 // ItemImport is what the import does with a cloud template.
@@ -92,6 +95,7 @@ type ImportPlan struct {
 	Deployments []DeploymentPlan `json:"deployments"`
 	Policies    []PolicyPlan     `json:"policies"`
 	Triage      Triage           `json:"triage"`
+	Cutover     Cutover          `json:"cutover"`
 }
 
 // PlanImport is what importing the estate would do, nothing written.
@@ -141,6 +145,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		p.Summary.SharesAdd += len(it.ShareAdd)
 	}
 	p.Deployments = PlanDeployments(e, r)
+	p.Cutover = planCutover(e, r, st, p.Items, p.Deployments)
 	for _, d := range p.Deployments {
 		switch d.Status {
 		case Adopt:

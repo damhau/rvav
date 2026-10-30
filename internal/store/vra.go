@@ -142,6 +142,7 @@ type ItemImportState struct {
 	ID          string   `db:"id"`
 	Slug        string   `db:"slug"`
 	HasDraft    bool     `db:"has_draft"`
+	Published   bool     `db:"published"`
 	AllProjects bool     `db:"all_projects"`
 	Projects    []string `db:"projects"`
 }
@@ -150,6 +151,7 @@ type ItemImportState struct {
 func (s *Store) ItemImportStates(ctx context.Context) (map[string]ItemImportState, error) {
 	rows, _ := s.Pool.Query(ctx, `select i.id, i.slug,
 		exists (select 1 from catalog_item_versions v where v.item_id = i.id and v.state = 'draft') as has_draft,
+		i.published_version_id is not null as published,
 		i.all_projects,
 		coalesce((select array_agg(e.project_id order by e.project_id) from catalog_entitlements e where e.item_id = i.id), '{}') as projects
 		from catalog_items i`)
@@ -159,4 +161,35 @@ func (s *Store) ItemImportStates(ctx context.Context) (map[string]ItemImportStat
 		out[it.ID] = it
 	}
 	return out, err
+}
+
+// VRAMove is a vRA project an administrator marked moved to rvav.
+type VRAMove struct {
+	VRAProjectID string    `db:"vra_project_id"`
+	MovedAt      time.Time `db:"moved_at"`
+	MovedBy      *string   `db:"moved_by"`
+	Note         string    `db:"note"`
+}
+
+// VRAMoves are the moved projects by vRA project ID; MovedBy is the name.
+func (s *Store) VRAMoves(ctx context.Context) (map[string]VRAMove, error) {
+	rows, _ := s.Pool.Query(ctx, `select c.vra_project_id, c.moved_at, u.name as moved_by, c.note
+		from vra_cutover c left join users u on u.id = c.moved_by`)
+	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[VRAMove])
+	out := map[string]VRAMove{}
+	for _, m := range list {
+		out[m.VRAProjectID] = m
+	}
+	return out, err
+}
+
+// SetVRAMoved marks a vRA project moved, or not.
+func (s *Store) SetVRAMoved(ctx context.Context, vraID string, moved bool, note, by string) error {
+	if !moved {
+		_, err := s.Pool.Exec(ctx, `delete from vra_cutover where vra_project_id = $1`, vraID)
+		return err
+	}
+	_, err := s.Pool.Exec(ctx, `insert into vra_cutover (vra_project_id, moved_by, note) values ($1, $2, $3)
+		on conflict (vra_project_id) do update set note = excluded.note`, vraID, by, note)
+	return err
 }

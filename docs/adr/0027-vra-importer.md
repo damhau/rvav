@@ -120,6 +120,25 @@ vRA is switched off when no project is left in it (P2.6, with its runbook).
 - **A template changed in vRA** gives its item a new draft. While the
   item has a draft open, the import leaves it alone and says so.
 
+### As built (P2.6)
+- **A project is marked moved** by an administrator (`vra_cutover`). That
+  changes nothing in rvav or vRA.
+- **The plan checks each project's cutover**, from what rvav has and what
+  vRA says at the next read:
+  - mapped;
+  - items published and shared;
+  - deployments adopted;
+  - people signed in.
+  Once it has moved, it also checks that vRA offers it nothing and that
+  nothing new was made in vRA.
+- **vRA still acts on adopted deployments:** it deletes them when their
+  vRA lease ends, or when someone deletes them there. The plan lists
+  adopted deployments still leased in vRA, and
+  [the cutover runbook](../operations/vra-cutover.md) has vRA's
+  administrators remove those leases.
+- **vRA can be switched off** once every project has moved and every
+  deployment is adopted. The runbook says how.
+
 ## Consequences
 - **A real vRA must confirm the API calls.** They follow vRA 8's
   reference and are tested against a fake that answers them the same way

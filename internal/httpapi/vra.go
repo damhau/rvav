@@ -61,3 +61,15 @@ func (s *Server) GetVroTriage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="vro-triage.md"`)
 	_, _ = w.Write([]byte(md))
 }
+
+func (s *Server) SetVraCutover(w http.ResponseWriter, r *http.Request, vraProjectId string) {
+	var b api.VraCutoverWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	if err := s.Core.SetVRACutover(r.Context(), principal(r), vraProjectId, b); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

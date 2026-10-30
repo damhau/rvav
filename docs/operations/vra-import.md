@@ -24,6 +24,9 @@ Administration › **vRA import** is where it happens, for administrators:
    project stays in vRA: its items aren't shared there, its deployments
    aren't adopted.
 4. **Import…** the catalog, the deployments, or both.
+5. **Cutover:** project by project, what is ready, the mark that a
+   project moved, and what the next read of vRA says about it. The
+   procedure is [vra-cutover.md](vra-cutover.md).
 
 The import can run again, as often as needed. Each template is linked
 to the item it became:

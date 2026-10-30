@@ -96,8 +96,17 @@ func (s *Service) vraPlan(ctx context.Context, e *vra.Estate, extra map[string]s
 	}
 	st := vraimport.ImportState{Links: map[string]vraimport.Link{}, Items: map[string]vraimport.ItemState{}, Slugs: map[string]string{}}
 	for id, it := range states {
-		st.Items[id] = vraimport.ItemState{ID: it.ID, Slug: it.Slug, HasDraft: it.HasDraft, AllProjects: it.AllProjects, Projects: it.Projects}
+		st.Items[id] = vraimport.ItemState{ID: it.ID, Slug: it.Slug, HasDraft: it.HasDraft, Published: it.Published,
+			AllProjects: it.AllProjects, Projects: it.Projects}
 		st.Slugs[it.Slug] = id
+	}
+	moves, err := s.Store.VRAMoves(ctx)
+	if err != nil {
+		return vraimport.ImportPlan{}, r, err
+	}
+	st.Cutover = map[string]vraimport.Moved{}
+	for id, m := range moves {
+		st.Cutover[id] = vraimport.Moved{At: m.MovedAt, By: deref(m.MovedBy), Note: m.Note}
 	}
 	links, err := s.Store.VRALinks(ctx, "template")
 	if err != nil {
@@ -478,5 +487,38 @@ func asValidation(err error) *ValidationError {
 	if errors.As(err, &ve) {
 		return ve
 	}
+	return nil
+}
+
+// SetVRACutover marks a vRA project moved to rvav, or not: from then on
+// new requests go to rvav, and the plan checks vRA offers it nothing
+// (P2.6).
+func (s *Service) SetVRACutover(ctx context.Context, p *auth.Principal, vraID string, w api.VraCutoverWrite) error {
+	if !p.IsAdmin() {
+		return ErrForbidden
+	}
+	_, e, err := s.latestEstate(ctx)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(e.Projects, func(x vra.Project) bool { return x.ID == vraID })
+	if i < 0 {
+		return ErrNotFound
+	}
+	if w.Moved {
+		plan, _, err := s.vraPlan(ctx, e, nil)
+		if err != nil {
+			return err
+		}
+		if j := slices.IndexFunc(plan.Cutover.Projects, func(c vraimport.CutoverProject) bool { return c.VRAID == vraID }); j < 0 ||
+			plan.Cutover.Projects[j].RvavProjectID == "" {
+			return &ValidationError{Errors: []api.FieldError{fieldErr("/moved", "unmapped",
+				e.Projects[i].Name+" has no rvav project: map it first.")}}
+		}
+	}
+	if err := s.Store.SetVRAMoved(ctx, vraID, w.Moved, strings.TrimSpace(deref(w.Note)), p.User.ID); err != nil {
+		return err
+	}
+	s.audit(ctx, p, "vra.project.cutover", "vra_project", vraID, nil, map[string]any{"moved": w.Moved, "note": deref(w.Note)})
 	return nil
 }

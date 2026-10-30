@@ -3,7 +3,7 @@
 // then import the catalog as drafts with its sharing, and adopt
 // deployments. It can run again. vRA is only read.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileUp, RefreshCw } from "lucide-react";
+import { Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
 import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Field, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -446,6 +447,153 @@ function VroTab({ plan }: { plan: Plan }) {
   );
 }
 
+type CheckLook = [React.ElementType, string, string];
+const notYet: CheckLook = [Circle, "text-faint", "Not yet"];
+const checkIcons: Record<string, CheckLook> = {
+  ok: [CircleCheck, "text-ok", "Done"],
+  warn: [TriangleAlert, "text-warn", "To do"],
+  todo: notYet,
+  manual: [Hand, "text-muted", "By hand"],
+};
+
+function MoveDialog({ project, onClose }: { project: S["VraCutoverProject"]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [note, setNote] = useState("");
+  const move = useMutation({
+    mutationFn: () =>
+      call(
+        api.PUT("/admin/vra/projects/{vraProjectId}/cutover", {
+          params: { path: { vraProjectId: project.vra_id } },
+          body: { moved: true, ...(note.trim() ? { note: note.trim() } : {}) },
+        }),
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
+      toast.success(`${project.name} moved to rvav`);
+      onClose();
+    },
+    onError: (e) => failed(e, "It was not marked moved"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent title={`Move ${project.name} to rvav`} className="w-[min(520px,calc(100vw-32px))]">
+        <form
+          className="flex flex-col gap-3 text-[13px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            move.mutate();
+          }}
+        >
+          <p>
+            From now on, {project.rvav_project_name}'s people request in rvav. vRA's administrators stop offering the
+            project's items in vRA; the next read of vRA checks they did. vRA keeps its deployments not adopted yet.
+          </p>
+          {!project.ready && <p className="text-warn">Not everything is ready: check the list before moving it.</p>}
+          <Field label="Note" htmlFor="vra-move-note">
+            <Textarea
+              id="vra-move-note"
+              rows={2}
+              maxLength={500}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={move.isPending}>
+              Mark as moved
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CutoverTab({ plan }: { plan: Plan }) {
+  const qc = useQueryClient();
+  const c = plan.cutover;
+  const [moving, setMoving] = useState<S["VraCutoverProject"] | null>(null);
+  const undo = useMutation({
+    mutationFn: (id: string) =>
+      call(
+        api.PUT("/admin/vra/projects/{vraProjectId}/cutover", {
+          params: { path: { vraProjectId: id } },
+          body: { moved: false },
+        }),
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] }),
+    onError: (e) => failed(e, "It was not changed"),
+  });
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <p className="text-[13px]" aria-live="polite">
+        <span className="font-medium">
+          {c.moved} of {plural(c.total, "project")} moved
+        </span>
+        {" · "}
+        {c.deployments_left.length === 0
+          ? "every deployment adopted"
+          : `${plural(c.deployments_left.length, "deployment")} still in vRA`}
+        {" · "}
+        {c.switch_off ? (
+          <span className="text-ok">vRA can be switched off</span>
+        ) : (
+          <span className="text-muted">
+            vRA can be switched off once every project has moved and every deployment is adopted
+          </span>
+        )}
+      </p>
+      {c.projects.map((cp) => (
+        <section key={cp.vra_id} className="rounded-md border border-line" aria-label={cp.name}>
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+            <h3 className="text-[13px] font-medium">{cp.name}</h3>
+            {cp.rvav_project_name && <span className="text-xs text-muted">→ {cp.rvav_project_name}</span>}
+            {cp.moved_at ? (
+              <Badge tone="ok">
+                Moved <Time iso={cp.moved_at} />
+                {cp.moved_by ? ` by ${cp.moved_by}` : ""}
+              </Badge>
+            ) : cp.ready ? (
+              <Badge tone="accent">Ready</Badge>
+            ) : (
+              <Badge tone="outline">Not ready</Badge>
+            )}
+            <span className="ml-auto">
+              {cp.moved_at ? (
+                <Button size="sm" variant="ghost" disabled={undo.isPending} onClick={() => undo.mutate(cp.vra_id)}>
+                  Not moved
+                </Button>
+              ) : (
+                <Button size="sm" variant="ghost" disabled={!cp.rvav_project_id} onClick={() => setMoving(cp)}>
+                  Mark as moved…
+                </Button>
+              )}
+            </span>
+          </div>
+          {cp.note && <p className="px-3 pt-2 text-xs text-muted">{cp.note}</p>}
+          <ul className="flex flex-col gap-1.5 px-3 py-2">
+            {cp.checks.map((ch) => {
+              const [Icon, tone, label] = checkIcons[ch.state] ?? notYet;
+              return (
+                <li key={ch.key} className="flex items-start gap-2 text-xs">
+                  <Icon className={"mt-px size-3.5 shrink-0 " + tone} aria-label={label} role="img" />
+                  <span>
+                    <span className="font-medium">{ch.label}.</span> {ch.detail}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      {moving && <MoveDialog project={moving} onClose={() => setMoving(null)} />}
+    </div>
+  );
+}
+
 function ImportDialog({
   plan,
   onClose,
@@ -658,6 +806,9 @@ export function VraImportPage() {
                 <TabsTrigger value="deployments">Deployments ({p.deployments.length})</TabsTrigger>
                 <TabsTrigger value="policies">Policies ({p.policies.length})</TabsTrigger>
                 <TabsTrigger value="vro">vRO ({p.triage.items.length})</TabsTrigger>
+                <TabsTrigger value="cutover">
+                  Cutover ({p.cutover.moved}/{p.cutover.total})
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="projects">
                 <ProjectsTab plan={p} />
@@ -673,6 +824,9 @@ export function VraImportPage() {
               </TabsContent>
               <TabsContent value="vro">
                 <VroTab plan={p} />
+              </TabsContent>
+              <TabsContent value="cutover">
+                <CutoverTab plan={p} />
               </TabsContent>
             </Tabs>
           </Panel>

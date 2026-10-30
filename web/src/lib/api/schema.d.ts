@@ -2041,6 +2041,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/vra/projects/{vraProjectId}/cutover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark a vRA project moved to rvav, or not (P2.6)
+         * @description Moved means new requests go to rvav: vRA's administrators stop
+         *     offering the project's items in vRA (the cutover runbook), and the
+         *     next read of vRA checks they did. vRA keeps the project's
+         *     deployments not adopted yet. Nothing in rvav or vRA changes; the
+         *     project must be mapped.
+         */
+        put: operations["setVraCutover"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/vra/import": {
         parameters: {
             query?: never;
@@ -3844,6 +3868,41 @@ export interface components {
             deployments: components["schemas"]["VraDeploymentPlan"][];
             policies: components["schemas"]["VraPolicyPlan"][];
             triage: components["schemas"]["VroTriage"];
+            cutover: components["schemas"]["VraCutover"];
+        };
+        VraCutover: {
+            projects: components["schemas"]["VraCutoverProject"][];
+            /** @description vRA projects marked moved. */
+            moved: number;
+            total: number;
+            /** @description vRA's deployments not adopted. */
+            deployments_left: string[];
+            /** @description Every project moved and every deployment adopted: vRA can be switched off. */
+            switch_off: boolean;
+        };
+        VraCutoverProject: {
+            vra_id: string;
+            name: string;
+            rvav_project_id?: string;
+            rvav_project_name?: string;
+            /** Format: date-time */
+            moved_at?: string;
+            moved_by?: string;
+            note?: string;
+            /** @description Mapped, its items published in rvav and shared with it. */
+            ready: boolean;
+            checks: components["schemas"]["VraCheck"][];
+        };
+        VraCheck: {
+            key: string;
+            label: string;
+            /** @description ok (done), warn (to do, or gone wrong), todo (not yet) or manual (people check it). */
+            state: string;
+            detail: string;
+        };
+        VraCutoverWrite: {
+            moved: boolean;
+            note?: string;
         };
         VraProjectPlan: {
             vra_id: string;
@@ -8880,6 +8939,34 @@ export interface operations {
         };
         responses: {
             /** @description Mapped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    setVraCutover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vraProjectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VraCutoverWrite"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
             204: {
                 headers: {
                     [name: string]: unknown;
