@@ -380,8 +380,11 @@ func SegmentName(deploymentID, key string) string {
 // NICUnit is an adapter added after the template's: with efficientip, an
 // address in its network's subnet and records for FQDN.
 type NICUnit struct {
-	Key          string   `json:"key"`
-	Network      string   `json:"network"`
+	Key     string `json:"key"`
+	Network string `json:"network"`
+	// Segment is the key of the NSX segment made for its deployment it is
+	// on (ADR-0028): its subnet is known once the request has carved it.
+	Segment      string   `json:"segment,omitempty"`
 	IPAM         string   `json:"ipam"`
 	FQDN         string   `json:"fqdn,omitempty"`
 	Subnet       string   `json:"subnet,omitempty"`

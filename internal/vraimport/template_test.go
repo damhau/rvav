@@ -180,6 +180,14 @@ resources:
 	if g := comps[1]["groups"]; !slices.Equal(g.([]any), []any{"websg"}) || !slices.Equal(comps[0]["groups"].([]any), []any{"dbsg"}) {
 		t.Fatalf("groups = %v, %v", comps[0]["groups"], comps[1]["groups"])
 	}
+	// db's second adapter, on the same network: an added adapter on the segment.
+	if nics, _ := comps[0]["nics"].([]any); len(nics) != 1 || nics[0].(map[string]any)["network"] != "segments.appnet" ||
+		nics[0].(map[string]any)["key"] != "nic2" {
+		t.Fatalf("db's nics = %v", comps[0]["nics"])
+	}
+	if has(p, Unmapped, "resources.db.networks", "") {
+		t.Fatalf("db's adapter reported: %+v", p.Notes)
+	}
 	sgs := bp["security_groups"].([]any)
 	if len(sgs) != 2 {
 		t.Fatalf("security groups = %+v", sgs)
@@ -205,7 +213,6 @@ resources:
 		{Unmapped, "resources.web_sg.rules[2]", "from addresses (10.0.0.0/8)"},
 		{Unmapped, "resources.db_sg.rules[1]", "TCP port 8443"},
 		{Unmapped, "resources.backup_sg", "can't tell which NSX group"},
-		{Unmapped, "resources.db.networks", "added adapter"},
 		{Unmapped, "resources.lb", "Cloud.NSX.LoadBalancer"},
 	} {
 		if !has(p, want.level, want.where, want.text) {

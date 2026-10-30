@@ -367,8 +367,10 @@ func makeSegments(ctx workflow.Context, info Info, segments []SegmentUnit, vms [
 	for _, sg := range segments {
 		key := keyOf(sg)
 		in := SegmentInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: key, Segment: sg}
+		// The vCenter of a VM on it, by any adapter.
 		for _, vm := range vms {
-			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
+			if vm.DeploymentID == sg.DeploymentID && (vm.Segment == sg.Key ||
+				slices.ContainsFunc(vm.NICs, func(n NICUnit) bool { return n.Segment == sg.Key })) {
 				in.VCenter = vm.VCenter
 				break
 			}
@@ -378,8 +380,17 @@ func makeSegments(ctx workflow.Context, info Info, segments []SegmentUnit, vms [
 			return key, err
 		}
 		for i, vm := range vms {
-			if vm.DeploymentID == sg.DeploymentID && vm.Segment == sg.Key {
+			if vm.DeploymentID != sg.DeploymentID {
+				continue
+			}
+			if vm.Segment == sg.Key {
 				vms[i].Subnet, vms[i].SubnetID, vms[i].Gateway, vms[i].PrefixLength = res.CIDR, res.SubnetID, res.Gateway, res.PrefixLength
+			}
+			// Its added adapters on the segment.
+			for j, n := range vm.NICs {
+				if n.Segment == sg.Key {
+					vms[i].NICs[j].Subnet, vms[i].NICs[j].SubnetID, vms[i].NICs[j].PrefixLength = res.CIDR, res.SubnetID, res.PrefixLength
+				}
 			}
 		}
 	}

@@ -170,17 +170,21 @@ func (p *nsxPlan) rule(r map[string]any) (map[string]any, string) {
 // if made for the deployment, and the groups of its networks.
 func (p *nsxPlan) machine(props map[string]any, where string, c, bindings map[string]any, note func(level, where, text string)) {
 	nets, _ := props["networks"].([]any)
-	var groups []any
+	var groups, nics []any
 	for i, x := range nets {
 		n, _ := x.(map[string]any)
 		ref := resourceRef(fmt.Sprint(n["network"]))
-		if key, ok := p.segments[ref]; ok {
-			if i == 0 {
-				bindings["network"] = "segments." + key
-				p.used[ref] = true
-			} else {
-				note(Unmapped, where+".networks", "An added adapter on a network made for the deployment: rvav puts only a VM's first adapter on one.")
-			}
+		key, onSegment := p.segments[ref]
+		switch {
+		case onSegment && i == 0:
+			bindings["network"] = "segments." + key
+			p.used[ref] = true
+		case onSegment:
+			// An added adapter on it: its address from the segment's subnet.
+			nics = append(nics, map[string]any{"key": fmt.Sprintf("nic%d", i+1), "network": "segments." + key})
+			p.used[ref] = true
+		case i > 0:
+			note(Warning, where+".networks", fmt.Sprintf("Adapter %d is on an existing network: add it to the blueprint's nics, with the network placement allows.", i+1))
 		}
 		sgs, _ := n["securityGroups"].([]any)
 		for _, s := range sgs {
@@ -192,6 +196,9 @@ func (p *nsxPlan) machine(props map[string]any, where string, c, bindings map[st
 	}
 	if len(groups) > 0 {
 		c["groups"] = groups
+	}
+	if len(nics) > 0 {
+		c["nics"] = nics
 	}
 }
 

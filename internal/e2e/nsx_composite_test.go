@@ -172,3 +172,80 @@ func TestCompositeNSX(t *testing.T) {
 		}
 	}, simulator.VPX())
 }
+
+// TestSegmentAddedAdapter: a VM whose first adapter is on an existing
+// network and whose added one is on a segment made for its deployment
+// (N2.2): previewed with it; built with the second adapter on the segment's
+// port group, its address in the carved subnet and its DNS name
+// <name>-<key>; DHCP on such a segment refused.
+func TestSegmentAddedAdapter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		fakeNSX := nsx.NewFakeServer()
+		fakeNSX.RealizeAfter = 1
+		fakeNSX.OnSegment = portGroups(t, ctx, c)
+		client := useFakeNSX(h, fakeNSX)
+		h.acts.NSX, h.acts.NSXTimeout = client, 20*time.Second
+		segmentRule(h)
+		item, version := rhelVariant(h, "rhel9-backend-segment", "RHEL 9 with a back-end segment", func(bp map[string]any) {
+			bp["segments"] = []any{map[string]any{"key": "back", "title": "Back end"}}
+			bp["nics"] = []any{map[string]any{"key": "back", "network": "segments.back"}}
+		})
+		dhcp, dhcpVersion := rhelVariant(h, "rhel9-segment-dhcp", "RHEL 9 with DHCP on a segment", func(bp map[string]any) {
+			bp["segments"] = []any{map[string]any{"key": "back"}}
+			bp["nics"] = []any{map[string]any{"key": "back", "network": "segments.back", "ipam": "dhcp"}}
+		})
+		draft := api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}
+
+		var pv api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: dhcp, VersionId: dhcpVersion,
+			ProjectId: "prj_web", Environment: "dev", Inputs: segmentInputs()}, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return strings.Contains(e.Message, "no DHCP") }) {
+			t.Fatalf("DHCP on a segment: %+v", pv.Errors)
+		}
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		if !pv.Valid || pv.Components == nil {
+			t.Fatalf("preview: %+v", pv.Errors)
+		}
+		nics := (*pv.Components)[0].Nics
+		if len(nics) != 2 || nics[0].Network != "dvpg-app-dev-vl310" || nics[1].Network != "A new NSX segment (back) on t1-gva-dev" {
+			t.Fatalf("preview nics = %+v", nics)
+		}
+
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		var depID, vmName string
+		if err := h.store.Pool.QueryRow(ctx, `select d.id, r.name from deployments d join resources r on r.deployment_id = d.id
+			where d.created_by_request_id = $1 and r.type = 'vsphere.vm'`, req.Id).Scan(&depID, &vmName); err != nil {
+			t.Fatal(err)
+		}
+		segID := provision.SegmentName(depID, "back")
+		vm, err := h.vc.FindVM(ctx, vmName)
+		if err != nil || len(vm.NICs) != 2 || vm.NICs[0].Network != "dvpg-app-dev-vl310" || vm.NICs[1].Network != segID {
+			t.Fatalf("VM = %+v, %v", vm, err)
+		}
+		var addresses []string
+		rows, _ := h.store.Pool.Query(ctx, `select name from resources where deployment_id = $1 and type = 'ipam.address' order by name`, depID)
+		for rows.Next() {
+			var a string
+			_ = rows.Scan(&a)
+			addresses = append(addresses, a)
+		}
+		rows.Close()
+		if len(addresses) != 2 || !slices.ContainsFunc(addresses, func(a string) bool { return strings.HasPrefix(a, "10.60.0.") }) ||
+			!slices.ContainsFunc(addresses, func(a string) bool { return strings.HasPrefix(a, "10.31.10.") }) {
+			t.Fatalf("addresses = %v", addresses)
+		}
+		var record string
+		_ = h.store.Pool.QueryRow(ctx, `select name from resources where deployment_id = $1 and type = 'dns.record' and name like 'A %-back.%'`,
+			depID).Scan(&record)
+		if record != "A "+vmName+"-back.corp.example" {
+			t.Fatalf("the added adapter's record = %q", record)
+		}
+	}, simulator.VPX())
+}

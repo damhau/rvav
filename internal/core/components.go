@@ -51,8 +51,11 @@ type vmPart struct {
 	// or datastore (ADR-0024).
 	vcenter string
 	chosen  bool
-	// nicSubnets are the added adapters' subnets (nil for DHCP).
-	nicSubnets []*store.NetworkSubnet
+	// nicSubnets are the added adapters' subnets (nil for DHCP), and
+	// nicSegments the keys of the segments made for the deployment they are
+	// on ("" for an existing network).
+	nicSubnets  []*store.NetworkSubnet
+	nicSegments []string
 	// segment is the key of the NSX segment made for the deployment its
 	// VMs' network is, and segments where the placement rule makes them
 	// (ADR-0028).
@@ -214,14 +217,35 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if part.count == 0 {
 		return part, nil // nothing to place or name
 	}
-	// A network made for the deployment: an NSX segment, on the Tier-1 of
-	// the first placement rule that makes them (ADR-0028).
-	if key, ok := blueprint.SegmentKey(plan.Network); ok && !slices.ContainsFunc(ev.Blueprint.Segments,
-		func(sg blueprint.Segment) bool { return sg.Key == key }) {
-		// Only the item's own segments: never one an input names.
-		add(field("network"), "unknown_segment", fmt.Sprintf("%q is none of the item's segments.", key))
-	} else if ok {
-		part.segment = key
+	// Networks made for the deployment: NSX segments, on the Tier-1 of the
+	// first placement rule that makes them (ADR-0028), for its first adapter
+	// or added ones. Only the item's own segments: never one an input names.
+	segmentOf := func(network, at string) string {
+		key, ok := blueprint.SegmentKey(network)
+		if !ok {
+			return ""
+		}
+		if !slices.ContainsFunc(ev.Blueprint.Segments, func(sg blueprint.Segment) bool { return sg.Key == key }) {
+			add(at, "unknown_segment", fmt.Sprintf("%q is none of the item's segments.", key))
+			return ""
+		}
+		return key
+	}
+	part.segment = segmentOf(plan.Network, field("network"))
+	onSegment := part.segment != ""
+	part.nicSegments = make([]string, len(plan.NICs))
+	for i, n := range plan.NICs {
+		at := bindingField(c.NICs[i].Network, "")
+		if key := segmentOf(n.Network, at); key != "" {
+			if n.IPAM != blueprint.IPAMEfficientIP {
+				// rvav's segments have no DHCP: their VMs' addresses are static.
+				add(at, "not_allowed", "A segment made for the deployment has no DHCP: its adapters get their addresses from EfficientIP.")
+				continue
+			}
+			part.nicSegments[i], onSegment = key, true
+		}
+	}
+	if onSegment {
 		for _, r := range pl.rules {
 			if r.Segments != nil {
 				sg := *r.Segments
@@ -232,11 +256,6 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		if part.segments == nil && len(pl.rules) > 0 {
 			add(field("network"), "no_segments", fmt.Sprintf("No placement rule of %s in %s makes NSX segments. Ask an administrator to add one.",
 				ev.Project.Name, ev.Env.Name))
-		}
-	}
-	for i, n := range plan.NICs {
-		if _, ok := blueprint.SegmentKey(n.Network); ok {
-			add(bindingField(c.NICs[i].Network, ""), "not_allowed", "An added adapter can't be on a segment made for the deployment: only the VM's first one.")
 		}
 	}
 	// Its port group doesn't exist until the request makes it: clusters are
@@ -323,7 +342,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	part.nicSubnets = make([]*store.NetworkSubnet, len(plan.NICs))
 	for i, n := range plan.NICs {
 		at := bindingField(c.NICs[i].Network, "")
-		if n.Network == "" {
+		// On a segment made for the deployment: its subnet is carved when the
+		// request runs, its port group made then.
+		if n.Network == "" || part.nicSegments[i] != "" {
 			continue
 		}
 		if plan.Cluster != "" && pl.cluster(plan.Cluster) != nil &&
@@ -605,6 +626,13 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			if i < len(p.nicSubnets) && p.nicSubnets[i] != nil {
 				x.Subnet = str(p.nicSubnets[i].Subnet)
 			}
+			if i < len(p.nicSegments) && p.nicSegments[i] != "" {
+				x.Network = "A new NSX segment (" + p.nicSegments[i] + ")"
+				if sg := p.segments; sg != nil {
+					x.Network += " on " + sg.Tier1
+					x.Subnet = str(fmt.Sprintf("/%d from %s, when the request runs", sg.PrefixLength, sg.IPBlock))
+				}
+			}
 			c.Nics = append(c.Nics, x)
 		}
 		out = append(out, c)
@@ -680,6 +708,14 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	for i, n := range p.vm.NICs {
 		nu := provision.NICUnit{Key: n.Key, Network: n.Network, IPAM: n.IPAM}
+		// On a segment made for the deployment: its subnet once carved.
+		if i < len(p.nicSegments) && p.nicSegments[i] != "" {
+			nu.Network, nu.Segment = provision.SegmentName(deploymentID, p.nicSegments[i]), p.nicSegments[i]
+			if sg := p.segments; sg != nil {
+				nu.FQDN = name + "-" + n.Key + "." + sg.DNSZone
+				nu.DNSZone, nu.DNSServers = sg.DNSZone, sg.DNSServers
+			}
+		}
 		if i < len(p.nicSubnets) && p.nicSubnets[i] != nil {
 			sn := p.nicSubnets[i]
 			// <name>-<key> in its subnet's zone.
@@ -867,13 +903,23 @@ func planSegments(ev *Evaluation, vms []provision.VMUnit) []provision.SegmentUni
 	seen := map[string]bool{}
 	for _, vm := range vms {
 		p, ok := parts[cmp.Or(vm.Component, blueprint.SingleKey)]
-		if vm.Segment == "" || !ok || p.segments == nil || seen[vm.DeploymentID+"/"+vm.Segment] {
+		if !ok || p.segments == nil {
 			continue
 		}
-		seen[vm.DeploymentID+"/"+vm.Segment] = true
-		sg, name := p.segments, provision.SegmentName(vm.DeploymentID, vm.Segment)
-		out = append(out, provision.SegmentUnit{DeploymentID: vm.DeploymentID, Key: vm.Segment, ID: name, Name: name, Tier1: sg.Tier1,
-			IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers})
+		// Those its first adapter and its added ones are on.
+		keys := []string{vm.Segment}
+		for _, n := range vm.NICs {
+			keys = append(keys, n.Segment)
+		}
+		for _, key := range keys {
+			if key == "" || seen[vm.DeploymentID+"/"+key] {
+				continue
+			}
+			seen[vm.DeploymentID+"/"+key] = true
+			sg, name := p.segments, provision.SegmentName(vm.DeploymentID, key)
+			out = append(out, provision.SegmentUnit{DeploymentID: vm.DeploymentID, Key: key, ID: name, Name: name, Tier1: sg.Tier1,
+				IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers})
+		}
 	}
 	return out
 }
