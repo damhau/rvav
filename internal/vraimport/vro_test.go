@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -95,3 +96,48 @@ func TestTriageVRO(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestStandardVRO: the vRO workflows an enterprise vRA typically has, sorted
+// and sized for the composite step kinds rvav may add (D2.1): which kinds,
+// and how many workflows need each.
+func TestStandardVRO(t *testing.T) {
+	e := vra.StandardVRO(time.Now())
+	tr := TriageVRO(&e)
+	items := map[string]TriageItem{}
+	for _, it := range tr.Items {
+		items[it.ID] = it
+	}
+	for id, want := range map[string]struct {
+		group string
+		steps []string
+	}{
+		"std-decommission":  {GroupTemporal, []string{StepREST, StepRvav, StepPerson, StepTime}},
+		"std-change-wait":   {GroupTemporal, []string{StepREST, StepTime, StepBranch}},
+		"std-cmdb":          {GroupAWX, []string{StepREST, StepRvav}},
+		"std-backup":        {GroupAWX, []string{StepREST, StepRvav}},
+		"std-notify":        {GroupAWX, []string{StepNotify}},
+		"std-patch-window":  {GroupTemporal, []string{StepAWX, StepRvav, StepTime}},
+		"std-big-disk":      {GroupTemporal, []string{StepRvav, StepPerson, StepBranch}},
+		"std-ad-computer":   {GroupAWX, []string{StepAWX}},
+		"std-guest-script":  {GroupAWX, []string{StepAWX, StepRvav}},
+		"std-rename":        {GroupNative, []string{StepRvav}},
+		"std-ask-requester": {GroupTemporal, []string{StepREST, StepPerson}},
+	} {
+		it := items[id]
+		if it.Group != want.group || !slices.Equal(it.Steps, want.steps) {
+			t.Errorf("%s: group %s, steps %v; want %s, %v", id, it.Group, it.Steps, want.group, want.steps)
+		}
+	}
+	// The form's datastore choice: a value source.
+	if it := items["std-act-datastore"]; it.Group != GroupNative || it.Becomes != "A value source on the field" {
+		t.Errorf("datastore action = %+v", it)
+	}
+	// D2's sizing: no workflow waits for an event.
+	want := map[string]int{StepPerson: 3, StepTime: 3, StepREST: 5, StepNotify: 1, StepBranch: 2}
+	if !maps.Equal(tr.Steps, want) {
+		t.Fatalf("step kinds = %v, want %v", tr.Steps, want)
+	}
+	if md := tr.Markdown(); !strings.Contains(md, "| REST call | 5: ") || !strings.Contains(md, "| wait for an event | 0 |") {
+		t.Fatalf("report:\n%s", md)
+	}
+}

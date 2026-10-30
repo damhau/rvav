@@ -428,8 +428,11 @@ keyboard and axe in both themes.
 auditor who sees everything and changes nothing, made and used.
 
 ### D2 Composite step kinds (after N1)
-Sized from the vRO triage of the organisation's vRA (#85): how many
-workflows wait for people or timers, or call REST.
+Sized first from twelve typical enterprise vRO workflows
+(`rvav vro-triage -standard`; D2.1): a REST call in 5, wait for a person
+in 3, wait for a time in 3 (one polls a ticket until it is approved),
+a branch in 2, a notification in 1, wait for an event in none. The vRO
+triage of the organisation's vRA (#85) confirms or reorders them.
 - New steps: wait for a person (a form or an approval mid-run, with its
   notification), wait for a time, a REST call (allowed hosts, a stored
   secret), a notification, a branch; the logic between them in CEL.

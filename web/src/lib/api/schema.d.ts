@@ -4035,6 +4035,10 @@ export interface components {
             };
             /** @description vRO's own workflows and actions, left out. */
             library: number;
+            /** @description For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, REST call, notification, branch), the workflows to keep that would use it. */
+            steps?: {
+                [key: string]: number;
+            };
             items: components["schemas"]["VroTriageItem"][];
         };
         VroTriageItem: {
@@ -4065,6 +4069,8 @@ export interface components {
             group: string;
             becomes: string;
             reasons: string[];
+            /** @description A workflow's steps, rebuilt as a composite item: rvav steps, AWX job, and the step kinds rvav may add (D2). */
+            steps?: string[];
         };
         VmDrift: {
             /** @enum {string} */

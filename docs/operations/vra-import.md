@@ -173,6 +173,7 @@ to decide, into the groups of
 ```sh
 rvav vro-triage -f estate.json -md > vro-triage.md   # a table per group
 rvav vro-triage -f estate.json                        # the same, as JSON
+rvav vro-triage -standard -md                         # the workflows an enterprise vRA typically has
 ```
 
 For each workflow and action, the report shows:
@@ -193,6 +194,14 @@ actions vRA runs are listed, but their code isn't read.
 | **B. AWX** | A workflow that calls other systems (Active Directory, REST, SQL, PowerShell, SSH, mail, NSX...): a playbook, with the Ansible collections the report names. ABX actions. |
 | **C. Custom Temporal workflow** | A workflow that waits for people (user interactions) or for timers and events. |
 | **D. Retire** | Nothing in vRA runs it (or only disabled subscriptions), and it hasn't run for six months or is a copy of another that never ran. An action nothing calls. |
+
+The report ends with each workflow to keep **as a composite item**: its
+steps (rvav's, an AWX job), and the step kinds rvav may add for vRO's
+patterns (wait for a person, wait for a time or an event, a REST call, a
+notification, a branch), with how many workflows need each. That sizes
+which step kinds rvav builds ([implementation plan, D2](../implementation-plan.md#d2-composite-step-kinds-after-n1)).
+`-standard` runs it on twelve typical enterprise workflows instead of a
+vRA's.
 
 An action that only workflows call goes with them, in their group.
 A workflow keeps its group however old its last run, as long as something

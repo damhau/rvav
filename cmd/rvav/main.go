@@ -60,7 +60,7 @@ Usage:
   rvav vra-adopt [-f FILE] [-project VRA_ID=RVAV_ID,...] [-apply]
                            which of vRA's deployments rvav would adopt, and why not (JSON);
                            -apply adopts them through onboarding
-  rvav vro-triage [-f FILE] [-md]
+  rvav vro-triage [-f FILE | -standard] [-md]
                            vRO's workflows and actions sorted into ADR-0007's groups A to D,
                            with what uses each and why (JSON, or Markdown with -md)
   rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
@@ -168,9 +168,14 @@ func run(ctx context.Context, cmd string, args []string) error {
 		fs := flag.NewFlagSet("vro-triage", flag.ExitOnError)
 		file := fs.String("f", "", "an estate vra-export wrote (the vRA at RVAV_VRA_URL by default)")
 		md := fs.Bool("md", false, "a Markdown report instead of JSON")
+		standard := fs.Bool("standard", false, "the vRO workflows an enterprise vRA typically has, not a vRA's (D2's sizing)")
 		_ = fs.Parse(args)
-		e, err := readEstate(ctx, cfg, *file)
-		if err != nil {
+		var e *vra.Estate
+		var err error
+		if *standard {
+			s := vra.StandardVRO(time.Now())
+			e = &s
+		} else if e, err = readEstate(ctx, cfg, *file); err != nil {
 			return err
 		}
 		t := vraimport.TriageVRO(e)

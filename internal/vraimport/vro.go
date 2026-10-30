@@ -51,6 +51,61 @@ type TriageItem struct {
 	Group   string   `json:"group"`
 	Becomes string   `json:"becomes"`
 	Reasons []string `json:"reasons"`
+	// Steps are the composite steps a workflow would be rebuilt with (D2):
+	// rvav's and AWX's, and the step kinds D2 may add.
+	Steps []string `json:"steps,omitempty"`
+}
+
+// Composite step kinds a workflow is rebuilt with: those rvav has, and
+// those D2 may add (NewSteps), which the triage counts to size D2.
+const (
+	StepRvav   = "rvav steps"
+	StepAWX    = "AWX job"
+	StepPerson = "wait for a person"
+	StepTime   = "wait for a time"
+	StepEvent  = "wait for an event"
+	StepREST   = "REST call"
+	StepNotify = "notification"
+	StepBranch = "branch"
+)
+
+// NewSteps are the step kinds D2 may add, in the order the report gives them.
+var NewSteps = []string{StepPerson, StepTime, StepEvent, StepREST, StepNotify, StepBranch}
+
+// compositeSteps are the steps a workflow of these item types, reaching
+// these systems, would be rebuilt with.
+func compositeSteps(kinds map[string]bool, systems []string) []string {
+	var out []string
+	add := func(s string) {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	for _, s := range systems {
+		switch s {
+		case "vCenter", "vRA":
+			add(StepRvav)
+		case "REST":
+			add(StepREST)
+		case "Mail":
+			add(StepNotify)
+		default:
+			add(StepAWX)
+		}
+	}
+	if kinds["input"] {
+		add(StepPerson)
+	}
+	if kinds["waiting-timer"] {
+		add(StepTime)
+	}
+	if kinds["waiting-event"] || kinds["custom-event"] || kinds["waiting-signal"] {
+		add(StepEvent)
+	}
+	if kinds["decision"] || kinds["switch"] {
+		add(StepBranch)
+	}
+	return out
 }
 
 // Triage is the report.
@@ -62,6 +117,9 @@ type Triage struct {
 	// Library: vRO's own workflows and actions, left out (vRO ships them;
 	// nobody migrates them).
 	Library int `json:"library"`
+	// Steps counts, for each step kind D2 may add, the workflows (not to
+	// retire) that would use it.
+	Steps map[string]int `json:"steps"`
 }
 
 var becomes = map[string]string{
@@ -119,7 +177,7 @@ func TriageVRO(e *vra.Estate) Triage {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	t := Triage{ReadAt: now, Groups: map[string]int{}, Items: []TriageItem{}}
+	t := Triage{ReadAt: now, Groups: map[string]int{}, Items: []TriageItem{}, Steps: map[string]int{}}
 	uses := map[string][]Use{} // "workflow:ID", "action:module/name", "abx:ID" → uses
 	add := func(key string, u Use) { uses[key] = append(uses[key], u) }
 
@@ -196,13 +254,14 @@ func TriageVRO(e *vra.Estate) Triage {
 		human    bool     // user interactions
 		waits    bool     // timers, events
 		decision int
+		kinds    map[string]bool // its items' types
 		content  string
 	}
 	infos := map[string]*wfInfo{}
 	names := map[string]string{}
 	for _, w := range e.Workflows {
 		names[w.ID] = w.Name
-		in := &wfInfo{systems: map[string]bool{}}
+		in := &wfInfo{systems: map[string]bool{}, kinds: map[string]bool{}}
 		var c wfContent
 		_ = json.Unmarshal([]byte(w.Content), &c)
 		var scripts []string
@@ -214,6 +273,7 @@ func TriageVRO(e *vra.Estate) Triage {
 			types = append(types, a.Type)
 		}
 		for _, it := range c.Items {
+			in.kinds[it.Type] = true
 			switch it.Type {
 			case "task", "custom-condition":
 				scripts = append(scripts, it.Script.Value)
@@ -305,6 +365,26 @@ func TriageVRO(e *vra.Estate) Triage {
 		return out, human, waits
 	}
 
+	// The item types of a workflow and those it calls.
+	var wfKinds func(id string, seen map[string]bool) map[string]bool
+	wfKinds = func(id string, seen map[string]bool) map[string]bool {
+		out := map[string]bool{}
+		in, ok := infos[id]
+		if !ok || seen[id] {
+			return out
+		}
+		seen[id] = true
+		for k := range in.kinds {
+			out[k] = true
+		}
+		for _, l := range in.linked {
+			for k := range wfKinds(l, seen) {
+				out[k] = true
+			}
+		}
+		return out
+	}
+
 	contents := map[string][]string{} // normalized content → workflow IDs
 	for _, w := range e.Workflows {
 		if !isLibrary(w.Category) {
@@ -359,6 +439,14 @@ func TriageVRO(e *vra.Estate) Triage {
 			it.Reasons = append(it.Reasons, "It calls "+strings.Join(without(it.Systems, "vCenter"), ", ")+": a playbook does, with "+ansibleFor(it.Systems)+".")
 		}
 		if it.Group != GroupDrop {
+			// Rebuilt as a composite: with the step kinds D2 may add, if any.
+			it.Steps = compositeSteps(wfKinds(w.ID, map[string]bool{}), it.Systems)
+			if added := slices.DeleteFunc(slices.Clone(it.Steps), func(s string) bool { return !slices.Contains(NewSteps, s) }); len(added) > 0 {
+				it.Reasons = append(it.Reasons, "As a composite item, with step kinds rvav may add (D2): "+strings.Join(added, ", ")+".")
+				for _, s := range added {
+					t.Steps[s]++
+				}
+			}
 			it.Reasons = append(it.Reasons, useReasons(it.UsedBy)...)
 			if in.decision > 3 && it.Group != GroupTemporal {
 				it.Reasons = append(it.Reasons, fmt.Sprintf("It branches %d times: if it compensates or runs for long, it may be C.", in.decision))
@@ -641,6 +729,29 @@ func (t Triage) Markdown() string {
 			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s |\n", cell(name), strings.ReplaceAll(it.Kind, "_", " "),
 				cell(strings.Join(inputs, ", ")), cell(strings.Join(used, "; ")), last, cell(strings.Join(it.Systems, ", ")),
 				cell(it.Becomes), cell(strings.Join(it.Reasons, " ")))
+		}
+	}
+	// What would rebuild them as composite items: the step kinds rvav may
+	// add (D2), by how many workflows need each.
+	b.WriteString("\n## As composite items\n\nEach workflow to keep, rebuilt as a composite item: its steps, and those rvav may add (D2), by how many workflows need each.\n\n")
+	b.WriteString("| Step kind rvav may add | Workflows |\n|---|---|\n")
+	for _, s := range NewSteps {
+		var names []string
+		for _, it := range t.Items {
+			if slices.Contains(it.Steps, s) {
+				names = append(names, it.Name)
+			}
+		}
+		list := ""
+		if len(names) > 0 {
+			list = ": " + cell(strings.Join(names, "; "))
+		}
+		fmt.Fprintf(&b, "| %s | %d%s |\n", s, t.Steps[s], list)
+	}
+	b.WriteString("\n| Workflow | Group | As a composite |\n|---|---|---|\n")
+	for _, it := range t.Items {
+		if it.Kind == "workflow" && len(it.Steps) > 0 {
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", cell(it.Name), it.Group, cell(strings.Join(it.Steps, ", ")))
 		}
 	}
 	return b.String()

@@ -5563,6 +5563,10 @@ components:
         read_at: { type: string, format: date-time }
         groups: { type: object, additionalProperties: { type: integer }, description: "Items per group, A to D." }
         library: { type: integer, description: "vRO's own workflows and actions, left out." }
+        steps:
+          type: object
+          additionalProperties: { type: integer }
+          description: "For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, REST call, notification, branch), the workflows to keep that would use it."
         items:
           type: array
           items: { $ref: "#/components/schemas/VroTriageItem" }
@@ -5599,6 +5603,10 @@ components:
         group: { type: string, description: "Suggested: A native in rvav, B AWX, C custom workflow, D retire." }
         becomes: { type: string }
         reasons: { type: array, items: { type: string } }
+        steps:
+          type: array
+          items: { type: string }
+          description: "A workflow's steps, rebuilt as a composite item: rvav steps, AWX job, and the step kinds rvav may add (D2)."
 
     VmDrift:
       type: object
