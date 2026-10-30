@@ -102,6 +102,24 @@ and its people told:
 
 vRA is switched off when no project is left in it (P2.6, with its runbook).
 
+### As built (P2.5)
+- **Policies are reported, not imported.** They decide who may do what,
+  and a policy imported a little wrong would let the wrong people do
+  things, or stop the right ones. The plan says, for each one, which rvav
+  setting it becomes and with which values, for an administrator to set:
+  - approval policies, with their condition in CEL when the criteria
+    translate;
+  - lease, day-2 and quota policies;
+  - limits, which have no rvav equivalent.
+- **Sharing is only added.** An import never takes a project away from an
+  item; an administrator does.
+- **What was read is kept** (`vra_snapshots`), with the mapping of vRA
+  projects an administrator chose (`vra_project_map`). Each template is
+  linked to the item it became, and each deployment to the deployments it
+  became (`vra_links`).
+- **A template changed in vRA** gives its item a new draft. While the
+  item has a draft open, the import leaves it alone and says so.
+
 ## Consequences
 - **A real vRA must confirm the API calls.** They follow vRA 8's
   reference and are tested against a fake that answers them the same way

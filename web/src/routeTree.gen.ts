@@ -21,6 +21,7 @@ import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastr
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
+import { Route as AdminVraImportRouteImport } from "./routes/admin/vra-import"
 import { Route as AdminWorkflowsRouteImport } from "./routes/admin/workflows"
 import { Route as ApprovalsApprovalIdRouteImport } from "./routes/approvals_.$approvalId"
 import { Route as CatalogIndexRouteImport } from "./routes/catalog/index"
@@ -95,6 +96,11 @@ const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   id: "/admin/policies",
   path: "/admin/policies",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminVraImportRoute = AdminVraImportRouteImport.update({
+  id: "/admin/vra-import",
+  path: "/admin/vra-import",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminWorkflowsRoute = AdminWorkflowsRouteImport.update({
@@ -188,6 +194,7 @@ export interface FileRoutesByFullPath {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals_/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
     | "/deployments/$deploymentId"
@@ -307,6 +317,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
     | "/deployments/$deploymentId"
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals_/$approvalId"
     | "/deployments/$deploymentId"
@@ -366,6 +378,7 @@ export interface RootRouteChildren {
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
+  AdminVraImportRoute: typeof AdminVraImportRoute
   AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   ApprovalsApprovalIdRoute: typeof ApprovalsApprovalIdRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
@@ -467,6 +480,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/policies"
       fullPath: "/admin/policies"
       preLoaderRoute: typeof AdminPoliciesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/vra-import": {
+      id: "/admin/vra-import"
+      path: "/admin/vra-import"
+      fullPath: "/admin/vra-import"
+      preLoaderRoute: typeof AdminVraImportRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/workflows": {
@@ -590,6 +610,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
+  AdminVraImportRoute: AdminVraImportRoute,
   AdminWorkflowsRoute: AdminWorkflowsRoute,
   ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,

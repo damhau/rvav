@@ -2665,6 +2665,115 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/vra:
+    get:
+      tags: [admin]
+      operationId: getVraImport
+      summary: The vRA importer (P2.5) - whether rvav can read vRA, and the estate it last read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VraImportStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/vra/snapshots:
+    post:
+      tags: [admin]
+      operationId: readVra
+      summary: Read vRA, or take the file vra-export wrote
+      description: |
+        Without a body, rvav reads the vRA of its configuration
+        (`RVAV_VRA_URL`). With the JSON `rvav vra-export` wrote, it takes
+        that. What was read becomes the estate the plan and the import work
+        from. Nothing in vRA changes.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true, description: What rvav vra-export wrote. }
+      responses:
+        "201":
+          description: Read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VraSnapshot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/vra/plan:
+    get:
+      tags: [admin]
+      operationId: getVraPlan
+      summary: The dry run - what importing the estate last read would create, change or leave; nothing is written
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VraPlan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/vra/projects/{vraProjectId}:
+    put:
+      tags: [admin]
+      operationId: mapVraProject
+      summary: Map a vRA project to an rvav project, or clear its mapping (it then maps by name)
+      parameters:
+        - { name: vraProjectId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VraProjectMapping" }
+      responses:
+        "204": { description: Mapped }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/vra/import:
+    post:
+      tags: [admin]
+      operationId: importVra
+      summary: Import the estate last read - catalog items as drafts with their sharing, and deployments adopted
+      description: |
+        It can run again: each vRA object is linked to what it became, so
+        a template already imported gets a new draft only when what it maps
+        to changed, sharing is only ever added, and a deployment rvav
+        manages is not adopted twice. Nothing is published, and nothing in
+        vRA changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VraImportRequest" }
+      responses:
+        "200":
+          description: Imported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VraImportResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/vra/triage:
+    get:
+      tags: [admin]
+      operationId: getVroTriage
+      summary: The vRO triage report of the estate last read, as Markdown (ADR-0007's groups)
+      responses:
+        "200":
+          description: OK
+          content:
+            text/markdown:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/vcenters:
     get:
       tags: [admin]
@@ -5170,6 +5279,222 @@ components:
               vms: { type: array, items: { type: string } }
               addresses: { type: integer, description: Addresses found in EfficientIP. }
               records: { type: integer, description: DNS records found in EfficientIP. }
+
+    VraImportStatus:
+      type: object
+      required: [configured]
+      properties:
+        configured: { type: boolean, description: rvav can read vRA itself (RVAV_VRA_URL is set). }
+        url: { type: string, description: The vRA rvav reads. }
+        snapshot:
+          description: The estate last read; none yet.
+          oneOf:
+            - $ref: "#/components/schemas/VraSnapshot"
+            - type: "null"
+    VraSnapshot:
+      type: object
+      required: [id, read_at, source, created_at, counts]
+      properties:
+        id: { type: string }
+        read_at: { type: string, format: date-time, description: When vRA was read. }
+        source: { type: string, enum: [vra, file], description: "Read from vRA by rvav, or from vra-export's file." }
+        url: { type: string, description: The vRA it was read from. }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, description: Who read it. }
+        counts:
+          type: object
+          required: [projects, templates, catalog_items, deployments, policies, subscriptions, vro_workflows, vro_actions]
+          properties:
+            projects: { type: integer }
+            templates: { type: integer }
+            catalog_items: { type: integer }
+            deployments: { type: integer }
+            policies: { type: integer }
+            subscriptions: { type: integer }
+            vro_workflows: { type: integer }
+            vro_actions: { type: integer }
+    VraNote:
+      type: object
+      required: [level, where, text]
+      properties:
+        level: { type: string, enum: [info, warning, unmapped], description: How it was mapped; mapped but to check; left out. }
+        where: { type: string, description: The part of the vRA object it is about. }
+        text: { type: string }
+    VraProjectMapping:
+      type: object
+      required: [rvav_project_id]
+      additionalProperties: false
+      properties:
+        rvav_project_id: { type: [string, "null"], description: Null clears the mapping. }
+    VraPlan:
+      type: object
+      required: [snapshot, projects, items, deployments, policies, triage, summary]
+      properties:
+        snapshot: { $ref: "#/components/schemas/VraSnapshot" }
+        summary:
+          type: object
+          required: [items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
+          properties:
+            items_create: { type: integer }
+            items_update: { type: integer }
+            items_unchanged: { type: integer }
+            items_blocked: { type: integer, description: "Skipped, or in conflict with rvav." }
+            shares_add: { type: integer, description: Projects items would be shared with. }
+            deployments_adopt: { type: integer }
+            deployments_adopted: { type: integer }
+            deployments_skipped: { type: integer }
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/VraProjectPlan" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VraItemPlan" }
+        deployments:
+          type: array
+          items: { $ref: "#/components/schemas/VraDeploymentPlan" }
+        policies:
+          type: array
+          items: { $ref: "#/components/schemas/VraPolicyPlan" }
+        triage: { $ref: "#/components/schemas/VroTriage" }
+    VraProjectPlan:
+      type: object
+      required: [vra_id, name, how, items, deployments]
+      properties:
+        vra_id: { type: string }
+        name: { type: string }
+        rvav_project_id: { type: string }
+        rvav_project_name: { type: string }
+        how: { type: string, enum: [mapped, same_name, none], description: "Mapped by an administrator, by the same name, or not at all." }
+        items: { type: integer, description: Catalog items shared with it in vRA. }
+        deployments: { type: integer }
+    VraItemPlan:
+      type: object
+      required: [blueprint_id, name, slug, status, action, notes, share_add, share_unmapped]
+      properties:
+        blueprint_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string, enum: [complete, partial, skipped], description: How much of the template maps. }
+        action:
+          type: string
+          enum: [create, update, unchanged, conflict, skip]
+          description: |
+            What the import does: create the item; give it a new draft (what
+            the template maps to changed); nothing; nothing, because rvav has
+            something in the way (`reason`); nothing, as nothing maps.
+        reason: { type: string, description: Why it is in conflict. }
+        version: { type: string, description: The vRA version imported. }
+        rvav_item_id: { type: string }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
+        share_add: { type: array, items: { type: string }, description: rvav projects (IDs) it would be shared with. }
+        share_unmapped: { type: array, items: { type: string }, description: vRA projects it is shared with that map to no rvav project. }
+    VraDeploymentPlan:
+      type: object
+      required: [vra_id, name, vra_project, owner, status, notes]
+      properties:
+        vra_id: { type: string }
+        name: { type: string }
+        vra_project: { type: string }
+        owner: { type: string, description: Its owner in vRA (an email). }
+        status: { type: string, enum: [adopt, adopted, skipped, failed] }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
+        project_id: { type: string }
+        environment: { type: string }
+        owner_id: { type: string }
+        catalog_item_id: { type: string }
+        lease_days: { type: integer }
+        vms:
+          type: array
+          items:
+            type: object
+            required: [vcenter, moref, name]
+            properties:
+              vcenter: { type: string }
+              moref: { type: string }
+              name: { type: string }
+        deployments: { type: array, items: { type: string }, description: "The rvav deployments it became, once adopted." }
+    VraPolicyPlan:
+      type: object
+      required: [vra_id, name, type, becomes, notes]
+      properties:
+        vra_id: { type: string }
+        name: { type: string }
+        type: { type: string, description: "approval, lease, day2, quota, limit or other." }
+        vra_project: { type: string, description: The vRA project it applies to; all when empty. }
+        becomes: { type: string, description: The rvav setting an administrator sets for it; the import doesn't change policies. }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
+    VraImportRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        catalog: { type: boolean, default: true, description: Import catalog items and their sharing. }
+        deployments: { type: boolean, default: false, description: Adopt deployments. }
+    VraImportResult:
+      type: object
+      required: [created, updated, shared, adopted, failed, plan]
+      properties:
+        created: { type: array, items: { type: string }, description: Items made (their names). }
+        updated: { type: array, items: { type: string }, description: Items given a new draft. }
+        shared: { type: integer, description: Projects items were shared with. }
+        adopted: { type: array, items: { type: string }, description: Deployments adopted. }
+        failed:
+          type: array
+          items:
+            type: object
+            required: [name, reason]
+            properties:
+              name: { type: string }
+              reason: { type: string }
+        plan: { $ref: "#/components/schemas/VraPlan" }
+    VroTriage:
+      type: object
+      required: [read_at, items, groups, library]
+      properties:
+        read_at: { type: string, format: date-time }
+        groups: { type: object, additionalProperties: { type: integer }, description: "Items per group, A to D." }
+        library: { type: integer, description: "vRO's own workflows and actions, left out." }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VroTriageItem" }
+    VroTriageItem:
+      type: object
+      required: [kind, id, name, used_by, runs, systems, group, becomes, reasons]
+      properties:
+        kind: { type: string, description: "workflow, action or abx_action." }
+        id: { type: string }
+        name: { type: string }
+        category: { type: string, description: "A workflow's folder, an action's module." }
+        inputs:
+          type: array
+          items:
+            type: object
+            required: [name, type]
+            properties:
+              name: { type: string }
+              type: { type: string }
+              description: { type: string }
+        used_by:
+          type: array
+          items:
+            type: object
+            required: [kind, name]
+            properties:
+              kind: { type: string, description: "catalog_item, subscription, day2_action, form_field, workflow or action." }
+              name: { type: string }
+              detail: { type: string }
+              disabled: { type: boolean }
+        runs: { type: integer }
+        last_run: { type: string, format: date-time }
+        systems: { type: array, items: { type: string }, description: "What it reaches - vCenter, Active Directory, REST..." }
+        group: { type: string, description: "Suggested: A native in rvav, B AWX, C custom workflow, D retire." }
+        becomes: { type: string }
+        reasons: { type: array, items: { type: string } }
 
     VmDrift:
       type: object

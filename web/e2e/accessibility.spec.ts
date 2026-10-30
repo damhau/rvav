@@ -25,6 +25,7 @@ const pages = [
   "/admin/day2-actions",
   "/admin/workflows",
   "/admin/onboarding",
+  "/admin/vra-import",
   "/admin/subscriptions",
   "/admin/audit",
 ];

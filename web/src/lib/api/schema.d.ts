@@ -1967,6 +1967,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/vra": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vRA importer (P2.5) - whether rvav can read vRA, and the estate it last read */
+        get: operations["getVraImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vra/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read vRA, or take the file vra-export wrote
+         * @description Without a body, rvav reads the vRA of its configuration
+         *     (`RVAV_VRA_URL`). With the JSON `rvav vra-export` wrote, it takes
+         *     that. What was read becomes the estate the plan and the import work
+         *     from. Nothing in vRA changes.
+         */
+        post: operations["readVra"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vra/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The dry run - what importing the estate last read would create, change or leave; nothing is written */
+        get: operations["getVraPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vra/projects/{vraProjectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Map a vRA project to an rvav project, or clear its mapping (it then maps by name) */
+        put: operations["mapVraProject"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vra/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import the estate last read - catalog items as drafts with their sharing, and deployments adopted
+         * @description It can run again: each vRA object is linked to what it became, so
+         *     a template already imported gets a new draft only when what it maps
+         *     to changed, sharing is only ever added, and a deployment rvav
+         *     manages is not adopted twice. Nothing is published, and nothing in
+         *     vRA changes.
+         */
+        post: operations["importVra"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vra/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vRO triage report of the estate last read, as Markdown (ADR-0007's groups) */
+        get: operations["getVroTriage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/vcenters": {
         parameters: {
             query?: never;
@@ -3658,6 +3773,218 @@ export interface components {
                 /** @description DNS records found in EfficientIP. */
                 records: number;
             }[];
+        };
+        VraImportStatus: {
+            /** @description rvav can read vRA itself (RVAV_VRA_URL is set). */
+            configured: boolean;
+            /** @description The vRA rvav reads. */
+            url?: string;
+            /** @description The estate last read; none yet. */
+            snapshot?: components["schemas"]["VraSnapshot"] | null;
+        };
+        VraSnapshot: {
+            id: string;
+            /**
+             * Format: date-time
+             * @description When vRA was read.
+             */
+            read_at: string;
+            /**
+             * @description Read from vRA by rvav, or from vra-export's file.
+             * @enum {string}
+             */
+            source: "vra" | "file";
+            /** @description The vRA it was read from. */
+            url?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Who read it. */
+            created_by?: string;
+            counts: {
+                projects: number;
+                templates: number;
+                catalog_items: number;
+                deployments: number;
+                policies: number;
+                subscriptions: number;
+                vro_workflows: number;
+                vro_actions: number;
+            };
+        };
+        VraNote: {
+            /**
+             * @description How it was mapped; mapped but to check; left out.
+             * @enum {string}
+             */
+            level: "info" | "warning" | "unmapped";
+            /** @description The part of the vRA object it is about. */
+            where: string;
+            text: string;
+        };
+        VraProjectMapping: {
+            /** @description Null clears the mapping. */
+            rvav_project_id: string | null;
+        };
+        VraPlan: {
+            snapshot: components["schemas"]["VraSnapshot"];
+            summary: {
+                items_create: number;
+                items_update: number;
+                items_unchanged: number;
+                /** @description Skipped, or in conflict with rvav. */
+                items_blocked: number;
+                /** @description Projects items would be shared with. */
+                shares_add: number;
+                deployments_adopt: number;
+                deployments_adopted: number;
+                deployments_skipped: number;
+            };
+            projects: components["schemas"]["VraProjectPlan"][];
+            items: components["schemas"]["VraItemPlan"][];
+            deployments: components["schemas"]["VraDeploymentPlan"][];
+            policies: components["schemas"]["VraPolicyPlan"][];
+            triage: components["schemas"]["VroTriage"];
+        };
+        VraProjectPlan: {
+            vra_id: string;
+            name: string;
+            rvav_project_id?: string;
+            rvav_project_name?: string;
+            /**
+             * @description Mapped by an administrator, by the same name, or not at all.
+             * @enum {string}
+             */
+            how: "mapped" | "same_name" | "none";
+            /** @description Catalog items shared with it in vRA. */
+            items: number;
+            deployments: number;
+        };
+        VraItemPlan: {
+            blueprint_id: string;
+            name: string;
+            slug: string;
+            /**
+             * @description How much of the template maps.
+             * @enum {string}
+             */
+            status: "complete" | "partial" | "skipped";
+            /**
+             * @description What the import does: create the item; give it a new draft (what
+             *     the template maps to changed); nothing; nothing, because rvav has
+             *     something in the way (`reason`); nothing, as nothing maps.
+             * @enum {string}
+             */
+            action: "create" | "update" | "unchanged" | "conflict" | "skip";
+            /** @description Why it is in conflict. */
+            reason?: string;
+            /** @description The vRA version imported. */
+            version?: string;
+            rvav_item_id?: string;
+            notes: components["schemas"]["VraNote"][];
+            /** @description rvav projects (IDs) it would be shared with. */
+            share_add: string[];
+            /** @description vRA projects it is shared with that map to no rvav project. */
+            share_unmapped: string[];
+        };
+        VraDeploymentPlan: {
+            vra_id: string;
+            name: string;
+            vra_project: string;
+            /** @description Its owner in vRA (an email). */
+            owner: string;
+            /** @enum {string} */
+            status: "adopt" | "adopted" | "skipped" | "failed";
+            notes: components["schemas"]["VraNote"][];
+            project_id?: string;
+            environment?: string;
+            owner_id?: string;
+            catalog_item_id?: string;
+            lease_days?: number;
+            vms?: {
+                vcenter: string;
+                moref: string;
+                name: string;
+            }[];
+            /** @description The rvav deployments it became, once adopted. */
+            deployments?: string[];
+        };
+        VraPolicyPlan: {
+            vra_id: string;
+            name: string;
+            /** @description approval, lease, day2, quota, limit or other. */
+            type: string;
+            /** @description The vRA project it applies to; all when empty. */
+            vra_project?: string;
+            /** @description The rvav setting an administrator sets for it; the import doesn't change policies. */
+            becomes: string;
+            notes: components["schemas"]["VraNote"][];
+        };
+        VraImportRequest: {
+            /**
+             * @description Import catalog items and their sharing.
+             * @default true
+             */
+            catalog: boolean;
+            /**
+             * @description Adopt deployments.
+             * @default false
+             */
+            deployments: boolean;
+        };
+        VraImportResult: {
+            /** @description Items made (their names). */
+            created: string[];
+            /** @description Items given a new draft. */
+            updated: string[];
+            /** @description Projects items were shared with. */
+            shared: number;
+            /** @description Deployments adopted. */
+            adopted: string[];
+            failed: {
+                name: string;
+                reason: string;
+            }[];
+            plan: components["schemas"]["VraPlan"];
+        };
+        VroTriage: {
+            /** Format: date-time */
+            read_at: string;
+            /** @description Items per group, A to D. */
+            groups: {
+                [key: string]: number;
+            };
+            /** @description vRO's own workflows and actions, left out. */
+            library: number;
+            items: components["schemas"]["VroTriageItem"][];
+        };
+        VroTriageItem: {
+            /** @description workflow, action or abx_action. */
+            kind: string;
+            id: string;
+            name: string;
+            /** @description A workflow's folder, an action's module. */
+            category?: string;
+            inputs?: {
+                name: string;
+                type: string;
+                description?: string;
+            }[];
+            used_by: {
+                /** @description catalog_item, subscription, day2_action, form_field, workflow or action. */
+                kind: string;
+                name: string;
+                detail?: string;
+                disabled?: boolean;
+            }[];
+            runs: number;
+            /** Format: date-time */
+            last_run?: string;
+            /** @description What it reaches - vCenter, Active Directory, REST... */
+            systems: string[];
+            /** @description Suggested: A native in rvav, B AWX, C custom workflow, D retire. */
+            group: string;
+            becomes: string;
+            reasons: string[];
         };
         VmDrift: {
             /** @enum {string} */
@@ -8460,6 +8787,159 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    getVraImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VraImportStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    readVra: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Read */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VraSnapshot"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getVraPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VraPlan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    mapVraProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vraProjectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VraProjectMapping"];
+            };
+        };
+        responses: {
+            /** @description Mapped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    importVra: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VraImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Imported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VraImportResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getVroTriage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listVCenters: {

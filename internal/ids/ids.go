@@ -31,6 +31,8 @@ const (
 	// Notifications (ADR-0023).
 	Notification = "ntf"
 	Draft        = "drf"
+	// What the vRA importer read (ADR-0027).
+	VRASnapshot = "vrs"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

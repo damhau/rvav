@@ -47,7 +47,10 @@ type Rvav struct {
 	Users      map[string]string // lower-case email → user ID
 	VMs        map[string]VMRef  // name → VM
 	Items      map[string]string // slug → item ID
-	Now        time.Time
+	// TemplateItems are the items imported from vRA's templates: template
+	// ID → item ID (vra_links).
+	TemplateItems map[string]string
+	Now           time.Time
 }
 
 // DeploymentPlan is what becomes of a vRA deployment: adopted into an rvav
@@ -56,6 +59,7 @@ type DeploymentPlan struct {
 	VRAID         string   `json:"vra_id"`
 	Name          string   `json:"name"`
 	VRAProject    string   `json:"vra_project"`
+	Owner         string   `json:"owner"`
 	Status        string   `json:"status"`
 	Notes         []Note   `json:"notes"`
 	ProjectID     string   `json:"project_id,omitempty"`
@@ -137,7 +141,7 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment) DeploymentPlan {
 		return skip("project", "vRA project "+p.VRAProject+" has no rvav project: map it to one, or create it.")
 	}
 	p.ProjectID = proj.ID
-	note(Info, "project", fmt.Sprintf("In %s (%s).", proj.Name, how))
+	note(Info, "project", fmt.Sprintf("In %s (%s).", proj.Name, map[string]string{HowMapped: "mapped", HowSameName: "the same name"}[how]))
 
 	// Its environment, from its inputs.
 	for _, k := range []string{"environment", "env"} {
@@ -158,6 +162,7 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment) DeploymentPlan {
 	if owner == "" {
 		owner = d.CreatedBy
 	}
+	p.Owner = owner
 	uid, ok := r.Users[strings.ToLower(owner)]
 	switch {
 	case !ok:
@@ -168,6 +173,10 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment) DeploymentPlan {
 	p.OwnerID = uid
 
 	// The item it was requested from, as imported.
+	bpID := d.BlueprintID
+	if i := slices.IndexFunc(e.CatalogItems, func(c vra.CatalogItem) bool { return c.ID == d.CatalogItemID }); i >= 0 && e.CatalogItems[i].SourceID != "" {
+		bpID = e.CatalogItems[i].SourceID
+	}
 	slugName := ""
 	if i := slices.IndexFunc(e.CatalogItems, func(c vra.CatalogItem) bool { return c.ID == d.CatalogItemID }); i >= 0 {
 		if b := slices.IndexFunc(e.Blueprints, func(b vra.Blueprint) bool { return b.ID == e.CatalogItems[i].SourceID }); b >= 0 {
@@ -176,7 +185,10 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment) DeploymentPlan {
 	} else if b := slices.IndexFunc(e.Blueprints, func(b vra.Blueprint) bool { return b.ID == d.BlueprintID }); b >= 0 {
 		slugName = slug(e.Blueprints[b].Name)
 	}
-	itemID, ok := r.Items[slugName]
+	itemID, ok := r.TemplateItems[bpID]
+	if !ok {
+		itemID, ok = r.Items[slugName]
+	}
 	if !ok {
 		return skip("item", "The item it was requested from isn't imported into rvav: import its cloud template first.")
 	}
@@ -196,16 +208,23 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment) DeploymentPlan {
 	return p
 }
 
+// How a vRA project maps to an rvav project.
+const (
+	HowMapped   = "mapped"    // an administrator said so
+	HowSameName = "same_name" // the rvav project of its name
+	HowNone     = "none"
+)
+
 func mapProject(r Rvav, vraID, vraName string) (*RvavProject, string) {
 	if id, ok := r.ProjectMap[vraID]; ok {
 		if i := slices.IndexFunc(r.Projects, func(p RvavProject) bool { return p.ID == id }); i >= 0 {
-			return &r.Projects[i], "mapped"
+			return &r.Projects[i], HowMapped
 		}
 	}
 	if i := slices.IndexFunc(r.Projects, func(p RvavProject) bool { return strings.EqualFold(p.Name, vraName) }); i >= 0 {
-		return &r.Projects[i], "the same name"
+		return &r.Projects[i], HowSameName
 	}
-	return nil, ""
+	return nil, HowNone
 }
 
 func projectName(e *vra.Estate, id string) string {

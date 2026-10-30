@@ -26,6 +26,7 @@ const admin: [string, string, (r: Roles) => boolean][] = [
   ["projects", "Projects", (r) => r.admin || r.auditor || r.projectAdmin],
   ["infrastructure", "Templates and networks", (r) => r.admin || r.auditor],
   ["onboarding", "Onboarding", (r) => r.admin],
+  ["vra-import", "vRA import", (r) => r.admin],
   ["integrations", "Integrations", (r) => r.admin],
   ["subscriptions", "Subscriptions", (r) => r.admin || r.auditor],
   ["workflows", "Custom workflows", (r) => r.admin || r.auditor],

@@ -3,6 +3,49 @@
 How vRA 8 / Aria Automation's content and deployments move to rvav
 ([ADR-0027](../adr/0027-vra-importer.md)). The importer only reads vRA.
 
+## The importer
+
+Administration › **vRA import** is where it happens, for administrators:
+
+1. **Read vRA** (rvav reads the vRA it is configured with), or **Upload
+   file…** (what `rvav vra-export` wrote, where vRA is reachable). What was
+   read is kept, and everything below works from the latest.
+2. **The dry run.** The page shows what an import would do, and writes
+   nothing:
+   - **Catalog items:** for each cloud template, how much of it maps,
+     what the import would do (create, new draft, unchanged, conflict,
+     not imported), who it would be shared with, and the notes;
+   - **Deployments:** which would be adopted, and why the others stay in
+     vRA;
+   - **Policies:** what each becomes in rvav, with the values to set;
+   - **vRO:** the triage report, also as Markdown.
+3. **Projects.** Each vRA project maps to the rvav project of the same
+   name. Choose another where names differ. A vRA project without an rvav
+   project stays in vRA: its items aren't shared there, its deployments
+   aren't adopted.
+4. **Import…** the catalog, the deployments, or both.
+
+The import can run again, as often as needed. Each template is linked
+to the item it became:
+- **Unchanged:** what the template maps to hasn't changed. Nothing
+  happens.
+- **New draft:** vRA released a version, or the mapping changed. The
+  item gets a new draft; its published version stays as it is.
+- **Conflict:** the item already has a draft. Publish or discard it,
+  then import again. An rvav item not made from this template has the
+  slug: rename one of them.
+- **Sharing** is only ever added, never removed.
+- **Deployments:** a deployment rvav manages already isn't adopted again.
+  An item must be published for its deployments to be adopted.
+
+Policies aren't imported: they decide who may do what, so an
+administrator sets each from what the plan says.
+
+The same through the API: `GET /api/v1/admin/vra/plan`,
+`POST /api/v1/admin/vra/snapshots`,
+`PUT /api/v1/admin/vra/projects/{vraProjectId}`,
+`POST /api/v1/admin/vra/import`, `GET /api/v1/admin/vra/triage`.
+
 ## Reading vRA
 
 Give rvav a vRA account that can read every project, by a refresh token
