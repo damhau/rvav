@@ -181,6 +181,67 @@ type Deployment struct {
 	Resources          []Resource     `json:"resources,omitempty"`
 }
 
+// Subscription runs a vRO workflow or an ABX action on a vRA event.
+type Subscription struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	EventTopicID string `json:"eventTopicId"`
+	RunnableType string `json:"runnableType"` // extensibility.vro, extensibility.abx
+	RunnableID   string `json:"runnableId"`
+	Blocking     bool   `json:"blocking,omitempty"`
+	Disabled     bool   `json:"disabled,omitempty"`
+}
+
+// ResourceAction is a custom day-2 action: a vRO workflow or an ABX action
+// run on a resource or a deployment.
+type ResourceAction struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DisplayName  string `json:"displayName,omitempty"`
+	ResourceType string `json:"resourceType"` // Deployment, Cloud.vSphere.Machine...
+	Status       string `json:"status,omitempty"`
+	RunnableItem struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+		Type string `json:"type"` // vro.workflow, abx.action
+	} `json:"runnableItem"`
+}
+
+// VROParam is a vRO workflow's or action's input.
+type VROParam struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"` // string, VC:VirtualMachine, AD:User, REST:RESTHost...
+	Description string `json:"description,omitempty"`
+}
+
+// VROWorkflow is a vRO workflow: its inputs, its content (the schema, as
+// vRO gives it) and when it last ran.
+type VROWorkflow struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Category    string     `json:"category,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Version     string     `json:"version,omitempty"`
+	Inputs      []VROParam `json:"inputs,omitempty"`
+	Content     string     `json:"content,omitempty"`
+	LastRun     *time.Time `json:"last_run,omitempty"`
+	Runs        int        `json:"runs"`
+}
+
+// VROAction is a vRO action, with its script.
+type VROAction struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Module     string     `json:"module"`
+	Version    string     `json:"version,omitempty"`
+	Inputs     []VROParam `json:"inputs,omitempty"`
+	OutputType string     `json:"output_type,omitempty"`
+	Script     string     `json:"script,omitempty"`
+}
+
+// FQN is how forms and scripts name it: module/name.
+func (a VROAction) FQN() string { return a.Module + "/" + a.Name }
+
 // Machine types whose VMs rvav can adopt.
 const MachineType = "Cloud.vSphere.Machine"
 
@@ -198,4 +259,10 @@ type Estate struct {
 	Entitlements []Entitlement   `json:"entitlements"`
 	Policies     []Policy        `json:"policies"`
 	Deployments  []Deployment    `json:"deployments"`
+	// What extensibility runs: vRA's subscriptions, vRO's workflows and
+	// actions (the triage report, P2.4).
+	Subscriptions   []Subscription   `json:"subscriptions"`
+	ResourceActions []ResourceAction `json:"resource_actions"`
+	Workflows       []VROWorkflow    `json:"vro_workflows"`
+	Actions         []VROAction      `json:"vro_actions"`
 }

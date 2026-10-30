@@ -2,6 +2,7 @@ package vra
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -10,9 +11,9 @@ import (
 // VM, of Windows with domain join, of a three-tier application behind an
 // NSX load balancer and of a database server with a dropdown from a vRO
 // action; custom forms, catalog items (a vRO workflow and an ABX action
-// among them), sharing, approval, lease, day-2 and quota policies, and
+// among them), sharing, approval, lease, day-2 and quota policies,
 // deployments of VMs named vra-* (one whose VM is gone, one whose owner
-// left).
+// left), and the extensibility of sampleExtensibility.
 func SampleEstate(now time.Time) Estate {
 	now = now.UTC().Truncate(time.Second)
 	days := func(n int) *time.Time { t := now.AddDate(0, 0, n); return &t }
@@ -98,6 +99,7 @@ func SampleEstate(now time.Time) Estate {
 	flv.FlavorMappings.Mapping = map[string]FlavorMapping{"small": {CPUCount: 2, MemoryInMB: 4096},
 		"medium": {CPUCount: 4, MemoryInMB: 16384}, "large": {CPUCount: 8, MemoryInMB: 32768}}
 	e.Images, e.Flavors = []ImageProfile{img}, []FlavorProfile{flv}
+	sampleExtensibility(&e, days)
 	for _, p := range e.Projects {
 		for _, ci := range e.CatalogItems {
 			for _, id := range ci.ProjectIDs {
@@ -287,3 +289,67 @@ const dbForm = `{"layout":{"pages":[{"id":"page_general","title":"Database","sec
 "dbVersion":{"label":"PostgreSQL version","type":{"dataType":"string","isMultiple":false},"valueList":{"id":"com.corp.db/getVersions","type":"scriptAction","parameters":[{"$type":"field","value":"environment"}]},"constraints":{"required":true}},
 "backupWindow":{"label":"Backup window","type":{"dataType":"string","isMultiple":false},"default":"02:00-04:00"}},
 "options":{"externalValidations":[]}}`
+
+// sampleExtensibility adds vRO's workflows and actions and what uses them,
+// one of each kind ADR-0007 sorts into: a workflow that only drives
+// vCenter (A), two that call AD and a CMDB (B), one that waits for people
+// and days (C), an old one and a copy nothing uses (D), and vRO's own
+// library.
+func sampleExtensibility(e *Estate, days func(int) *time.Time) {
+	wf := func(id, name, category string, inputs []VROParam, runs int, last *time.Time, items ...string) VROWorkflow {
+		content := `{"id":"` + id + `","display-name":"` + name + `","workflow-item":[` + strings.Join(items, ",") + `,{"name":"item0","type":"end"}]}`
+		return VROWorkflow{ID: id, Name: name, Category: category, Version: "1.0.0", Inputs: inputs, Content: content, Runs: runs, LastRun: last}
+	}
+	task := func(name, script string) string {
+		b, _ := json.Marshal(map[string]any{"name": name, "type": "task", "script": map[string]any{"value": script, "encoded": false}})
+		return string(b)
+	}
+	link := func(name, id string) string {
+		return `{"name":"` + name + `","type":"link","linked-workflow-id":"` + id + `"}`
+	}
+	p := func(name, typ string) VROParam { return VROParam{Name: name, Type: typ} }
+	tagScript := `var mgr = vm.sdkConnection.customFieldsManager;
+mgr.setField(vm, 201, costCenter);`
+	e.Workflows = []VROWorkflow{
+		wf("wf-ad-group", "Create AD group", "Corp/Active Directory", []VROParam{p("groupName", "string"), p("ou", "AD:OrganizationalUnit")},
+			120, days(-3), task("item1", `var group = ActiveDirectory.createUserGroup(groupName, ou);`)),
+		wf("wf-cmdb-register", "Register VM in CMDB", "Corp/CMDB", []VROParam{p("inputProperties", "Properties")}, 800, days(-1),
+			task("item1", `var host = RESTHostManager.getHost("cmdb");
+var body = System.getModule("com.corp.cmdb").ciPayload(inputProperties);
+host.createRequest("POST", "/api/ci", JSON.stringify(body)).execute();`)),
+		wf("wf-tag-vm", "Tag VM with cost centre", "Corp/vCenter", []VROParam{p("vm", "VC:VirtualMachine"), p("costCenter", "string")},
+			790, days(-1), task("item1", tagScript)),
+		wf("wf-decom", "Decommission application", "Corp/Lifecycle", []VROParam{p("deploymentId", "string")}, 4, days(-40),
+			`{"name":"item1","type":"input","display-name":"The application owner confirms"}`,
+			`{"name":"item2","type":"waiting-timer","display-name":"Wait seven days"}`,
+			link("item3", "wf-tag-vm"),
+			task("item4", `var host = RESTHostManager.getHost("servicenow"); host.createRequest("POST", "/api/now/change", "{}").execute();`)),
+		wf("wf-old-snap", "Snapshot cleanup (old)", "Corp/Old", nil, 2, days(-400),
+			task("item1", `var vms = VcPlugin.getAllVirtualMachines(); for each (var vm in vms) { vm.removeAllSnapshots_Task(); }`)),
+		wf("wf-tag-vm-copy", "Tag VM with cost centre (copy)", "Corp/vCenter", []VROParam{p("vm", "VC:VirtualMachine"), p("costCenter", "string")},
+			0, nil, task("item1", tagScript)),
+		wf("wf-lib-clone", "Clone virtual machine, no customization", "Library/vCenter/Virtual Machine management/Clone",
+			[]VROParam{p("vm", "VC:VirtualMachine"), p("name", "string")}, 30, days(-2), task("item1", `vm.cloneVM_Task(folder, name, spec);`)),
+	}
+	e.Actions = []VROAction{
+		{ID: "act-db-versions", Name: "getVersions", Module: "com.corp.db", Version: "1.1.0", OutputType: "Array/string",
+			Inputs: []VROParam{p("environment", "string")},
+			Script: `var host = RESTHostManager.getHost("dbaas"); return JSON.parse(host.createRequest("GET", "/versions?env=" + environment).execute().contentAsString);`},
+		{ID: "act-ci-payload", Name: "ciPayload", Module: "com.corp.cmdb", Version: "1.0.0", OutputType: "Properties",
+			Inputs: []VROParam{p("inputProperties", "Properties")},
+			Script: `return { name: inputProperties.resourceNames[0], owner: inputProperties.owner };`},
+		{ID: "act-legacy", Name: "legacyHelper", Module: "com.corp.util", Version: "0.3.0", OutputType: "string",
+			Script: `return "unused";`},
+		{ID: "act-lib-vms", Name: "getAllVMs", Module: "com.vmware.library.vc.vm", Version: "8.0.0", OutputType: "Array/VC:VirtualMachine",
+			Script: `return VcPlugin.getAllVirtualMachines();`},
+	}
+	e.Subscriptions = []Subscription{
+		{ID: "sub-cmdb", Name: "CMDB on provision", EventTopicID: "compute.provision.post", RunnableType: "extensibility.vro", RunnableID: "wf-cmdb-register"},
+		{ID: "sub-tag", Name: "Cost centre tag", EventTopicID: "compute.provision.post", RunnableType: "extensibility.vro", RunnableID: "wf-tag-vm", Blocking: true},
+		{ID: "sub-backup", Name: "Backup registration", EventTopicID: "compute.provision.post", RunnableType: "extensibility.abx", RunnableID: "abx-backup-reg"},
+		{ID: "sub-old", Name: "Old snapshot cleanup", EventTopicID: "compute.removal.post", RunnableType: "extensibility.vro", RunnableID: "wf-old-snap", Disabled: true},
+	}
+	ra := ResourceAction{ID: "ra-decom", Name: "decommission", DisplayName: "Decommission", ResourceType: "Deployment", Status: "RELEASED"}
+	ra.RunnableItem.ID, ra.RunnableItem.Name, ra.RunnableItem.Type = "wf-decom", "Decommission application", "vro.workflow"
+	e.ResourceActions = []ResourceAction{ra}
+}

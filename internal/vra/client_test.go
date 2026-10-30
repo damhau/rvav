@@ -53,6 +53,22 @@ func TestRead(t *testing.T) {
 		if len(d.Resources) != 1 || d.Resources[0].Properties["resourceName"] != "vra-web-001" || d.LeaseExpireAt == nil {
 			t.Fatalf("%s: deployment = %+v", name, d)
 		}
+		// vRO, and what runs it.
+		if len(e.Subscriptions) != 4 || !e.Subscriptions[1].Blocking || len(e.ResourceActions) != 1 ||
+			e.ResourceActions[0].RunnableItem.ID != "wf-decom" || len(e.Workflows) != 7 || len(e.Actions) != 4 {
+			t.Fatalf("%s: %d subscriptions, %d day-2 actions, %d workflows, %d actions", name, len(e.Subscriptions),
+				len(e.ResourceActions), len(e.Workflows), len(e.Actions))
+		}
+		for i, w := range e.Workflows {
+			x := want.Workflows[i]
+			if w.ID != x.ID || w.Category != x.Category || len(w.Inputs) != len(x.Inputs) || w.Content != x.Content || w.Runs != x.Runs ||
+				(x.LastRun == nil) != (w.LastRun == nil) || x.LastRun != nil && !w.LastRun.Equal(*x.LastRun) {
+				t.Fatalf("%s: workflow %+v, want %+v", name, w, x)
+			}
+		}
+		if a := e.Actions[0]; a.FQN() != "com.corp.db/getVersions" || a.Inputs[0].Name != "environment" || !strings.Contains(a.Script, "RESTHostManager") {
+			t.Fatalf("%s: action = %+v", name, a)
+		}
 	}
 }
 

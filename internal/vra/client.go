@@ -300,6 +300,155 @@ func (c *Client) Deployments(ctx context.Context) ([]Deployment, error) {
 	return listPages[Deployment](ctx, c, "/deployment/api/deployments", url.Values{"expand": {"resources"}})
 }
 
+func (c *Client) Subscriptions(ctx context.Context) ([]Subscription, error) {
+	return listPages[Subscription](ctx, c, "/event-broker/api/subscriptions", nil)
+}
+
+func (c *Client) ResourceActions(ctx context.Context) ([]ResourceAction, error) {
+	return listPages[ResourceAction](ctx, c, "/form-service/api/custom/resource-actions", nil)
+}
+
+// vroLink is how vRO lists things: links, each with its attributes.
+type vroLink struct {
+	Href       string `json:"href"`
+	Attributes []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"attributes"`
+}
+
+func (l vroLink) attr(name string) string {
+	for _, a := range l.Attributes {
+		if a.Name == name {
+			return a.Value
+		}
+	}
+	return ""
+}
+
+// vroList pages through a vRO list (maxResult and startIndex). Its links are
+// at the top, or under relations for executions.
+func vroList(ctx context.Context, c *Client, path string) ([]vroLink, error) {
+	var all []vroLink
+	for start := 0; ; start += pageSize {
+		var page struct {
+			Link      []vroLink `json:"link"`
+			Total     int       `json:"total"`
+			Relations struct {
+				Link  []vroLink `json:"link"`
+				Total int       `json:"total"`
+			} `json:"relations"`
+		}
+		q := url.Values{"maxResult": {strconv.Itoa(pageSize)}, "startIndex": {strconv.Itoa(start)}, "queryCount": {"true"}}
+		if err := c.get(ctx, path, q, &page); err != nil {
+			return nil, err
+		}
+		links, total := page.Link, page.Total
+		if len(links) == 0 {
+			links, total = page.Relations.Link, page.Relations.Total
+		}
+		all = append(all, links...)
+		if len(links) < pageSize || (total > 0 && len(all) >= total) {
+			return all, nil
+		}
+	}
+}
+
+// vroParams reads vRO's input-parameters.
+type vroParams []struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+}
+
+func (ps vroParams) params() []VROParam {
+	var out []VROParam
+	for _, p := range ps {
+		out = append(out, VROParam{Name: p.Name, Type: p.Type, Description: p.Description})
+	}
+	return out
+}
+
+// vroTime reads vRO's dates: ISO 8601, or milliseconds since 1970.
+func vroTime(s string) (time.Time, bool) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), true
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05.000-0700", s); err == nil {
+		return t.UTC(), true
+	}
+	if ms, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return time.UnixMilli(ms).UTC(), true
+	}
+	return time.Time{}, false
+}
+
+// Workflows lists vRO's workflows with their inputs, content, and how often
+// and when they last ran.
+func (c *Client) Workflows(ctx context.Context) ([]VROWorkflow, error) {
+	links, err := vroList(ctx, c, "/vco/api/workflows")
+	if err != nil {
+		return nil, err
+	}
+	var out []VROWorkflow
+	for _, l := range links {
+		id := l.attr("id")
+		w := VROWorkflow{ID: id, Name: l.attr("name"), Category: l.attr("categoryName"), Description: l.attr("description"),
+			Version: l.attr("version")}
+		base := "/vco/api/workflows/" + url.PathEscape(id)
+		var detail struct {
+			Inputs vroParams `json:"input-parameters"`
+		}
+		if err := c.get(ctx, base+"/", nil, &detail); err != nil {
+			return nil, err
+		}
+		w.Inputs = detail.Inputs.params()
+		var content json.RawMessage
+		if err := c.get(ctx, base+"/content/", nil, &content); err != nil {
+			return nil, err
+		}
+		w.Content = string(content)
+		runs, err := vroList(ctx, c, base+"/executions/")
+		if err != nil {
+			return nil, err
+		}
+		w.Runs = len(runs)
+		for _, r := range runs {
+			if t, ok := vroTime(r.attr("startDate")); ok && (w.LastRun == nil || t.After(*w.LastRun)) {
+				w.LastRun = &t
+			}
+		}
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+// Actions lists vRO's actions with their inputs and scripts.
+func (c *Client) Actions(ctx context.Context) ([]VROAction, error) {
+	links, err := vroList(ctx, c, "/vco/api/actions")
+	if err != nil {
+		return nil, err
+	}
+	var out []VROAction
+	for _, l := range links {
+		var a struct {
+			ID         string    `json:"id"`
+			Name       string    `json:"name"`
+			Module     string    `json:"module"`
+			Version    string    `json:"version"`
+			OutputType string    `json:"output-type"`
+			Inputs     vroParams `json:"input-parameters"`
+			Script     string    `json:"script"`
+		}
+		if err := c.get(ctx, "/vco/api/actions/"+url.PathEscape(l.attr("id"))+"/", nil, &a); err != nil {
+			return nil, err
+		}
+		out = append(out, VROAction{ID: a.ID, Name: a.Name, Module: a.Module, Version: a.Version, OutputType: a.OutputType,
+			Inputs: a.Inputs.params(), Script: a.Script})
+	}
+	return out, nil
+}
+
 // Read reads everything the importer uses.
 func (c *Client) Read(ctx context.Context) (*Estate, error) {
 	e := &Estate{ReadAt: time.Now().UTC(), URL: c.base.String()}
@@ -339,6 +488,31 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	if e.Deployments, err = c.Deployments(ctx); err != nil {
+		return nil, err
+	}
+	// vRO workflows' own forms, when they are catalog items.
+	for _, ci := range e.CatalogItems {
+		if ci.Type.ID != "com.vmw.vro.workflow" {
+			continue
+		}
+		f, err := c.RequestForm(ctx, ci.Type.ID, ci.SourceID)
+		if err != nil {
+			return nil, err
+		}
+		if f != nil {
+			e.Forms = append(e.Forms, *f)
+		}
+	}
+	if e.Subscriptions, err = c.Subscriptions(ctx); err != nil {
+		return nil, err
+	}
+	if e.ResourceActions, err = c.ResourceActions(ctx); err != nil {
+		return nil, err
+	}
+	if e.Workflows, err = c.Workflows(ctx); err != nil {
+		return nil, err
+	}
+	if e.Actions, err = c.Actions(ctx); err != nil {
 		return nil, err
 	}
 	return e, nil

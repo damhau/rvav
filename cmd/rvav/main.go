@@ -59,6 +59,9 @@ Usage:
   rvav vra-adopt [-f FILE] [-project VRA_ID=RVAV_ID,...] [-apply]
                            which of vRA's deployments rvav would adopt, and why not (JSON);
                            -apply adopts them through onboarding
+  rvav vro-triage [-f FILE] [-md]
+                           vRO's workflows and actions sorted into ADR-0007's groups A to D,
+                           with what uses each and why (JSON, or Markdown with -md)
   rvav fake-vra            serve a fake vRA with a sample estate on RVAV_HTTP_ADDR (development)
   rvav healthcheck         exit 0 when the local API is ready (container probe)
 
@@ -92,7 +95,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	// migrate, seed and the development helpers work without auth settings.
 	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" ||
-		cmd == "vra-export" || cmd == "vra-plan" || cmd == "fake-vra" {
+		cmd == "vra-export" || cmd == "vra-plan" || cmd == "vro-triage" || cmd == "fake-vra" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -135,7 +138,9 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		log.Info("vRA read", "projects", len(e.Projects), "templates", len(e.Blueprints), "forms", len(e.Forms),
-			"items", len(e.CatalogItems), "policies", len(e.Policies), "deployments", len(e.Deployments))
+			"items", len(e.CatalogItems), "policies", len(e.Policies), "deployments", len(e.Deployments),
+			"subscriptions", len(e.Subscriptions), "day2_actions", len(e.ResourceActions), "vro_workflows", len(e.Workflows),
+			"vro_actions", len(e.Actions))
 		if *out == "" {
 			_, err = os.Stdout.Write(append(b, '\n'))
 			return err
@@ -151,6 +156,26 @@ func run(ctx context.Context, cmd string, args []string) error {
 		}
 		plan := vraimport.MakePlan(e)
 		b, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(append(b, '\n'))
+		return err
+	case "vro-triage":
+		fs := flag.NewFlagSet("vro-triage", flag.ExitOnError)
+		file := fs.String("f", "", "an estate vra-export wrote (the vRA at RVAV_VRA_URL by default)")
+		md := fs.Bool("md", false, "a Markdown report instead of JSON")
+		_ = fs.Parse(args)
+		e, err := readEstate(ctx, cfg, *file)
+		if err != nil {
+			return err
+		}
+		t := vraimport.TriageVRO(e)
+		if *md {
+			_, err = os.Stdout.WriteString(t.Markdown())
+			return err
+		}
+		b, err := json.MarshalIndent(t, "", "  ")
 		if err != nil {
 			return err
 		}

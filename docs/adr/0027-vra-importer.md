@@ -32,7 +32,9 @@ these services:
 | Catalog items, and what is shared with each project | `catalog/api/admin/items`, `catalog/api/admin/entitlements` |
 | Policies | `policy/api/policies` |
 | Deployments with their resources | `deployment/api/deployments` |
-| vRO workflows and actions | `vco/api` (P2.4) |
+| Event subscriptions | `event-broker/api/subscriptions` |
+| Custom day-2 actions | `form-service/api/custom/resource-actions` |
+| vRO workflows (inputs, content, runs) and actions (inputs, scripts) | `vco/api/workflows`, `vco/api/actions` |
 
 Nothing in vRA is changed by rvav. What the cutover changes in vRA, such
 as no longer sharing an item with a migrated project, vRA's administrators

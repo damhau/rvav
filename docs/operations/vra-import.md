@@ -92,3 +92,42 @@ Running it again adopts only what isn't yet, so it can run after each fix:
 - a project mapped;
 - an owner who has signed in to rvav;
 - an item imported and published.
+
+## vRO
+
+vRO's workflows and actions aren't imported. They are sorted, for people
+to decide, into the groups of
+[ADR-0007](../adr/0007-extensibility-model.md#migrating-vro-workflows):
+
+```sh
+rvav vro-triage -f estate.json -md > vro-triage.md   # a table per group
+rvav vro-triage -f estate.json                        # the same, as JSON
+```
+
+For each workflow and action, the report shows:
+- its inputs;
+- what in vRA runs it: catalog items, event subscriptions (with rvav's
+  equivalent event), custom day-2 actions, form fields, other workflows
+  and actions;
+- how often and when it last ran (workflows);
+- the systems it reaches, from its inputs' types and its scripts;
+- a suggested group and why.
+
+vRO's own library (`Library/...`, `com.vmware.*`) is left out. ABX
+actions vRA runs are listed, but their code isn't read.
+
+| Suggested group | When |
+|---|---|
+| **A. Native** | A workflow that only drives vCenter: rvav's built-in steps, or a composite item. An action that fills a form field: a value source on the field (REST when it calls REST, CEL otherwise). |
+| **B. AWX** | A workflow that calls other systems (Active Directory, REST, SQL, PowerShell, SSH, mail, NSX...): a playbook, with the Ansible collections the report names. ABX actions. |
+| **C. Custom Temporal workflow** | A workflow that waits for people (user interactions) or for timers and events. |
+| **D. Retire** | Nothing in vRA runs it (or only disabled subscriptions), and it hasn't run for six months or is a copy of another that never ran. An action nothing calls. |
+
+An action that only workflows call goes with them, in their group.
+A workflow keeps its group however old its last run, as long as something
+runs it; the report says when it last ran.
+
+The suggestion reads what the content shows: a script that reaches a
+system through a vRO object the report doesn't know is a guess away from
+the right group. Check each B and C, and every A whose reason says it
+reaches no system.

@@ -170,6 +170,95 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		pages(w, q, list)
+	case p == "/event-broker/api/subscriptions":
+		pages(w, q, e.Subscriptions)
+	case p == "/form-service/api/custom/resource-actions":
+		pages(w, q, e.ResourceActions)
+	case strings.HasPrefix(p, "/vco/api/"):
+		f.vro(w, q, parts[2:])
+	default:
+		fail(w, http.StatusNotFound, "Not found")
+	}
+}
+
+// vro answers vRO's calls: lists as links with attributes, paged by
+// maxResult and startIndex.
+func (f *FakeServer) vro(w http.ResponseWriter, q url.Values, parts []string) {
+	e := &f.estate
+	type attr struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	type link struct {
+		Href       string `json:"href"`
+		Rel        string `json:"rel"`
+		Attributes []attr `json:"attributes"`
+	}
+	list := func(links []link) (part []link, total int) {
+		return window(links, intParam(q, "startIndex", 0), max(intParam(q, "maxResult", 20), 1)), len(links)
+	}
+	params := func(ps []VROParam) []map[string]string {
+		out := []map[string]string{}
+		for _, p := range ps {
+			out = append(out, map[string]string{"name": p.Name, "type": p.Type, "description": p.Description})
+		}
+		return out
+	}
+	switch {
+	case len(parts) == 1 && parts[0] == "workflows":
+		var links []link
+		for _, x := range e.Workflows {
+			links = append(links, link{Href: "/vco/api/workflows/" + x.ID + "/", Rel: "down", Attributes: []attr{{"id", x.ID},
+				{"name", x.Name}, {"categoryName", x.Category}, {"description", x.Description}, {"version", x.Version}}})
+		}
+		part, total := list(links)
+		write(w, map[string]any{"link": part, "total": total, "start": intParam(q, "startIndex", 0)})
+	case len(parts) >= 2 && parts[0] == "workflows":
+		i := slices.IndexFunc(e.Workflows, func(x VROWorkflow) bool { return x.ID == parts[1] })
+		if i < 0 {
+			fail(w, http.StatusNotFound, "Workflow not found")
+			return
+		}
+		x := e.Workflows[i]
+		switch {
+		case len(parts) == 2:
+			write(w, map[string]any{"id": x.ID, "name": x.Name, "version": x.Version, "description": x.Description,
+				"input-parameters": params(x.Inputs), "output-parameters": []any{}})
+		case parts[2] == "content":
+			_, _ = w.Write([]byte(x.Content))
+		case parts[2] == "executions":
+			var links []link
+			for n := range x.Runs {
+				if x.LastRun == nil {
+					break
+				}
+				t := x.LastRun.AddDate(0, 0, -n)
+				id := x.ID + "-run-" + strconv.Itoa(n)
+				links = append(links, link{Href: "/vco/api/workflows/" + x.ID + "/executions/" + id + "/", Rel: "down",
+					Attributes: []attr{{"id", id}, {"state", "completed"}, {"startDate", t.Format("2006-01-02T15:04:05.000-07:00")}}})
+			}
+			part, total := list(links)
+			write(w, map[string]any{"relations": map[string]any{"link": part, "total": total}})
+		default:
+			fail(w, http.StatusNotFound, "Not found")
+		}
+	case len(parts) == 1 && parts[0] == "actions":
+		var links []link
+		for _, a := range e.Actions {
+			links = append(links, link{Href: "/vco/api/actions/" + a.ID + "/", Rel: "down", Attributes: []attr{{"id", a.ID},
+				{"name", a.Name}, {"module", a.Module}, {"fqn", a.FQN()}, {"version", a.Version}}})
+		}
+		part, total := list(links)
+		write(w, map[string]any{"link": part, "total": total})
+	case len(parts) == 2 && parts[0] == "actions":
+		i := slices.IndexFunc(e.Actions, func(a VROAction) bool { return a.ID == parts[1] })
+		if i < 0 {
+			fail(w, http.StatusNotFound, "Action not found")
+			return
+		}
+		a := e.Actions[i]
+		write(w, map[string]any{"id": a.ID, "name": a.Name, "module": a.Module, "version": a.Version, "output-type": a.OutputType,
+			"input-parameters": params(a.Inputs), "script": a.Script})
 	default:
 		fail(w, http.StatusNotFound, "Not found")
 	}
