@@ -24,18 +24,17 @@ Change these, and the estimates and calendar change with them.
 
 ## 2. Where we are
 
-Slice 1 is built ([roadmap status](roadmap.md#status)): the catalog, a request
-form driven by the API, preview with quota and approval path, submitting a VM
-request, the provisioning workflow (IP and DNS, clone, customise, power on,
-AWX jobs), the live timeline with AWX output, deployments, the event stream,
-and the Docker Compose stack with the web app.
+Built ([roadmap status](roadmap.md#status)): S1 to S14 (1.0, stretch items
+included), P2 (the vRA importer and cutover) and N1 (NSX networks and
+security groups).
 
-Proven: backend tests including an end-to-end test against PostgreSQL and
-vcsim, frontend tests and Playwright smoke tests, and the web app running
-against the real API through nginx.
+Proven: end-to-end tests against PostgreSQL, vcsim, a Temporal dev server
+and fakes of AWX, EfficientIP, vRA and NSX; browser tests on the mock API;
+the compose stack with the real images, Temporal and Keycloak; a test AWX.
 
-Not proven yet: a real Temporal server, the Docker images, Keycloak sign-in,
-real AWX, real EfficientIP, a real vCenter.
+Not proven yet, each a Lab acceptance issue (#76 to #91): the lab vCenter,
+the organisation's AWX, SOLIDserver, identity provider, mail server, Teams
+and Slack, vRA and NSX Manager.
 
 ## 3. What "80% of vRA" means
 
@@ -43,10 +42,19 @@ vRA features are listed below with a weight for how much a typical vSphere
 shop relies on them (H = 3, M = 2, L = 1). Coverage is the weighted share of
 features delivered in 1.0.
 
-**Result: 83% in the core 1.0 scope, 86% if the four stretch items also make
-it.** Features vRA has but a vSphere-only shop rarely uses (other clouds, NSX
-automation, Kubernetes, pipelines) are counted against us, so the figure is
-conservative.
+**Result: 83% in the core 1.0 scope, 86% with the four stretch items
+(all built); 88% (97 / 110) with P2's importer and half of NSX (N1, load
+balancers out).** Features vRA has but a vSphere-only shop rarely uses
+(other clouds, Kubernetes, pipelines) are counted against us, so the figure
+is conservative.
+
+**After N1** (decided 2026-10-30, in this order): N2 NSX gaps, C1 the
+catalog in Git, D1 one canvas (an item's topology, the composite
+designer, a request's run), A1 custom roles, D2 composite step kinds
+([section 6](#n2-nsx-gaps-after-n1)). With D1 and D2 counting half of
+features 17 and 41, and A1 the other half of 44, 100 / 110 = 91%.
+Kept out, decided: 7, 26, 28, 29, 36, 42, 48, and NSX load balancers
+(half of 27); Terraform runs as an AWX item for those who need it.
 
 ### Service Broker
 
@@ -73,7 +81,7 @@ conservative.
 | # | vRA feature | Weight | rvav | Slice |
 |---|---|---|---|---|
 | 16 | Cloud templates with versions | H | 1.0 | S8 |
-| 17 | Visual template designer (canvas) | M | No: YAML plus form designer | – |
+| 17 | Visual template designer (canvas) | M | After N1: an item's topology on a canvas, beside its YAML and form designer (half) | D1 |
 | 18 | Multi-machine templates, extra disks and networks | H | 1.0 | S12 |
 | 19 | Image and flavour mappings | H | 1.0, as template and size catalogues | S9 |
 | 20 | Cloud zones, placement, capability tags | H | 1.0 | S9 |
@@ -91,7 +99,7 @@ conservative.
 | 32 | Custom day-2 actions | H | 1.0 | S6, S10 |
 | 33 | Deployments view, history | H | 1.0 | S1, S4 |
 | 34 | Drift, changes made outside vRA | L | 1.0 (stretch) | S13 |
-| 35 | Git integration for templates | L | 1.0 (stretch): YAML import and export, Git sync later | S8 |
+| 35 | Git integration for templates | L | 1.0 (stretch): YAML import and export; after N1, the catalog in Git | S8, C1 |
 | 36 | Code Stream pipelines | L | No | – |
 | 37 | Action-based extensibility (ABX) | M | 1.0, as AWX and custom workflows | S10 |
 | 38 | Event broker subscriptions | H | 1.0 | S10 |
@@ -102,10 +110,10 @@ conservative.
 |---|---|---|---|---|
 | 39 | Workflow engine and custom workflows | H | 1.0, with Temporal ([ADR-0007](adr/0007-extensibility-model.md)) | S1, S10 |
 | 40 | Plugins: AD, SQL, REST, PowerShell, SSH | M | 1.0, as Ansible modules | S6 |
-| 41 | vRO visual workflow designer | M | No: composite items, playbooks, code | – |
+| 41 | vRO visual workflow designer | M | After N1: composite items on a canvas, then step kinds for waits, people and REST, logic in CEL; no scripts (half) | D1, D2 |
 | 42 | Multi-tenancy (organisations) | L | No ([ADR-0002](adr/0002-single-organisation.md)) | – |
 | 43 | Single sign-on | H | 1.0 | S1, S2 |
-| 44 | Role-based access, custom roles | M | Half: fixed roles in 1.0, custom roles later | S9 |
+| 44 | Role-based access, custom roles | M | Half: fixed roles in 1.0; custom roles after N1 | S9, A1 |
 | 45 | API and CLI | H | 1.0 | S1, S9, S14 |
 | 46 | Audit log | M | 1.0 | S9 |
 | 47 | Reports and dashboards | L | 1.0 (stretch) | S13 |
@@ -371,6 +379,66 @@ Decided after 1.0, instead of AWX playbooks ([ADR-0028](adr/0028-nsx-networking.
 
 **Acceptance** (`TestN1Acceptance`, `TestMapNSXTemplate`; the organisation's NSX: [#91](https://github.com/damhau/rvav/issues/91)): a three-tier item builds its VMs on a new segment of the project's Tier-1, each tier in its own security group with the firewall rules between them; deleting the deployment removes the segment, groups and rules; a day-2 action moves a VM into another group; a vRA template with NSX networks and security groups imports without them left out.
 
+### N2 NSX gaps (after N1)
+- NSX segments and security groups in composite items' VMs (refused today).
+- A VM's added adapters on a segment made for its deployment.
+
+**Acceptance:** a composite whose VM step is on its own segment and in a
+security group builds, and deletes, as a VM item does; a VM with two
+adapters, the second on the deployment's segment, gets an address there.
+
+### C1 The catalog in Git (after N1)
+- Catalog items as YAML files in a Git repository (one per item, as the
+  export writes them), over HTTPS with a token or SSH with a deploy key.
+- Publishing in rvav commits the item; a change merged in the repository
+  becomes a draft in rvav, with the diff, for a catalog admin to publish.
+- What differs between the two is shown, never overwritten silently.
+
+**Acceptance:** an item changed in rvav appears in the repository; one
+changed by a merge request appears in rvav as a draft; a conflict is shown.
+
+### D1 One canvas (after N1)
+The canvas rvav's catalog and requests share (React Flow, laid out
+automatically; YAML stays the source of truth), used three ways:
+- **an item's topology:** a VM item's components, disks, networks and
+  segments, security groups and the rules between them, read only;
+- **the composite designer:** steps in order and in parallel, conditions,
+  undo, and each step's inputs bound to the form's or earlier steps'
+  outputs through a picker that knows them; the server's checks on the
+  step itself; the YAML tab edits the same document;
+- **a request's run:** the same graph with each step's live status.
+
+UX borrowed from Windmill (typed step inputs, bindings), Kestra (code and
+graph side by side) and n8n (the run on the graph); no code from them.
+ADR-0007's "no visual designer" is revised in this slice's ADR.
+
+**Acceptance:** the seeded PostgreSQL composite edited on the canvas
+(a step added, its inputs bound, a condition set) and published; its
+request followed on the same graph; a three-tier item's topology shown;
+keyboard and axe in both themes.
+
+### A1 Custom roles (after N1)
+- Roles as sets of permissions (request, run each kind of day-2 action,
+  approve, see, administer...), at the project or the whole of rvav; the
+  fixed roles become built-in ones.
+- A role editor and assignment to users and groups; day-2 and approval
+  policies keep deciding within what a role allows.
+
+**Acceptance:** an operator who may only power VMs on and off, and an
+auditor who sees everything and changes nothing, made and used.
+
+### D2 Composite step kinds (after N1)
+Sized from the vRO triage of the organisation's vRA (#85): how many
+workflows wait for people or timers, or call REST.
+- New steps: wait for a person (a form or an approval mid-run, with its
+  notification), wait for a time, a REST call (allowed hosts, a stored
+  secret), a notification, a branch; the logic between them in CEL.
+- No scripting language: work that needs one is an AWX playbook or a
+  custom workflow.
+
+**Acceptance:** a vRO workflow with a user interaction and a REST call,
+rebuilt as a composite on the canvas, run end to end.
+
 ## 7. Dependencies
 
 | Slice | Needs |
@@ -390,6 +458,11 @@ Decided after 1.0, instead of AWX playbooks ([ADR-0028](adr/0028-nsx-networking.
 | S14 Production readiness | All of the above |
 | P2 vRA importer | 1.0, S13 onboarding |
 | N1 NSX networking | 1.0 (S9, S12, S13), P2 |
+| N2 NSX gaps | N1 |
+| C1 The catalog in Git | S8 |
+| D1 One canvas | S10 (composites), S12, N1 |
+| A1 Custom roles | S9 |
+| D2 Composite step kinds | D1, the vRO triage of the real vRA (#85) |
 
 The longest chain is S2 → S3 → S5 → S9 → S12 → S13 → S14. A delay there moves
 1.0; most other slices have a few weeks of slack.

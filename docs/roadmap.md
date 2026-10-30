@@ -282,10 +282,12 @@ criteria, effort, calendar, risks and decisions.
 | R2 1.0 | Extensibility, notifications, advanced provisioning, inventory, production readiness (S10–S14); 83% of vRA | Month 10 |
 | R3 vRA off | vRA importer, vRO triage, parallel run, cutover (P2); built, the organisation's vRA to confirm | Month 13 |
 | After R3 | NSX networks and security groups, natively (N1, [ADR-0028](adr/0028-nsx-networking.md)): built, against a fake NSX Manager and on the compose stack ([milestone 10](https://github.com/damhau/rvav/milestone/10)); its Lab acceptance on the organisation's NSX is [#91](https://github.com/damhau/rvav/issues/91) | – |
+| Next | N2 NSX gaps, C1 the catalog in Git, D1 one canvas (an item's topology, the composite designer, a request's run), A1 custom roles, D2 composite step kinds ([plan](implementation-plan.md#n2-nsx-gaps-after-n1)); about 91% of vRA by the plan's count | – |
 
 ## Decided
 
 - Cost estimation and showback: **out of scope for now**.
+- vRA parity after N1 (2026-10-30): **out of scope** are public clouds, multi-tenancy, Kubernetes and Tanzu, Code Stream, native Terraform (an AWX item can run it) and NSX load balancers. The vRO workflow designer becomes **composite items on a canvas**, with step kinds for people, waits and REST and their logic in CEL: no scripting language ([plan](implementation-plan.md#d1-one-canvas-after-n1)).
 - vRA importer: **Phase 2**, after the first release.
 - EfficientIP: target the **latest SOLIDserver** release and its current REST API.
 - AWX: target the **latest AWX** release. Red Hat AAP is not a target for now.
