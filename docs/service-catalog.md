@@ -129,8 +129,8 @@ roles of its post-configuration), then the database's owner role on it.
   only see what they can request.
 - **Versioning**: draft, published and deprecated states; preview the draft as a
   user; compare versions; roll back; existing deployments keep their version.
-- Import and export of catalog items as YAML (GitOps-friendly), with an optional
-  Git sync later.
+- Import and export of catalog items as YAML (GitOps-friendly), and the
+  catalog kept in a Git repository (C1, ADR-0029).
 
 **Built (S8, [ADR-0019](adr/0019-catalog-administration.md)):** catalog
 admins and administrators create items, open them to every project (those
@@ -141,8 +141,10 @@ publishing a deprecated version again rolls back; withdrawing the published
 version takes the item out of the catalog; deployments and requests keep
 their version. Two versions compare change by change. Items export to YAML
 (one version or all) and import as a new item or a new draft, never
-published by the import, with problems on their YAML line. Not built yet:
-entitlements to groups or users rather than projects, and a Git sync.
+published by the import, with problems on their YAML line. The catalog can
+be kept in a Git repository (ADR-0029): rvav commits what it publishes,
+and what changes in the repository becomes a draft. Not built yet:
+entitlements to groups or users rather than projects.
 
 ## 3. Custom forms
 

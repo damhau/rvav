@@ -158,8 +158,13 @@ to it, never to force a push.
 | `RVAV_GIT_INSECURE` | off | | Doesn't check the certificate (HTTPS) or the host key (SSH). For labs only. |
 | `RVAV_GIT_COMMITTER` | `rvav@localhost` | | The address of rvav's commits. Their author is the administrator who published. |
 | `RVAV_GIT_SYNC_INTERVAL` | `5m` | | How often the repository is read. |
-| `RVAV_GIT_WEBHOOK_SECRET` | none | yes | The secret the Git server's webhook signs its calls with: the repository is read as soon as it changes. |
-| `RVAV_GIT_CACHE` | the system's temporary directory | | Where the worker keeps its clone. It is made again when missing. |
+| `RVAV_GIT_WEBHOOK_SECRET` | none | yes | The secret of the Git server's webhook (`/api/v1/integrations/git/webhook`, push events): GitHub's and Gitea's signature, or GitLab's token. The repository is then read as soon as it changes. Without it, the webhook answers 404. |
+| `RVAV_GIT_CACHE` | the system's temporary directory | | Where `rvav sync` (and the API, to read on demand) keep their clone. It is made again when missing; the Helm chart mounts a writable `/tmp`. |
+
+The sync process (`rvav sync`) reads the repository and commits rvav's
+changes, one process at a time. The repository's account needs to read
+the branch and push to it; a protected branch must allow its pushes
+(rvav reads and commits to the same branch).
 
 ## vRA (the importer)
 

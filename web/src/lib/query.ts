@@ -66,6 +66,8 @@ export const keys = {
     compare: (itemId: string, from: string, to: string) => ["admin", "catalog", "compare", itemId, from, to] as const,
     categories: ["admin", "catalog", "categories"] as const,
     icons: ["admin", "catalog", "icons"] as const,
+    git: ["admin", "catalog", "git"] as const,
+    itemGit: (id: string) => ["admin", "catalog", "item-git", id] as const,
   },
   tokens: (all: boolean) => ["tokens", all] as const,
   audit: (f: AuditFilters) => ["audit", f] as const,
@@ -280,6 +282,17 @@ export const q = {
             signal,
           }),
         ),
+    }),
+  catalogGit: () =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.git,
+      queryFn: ({ signal }) => call(api.GET("/admin/catalog/git", { signal })),
+    }),
+  catalogItemGit: (id: string) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.itemGit(id),
+      queryFn: ({ signal }) =>
+        call(api.GET("/admin/catalog/items/{itemId}/git", { params: { path: { itemId: id } }, signal })),
     }),
   adminCatalogCategories: () =>
     queryOptions({

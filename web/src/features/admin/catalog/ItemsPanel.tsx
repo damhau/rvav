@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { EmptyState, Panel } from "@/components/common/page";
+import { GitBadge } from "@/features/admin/catalog/GitPanels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -31,6 +32,7 @@ function Status({ it }: { it: AdminCatalogItem }) {
         <Badge tone="neutral">Not published</Badge>
       )}
       {it.draft_version && <Badge tone="accent">Draft {it.draft_version.number}</Badge>}
+      {it.git && it.git.state !== "synced" && <GitBadge git={it.git} />}
     </div>
   );
 }

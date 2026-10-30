@@ -6,6 +6,7 @@ import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { readComposite } from "@/features/admin/catalog/composite";
 import { celCheck } from "./cel";
+import { gitOf, markGit } from "./catalogGit";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -137,6 +138,7 @@ function adminItem(db: Db, item: StoredItem): S["AdminCatalogItem"] {
     entitlements: entitlements(db, item),
     requested: db.requests.some((r) => r.request.catalog_item.id === item.id),
     created_at: versions.at(-1)?.created_at ?? now(),
+    ...(gitOf(db, item) ? { git: gitOf(db, item) } : {}),
   };
 }
 
@@ -378,6 +380,56 @@ export function designerForm(db: Db, versionId: string, projectCode: string, asU
   return undefined;
 }
 
+/** The item's file as rvav commits it to the catalog's repository (its
+ * published version, or the one deprecated last), or a version's. */
+export function itemFile(db: Db, item: StoredItem, versionId?: string): string | undefined {
+  const versions = state(db).versions[item.id] ?? [];
+  const v = versionId
+    ? versions.find((x) => x.id === versionId)
+    : (versions.find((x) => x.state === "published") ?? versions.find((x) => x.state === "deprecated"));
+  if (!v) return undefined;
+  const meta = {
+    slug: item.slug,
+    name: item.name,
+    summary: item.summary,
+    category: item.category,
+    type: item.type,
+    icon: item.icon,
+  };
+  const version = {
+    number: v.number,
+    state: v.state,
+    ...(v.changelog ? { changelog: v.changelog } : {}),
+    ...v.definition,
+  };
+  return stringify({ apiVersion: "rvav.dev/v1", kind: "CatalogItem", metadata: meta, versions: [version] });
+}
+
+/** A draft of the repository's change of the item (rvav's draft
+ * discarded): its ID. */
+export function draftFromRepository(db: Db, item: StoredItem): string {
+  const versions = state(db).versions[item.id] ?? [];
+  const open = versions.findIndex((v) => v.state === "draft");
+  if (open >= 0) versions.splice(open, 1);
+  const from = versions.find((v) => v.state === "published") ?? versions[0]!;
+  const v: Version = {
+    id: uid("ver"),
+    number: nextNumber(versions),
+    state: "draft",
+    changelog: "Smaller default size",
+    created_at: now(),
+    created_by: { id: "usr_rvav", name: "rvav" },
+    deployments: 0,
+    revision: 1,
+    definition: structuredClone(from.definition),
+  };
+  versions.unshift(v);
+  return v.id;
+}
+
+/** The item as catalog admins see it. */
+export const adminItemOf = (db: Db, item: StoredItem) => adminItem(db, item);
+
 export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const find = (id: string) => db.items.find((i) => i.id === id || i.slug === id);
   const versionsOf = (item: StoredItem) => state(db).versions[item.id] ?? [];
@@ -463,6 +515,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
           { field: "/icon", code: "unknown", message: `"${u.icon}" is not one of rvav's icons.` },
         ]);
       Object.assign(item, Object.fromEntries(Object.entries(u).filter(([, v]) => v !== undefined)));
+      markGit(db, item);
       return HttpResponse.json(adminItem(db, item));
     }),
     http.delete(`${base}/admin/catalog/items/:id`, async ({ params }) => {
@@ -561,6 +614,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       Object.assign(v, { state: "published", published_at: now() });
       delete v.deprecated_at;
       serve(db, item, v);
+      markGit(db, item);
       return HttpResponse.json(adminItem(db, item));
     }),
     http.post(`${base}/admin/catalog/items/:id/versions/:vid/deprecate`, async ({ params }) => {
@@ -572,6 +626,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         return problem(409, "Conflict", undefined, "Only the published version can be deprecated.");
       Object.assign(v, { state: "deprecated", deprecated_at: now() });
       serve(db, item, undefined);
+      markGit(db, item);
       return HttpResponse.json(adminItem(db, item));
     }),
     http.get(`${base}/admin/catalog/items/:id/compare`, async ({ params, request }) => {

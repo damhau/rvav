@@ -19,6 +19,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
+import { GitBadge, ItemGitTab } from "./GitPanels";
 import { CompositeOutline } from "./CompositeOutline";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
@@ -548,7 +549,7 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
         {!all && (
           <ul aria-label="Projects" className="flex flex-col gap-1 rounded-md border border-line p-2">
             {projects.map((p) => (
-              <li key={p.id} className="flex items-center gap-2">
+              <li key={p.id} className="flex min-h-7 items-center gap-2">
                 <Checkbox
                   id={`project-${p.id}`}
                   checked={chosen.has(p.id)}
@@ -624,6 +625,7 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
               <Badge tone="neutral">Not published</Badge>
             )}
             {it.draft_version && <Badge tone="accent">Draft {it.draft_version.number}</Badge>}
+            {it.git && it.git.state !== "synced" && <GitBadge git={it.git} />}
           </>
         }
       />
@@ -646,6 +648,7 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
           <TabsTrigger value="definition">Definition</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="entitlements">Entitlements</TabsTrigger>
+          {it.git && <TabsTrigger value="git">Git</TabsTrigger>}
         </TabsList>
         <TabsContent value="versions" className="pt-4">
           <VersionsTab item={it} />
@@ -662,6 +665,11 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
         <TabsContent value="entitlements" className="pt-4">
           <EntitlementsTab key={JSON.stringify(it.entitlements)} item={it} />
         </TabsContent>
+        {it.git && (
+          <TabsContent value="git" className="pt-4">
+            <ItemGitTab item={it} />
+          </TabsContent>
+        )}
       </Tabs>
     </Page>
   );

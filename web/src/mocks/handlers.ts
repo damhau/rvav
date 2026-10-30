@@ -27,7 +27,15 @@ import {
 } from "./approvals";
 import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
-import { catalogAdminHandlers, designerForm, notMember } from "./catalogAdmin";
+import {
+  adminItemOf,
+  catalogAdminHandlers,
+  designerForm,
+  draftFromRepository,
+  itemFile,
+  notMember,
+} from "./catalogAdmin";
+import { catalogGitHandlers } from "./catalogGit";
 import { administrationHandlers } from "./administration";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
@@ -294,6 +302,11 @@ export const handlers = [
   })(),
 
   ...catalogAdminHandlers(db, base, wait),
+  ...catalogGitHandlers(db, base, wait, {
+    fileOf: (item, versionId) => itemFile(db, item, versionId),
+    draftFromRepository: (item) => draftFromRepository(db, item),
+    adminItem: (item) => adminItemOf(db, item),
+  }),
   ...governanceHandlers(db, base, wait),
   ...administrationHandlers(db, base, wait),
   ...onboardingHandlers(db, base, wait),

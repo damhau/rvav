@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
 import { CategoriesPanel } from "@/features/admin/catalog/CategoriesPanel";
+import { GitRepositoryPanel } from "@/features/admin/catalog/GitPanels";
 import { ItemsPanel } from "@/features/admin/catalog/ItemsPanel";
 import { SecretsPanel } from "@/features/admin/catalog/SecretsPanel";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +145,7 @@ export function CatalogItemsPage() {
         title="Catalog items"
         meta="Build items, publish their versions and choose which projects may request them."
       />
+      <GitRepositoryPanel />
       <ItemsPanel />
       <CategoriesPanel />
       <SecretsPanel />

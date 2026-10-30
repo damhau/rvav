@@ -106,6 +106,53 @@ An item's tabs:
 
 Items can be exported and imported as YAML, between installations.
 
+### The catalog in Git
+
+The catalog can be kept in a Git repository
+([ADR-0029](../adr/0029-catalog-in-git.md)), so it is reviewed in merge
+requests and the same in every installation. Set the repository in
+**Integrations › Git** (configuration.md lists the settings): an HTTPS
+URL with a token, or an SSH URL with a deploy key and the server's host
+keys. **Test connection** signs in and reads the branch. rvav needs to
+push to the branch, never to force a push.
+
+Each item is a file, `catalog/<slug>.yaml`, as the export writes it with
+its published version. **rvav publishes, the repository proposes:**
+- **What you do in rvav is committed:** publishing, deprecating, rolling
+  back, changing an item's details or slug, deleting it. You are the
+  commit's author, the changelog its message. rvav commits in the
+  background: publishing never waits for Git.
+- **What changes in the repository becomes a draft**, never published by
+  itself. Review it in **Versions** and publish it (rvav commits it back),
+  or discard it (rvav commits its own file again). A new file becomes a new
+  item, a draft. The item's details (name, summary, category) stay as rvav
+  has them.
+- **Never in the repository:** drafts, entitlements, secrets' values, and
+  items imported from AWX.
+
+**Catalog items** shows the repository as last read and the files that
+need you; **Read the repository now** reads it at once (otherwise every 5
+minutes, or when the Git server calls rvav's webhook). An item's **Git**
+tab shows its file, its last commit, and how the repository's file
+differs from rvav's:
+- **Waiting to be committed:** at the next read.
+- **Commit failing:** the error, and when it is tried again. Check the
+  repository's settings and token.
+- **Draft from Git:** the repository changed the file.
+- **Conflict in Git:** both changed it (a draft open in rvav, or a change
+  not committed yet). **Keep rvav's** commits rvav's file over the
+  repository's change; **Take the repository's** makes a draft of it,
+  discarding rvav's draft.
+- **Refused from Git:** the file can't be imported: the problems, by line.
+  Fix it in the repository.
+- **Deleted in Git:** rvav keeps the item; its next change adds the file
+  back.
+
+To have the repository read as soon as it changes, add a webhook on the
+Git server to `https://<rvav>/api/v1/integrations/git/webhook` (push
+events) with the secret of `RVAV_GIT_WEBHOOK_SECRET`: GitHub and Gitea
+sign it, GitLab sends it as its token.
+
 ## Automation
 
 - **Day-2 actions:** AWX templates with the day-2 label become actions on
