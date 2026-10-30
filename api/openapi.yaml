@@ -197,6 +197,26 @@ paths:
           description: Acknowledged
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /integrations/git/webhook:
+    post:
+      tags: [catalog-admin]
+      operationId: gitWebhook
+      summary: The Git server's call when the catalog's repository changes
+      description: |
+        Asks rvav to read the catalog's repository now (ADR-0029).
+        Authenticated by the secret of `RVAV_GIT_WEBHOOK_SECRET`, not by an
+        rvav token: GitHub's and Gitea's `X-Hub-Signature-256` (or Gitea's
+        `X-Gitea-Signature`) over the body, or GitLab's `X-Gitlab-Token`.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "202": { description: The repository will be read }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /integrations/slack/interactions:
     post:
       tags: [notifications]
@@ -1350,6 +1370,86 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/git:
+    get:
+      tags: [catalog-admin]
+      operationId: catalogGitStatus
+      summary: The catalog's Git repository, as rvav last read it, and its files
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogGitStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/catalog/git/read:
+    post:
+      tags: [catalog-admin]
+      operationId: readCatalogGit
+      summary: Read the catalog's repository now, and commit what waits
+      description: |
+        Waits for the read, at most a minute; a read that fails is in the
+        status's `error`.
+      responses:
+        "200":
+          description: Read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogGitStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/items/{itemId}/git:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    get:
+      tags: [catalog-admin]
+      operationId: catalogItemGit
+      summary: The item's file in the repository, and how it differs from rvav's
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItemGitDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/catalog/items/{itemId}/git/resolve:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: resolveCatalogItemGit
+      summary: Settle a conflict of the item's file
+      description: |
+        `rvav` commits rvav's file over the repository's change; `repository`
+        makes a draft of the repository's file, discarding rvav's open draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [take]
+              properties:
+                take: { type: string, enum: [rvav, repository] }
+      responses:
+        "200":
+          description: Settled
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminCatalogItem" }
@@ -3637,6 +3737,65 @@ components:
         next_attempt_at: { type: string, format: date-time }
         note: { type: string }
         last_commit: { $ref: "#/components/schemas/GitCommit" }
+        draft_version_id:
+          type: string
+          description: The draft made of the repository's change (state draft).
+        problems:
+          type: array
+          description: Why the import refused the repository's file (state refused).
+          items: { $ref: "#/components/schemas/FieldError" }
+    CatalogGitFile:
+      allOf:
+        - { $ref: "#/components/schemas/CatalogItemGit" }
+        - type: object
+          properties:
+            item: { $ref: "#/components/schemas/ItemRef" }
+    ItemRef:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+    CatalogGitStatus:
+      type: object
+      required: [configured, files]
+      properties:
+        configured: { type: boolean, description: rvav keeps its catalog in Git. }
+        url: { type: string }
+        branch: { type: string }
+        dir: { type: string }
+        head: { type: string, description: The branch's commit as last read. }
+        read_at: { type: string, format: date-time }
+        error: { type: string, description: Why the last read failed. }
+        read_requested: { type: boolean, description: A read was asked for and hasn't run yet. }
+        files:
+          type: array
+          description: Every file rvav keeps track of, by path; those of no item too (a new file the import refused).
+          items: { $ref: "#/components/schemas/CatalogGitFile" }
+    CatalogItemGitDetail:
+      type: object
+      required: [file, diff]
+      properties:
+        file: { $ref: "#/components/schemas/CatalogItemGit" }
+        rvav:
+          type: string
+          description: The item's file as rvav commits it (its published version, or the one deprecated last).
+        repository:
+          type: string
+          description: >
+            The repository's file rvav didn't take (conflict, refused), or the
+            draft made of it (draft).
+        diff:
+          type: array
+          description: The lines from rvav's file to the repository's.
+          items: { $ref: "#/components/schemas/DiffLine" }
+    DiffLine:
+      type: object
+      required: [op, text]
+      properties:
+        op: { type: string, enum: [same, added, removed] }
+        text: { type: string }
     GitCommit:
       type: object
       required: [sha, message, author, when]

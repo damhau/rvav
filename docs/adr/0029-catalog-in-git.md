@@ -44,10 +44,14 @@ each other.
   merge, a push) becomes a **draft** of its item, with the diff and the
   commit that made it. It is never published by itself: a catalog admin
   publishes it in rvav, which commits it back, and both sides agree again.
-  A new file becomes a new item, as a draft. A deleted file is reported,
-  never deleted in rvav. A file the YAML import refuses is reported with
-  its problems. The item's metadata (name, summary...) follows rvav: a
-  change to it in the repository is reported, not taken.
+  Changed again while that draft is untouched, the draft is made again.
+  A new file becomes a new item, as a draft (its last version only). A
+  deleted file is reported, never deleted in rvav: the item's next change
+  adds it back. A file the YAML import refuses, or whose name isn't its
+  slug, is reported with its problems. The item's details (name,
+  summary...) follow rvav: a change to them in the repository is put back
+  by a commit, and audited. A draft of the repository's change discarded in
+  rvav sets it aside: rvav's file is committed back.
 - **A conflict:** the item changed on both sides since they last agreed (a
   version published in rvav and not yet committed, and the file changed in
   the repository; or a draft open in rvav). It is shown with both sides,
@@ -62,7 +66,7 @@ didn't change there; when it did, it is a conflict. Nothing is ever forced.
 ### Reading
 The sync process reads the repository every `RVAV_GIT_SYNC_INTERVAL` (5
 minutes), on demand ("read the repository now"), and when the Git server
-calls rvav's webhook (`/api/v1/catalog/git/webhook`, with the secret of
+calls rvav's webhook (`/api/v1/integrations/git/webhook`, with the secret of
 `RVAV_GIT_WEBHOOK_SECRET`: GitHub's and Gitea's signature, or GitLab's
 token). One process syncs at a time.
 

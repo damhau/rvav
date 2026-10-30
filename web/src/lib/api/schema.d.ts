@@ -136,6 +136,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/git/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The Git server's call when the catalog's repository changes
+         * @description Asks rvav to read the catalog's repository now (ADR-0029).
+         *     Authenticated by the secret of `RVAV_GIT_WEBHOOK_SECRET`, not by an
+         *     rvav token: GitHub's and Gitea's `X-Hub-Signature-256` (or Gitea's
+         *     `X-Gitea-Signature`) over the body, or GitLab's `X-Gitlab-Token`.
+         */
+        post: operations["gitWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/slack/interactions": {
         parameters: {
             query?: never;
@@ -1069,6 +1092,88 @@ export interface paths {
          *     their version.
          */
         post: operations["publishCatalogItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/git": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The catalog's Git repository, as rvav last read it, and its files */
+        get: operations["catalogGitStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/git/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the catalog's repository now, and commit what waits
+         * @description Waits for the read, at most a minute; a read that fails is in the
+         *     status's `error`.
+         */
+        post: operations["readCatalogGit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/git": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        /** The item's file in the repository, and how it differs from rvav's */
+        get: operations["catalogItemGit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/git/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a conflict of the item's file
+         * @description `rvav` commits rvav's file over the repository's change; `repository`
+         *     makes a draft of the repository's file, discarding rvav's open draft.
+         */
+        post: operations["resolveCatalogItemGit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2600,6 +2705,49 @@ export interface components {
             next_attempt_at?: string;
             note?: string;
             last_commit?: components["schemas"]["GitCommit"];
+            /** @description The draft made of the repository's change (state draft). */
+            draft_version_id?: string;
+            /** @description Why the import refused the repository's file (state refused). */
+            problems?: components["schemas"]["FieldError"][];
+        };
+        CatalogGitFile: components["schemas"]["CatalogItemGit"] & {
+            item?: components["schemas"]["ItemRef"];
+        };
+        ItemRef: {
+            id: string;
+            slug: string;
+            name: string;
+        };
+        CatalogGitStatus: {
+            /** @description rvav keeps its catalog in Git. */
+            configured: boolean;
+            url?: string;
+            branch?: string;
+            dir?: string;
+            /** @description The branch's commit as last read. */
+            head?: string;
+            /** Format: date-time */
+            read_at?: string;
+            /** @description Why the last read failed. */
+            error?: string;
+            /** @description A read was asked for and hasn't run yet. */
+            read_requested?: boolean;
+            /** @description Every file rvav keeps track of, by path; those of no item too (a new file the import refused). */
+            files: components["schemas"]["CatalogGitFile"][];
+        };
+        CatalogItemGitDetail: {
+            file: components["schemas"]["CatalogItemGit"];
+            /** @description The item's file as rvav commits it (its published version, or the one deprecated last). */
+            rvav?: string;
+            /** @description The repository's file rvav didn't take (conflict, refused), or the draft made of it (draft). */
+            repository?: string;
+            /** @description The lines from rvav's file to the repository's. */
+            diff: components["schemas"]["DiffLine"][];
+        };
+        DiffLine: {
+            /** @enum {string} */
+            op: "same" | "added" | "removed";
+            text: string;
         };
         GitCommit: {
             sha: string;
@@ -5662,6 +5810,32 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    gitWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The repository will be read */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     slackInteractions: {
         parameters: {
             query?: never;
@@ -7133,6 +7307,112 @@ export interface operations {
         };
         responses: {
             /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCatalogItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    catalogGitStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogGitStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    readCatalogGit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogGitStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    catalogItemGit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogItemGitDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveCatalogItemGit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    take: "rvav" | "repository";
+                };
+            };
+        };
+        responses: {
+            /** @description Settled */
             200: {
                 headers: {
                     [name: string]: unknown;

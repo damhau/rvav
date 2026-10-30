@@ -101,6 +101,7 @@ func (s *Store) GitCommitted(ctx context.Context, oldPath, path, blob string, co
 	b, _ := json.Marshal(commit)
 	_, err := s.Pool.Exec(ctx, `update catalog_git_files set path = $2, seen_blob = $3, last_commit = $4, state = 'synced',
 		repo_blob = null, repo_content = null, problems = null, note = '', error = null, attempts = 0,
+		draft_version_id = null, draft_revision = null,
 		pending = revision <> $5, next_attempt_at = case when revision <> $5 then now() end, updated_at = now()
 		where path = $1`, oldPath, path, blob, b, revision)
 	return err
@@ -112,6 +113,7 @@ func (s *Store) GitAgreed(ctx context.Context, path, blob string, commit any, no
 	b, _ := json.Marshal(commit)
 	_, err := s.Pool.Exec(ctx, `update catalog_git_files set seen_blob = $2, last_commit = coalesce($3, last_commit), state = 'synced',
 		repo_blob = null, repo_content = null, problems = null, note = $4, error = null, attempts = 0,
+		draft_version_id = null, draft_revision = null,
 		pending = pending and revision <> $5, updated_at = now() where path = $1`, path, blob, jsonOrNil(b), note, revision)
 	return err
 }
@@ -130,6 +132,59 @@ func (s *Store) GitConflict(ctx context.Context, path, blob, content, note strin
 	_, err := s.Pool.Exec(ctx, `update catalog_git_files set state = 'conflict', repo_blob = $2, repo_content = $3, note = $4,
 		last_commit = coalesce($5, last_commit), error = null, updated_at = now() where path = $1`, path, blob, content, note, jsonOrNil(b))
 	return err
+}
+
+// GitDraft records the draft made of the repository's file at path, seen
+// as blob: of the item, made by that commit. rvav's change not committed
+// yet, if any, is dropped: the draft takes its place.
+func (s *Store) GitDraft(ctx context.Context, path, itemID, blob, versionID string, revision int, commit any, note string) error {
+	b, _ := json.Marshal(commit)
+	_, err := s.Pool.Exec(ctx, `insert into catalog_git_files (path, item_id, state, seen_blob, draft_version_id, draft_revision,
+			last_commit, note) values ($1, $2, 'draft', $3, $4, $5, $6, $7)
+		on conflict (path) do update set item_id = $2, state = 'draft', seen_blob = $3, draft_version_id = $4, draft_revision = $5,
+			last_commit = coalesce($6, catalog_git_files.last_commit), note = $7, repo_blob = null, repo_content = null,
+			problems = null, pending = false, remove = false, error = null, attempts = 0, revision = catalog_git_files.revision + 1,
+			updated_at = now()`, path, itemID, blob, versionID, revision, jsonOrNil(b), note)
+	return err
+}
+
+// GitRefused records that the import refused the repository's file at
+// path (of the item, if it has one): the file, and its problems.
+func (s *Store) GitRefused(ctx context.Context, path string, itemID *string, blob, content string, problems, commit any) error {
+	p, _ := json.Marshal(problems)
+	b, _ := json.Marshal(commit)
+	_, err := s.Pool.Exec(ctx, `insert into catalog_git_files (path, item_id, state, seen_blob, repo_blob, repo_content, problems,
+			last_commit) values ($1, $2, 'refused', $3, $3, $4, $5, $6)
+		on conflict (path) do update set state = 'refused', seen_blob = $3, repo_blob = $3, repo_content = $4, problems = $5,
+			last_commit = coalesce($6, catalog_git_files.last_commit), note = '', error = null, updated_at = now()`,
+		path, itemID, blob, content, p, jsonOrNil(b))
+	return err
+}
+
+// GitDeleted records that the repository deleted the file: rvav keeps
+// its item, and adds the file back when it commits a change of it.
+func (s *Store) GitDeleted(ctx context.Context, path, note string) error {
+	_, err := s.Pool.Exec(ctx, `update catalog_git_files set state = 'deleted', seen_blob = null, repo_blob = null,
+		repo_content = null, problems = null, note = $2, draft_version_id = null, draft_revision = null, updated_at = now()
+		where path = $1`, path, note)
+	return err
+}
+
+// ForgetGitFile forgets the file at path, whatever it was.
+func (s *Store) ForgetGitFile(ctx context.Context, path string) error {
+	_, err := s.Pool.Exec(ctx, `delete from catalog_git_files where path = $1`, path)
+	return err
+}
+
+// GitTakeRvav resolves a conflict for rvav: the repository's file, as the
+// administrator saw it, is replaced by rvav's. False when it is no longer a
+// conflict.
+func (s *Store) GitTakeRvav(ctx context.Context, path, by, message string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `update catalog_git_files set state = 'synced', seen_blob = repo_blob, repo_blob = null,
+		repo_content = null, problems = null, note = '', pending = true, remove = false, pending_by = $2,
+		pending_message = $3, pending_at = now(), revision = revision + 1, attempts = 0, next_attempt_at = now(), error = null,
+		draft_version_id = null, draft_revision = null, updated_at = now() where path = $1 and state = 'conflict'`, path, by, message)
+	return tag.RowsAffected() == 1, err
 }
 
 // AddGitFile keeps track of a file the repository has, seen as blob (nil:

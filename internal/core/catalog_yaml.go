@@ -240,6 +240,12 @@ func (s *Service) itemYAML(ctx context.Context, it store.AdminItem, keep func(st
 
 // ImportCatalogItem makes an item from YAML, or a new draft of one.
 func (s *Service) ImportCatalogItem(ctx context.Context, p *auth.Principal, body []byte, itemID string) (api.CatalogImportResult, error) {
+	return s.importItem(ctx, p, body, itemID, false)
+}
+
+// importItem imports the file; lastOnly makes a new item of its last
+// version only, a draft (a file of the catalog's repository).
+func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte, itemID string, lastOnly bool) (api.CatalogImportResult, error) {
 	if !canAdminCatalog(p) {
 		return api.CatalogImportResult{}, ErrForbidden
 	}
@@ -355,6 +361,9 @@ func (s *Service) ImportCatalogItem(ctx context.Context, p *auth.Principal, body
 			DescriptionMD: m.Description, Category: m.Category, Type: m.Type, Icon: m.Icon, Tags: m.Tags, Featured: m.Featured}
 		var versions []store.ImportVersion
 		for i, v := range doc.Versions {
+			if lastOnly && i < len(doc.Versions)-1 {
+				continue
+			}
 			state := "deprecated"
 			if i == len(doc.Versions)-1 {
 				state = "draft" // nothing is published by an import

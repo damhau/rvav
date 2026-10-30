@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"reflect"
 	"slices"
@@ -130,6 +131,11 @@ func presentGitFile(f store.GitFile) *api.CatalogItemGit {
 	if f.Note != "" {
 		out.Note = &f.Note
 	}
+	out.DraftVersionId = f.DraftVersionID
+	var problems []api.FieldError
+	if json.Unmarshal(f.Problems, &problems) == nil && len(problems) > 0 {
+		out.Problems = &problems
+	}
 	var c gitrepo.Commit
 	if json.Unmarshal(f.LastCommit, &c) == nil && c.SHA != "" {
 		out.LastCommit = &api.GitCommit{Sha: c.SHA, Message: c.Message, Author: c.Author, When: c.When}
@@ -140,12 +146,19 @@ func presentGitFile(f store.GitFile) *api.CatalogItemGit {
 	return out
 }
 
+// SameItemFile says whether two files of an item hold the same
+// definition, and the same details.
+func SameItemFile(a, b []byte) (definition, details bool) { return sameFile(a, b) }
+
 // GitSyncReport is what one read of the repository did.
 type GitSyncReport struct {
 	Head      string
 	Committed int
 	Conflicts int
 	Failed    int
+	// Drafts made of the repository's changes, files refused, files
+	// deleted there.
+	Drafts, Refused, Deleted int
 }
 
 // RunCatalogGit keeps the catalog and its repository in step until ctx is
@@ -230,6 +243,9 @@ func (s *Service) syncGit(ctx context.Context) (GitSyncReport, error) {
 		g.items[it.ID] = it
 	}
 	if err := g.adopt(ctx); err != nil {
+		return g.rep, err
+	}
+	if err := g.takeChanges(ctx); err != nil {
 		return g.rep, err
 	}
 	if err := g.commitPending(ctx); err != nil {
@@ -363,7 +379,10 @@ func (g *gitSync) commit(ctx context.Context, f store.GitFile) error {
 			return g.conflict(ctx, f, it, "Changed in the repository since rvav last read it.")
 		}
 		if to != f.Path && g.blobAt(to) != "" {
-			return g.conflict(ctx, f, it, fmt.Sprintf("The repository already has %s.", to))
+			// Another file has the item's new name: tried again until it
+			// is renamed or removed there, or the item renamed again.
+			g.failed(ctx, f, fmt.Errorf("the repository already has %s: rename or remove it there, or give the item another slug", to))
+			return nil
 		}
 		changes := []gitrepo.Change{{Path: to, Content: content}}
 		if to != f.Path && g.blobAt(f.Path) != "" {
@@ -437,16 +456,226 @@ func (g *gitSync) failed(ctx context.Context, f store.GitFile, cause error) {
 	}
 }
 
+// takeChanges takes what changed in the repository since rvav last read
+// it: a changed file becomes a draft of its item, a new file a new item
+// (never published by themselves); a deleted file, or one the import
+// refuses, is reported. A file rvav has a change of to commit is left to
+// commit: the same as rvav's, they agree; another, a conflict.
+func (g *gitSync) takeChanges(ctx context.Context) error {
+	files, err := g.s.Store.GitFiles(ctx)
+	if err != nil {
+		return err
+	}
+	rows := map[string]store.GitFile{}
+	for _, f := range files {
+		rows[f.Path] = f
+	}
+	paths := slices.Sorted(maps.Keys(g.byPath))
+	for _, p := range paths {
+		file := g.byPath[p]
+		row, known := rows[p]
+		switch {
+		case known && deref(row.SeenBlob) == file.Hash:
+		case known && row.Pending && row.State != "conflict":
+			// commit sees it.
+		case known && row.State == "conflict":
+			if deref(row.RepoBlob) != file.Hash {
+				// Changed again: the conflict shows the repository's last.
+				if err := g.s.Store.GitConflict(ctx, p, file.Hash, string(file.Content), row.Note, g.lastCommit(ctx, p)); err != nil {
+					return err
+				}
+			}
+		default:
+			var r *store.GitFile
+			if known {
+				r = &row
+			}
+			if err := g.proposed(ctx, r, file); err != nil {
+				return err
+			}
+		}
+	}
+	for _, row := range files {
+		if g.blobAt(row.Path) != "" || row.SeenBlob == nil || row.Pending || row.State == "deleted" {
+			continue
+		}
+		if row.ItemID == nil {
+			// A file no item came from, gone: nothing to report.
+			if err := g.s.Store.ForgetGitFile(ctx, row.Path); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := g.s.Store.GitDeleted(ctx, row.Path,
+			"Deleted in the repository: rvav keeps the item, and adds its file back when it next commits a change of it."); err != nil {
+			return err
+		}
+		g.rep.Deleted++
+		g.s.auditGit(ctx, "catalog.git.deleted", *row.ItemID, map[string]any{"path": row.Path})
+	}
+	return nil
+}
+
+// proposed takes a file the repository changed, or added (row nil when
+// rvav doesn't know of it).
+func (g *gitSync) proposed(ctx context.Context, row *store.GitFile, file gitrepo.File) error {
+	st, commit := g.s.Store, g.lastCommit(ctx, file.Path)
+	it, hasItem := store.AdminItem{}, false
+	if row != nil && row.ItemID != nil {
+		it, hasItem = g.items[*row.ItemID]
+	}
+	if !hasItem {
+		found, err := st.GetAdminItem(ctx, file.Slug)
+		switch {
+		case err == nil && found.SourceKind != "native":
+			return g.refused(ctx, row, file, nil, commit, []api.FieldError{fieldErr("/metadata/slug", "awx",
+				fmt.Sprintf("%s is an item imported from AWX: AWX's sync owns it, not the repository.", found.Slug))})
+		case err == nil:
+			if other, err := st.GitFileOfItem(ctx, found.ID); err == nil && other.Path != file.Path {
+				return g.refused(ctx, row, file, &found.ID, commit, []api.FieldError{fieldErr("/metadata/slug", "duplicate",
+					fmt.Sprintf("rvav keeps %s in %s.", found.Slug, other.Path))})
+			}
+			it, hasItem = found, true
+		case !errors.Is(err, store.ErrNotFound):
+			return err
+		}
+	}
+	var doc itemDoc
+	if yaml.Unmarshal(file.Content, &doc) == nil && doc.Metadata.Slug != "" && doc.Metadata.Slug != file.Slug {
+		var id *string
+		if hasItem {
+			id = &it.ID
+		}
+		return g.refused(ctx, row, file, id, commit, []api.FieldError{fieldErr("/metadata/slug", "invalid",
+			fmt.Sprintf("The file is %s.yaml, its slug %s: they must be the same.", file.Slug, doc.Metadata.Slug))})
+	}
+	if !hasItem {
+		// A new item, a draft.
+		res, err := g.s.importItem(ctx, system(), file.Content, "", true)
+		if problems, ok := importProblems(err); ok {
+			return g.refused(ctx, row, file, nil, commit, problems)
+		} else if err != nil {
+			return err
+		}
+		return g.drafted(ctx, file, res.ItemId, commit, "A new item, from the repository.")
+	}
+
+	if row == nil {
+		if err := st.AddGitFile(ctx, file.Path, &it.ID, nil); err != nil {
+			return err
+		}
+		row = &store.GitFile{Path: file.Path, ItemID: &it.ID}
+	}
+	ours, _, err := g.s.gitFile(ctx, it)
+	if err != nil {
+		return err
+	}
+	def, meta := sameFile(ours, file.Content)
+	note := ""
+	if ours != nil && !meta {
+		note = "Its details (name, summary, category...) follow rvav: the repository's aren't taken."
+	}
+	if ours != nil && def {
+		// The same definition: agreed. Details changed there are put
+		// back as rvav has them.
+		if err := st.GitAgreed(ctx, file.Path, file.Hash, commit, note, row.Revision); err != nil {
+			return err
+		}
+		if !meta {
+			g.s.auditGit(ctx, "catalog.git.details_kept", it.ID, map[string]any{"path": file.Path})
+			return st.MarkGitPending(ctx, it.ID, file.Path, SystemUserID, "Keep "+it.Slug+"'s details from rvav")
+		}
+		return nil
+	}
+	versions, err := st.ItemVersions(ctx, it.ID)
+	if err != nil {
+		return err
+	}
+	if i := slices.IndexFunc(versions, func(v store.VersionRow) bool { return v.State == "draft" }); i >= 0 {
+		d := versions[i]
+		if deref(row.DraftVersionID) != d.ID || row.DraftRevision == nil || *row.DraftRevision != d.Revision {
+			// A draft of rvav's is open: both changed the item.
+			return g.conflict(ctx, *row, it,
+				"rvav has a draft of "+it.Slug+" open ("+d.Number+"): publish or discard it, or take the repository's change.")
+		}
+		// The draft rvav made of the repository's earlier change,
+		// untouched: made again of this one.
+		if err := st.DeleteDraft(ctx, d.ID); err != nil && !errors.Is(err, store.ErrVersionState) {
+			return err
+		}
+	}
+	res, err := g.s.importItem(ctx, system(), file.Content, it.ID, false)
+	if problems, ok := importProblems(err); ok {
+		return g.refused(ctx, row, file, &it.ID, commit, problems)
+	} else if err != nil {
+		return err
+	}
+	return g.drafted(ctx, file, res.ItemId, commit, note)
+}
+
+// importProblems are why the import refused a file.
+func importProblems(err error) ([]api.FieldError, bool) {
+	var v *ValidationError
+	var c *ConflictError
+	switch {
+	case errors.As(err, &v):
+		return v.Errors, true
+	case errors.As(err, &c):
+		return []api.FieldError{fieldErr("", "conflict", c.Msg)}, true
+	}
+	return nil, false
+}
+
+// drafted records the draft made of the repository's file.
+func (g *gitSync) drafted(ctx context.Context, file gitrepo.File, itemID string, commit *gitrepo.Commit, note string) error {
+	versions, err := g.s.Store.ItemVersions(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(versions, func(v store.VersionRow) bool { return v.State == "draft" })
+	if i < 0 {
+		return fmt.Errorf("the import of %s made no draft", file.Path)
+	}
+	d := versions[i]
+	if err := g.s.Store.GitDraft(ctx, file.Path, itemID, file.Hash, d.ID, d.Revision, commit, note); err != nil {
+		return err
+	}
+	g.rep.Drafts++
+	detail := map[string]any{"path": file.Path, "version": d.Number}
+	if commit != nil {
+		detail["commit"] = commit.SHA
+	}
+	g.s.auditGit(ctx, "catalog.git.draft", itemID, detail)
+	return nil
+}
+
+// refused records a file the import refused, with its problems.
+func (g *gitSync) refused(ctx context.Context, row *store.GitFile, file gitrepo.File, itemID *string, commit *gitrepo.Commit,
+	problems []api.FieldError) error {
+	if row != nil && row.ItemID != nil {
+		itemID = row.ItemID
+	}
+	if err := g.s.Store.GitRefused(ctx, file.Path, itemID, file.Hash, string(file.Content), problems, commit); err != nil {
+		return err
+	}
+	g.rep.Refused++
+	if itemID != nil {
+		g.s.auditGit(ctx, "catalog.git.refused", *itemID, map[string]any{"path": file.Path, "problems": len(problems)})
+	}
+	return nil
+}
+
 // catchUp commits what rvav has and the repository's unchanged file
 // doesn't, when no change was marked for it: one whose mark failed, or a
-// change of the repository's set aside in rvav.
+// change of the repository's set aside in rvav (its draft discarded).
 func (g *gitSync) catchUp(ctx context.Context) error {
 	files, err := g.s.Store.GitFiles(ctx)
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		if f.Pending || f.State != "synced" || f.ItemID == nil || f.SeenBlob == nil || g.blobAt(f.Path) != *f.SeenBlob {
+		setAside := f.State == "draft" && f.DraftVersionID == nil
+		if f.Pending || f.State != "synced" && !setAside || f.ItemID == nil || f.SeenBlob == nil || g.blobAt(f.Path) != *f.SeenBlob {
 			continue
 		}
 		it, ok := g.items[*f.ItemID]
@@ -463,10 +692,14 @@ func (g *gitSync) catchUp(ctx context.Context) error {
 		if def, meta := sameFile(content, g.byPath[f.Path].Content); def && meta && g.repo.FilePath(it.Slug) == f.Path {
 			continue
 		}
-		if err := g.s.Store.MarkGitPending(ctx, it.ID, f.Path, SystemUserID, "Update "+it.Slug+" from rvav"); err != nil {
+		message := "Update " + it.Slug + " from rvav"
+		if setAside {
+			message = "Keep " + it.Slug + " as rvav has it: the repository's change was discarded there"
+		}
+		if err := g.s.Store.MarkGitPending(ctx, it.ID, f.Path, SystemUserID, message); err != nil {
 			return err
 		}
-		f.Pending, f.PendingMessage, f.Revision = true, "Update "+it.Slug+" from rvav", f.Revision+1
+		f.Pending, f.PendingMessage, f.Revision = true, message, f.Revision+1
 		if err := g.commit(ctx, f); err != nil {
 			return err
 		}
