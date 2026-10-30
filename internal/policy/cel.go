@@ -29,7 +29,7 @@ type set struct {
 }
 
 // forms is for approval policies, form rules and blueprint bindings.
-var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota"},
+var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments"},
 	strings: map[string]bool{"environment": true}}
 
 // day2 is for day-2 policy conditions, where environment is an object

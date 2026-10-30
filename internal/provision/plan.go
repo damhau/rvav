@@ -37,6 +37,9 @@ type Plan struct {
 	// belong to, and each has its guest, anti-affinity and post-
 	// configuration (PostConfig and Guest are then unused).
 	Components []ComponentUnit `json:"components,omitempty"`
+	// Segments are the NSX segments made for its deployments before their
+	// VMs (ADR-0028).
+	Segments []SegmentUnit `json:"segments,omitempty"`
 }
 
 // ComponentUnit is one component of a multi-VM blueprint's plan.
@@ -258,6 +261,31 @@ type VMUnit struct {
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).
 	VCenter string `json:"vcenter,omitempty"`
+	// Segment is the key of the NSX segment made for its deployment that
+	// its network is (ADR-0028): its subnet is known once the request has
+	// carved it.
+	Segment string `json:"segment,omitempty"`
+}
+
+// SegmentUnit is an NSX segment made for a deployment (ADR-0028): its ID
+// and name (its port group's in vCenter), the Tier-1 it connects to, and
+// its subnet, carved from an EfficientIP block when the request runs.
+type SegmentUnit struct {
+	DeploymentID string   `json:"deployment_id"`
+	Key          string   `json:"key"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Tier1        string   `json:"tier1"`
+	IPBlock      string   `json:"ip_block"`
+	PrefixLength int      `json:"prefix_length"`
+	DNSZone      string   `json:"dns_zone"`
+	DNSServers   []string `json:"dns_servers,omitempty"`
+}
+
+// SegmentName is the name, and NSX ID, of the segment made for a
+// deployment: rvav-<deployment>-<key>.
+func SegmentName(deploymentID, key string) string {
+	return "rvav-" + strings.ReplaceAll(deploymentID, "_", "-") + "-" + key
 }
 
 // NICUnit is an adapter added after the template's: with efficientip, an

@@ -51,16 +51,33 @@ type vmPart struct {
 	chosen  bool
 	// nicSubnets are the added adapters' subnets (nil for DHCP).
 	nicSubnets []*store.NetworkSubnet
-	naming     *naming.Template
-	prefix     string
-	counter    string
-	names      []string
-	check      *nameCheck
+	// segment is the key of the NSX segment made for the deployment its
+	// VMs' network is, and segments where the placement rule makes them
+	// (ADR-0028).
+	segment  string
+	segments *store.PlacementSegments
+	naming   *naming.Template
+	prefix   string
+	counter  string
+	names    []string
+	check    *nameCheck
 	// addresses is the next free address of its network, as a hint.
 	addresses []string
 }
 
 func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
+
+// zone is the DNS zone its VMs are named in: their subnet's, or that of
+// the segments made for the deployment.
+func (p vmPart) zone() string {
+	switch {
+	case p.subnet != nil:
+		return p.subnet.DNSZone
+	case p.segment != "" && p.segments != nil:
+		return p.segments.DNSZone
+	}
+	return ""
+}
 
 var bindingInput = regexp.MustCompile(`^\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*$`)
 
@@ -192,6 +209,33 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if part.count == 0 {
 		return part, nil // nothing to place or name
 	}
+	// A network made for the deployment: an NSX segment, on the Tier-1 of
+	// the first placement rule that makes them (ADR-0028).
+	if key, ok := blueprint.SegmentKey(plan.Network); ok {
+		part.segment = key
+		for _, r := range pl.rules {
+			if r.Segments != nil {
+				sg := *r.Segments
+				part.segments = &sg
+				break
+			}
+		}
+		if part.segments == nil && len(pl.rules) > 0 {
+			add(field("network"), "no_segments", fmt.Sprintf("No placement rule of %s in %s makes NSX segments. Ask an administrator to add one.",
+				ev.Project.Name, ev.Env.Name))
+		}
+	}
+	for i, n := range plan.NICs {
+		if _, ok := blueprint.SegmentKey(n.Network); ok {
+			add(bindingField(c.NICs[i].Network, ""), "not_allowed", "An added adapter can't be on a segment made for the deployment: only the VM's first one.")
+		}
+	}
+	// Its port group doesn't exist until the request makes it: clusters are
+	// chosen, and checked, without it.
+	placed := plan
+	if part.segment != "" {
+		placed.Network = ""
+	}
 	// A size the bindings can't work out is the blueprint's fault once the
 	// inputs are all there: never a VM of the template's size by default.
 	if strict && (plan.VCPU < 1 || plan.MemoryGB < 1) {
@@ -220,7 +264,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				return t.Name == plan.Template && t.Library == plan.Library && t.VCenter == vc
 			})
 		}
-		if cl := pl.choose(plan, part.count, c.AntiAffinity, pickDatastore, hasTemplate); cl != nil {
+		if cl := pl.choose(placed, part.count, c.AntiAffinity, pickDatastore, hasTemplate); cl != nil {
 			plan.Cluster, part.chosen = cl.Name, true
 		} else {
 			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
@@ -244,7 +288,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			if plan.Datastore != "" && !slices.ContainsFunc(pl.datastoresFor(plan.Cluster), func(d store.InvDatastore) bool { return d.Name == plan.Datastore }) {
 				add(field("datastore"), "not_allowed", fmt.Sprintf("Datastore %s cannot be used on %s.", plan.Datastore, plan.Cluster))
 			}
-			if plan.Network != "" && !slices.ContainsFunc(pl.networksFor(plan.Cluster), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
+			if placed.Network != "" && !slices.ContainsFunc(pl.networksFor(plan.Cluster), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
 				add(field("network"), "not_allowed", fmt.Sprintf("Network %s cannot be used on %s.", plan.Network, plan.Cluster))
 			}
 			if cl := pl.cluster(plan.Cluster); c.AntiAffinity && part.count > 1 && cl.HostCount > 0 && part.count > cl.HostCount {
@@ -253,7 +297,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			}
 		}
 	}
-	if plan.Network != "" {
+	if placed.Network != "" {
 		if sn, ok := pl.subnets[plan.Network]; ok {
 			part.subnet = &sn
 		} else {
@@ -333,10 +377,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return part, nil // inputs used by the name are still missing; the schema reports them
 	}
 	part.prefix, part.counter = prefix, spec.counterKey(prefix)
-	zone := ""
-	if part.subnet != nil {
-		zone = part.subnet.DNSZone
-	}
+	zone := part.zone()
 	if part.names, _, part.check, err = s.peekNames(ctx, spec, prefix, zone, part.count, given); err != nil {
 		return part, err
 	}
@@ -522,6 +563,13 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		if p.subnet != nil {
 			first.Subnet = str(p.subnet.Subnet)
 		}
+		if p.segment != "" {
+			first.Network = "A new NSX segment (" + p.segment + ")"
+			if sg := p.segments; sg != nil {
+				first.Network += " on " + sg.Tier1
+				first.Subnet = str(fmt.Sprintf("/%d from %s, when the request runs", sg.PrefixLength, sg.IPBlock))
+			}
+		}
 		if len(p.addresses) > 0 {
 			first.Address = &p.addresses[0]
 		}
@@ -561,6 +609,14 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder
+	}
+	// On a segment made for the deployment, its subnet is carved when the
+	// request runs (ADR-0028).
+	if p.segment != "" {
+		vm.Network, vm.Segment = provision.SegmentName(deploymentID, p.segment), p.segment
+		if sg := p.segments; sg != nil {
+			vm.FQDN, vm.DNSZone, vm.DNSServers = name+"."+sg.DNSZone, sg.DNSZone, sg.DNSServers
+		}
 	}
 	if sn := p.subnet; sn != nil {
 		vm.FQDN = name + "." + sn.DNSZone
@@ -645,6 +701,7 @@ func replanVMs(ev *Evaluation, plan *provision.Plan) error {
 		counts[key]++
 		plan.VMs[i] = vmUnit(ev, p, vm.DeploymentID, vm.Name, vm.Index)
 	}
+	plan.Segments = planSegments(ev, plan.VMs)
 	order := optionOrder(ev.Version.UISchema, "post_config")
 	if !ev.Blueprint.Multi() {
 		var err error
@@ -715,10 +772,7 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 		for n := range given {
 			ours[n] = true
 		}
-		zone := ""
-		if p.subnet != nil {
-			zone = p.subnet.DNSZone
-		}
+		zone := p.zone()
 		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: zone}
 		if p.check != nil {
 			names.dns = p.check.dns
@@ -749,4 +803,26 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 		}
 	}
 	return deps, vms, comps, nil
+}
+
+// planSegments are the NSX segments made for the deployments of these VMs
+// (ADR-0028): one for each segment a deployment's VMs are on.
+func planSegments(ev *Evaluation, vms []provision.VMUnit) []provision.SegmentUnit {
+	parts := map[string]vmPart{}
+	for _, p := range ev.Parts {
+		parts[p.comp.Key] = p
+	}
+	var out []provision.SegmentUnit
+	seen := map[string]bool{}
+	for _, vm := range vms {
+		p, ok := parts[cmp.Or(vm.Component, blueprint.SingleKey)]
+		if vm.Segment == "" || !ok || p.segments == nil || seen[vm.DeploymentID+"/"+vm.Segment] {
+			continue
+		}
+		seen[vm.DeploymentID+"/"+vm.Segment] = true
+		sg, name := p.segments, provision.SegmentName(vm.DeploymentID, vm.Segment)
+		out = append(out, provision.SegmentUnit{DeploymentID: vm.DeploymentID, Key: vm.Segment, ID: name, Name: name, Tier1: sg.Tier1,
+			IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers})
+	}
+	return out
 }

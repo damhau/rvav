@@ -2,15 +2,21 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/nsx"
+	"github.com/damhau/rvav/internal/provision"
 )
 
 // TestNSXIntegration: the NSX Manager set from Administration ›
@@ -114,4 +120,105 @@ func TestPlacementSegments(t *testing.T) {
 			t.Fatalf("cleared = %+v", cleared.Segments)
 		}
 	})
+}
+
+// segmentItem is the seeded RHEL item made into one whose VM is on an NSX
+// segment made for its deployment, published for every project: its ID and
+// its version's.
+func segmentItem(h *harness) (string, string) {
+	h.t.Helper()
+	code, raw, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-server/export", "mkeller", nil)
+	if code != 200 {
+		h.t.Fatalf("export = %d %s", code, raw)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		h.t.Fatal(err)
+	}
+	meta := doc["metadata"].(map[string]any)
+	meta["slug"], meta["name"] = "rhel9-segment", "RHEL 9 on its own segment"
+	versions := doc["versions"].([]any)
+	last := versions[len(versions)-1].(map[string]any)
+	bp := last["blueprint"].(map[string]any)
+	bp["bindings"].(map[string]any)["network"] = "segments.app"
+	bp["segments"] = []any{map[string]any{"key": "app", "title": "Application"}}
+	doc["versions"] = []any{last}
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var res api.CatalogImportResult
+	h.json("POST", "/api/v1/admin/catalog/import", "mkeller", rawYAML(out), 200, &res, "Content-Type", "application/yaml")
+	version := publishVRAItem(h, res)
+	return res.ItemId, version
+}
+
+// TestSegmentPlanning: a request for an item whose VM is on a segment made
+// for its deployment (N1.2): refused while no placement rule makes
+// segments; then previewed with the segment and its subnet to come, and
+// submitted with the segment in its plan, its VM on it.
+func TestSegmentPlanning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		item, version := segmentItem(h)
+		draft := api.RequestDraft{CatalogItemId: item, VersionId: version, ProjectId: "prj_web", Environment: "dev",
+			Inputs: segmentInputs()}
+		var pv api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		if pv.Valid || !slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "no_segments" }) {
+			t.Fatalf("without segments: %+v", pv.Errors)
+		}
+
+		// Web Platform's dev rule makes them.
+		fake := httptest.NewServer(nsx.NewFakeServer())
+		defer fake.Close()
+		h.svc.Config.NSX.URL, h.svc.Config.NSX.Username, h.svc.Config.NSX.Password = fake.URL, nsx.FakeUser, nsx.FakePassword
+		var rules api.PlacementRuleList
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", admin, nil, 200, &rules)
+		i := slices.IndexFunc(rules.Items, func(r api.PlacementRule) bool { return r.Environment == "dev" })
+		r := rules.Items[i]
+		h.json("PUT", "/api/v1/admin/placement-rules/"+r.Id, admin, api.PlacementRuleWrite{ProjectId: "prj_web", Environment: "dev",
+			Priority: &r.Priority, Clusters: r.Clusters, Datastores: r.Datastores, Networks: r.Networks, Folder: r.Folder,
+			ClusterTags: &r.ClusterTags, DatastoreTags: &r.DatastoreTags, Segments: &api.PlacementSegments{Tier1: "t1-gva-dev",
+				IpBlock: "nsx-gva-dev", PrefixLength: 26, DnsZone: "corp.example", DnsServers: &[]string{"10.10.0.53"}}}, 200, nil)
+
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		if !pv.Valid || pv.Components == nil {
+			t.Fatalf("preview: %+v", pv.Errors)
+		}
+		nic := (*pv.Components)[0].Nics[0]
+		if nic.Network != "A new NSX segment (app) on t1-gva-dev" || deref(nic.Subnet) != "/26 from nsx-gva-dev, when the request runs" {
+			t.Fatalf("preview nic = %+v %v", nic, deref(nic.Subnet))
+		}
+
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+		var raw []byte
+		if err := h.store.Pool.QueryRow(ctx, `select plan from requests where id = $1`, req.Id).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var plan provision.Plan
+		if err := json.Unmarshal(raw, &plan); err != nil {
+			t.Fatal(err)
+		}
+		if len(plan.Segments) != 1 || len(plan.VMs) != 1 {
+			t.Fatalf("plan: %d segments, %d VMs", len(plan.Segments), len(plan.VMs))
+		}
+		sg, vm := plan.Segments[0], plan.VMs[0]
+		if sg.ID != provision.SegmentName(vm.DeploymentID, "app") || sg.Tier1 != "t1-gva-dev" || sg.IPBlock != "nsx-gva-dev" ||
+			sg.PrefixLength != 26 || vm.Network != sg.Name || vm.Segment != "app" || vm.Subnet != "" ||
+			!strings.HasSuffix(vm.FQDN, ".corp.example") || vm.DNSServers[0] != "10.10.0.53" {
+			t.Fatalf("segment %+v, vm %+v", sg, vm)
+		}
+	})
+}
+
+// segmentInputs are the seeded RHEL form's, in Web Platform's dev.
+func segmentInputs() map[string]any {
+	return map[string]any{"role": "web", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+		"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}
 }

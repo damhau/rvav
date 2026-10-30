@@ -15,6 +15,9 @@ import (
 
 var componentKey = regexp.MustCompile(`^[a-z][a-z0-9]{0,15}$`)
 
+// maxSegments is how many NSX segments one deployment can have made.
+const maxSegments = 4
+
 // checkVMBlueprint checks a vm blueprint on its own; the secrets it names
 // are checked when it is published (checkBlueprintRefs).
 func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.FieldError {
@@ -53,6 +56,22 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		}
 	}
 	errs = append(errs, checkParts(ptr, b.Disks, b.NICs, b.Tags)...)
+
+	// NSX segments made for each deployment (ADR-0028).
+	segKeys := map[string]bool{}
+	if len(b.Segments) > maxSegments {
+		add(ptr+"/segments", "out_of_range", fmt.Sprintf("At most %d segments for a deployment.", maxSegments))
+	}
+	for i, sg := range b.Segments {
+		at := fmt.Sprintf("%s/segments/%d/key", ptr, i)
+		switch {
+		case !componentKey.MatchString(sg.Key):
+			add(at, "pattern", "A key of up to 16 lower-case letters and digits, starting with a letter: it goes into the segment's name.")
+		case segKeys[sg.Key]:
+			add(at, "duplicate", "Another segment has the key "+sg.Key+".")
+		}
+		segKeys[sg.Key] = true
+	}
 
 	keys := map[string]bool{}
 	total := 0

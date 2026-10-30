@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/damhau/rvav/internal/policy"
 )
@@ -39,8 +40,11 @@ type Blueprint struct {
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
-	Components     []Component `json:"components,omitempty"`
-	DeploymentName string      `json:"deployment_name,omitempty"`
+	Components []Component `json:"components,omitempty"`
+	// Segments are NSX segments made for each deployment (ADR-0028); a
+	// VM's network binding names one as segments.<key>.
+	Segments       []Segment `json:"segments,omitempty"`
+	DeploymentName string    `json:"deployment_name,omitempty"`
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
@@ -56,6 +60,22 @@ type Blueprint struct {
 	// RollbackOnFailure deletes what was created when a step fails. When
 	// false, resources are kept so someone can look at the failure.
 	RollbackOnFailure bool `json:"rollback_on_failure,omitempty"`
+}
+
+// Segment is an NSX segment made for a deployment, on the Tier-1 its
+// placement rule names, its subnet carved from the rule's block.
+type Segment struct {
+	Key   string `json:"key"`
+	Title string `json:"title,omitempty"`
+}
+
+// SegmentRef is what segments.<key> evaluates to in a binding: a
+// reference the request's planning turns into the segment's name.
+const SegmentRef = "segment:"
+
+// SegmentKey is the segment a network binding's value names, if any.
+func SegmentKey(network string) (string, bool) {
+	return strings.CutPrefix(network, SegmentRef)
 }
 
 type Guest struct {
@@ -287,7 +307,11 @@ func (b Blueprint) Vars(inputs map[string]any) policy.Vars {
 	for k, s := range b.Sizes {
 		sizes[k] = map[string]any{"label": s.Label, "vcpu": s.VCPU, "memory_gb": s.MemoryGB, "disk_gb": s.DiskGB}
 	}
-	return policy.Vars{"inputs": inputs, "sizes": sizes}
+	segments := map[string]any{}
+	for _, s := range b.Segments {
+		segments[s.Key] = SegmentRef + s.Key
+	}
+	return policy.Vars{"inputs": inputs, "sizes": sizes, "segments": segments}
 }
 
 // EvaluateVM evaluates the bindings of a blueprint without components.
