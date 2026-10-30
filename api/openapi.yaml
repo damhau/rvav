@@ -5721,10 +5721,10 @@ components:
             type: { const: nsx.group }
             group:
               type: object
-              required: [id, key]
+              required: [id]
               properties:
                 id: { type: string, description: Its NSX ID. }
-                key: { type: string, description: The blueprint's key of the group. }
+                key: { type: string, description: "The blueprint's key of the group; none for a group adopted from vRA." }
                 title: { type: string }
     FirewallRulesResource:
       description: "The NSX security policy of the firewall rules into the deployment's groups (ADR-0028)."
@@ -5744,7 +5744,8 @@ components:
       properties:
         id: { type: string }
         from: { type: array, items: { type: string }, description: "Group IDs, or ANY." }
-        to: { type: array, items: { type: string }, description: Group IDs. }
+        to: { type: array, items: { type: string }, description: "Group IDs, or ANY (a rule adopted from vRA may let traffic out of a group)." }
+        scope: { type: array, items: { type: string }, description: "The groups it is enforced on (applied to); none: everywhere." }
         services: { type: array, items: { type: string }, description: "NSX service IDs, or ANY." }
         action: { type: string, enum: [ALLOW, DROP, REJECT] }
     GroupMembershipResource:
@@ -6206,7 +6207,7 @@ components:
         clusters: { type: array, items: { type: string } }
         subnet: { type: string, description: Empty when no mapping gives it a subnet. }
         dns_zone: { type: string }
-        source: { type: string, enum: [manual, efficientip] }
+        source: { type: string, enum: [manual, efficientip, nsx], description: "nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028)." }
     NetworkMapping:
       type: object
       required: [network, subnet, gateway, dns_zone, dns_servers, source]
@@ -6216,7 +6217,10 @@ components:
         gateway: { type: string }
         dns_zone: { type: string }
         dns_servers: { type: array, items: { type: string } }
-        source: { type: string, enum: [manual, efficientip] }
+        source:
+          type: string
+          enum: [manual, efficientip, nsx]
+          description: "nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand."
         subnet_name: { type: string, description: The subnet's name in EfficientIP. }
         synced_at: { type: string, format: date-time }
     NetworkMappingWrite:

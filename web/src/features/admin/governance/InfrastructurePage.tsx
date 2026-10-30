@@ -588,11 +588,12 @@ function Networks({ canEdit }: { canEdit: boolean }) {
                   </td>
                   <td className={td}>
                     <Badge tone={m.source === "manual" ? "accent" : "neutral"}>
-                      {m.source === "manual" ? "By hand" : "EfficientIP"}
+                      {m.source === "manual" ? "By hand" : m.source === "nsx" ? "NSX segment" : "EfficientIP"}
                     </Badge>
                   </td>
                   <td className={`${td} text-right whitespace-nowrap`}>
-                    {canEdit && (
+                    {/* A segment made for a deployment goes with it (ADR-0028). */}
+                    {canEdit && m.source !== "nsx" && (
                       <>
                         <Button
                           size="sm"

@@ -4185,8 +4185,8 @@ export interface components {
             group: {
                 /** @description Its NSX ID. */
                 id: string;
-                /** @description The blueprint's key of the group. */
-                key: string;
+                /** @description The blueprint's key of the group; none for a group adopted from vRA. */
+                key?: string;
                 title?: string;
             };
         } & {
@@ -4213,8 +4213,10 @@ export interface components {
             id: string;
             /** @description Group IDs, or ANY. */
             from: string[];
-            /** @description Group IDs. */
+            /** @description Group IDs, or ANY (a rule adopted from vRA may let traffic out of a group). */
             to: string[];
+            /** @description The groups it is enforced on (applied to); none: everywhere. */
+            scope?: string[];
             /** @description NSX service IDs, or ANY. */
             services: string[];
             /** @enum {string} */
@@ -4576,8 +4578,11 @@ export interface components {
             /** @description Empty when no mapping gives it a subnet. */
             subnet?: string;
             dns_zone?: string;
-            /** @enum {string} */
-            source?: "manual" | "efficientip";
+            /**
+             * @description nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028).
+             * @enum {string}
+             */
+            source?: "manual" | "efficientip" | "nsx";
         };
         NetworkMapping: {
             network: string;
@@ -4586,8 +4591,11 @@ export interface components {
             gateway: string;
             dns_zone: string;
             dns_servers: string[];
-            /** @enum {string} */
-            source: "manual" | "efficientip";
+            /**
+             * @description nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand.
+             * @enum {string}
+             */
+            source: "manual" | "efficientip" | "nsx";
             /** @description The subnet's name in EfficientIP. */
             subnet_name?: string;
             /** Format: date-time */

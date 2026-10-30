@@ -5,6 +5,7 @@ package present
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -381,7 +382,7 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		}
 		_ = json.Unmarshal(r.Properties, &p)
 		v := api.SecurityGroupResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.group"}
-		v.Group.Id, v.Group.Key, v.Group.Title = p.ID, p.Key, strPtr(p.Title)
+		v.Group.Id, v.Group.Key, v.Group.Title = p.ID, strPtr(p.Key), strPtr(p.Title)
 		err := out.FromSecurityGroupResource(v)
 		return out, err == nil
 	case "nsx.policy":
@@ -392,8 +393,12 @@ func Resource(r store.Resource) (api.Resource, bool) {
 		v := api.FirewallRulesResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "nsx.policy"}
 		v.Rules = make([]api.FirewallRule, 0, len(p.Rules))
 		for _, x := range p.Rules {
-			v.Rules = append(v.Rules, api.FirewallRule{Id: x.ID, From: nsxNames(x.SourceGroups), To: nsxNames(x.DestinationGroups),
-				Services: nsxNames(x.Services), Action: api.FirewallRuleAction(x.Action)})
+			rule := api.FirewallRule{Id: x.ID, From: nsxNames(x.SourceGroups), To: nsxNames(x.DestinationGroups),
+				Services: nsxNames(x.Services), Action: api.FirewallRuleAction(x.Action)}
+			if scope := nsxNames(slices.DeleteFunc(slices.Clone(x.Scope), func(p string) bool { return p == "ANY" })); len(scope) > 0 {
+				rule.Scope = &scope
+			}
+			v.Rules = append(v.Rules, rule)
 		}
 		err := out.FromFirewallRulesResource(v)
 		return out, err == nil

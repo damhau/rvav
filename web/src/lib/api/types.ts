@@ -62,6 +62,7 @@ export type SegmentResource = S["SegmentResource"];
 export type SecurityGroupResource = S["SecurityGroupResource"];
 export type FirewallRulesResource = S["FirewallRulesResource"];
 export type GroupMembershipResource = S["GroupMembershipResource"];
+export type GroupRef = S["GroupRef"];
 export type ApprovalStatus = S["ApprovalStatus"];
 export type ApprovalSummary = S["ApprovalSummary"];
 export type Approval = S["Approval"];

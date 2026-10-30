@@ -11,6 +11,7 @@ import type {
   Me,
   Project,
   QuotaResource,
+  Resource,
   RequestForm,
   ServiceRequest,
   Step,
@@ -600,6 +601,65 @@ export function createDb(now = Date.now()): Db {
       { property: "memory_mb", label: "Memory", rvav: "16 GB", vcenter: "32 GB" },
       { property: "disk", label: "Hard disk 2", vcenter: "200 GB" },
     ];
+  }
+
+  // On NSX (ADR-0028): a segment made for it, a group with the rules into it,
+  // both VMs in it and in an existing group; one's tag was removed in NSX.
+  {
+    const search = deployments.find((d) => d.name === "web-tst-search")!;
+    const base = `rvav-${search.id.replaceAll("_", "-")}`;
+    const [seg, grp] = [`${base}-app`, `${base}-web`];
+    const vms = search.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
+    for (const vm of vms) for (const nic of vm.vm.nics.slice(0, 1)) nic.network = seg;
+    const nsx: Resource[] = [
+      {
+        id: id("res"),
+        type: "nsx.segment",
+        name: seg,
+        sync_state: "in_sync",
+        segment: { id: seg, tier1: "t1-gva-prd", subnet: "10.41.10.0/26", gateway: "10.41.10.1" },
+      },
+      {
+        id: id("res"),
+        type: "ipam.subnet",
+        name: "10.41.10.0/26",
+        sync_state: "in_sync",
+        subnet: { cidr: "10.41.10.0/26", block: "nsx-gva-tst", efficientip_id: "990001" },
+      },
+      {
+        id: id("res"),
+        type: "nsx.group",
+        name: grp,
+        sync_state: "in_sync",
+        group: { id: grp, key: "web", title: "Search" },
+      },
+      {
+        id: id("res"),
+        type: "nsx.policy",
+        name: base,
+        sync_state: "in_sync",
+        rules: [
+          { id: "web-1", from: ["ANY"], to: [grp], services: ["HTTPS"], action: "ALLOW" },
+          { id: "web-2", from: ["grp-backup-clients"], to: [grp], services: ["SSH"], action: "ALLOW" },
+        ],
+      },
+      ...vms.map((vm, i): Resource => ({
+        id: id("res"),
+        type: "nsx.membership",
+        name: vm.name,
+        sync_state: i === 1 ? "drifted" : "in_sync",
+        membership: {
+          vm: vm.name,
+          groups: [
+            { id: grp, name: grp },
+            { id: "grp-web-servers", name: "grp-web-servers" },
+          ],
+          ...(i === 1 ? { missing: ["role|web"] } : {}),
+        },
+      })),
+    ];
+    search.resources.push(...nsx);
+    search.sync_state = "drifted";
   }
 
   // ── Requests ──────────────────────────────────────────────────────────

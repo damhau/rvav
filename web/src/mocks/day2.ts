@@ -5,6 +5,9 @@ import type {
   ApprovalPreview,
   Day2Action,
   DeploymentDetail,
+  GroupMembershipResource,
+  GroupRef,
+  SecurityGroupResource,
   ServiceRequest,
   Step,
   UiField,
@@ -35,7 +38,7 @@ interface MockAction {
   confirm?: string;
   typeName?: boolean;
   unavailable?: (vm: VmResource | undefined, d: DeploymentDetail) => string | null;
-  form?: (vm: VmResource | undefined) => ActionForm;
+  form?: (vm: VmResource | undefined, d: DeploymentDetail) => ActionForm;
   validate?: (vm: VmResource | undefined, inputs: Inputs) => string | null;
   ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail) => Op[];
 }
@@ -85,6 +88,39 @@ const snapshotChoice = (vm?: VmResource) => {
 };
 
 const vcenter = (key: string, title: string, apply: Op["apply"]): Op => ({ key, title, system: "vcenter", apply });
+
+// NSX security groups (ADR-0028): a VM's, and those its item offers (its
+// deployment's own, and the existing ones its VMs are in). A drifted VM may
+// join its existing groups again.
+const membership = (d: DeploymentDetail, vm?: VmResource) =>
+  d.resources.find((r): r is GroupMembershipResource => r.type === "nsx.membership" && r.membership.vm === vm?.name);
+const offeredGroups = (d: DeploymentDetail): GroupRef[] => {
+  const out: GroupRef[] = d.resources
+    .filter((r): r is SecurityGroupResource => r.type === "nsx.group")
+    .map((g) => ({ id: g.group.id, name: g.group.id }));
+  for (const r of d.resources)
+    if (r.type === "nsx.membership")
+      for (const g of r.membership.groups) if (!out.some((o) => o.id === g.id)) out.push(g);
+  return out;
+};
+const joinable = (d: DeploymentDetail, vm?: VmResource) => {
+  const m = membership(d, vm);
+  if (!m) return [];
+  return offeredGroups(d).filter(
+    (g) =>
+      !m.membership.groups.some((j) => j.id === g.id) ||
+      (m.sync_state === "drifted" && !g.id.startsWith("rvav-") && Boolean(m.membership.missing?.length)),
+  );
+};
+const groupChoice = (groups: GroupRef[]) =>
+  form("Security group", [
+    [
+      "group",
+      { type: "string", enum: groups.map((g) => g.id) },
+      { label: "Group", widget: "select", options: groups.map((g) => ({ value: g.id, label: g.name })) },
+    ],
+  ]);
+const nsxOp = (key: string, title: string, apply: Op["apply"]): Op => ({ key, title, system: "nsx", apply });
 
 export const catalogue: MockAction[] = [
   {
@@ -320,6 +356,46 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "nsx_group_add",
+    name: "Add to a security group",
+    group: "configuration",
+    unavailable: (vm, d) =>
+      !membership(d, vm)
+        ? "The VM isn't in NSX security groups."
+        : joinable(d, vm).length
+          ? null
+          : "The VM is in every security group its item offers.",
+    form: (vm, d) => groupChoice(joinable(d, vm)),
+    ops: (vm, i) => [
+      // The VM asked for: completing a step passes the deployment's first.
+      nsxOp("nsx.group_add", `Add ${vm?.name} to NSX group ${String(i.group)}`, (dep) => {
+        const m = membership(dep, vm);
+        const g = offeredGroups(dep).find((x) => x.id === i.group);
+        if (!m || !g) return;
+        if (!m.membership.groups.some((x) => x.id === g.id)) m.membership.groups.push(g);
+        // Its tags set again: no longer drifted.
+        m.sync_state = "in_sync";
+        delete m.membership.missing;
+        if (!dep.resources.some((r) => r.sync_state === "drifted")) dep.sync_state = "in_sync";
+      }),
+    ],
+  },
+  {
+    key: "nsx_group_remove",
+    name: "Remove from a security group",
+    group: "configuration",
+    confirm: "The firewall rules of the group no longer apply to the VM.",
+    unavailable: (vm, d) =>
+      membership(d, vm)?.membership.groups.length ? null : "The VM isn't in NSX security groups.",
+    form: (vm, d) => groupChoice(membership(d, vm)?.membership.groups ?? []),
+    ops: (vm, i) => [
+      nsxOp("nsx.group_remove", `Remove ${vm?.name} from NSX group ${String(i.group)}`, (dep) => {
+        const m = membership(dep, vm);
+        if (m) m.membership.groups = m.membership.groups.filter((g) => g.id !== i.group);
+      }),
+    ],
+  },
+  {
     key: "console",
     name: "Open the console",
     group: "access",
@@ -446,7 +522,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         ...(a.confirm || a.typeName
           ? { confirm: { message: a.confirm ?? "", ...(a.typeName ? { type_to_confirm: vm?.name ?? d.name } : {}) } }
           : {}),
-        ...(a.form && reason === null ? { form: a.form(vm) } : {}),
+        ...(a.form && reason === null ? { form: a.form(vm, d) } : {}),
       });
     }
   }

@@ -161,6 +161,28 @@ export function resolveField(
           meta: `${z.vcpu} vCPU · ${z.memoryGb} GB · ${z.diskGb} GB`,
         })),
       );
+    // NSX's (ADR-0028), as the fake NSX has them; never what rvav made for deployments.
+    case "nsx.segments":
+      return withDefault(
+        [
+          { value: "seg-gva-dev-app", label: "seg-gva-dev-app", meta: "t1-gva-dev · 10.31.40.1/24" },
+          { value: "seg-gva-prd-app", label: "seg-gva-prd-app", meta: "t1-gva-prd · 10.32.40.1/24" },
+        ].filter((o) => !params.tier1 || o.meta.startsWith(`${params.tier1} `)),
+      );
+    case "nsx.tier1s":
+      return withDefault(["t1-gva-dev", "t1-gva-prd", "t1-zrh-prd"].map((t) => ({ value: t, label: t.toUpperCase() })));
+    case "nsx.groups":
+      return withDefault([
+        { value: "nsx:grp-backup-clients", label: "grp-backup-clients", meta: "Tag backup|daily" },
+        { value: "nsx:grp-web-servers", label: "grp-web-servers", meta: "Tag role|web" },
+      ]);
+    case "nsx.services":
+      return withDefault(
+        ["HTTP", "HTTPS", "ICMP-ALL", "MS-SQL-S", "MySQL", "PostgreSQL", "RDP", "SSH"].map((s) => ({
+          value: s,
+          label: s,
+        })),
+      );
     case "awx.inventories":
       return withDefault([
         { value: "1", label: "Demo inventory" },

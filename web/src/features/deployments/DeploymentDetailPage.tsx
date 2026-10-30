@@ -266,12 +266,14 @@ function SecurityGroups({
                 {g.group.title && <span className="text-[11px] text-faint">{g.group.title}</span>}
               </div>
               <ul className="mt-0.5 flex flex-col gap-0.5 text-[11px] text-muted">
+                {/* Every rule naming the group: into it, out of it, or enforced on it. */}
                 {rules
-                  .filter((r) => r.to.includes(g.group.id))
+                  .filter((r) => [...r.from, ...r.to, ...(r.scope ?? [])].includes(g.group.id))
                   .map((r) => (
                     <li key={r.id}>
                       {r.action === "ALLOW" ? "Allows" : r.action === "DROP" ? "Drops" : "Rejects"}{" "}
-                      {r.services.join(", ")} from {r.from.join(", ")}
+                      {r.services.join(", ")}{" "}
+                      {r.to.includes(g.group.id) ? `from ${r.from.join(", ")}` : `to ${r.to.join(", ")}`}
                     </li>
                   ))}
               </ul>

@@ -343,6 +343,11 @@ func TestSegmentProvisioning(t *testing.T) {
 		if mapped != "10.60.0.0/26" {
 			t.Fatalf("mapping = %q", mapped)
 		}
+		// It goes with the deployment: not remapped by hand.
+		if code, raw, _ := h.do("PUT", "/api/v1/admin/network-mappings/"+segID, admin, api.NetworkMappingWrite{Subnet: "10.99.0.0/24",
+			Gateway: "10.99.0.1", DnsZone: "corp.example"}); code != 409 {
+			t.Fatalf("remapping the segment = %d %s", code, raw)
+		}
 		var status, system string
 		_ = h.store.Pool.QueryRow(ctx, `select status, system from request_steps where request_id = $1 and key = 'nsx.segment:app'`,
 			req.Id).Scan(&status, &system)

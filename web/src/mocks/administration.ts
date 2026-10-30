@@ -559,6 +559,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         (w.cluster_tags ?? []).forEach((t, i) => {
           if (!/^[^/]+\/[^/]+$/.test(t)) errors.push(err(`/cluster_tags/${i}`, `"${t}" is not category/tag.`));
         });
+        // NSX segments made for deployments (ADR-0028), against the fake NSX's Tier-1s.
+        if (w.segments) {
+          if (!["t1-gva-dev", "t1-gva-prd", "t1-zrh-prd"].includes(w.segments.tier1))
+            errors.push(err("/segments/tier1", `NSX has no Tier-1 ${w.segments.tier1}.`));
+          if (w.segments.prefix_length < 16 || w.segments.prefix_length > 29)
+            errors.push(err("/segments/prefix_length", "From /16 to /29."));
+        }
         if (errors.length) return invalid(errors);
         const rule: S["PlacementRule"] = {
           id: method === "put" ? String(params.id) : next("plc"),
@@ -573,6 +580,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           datastore_tags: w.datastore_tags ?? [],
           storage_policy: w.storage_policy ?? "",
           vcenter: w.vcenter ?? "",
+          ...(w.segments ? { segments: w.segments } : {}),
         };
         const rules = st().rules;
         const i = rules.findIndex((r) => r.id === rule.id);

@@ -362,6 +362,10 @@ func (s *Service) SetNetworkMapping(ctx context.Context, p *auth.Principal, netw
 	if len(errs) > 0 {
 		return api.NetworkMapping{}, &ValidationError{Errors: errs}
 	}
+	// A segment made for a deployment has its subnet: it goes with it.
+	if old, err := s.Store.NetworkSubnet(ctx, network); err == nil && old.Source == "nsx" {
+		return api.NetworkMapping{}, &ConflictError{Msg: network + " is the port group of an NSX segment rvav made for a deployment: its subnet is the segment's, and goes with the deployment."}
+	}
 	n := store.NetworkSubnet{Network: network, Subnet: w.Subnet, Gateway: w.Gateway, DNSZone: strings.TrimSpace(w.DnsZone),
 		DNSServers: servers, Source: "manual"}
 	if err := s.Store.SetManualMapping(ctx, n); err != nil {
