@@ -1,6 +1,7 @@
 package gitrepo
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -128,6 +131,9 @@ func TestNew(t *testing.T) {
 		{Options{URL: "ftp://git.corp.example/x.git"}, "an https"},
 		{Options{URL: ""}, "URL"},
 		{Options{URL: "https://git.corp.example/x.git", Dir: "../etc"}, "leaves"},
+		{Options{URL: "https://oauth2:glpat-s3cret@git.corp.example/x.git"}, "holds a password"},
+		{Options{URL: "https://rvav@git.corp.example/x.git", Credential: "glpat-x\n"}, ""},
+		{Options{URL: "ssh://git@git.corp.example/infra/catalog.git", Credential: key + "\n\n", Insecure: true}, ""},
 	} {
 		_, err := New(c.o)
 		if c.fail == "" && err != nil || c.fail != "" && (err == nil || !strings.Contains(err.Error(), c.fail)) {
@@ -146,5 +152,79 @@ func TestNew(t *testing.T) {
 	}
 	if err := CheckURL("/srv/git/catalog.git"); err == nil {
 		t.Error("a bare path is a URL")
+	}
+}
+
+// TestRepoCache: one cache for several repositories and branches never
+// mixes them: an empty repository read after another is empty, and its
+// first commit holds nothing of the other; a branch deleted on the server
+// starts again with nothing of the clone's index; a file too large isn't
+// read (C1 review).
+func TestRepoCache(t *testing.T) {
+	ctx := context.Background()
+	cache := filepath.Join(t.TempDir(), "cache")
+	at := func(url, branch string) *Repo {
+		r, err := New(Options{URL: url, Branch: branch, Cache: cache})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	urlA, urlB := bare(t), bare(t)
+	a := at(urlA, "main")
+	first, err := a.Commit(ctx, "", []Change{{Path: a.FilePath("rhel9"), Content: []byte("slug: rhel9\n")}}, Person{}, "A's item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := at(urlB, "main")
+	snap, err := b.Read(ctx)
+	if err != nil || snap.Head.SHA != "" || len(snap.Files) != 0 {
+		t.Fatalf("B read after A = %+v, %v", snap, err)
+	}
+	if _, err := b.Commit(ctx, "", []Change{{Path: b.FilePath("ubuntu"), Content: []byte("slug: ubuntu\n")}}, Person{}, "B's item"); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ = at(urlB, "main").Read(ctx)
+	if len(snap.Files) != 1 || snap.Files["ubuntu"].Slug == "" {
+		t.Fatalf("B's files = %v", snap.Files)
+	}
+	if c, _ := at(urlB, "main").LastCommit(ctx, "catalog/rhel9.yaml"); c.SHA != "" {
+		t.Fatalf("A's history is in B: %+v", c)
+	}
+
+	// The branch deleted on the server: started again, on its own.
+	bareA, err := git.PlainOpen(strings.TrimPrefix(urlA, "file://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bareA.Storer.RemoveReference(plumbing.NewBranchReferenceName("main")); err != nil {
+		t.Fatal(err)
+	}
+	if snap, err := a.Read(ctx); err != nil || snap.Head.SHA != "" || len(snap.Files) != 0 {
+		t.Fatalf("A without its branch = %+v, %v", snap, err)
+	}
+	again, err := a.Commit(ctx, "", []Change{{Path: a.FilePath("windows"), Content: []byte("slug: windows\n")}}, Person{}, "Anew")
+	if err != nil || again.SHA == first.SHA {
+		t.Fatal(err)
+	}
+	c, err := bareA.CommitObject(plumbing.NewHash(again.SHA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _ := c.Files()
+	var names []string
+	_ = files.ForEach(func(f *object.File) error { names = append(names, f.Name); return nil })
+	if c.NumParents() != 0 || len(names) != 1 || names[0] != "catalog/windows.yaml" {
+		t.Fatalf("the new branch's commit: %d parents, files %v", c.NumParents(), names)
+	}
+
+	// A file over the limit isn't read.
+	huge := bytes.Repeat([]byte("x"), MaxFileSize+1)
+	if _, err := a.Commit(ctx, again.SHA, []Change{{Path: a.FilePath("huge"), Content: huge}}, Person{}, "Huge"); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ = a.Read(ctx)
+	if f := snap.Files["huge"]; !f.TooLarge || f.Content != nil || f.Hash == "" || snap.Files["windows"].TooLarge {
+		t.Fatalf("the huge file = %v %d", f.TooLarge, len(f.Content))
 	}
 }

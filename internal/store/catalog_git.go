@@ -118,6 +118,20 @@ func (s *Store) GitAgreed(ctx context.Context, path, blob string, commit any, no
 	return err
 }
 
+// GitRetryNow makes the changes waiting after a failed commit due now.
+func (s *Store) GitRetryNow(ctx context.Context) error {
+	_, err := s.Pool.Exec(ctx, `update catalog_git_files set next_attempt_at = now() where pending and next_attempt_at > now()`)
+	return err
+}
+
+// GitNothingToCommit: rvav has nothing to commit of the file (its item has
+// only a draft); a change marked since revision stays.
+func (s *Store) GitNothingToCommit(ctx context.Context, path string, revision int64) error {
+	_, err := s.Pool.Exec(ctx, `update catalog_git_files set pending = pending and revision <> $2, error = null, attempts = 0,
+		updated_at = now() where path = $1`, path, revision)
+	return err
+}
+
 // GitCommitFailed records a failed commit, tried again at next.
 func (s *Store) GitCommitFailed(ctx context.Context, path, msg string, next time.Time) error {
 	_, err := s.Pool.Exec(ctx, `update catalog_git_files set error = $2, attempts = attempts + 1, next_attempt_at = $3,
@@ -135,17 +149,20 @@ func (s *Store) GitConflict(ctx context.Context, path, blob, content, note strin
 }
 
 // GitDraft records the draft made of the repository's file at path, seen
-// as blob: of the item, made by that commit. rvav's change not committed
-// yet, if any, is dropped: the draft takes its place.
-func (s *Store) GitDraft(ctx context.Context, path, itemID, blob, versionID string, revision int, commit any, note string) error {
+// as blob: of the item, made by that commit, the file as read at
+// fileRevision. False when rvav marked a change of it since: the next
+// read finds the conflict.
+func (s *Store) GitDraft(ctx context.Context, path, itemID, blob, versionID string, revision int, commit any, note string,
+	fileRevision int64) (bool, error) {
 	b, _ := json.Marshal(commit)
-	_, err := s.Pool.Exec(ctx, `insert into catalog_git_files (path, item_id, state, seen_blob, draft_version_id, draft_revision,
+	tag, err := s.Pool.Exec(ctx, `insert into catalog_git_files (path, item_id, state, seen_blob, draft_version_id, draft_revision,
 			last_commit, note) values ($1, $2, 'draft', $3, $4, $5, $6, $7)
 		on conflict (path) do update set item_id = $2, state = 'draft', seen_blob = $3, draft_version_id = $4, draft_revision = $5,
 			last_commit = coalesce($6, catalog_git_files.last_commit), note = $7, repo_blob = null, repo_content = null,
 			problems = null, pending = false, remove = false, error = null, attempts = 0, revision = catalog_git_files.revision + 1,
-			updated_at = now()`, path, itemID, blob, versionID, revision, jsonOrNil(b), note)
-	return err
+			updated_at = now()
+		where catalog_git_files.revision = $8`, path, itemID, blob, versionID, revision, jsonOrNil(b), note, fileRevision)
+	return tag.RowsAffected() == 1, err
 }
 
 // GitRefused records that the import refused the repository's file at
@@ -246,7 +263,7 @@ func (s *Store) GitRead(ctx context.Context, head string, readErr error, request
 		m := readErr.Error()
 		msg = &m
 	}
-	_, err := s.Pool.Exec(ctx, `update catalog_git_repo set head = case when $2::text is null then nullif($1, '') else head end,
+	_, err := s.Pool.Exec(ctx, `update catalog_git_repo set head = case when $1 <> '' then $1 when $2::text is null then null else head end,
 		read_at = now(), error = $2, read_requested_at = case when read_requested_at <= $3 then null else read_requested_at end`,
 		head, msg, requestedBefore)
 	return err

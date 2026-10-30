@@ -50,6 +50,9 @@ x-rvav-env: &rvav-env
   RVAV_SECRETS_KEY: ${RVAV_SECRETS_KEY:-ZGV2LW9ubHktc2VjcmV0cy1rZXktMzItYnl0ZXMhISE=}
   RVAV_REST_SOURCE_HOSTS: ${RVAV_REST_SOURCE_HOSTS:-}
   RVAV_WEBHOOK_HOSTS: ${RVAV_WEBHOOK_HOSTS:-}
+  # The catalog's Git repository is set in Administration › Integrations ›
+  # Git (ADR-0029); its webhook's secret only here.
+  RVAV_GIT_WEBHOOK_SECRET: ${RVAV_GIT_WEBHOOK_SECRET:-}
   # The vRA importer reads this vRA (ADR-0027); `rvav fake-vra` serves one.
   RVAV_VRA_URL: ${RVAV_VRA_URL:-}
   RVAV_VRA_TOKEN: ${RVAV_VRA_TOKEN:-}

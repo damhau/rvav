@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -85,6 +86,13 @@ func TestGitIntegration(t *testing.T) {
 			"branch": "release"}}, 200, &test)
 		if test.Ok || !strings.Contains(test.Checks[1].Message, "no branch release (it has main)") {
 			t.Fatalf("a missing branch's test = %+v", test)
+		}
+		// A token in the URL would be shown with it: refused.
+		var refused struct{ Errors []api.FieldError }
+		h.json("PUT", "/api/v1/admin/integrations/git", admin, api.IntegrationWrite{Settings: map[string]any{
+			"url": "https://oauth2:glpat-s3cret@git.corp.example/infra/catalog.git"}}, 422, &refused)
+		if len(refused.Errors) != 1 || !strings.Contains(refused.Errors[0].Message, "holds a password or token") {
+			t.Fatalf("a token in the URL = %+v", refused.Errors)
 		}
 		// Not a setting of Git; the secret is never a setting.
 		h.json("PUT", "/api/v1/admin/integrations/git", admin, api.IntegrationWrite{Settings: map[string]any{"credential": "x"}}, 422, nil)
@@ -336,12 +344,11 @@ func TestCatalogGitCommits(t *testing.T) {
 		if due, _ := h.store.GitDue(ctx, time.Hour); due {
 			t.Fatal("a failed commit is tried again at once")
 		}
-		if _, err := h.store.Pool.Exec(ctx, `update catalog_git_files set next_attempt_at = now()`); err != nil {
-			t.Fatal(err)
-		}
-		_, _ = h.svc.SyncCatalogGit(ctx)
-		if g := h.gitItem(slug); g.Attempts != 2 {
-			t.Fatalf("tried again = %+v", g)
+		// Read now tries it again at once, its wait or not.
+		var status api.CatalogGitStatus
+		h.json("POST", "/api/v1/admin/catalog/git/read", admin, nil, 200, &status)
+		if g := h.gitItem(slug); g.Attempts != 2 || status.Error == nil {
+			t.Fatalf("tried again = %+v, status %+v", g, status.Error)
 		}
 		if n := h.auditCount("catalog.git.commit_failed"); n != 1 {
 			t.Fatalf("%d failures audited, want 1", n)
@@ -349,11 +356,10 @@ func TestCatalogGitCommits(t *testing.T) {
 		if err := os.Rename(dir+".away", dir); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := h.store.Pool.Exec(ctx, `update catalog_git_files set next_attempt_at = now()`); err != nil {
-			t.Fatal(err)
-		}
-		if rep := h.syncGit(); rep.Committed != 1 {
-			t.Fatalf("once the repository answers = %+v", rep)
+		status = api.CatalogGitStatus{}
+		h.json("POST", "/api/v1/admin/catalog/git/read", admin, nil, 200, &status)
+		if snap, _ = reader.Read(ctx); status.Error != nil || !strings.HasPrefix(snap.Head.Message, "Publish "+slug) {
+			t.Fatalf("once the repository answers: %+v, %q", status.Error, snap.Head.Message)
 		}
 		if g := h.gitItem(slug); g.State != api.CatalogItemGitStateSynced || g.Error != nil || g.Attempts != 0 {
 			t.Fatalf("committed at last = %+v", g)
@@ -513,12 +519,37 @@ func TestCatalogGitDrafts(t *testing.T) {
 		}
 		// Published in rvav: committed back, and both agree.
 		h.json("POST", "/api/v1/admin/catalog/items/rhel9-server/versions/"+it.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		var waiting api.CatalogItemGitDetail
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/git", admin, nil, 200, &waiting)
+		if waiting.File.State != api.CatalogItemGitStateWaiting || waiting.Repository != nil || len(waiting.Diff) != 0 {
+			t.Fatalf("published, waiting to be committed = %+v", waiting)
+		}
 		if rep := h.syncGit(); rep.Committed != 1 {
 			t.Fatalf("publishing the repository's draft = %+v", rep)
 		}
 		if def, _ := core.SameItemFile(fileOf(t, ctx, reader, "rhel9-server"), theirs); !def || item("rhel9-server").Git.State != api.CatalogItemGitStateSynced {
 			t.Fatal("rvav's commit of the published draft isn't the repository's change")
 		}
+		// Another change of the repository's, its draft discarded in rvav:
+		// rvav's file is committed back over it at once.
+		push(t, ctx, reader, "A label nobody wants", gitrepo.Change{Path: "catalog/rhel9-server.yaml",
+			Content: editFile(t, fileOf(t, ctx, reader, "rhel9-server"), relabel("Unwanted"))})
+		h.syncGit()
+		unwanted := item("rhel9-server")
+		if unwanted.Git.State != api.CatalogItemGitStateDraft || unwanted.DraftVersion == nil {
+			t.Fatalf("the unwanted change = %+v", unwanted.Git)
+		}
+		h.json("DELETE", "/api/v1/admin/catalog/items/rhel9-server/versions/"+unwanted.DraftVersion.Id, admin, nil, 204, nil)
+		if g := item("rhel9-server").Git; g.State != api.CatalogItemGitStateWaiting {
+			t.Fatalf("its draft discarded = %+v", g)
+		}
+		if rep := h.syncGit(); rep.Committed != 1 || strings.Contains(string(fileOf(t, ctx, reader, "rhel9-server")), "Unwanted") {
+			t.Fatalf("rvav's file wasn't committed back: %+v", rep)
+		}
+		if snap, _ := reader.Read(ctx); snap.Head.Author != "Léa Martin" || !strings.Contains(snap.Head.Message, "the repository's change was discarded") {
+			t.Fatalf("the commit back = %+v", snap.Head)
+		}
+
 		var synced api.CatalogItemGitDetail
 		h.json("GET", "/api/v1/admin/catalog/items/"+slugs[0]+"/git", admin, nil, 200, &synced)
 		if synced.Repository != nil || synced.Rvav == nil || len(synced.Diff) != 0 {
@@ -607,6 +638,24 @@ func TestCatalogGitDrafts(t *testing.T) {
 		if rep := h.syncGit(); rep.Committed != 1 || fileOf(t, ctx, reader, gone) == nil {
 			t.Fatalf("added back = %+v", rep)
 		}
+		// Deleted again while rvav's change waits: a conflict with nothing
+		// on the repository's side to take.
+		h.json("PATCH", "/api/v1/admin/catalog/items/"+gone, admin, api.CatalogItemUpdate{Summary: new("Still here.")}, 200, nil)
+		push(t, ctx, reader, "Remove "+gone+" again", gitrepo.Change{Path: "catalog/" + gone + ".yaml"})
+		if rep := h.syncGit(); rep.Conflicts != 1 {
+			t.Fatalf("deleted while rvav's change waits = %+v", rep)
+		}
+		var deleted api.CatalogItemGitDetail
+		h.json("GET", "/api/v1/admin/catalog/items/"+gone+"/git", admin, nil, 200, &deleted)
+		if deleted.File.State != api.CatalogItemGitStateConflict || deleted.Repository != nil || len(deleted.Diff) != 0 ||
+			!strings.Contains(deref(deleted.File.Note), "Deleted in the repository") {
+			t.Fatalf("the deletion's conflict = %+v", deleted)
+		}
+		h.json("POST", "/api/v1/admin/catalog/items/"+gone+"/git/resolve", admin, map[string]string{"take": "repository"}, 409, nil)
+		h.json("POST", "/api/v1/admin/catalog/items/"+gone+"/git/resolve", admin, map[string]string{"take": "rvav"}, 200, nil)
+		if rep := h.syncGit(); rep.Committed != 1 || !strings.Contains(string(fileOf(t, ctx, reader, gone)), "Still here.") {
+			t.Fatalf("kept as rvav has it = %+v", rep)
+		}
 
 		// rvav has a draft open, and the repository changes the file: a
 		// conflict, settled for the repository (rvav's draft discarded).
@@ -659,7 +708,7 @@ func TestCatalogGitDrafts(t *testing.T) {
 			item(both).Git.State != api.CatalogItemGitStateSynced {
 			t.Fatalf("rvav's file wasn't committed: %s", content)
 		}
-		if n := h.auditCount("catalog.git.resolve"); n != 2 {
+		if n := h.auditCount("catalog.git.resolve"); n != 3 {
 			t.Fatalf("%d settlements audited", n)
 		}
 
@@ -706,6 +755,176 @@ func TestCatalogGitDrafts(t *testing.T) {
 		h.json("GET", "/api/v1/admin/catalog/git", admin, nil, 200, &status)
 		if status.Configured || len(status.Files) != 0 {
 			t.Fatalf("without a repository = %+v", status)
+		}
+	})
+}
+
+// TestCatalogGitReviewFixes: what C1's backend review found (C1.5). A
+// rename onto a file the repository just got doesn't stop the sync; a file
+// that isn't UTF-8, or is too large, is refused, the others taken; taking
+// the repository's change that the import refuses keeps rvav's draft; a
+// draft from the repository doesn't drop a publication marked meanwhile;
+// an item deleted in rvav whose file changed there comes back as a new
+// item's draft; an item with only a draft isn't reported deleted, nor a
+// draft from the repository lost when its details change; a commit rvav
+// catches up on is rvav's.
+func TestCatalogGitReviewFixes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "lmartin"
+		_, reader := useGit(h)
+		h.syncGit()
+		item := func(slug string) api.AdminCatalogItem {
+			var it api.AdminCatalogItem
+			h.json("GET", "/api/v1/admin/catalog/items/"+slug, admin, nil, 200, &it)
+			return it
+		}
+		publish := func(slug string) {
+			var d api.CatalogItemVersionDetail
+			h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions", admin, api.CatalogItemVersionCreate{}, 201, &d)
+			h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions/"+d.Id+"/publish", admin, nil, 200, nil)
+		}
+		fileState := func(path string) (api.CatalogGitFile, bool) {
+			var status api.CatalogGitStatus
+			h.json("GET", "/api/v1/admin/catalog/git", admin, nil, 200, &status)
+			for _, f := range status.Files {
+				if f.Path == path {
+					return f, true
+				}
+			}
+			return api.CatalogGitFile{}, false
+		}
+
+		// A rename onto a file pushed meanwhile; a file in Latin-1 and one
+		// too large: the sync goes on, rvav's publication committed.
+		h.json("PATCH", "/api/v1/admin/catalog/items/windows-server", admin, api.CatalogItemUpdate{Slug: new("windows-2025")}, 200, nil)
+		publish("rhel9-server")
+		copied := editFile(t, fileOf(t, ctx, reader, "windows-server"), func(doc, _ map[string]any) {
+			doc["metadata"].(map[string]any)["slug"] = "windows-2025"
+		})
+		push(t, ctx, reader, "Theirs", gitrepo.Change{Path: "catalog/windows-2025.yaml", Content: copied},
+			gitrepo.Change{Path: "catalog/latin.yaml", Content: []byte("apiVersion: rvav.dev/v1\nmetadata:\n  name: D\xe9ploiement\n")},
+			gitrepo.Change{Path: "catalog/huge.yaml", Content: bytes.Repeat([]byte("# x\n"), gitrepo.MaxFileSize/4+1)})
+		rep := h.syncGit()
+		if rep.Committed != 1 || rep.Refused != 3 {
+			t.Fatalf("the read = %+v", rep)
+		}
+		if snap, _ := reader.Read(ctx); !strings.HasPrefix(snap.Head.Message, "Publish rhel9-server") {
+			t.Fatalf("the publication wasn't committed: %q", snap.Head.Message)
+		}
+		if g := item("windows-2025").Git; g.State != api.CatalogItemGitStateFailing || !strings.Contains(deref(g.Error), "already has catalog/windows-2025.yaml") {
+			t.Fatalf("the rename = %+v", g)
+		}
+		for path, want := range map[string]string{"catalog/windows-2025.yaml": "rvav keeps windows-2025 in catalog/windows-server.yaml",
+			"catalog/latin.yaml": "isn't UTF-8 text", "catalog/huge.yaml": "over 2 MiB"} {
+			if f, ok := fileState(path); !ok || f.State != api.CatalogGitFileStateRefused || f.Item != nil || f.Problems == nil ||
+				!strings.Contains((*f.Problems)[0].Message, want) {
+				t.Fatalf("%s = %+v", path, f)
+			}
+		}
+		// Removed there: the rename goes through at the next read.
+		push(t, ctx, reader, "Make way", gitrepo.Change{Path: "catalog/windows-2025.yaml"}, gitrepo.Change{Path: "catalog/latin.yaml"},
+			gitrepo.Change{Path: "catalog/huge.yaml"})
+		h.json("POST", "/api/v1/admin/catalog/git/read", admin, nil, 200, nil)
+		if g := item("windows-2025").Git; g.State != api.CatalogItemGitStateSynced || g.Path != "catalog/windows-2025.yaml" {
+			t.Fatalf("the rename at last = %+v", g)
+		}
+		if _, ok := fileState("catalog/latin.yaml"); ok {
+			t.Fatal("a removed refused file is still kept track of")
+		}
+
+		// Taking the repository's change the import refuses: rvav's draft
+		// is kept, and so is the conflict.
+		var mine api.CatalogItemVersionDetail
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-server/versions", admin, api.CatalogItemVersionCreate{}, 201, &mine)
+		push(t, ctx, reader, "Broken", gitrepo.Change{Path: "catalog/ubuntu-server.yaml",
+			Content: editFile(t, fileOf(t, ctx, reader, "ubuntu-server"), func(_, v map[string]any) {
+				v["blueprint"].(map[string]any)["kind"] = "nonsense"
+			})})
+		if rep := h.syncGit(); rep.Conflicts != 1 {
+			t.Fatalf("a draft open on both sides = %+v", rep)
+		}
+		h.json("POST", "/api/v1/admin/catalog/items/ubuntu-server/git/resolve", admin, map[string]string{"take": "repository"}, 422, nil)
+		if it := item("ubuntu-server"); it.DraftVersion == nil || it.DraftVersion.Id != mine.Id || it.Git.State != api.CatalogItemGitStateConflict {
+			t.Fatalf("after a refused take = %+v, %+v", it.DraftVersion, it.Git)
+		}
+
+		// A draft recorded on a file rvav marked a change of meanwhile:
+		// not recorded, the change kept.
+		rhel := item("rhel9-server")
+		before, err := h.store.GitFileOfItem(ctx, rhel.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := h.store.MarkGitPending(ctx, rhel.Id, before.Path, "usr_lmartin", "Publish rhel9-server"); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := h.store.GitDraft(ctx, before.Path, rhel.Id, "f00", rhel.PublishedVersion.Id, 1, nil, "", before.Revision); err != nil || ok {
+			t.Fatalf("a draft over a newer change = %v, %v", ok, err)
+		}
+		if after, _ := h.store.GitFileOfItem(ctx, rhel.Id); !after.Pending || after.State == "draft" {
+			t.Fatalf("the publication was dropped: %+v", after)
+		}
+		h.syncGit()
+
+		// An item deleted in rvav, its file changed there before the
+		// removal is committed: the file comes back as a new item's draft.
+		def := func(slug string) api.CatalogVersionDefinition {
+			var v api.CatalogItemVersionDetail
+			h.json("GET", "/api/v1/admin/catalog/items/"+slug+"/versions/"+item(slug).PublishedVersion.Id, admin, nil, 200, &v)
+			return v.Definition
+		}
+		d := def("rhel9-server")
+		var tmp api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "short-lived", Name: "Short-lived", Summary: "A VM.",
+			Category: "compute", Type: api.VmBlueprint, Definition: &d}, 201, &tmp)
+		h.json("POST", "/api/v1/admin/catalog/items/short-lived/versions/"+tmp.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.syncGit()
+		h.json("DELETE", "/api/v1/admin/catalog/items/short-lived", admin, nil, 204, nil)
+		push(t, ctx, reader, "Theirs", gitrepo.Change{Path: "catalog/short-lived.yaml",
+			Content: editFile(t, fileOf(t, ctx, reader, "short-lived"), relabel("Still wanted"))})
+		if rep := h.syncGit(); rep.Conflicts != 0 || rep.Committed != 0 {
+			t.Fatalf("deleted in rvav, changed there = %+v", rep)
+		}
+		h.syncGit()
+		if back := item("short-lived"); back.DraftVersion == nil || back.PublishedVersion != nil || back.Git.State != api.CatalogItemGitStateDraft {
+			t.Fatalf("the file back as a new item = %+v", back.Git)
+		}
+		if h.auditCount("catalog.git.removal_dropped") != 1 {
+			t.Fatal("the dropped removal isn't audited")
+		}
+
+		// Only a draft: its details changed, nothing is kept track of, nor
+		// reported deleted. A draft from the repository keeps its state.
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "draft-only", Name: "Draft only", Summary: "A VM.",
+			Category: "compute", Type: api.VmBlueprint, Definition: &d}, 201, nil)
+		h.json("PATCH", "/api/v1/admin/catalog/items/draft-only", admin, api.CatalogItemUpdate{Summary: new("Still a draft.")}, 200, nil)
+		h.syncGit()
+		h.syncGit()
+		if it := item("draft-only"); it.Git != nil || h.auditCount("catalog.git.deleted") != 0 {
+			t.Fatalf("a draft-only item = %+v", it.Git)
+		}
+		h.json("PATCH", "/api/v1/admin/catalog/items/short-lived", admin, api.CatalogItemUpdate{Summary: new("From the repository.")}, 200, nil)
+		h.syncGit()
+		if g := item("short-lived").Git; g.State != api.CatalogItemGitStateDraft {
+			t.Fatalf("a draft from the repository, its details changed = %+v", g)
+		}
+		push(t, ctx, reader, "Theirs again", gitrepo.Change{Path: "catalog/short-lived.yaml",
+			Content: editFile(t, fileOf(t, ctx, reader, "short-lived"), relabel("Wanted more"))})
+		if rep := h.syncGit(); rep.Drafts != 1 || rep.Conflicts != 0 {
+			t.Fatalf("its next change = %+v", rep)
+		}
+
+		// A change no mark was made for: caught up on, by rvav.
+		if _, err := h.store.Pool.Exec(ctx, `update catalog_items set summary = 'Changed behind rvav''s back.' where slug = 'pg-node'`); err != nil {
+			t.Fatal(err)
+		}
+		h.syncGit()
+		if snap, _ := reader.Read(ctx); snap.Head.Author != "rvav" || snap.Head.Message != "Update pg-node from rvav" {
+			t.Fatalf("the catch-up's commit = %+v", snap.Head)
 		}
 	})
 }

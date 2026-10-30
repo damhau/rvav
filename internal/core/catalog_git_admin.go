@@ -78,6 +78,10 @@ func (s *Service) ReadCatalogGit(ctx context.Context, p *auth.Principal) (api.Ca
 	if !s.Config.Git.Configured() {
 		return api.CatalogGitStatus{}, errNoGit
 	}
+	// Asked for: what failed is tried again now, not after its wait.
+	if err := s.Store.GitRetryNow(ctx); err != nil {
+		return api.CatalogGitStatus{}, err
+	}
 	rctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if _, err := s.SyncCatalogGit(rctx); err != nil {
@@ -113,9 +117,11 @@ func (s *Service) CatalogItemGit(ctx context.Context, p *auth.Principal, idOrSlu
 	}
 	var theirs []byte
 	switch {
-	case f.RepoContent != nil:
+	case f.RepoContent != nil && deref(f.RepoBlob) != "":
 		theirs = []byte(*f.RepoContent)
-	case f.State == "draft" && f.DraftVersionID != nil:
+	case f.RepoContent != nil:
+		// Deleted in the repository: nothing on its side.
+	case out.File.State == api.CatalogItemGitStateDraft && f.DraftVersionID != nil:
 		if theirs, err = s.itemYAML(ctx, it, func(r store.VersionRow) bool { return r.ID == *f.DraftVersionID }); err != nil &&
 			!errors.Is(err, ErrNotFound) {
 			return out, err
@@ -186,13 +192,17 @@ func (s *Service) ResolveCatalogItemGit(ctx context.Context, p *auth.Principal, 
 		if err != nil {
 			return err
 		}
-		if i := slices.IndexFunc(versions, func(v store.VersionRow) bool { return v.State == "draft" }); i >= 0 {
+		// The import checks the file before it makes the draft: rvav's
+		// draft is discarded only for a file it takes.
+		res, err := s.importItem(ctx, p, []byte(*f.RepoContent), it.ID, false)
+		var open *ConflictError
+		if i := slices.IndexFunc(versions, func(v store.VersionRow) bool { return v.State == "draft" }); i >= 0 && errors.As(err, &open) {
 			if err := s.Store.DeleteDraft(ctx, versions[i].ID); err != nil {
 				return err
 			}
 			s.auditCatalog(ctx, p, "catalog.version.delete", it.ID, map[string]any{"version_id": versions[i].ID, "for": "git"})
+			res, err = s.importItem(ctx, p, []byte(*f.RepoContent), it.ID, false)
 		}
-		res, err := s.importItem(ctx, p, []byte(*f.RepoContent), it.ID, false)
 		if err != nil {
 			return err
 		}
@@ -206,8 +216,10 @@ func (s *Service) ResolveCatalogItemGit(ctx context.Context, p *auth.Principal, 
 		}
 		var commit *gitrepo.Commit
 		_ = json.Unmarshal(f.LastCommit, &commit)
-		if err := s.Store.GitDraft(ctx, f.Path, it.ID, *f.RepoBlob, versions[i].ID, versions[i].Revision, commit, ""); err != nil {
+		if ok, err := s.Store.GitDraft(ctx, f.Path, it.ID, *f.RepoBlob, versions[i].ID, versions[i].Revision, commit, "", f.Revision); err != nil {
 			return err
+		} else if !ok {
+			return &ConflictError{Msg: it.Name + " changed in rvav meanwhile: look at it again."}
 		}
 		s.auditCatalog(ctx, p, "catalog.git.resolve", it.ID, map[string]any{"take": take, "path": f.Path, "version": versions[i].Number})
 		return nil

@@ -8,6 +8,8 @@ package gitrepo
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -23,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/client"
@@ -64,7 +67,12 @@ type File struct {
 	Slug    string // its name, without .yaml
 	Hash    string // its blob's
 	Content []byte
+	// TooLarge: over MaxFileSize, its content not read.
+	TooLarge bool
 }
+
+// MaxFileSize is the largest item file read, as the YAML import takes.
+const MaxFileSize = 2 << 20
 
 // Commit is a commit on the branch.
 type Commit struct {
@@ -128,6 +136,8 @@ type Repo struct {
 
 // New checks the options and prepares how to sign in.
 func New(o Options) (*Repo, error) {
+	// A token or key pasted with a line break after it.
+	o.Credential = strings.TrimSpace(o.Credential)
 	o.Branch, o.Dir = cmp.Or(o.Branch, "main"), strings.Trim(cmp.Or(o.Dir, "catalog"), "/")
 	o.Committer.Name, o.Committer.Email = cmp.Or(o.Committer.Name, "rvav"), cmp.Or(o.Committer.Email, "rvav@localhost")
 	if o.URL == "" {
@@ -135,6 +145,14 @@ func New(o Options) (*Repo, error) {
 	}
 	if strings.Contains(o.Dir, "..") {
 		return nil, fmt.Errorf("the directory %q leaves the repository", o.Dir)
+	}
+	if o.Cache != "" {
+		// A clone per repository and branch: nothing of one read as another's.
+		sum := sha256.Sum256([]byte(o.URL + "\x00" + o.Branch))
+		o.Cache = filepath.Join(o.Cache, hex.EncodeToString(sum[:8]))
+	}
+	if err := CheckURL(o.URL); err != nil {
+		return nil, err
 	}
 	r := &Repo{o: o}
 	switch scheme := urlScheme(o.URL); scheme {
@@ -163,10 +181,6 @@ func New(o Options) (*Repo, error) {
 			keys.HostKeyCallback = cb
 		}
 		r.auth = keys
-	default:
-		if err := CheckURL(o.URL); err != nil {
-			return nil, err
-		}
 	}
 	return r, nil
 }
@@ -174,6 +188,12 @@ func New(o Options) (*Repo, error) {
 // CheckURL says whether rvav can use a repository's URL: https://,
 // ssh:// or git@host:path (and file:// in tests).
 func CheckURL(u string) error {
+	if p, err := url.Parse(u); err == nil && p.User != nil {
+		if _, ok := p.User.Password(); ok {
+			// It would be shown with the URL, to catalog admins too.
+			return errors.New("the URL holds a password or token: give it as the token, not in the URL")
+		}
+	}
 	switch urlScheme(u) {
 	case "https", "http", "ssh":
 		return nil
@@ -286,9 +306,10 @@ func (r *Repo) open(ctx context.Context) (*git.Repository, error) {
 	err = repo.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{spec}, Auth: r.auth,
 		InsecureSkipTLS: r.insecure(), Force: true, Tags: git.NoTags})
 	switch {
-	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate), errors.Is(err, transport.ErrEmptyRemoteRepository):
-	case strings.Contains(err.Error(), "couldn't find remote ref"):
-		// The branch doesn't exist yet: rvav's first commit makes it.
+	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
+	case errors.Is(err, transport.ErrEmptyRemoteRepository), strings.Contains(err.Error(), "couldn't find remote ref"):
+		// No branch yet (an empty repository too): rvav's first commit
+		// makes it. Nothing of what was fetched before is its.
 		_ = repo.Storer.RemoveReference(r.remoteRef())
 	default:
 		return nil, err
@@ -355,11 +376,18 @@ func (r *Repo) snapshot(repo *git.Repository) (Snapshot, error) {
 		if err != nil {
 			return out, err
 		}
-		content, err := f.Contents()
-		if err != nil {
-			return out, err
+		file := File{Path: path.Join(r.o.Dir, e.Name), Slug: slug, Hash: e.Hash.String()}
+		if f.Size > MaxFileSize {
+			// Not read: refused as it is.
+			file.TooLarge = true
+		} else {
+			content, err := f.Contents()
+			if err != nil {
+				return out, err
+			}
+			file.Content = []byte(content)
 		}
-		out.Files[slug] = File{Path: path.Join(r.o.Dir, e.Name), Slug: slug, Hash: e.Hash.String(), Content: []byte(content)}
+		out.Files[slug] = file
 	}
 	return out, nil
 }
@@ -422,9 +450,13 @@ func (r *Repo) Commit(ctx context.Context, base string, changes []Change, author
 			return Commit{}, err
 		}
 	} else {
-		// An empty branch: nothing of an earlier clone left in the tree.
+		// An empty branch: nothing of an earlier clone left in the tree,
+		// nor in the index.
 		_ = repo.Storer.RemoveReference(branch)
 		if err := clearTree(r.o.Cache); err != nil {
+			return Commit{}, err
+		}
+		if err := repo.Storer.SetIndex(&index.Index{Version: 2}); err != nil {
 			return Commit{}, err
 		}
 	}

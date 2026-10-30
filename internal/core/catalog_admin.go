@@ -384,12 +384,18 @@ func (s *Service) DeleteCatalogItemVersion(ctx context.Context, p *auth.Principa
 	if _, _, err := s.itemVersion(ctx, it, versionID); err != nil {
 		return err
 	}
+	file, fileErr := s.Store.GitFileOfItem(ctx, it.ID)
 	if err := s.Store.DeleteDraft(ctx, versionID); errors.Is(err, store.ErrVersionState) {
 		return &ConflictError{Msg: "Only a draft can be discarded."}
 	} else if err != nil {
 		return err
 	}
 	s.auditCatalog(ctx, p, "catalog.version.delete", it.ID, map[string]any{"version_id": versionID})
+	// The draft of the repository's change discarded: rvav's file is
+	// committed back over it.
+	if fileErr == nil && file.State == "draft" && deref(file.DraftVersionID) == versionID {
+		s.markGit(ctx, p, it.ID, "Keep "+it.Slug+" as rvav has it: the repository's change was discarded")
+	}
 	return nil
 }
 
