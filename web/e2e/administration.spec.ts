@@ -284,7 +284,8 @@ test("the catalog's Git repository: an SSH deploy key keeps its lines, and the t
   await expect(git.getByRole("textbox", { name: "Directory" })).toHaveValue("catalog");
   await git.getByRole("textbox", { name: "Repository" }).fill("git@git.corp.example:infra/catalog.git");
   const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----";
-  await git.getByRole("textbox", { name: "Token or deploy key" }).fill(key);
+  // Pasted with a line break after it: sent without.
+  await git.getByRole("textbox", { name: "Token or deploy key" }).fill(key + "\n");
   await git
     .getByRole("textbox", { name: "SSH host keys" })
     .fill("git.corp.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA");
@@ -297,6 +298,11 @@ test("the catalog's Git repository: an SSH deploy key keeps its lines, and the t
   expect(sent.settings.url).toBe("git@git.corp.example:infra/catalog.git");
   await expect(page.getByText("Git settings saved")).toBeVisible();
   await expect(git.getByRole("textbox", { name: "Token or deploy key" })).toHaveValue("");
+  await git
+    .getByRole("textbox", { name: "Repository" })
+    .fill("https://oauth2:glpat-x@git.corp.example/infra/catalog.git");
+  await git.getByRole("button", { name: "Save settings" }).click();
+  await expect(git.getByText("The URL holds a password or token")).toBeVisible();
   await git.getByRole("textbox", { name: "Repository" }).fill("/srv/git/catalog");
   await git.getByRole("button", { name: "Save settings" }).click();
   await expect(git.getByText("An https:// or ssh:// URL, or git@host:path.")).toBeVisible();

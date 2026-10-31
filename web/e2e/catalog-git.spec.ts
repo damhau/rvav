@@ -44,14 +44,27 @@ test("a conflict: both sides, settled for the repository's change", async ({ pag
   await expect(git).toContainText("catalog/ubuntu-server.yaml");
   await expect(git).toContainText("Smaller default size — Thomas Nguyen");
   await expect(git).toContainText("Changed in the repository since rvav last read it.");
-  const diff = git.getByLabel("Changes from rvav's file to the repository's");
+  const diff = git.getByRole("region", { name: "Changes from rvav's file to the repository's" });
   await expect(diff).toContainText("added:");
   await expect(diff).toContainText("removed:");
+  // rvav has a draft open: taking the repository's discards it, after a
+  // confirmation.
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText(/Draft 2\.5 made/)).toBeVisible();
+  await page.getByRole("tab", { name: "Git" }).click();
+  page.once("dialog", (d) => {
+    expect(d.message()).toContain("Discard draft 2.5");
+    void d.accept();
+  });
   await git.getByRole("button", { name: "Take the repository's" }).click();
   await expect(page.getByText("The repository's change is a draft")).toBeVisible();
+  // Focus is on the file's state, now the draft's.
+  await expect(git.locator("[tabindex='-1']")).toBeFocused();
+  await expect(git.locator("[tabindex='-1']")).toContainText("Draft from Git");
   await expect(git).toContainText("Draft from Git");
   await expect(git).toContainText("review it in Versions");
-  await expect(git.getByLabel("Changes from rvav's file to the repository's")).toBeVisible();
+  await expect(git.getByRole("region", { name: "Changes from rvav's file to the repository's" })).toBeVisible();
   await expect(git.getByRole("button", { name: "Keep rvav's" })).toHaveCount(0);
 });
 

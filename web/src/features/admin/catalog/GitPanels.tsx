@@ -3,6 +3,7 @@
 // page: its last commit, the repository's change, a conflict to settle.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/common/page";
@@ -170,21 +171,24 @@ function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
   const sign = { same: " ", added: "+", removed: "-" } as const;
   const tone = { same: "text-muted", added: "bg-ok-soft text-fg", removed: "bg-bad-soft text-fg" } as const;
   return (
-    <pre
+    <div
+      role="region"
       aria-label={label}
       // Focusable so keyboard users can scroll the diff.
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
-      className="max-h-96 overflow-auto rounded-md border border-line bg-sunken py-2 font-mono text-[11px] leading-5"
+      className="max-h-96 overflow-auto rounded-md border border-line bg-sunken"
     >
-      {lines.map((l, i) => (
-        <div key={i} className={`px-3 ${tone[l.op]}`}>
-          <span aria-hidden>{sign[l.op]} </span>
-          <span className="sr-only">{l.op === "same" ? "" : `${l.op}: `}</span>
-          {l.text}
-        </div>
-      ))}
-    </pre>
+      <pre className="py-2 font-mono text-[11px] leading-5">
+        {lines.map((l, i) => (
+          <div key={i} className={`px-3 ${tone[l.op]}`}>
+            <span aria-hidden>{sign[l.op]} </span>
+            <span className="sr-only">{l.op === "same" ? "" : `${l.op}: `}</span>
+            {l.text}
+          </div>
+        ))}
+      </pre>
+    </div>
   );
 }
 
@@ -193,6 +197,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
   const qc = useQueryClient();
   const git = item.git!;
   const detail = useQuery(q.catalogItemGit(item.id));
+  const status = useRef<HTMLDivElement>(null);
   const resolve = useMutation({
     mutationFn: (take: "rvav" | "repository") =>
       call(
@@ -201,14 +206,16 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
           body: { take },
         }),
       ),
-    onSuccess: (it, take) => {
-      qc.setQueryData(keys.catalogAdmin.item(item.id), it);
-      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+    // Settled once the page shows it: its buttons stay disabled until then,
+    // and focus goes to the file's state.
+    onSuccess: async (_, take) => {
+      await qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
       toast.success(
         take === "rvav"
           ? "rvav's file will be committed over the repository's change"
           : "The repository's change is a draft",
       );
+      status.current?.focus();
     },
     onError: (e) =>
       toast.error(isApiError(e) ? e.problem.title : "Not settled", {
@@ -216,10 +223,13 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
       }),
   });
   const d = detail.data;
+  // A conflict with the repository's deletion: nothing of it to take.
+  const deletedThere = git.state === "conflict" && d !== undefined && d.repository === undefined;
+  const ownDraft = git.state === "draft" && item.draft_version && git.draft_version_id === item.draft_version.id;
   return (
     <Panel title="Git">
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div ref={status} tabIndex={-1} className="flex flex-wrap items-center gap-2 outline-none">
           <GitBadge git={git} />
           <span className="font-mono text-xs text-muted">{git.path}</span>
         </div>
@@ -239,7 +249,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
         )}
         {git.note && <p className="text-xs text-muted">{git.note}</p>}
         {git.problems && <Problems problems={git.problems} label="Why the repository's file was refused" />}
-        {git.state === "draft" && item.draft_version && (
+        {ownDraft && item.draft_version && (
           <p className="text-xs">
             The repository's change is draft {item.draft_version.number}: review it in Versions, then publish it (rvav
             commits it back) or discard it (rvav's file is committed again).
@@ -248,8 +258,9 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
         {git.state === "conflict" && (
           <div className="flex flex-col gap-2">
             <p className="text-xs">
-              Keep rvav's file, committed over the repository's change; or take the repository's, as a draft (an open
-              draft in rvav is discarded).
+              {deletedThere
+                ? "The repository deleted the file: keep rvav's to add it back."
+                : "Keep rvav's file, committed over the repository's change; or take the repository's, as a draft (an open draft in rvav is discarded)."}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="primary" disabled={resolve.isPending} onClick={() => resolve.mutate("rvav")}>
@@ -257,7 +268,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
               </Button>
               <Button
                 size="sm"
-                disabled={resolve.isPending}
+                disabled={resolve.isPending || deletedThere}
                 onClick={() => {
                   if (
                     !item.draft_version ||
@@ -272,7 +283,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
           </div>
         )}
         {detail.isError && <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />}
-        {d && d.diff.length > 0 && (
+        {d && d.diff.some((l) => l.op !== "same") && (
           <div className="flex flex-col gap-1">
             <h3 className="text-xs font-semibold">
               {git.state === "draft"

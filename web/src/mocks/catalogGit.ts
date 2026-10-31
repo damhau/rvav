@@ -121,8 +121,20 @@ export function markGit(db: Db, item: StoredItem) {
     const path = `catalog/${item.slug}.yaml`;
     st.files[path] = { path, state: "waiting", attempts: 0, itemId: item.id };
   } else if (f.state !== "conflict") {
-    Object.assign(f, { state: "waiting", attempts: 0, error: undefined, next_attempt_at: undefined });
+    Object.assign(f, {
+      state: "waiting",
+      attempts: 0,
+      error: undefined,
+      next_attempt_at: undefined,
+      draft_version_id: undefined,
+    });
   }
+}
+
+/** A draft was discarded: the repository's change set aside, rvav's file
+ * is committed back. */
+export function draftDiscarded(db: Db, item: StoredItem, versionId: string) {
+  if (gitOf(db, item)?.draft_version_id === versionId) markGit(db, item);
 }
 
 /** The lines from a to b (a naive diff: enough for the mock). */

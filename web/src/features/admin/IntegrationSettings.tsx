@@ -244,7 +244,8 @@ function Integration({ it }: { it: S["Integration"] }) {
         return [f.name, s];
       }),
     ),
-    ...(secret ? { secret } : {}),
+    // A key or token pasted with a line break after it.
+    ...(secret.trim() ? { secret: def.secret.multiline ? secret.trim() : secret } : {}),
     ...(signing ? { signing_secret: signing } : {}),
   });
   const save = useMutation({
@@ -357,13 +358,14 @@ function Integration({ it }: { it: S["Integration"] }) {
             }
           >
             {def.secret.multiline ? (
-              // A key keeps its lines; it is shown while typed, never after.
+              // A key keeps its lines; masked as it is typed, never shown
+              // after.
               <Textarea
                 id={`${it.kind}-secret`}
                 rows={3}
                 spellCheck={false}
                 autoComplete="off"
-                className="font-mono text-xs"
+                className="font-mono text-xs [-webkit-text-security:disc]"
                 disabled={secretLocked}
                 placeholder={it.secret_set ? "••••••••" : undefined}
                 value={secret}

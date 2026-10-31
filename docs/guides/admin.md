@@ -113,8 +113,11 @@ The catalog can be kept in a Git repository
 requests and the same in every installation. Set the repository in
 **Integrations › Git** (configuration.md lists the settings): an HTTPS
 URL with a token, or an SSH URL with a deploy key and the server's host
-keys. **Test connection** signs in and reads the branch. rvav needs to
-push to the branch, never to force a push.
+keys (put the token in its own field, never in the URL). **Test
+connection** signs in and reads the branch. rvav needs to push to the
+branch, never to force a push. Saved settings apply when rvav's processes
+restart: until then, Catalog items shows no repository and nothing is
+synced.
 
 Each item is a file, `catalog/<slug>.yaml`, as the export writes it with
 its published version. **rvav publishes, the repository proposes:**
@@ -136,8 +139,9 @@ minutes, or when the Git server calls rvav's webhook). An item's **Git**
 tab shows its file, its last commit, and how the repository's file
 differs from rvav's:
 - **Waiting to be committed:** at the next read.
-- **Commit failing:** the error, and when it is tried again. Check the
-  repository's settings and token.
+- **Commit failing:** the error, and when it is tried again (**Read the
+  repository now** tries at once). Check the repository's settings and
+  token.
 - **Draft from Git:** the repository changed the file.
 - **Conflict in Git:** both changed it (a draft open in rvav, or a change
   not committed yet). **Keep rvav's** commits rvav's file over the

@@ -6,7 +6,7 @@ import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { readComposite } from "@/features/admin/catalog/composite";
 import { celCheck } from "./cel";
-import { gitOf, markGit } from "./catalogGit";
+import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -595,6 +595,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (!v) return problem(404, "Not found");
       if (v.state !== "draft") return problem(409, "Conflict", undefined, "Only a draft can be discarded.");
       versions.splice(versions.indexOf(v), 1);
+      draftDiscarded(db, item!, v.id);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/catalog/items/:id/versions/:vid/publish`, async ({ params, request }) => {

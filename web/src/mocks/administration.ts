@@ -1086,6 +1086,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const kind = String(params.kind);
       const w = (await request.json()) as S["IntegrationWrite"];
       const url = w.settings.url;
+      if (kind === "git" && typeof url === "string" && /^[a-z+]+:\/\/[^/@]*:[^/@]*@/.test(url))
+        return invalid([
+          err("/settings/url", "The URL holds a password or token: give it as the token, not in the URL."),
+        ]);
       if (
         typeof url === "string" &&
         url &&
