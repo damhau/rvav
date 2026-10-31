@@ -28,6 +28,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vra"
 	"github.com/damhau/rvav/internal/vraimport"
 
@@ -117,6 +118,11 @@ func run(ctx context.Context, cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
+	// The environment's CA bundle, for the commands that connect without
+	// app.Open (which sets the one saved in Administration).
+	if err := trust.SetBundle(cfg.CABundle); err != nil {
+		return fmt.Errorf("RVAV_CA_BUNDLE: %w", err)
+	}
 	log := logger(cfg.LogLevel).With("process", cmd)
 	slog.SetDefault(log)
 
@@ -138,7 +144,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 		out := fs.String("o", "", "write to this file (standard output by default)")
 		_ = fs.Parse(args)
 		c, err := vra.New(vra.Options{URL: cfg.VRA.URL, Token: cfg.VRA.Token, Username: cfg.VRA.Username,
-			Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure})
+			Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure, Pin: cfg.VRA.CertSHA256})
 		if err != nil {
 			return err
 		}
@@ -214,7 +220,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 		f.AnyVM = true
 		// A segment's port group in the stack's vcsim, as NSX makes one in vCenter.
 		if cfg.VCenter.URL != "" {
-			vc, err := vsphere.New(ctx, cfg.VCenter.Name, cfg.VCenter.URL, cfg.VCenter.Username, cfg.VCenter.Password, cfg.VCenter.Insecure)
+			vc, err := vsphere.New(ctx, cfg.VCenter.Name, cfg.VCenter.URL, cfg.VCenter.Username, cfg.VCenter.Password, cfg.VCenter.TLS())
 			if err != nil {
 				return err
 			}
@@ -238,7 +244,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	case "seed":
 		return runSeed(ctx, cfg, log)
 	case "vcsim-bootstrap":
-		vc, err := vsphere.New(ctx, cfg.VCenter.Name, cfg.VCenter.URL, cfg.VCenter.Username, cfg.VCenter.Password, cfg.VCenter.Insecure)
+		vc, err := vsphere.New(ctx, cfg.VCenter.Name, cfg.VCenter.URL, cfg.VCenter.Username, cfg.VCenter.Password, cfg.VCenter.TLS())
 		if err != nil {
 			return err
 		}
@@ -261,7 +267,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
-		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure)
+		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.TLS())
 		if err != nil {
 			return err
 		}
@@ -496,7 +502,7 @@ func readEstate(ctx context.Context, cfg config.Config, file string) (*vra.Estat
 		return &e, json.Unmarshal(b, &e)
 	}
 	c, err := vra.New(vra.Options{URL: cfg.VRA.URL, Token: cfg.VRA.Token, Username: cfg.VRA.Username,
-		Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure})
+		Password: cfg.VRA.Password, Domain: cfg.VRA.Domain, Insecure: cfg.VRA.Insecure, Pin: cfg.VRA.CertSHA256})
 	if err != nil {
 		return nil, err
 	}

@@ -75,6 +75,7 @@ const KINDS = [
   "teams",
   "slack",
   "hosts",
+  "trust",
 ] as const;
 
 /** A sync interval as the server takes it: 30s to 24h, as 2m or 1h30m. */
@@ -91,6 +92,7 @@ function configuredOf(kind: string, it: { settings: Record<string, unknown>; sec
   if (kind === "slack") return it.secret;
   if (kind === "console") return Boolean(s.username);
   if (kind === "hosts") return [s.rest_source_hosts, s.webhook_hosts].some((l) => Array.isArray(l) && l.length > 0);
+  if (kind === "trust") return typeof s.ca_bundle === "string" && s.ca_bundle.trim() !== "";
   return Boolean(s.url || s.host || s.app_id || s.issuer);
 }
 
@@ -121,6 +123,9 @@ function processesNow(a: AdminState): S["Process"][] {
 }
 
 const now = () => new Date().toISOString();
+
+/** A setting's text, "" when it isn't a string. */
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const tags: Record<string, string[]> = {
   "GVA-PRD-CL01": ["rvav-tier/gold"],
@@ -270,17 +275,18 @@ function state(db: Db): AdminState {
     ],
     integrations: {
       oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
-      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example", sync_interval: "2m" }, secret: true },
+      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, cert_sha256: "", name: "vc01.corp.example", sync_interval: "2m" }, secret: true },
       console: { settings: { username: "svc-rvav-console@vsphere.local", sdk_urls: [] }, secret: true },
-      awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false, sync_interval: "5m" }, secret: true },
-      efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false, sync_interval: "5m" }, secret: true },
-      nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false }, secret: true },
+      awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false, cert_sha256: "", sync_interval: "5m" }, secret: true },
+      efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false, cert_sha256: "", sync_interval: "5m" }, secret: true },
+      nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false, cert_sha256: "" }, secret: true },
       git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example", sync_interval: "5m" }, secret: false },
-      vra: { settings: { url: "", username: "", domain: "", insecure: false }, secret: false },
+      vra: { settings: { url: "", username: "", domain: "", insecure: false, cert_sha256: "" }, secret: false },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea", login_url: "https://login.microsoftonline.com", graph_url: "https://graph.microsoft.com", openid_url: "https://login.botframework.com/v1/.well-known/openidconfiguration" }, secret: false },
       slack: { settings: { api_url: "https://slack.com/api" }, secret: false, signing: false },
       hosts: { settings: { rest_source_hosts: ["cmdb.corp.example"], webhook_hosts: ["hooks.corp.example"] }, secret: false },
+      trust: { settings: { ca_bundle: "" }, secret: false },
     }, // prettier-ignore
   };
   return d.administration;
@@ -370,17 +376,170 @@ export function namingTemplate(db: Db, projectId: string, env: string): string |
 /** As the server: a saved secret only goes to the address it was given for. */
 function secretMoves(current: Record<string, unknown>, given: Record<string, unknown>, secret: string | undefined) {
   const url = given.url;
+  const pin = typeof given.cert_sha256 === "string" ? normalFingerprint(given.cert_sha256) : "";
   const moved =
     (typeof url === "string" && url !== "" && url !== current.url) ||
-    (given.insecure === true && current.insecure !== true);
+    (given.insecure === true && current.insecure !== true) ||
+    (pin !== "" && pin !== normalFingerprint(text(current.cert_sha256)));
   return moved && !secret
     ? invalid([
         err(
           "/secret",
-          "A new address, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.",
+          "A new address, a certificate pinned, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.",
         ),
       ])
     : null;
+}
+
+// ── Certificates (U1.4, ADR-0030) ──
+// A server's certificate as the mock has it: a lab host's is self-signed,
+// another's issued by the corporate CA the system trusts.
+
+/** A SHA-256 as AB:CD:…, made up from a name. */
+function fingerprint(name: string): string {
+  const out: string[] = [];
+  let h = 2166136261;
+  for (let i = 0; i < 32; i++) {
+    for (const c of `${name}#${i}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    out.push((h & 0xff).toString(16).padStart(2, "0").toUpperCase());
+  }
+  return out.join(":");
+}
+
+/** A fingerprint given with or without colons, as AB:CD:…; "" when it isn't one. */
+function normalFingerprint(v: string): string {
+  const hex = v.replace(/^sha256:?/i, "").replace(/[\s:-]/g, "");
+  return /^[0-9a-f]{64}$/i.test(hex) ? (hex.toUpperCase().match(/../g) ?? []).join(":") : "";
+}
+
+const mockPEM = (subject: string) =>
+  `-----BEGIN CERTIFICATE-----\n${btoa(`rvav-mock:${subject}`)}\n-----END CERTIFICATE-----\n`;
+
+/** The PEM blocks of a bundle, or why it isn't one, as the server says. */
+function pemBlocks(bundle: string): { subjects: string[]; problem?: string } {
+  const text = bundle.trim();
+  const subjects: string[] = [];
+  const re = /-----BEGIN ([A-Z ]+)-----\s*([\s\S]*?)\s*-----END \1-----/g;
+  let rest = text;
+  for (const m of text.matchAll(re)) {
+    if (m[1] !== "CERTIFICATE")
+      return {
+        subjects,
+        problem: m[1]!.includes("PRIVATE KEY")
+          ? "a private key: the bundle holds the CAs' certificates only"
+          : `a ${m[1]}, not a certificate`,
+      };
+    let subject = "Corp Root CA";
+    try {
+      const raw = atob(m[2]!.replace(/\s/g, ""));
+      if (raw.startsWith("rvav-mock:")) subject = raw.slice("rvav-mock:".length);
+    } catch {
+      return { subjects, problem: `certificate ${subjects.length + 1}: malformed certificate` };
+    }
+    subjects.push(subject);
+    rest = rest.replace(m[0], "");
+  }
+  if (rest.trim() !== "")
+    return {
+      subjects,
+      problem: "not PEM: certificates between -----BEGIN CERTIFICATE----- and -----END CERTIFICATE-----",
+    };
+  return { subjects };
+}
+
+const longDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+
+/** The certificate check of a connection's test, and whether the test goes on. */
+function certificateCheck(
+  bundle: string,
+  rawURL: string,
+  settings: Record<string, unknown>,
+  pinnable: boolean,
+): { check?: S["IntegrationCheck"]; certificate?: S["ServerCertificate"]; goOn: boolean } {
+  let u: URL;
+  try {
+    u = new URL(rawURL);
+  } catch {
+    return { goOn: true };
+  }
+  if (u.protocol !== "https:") return { goOn: true };
+  const host = u.hostname;
+  const address = `${host}:${u.port || "443"}`;
+  if (host.includes("unreachable"))
+    return {
+      check: {
+        name: "Certificate",
+        ok: false,
+        message: `${address} gave none: dial tcp: lookup ${host}: no such host`,
+      },
+      goOn: false,
+    };
+  const selfSigned = /lab|self-signed/.test(host);
+  const anchor = selfSigned ? host : "Corp Issuing CA 2";
+  const sha256 = fingerprint(host);
+  const inBundle = pemBlocks(bundle).subjects.includes(anchor);
+  const trusted = !selfSigned || inBundle;
+  const pinned = pinnable && normalFingerprint(text(settings.cert_sha256)) === sha256;
+  const checked = settings.insecure !== true;
+  const certificate: S["ServerCertificate"] = {
+    address,
+    subject: host,
+    issuer: selfSigned ? host : "Corp Issuing CA 2",
+    names: [host],
+    not_before: "2026-01-15T00:00:00Z",
+    not_after: "2027-01-15T00:00:00Z",
+    sha256,
+    trusted,
+    pinned,
+    checked,
+    pinnable,
+    ...(trusted ? {} : { problem: "no CA rvav trusts signed it" }),
+    anchor_pem: mockPEM(anchor),
+    anchor_subject: anchor,
+    anchor_is_leaf: selfSigned,
+  };
+  const about = `${host}, issued by ${certificate.issuer}, until ${longDate(certificate.not_after)}`;
+  if (!checked)
+    return {
+      certificate,
+      check: { name: "Certificate", ok: true, message: `Not checked: TLS checks are off. ${about}.` },
+      goOn: true,
+    };
+  if (trusted)
+    return {
+      certificate,
+      check: { name: "Certificate", ok: true, message: `${about}: a CA rvav trusts vouches for it.` },
+      goOn: true,
+    };
+  if (pinned)
+    return {
+      certificate,
+      check: { name: "Certificate", ok: true, message: `${about}: pinned for this connection.` },
+      goOn: true,
+    };
+  const fix = pinnable
+    ? "Trust this certificate, or add its CA to the CA bundle."
+    : "Add its CA to the CA bundle (Trusted certificates).";
+  return {
+    certificate,
+    check: { name: "Certificate", ok: false, message: `${about}: no CA rvav trusts signed it. ${fix}` },
+    goOn: false,
+  };
+}
+
+/** A pin or a bundle that can't be read, as the server refuses them. */
+function trustErrors(kind: string, settings: Record<string, unknown>): S["FieldError"][] {
+  const out: S["FieldError"][] = [];
+  const pin = settings.cert_sha256;
+  if (typeof pin === "string" && pin.trim() !== "" && !normalFingerprint(pin))
+    out.push(err("/settings/cert_sha256", "A certificate's SHA-256: 32 bytes in hex, with or without colons."));
+  const bundle = settings.ca_bundle;
+  if (kind === "trust" && typeof bundle === "string") {
+    const { problem: p } = pemBlocks(bundle);
+    if (p) out.push(err("/settings/ca_bundle", `CA certificates in PEM: ${p}.`));
+  }
+  return out;
 }
 
 export function administrationHandlers(db: Db, base: string, wait: () => Promise<void>) {
@@ -1116,11 +1275,18 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           errors.push(err("/url", "Its SDK address over HTTPS, for example https://vc02.corp.example/sdk."));
         if (!w.username.trim()) errors.push(err("/username", "Give the account rvav signs in with."));
         if (!current && !w.password) errors.push(err("/password", "Give the account's password."));
-        if (current && !w.password && (w.url !== current.url || (w.insecure && !current.insecure)))
+        const pin = normalFingerprint(w.cert_sha256 ?? "");
+        if ((w.cert_sha256 ?? "").trim() && !pin)
+          errors.push(err("/cert_sha256", "A certificate's SHA-256: 32 bytes in hex, with or without colons."));
+        if (
+          current &&
+          !w.password &&
+          (w.url !== current.url || (w.insecure && !current.insecure) || (pin && pin !== (current.cert_sha256 ?? "")))
+        )
           errors.push(
             err(
               "/password",
-              "A new address, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
+              "A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
             ),
           );
         if (errors.length) return invalid(errors);
@@ -1131,6 +1297,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           url: w.url,
           username: w.username,
           insecure: w.insecure ?? false,
+          ...(pin ? { cert_sha256: pin } : {}),
           password_set: true,
           primary: false,
           ...(current?.inventory ? { inventory: current.inventory } : {}),
@@ -1153,14 +1320,21 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const raw = await request.text();
       const w = raw ? (JSON.parse(raw) as S["VCenterWrite"]) : undefined;
       const ok = !w || /^https:\/\/[^/]+/.test(w.url);
+      const tls = w
+        ? certificateCheck(text(st().integrations.trust!.settings.ca_bundle), w.url, { ...w }, true)
+        : { goOn: true };
+      const cert = tls.certificate ? { certificate: tls.certificate } : {};
+      if (ok && !tls.goOn) return HttpResponse.json({ ok: false, checks: [tls.check!], ...cert });
       return HttpResponse.json({
         ok,
         checks: ok
           ? [
+              ...(tls.check ? [tls.check] : []),
               { name: "Sign in", ok: true, message: `Signed in to ${w?.url ?? "it"} as ${w?.username ?? "rvav"}.` },
               { name: "Inventory", ok: true, message: "2 clusters, 2 datastores, 3 networks and 1 templates." },
             ]
           : [{ name: "Settings", ok: false, message: "Its SDK address over HTTPS." }],
+        ...cert,
       });
     }),
 
@@ -1236,6 +1410,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const every = w.settings.sync_interval;
       if (typeof every === "string" && every && !intervalOK(every))
         return invalid([err("/settings/sync_interval", "A duration from 30s to 24h, for example 5m or 1h30m.")]);
+      const untrusted = trustErrors(kind, w.settings);
+      if (untrusted.length) return invalid(untrusted);
+      if (typeof w.settings.cert_sha256 === "string")
+        w.settings.cert_sha256 = normalFingerprint(w.settings.cert_sha256);
       const it = st().integrations[kind]!;
       const locked = kind === "vcenter" ? ["url"] : [];
       const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
@@ -1270,14 +1448,41 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (kind === "oidc") {
         const bad = providerErrors(body?.settings ?? {});
         if (bad.length) return invalid(bad);
-        return HttpResponse.json(providerTest({ ...saved.settings, ...body?.settings }));
+        return HttpResponse.json(
+          providerTest({ ...saved.settings, ...body?.settings }, text(st().integrations.trust!.settings.ca_bundle)),
+        );
       }
       const editable = Object.fromEntries(
         Object.entries(body?.settings ?? {}).filter(([k]) => !(kind === "vcenter" && k === "url")),
       );
+      const untrusted = trustErrors(kind, editable);
+      if (untrusted.length) return invalid(untrusted);
       const moved = body && saved.secret ? secretMoves(saved.settings, editable, body.secret) : null;
       if (moved) return moved;
       const ps = { ...saved.settings, ...editable };
+      const bundle = text((kind === "trust" ? ps : st().integrations.trust!.settings).ca_bundle);
+      if (kind === "trust") {
+        const { subjects } = pemBlocks(bundle);
+        return HttpResponse.json({
+          ok: true,
+          checks: subjects.length
+            ? subjects.map((name) => ({
+                name,
+                ok: true,
+                message: `A CA, until 15 January 2031; SHA-256 ${fingerprint(name)}.`,
+              }))
+            : [{ name: "CA bundle", ok: true, message: "Empty: only the system's CAs are trusted." }],
+        });
+      }
+      const tls = ["vcenter", "awx", "efficientip", "nsx", "vra", "git"].includes(kind)
+        ? certificateCheck(bundle, text(ps.url), ps, kind !== "git")
+        : { goOn: true };
+      if (!tls.goOn)
+        return HttpResponse.json({
+          ok: false,
+          checks: [tls.check!],
+          ...(tls.certificate ? { certificate: tls.certificate } : {}),
+        });
       const list = (v: unknown) => (Array.isArray(v) && v.length ? v.join(", ") : "no host");
       if (kind === "hosts")
         return HttpResponse.json({
@@ -1317,6 +1522,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const url = typeof given === "string" ? given : "";
       const reachable = !url.includes("unreachable");
       const checks: S["IntegrationCheck"][] = [
+        ...(tls.check ? [tls.check] : []),
         {
           name: "Sign in",
           ok: reachable,
@@ -1329,7 +1535,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         checks.push({ name: "Inventory", ok: true, message: "4 clusters, 6 datastores, 4 networks and 3 templates." });
         checks.push({ name: "Tagging service", ok: true, message: "Tags can be read, for placement by tag." });
       }
-      return HttpResponse.json({ ok: checks.every((c) => c.ok), checks });
+      return HttpResponse.json({
+        ok: checks.every((c) => c.ok),
+        checks,
+        ...(tls.certificate ? { certificate: tls.certificate } : {}),
+      });
     }),
     // The token AWX's inventory source reads rvav with (U1.4): made for
     // rvav's inventory user and put in AWX, the earlier one revoked.
@@ -1460,10 +1670,14 @@ function providerErrors(given: Record<string, unknown>): S["FieldError"][] {
 }
 
 // A provider's test: unreachable when its issuer says so.
-function providerTest(ps: Record<string, unknown>): S["IntegrationTest"] {
+function providerTest(ps: Record<string, unknown>, bundle: string): S["IntegrationTest"] {
   const issuer = typeof ps.issuer === "string" ? ps.issuer : "";
   if (!issuer) return { ok: false, checks: [{ name: "Issuer", ok: false, message: "no issuer is set" }] };
   if (!ps.client_id) return { ok: false, checks: [{ name: "Client", ok: false, message: "no client ID is set" }] };
+  const discovery = typeof ps.discovery_url === "string" && ps.discovery_url ? ps.discovery_url : issuer;
+  const tls = issuer.includes("unreachable") ? { goOn: true } : certificateCheck(bundle, discovery, {}, false);
+  const cert = tls.certificate ? { certificate: tls.certificate } : {};
+  if (!tls.goOn) return { ok: false, checks: [tls.check!], ...cert };
   if (issuer.includes("unreachable"))
     return {
       ok: false,
@@ -1478,8 +1692,10 @@ function providerTest(ps: Record<string, unknown>): S["IntegrationTest"] {
   return {
     ok: true,
     checks: [
+      ...(tls.check ? [tls.check] : []),
       { name: "Discovery", ok: true, message: `${issuer} answered: sign-in at ${issuer}/protocol/openid-connect/auth` },
       { name: "Signing keys", ok: true, message: "1 published: k1 (RS256)" },
     ],
+    ...cert,
   };
 }

@@ -36,10 +36,12 @@ import (
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vcenters"
 
-	"github.com/damhau/rvav/internal/observe"
 	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
+
+	"github.com/damhau/rvav/internal/observe"
 )
 
 type App struct {
@@ -134,6 +136,11 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 	if err := a.applyStoredSettings(ctx); err != nil {
 		return nil, err
 	}
+	// The CA bundle every connection trusts besides the system's CAs.
+	if err := trust.SetBundle(a.Cfg.CABundle); err != nil {
+		return nil, fmt.Errorf("the CA bundle (Administration › Integrations › Trusted certificates, or RVAV_CA_BUNDLE): %w", err)
+	}
+	trust.Install()
 	a.Live = &core.LiveSettings{Store: st, Secrets: a.Secrets, Base: cfg, Every: 2 * time.Second, Log: log}
 	a.Watch = Watch{Every: 5 * time.Second, Settle: 3 * time.Second, Grace: 6 * time.Second}
 	cfg = a.Cfg
@@ -157,7 +164,7 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		log.Warn("using a fake SOLIDserver in this process (RVAV_FAKE_EFFICIENTIP=1); no real addresses or DNS records are created")
 	} else if cfg.IPAM.URL != "" {
 		if a.IPAM, err = efficientip.New(efficientip.Options{URL: cfg.IPAM.URL, Auth: efficientip.Auth(cfg.IPAM.Auth),
-			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Space: cfg.IPAM.Space,
+			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Pin: cfg.IPAM.CertSHA256, Space: cfg.IPAM.Space,
 			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView, Instance: cfg.IPAM.Instance}); err != nil {
 			return nil, err
 		}
@@ -177,7 +184,7 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		if cfg.AWX.Organization == "" {
 			return nil, errors.New("set RVAV_AWX_ORGANIZATION: rvav uses the templates, inventories and credentials of its own AWX organisation only")
 		}
-		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.Insecure)
+		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.TLS())
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +232,7 @@ func (a *App) VCenter(ctx context.Context) (vsphere.Driver, error) {
 		return nil, errors.New("RVAV_VCENTER_URL is not set")
 	}
 	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.VCenter.Username,
-		a.Cfg.VCenter.Password, a.Cfg.VCenter.Insecure)
+		a.Cfg.VCenter.Password, a.Cfg.VCenter.TLS())
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +371,7 @@ func (a *App) consoleAccount(ctx context.Context) (*vsphere.Client, error) {
 	if now[0] == "" || now[1] == "" || config.ConsoleFor(c.VCenter) != config.ConsoleFor(a.Cfg.VCenter) {
 		return nil, nil
 	}
-	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, now[0], now[1], a.Cfg.VCenter.Insecure)
+	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, now[0], now[1], a.Cfg.VCenter.TLS())
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +490,7 @@ func (a *App) NSX() (*nsx.Client, error) {
 		return nil, nil
 	}
 	return nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile,
-		KeyFile: c.KeyFile, Insecure: c.Insecure})
+		KeyFile: c.KeyFile, Insecure: c.Insecure, Pin: c.CertSHA256})
 }
 
 // RunWorker runs the Temporal worker until ctx is done.

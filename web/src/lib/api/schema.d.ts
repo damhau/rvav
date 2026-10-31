@@ -5398,7 +5398,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "oidc" | "vcenter" | "console" | "awx" | "efficientip" | "nsx" | "git" | "vra" | "smtp" | "teams" | "slack" | "hosts";
+        IntegrationKind: "oidc" | "vcenter" | "console" | "awx" | "efficientip" | "nsx" | "git" | "vra" | "smtp" | "teams" | "slack" | "hosts" | "trust";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
@@ -5500,6 +5500,49 @@ export interface components {
         IntegrationTest: {
             ok: boolean;
             checks: components["schemas"]["IntegrationCheck"][];
+            /** @description The certificate the server presented, for a connection over HTTPS. */
+            certificate?: components["schemas"]["ServerCertificate"];
+        };
+        /**
+         * @description The certificate a server presented to a connection's test, and
+         *     whether rvav trusts it (ADR-0030): the system's CAs and the CA
+         *     bundle's (Integrations › Trusted certificates) vouch for it, or it is
+         *     the connection's pinned certificate.
+         */
+        ServerCertificate: {
+            /**
+             * @description The host and port read.
+             * @example vc01.corp.example:443
+             */
+            address: string;
+            /** @example vc01.corp.example */
+            subject: string;
+            /** @example Corp Issuing CA 2 */
+            issuer: string;
+            /** @description The names and addresses it is for. */
+            names: string[];
+            /** Format: date-time */
+            not_before: string;
+            /** Format: date-time */
+            not_after: string;
+            /** @description Its SHA-256, as AB:CD:…; set as the connection's cert_sha256, the connection trusts it. */
+            sha256: string;
+            /** @description The system's or the CA bundle's CAs vouch for it, for this host. */
+            trusted: boolean;
+            /** @description It is the connection's pinned certificate. */
+            pinned: boolean;
+            /** @description False when the connection doesn't check certificates (insecure). */
+            checked: boolean;
+            /** @description The connection takes a pinned certificate (cert_sha256). */
+            pinnable: boolean;
+            /** @description Why the CAs don't vouch for it. */
+            problem?: string;
+            /** @description The last certificate the server sent, in PEM; in the CA bundle, it makes the server trusted. */
+            anchor_pem: string;
+            /** @example Corp Issuing CA 2 */
+            anchor_subject: string;
+            /** @description The anchor is the server's own certificate (self-signed, or sent without its CA). */
+            anchor_is_leaf: boolean;
         };
         VCenter: {
             /** @description How the vCenter is known in rvav (inventory, placement rules, VMs), for example `vc02.corp.example`. */
@@ -5509,6 +5552,8 @@ export interface components {
             username: string;
             /** @description Its certificate isn't checked. */
             insecure: boolean;
+            /** @description A certificate trusted for it besides those the CAs vouch for, pinned by its SHA-256. */
+            cert_sha256?: string;
             password_set: boolean;
             /** @description The vCenter integration's (Integrations); changed there, not here. */
             primary: boolean;
@@ -5527,6 +5572,12 @@ export interface components {
             /** @description Kept when not given on a change. */
             password?: string;
             insecure?: boolean;
+            /**
+             * @description A certificate trusted besides those the CAs vouch for, by its
+             *     SHA-256 (with or without colons); empty, none. A new one needs the
+             *     password again, as a new address does.
+             */
+            cert_sha256?: string;
         };
         VCenterList: {
             items: components["schemas"]["VCenter"][];

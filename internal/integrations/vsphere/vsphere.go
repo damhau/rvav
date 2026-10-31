@@ -21,14 +21,17 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 
-	"github.com/damhau/rvav/internal/observe"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
+
+	"github.com/damhau/rvav/internal/observe"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // ErrNotFound is returned when a named inventory object does not exist.
@@ -208,16 +211,16 @@ type Client struct {
 	name string
 	url  *url.URL
 
-	insecure bool
-	mu       sync.Mutex
-	c        *govmomi.Client
+	tls trust.Options
+	mu  sync.Mutex
+	c   *govmomi.Client
 	// login signs in to vCenter's REST API (the tagging service).
 	login *url.Userinfo
 }
 
 // New logs in to vCenter. rawURL is the SDK endpoint, for example
 // https://vc01.corp.example/sdk.
-func New(ctx context.Context, name, rawURL, username, password string, insecure bool) (*Client, error) {
+func New(ctx context.Context, name, rawURL, username, password string, o trust.Options) (*Client, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("vcenter url: %w", err)
@@ -228,7 +231,7 @@ func New(ctx context.Context, name, rawURL, username, password string, insecure 
 	if username != "" {
 		u.User = url.UserPassword(username, password)
 	}
-	cl := &Client{name: name, url: u, insecure: insecure, login: u.User}
+	cl := &Client{name: name, url: u, tls: o, login: u.User}
 	if _, err := cl.client(ctx); err != nil {
 		return nil, err
 	}
@@ -258,13 +261,36 @@ func (cl *Client) client(ctx context.Context) (*vim25.Client, error) {
 			return cl.c.Client, nil
 		}
 	}
-	c, err := govmomi.NewClient(ctx, cl.url, cl.insecure)
+	c, err := cl.connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("log in to vCenter %s: %w", cl.url.Host, err)
 	}
 	c.Client.RoundTripper = measured{c.Client.RoundTripper}
 	cl.c = c
 	return c.Client, nil
+}
+
+// connect signs in as govmomi.NewClient does, trusting the CAs of the
+// connection's options and its pinned certificate (package trust).
+func (cl *Client) connect(ctx context.Context) (*govmomi.Client, error) {
+	sc := soap.NewClient(cl.url, cl.tls.Insecure)
+	if roots := cl.tls.RootCAs(); roots != nil && !cl.tls.Insecure {
+		sc.DefaultTransport().TLSClientConfig.RootCAs = roots
+	}
+	if pin, ok := trust.NormalFingerprint(cl.tls.Pin); ok {
+		sc.SetThumbprint(cl.url.Host, pin)
+	}
+	vc, err := vim25.NewClient(ctx, sc)
+	if err != nil {
+		return nil, err
+	}
+	c := &govmomi.Client{Client: vc, SessionManager: session.NewManager(vc)}
+	if cl.url.User != nil {
+		if err := c.Login(ctx, cl.url.User); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
 }
 
 // Logout ends the session, for a client replaced by one with other

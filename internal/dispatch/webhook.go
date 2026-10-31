@@ -17,6 +17,7 @@ import (
 	"github.com/damhau/rvav/internal/hosts"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // SecretFunc opens a stored secret by name.
@@ -68,7 +69,8 @@ func (w *Webhook) client() *http.Client {
 		return w.Client
 	}
 	// No redirects: an allowed host can't send the event elsewhere.
-	return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &http.Client{Transport: trust.Transport(trust.Options{}),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {

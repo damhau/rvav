@@ -82,6 +82,7 @@ setting is set):
 - **Allowed hosts:** the hosts REST value sources and webhooks may call.
   None listed, none is called.
 - **Sync intervals:** in each connection's tab, how often rvav reads it.
+- **Trusted certificates:** see [below](#trusted-certificates).
 - **AWX › Inventory token:** the token AWX's inventory source reads rvav's
   VMs with. rvav makes it for a user of its own (an auditor no one signs
   in as), valid a year, and puts it in the source's "rvav API" credential
@@ -89,6 +90,31 @@ setting is set):
   one before is revoked and the source synced. Make a new one before it
   expires. Set the inventory source ID first; `RVAV_INVENTORY_TOKEN` locks
   it.
+
+### Trusted certificates
+
+rvav checks the certificate of every server it connects to against the
+system's CAs and those of the **CA bundle** (**Integrations › Trusted
+certificates**). A connection's test shows its server's certificate
+first: who it was issued to and by, until when, its SHA-256, and whether
+rvav trusts it. When it doesn't, the test stops there and offers:
+- **Trust this certificate** (vCenter, the vCenters added, AWX,
+  EfficientIP, NSX, vRA): its SHA-256 goes in the connection's **Trusted
+  certificate** field, and TLS verification on. Save, with the password
+  or token again (a new pin needs it, as a new address does), then test.
+  For a self-signed certificate. When the server's certificate is
+  renewed, test and trust it again.
+- **Add it to the CA bundle:** the CA that issued it (or a self-signed
+  certificate itself) is added to the bundle, once you confirm that every
+  connection will trust what it signs. Prefer it for a private CA: renewed
+  certificates stay trusted, and the identity provider and Git, which take
+  no pin, need it.
+
+The bundle's **Check** lists its certificates, and says which have
+expired. Saved, it applies as a connection does: each process finishes its
+work and starts again with it. A connection's test uses it at once.
+"Skip TLS verification" remains for labs; its test shows the certificate,
+not checked.
 
 ## The identity provider
 

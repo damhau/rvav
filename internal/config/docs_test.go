@@ -74,7 +74,8 @@ func TestEverySettingIsDocumented(t *testing.T) {
 func TestWhereEachSettingIsSet(t *testing.T) {
 	panel := map[string]string{"oidc": "Identity provider", "vcenter": "vCenter", "console": "vCenter › Console", "awx": "AWX",
 		"efficientip": "EfficientIP", "nsx": "NSX", "git": "Git", "vra": "vRA", "smtp": "Email",
-		"teams": "Microsoft Teams", "slack": "Slack", "hosts": "Allowed hosts"}
+		"teams": "Microsoft Teams", "slack": "Slack", "hosts": "Allowed hosts",
+		"trust": "Trusted certificates"}
 	// Variables that lock what a tab does rather than a field: the token
 	// rvav would make for AWX's inventory source (U1.4).
 	inUI := map[string]string{"RVAV_INVENTORY_TOKEN": "Integrations › AWX"}

@@ -3,7 +3,9 @@
 // token is write-only. Saved, a connection applies as each process drains
 // and starts again; the console, vRA, notification channels, allowed hosts
 // and sync intervals on next use. The identity provider, first, has a panel
-// of its own; the console's is in vCenter's tab.
+// of its own; the console's is in vCenter's tab. A connection's test shows
+// its server's certificate, pinned here or trusted through the CA bundle of
+// Trusted certificates (U1.4).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useState } from "react";
@@ -22,6 +24,7 @@ import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
 import { IdentityProvider } from "./IdentityProvider";
 import { InventoryToken } from "./InventoryToken";
+import { ServerCertificate } from "./ServerCertificate";
 import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
@@ -45,6 +48,15 @@ const interval = (what: string): Setting => ({
   hint: `How often ${what}, for example 5m or 1h30m (30s to 24h); read on next use`,
 });
 
+/** A certificate trusted for the connection besides those the CAs vouch for. */
+const pin = (env: string): Setting => ({
+  name: "cert_sha256",
+  label: "Trusted certificate (SHA-256)",
+  env,
+  type: "string",
+  hint: "A self-signed one, trusted besides the CAs: Trust this certificate, after a test, sets it",
+});
+
 interface Setting {
   name: string;
   label: string;
@@ -53,6 +65,9 @@ interface Setting {
   hint?: string;
   // Several lines: a private key, known_hosts lines.
   multiline?: boolean;
+  rows?: number;
+  // Across the form's two columns.
+  wide?: boolean;
 }
 
 // The settings of each integration, as the server's config.Fields; Slack
@@ -75,6 +90,7 @@ const fields: Record<
       { name: "username", label: "User", env: "RVAV_VCENTER_USERNAME", type: "string" },
       { name: "name", label: "Name shown", env: "RVAV_VCENTER_NAME", type: "string" },
       { ...interval("the inventory is read in full; changes come in between"), env: "RVAV_SYNC_INTERVAL" },
+      pin("RVAV_VCENTER_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_VCENTER_INSECURE", type: "bool" },
     ],
   },
@@ -129,6 +145,7 @@ const fields: Record<
       },
       { name: "inventory_source_id", label: "Inventory source ID", env: "RVAV_AWX_INVENTORY_SOURCE_ID", type: "int" },
       { ...interval("templates are read"), env: "RVAV_AWX_SYNC_INTERVAL" },
+      pin("RVAV_AWX_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_AWX_INSECURE", type: "bool" },
     ],
   },
@@ -150,6 +167,7 @@ const fields: Record<
         hint: "Tags what this rvav creates",
       },
       { ...interval("subnets are read"), env: "RVAV_IPAM_SYNC_INTERVAL" },
+      pin("RVAV_EFFICIENTIP_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_EFFICIENTIP_INSECURE", type: "bool" },
     ],
   },
@@ -174,6 +192,7 @@ const fields: Record<
         hint: "A principal identity instead of a password: its PEM certificate on rvav's hosts",
       },
       { name: "key_file", label: "Key file", env: "RVAV_NSX_KEY_FILE", type: "string" },
+      pin("RVAV_NSX_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_NSX_INSECURE", type: "bool" },
     ],
   },
@@ -251,6 +270,7 @@ const fields: Record<
         type: "string",
         hint: "The user's, for example corp.example",
       },
+      pin("RVAV_VRA_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_VRA_INSECURE", type: "bool" },
     ],
   },
@@ -330,6 +350,24 @@ const fields: Record<
         env: "RVAV_WEBHOOK_HOSTS",
         type: "list",
         hint: "Comma-separated, as above: the hosts subscriptions may post to",
+      },
+    ],
+  },
+  // The CAs every connection trusts besides the system's (U1.4); no secret.
+  trust: {
+    title: "Trusted certificates",
+    panel: "CA bundle",
+    test: "Check",
+    settings: [
+      {
+        name: "ca_bundle",
+        label: "CA certificates (PEM)",
+        env: "RVAV_CA_BUNDLE",
+        type: "string",
+        multiline: true,
+        rows: 10,
+        wide: true,
+        hint: "Trusted by every connection besides the system's CAs: a private CA's root or issuing CA. Certificates only, no key",
       },
     ],
   },
@@ -413,6 +451,18 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       failed(e, "The test didn't run");
     },
   });
+  // Trust this certificate: its SHA-256 in the form, with TLS checks on.
+  const pinField = def.settings.find((f) => f.name === "cert_sha256");
+  const trustIt = pinField
+    ? (sha256: string) => {
+        setValues((v) => ({
+          ...v,
+          cert_sha256: sha256,
+          ...(it.locked.includes("insecure") ? {} : { insecure: false }),
+        }));
+        toast.info("Its SHA-256 is in the form", { description: "Save the settings to trust it, then test again." });
+      }
+    : undefined;
   const lockedHint = (f: Setting) => (
     <span className="inline-flex items-center gap-1">
       <Lock className="size-3" aria-hidden /> Set by {f.env}
@@ -460,10 +510,17 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
               );
             if (f.multiline)
               return (
-                <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
+                <Field
+                  key={f.name}
+                  label={f.label}
+                  htmlFor={id}
+                  hint={hint}
+                  error={error}
+                  className={f.wide ? "md:col-span-2" : undefined}
+                >
                   <Textarea
                     id={id}
-                    rows={3}
+                    rows={f.rows ?? 3}
                     spellCheck={false}
                     className="font-mono text-xs"
                     disabled={locked}
@@ -577,12 +634,20 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                   ) : (
                     <CircleX className="mt-px size-3.5 shrink-0 text-bad" aria-label="Failed" />
                   )}
-                  <span>
+                  <span className="break-words">
                     <span className="font-medium">{c.name}:</span> {c.message}
                   </span>
                 </li>
               ))}
             </ul>
+            {test.data.certificate && (
+              <ServerCertificate
+                cert={test.data.certificate}
+                onTrust={trustIt}
+                pinInForm={values.cert_sha256 === test.data.certificate.sha256}
+                pinLocked={pinField && it.locked.includes("cert_sha256") ? pinField.env : undefined}
+              />
+            )}
           </section>
         )}
       </form>

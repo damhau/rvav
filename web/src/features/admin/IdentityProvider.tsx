@@ -17,6 +17,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { TRIAL_CHANNEL, type TrialMessage, openTrial, webOverrides } from "@/lib/auth";
 import { failed, fieldErrors } from "./governance/common";
+import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
 type Name = "issuer" | "discovery_url" | "client_id" | "scopes" | "groups_claim";
@@ -261,6 +262,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
                 </li>
               ))}
             </ul>
+            {test.data.certificate && <ServerCertificate cert={test.data.certificate} />}
           </section>
         )}
         {waiting && (

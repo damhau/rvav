@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // The contract tests run the client against a real AWX with rvav's test
@@ -22,7 +24,7 @@ func contractClient(t *testing.T) (*HTTPClient, context.Context) {
 	if url == "" || token == "" {
 		t.Skip("set RVAV_AWX_TEST_URL and RVAV_AWX_TEST_TOKEN to run against a test AWX")
 	}
-	c, err := NewHTTPClient(url, token, true)
+	c, err := NewHTTPClient(url, token, trust.Options{Insecure: true})
 	if err != nil {
 		t.Fatal(err)
 	}

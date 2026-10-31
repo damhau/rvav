@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -29,7 +31,8 @@ import (
 // as each process drains and starts again (app.Run); test connection tries
 // the settings given, saved or not.
 
-var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "smtp", "teams", "slack", "hosts"}
+var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "smtp", "teams", "slack", "hosts",
+	"trust"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -53,6 +56,9 @@ func address(kind string, settings map[string]any) string {
 		return str("username")
 	case "slack":
 		return str("api_url")
+	case "trust":
+		// No secret: set when it holds a CA.
+		return strings.TrimSpace(str("ca_bundle"))
 	case "hosts":
 		var out []string
 		for _, k := range []string{"rest_source_hosts", "webhook_hosts"} {
@@ -206,6 +212,9 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 	if len(errs) > 0 {
 		return api.Integration{}, &ValidationError{Errors: errs}
 	}
+	if v, ok := settings["cert_sha256"].(string); ok && v != "" {
+		settings["cert_sha256"], _ = trust.NormalFingerprint(v)
+	}
 	stored, err := s.Store.StoredIntegrations(ctx)
 	if err != nil {
 		return api.Integration{}, err
@@ -353,26 +362,44 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	// The CAs rvav's processes trust once they apply the CA bundle saved,
+	// or the one given.
+	roots, bundle := s.pendingRoots(ctx, stored)
+	if kind == "trust" {
+		roots, bundle = rootsOf(cfg.CABundle), cfg.CABundle
+	}
+	if u, o, pinnable := certificateOf(kind, cfg, settings); u != "" {
+		o.Roots = roots
+		cert, ok := s.checkCertificate(ctx, u, o, pinnable, check)
+		out.Certificate = cert
+		if !ok {
+			out.Ok = false
+			s.audit(ctx, p, "settings.test."+kind, "integration", kind, nil, map[string]any{"ok": false})
+			return out, nil
+		}
+	}
 	switch kind {
 	case "oidc":
-		s.testOIDC(ctx, settings, check)
+		s.testOIDC(ctx, settings, roots, check)
 	case "vcenter":
-		s.testVCenter(ctx, cfg.VCenter, check)
+		s.testVCenter(ctx, cfg.VCenter, roots, check)
 	case "console":
-		testConsole(ctx, cfg, check)
+		testConsole(ctx, cfg, roots, check)
 	case "vra":
-		testVRA(ctx, cfg.VRA, check)
+		testVRA(ctx, cfg.VRA, roots, check)
+	case "trust":
+		testTrust(cfg.CABundle, check)
 	case "hosts":
 		check("Hosts", nil, fmt.Sprintf("REST value sources may call %s; webhooks %s.",
 			hostList(cfg.RESTSourceHosts), hostList(cfg.WebhookHosts)))
 	case "awx":
-		s.testAWX(ctx, cfg.AWX, check)
+		s.testAWX(ctx, cfg.AWX, roots, check)
 	case "efficientip":
-		s.testEfficientIP(ctx, cfg.IPAM, check)
+		s.testEfficientIP(ctx, cfg.IPAM, roots, check)
 	case "nsx":
-		s.testNSX(ctx, cfg.NSX, check)
+		s.testNSX(ctx, cfg.NSX, roots, check)
 	case "git":
-		testGit(ctx, cfg.Git, check)
+		testGit(ctx, cfg.Git, bundle, check)
 	case "smtp":
 		if cfg.SMTP.Host == "" {
 			check("Mail server", errors.New("no SMTP host is set"), "")
@@ -442,6 +469,14 @@ func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret 
 	if v, ok := given["insecure"].(bool); ok && v && current["insecure"] != true {
 		moved = true
 	}
+	// A certificate pinned: a server the CAs don't vouch for is trusted.
+	if v, _ := given["cert_sha256"].(string); v != "" {
+		pin, _ := trust.NormalFingerprint(v)
+		was, _ := current["cert_sha256"].(string)
+		if was, _ = trust.NormalFingerprint(was); pin != was {
+			moved = true
+		}
+	}
 	if !moved || !hasSecret {
 		return nil
 	}
@@ -455,17 +490,19 @@ func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret 
 		return nil
 	}
 	return &ValidationError{Errors: []api.FieldError{fieldErr("/secret", "required",
-		"A new address, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.")}}
+		"A new address, a certificate pinned, or TLS checks turned off, needs the password or token again: the saved one only goes where it was given for.")}}
 }
 
 type checkFunc func(name string, err error, ok string) bool
 
-func (s *Service) testVCenter(ctx context.Context, c config.VCenterConfig, check checkFunc) {
+func (s *Service) testVCenter(ctx context.Context, c config.VCenterConfig, roots *x509.CertPool, check checkFunc) {
 	if c.URL == "" {
 		check("Settings", errors.New("give vCenter's URL"), "")
 		return
 	}
-	vc, err := vsphere.New(ctx, c.Name, c.URL, c.Username, c.Password, c.Insecure)
+	o := c.TLS()
+	o.Roots = roots
+	vc, err := vsphere.New(ctx, c.Name, c.URL, c.Username, c.Password, o)
 	if !check("Sign in", err, "Signed in to "+c.URL+" as "+c.Username+".") {
 		return
 	}
@@ -480,7 +517,7 @@ func (s *Service) testVCenter(ctx context.Context, c config.VCenterConfig, check
 
 // testConsole signs in to vCenter as the console's account and gets a
 // clone ticket, as opening a console does (ADR-0012).
-func testConsole(ctx context.Context, c config.Config, check checkFunc) {
+func testConsole(ctx context.Context, c config.Config, roots *x509.CertPool, check checkFunc) {
 	if c.ConsoleUsername == "" {
 		check("Console account", errors.New("none: VMRC asks each user to sign in to vCenter"), "")
 	} else if c.VCenter.URL == "" {
@@ -488,7 +525,9 @@ func testConsole(ctx context.Context, c config.Config, check checkFunc) {
 	} else if c.ConsolePassword == "" {
 		check("Console account", errors.New("give its password: none was given for vCenter's address now"), "")
 	} else {
-		vc, err := vsphere.New(ctx, c.VCenter.Name, c.VCenter.URL, c.ConsoleUsername, c.ConsolePassword, c.VCenter.Insecure)
+		o := c.VCenter.TLS()
+		o.Roots = roots
+		vc, err := vsphere.New(ctx, c.VCenter.Name, c.VCenter.URL, c.ConsoleUsername, c.ConsolePassword, o)
 		if check("Sign in", err, "Signed in to "+c.VCenter.URL+" as "+c.ConsoleUsername+".") {
 			defer func() { _ = vc.Logout(context.WithoutCancel(ctx)) }()
 			_, err := vc.CloneTicket(ctx)
@@ -503,13 +542,13 @@ func testConsole(ctx context.Context, c config.Config, check checkFunc) {
 }
 
 // testVRA signs in to the vRA the importer reads and lists its projects.
-func testVRA(ctx context.Context, c config.VRAConfig, check checkFunc) {
+func testVRA(ctx context.Context, c config.VRAConfig, roots *x509.CertPool, check checkFunc) {
 	if c.URL == "" {
 		check("Settings", errors.New("give vRA's URL"), "")
 		return
 	}
 	client, err := vra.New(vra.Options{URL: c.URL, Token: c.Token, Username: c.Username, Password: c.Password, Domain: c.Domain,
-		Insecure: c.Insecure})
+		Insecure: c.Insecure, Pin: c.CertSHA256, Roots: roots})
 	if !check("Settings", err, "") {
 		return
 	}
@@ -531,7 +570,7 @@ func safeInv(inv *vsphere.Inventory) *vsphere.Inventory {
 	return inv
 }
 
-func (s *Service) testAWX(ctx context.Context, c config.AWXConfig, check checkFunc) {
+func (s *Service) testAWX(ctx context.Context, c config.AWXConfig, roots *x509.CertPool, check checkFunc) {
 	if c.Fake {
 		check("Fake", nil, "This rvav uses the fake AWX (RVAV_FAKE_AWX=1): jobs are simulated.")
 		return
@@ -540,7 +579,9 @@ func (s *Service) testAWX(ctx context.Context, c config.AWXConfig, check checkFu
 		check("Settings", errors.New("give AWX's URL and rvav's organisation"), "")
 		return
 	}
-	client, err := awx.NewHTTPClient(c.URL, c.Token, c.Insecure)
+	o := c.TLS()
+	o.Roots = roots
+	client, err := awx.NewHTTPClient(c.URL, c.Token, o)
 	if !check("Connection", err, "") {
 		return
 	}
@@ -556,7 +597,7 @@ func (s *Service) testAWX(ctx context.Context, c config.AWXConfig, check checkFu
 	}
 }
 
-func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfig, check checkFunc) {
+func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfig, roots *x509.CertPool, check checkFunc) {
 	if c.Fake {
 		check("Fake", nil, "This rvav uses a fake SOLIDserver in its own process (RVAV_FAKE_EFFICIENTIP=1).")
 		return
@@ -566,7 +607,8 @@ func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfi
 		return
 	}
 	client, err := efficientip.New(efficientip.Options{URL: c.URL, Auth: efficientip.Auth(c.Auth), Username: c.Username,
-		Password: c.Password, Insecure: c.Insecure, Space: c.Space, DNSServer: c.DNSServer, DNSView: c.DNSView, Instance: c.Instance})
+		Password: c.Password, Insecure: c.Insecure, Pin: c.CertSHA256, Roots: roots, Space: c.Space, DNSServer: c.DNSServer,
+		DNSView: c.DNSView, Instance: c.Instance})
 	if !check("Settings", err, "") {
 		return
 	}
@@ -579,19 +621,20 @@ func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfi
 }
 
 // GitRepo is the catalog's repository as configured (ADR-0029), its clone
-// kept under cache.
-func GitRepo(c config.GitConfig, cache string) (*gitrepo.Repo, error) {
+// kept under cache, trusting the CAs of caBundle besides the system's.
+func GitRepo(c config.GitConfig, cache, caBundle string) (*gitrepo.Repo, error) {
 	return gitrepo.New(gitrepo.Options{URL: c.URL, Branch: c.Branch, Dir: c.Dir, Username: c.Username, Credential: c.Credential,
-		KnownHosts: c.KnownHosts, Insecure: c.Insecure, Committer: gitrepo.Person{Name: "rvav", Email: c.Committer}, Cache: cache})
+		KnownHosts: c.KnownHosts, Insecure: c.Insecure, Committer: gitrepo.Person{Name: "rvav", Email: c.Committer}, Cache: cache,
+		CABundle: caBundle})
 }
 
 // testGit signs in to the catalog's repository and reads its branch.
-func testGit(ctx context.Context, c config.GitConfig, check checkFunc) {
+func testGit(ctx context.Context, c config.GitConfig, caBundle string, check checkFunc) {
 	if c.URL == "" {
 		check("Settings", errors.New("give the repository's URL"), "")
 		return
 	}
-	repo, err := GitRepo(c, "")
+	repo, err := GitRepo(c, "", caBundle)
 	if !check("Settings", err, "A repository on "+gitrepo.Scheme(c.URL)+".") {
 		return
 	}
@@ -610,16 +653,16 @@ func testGit(ctx context.Context, c config.GitConfig, check checkFunc) {
 func (s *Service) nsx() (*nsx.Client, error) {
 	c := s.Config.NSX
 	return nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile, KeyFile: c.KeyFile,
-		Insecure: c.Insecure})
+		Insecure: c.Insecure, Pin: c.CertSHA256})
 }
 
-func (s *Service) testNSX(ctx context.Context, c config.NSXConfig, check checkFunc) {
+func (s *Service) testNSX(ctx context.Context, c config.NSXConfig, roots *x509.CertPool, check checkFunc) {
 	if c.URL == "" {
 		check("Settings", errors.New("give the NSX Manager's URL"), "")
 		return
 	}
 	client, err := nsx.New(nsx.Options{URL: c.URL, Username: c.Username, Password: c.Password, CertFile: c.CertFile, KeyFile: c.KeyFile,
-		Insecure: c.Insecure})
+		Insecure: c.Insecure, Pin: c.CertSHA256, Roots: roots})
 	if err != nil {
 		check("Settings", err, "")
 		return

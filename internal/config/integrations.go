@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Integration settings set from the UI (ADR-0020): stored in the database,
@@ -51,6 +53,7 @@ var Fields = map[string][]Field{
 		{"username", "RVAV_VCENTER_USERNAME", "string", false},
 		{"password", "RVAV_VCENTER_PASSWORD", "string", true},
 		{"insecure", "RVAV_VCENTER_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_VCENTER_CERT_SHA256", "string", false},
 		{"name", "RVAV_VCENTER_NAME", "string", false},
 		{"sync_interval", "RVAV_SYNC_INTERVAL", "duration", false},
 	},
@@ -69,6 +72,7 @@ var Fields = map[string][]Field{
 		{"action_labels", "RVAV_AWX_ACTION_LABELS", "list", false},
 		{"inventory_source_id", "RVAV_AWX_INVENTORY_SOURCE_ID", "int", false},
 		{"insecure", "RVAV_AWX_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_AWX_CERT_SHA256", "string", false},
 		{"sync_interval", "RVAV_AWX_SYNC_INTERVAL", "duration", false},
 	},
 	"efficientip": {
@@ -81,6 +85,7 @@ var Fields = map[string][]Field{
 		{"dns_view", "RVAV_EFFICIENTIP_DNS_VIEW", "string", false},
 		{"instance_id", "RVAV_INSTANCE_ID", "string", false},
 		{"insecure", "RVAV_EFFICIENTIP_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_EFFICIENTIP_CERT_SHA256", "string", false},
 		{"sync_interval", "RVAV_IPAM_SYNC_INTERVAL", "duration", false},
 	},
 	// The NSX Manager (ADR-0028): a user and password, or a principal
@@ -92,6 +97,7 @@ var Fields = map[string][]Field{
 		{"cert_file", "RVAV_NSX_CERT_FILE", "string", false},
 		{"key_file", "RVAV_NSX_KEY_FILE", "string", false},
 		{"insecure", "RVAV_NSX_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_NSX_CERT_SHA256", "string", false},
 	},
 	// The catalog's repository (ADR-0029): a token over HTTPS, or a deploy
 	// key (its private key) over SSH, with the server's host keys.
@@ -114,6 +120,7 @@ var Fields = map[string][]Field{
 		{"domain", "RVAV_VRA_DOMAIN", "string", false},
 		{"credential", "RVAV_VRA_TOKEN", "string", true},
 		{"insecure", "RVAV_VRA_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_VRA_CERT_SHA256", "string", false},
 	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
@@ -139,6 +146,11 @@ var Fields = map[string][]Field{
 		{"bot_token", "RVAV_SLACK_BOT_TOKEN", "string", true},
 		{"signing_secret", "RVAV_SLACK_SIGNING_SECRET", "string", true},
 		{"api_url", "RVAV_SLACK_API_URL", "string", false},
+	},
+	// The CAs every connection trusts besides the system's (package trust).
+	// It applies as connections do.
+	"trust": {
+		{"ca_bundle", "RVAV_CA_BUNDLE", "string", false},
 	},
 	// The hosts rvav may call (package hosts): REST value sources' and
 	// webhooks'.
@@ -168,6 +180,22 @@ func ConsoleFor(v VCenterConfig) string {
 	}
 	return v.URL
 }
+
+// TLS is how a connection checks its server's certificate (package
+// trust): the CAs, or the certificate pinned.
+func (c VCenterConfig) TLS() trust.Options {
+	return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256}
+}
+
+func (c AWXConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
+
+func (c EfficientIPConfig) TLS() trust.Options {
+	return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256}
+}
+
+func (c NSXConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
+
+func (c VRAConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
 
 // Locked lists the settings of an integration an environment variable sets.
 func Locked(kind string) []string {
@@ -236,6 +264,12 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 			*dst = s.Secret
 		}
 	}
+	// A pin cleared in the UI trusts the CAs only.
+	pin := func(name string, dst *string) {
+		if v, ok := s.Settings[name].(string); ok && !locked[name] {
+			*dst = v
+		}
+	}
 	dur := func(name string, dst *time.Duration) {
 		if v, ok := s.Settings[name].(string); ok && v != "" && !locked[name] {
 			if d, err := time.ParseDuration(v); err == nil && d > 0 {
@@ -255,6 +289,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("username", &c.VCenter.Username)
 		secret("password", &c.VCenter.Password)
 		flag("insecure", &c.VCenter.Insecure)
+		pin("cert_sha256", &c.VCenter.CertSHA256)
 		str("name", &c.VCenter.Name)
 		dur("sync_interval", &c.SyncInterval)
 	case "console":
@@ -274,6 +309,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 			c.AWX.InventorySourceID = int(v)
 		}
 		flag("insecure", &c.AWX.Insecure)
+		pin("cert_sha256", &c.AWX.CertSHA256)
 		dur("sync_interval", &c.AWX.SyncInterval)
 	case "efficientip":
 		str("url", &c.IPAM.URL)
@@ -285,6 +321,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("dns_view", &c.IPAM.DNSView)
 		str("instance_id", &c.IPAM.Instance)
 		flag("insecure", &c.IPAM.Insecure)
+		pin("cert_sha256", &c.IPAM.CertSHA256)
 		dur("sync_interval", &c.IPAMSyncInterval)
 	case "nsx":
 		str("url", &c.NSX.URL)
@@ -293,6 +330,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("cert_file", &c.NSX.CertFile)
 		str("key_file", &c.NSX.KeyFile)
 		flag("insecure", &c.NSX.Insecure)
+		pin("cert_sha256", &c.NSX.CertSHA256)
 	case "git":
 		str("url", &c.Git.URL)
 		str("branch", &c.Git.Branch)
@@ -308,6 +346,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("username", &c.VRA.Username)
 		str("domain", &c.VRA.Domain)
 		flag("insecure", &c.VRA.Insecure)
+		pin("cert_sha256", &c.VRA.CertSHA256)
 		// With a user, the secret is its password; without, a refresh token.
 		if s.Secret != "" && !locked["credential"] {
 			if c.VRA.Username != "" {
@@ -336,6 +375,11 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		c.Teams.ServiceURL = strings.TrimRight(c.Teams.ServiceURL, "/")
 		c.Teams.LoginURL = strings.TrimRight(c.Teams.LoginURL, "/")
 		c.Teams.GraphURL = strings.TrimRight(c.Teams.GraphURL, "/")
+	case "trust":
+		// Cleared in the UI, the system's CAs only.
+		if v, ok := s.Settings["ca_bundle"].(string); ok && !locked["ca_bundle"] {
+			c.CABundle = v
+		}
 	case "hosts":
 		strs("rest_source_hosts", &c.RESTSourceHosts)
 		strs("webhook_hosts", &c.WebhookHosts)
@@ -373,27 +417,33 @@ func (c Config) Settings(kind string) map[string]any {
 		return map[string]any{"issuer": c.Auth.OIDCIssuer, "discovery_url": c.Auth.OIDCDiscoveryURL, "client_id": c.Auth.OIDCClientID,
 			"scopes": c.Auth.Scopes, "groups_claim": c.Auth.GroupsClaim}
 	case "vcenter":
-		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure, "name": c.VCenter.Name,
+		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure,
+			"cert_sha256": c.VCenter.CertSHA256, "name": c.VCenter.Name,
 			"sync_interval": FormatDuration(c.SyncInterval)}
 	case "console":
 		return map[string]any{"username": c.ConsoleUsername, "sdk_urls": nonNil(c.WMKSSDKURLs)}
 	case "awx":
 		return map[string]any{"url": c.AWX.URL, "organization": c.AWX.Organization, "catalog_labels": c.AWX.CatalogLabels,
 			"action_labels": c.AWX.ActionLabels, "inventory_source_id": c.AWX.InventorySourceID, "insecure": c.AWX.Insecure,
-			"fake": c.AWX.Fake, "sync_interval": FormatDuration(c.AWX.SyncInterval)}
+			"cert_sha256": c.AWX.CertSHA256,
+			"fake":        c.AWX.Fake, "sync_interval": FormatDuration(c.AWX.SyncInterval)}
 	case "efficientip":
 		return map[string]any{"url": c.IPAM.URL, "auth": c.IPAM.Auth, "username": c.IPAM.Username, "space": c.IPAM.Space,
 			"dns_server": c.IPAM.DNSServer, "dns_view": c.IPAM.DNSView, "instance_id": c.IPAM.Instance, "insecure": c.IPAM.Insecure,
-			"fake": c.IPAM.Fake, "sync_interval": FormatDuration(c.IPAMSyncInterval)}
+			"cert_sha256": c.IPAM.CertSHA256,
+			"fake":        c.IPAM.Fake, "sync_interval": FormatDuration(c.IPAMSyncInterval)}
 	case "nsx":
 		return map[string]any{"url": c.NSX.URL, "username": c.NSX.Username, "cert_file": c.NSX.CertFile, "key_file": c.NSX.KeyFile,
-			"insecure": c.NSX.Insecure}
+			"insecure": c.NSX.Insecure, "cert_sha256": c.NSX.CertSHA256}
 	case "git":
 		return map[string]any{"url": c.Git.URL, "branch": c.Git.Branch, "dir": c.Git.Dir, "username": c.Git.Username,
 			"known_hosts": c.Git.KnownHosts, "insecure": c.Git.Insecure, "committer": c.Git.Committer,
 			"sync_interval": FormatDuration(c.Git.Interval)}
 	case "vra":
-		return map[string]any{"url": c.VRA.URL, "username": c.VRA.Username, "domain": c.VRA.Domain, "insecure": c.VRA.Insecure}
+		return map[string]any{"url": c.VRA.URL, "username": c.VRA.Username, "domain": c.VRA.Domain, "insecure": c.VRA.Insecure,
+			"cert_sha256": c.VRA.CertSHA256}
+	case "trust":
+		return map[string]any{"ca_bundle": c.CABundle}
 	case "hosts":
 		return map[string]any{"rest_source_hosts": nonNil(c.RESTSourceHosts), "webhook_hosts": nonNil(c.WebhookHosts)}
 	case "smtp":
@@ -498,6 +548,16 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 			if u, err := url.Parse("https://" + bare); h != "" && (err != nil || u.Host == "" || u.Host != bare) {
 				errs[key] = fmt.Sprintf("%q is not a host: give a name such as cmdb.corp.example, *.corp.example, or http://host:port for plain http.", h)
 			}
+		}
+	}
+	if p, ok := settings["cert_sha256"].(string); ok && strings.TrimSpace(p) != "" {
+		if _, ok := trust.NormalFingerprint(p); !ok {
+			errs["cert_sha256"] = "A certificate's SHA-256: 32 bytes in hex, with or without colons."
+		}
+	}
+	if b, ok := settings["ca_bundle"].(string); ok && kind == "trust" {
+		if _, err := trust.Parse(b); err != nil {
+			errs["ca_bundle"] = "CA certificates in PEM: " + err.Error() + "."
 		}
 	}
 	if kind == "oidc" {

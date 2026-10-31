@@ -45,18 +45,18 @@ func CheckProvider(ctx context.Context, ps ProviderSettings) ProviderCheck {
 		out.Discovery = fmt.Errorf("the token endpoint, %s, is not at the issuer's origin (%s): the browser may only reach that one",
 			out.Info.TokenEndpoint, Origin(ps.Issuer))
 	}
-	out.Keys, out.KeysErr = signingKeys(ctx, out.Info.JWKSURL)
+	out.Keys, out.KeysErr = signingKeys(ctx, ps.httpClient(), out.Info.JWKSURL)
 	return out
 }
 
-func signingKeys(ctx context.Context, jwksURL string) ([]string, error) {
+func signingKeys(ctx context.Context, client *http.Client, jwksURL string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("the keys' address, %q: %v", jwksURL, err)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching the keys: %v", err)
 	}

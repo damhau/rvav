@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // CatalogIcons are the icons an item may have; the web app draws the same
@@ -162,7 +163,7 @@ func (r *RESTSources) Forget() {
 }
 
 func NewRESTSources(hosts []string) *RESTSources {
-	return &RESTSources{Hosts: hosts, Client: &http.Client{Timeout: 5 * time.Second,
+	return &RESTSources{Hosts: hosts, Client: &http.Client{Timeout: 5 * time.Second, Transport: trust.Transport(trust.Options{}),
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 

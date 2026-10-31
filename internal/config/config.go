@@ -40,6 +40,9 @@ type Config struct {
 	// PublicURL is where people open rvav: links in notifications start
 	// with it (RVAV_PUBLIC_URL).
 	PublicURL string
+	// CABundle are CAs trusted besides the system's, in PEM, for every
+	// connection rvav makes (package trust).
+	CABundle string
 
 	// SecretsKey encrypts stored secrets (32 bytes, base64); RESTSourceHosts
 	// are the hosts `rest` value sources may call (ADR-0019).
@@ -112,6 +115,9 @@ type VCenterConfig struct {
 	Username string
 	Password string
 	Insecure bool
+	// CertSHA256 is a certificate trusted for this connection besides
+	// those the CAs vouch for: pinned by its SHA-256 (package trust).
+	CertSHA256 string
 	// Name is how the vCenter appears in the UI and API, for example vc01.corp.example.
 	Name string
 }
@@ -125,6 +131,9 @@ type VRAConfig struct {
 	Password string
 	Domain   string
 	Insecure bool
+	// CertSHA256 is a certificate trusted for this connection besides
+	// those the CAs vouch for: pinned by its SHA-256 (package trust).
+	CertSHA256 string
 }
 
 // NSXConfig: where the NSX Manager is, and rvav's account there, a user
@@ -136,6 +145,9 @@ type NSXConfig struct {
 	CertFile string
 	KeyFile  string
 	Insecure bool
+	// CertSHA256 is a certificate trusted for this connection besides
+	// those the CAs vouch for: pinned by its SHA-256 (package trust).
+	CertSHA256 string
 }
 
 // Configured says whether rvav has an NSX Manager.
@@ -173,9 +185,12 @@ type EfficientIPConfig struct {
 	Username    string // the token's key ID with token authentication
 	Password    string // the token's secret with token authentication
 	Insecure    bool
-	Space       string
-	DNSServer   string
-	DNSView     string
+	// CertSHA256 is a certificate trusted for this connection besides
+	// those the CAs vouch for: pinned by its SHA-256 (package trust).
+	CertSHA256 string
+	Space      string
+	DNSServer  string
+	DNSView    string
 	// Instance tells this rvav's objects from another's on a shared
 	// SOLIDserver (RVAV_INSTANCE_ID).
 	Instance string
@@ -220,9 +235,12 @@ type AWXConfig struct {
 	// The catalog imports the organisation's templates with any of these labels.
 	CatalogLabels []string
 	// Templates with any of these labels become day-2 actions.
-	ActionLabels      []string
-	SyncInterval      time.Duration
-	Insecure          bool
+	ActionLabels []string
+	SyncInterval time.Duration
+	Insecure     bool
+	// CertSHA256 is a certificate trusted for this connection besides
+	// those the CAs vouch for: pinned by its SHA-256 (package trust).
+	CertSHA256        string
 	InventorySourceID int
 	// Fake only: time each fake task takes, and a task title that fails.
 	FakeTaskDelay time.Duration
@@ -264,29 +282,32 @@ func Load() (Config, error) {
 			APIKey:     env("RVAV_TEMPORAL_API_KEY", ""),
 		},
 		VCenter: VCenterConfig{
-			URL:      env("RVAV_VCENTER_URL", ""),
-			Username: env("RVAV_VCENTER_USERNAME", ""),
-			Password: env("RVAV_VCENTER_PASSWORD", ""),
-			Insecure: boolean("RVAV_VCENTER_INSECURE"),
-			Name:     env("RVAV_VCENTER_NAME", "vc01.corp.example"),
+			URL:        env("RVAV_VCENTER_URL", ""),
+			Username:   env("RVAV_VCENTER_USERNAME", ""),
+			Password:   env("RVAV_VCENTER_PASSWORD", ""),
+			Insecure:   boolean("RVAV_VCENTER_INSECURE"),
+			CertSHA256: env("RVAV_VCENTER_CERT_SHA256", ""),
+			Name:       env("RVAV_VCENTER_NAME", "vc01.corp.example"),
 		},
 		IPAM: EfficientIPConfig{
-			Fake:      boolean("RVAV_FAKE_EFFICIENTIP"),
-			URL:       env("RVAV_EFFICIENTIP_URL", ""),
-			Username:  env("RVAV_EFFICIENTIP_USERNAME", ""),
-			Password:  env("RVAV_EFFICIENTIP_PASSWORD", ""),
-			Insecure:  boolean("RVAV_EFFICIENTIP_INSECURE"),
-			Auth:      env("RVAV_EFFICIENTIP_AUTH", "native"),
-			Space:     env("RVAV_EFFICIENTIP_SPACE", ""),
-			DNSServer: env("RVAV_EFFICIENTIP_DNS_SERVER", ""),
-			DNSView:   env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
-			Instance:  env("RVAV_INSTANCE_ID", "rvav"),
+			Fake:       boolean("RVAV_FAKE_EFFICIENTIP"),
+			URL:        env("RVAV_EFFICIENTIP_URL", ""),
+			Username:   env("RVAV_EFFICIENTIP_USERNAME", ""),
+			Password:   env("RVAV_EFFICIENTIP_PASSWORD", ""),
+			Insecure:   boolean("RVAV_EFFICIENTIP_INSECURE"),
+			CertSHA256: env("RVAV_EFFICIENTIP_CERT_SHA256", ""),
+			Auth:       env("RVAV_EFFICIENTIP_AUTH", "native"),
+			Space:      env("RVAV_EFFICIENTIP_SPACE", ""),
+			DNSServer:  env("RVAV_EFFICIENTIP_DNS_SERVER", ""),
+			DNSView:    env("RVAV_EFFICIENTIP_DNS_VIEW", ""),
+			Instance:   env("RVAV_INSTANCE_ID", "rvav"),
 		},
 		SecretsKey:      env("RVAV_SECRETS_KEY", ""),
 		SecretsOldKeys:  list("RVAV_SECRETS_OLD_KEYS"),
 		RESTSourceHosts: list("RVAV_REST_SOURCE_HOSTS"),
 		WebhookHosts:    list("RVAV_WEBHOOK_HOSTS"),
 		PublicURL:       strings.TrimRight(env("RVAV_PUBLIC_URL", "http://localhost:5173"), "/"),
+		CABundle:        env("RVAV_CA_BUNDLE", ""),
 		Teams: TeamsConfig{
 			AppID:       env("RVAV_TEAMS_APP_ID", ""),
 			TenantID:    env("RVAV_TEAMS_TENANT_ID", ""),
@@ -309,12 +330,13 @@ func Load() (Config, error) {
 			Password: env("RVAV_SMTP_PASSWORD", ""),
 		},
 		NSX: NSXConfig{
-			URL:      env("RVAV_NSX_URL", ""),
-			Username: env("RVAV_NSX_USERNAME", ""),
-			Password: env("RVAV_NSX_PASSWORD", ""),
-			CertFile: env("RVAV_NSX_CERT_FILE", ""),
-			KeyFile:  env("RVAV_NSX_KEY_FILE", ""),
-			Insecure: boolean("RVAV_NSX_INSECURE"),
+			URL:        env("RVAV_NSX_URL", ""),
+			Username:   env("RVAV_NSX_USERNAME", ""),
+			Password:   env("RVAV_NSX_PASSWORD", ""),
+			CertFile:   env("RVAV_NSX_CERT_FILE", ""),
+			KeyFile:    env("RVAV_NSX_KEY_FILE", ""),
+			Insecure:   boolean("RVAV_NSX_INSECURE"),
+			CertSHA256: env("RVAV_NSX_CERT_SHA256", ""),
 		},
 		Git: GitConfig{
 			URL:           env("RVAV_GIT_URL", ""),
@@ -329,12 +351,13 @@ func Load() (Config, error) {
 			Cache:         env("RVAV_GIT_CACHE", filepath.Join(os.TempDir(), "rvav-git")),
 		},
 		VRA: VRAConfig{
-			URL:      env("RVAV_VRA_URL", ""),
-			Token:    env("RVAV_VRA_TOKEN", ""),
-			Username: env("RVAV_VRA_USERNAME", ""),
-			Password: env("RVAV_VRA_PASSWORD", ""),
-			Domain:   env("RVAV_VRA_DOMAIN", ""),
-			Insecure: boolean("RVAV_VRA_INSECURE"),
+			URL:        env("RVAV_VRA_URL", ""),
+			Token:      env("RVAV_VRA_TOKEN", ""),
+			Username:   env("RVAV_VRA_USERNAME", ""),
+			Password:   env("RVAV_VRA_PASSWORD", ""),
+			Domain:     env("RVAV_VRA_DOMAIN", ""),
+			Insecure:   boolean("RVAV_VRA_INSECURE"),
+			CertSHA256: env("RVAV_VRA_CERT_SHA256", ""),
 		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
@@ -344,6 +367,7 @@ func Load() (Config, error) {
 			CatalogLabels: list("RVAV_AWX_CATALOG_LABELS"),
 			ActionLabels:  list("RVAV_AWX_ACTION_LABELS"),
 			Insecure:      boolean("RVAV_AWX_INSECURE"),
+			CertSHA256:    env("RVAV_AWX_CERT_SHA256", ""),
 		},
 	}
 

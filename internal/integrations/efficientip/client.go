@@ -3,7 +3,7 @@ package efficientip
 import (
 	"context"
 	"crypto/sha3"
-	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/observe"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // HTTPClient talks to the SOLIDserver REST API. Services, methods and
@@ -58,6 +59,9 @@ type Options struct {
 	Username string // the token's key ID with AuthToken
 	Password string // the token's secret with AuthToken
 	Insecure bool
+	// Pin and Roots: a pinned certificate, and the CAs (package trust).
+	Pin   string
+	Roots *x509.CertPool
 	// Space limits the lookup of a subnet by CIDR to one IPAM space.
 	Space string
 	// DNSServer is the DNS server, or smart architecture, records are created on.
@@ -150,10 +154,7 @@ func New(o Options) (*HTTPClient, error) {
 	if o.DNSServer == "" {
 		return nil, errors.New("efficientip: the DNS server records are created on is not set")
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	if o.Insecure {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for lab SOLIDservers
-	}
+	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
 	// Redirects are not followed: the native sign-in headers would go along
 	// to whatever host the redirect names.
 	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

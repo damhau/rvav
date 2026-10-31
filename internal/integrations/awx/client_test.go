@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // TestLaunchPrompts: a launch on some hosts or on another inventory checks
@@ -54,7 +56,7 @@ func TestLaunchPrompts(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c, err := NewHTTPClient(srv.URL, "token", false)
+	c, err := NewHTTPClient(srv.URL, "token", trust.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +114,7 @@ func TestWorkflowNodeKinds(t *testing.T) {
 			{"id": 2, "job": 51, "summary_fields": {"unified_job_template": {"name": "linux-baseline"}, "job": {"status": "running", "type": "job"}}}]}`))
 	}))
 	defer srv.Close()
-	c, _ := NewHTTPClient(srv.URL, "token", false)
+	c, _ := NewHTTPClient(srv.URL, "token", trust.Options{})
 	nodes, err := c.WorkflowNodes(context.Background(), 9)
 	if err != nil || len(nodes) != 2 || nodes[0].Kind != "inventory_update" || nodes[1].Kind != "job" || nodes[1].JobID != 51 {
 		t.Fatalf("nodes = %+v, %v", nodes, err)
@@ -131,7 +133,7 @@ func TestGetJobNotFound(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	c, _ := NewHTTPClient(srv.URL, "token", false)
+	c, _ := NewHTTPClient(srv.URL, "token", trust.Options{})
 	if _, err := c.GetJob(context.Background(), 7, false); !errors.Is(err, ErrJobNotFound) {
 		t.Fatalf("404 = %v", err)
 	}
@@ -184,7 +186,7 @@ func TestSetRvavCredential(t *testing.T) {
 			}
 		}))
 		defer srv.Close()
-		c, err := NewHTTPClient(srv.URL, "token", false)
+		c, err := NewHTTPClient(srv.URL, "token", trust.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}

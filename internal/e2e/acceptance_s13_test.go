@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // TestInventoryAndReportingAcceptance is the acceptance scenario of slice
@@ -39,7 +40,7 @@ func TestInventoryAndReportingAcceptance(t *testing.T) {
 		u := *c.URL()
 		u.User = nil
 		pass, _ := simulator.DefaultLogin.Password()
-		vc, err := vsphere.New(ctx, "vc01.corp.example", u.String(), simulator.DefaultLogin.Username(), pass, true)
+		vc, err := vsphere.New(ctx, "vc01.corp.example", u.String(), simulator.DefaultLogin.Username(), pass, trust.Options{Insecure: true})
 		if err != nil {
 			t.Fatal(err)
 		}

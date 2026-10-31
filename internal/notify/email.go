@@ -2,12 +2,14 @@ package notify
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"time"
 
 	"github.com/wneessen/go-mail"
 
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Email sends notifications by SMTP: plain text and HTML.
@@ -24,6 +26,11 @@ func (e *Email) client() (*mail.Client, error) {
 		opts = append(opts, mail.WithTLSPolicy(mail.NoTLS))
 	default:
 		opts = append(opts, mail.WithTLSPolicy(mail.TLSMandatory))
+	}
+	if e.Config.TLS != "none" {
+		// The CAs of the CA bundle too (package trust).
+		opts = append(opts, mail.WithTLSConfig(&tls.Config{ServerName: e.Config.Host, MinVersion: tls.VersionTLS12,
+			RootCAs: trust.Roots()}))
 	}
 	if e.Config.Username != "" {
 		// The mechanism the server offers (Microsoft 365 has LOGIN, not PLAIN).

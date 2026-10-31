@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/observe"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // HTTPClient talks to the AWX REST API (/api/v2) with an OAuth2 token.
@@ -64,15 +64,12 @@ func errorMessage(body []byte) string {
 	return strings.Join(parts, "; ")
 }
 
-func NewHTTPClient(rawURL, token string, insecure bool) (*HTTPClient, error) {
+func NewHTTPClient(rawURL, token string, o trust.Options) (*HTTPClient, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("awx url %q is not valid", rawURL)
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for lab AWX
-	}
+	tr := trust.Transport(o)
 	return &HTTPClient{base: u, token: token, http: &http.Client{Transport: observe.Transport("awx", tr), Timeout: 30 * time.Second}}, nil
 }
 

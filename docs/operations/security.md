@@ -63,6 +63,7 @@ The external penetration test is the organisation's (Lab acceptance).
 | **Spoofing:** a forged or replayed sign-in token | Tokens are checked against the provider's keys (issuer, audience = rvav's client, expiry). Only public-key algorithms are accepted, never a shared secret or `none` (S14.6). | A stolen access token works until it expires: keep its lifetime short at the provider (5 minutes by default in Keycloak). |
 | **Spoofing:** the local administrator's password guessed | Kept as an argon2id hash, at most four computed at once. Given at installation or generated, and changed at the first sign-in (12 characters at least). From the third failure in a row, attempts wait 1 s, then twice as long each time, up to 15 minutes, without checking the password. An unknown username takes as long to refuse. Every sign-in and failure is audited. `rvav admin reset-password` needs the server. | Someone guessing can keep the account waiting up to 15 minutes at a time: the ingress should rate-limit `/api/v1/auth/sign-in` per client. |
 | **Spoofing:** a provider's token taken as one of rvav's own users | A provider's user is found by the token's subject. Subjects of rvav's own users are refused from any provider, whatever the token's groups: `local:` (the local administrator), `seed:` (seeded users not yet signed in) and `system:` (the inventory user). The trial sign-in says so. | |
+| **Spoofing:** a server impersonating an integration | Every connection checks its server's certificate against the system's CAs and the CA bundle, set by administrators in Administration (audited) or `RVAV_CA_BUNDLE`; a pinned certificate is trusted for its connection only, and a new pin needs the password or token again, as a new address does. A connection's test checks the certificate before any password is sent. | A CA added to the bundle is trusted by every connection, for any host it signs for: add issuing CAs of your own, not public ones. `*_INSECURE` turns the checks off. |
 | **Spoofing:** sign-in skipped | `dev` sign-in starts only with `RVAV_ALLOW_DEV_AUTH`. The Helm chart sets OIDC on every container, which neither its values nor its Secret can change. | |
 | **Spoofing:** an API token guessed or leaked | 32 random bytes with an `rvav_pat_` prefix (secret scanners find it). Only its SHA-256 is stored. It can expire and be revoked, and its last use is recorded. A token gets no roles from groups, so it can't approve. An inventory token reads only the inventory. The one Administration makes for AWX is for rvav's inventory user, an auditor no one signs in as, and making another revokes it. | A token acts as its user until revoked: give automation its own user. |
 | **Spoofing:** Teams or Slack calls | Slack calls are checked against the signing secret, Teams calls against Bot Framework's published keys. | |
@@ -159,7 +160,9 @@ The external penetration test is the organisation's (Lab acceptance).
   - `sslmode=verify-full` to PostgreSQL;
   - `RVAV_TEMPORAL_TLS` with mutual TLS or an API key;
   - the integrations' certificates checked (every `*_INSECURE` setting
-    off).
+    off): a private CA in the CA bundle (Integrations › Trusted
+    certificates), or a self-signed server's certificate pinned for its
+    connection.
 - **The secrets key:** keep it in the vault, apart from database backups
   ([backups.md](backups.md)). Rotate it with `RVAV_SECRETS_OLD_KEYS` and
   `rvav secrets rotate`.

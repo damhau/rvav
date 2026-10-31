@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"slices"
@@ -68,8 +69,9 @@ func providerFrom(settings map[string]any) auth.ProviderSettings {
 // testOIDC reads the provider's discovery document and keys. When they
 // answer, the sign-in page may reach the provider for a while, so that a
 // trial sign-in works before the settings are saved.
-func (s *Service) testOIDC(ctx context.Context, settings map[string]any, check checkFunc) {
+func (s *Service) testOIDC(ctx context.Context, settings map[string]any, roots *x509.CertPool, check checkFunc) {
 	ps := providerFrom(settings)
+	ps.Roots = roots
 	if ps.Issuer == "" {
 		check("Issuer", errors.New("no issuer is set"), "")
 		return
@@ -130,6 +132,7 @@ func (s *Service) TrialIdentityProvider(ctx context.Context, p *auth.Principal, 
 	if ps.Issuer == "" {
 		return out, &ValidationError{Errors: []api.FieldError{fieldErr("/settings/issuer", "required", "The provider's issuer.")}}
 	}
+	ps.Roots, _ = s.pendingRoots(ctx, stored)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	t := auth.TrialToken(ctx, ps, token)

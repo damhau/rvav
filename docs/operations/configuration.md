@@ -94,6 +94,22 @@ still sign in and correct a wrong one.
 | `RVAV_TEMPORAL_TLS_SERVER_NAME` | the address's host | | install | The name the frontend's certificate has, when it differs. |
 | `RVAV_TEMPORAL_API_KEY` | none | yes | install | Temporal Cloud's API key. |
 
+## Trusted certificates
+
+rvav checks the certificate of every server it connects to (vCenter, AWX,
+EfficientIP, NSX, Git over HTTPS, vRA, the identity provider, the mail
+server, Teams, Slack, webhooks and REST value sources) against the
+system's CAs and those of a CA bundle, set in **Administration ›
+Integrations › Trusted certificates**. A connection's test shows the
+certificate its server presents; from there it can be pinned for that
+connection (its `*_CERT_SHA256`), or its CA added to the bundle. A new
+bundle applies as connections do: each process drains and starts again
+with it ([admin guide](../guides/admin.md#trusted-certificates)).
+
+| Setting | Default | Secret | Set in | What |
+|---|---|---|---|---|
+| `RVAV_CA_BUNDLE` | the system's CAs only | | Integrations › Trusted certificates | CA certificates in PEM, trusted besides the system's by every connection: a private CA's root or issuing CA. Certificates only, no key. |
+
 ## vCenter
 
 | Setting | Default | Secret | Set in | What |
@@ -102,6 +118,7 @@ still sign in and correct a wrong one.
 | `RVAV_VCENTER_USERNAME` | none | | Integrations › vCenter | rvav's service account (permissions: docs/integrations.md). |
 | `RVAV_VCENTER_PASSWORD` | none | yes | Integrations › vCenter | Its password. |
 | `RVAV_VCENTER_INSECURE` | off | | Integrations › vCenter | Doesn't check the certificate. For labs only. |
+| `RVAV_VCENTER_CERT_SHA256` | none | | Integrations › vCenter | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 | `RVAV_VCENTER_NAME` | `vc01.corp.example` | | Integrations › vCenter | How rvav names this vCenter in the app and on VMs. |
 | `RVAV_CONSOLE_VCENTER_USERNAME` | none | | Integrations › vCenter › Console | An account that may only open consoles: VMRC links carry a clone ticket of it (ADR-0012). |
 | `RVAV_CONSOLE_VCENTER_PASSWORD` | none | yes | Integrations › vCenter › Console | Its password. It goes only to the vCenter connection it was given for: saved in Administration, it is given again when vCenter's address changes or its TLS checks are turned off. |
@@ -117,6 +134,7 @@ still sign in and correct a wrong one.
 | `RVAV_EFFICIENTIP_PASSWORD` | none | yes | Integrations › EfficientIP | Its password, or the token's secret. |
 | `RVAV_EFFICIENTIP_AUTH` | `native` | | Integrations › EfficientIP | `native` (user and password) or `token`. |
 | `RVAV_EFFICIENTIP_INSECURE` | off | | Integrations › EfficientIP | Doesn't check the certificate. For labs only. |
+| `RVAV_EFFICIENTIP_CERT_SHA256` | none | | Integrations › EfficientIP | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 | `RVAV_EFFICIENTIP_SPACE` | all spaces | | Integrations › EfficientIP | The IPAM space rvav's subnets are in. |
 | `RVAV_EFFICIENTIP_DNS_SERVER` | none | | Integrations › EfficientIP | The DNS server (or smart architecture) records are created on. |
 | `RVAV_EFFICIENTIP_DNS_VIEW` | none | | Integrations › EfficientIP | The DNS view, when the server has views. |
@@ -136,6 +154,7 @@ still sign in and correct a wrong one.
 | `RVAV_AWX_ACTION_LABELS` | `day2` | | Integrations › AWX | Labels of templates offered as day-2 actions. |
 | `RVAV_AWX_SYNC_INTERVAL` | `5m` | | Integrations › AWX | How often templates are read. |
 | `RVAV_AWX_INSECURE` | off | | Integrations › AWX | Doesn't check the certificate. For labs only. |
+| `RVAV_AWX_CERT_SHA256` | none | | Integrations › AWX | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 | `RVAV_FAKE_AWX` | off | | install | Simulates AWX jobs. For development only. |
 | `RVAV_FAKE_AWX_TASK_DELAY` | `1.5s` | | install | How long each simulated task takes. |
 | `RVAV_FAKE_AWX_FAIL_TASK` | none | | install | A simulated task that fails, to try failures. |
@@ -155,6 +174,7 @@ The NSX Manager rvav makes networks and security groups in
 | `RVAV_NSX_CERT_FILE` | none | | Integrations › NSX | Or a principal identity: its certificate, a PEM file on rvav's hosts. NSX recommends this for automation. |
 | `RVAV_NSX_KEY_FILE` | none | | Integrations › NSX | The principal identity's private key, a PEM file. With the Helm chart, name a `kubernetes.io/tls` Secret in `nsx.certSecret`: it is mounted at `/etc/rvav/nsx` (`tls.crt`, `tls.key`). |
 | `RVAV_NSX_INSECURE` | off | | Integrations › NSX | Doesn't check the certificate. For labs only. |
+| `RVAV_NSX_CERT_SHA256` | none | | Integrations › NSX | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 
 rvav's NSX account needs a role that can:
 - **read:** Tier-1 gateways, segments, groups, services, transport zones
@@ -225,6 +245,7 @@ token. Saved there, it is used from the next read.
 | `RVAV_VRA_PASSWORD` | none | yes | Integrations › vRA | Its password. |
 | `RVAV_VRA_DOMAIN` | none | | Integrations › vRA | Its identity source's domain (`corp.example`). |
 | `RVAV_VRA_INSECURE` | off | | Integrations › vRA | Doesn't check the certificate. For labs only. |
+| `RVAV_VRA_CERT_SHA256` | none | | Integrations › vRA | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 
 ## Secrets, value sources and webhooks
 

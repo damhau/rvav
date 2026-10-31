@@ -21,6 +21,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/integrations/gitrepo"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // The catalog in Git (ADR-0029). rvav publishes, the repository proposes:
@@ -227,7 +228,7 @@ func (g *gitSync) blobAt(p string) string { return g.byPath[p].Hash }
 
 func (s *Service) syncGit(ctx context.Context) (GitSyncReport, error) {
 	c := s.Config.Git
-	repo, err := GitRepo(c, c.Cache)
+	repo, err := GitRepo(c, c.Cache, trust.Bundle())
 	if err != nil {
 		// Settings rvav can't use (from the environment): shown as the
 		// read's error.

@@ -64,7 +64,7 @@ Without a restart by hand, in one of two ways:
   moved. A notification channel is built again only when its own settings
   change, so Teams' tokens are kept otherwise.
 - **A secret only goes where it was given for** (ADR-0020): a new address,
-  or TLS checks turned off, needs it again. The console's account signs in
+  a certificate pinned, or TLS checks turned off, needs it again. The console's account signs in
   to vCenter's address, so its saved password is kept with the vCenter
   connection it was given for, and isn't used with another until given
   again; while a process is about to start again with new vCenter
@@ -221,11 +221,33 @@ Without a restart by hand, in one of two ways:
     their fields in the page.
 
 ### Certificates
-- A connection's test shows the server's certificate: subject, issuer,
-  SHA-256 fingerprint and expiry. Trusting it pins that certificate for
-  that connection, as vRA does when a cloud account is added.
-- A CA bundle set in Administration is trusted by every connection.
-- Turning TLS checks off stays possible, discouraged in the UI.
+- A connection's test (vCenter and the vCenters added, AWX, EfficientIP,
+  NSX, vRA, the identity provider, Git over HTTPS) shows the certificate
+  its server presents: subject, issuer, names, validity and SHA-256, and
+  whether rvav trusts it. It runs first: a certificate the connection
+  would refuse ends the test there, before any password is sent.
+- **Pinned:** trusting it from the test puts its SHA-256 in the
+  connection's `cert_sha256` (`RVAV_*_CERT_SHA256`), as vRA does when a
+  cloud account is added. The connection then trusts that certificate
+  besides those the CAs vouch for: a self-signed vCenter or ESXi lab,
+  without turning checks off. A pin matches the server's own certificate
+  only, whatever its names and dates (as govmomi's thumbprints do); a new
+  one needs the password or token again, since it lets another server be
+  trusted. The identity provider and Git take no pin: their CA goes in
+  the bundle.
+- **The CA bundle** (Integrations › Trusted certificates, or
+  `RVAV_CA_BUNDLE`): certificates in PEM, trusted besides the system's CAs
+  by every connection, notifications, webhooks and REST value sources
+  included. A key in it is refused. From a test, "Add it to the CA bundle"
+  appends the last certificate the server sent (its issuing CA, or the
+  certificate itself when self-signed), after a confirmation that every
+  connection will trust it.
+- The bundle is set in each process as it starts, so it applies as
+  connections do: a change drains and restarts each process. A test
+  uses the bundle saved, before the processes apply it, so it can be
+  checked at once.
+- Turning TLS checks off stays possible, discouraged in the UI; its test
+  still shows the certificate, not checked.
 
 ### First run
 - An install without seed data or integration settings opens, for the

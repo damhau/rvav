@@ -14,6 +14,7 @@ type VCenter struct {
 	URL        string    `db:"url"`
 	Username   string    `db:"username"`
 	Insecure   bool      `db:"insecure"`
+	CertSHA256 string    `db:"cert_sha256"`
 	KeyID      string    `db:"key_id"`
 	Nonce      []byte    `db:"nonce"`
 	Ciphertext []byte    `db:"ciphertext"`
@@ -21,7 +22,7 @@ type VCenter struct {
 	UpdatedAt  time.Time `db:"updated_at"`
 }
 
-const vcenterCols = `name, url, username, insecure, key_id, nonce, ciphertext, created_at, updated_at`
+const vcenterCols = `name, url, username, insecure, cert_sha256, key_id, nonce, ciphertext, created_at, updated_at`
 
 func (s *Store) VCenters(ctx context.Context) ([]VCenter, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+vcenterCols+` from vcenters order by name`)
@@ -38,17 +39,17 @@ func (s *Store) GetVCenter(ctx context.Context, name string) (VCenter, error) {
 // or changes it; a nil ciphertext keeps the password.
 func (s *Store) SaveVCenter(ctx context.Context, v VCenter, create bool) error {
 	if create {
-		_, err := s.Pool.Exec(ctx, `insert into vcenters (name, url, username, insecure, key_id, nonce, ciphertext)
-			values ($1,$2,$3,$4,$5,$6,$7)`, v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext)
+		_, err := s.Pool.Exec(ctx, `insert into vcenters (name, url, username, insecure, key_id, nonce, ciphertext, cert_sha256)
+			values ($1,$2,$3,$4,$5,$6,$7,$8)`, v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext, v.CertSHA256)
 		if IsUniqueViolation(err) {
 			return ErrInUse
 		}
 		return err
 	}
-	tag, err := s.Pool.Exec(ctx, `update vcenters set url = $2, username = $3, insecure = $4,
+	tag, err := s.Pool.Exec(ctx, `update vcenters set url = $2, username = $3, insecure = $4, cert_sha256 = $8,
 		key_id = case when $6::bytea is null then key_id else $5 end,
 		nonce = coalesce($6, nonce), ciphertext = coalesce($7, ciphertext), updated_at = now() where name = $1`,
-		v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext)
+		v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext, v.CertSHA256)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

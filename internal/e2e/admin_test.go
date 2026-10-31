@@ -606,7 +606,9 @@ func TestIntegrationSettings(t *testing.T) {
 
 		var test api.IntegrationTest
 		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, nil, 200, &test)
-		if !test.Ok || len(test.Checks) != 3 {
+		// vcsim's certificate, shown but not checked: TLS checks are off.
+		if !test.Ok || len(test.Checks) != 4 || test.Checks[0].Name != "Certificate" || test.Certificate == nil ||
+			test.Certificate.Checked || test.Certificate.Sha256 == "" || !test.Certificate.Pinnable {
 			t.Fatalf("vCenter test = %+v", test)
 		}
 		// The saved password goes only where it was given for: tested or saved

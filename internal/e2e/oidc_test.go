@@ -37,13 +37,17 @@ type fakeIdP struct {
 	keysDown atomic.Bool
 }
 
-func newFakeIdP(t *testing.T, issuer string) *fakeIdP {
+func newFakeIdP(t *testing.T, issuer string) *fakeIdP { return startFakeIdP(t, issuer, false) }
+
+// startFakeIdP starts a fake provider, over HTTPS with httptest's
+// certificate when tls is set.
+func startFakeIdP(t *testing.T, issuer string, tls bool) *fakeIdP {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := &fakeIdP{t: t, key: key}
-	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	p.srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !p.up.Load() || (r.URL.Path == "/certs" && p.keysDown.Load()) {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
@@ -63,6 +67,11 @@ func newFakeIdP(t *testing.T, issuer string) *fakeIdP {
 			http.NotFound(w, r)
 		}
 	}))
+	if tls {
+		p.srv.StartTLS()
+	} else {
+		p.srv.Start()
+	}
 	t.Cleanup(p.srv.Close)
 	p.issuer = issuer
 	if p.issuer == "" {

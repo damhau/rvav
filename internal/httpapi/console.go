@@ -23,6 +23,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // The VM console (ADR-0012): openConsole hands out a VMRC link and, when the
@@ -168,7 +169,7 @@ func (s *Server) dialConsole(r *http.Request, mks vsphere.WebMKS) (net.Conn, *bu
 	if u.Port() == "" {
 		host = net.JoinHostPort(u.Hostname(), "443")
 	}
-	cfg := &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12}
+	cfg := &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12, RootCAs: trust.Roots()}
 	if len(mks.Thumbprints) > 0 {
 		// ESXi certificates are often self-signed: trust the one vCenter vouches for.
 		cfg.InsecureSkipVerify = true

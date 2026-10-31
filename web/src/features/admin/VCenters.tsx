@@ -16,6 +16,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
+import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
 
@@ -24,7 +25,7 @@ function TestResult({ test }: { test: S["IntegrationTest"] }) {
     <ul
       aria-label="Test"
       aria-live="polite"
-      className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-xs"
+      className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-xs break-words"
     >
       {test.checks.map((c) => (
         <li key={c.name} className="flex items-start gap-1.5">
@@ -49,6 +50,7 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
     url: vc?.url ?? "",
     username: vc?.username ?? "",
     insecure: vc?.insecure ?? false,
+    cert_sha256: vc?.cert_sha256 ?? "",
   });
   const [password, setPasswordNow] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -142,11 +144,34 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
               />
             </Field>
           </div>
+          <Field
+            label="Trusted certificate (SHA-256)"
+            htmlFor="vc-pin"
+            error={errors["/cert_sha256"]}
+            hint="A self-signed one, trusted besides the CAs: Trust this certificate, after a test, sets it"
+          >
+            <Input
+              id="vc-pin"
+              className="font-mono text-xs"
+              value={f.cert_sha256}
+              onChange={(e) => setF({ ...f, cert_sha256: e.target.value })}
+            />
+          </Field>
           <label htmlFor="vc-insecure" className="flex items-center gap-1.5 text-[13px]">
             <Checkbox id="vc-insecure" checked={f.insecure} onChange={(on) => setF({ ...f, insecure: on })} />
             Don't check its certificate
           </label>
           {test.data && <TestResult test={test.data} />}
+          {test.data?.certificate && (
+            <ServerCertificate
+              cert={test.data.certificate}
+              onTrust={(sha256) => {
+                // The settings change: test again with them.
+                setF({ ...f, cert_sha256: sha256, insecure: false });
+                toast.info("Its SHA-256 is in the form", { description: "Test again, then save the vCenter." });
+              }}
+            />
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
@@ -227,7 +252,7 @@ export function VCenters() {
                     <div className="font-mono text-xs">{vc.url}</div>
                     <div className="text-xs text-faint">
                       {vc.username || "no account"}
-                      {vc.insecure ? " · certificate not checked" : ""}
+                      {vc.insecure ? " · certificate not checked" : vc.cert_sha256 ? " · certificate pinned" : ""}
                     </div>
                   </td>
                   <td className={`${td} text-xs`}>

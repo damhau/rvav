@@ -13,6 +13,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // ErrUnknown: the name is not a vCenter rvav manages.
@@ -29,7 +30,7 @@ type Set struct {
 	PrimaryName string
 	Primary     func(ctx context.Context) (vsphere.Driver, error)
 	// Dial connects to an added vCenter (vsphere.New when nil).
-	Dial func(ctx context.Context, name, url, username, password string, insecure bool) (vsphere.Driver, error)
+	Dial func(ctx context.Context, name, url, username, password string, o trust.Options) (vsphere.Driver, error)
 
 	mu    sync.Mutex
 	conns map[string]conn
@@ -73,12 +74,12 @@ func (s *Set) Get(ctx context.Context, name string) (vsphere.Driver, error) {
 	}
 	dial := s.Dial
 	if dial == nil {
-		dial = func(ctx context.Context, name, url, username, password string, insecure bool) (vsphere.Driver, error) {
-			return vsphere.New(ctx, name, url, username, password, insecure)
+		dial = func(ctx context.Context, name, url, username, password string, o trust.Options) (vsphere.Driver, error) {
+			return vsphere.New(ctx, name, url, username, password, o)
 		}
 	}
 	// Outside the lock: a vCenter slow to answer doesn't hold up the others.
-	d, err := dial(ctx, name, row.URL, row.Username, password, row.Insecure)
+	d, err := dial(ctx, name, row.URL, row.Username, password, trust.Options{Insecure: row.Insecure, Pin: row.CertSHA256})
 	if err != nil {
 		return nil, err
 	}

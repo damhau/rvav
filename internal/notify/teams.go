@@ -19,6 +19,7 @@ import (
 
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Microsoft Teams through an Azure bot (ADR-0023): rvav finds the user in
@@ -43,7 +44,7 @@ func (t *Teams) httpClient() *http.Client {
 	if t.Client != nil {
 		return t.Client
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return &http.Client{Timeout: 30 * time.Second, Transport: trust.Transport(trust.Options{})}
 }
 
 func (t *Teams) tokens() {
@@ -267,7 +268,7 @@ func (v *TeamsVerifier) load(ctx context.Context) (*oidc.IDTokenVerifier, error)
 	}
 	client := v.Client
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = &http.Client{Timeout: 30 * time.Second, Transport: trust.Transport(trust.Options{})}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.OpenIDURL, nil)
 	if err != nil {

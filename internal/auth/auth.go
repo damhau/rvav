@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
@@ -193,6 +195,14 @@ type ProviderSettings struct {
 	// GroupsClaim holds the user's groups (or Entra ID's app roles); empty
 	// means groups.
 	GroupsClaim string
+	// Roots are the CAs the provider's certificate is checked with: the
+	// process's (package trust) unless given, as for a test.
+	Roots *x509.CertPool
+}
+
+// httpClient reaches the provider, trusting the CAs of the settings.
+func (ps ProviderSettings) httpClient() *http.Client {
+	return &http.Client{Timeout: 30 * time.Second, Transport: trust.Transport(trust.Options{Roots: ps.Roots})}
 }
 
 func (ps ProviderSettings) normal() ProviderSettings {
@@ -376,7 +386,8 @@ func newVerifier(ctx context.Context, ps ProviderSettings) (*oidc.IDTokenVerifie
 	if ps.DiscoveryURL != ps.Issuer {
 		ctx = oidc.InsecureIssuerURLContext(ctx, ps.Issuer)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	client := ps.httpClient()
+	ctx, cancel := context.WithTimeout(oidc.ClientContext(ctx, client), 5*time.Second)
 	defer cancel()
 	provider, err := oidc.NewProvider(ctx, ps.DiscoveryURL)
 	if err != nil {
@@ -387,7 +398,7 @@ func newVerifier(ctx context.Context, ps ProviderSettings) (*oidc.IDTokenVerifie
 	}
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
-	keys := keySet{oidc.NewRemoteKeySet(context.Background(), meta.JWKSURL)}
+	keys := keySet{oidc.NewRemoteKeySet(oidc.ClientContext(context.Background(), client), meta.JWKSURL)}
 	return oidc.NewVerifier(ps.Issuer, keys, &oidc.Config{ClientID: ps.ClientID, SupportedSigningAlgs: signingAlgs(meta.Algs)}), meta, nil
 }
 

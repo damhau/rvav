@@ -51,6 +51,8 @@ type Options struct {
 	KnownHosts string
 	// Insecure skips the TLS check (HTTPS) or accepts any host key (SSH).
 	Insecure bool
+	// CABundle are CAs trusted besides the system's, in PEM (HTTPS).
+	CABundle string
 	// Committer is rvav's identity on the commits it makes (the author is
 	// the administrator who published).
 	Committer Person
@@ -239,6 +241,13 @@ func hostKeys(lines string) (gossh.HostKeyCallback, error) {
 	return cb, nil
 }
 
+func (r *Repo) caBundle() []byte {
+	if r.o.CABundle == "" {
+		return nil
+	}
+	return []byte(r.o.CABundle)
+}
+
 func (r *Repo) insecure() bool { return r.o.Insecure && urlScheme(r.o.URL) != "ssh" }
 
 // Branch and Dir are the options as used.
@@ -253,7 +262,7 @@ func (r *Repo) FilePath(slug string) string { return path.Join(r.o.Dir, slug+".y
 // isn't.
 func (r *Repo) Check(ctx context.Context) (string, error) {
 	remote := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{Name: "origin", URLs: []string{r.o.URL}})
-	refs, err := remote.ListContext(ctx, &git.ListOptions{Auth: r.auth, InsecureSkipTLS: r.insecure()})
+	refs, err := remote.ListContext(ctx, &git.ListOptions{Auth: r.auth, InsecureSkipTLS: r.insecure(), CABundle: r.caBundle()})
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
 		return "", nil
 	}
@@ -304,7 +313,7 @@ func (r *Repo) open(ctx context.Context) (*git.Repository, error) {
 	}
 	spec := config.RefSpec("+" + plumbing.NewBranchReferenceName(r.o.Branch).String() + ":" + r.remoteRef().String())
 	err = repo.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{spec}, Auth: r.auth,
-		InsecureSkipTLS: r.insecure(), Force: true, Tags: git.NoTags})
+		InsecureSkipTLS: r.insecure(), CABundle: r.caBundle(), Force: true, Tags: git.NoTags})
 	switch {
 	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
 	case errors.Is(err, transport.ErrEmptyRemoteRepository), strings.Contains(err.Error(), "couldn't find remote ref"):
@@ -490,7 +499,7 @@ func (r *Repo) Commit(ctx context.Context, base string, changes []Change, author
 	}
 	spec := config.RefSpec(branch.String() + ":" + branch.String())
 	err = repo.PushContext(ctx, &git.PushOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{spec}, Auth: r.auth,
-		InsecureSkipTLS: r.insecure()})
+		InsecureSkipTLS: r.insecure(), CABundle: r.caBundle()})
 	switch {
 	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
 	case errors.Is(err, git.ErrNonFastForwardUpdate), strings.Contains(err.Error(), "non-fast-forward"),

@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // TestInventoryFollowsVCenter: the sync follows vCenter's change
@@ -41,7 +42,7 @@ func TestInventoryFollowsVCenter(t *testing.T) {
 		u.User = nil
 		user := simulator.DefaultLogin.Username()
 		pass, _ := simulator.DefaultLogin.Password()
-		vc, err := vsphere.New(ctx, "vc01.corp.example", u.String(), user, pass, true)
+		vc, err := vsphere.New(ctx, "vc01.corp.example", u.String(), user, pass, trust.Options{Insecure: true})
 		if err != nil {
 			t.Fatal(err)
 		}

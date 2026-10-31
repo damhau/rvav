@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Slack through a Slack app (ADR-0023): rvav finds the user by email,
@@ -38,7 +39,7 @@ type Slack struct {
 func (s *Slack) API() *slack.Client {
 	c := s.Client
 	if c == nil {
-		c = &http.Client{Timeout: 30 * time.Second}
+		c = &http.Client{Timeout: 30 * time.Second, Transport: trust.Transport(trust.Options{})}
 	}
 	return slack.New(s.Config.BotToken, slack.OptionAPIURL(s.Config.APIURL), slack.OptionHTTPClient(c))
 }

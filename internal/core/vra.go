@@ -321,7 +321,7 @@ func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body io.Reader
 				"rvav has no vRA to read: set it in Administration › Integrations › vRA, or give the file rvav vra-export wrote.")}}
 		}
 		client, err := vra.New(vra.Options{URL: c.URL, Token: c.Token, Username: c.Username, Password: c.Password, Domain: c.Domain,
-			Insecure: c.Insecure})
+			Insecure: c.Insecure, Pin: c.CertSHA256})
 		if err != nil {
 			return api.VraSnapshot{}, &UpstreamError{System: "vRA", Err: err}
 		}

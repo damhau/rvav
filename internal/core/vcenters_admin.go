@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vcenters"
 )
 
@@ -24,6 +25,9 @@ var vcenterName = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,62}$`)
 
 func presentVCenter(v store.VCenter, inv map[string]store.VCenterInventory) api.VCenter {
 	out := api.VCenter{Name: v.Name, Url: v.URL, Username: v.Username, Insecure: v.Insecure, PasswordSet: len(v.Ciphertext) > 0}
+	if v.CertSHA256 != "" {
+		out.CertSha256 = &v.CertSHA256
+	}
 	if i, ok := inv[v.Name]; ok {
 		out.Inventory = &struct {
 			Clusters *int       `json:"clusters,omitempty"`
@@ -45,7 +49,8 @@ func (s *Service) ListVCenters(ctx context.Context, p *auth.Principal) (api.VCen
 		return out, err
 	}
 	if c := s.Config.VCenter; c.URL != "" {
-		primary := presentVCenter(store.VCenter{Name: c.Name, URL: c.URL, Username: c.Username, Insecure: c.Insecure}, inv)
+		primary := presentVCenter(store.VCenter{Name: c.Name, URL: c.URL, Username: c.Username, Insecure: c.Insecure,
+			CertSHA256: c.CertSHA256}, inv)
 		primary.Primary, primary.PasswordSet = true, c.Password != ""
 		out.Items = append(out.Items, primary)
 	}
@@ -74,14 +79,19 @@ func (s *Service) checkVCenter(w api.VCenterWrite, current *store.VCenter) []api
 	if strings.TrimSpace(w.Username) == "" {
 		errs = append(errs, fieldErr("/username", "required", "Give the account rvav signs in with."))
 	}
+	pin, pinOK := trust.NormalFingerprint(deref(w.CertSha256))
+	if deref(w.CertSha256) != "" && !pinOK {
+		errs = append(errs, fieldErr("/cert_sha256", "invalid", "A certificate's SHA-256: 32 bytes in hex, with or without colons."))
+	}
 	given := w.Password != nil && *w.Password != ""
 	insecure := w.Insecure != nil && *w.Insecure
 	switch {
 	case current == nil && !given:
 		errs = append(errs, fieldErr("/password", "required", "Give the account's password."))
-	case current != nil && !given && len(current.Ciphertext) > 0 && (w.Url != current.URL || insecure && !current.Insecure):
+	case current != nil && !given && len(current.Ciphertext) > 0 &&
+		(w.Url != current.URL || insecure && !current.Insecure || pin != "" && pin != current.CertSHA256):
 		errs = append(errs, fieldErr("/password", "required",
-			"A new address, or the certificate not checked, needs the password again: the saved one only goes where it was given for."))
+			"A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for."))
 	}
 	return errs
 }
@@ -104,6 +114,7 @@ func (s *Service) SaveVCenter(ctx context.Context, p *auth.Principal, name strin
 		return api.VCenter{}, &ValidationError{Errors: errs}
 	}
 	v := store.VCenter{Name: w.Name, URL: w.Url, Username: strings.TrimSpace(w.Username), Insecure: w.Insecure != nil && *w.Insecure}
+	v.CertSHA256, _ = trust.NormalFingerprint(deref(w.CertSha256))
 	if w.Password != nil && *w.Password != "" {
 		if s.Secrets == nil {
 			return api.VCenter{}, &ConflictError{Msg: "rvav has no secrets key (RVAV_SECRETS_KEY) to keep the password."}
@@ -124,7 +135,8 @@ func (s *Service) SaveVCenter(ctx context.Context, p *auth.Principal, name strin
 	if create {
 		action = "vcenter.create"
 	}
-	s.audit(ctx, p, action, "vcenter", v.Name, nil, map[string]any{"url": v.URL, "username": v.Username, "insecure": v.Insecure})
+	s.audit(ctx, p, action, "vcenter", v.Name, nil, map[string]any{"url": v.URL, "username": v.Username, "insecure": v.Insecure,
+		"cert_sha256": v.CertSHA256})
 	saved, err := s.Store.GetVCenter(ctx, v.Name)
 	if err != nil {
 		return api.VCenter{}, err
@@ -166,7 +178,7 @@ func (s *Service) TestVCenter(ctx context.Context, p *auth.Principal, name strin
 	current, err := s.Store.GetVCenter(ctx, name)
 	switch {
 	case err == nil:
-		c.URL, c.Username, c.Insecure = current.URL, current.Username, current.Insecure
+		c.URL, c.Username, c.Insecure, c.CertSHA256 = current.URL, current.Username, current.Insecure, current.CertSHA256
 		if len(current.Ciphertext) > 0 && s.Secrets != nil {
 			if plain, err := s.Secrets.Open(vcenters.SecretName(name), current.KeyID, current.Nonce, current.Ciphertext); err == nil {
 				c.Password = string(plain)
@@ -186,6 +198,7 @@ func (s *Service) TestVCenter(ctx context.Context, p *auth.Principal, name strin
 			return out, &ValidationError{Errors: errs}
 		}
 		c.URL, c.Username, c.Insecure = w.Url, w.Username, w.Insecure != nil && *w.Insecure
+		c.CertSHA256, _ = trust.NormalFingerprint(deref(w.CertSha256))
 		if w.Password != nil && *w.Password != "" {
 			c.Password = *w.Password
 		}
@@ -200,7 +213,20 @@ func (s *Service) TestVCenter(ctx context.Context, p *auth.Principal, name strin
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	s.testVCenter(ctx, c, check)
+	stored, err := s.Store.StoredIntegrations(ctx)
+	if err != nil {
+		return out, err
+	}
+	roots, _ := s.pendingRoots(ctx, stored)
+	o := c.TLS()
+	o.Roots = roots
+	ok := true
+	if u, _, _ := certificateOf("vcenter", config.Config{VCenter: c}, nil); u != "" {
+		out.Certificate, ok = s.checkCertificate(ctx, u, o, true, check)
+	}
+	if ok {
+		s.testVCenter(ctx, c, roots, check)
+	}
 	out.Ok = len(out.Checks) > 0
 	for _, ch := range out.Checks {
 		out.Ok = out.Ok && ch.Ok

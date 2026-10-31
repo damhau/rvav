@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/observe"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Options say where vRA is and how rvav signs in: with a refresh token (an
@@ -28,6 +29,9 @@ type Options struct {
 	Password string
 	Domain   string
 	Insecure bool
+	// Pin and Roots: a pinned certificate, and the CAs (package trust).
+	Pin   string
+	Roots *x509.CertPool
 }
 
 // Client reads vRA. It signs in on first use and again when its access
@@ -63,10 +67,7 @@ func New(o Options) (*Client, error) {
 	if o.Token == "" && (o.Username == "" || o.Password == "") {
 		return nil, errors.New("vra: a refresh token, or a user name and password, is needed")
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	if o.Insecure {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for lab vRAs
-	}
+	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
 	return &Client{opts: o, base: u, http: &http.Client{Transport: observe.Transport("vra", tr), Timeout: 60 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }

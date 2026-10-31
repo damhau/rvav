@@ -7176,7 +7176,7 @@ components:
         value: { type: object, additionalProperties: true }
     IntegrationKind:
       type: string
-      enum: [oidc, vcenter, console, awx, efficientip, nsx, git, vra, smtp, teams, slack, hosts]
+      enum: [oidc, vcenter, console, awx, efficientip, nsx, git, vra, smtp, teams, slack, hosts, trust]
     Integration:
       type: object
       required: [kind, configured, settings, secret_set, locked, revision, applying]
@@ -7295,6 +7295,43 @@ components:
         checks:
           type: array
           items: { $ref: "#/components/schemas/IntegrationCheck" }
+        certificate:
+          description: The certificate the server presented, for a connection over HTTPS.
+          $ref: "#/components/schemas/ServerCertificate"
+    ServerCertificate:
+      type: object
+      description: |
+        The certificate a server presented to a connection's test, and
+        whether rvav trusts it (ADR-0030): the system's CAs and the CA
+        bundle's (Integrations › Trusted certificates) vouch for it, or it is
+        the connection's pinned certificate.
+      required: [address, subject, issuer, names, not_before, not_after, sha256, trusted, pinned, checked, pinnable,
+        anchor_pem, anchor_subject, anchor_is_leaf]
+      properties:
+        address: { type: string, description: The host and port read., examples: ["vc01.corp.example:443"] }
+        subject: { type: string, examples: [vc01.corp.example] }
+        issuer: { type: string, examples: [Corp Issuing CA 2] }
+        names:
+          type: array
+          items: { type: string }
+          description: The names and addresses it is for.
+        not_before: { type: string, format: date-time }
+        not_after: { type: string, format: date-time }
+        sha256:
+          type: string
+          description: Its SHA-256, as AB:CD:…; set as the connection's cert_sha256, the connection trusts it.
+        trusted: { type: boolean, description: "The system's or the CA bundle's CAs vouch for it, for this host." }
+        pinned: { type: boolean, description: It is the connection's pinned certificate. }
+        checked: { type: boolean, description: False when the connection doesn't check certificates (insecure). }
+        pinnable: { type: boolean, description: The connection takes a pinned certificate (cert_sha256). }
+        problem: { type: string, description: Why the CAs don't vouch for it. }
+        anchor_pem:
+          type: string
+          description: The last certificate the server sent, in PEM; in the CA bundle, it makes the server trusted.
+        anchor_subject: { type: string, examples: [Corp Issuing CA 2] }
+        anchor_is_leaf:
+          type: boolean
+          description: The anchor is the server's own certificate (self-signed, or sent without its CA).
     VCenter:
       type: object
       required: [name, url, username, insecure, password_set, primary]
@@ -7305,6 +7342,9 @@ components:
         url: { type: string, examples: [https://vc02.corp.example/sdk] }
         username: { type: string }
         insecure: { type: boolean, description: Its certificate isn't checked. }
+        cert_sha256:
+          type: string
+          description: A certificate trusted for it besides those the CAs vouch for, pinned by its SHA-256.
         password_set: { type: boolean }
         primary:
           type: boolean
@@ -7326,6 +7366,12 @@ components:
         username: { type: string, minLength: 1 }
         password: { type: string, writeOnly: true, description: Kept when not given on a change. }
         insecure: { type: boolean }
+        cert_sha256:
+          type: string
+          description: |
+            A certificate trusted besides those the CAs vouch for, by its
+            SHA-256 (with or without colons); empty, none. A new one needs the
+            password again, as a new address does.
     VCenterList:
       type: object
       required: [items]

@@ -292,7 +292,8 @@ ones they may use; auditors see them read only.
   (projects and environments), and the network mappings, from EfficientIP
   or by hand.
 - **Integrations**: the identity provider, the connections, vRA, the
-  notification channels and the allowed hosts, one tab each
+  notification channels, the allowed hosts and the CA bundle (Trusted
+  certificates), one tab each
   (`features/admin/IntegrationSettings.tsx`), the console's panel in
   vCenter's tab and the inventory token's in AWX's
   (`features/admin/InventoryToken.tsx`: made, put in AWX with rvav's
@@ -300,7 +301,12 @@ ones they may use; auditors see them read only.
   have no secret. A field an environment
   variable sets is disabled and names the variable; the password or token
   is write-only (left empty, it stays as it is). **Test connection** runs
-  the server's checks with the settings on screen. After a save, a
+  the server's checks with the settings on screen. For a connection over
+  HTTPS it shows the server's certificate below them
+  (`features/admin/ServerCertificate.tsx`): trusted, pinned, not checked
+  or not trusted, and then **Trust this certificate** (its SHA-256 into
+  the form's Trusted certificate field, verification on) or **Add it to
+  the CA bundle** (confirmed inline, then saved to Trusted certificates). After a save, a
   connection's panel shows it applying: each of rvav's processes
   (`GET /admin/processes`) finishing its running work, then started again
   with the settings, until all have them (`features/admin/Applying.tsx`,

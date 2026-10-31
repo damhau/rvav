@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/observe"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // Options say where the NSX Manager is and how rvav signs in: a user and
@@ -27,6 +29,9 @@ type Options struct {
 	// PEM files.
 	CertFile, KeyFile string
 	Insecure          bool
+	// Pin and Roots: a pinned certificate, and the CAs (package trust).
+	Pin   string
+	Roots *x509.CertPool
 }
 
 // Client calls the NSX Manager.
@@ -68,10 +73,7 @@ func New(o Options) (*Client, error) {
 		return nil, fmt.Errorf("nsx url %q is not valid", o.URL)
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tc := &tls.Config{MinVersion: tls.VersionTLS12}
-	if o.Insecure {
-		tc.InsecureSkipVerify = true //nolint:gosec // opt-in for lab NSX Managers
-	}
+	tc := trust.Config(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
 	switch {
 	case o.CertFile != "" || o.KeyFile != "":
 		cert, err := tls.LoadX509KeyPair(o.CertFile, o.KeyFile)
