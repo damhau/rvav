@@ -103,7 +103,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	// migrate, seed and the development helpers work without auth settings.
 	if cmd == "migrate" || cmd == "seed" || cmd == "vcsim-bootstrap" || cmd == "fake-efficientip" || cmd == "awx-bootstrap" ||
-		cmd == "vra-export" || cmd == "vra-plan" || cmd == "vro-triage" || cmd == "fake-vra" || cmd == "fake-nsx" {
+		cmd == "admin" || cmd == "vra-export" || cmd == "vra-plan" || cmd == "vro-triage" || cmd == "fake-vra" || cmd == "fake-nsx" {
 		if os.Getenv("RVAV_AUTH_MODE") == "" {
 			os.Setenv("RVAV_AUTH_MODE", "dev")
 		}
@@ -264,6 +264,42 @@ func run(ctx context.Context, cmd string, args []string) error {
 		return err
 	}
 
+	// The local administrator's reset needs the database only: it is for
+	// when nothing else works (ADR-0030).
+	if cmd == "admin" {
+		if len(args) == 0 || args[0] != "reset-password" {
+			return errors.New("usage: rvav admin reset-password [-password-stdin]")
+		}
+		fs := flag.NewFlagSet("admin reset-password", flag.ExitOnError)
+		fromStdin := fs.Bool("password-stdin", false, "read the new password from stdin instead of generating one")
+		_ = fs.Parse(args[1:])
+		password := ""
+		if *fromStdin {
+			b, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
+			if err != nil {
+				return err
+			}
+			if password = strings.TrimRight(string(b), "\r\n"); password == "" {
+				return errors.New("no password on stdin")
+			}
+		}
+		st, err := store.Open(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		generated, err := core.ResetLocalAdmin(ctx, st, password)
+		if err != nil {
+			return err
+		}
+		if generated != "" {
+			fmt.Println(generated)
+		}
+		fmt.Fprintf(os.Stderr, "the password of %s is reset: it must be changed at the next sign-in, and its sessions have ended\n",
+			core.LocalAdminUsername)
+		return nil
+	}
+
 	if cmd == "fake-efficientip" {
 		st, err := store.Open(ctx, cfg.DatabaseURL)
 		if err != nil {
@@ -342,33 +378,6 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		fmt.Println(token)
-		return nil
-	case "admin":
-		if len(args) == 0 || args[0] != "reset-password" {
-			return errors.New("usage: rvav admin reset-password [-password-stdin]")
-		}
-		fs := flag.NewFlagSet("admin reset-password", flag.ExitOnError)
-		fromStdin := fs.Bool("password-stdin", false, "read the new password from stdin instead of generating one")
-		_ = fs.Parse(args[1:])
-		password := ""
-		if *fromStdin {
-			b, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
-			if err != nil {
-				return err
-			}
-			if password = strings.TrimRight(string(b), "\r\n"); password == "" {
-				return errors.New("no password on stdin")
-			}
-		}
-		generated, err := core.ResetLocalAdmin(ctx, a.Store, password)
-		if err != nil {
-			return err
-		}
-		if generated != "" {
-			fmt.Println(generated)
-		}
-		fmt.Fprintf(os.Stderr, "the password of %s is reset: it must be changed at the next sign-in, and its sessions have ended\n",
-			core.LocalAdminUsername)
 		return nil
 	case "secrets":
 		if len(args) != 1 || args[0] != "rotate" {

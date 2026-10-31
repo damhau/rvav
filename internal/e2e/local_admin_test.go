@@ -21,6 +21,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/httpapi"
+	"github.com/damhau/rvav/internal/ids"
 )
 
 // browser is a client with its own cookies, as a browser tab is.
@@ -103,9 +104,50 @@ func TestLocalAdmin(t *testing.T) {
 		const installPassword = "install-password-1"
 		const newPassword = "a much longer password"
 
-		// First start, then the next starts: the account is made once.
-		h.svc.Config.Auth.AdminPassword = installPassword
+		// A first start without RVAV_ADMIN_PASSWORD nor an identity provider:
+		// rvav generates the password, logged by this start only.
+		h.svc.Config.Auth.AdminPassword = ""
 		created, generated, err := h.svc.EnsureLocalAdmin(ctx)
+		if err != nil || !created || len(generated) != 24 {
+			t.Fatalf("first start without a password: created=%v generated=%q err=%v", created, generated, err)
+		}
+		if created, again, err := h.svc.EnsureLocalAdmin(ctx); err != nil || created || again != "" {
+			t.Fatalf("the next start: created=%v generated=%q err=%v", created, again, err)
+		}
+		none, err := auth.NewOIDC(ctx, h.store, "", "", "rvav", "groups")
+		if err != nil {
+			t.Fatalf("no provider: %v", err)
+		}
+		bare := httptest.NewServer((&httpapi.Server{Store: h.store, Core: h.svc, Hub: h.hub, Log: discardLog(),
+			AuthMode: "oidc", Auth: none, Heartbeat: time.Second}).Handler())
+		t.Cleanup(bare.Close)
+		g := newBrowser(t, ctx, bare.URL)
+		if code, _, _ := g.do("GET", "/readyz", nil, false); code != http.StatusNoContent {
+			t.Fatalf("/readyz without a provider = %d", code)
+		}
+		if code, res, _ := g.signIn("admin", generated); code != http.StatusOK || !res.PasswordChangeRequired {
+			t.Fatalf("sign-in with the generated password = %d %+v", code, res)
+		}
+		// Without a provider, its tokens are refused; API tokens still work.
+		if code, _, _ := newBrowser(t, ctx, bare.URL).do("GET", "/api/v1/me", nil, false,
+			"Authorization", "Bearer eyJhbGciOiJSUzI1NiJ9.e30.c2ln"); code != http.StatusUnauthorized {
+			t.Fatalf("a provider's token without a provider = %d, want 401", code)
+		}
+		pat := auth.NewToken()
+		if err := h.store.CreateAPIToken(ctx, ids.New(ids.Token), "usr_lmartin", "u1", auth.HashToken(pat), "", nil); err != nil {
+			t.Fatal(err)
+		}
+		if code, _, _ := newBrowser(t, ctx, bare.URL).do("GET", "/api/v1/me", nil, false, "Authorization", "Bearer "+pat); code != http.StatusOK {
+			t.Fatalf("an API token without a provider = %d", code)
+		}
+
+		// Again from a new database, with RVAV_ADMIN_PASSWORD; the next
+		// starts' value is ignored.
+		if _, err := h.store.Pool.Exec(ctx, `delete from local_accounts; delete from sessions`); err != nil {
+			t.Fatal(err)
+		}
+		h.svc.Config.Auth.AdminPassword = installPassword
+		created, generated, err = h.svc.EnsureLocalAdmin(ctx)
 		if err != nil || !created || generated != "" {
 			t.Fatalf("first start: created=%v generated=%q err=%v", created, generated, err)
 		}
@@ -113,7 +155,7 @@ func TestLocalAdmin(t *testing.T) {
 		if created, _, err := h.svc.EnsureLocalAdmin(ctx); err != nil || created {
 			t.Fatalf("second start: created=%v err=%v", created, err)
 		}
-		if n := h.auditCount("auth.local_admin_created"); n != 1 {
+		if n := h.auditCount("auth.local_admin_created"); n != 2 {
 			t.Fatalf("auth.local_admin_created audited %d times", n)
 		}
 
@@ -289,7 +331,7 @@ func TestLocalAdmin(t *testing.T) {
 		}
 
 		// Every sign-in, failure, change and sign-out is audited.
-		for action, want := range map[string]int{"auth.sign_in": 6, "auth.sign_in_failed": 10, "auth.password_changed": 1,
+		for action, want := range map[string]int{"auth.sign_in": 7, "auth.sign_in_failed": 10, "auth.password_changed": 1,
 			"auth.sign_out": 1, "auth.password_reset": 1} {
 			if n := h.auditCount(action); n != want {
 				t.Errorf("%s audited %d times, want %d", action, n, want)

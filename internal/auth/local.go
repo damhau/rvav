@@ -26,8 +26,11 @@ const (
 	SessionMax  = 12 * time.Hour
 )
 
-// passwordParams: 64 MiB, one pass, two lanes, a 16-byte salt.
-var passwordParams = argon2id.DefaultParams
+// passwordParams: 64 MiB, one pass, two lanes, a 16-byte salt and a
+// 32-byte key, whatever the machine (the library's defaults take a lane per
+// CPU). A hash keeps its parameters, so changing them later still checks
+// the old ones.
+var passwordParams = &argon2id.Params{Memory: 64 * 1024, Iterations: 1, Parallelism: 2, SaltLength: 16, KeyLength: 32}
 
 // hashSlots bounds the hashes computed at once: each takes 64 MiB, and
 // sign-in attempts in parallel would otherwise take as much as they like.
