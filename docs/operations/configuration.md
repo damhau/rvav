@@ -166,6 +166,12 @@ changes, one process at a time. The repository's account needs to read
 the branch and push to it; a protected branch must allow its pushes
 (rvav reads and commits to the same branch).
 
+Git servers often refuse webhooks to private addresses: allow rvav's
+(Gitea: `webhook.ALLOWED_HOST_LIST`, which `private` doesn't cover for
+100.64.0.0/10; GitLab: *Allow requests to the local network from webhooks
+and integrations*). Without the webhook, rvav still reads the repository
+every `RVAV_GIT_SYNC_INTERVAL`.
+
 ## vRA (the importer)
 
 What the importer reads (P2, [ADR-0027](../adr/0027-vra-importer.md)). It

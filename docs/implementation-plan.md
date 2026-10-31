@@ -387,15 +387,17 @@ Decided after 1.0, instead of AWX playbooks ([ADR-0028](adr/0028-nsx-networking.
 security group builds, and deletes, as a VM item does; a VM with two
 adapters, the second on the deployment's segment, gets an address there.
 
-### C1 The catalog in Git (after N1)
+### C1 The catalog in Git (after N1, built)
 - Catalog items as YAML files in a Git repository (one per item, as the
-  export writes them), over HTTPS with a token or SSH with a deploy key.
+  export writes them), over HTTPS with a token or SSH with a deploy key
+  ([ADR-0029](adr/0029-catalog-in-git.md)).
 - Publishing in rvav commits the item; a change merged in the repository
   becomes a draft in rvav, with the diff, for a catalog admin to publish.
 - What differs between the two is shown, never overwritten silently.
 
-**Acceptance:** an item changed in rvav appears in the repository; one
-changed by a merge request appears in rvav as a draft; a conflict is shown.
+**Acceptance** (`TestC1Acceptance`, `TestCatalogGitCommits`, `TestCatalogGitDrafts`; the organisation's Git server: [#116](https://github.com/damhau/rvav/issues/116)): an item changed in rvav appears in the repository; one
+changed by a merge request appears in rvav as a draft; a conflict is shown,
+and settled either way.
 
 ### D1 One canvas (after N1)
 The canvas rvav's catalog and requests share (React Flow, laid out
