@@ -48,6 +48,10 @@ func (s *Set) Get(ctx context.Context, name string) (vsphere.Driver, error) {
 	row, err := s.Store.GetVCenter(ctx, name)
 	if name == "" || name == s.PrimaryName || errors.Is(err, store.ErrNotFound) {
 		if s.Primary == nil {
+			if name == "" || name == s.PrimaryName {
+				// A new install's, until vCenter is set (ADR-0030).
+				return nil, fmt.Errorf("vCenter is not set (Administration › Integrations › vCenter): %w", ErrUnknown)
+			}
 			return nil, fmt.Errorf("%s: %w", name, ErrUnknown)
 		}
 		return s.Primary(ctx)

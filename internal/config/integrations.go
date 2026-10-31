@@ -31,6 +31,21 @@ var alsoLockedBy = map[string]map[string][]string{
 	"vra": {"credential": {"RVAV_VRA_PASSWORD"}},
 }
 
+// Variables are the environment variables that set something
+// Administration sets, each locking it there (ADR-0030): its integrations'
+// fields and the inventory token. A new install is given none.
+func Variables() []string {
+	out := []string{"RVAV_INVENTORY_TOKEN"}
+	for kind, fields := range Fields {
+		for _, f := range fields {
+			out = append(out, f.Env)
+			out = append(out, alsoLockedBy[kind][f.Name]...)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // Intervals: the shortest and longest a sync may be set to from the UI.
 const (
 	MinInterval = 30 * time.Second

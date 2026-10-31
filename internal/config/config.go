@@ -122,6 +122,10 @@ type VCenterConfig struct {
 	Name string
 }
 
+// Configured says whether rvav has a vCenter: none on a new install, until
+// it is set in Administration (ADR-0030).
+func (c VCenterConfig) Configured() bool { return c.URL != "" }
+
 // VRAConfig is where vRA is and how rvav signs in there: a refresh token, or
 // a user and password in a domain.
 type VRAConfig struct {
@@ -196,6 +200,9 @@ type EfficientIPConfig struct {
 	Instance string
 }
 
+// Configured says whether rvav has a SOLIDserver, or the fake one.
+func (c EfficientIPConfig) Configured() bool { return c.Fake || c.URL != "" }
+
 // SMTPConfig sends notifications by email; no host, no email.
 type SMTPConfig struct {
 	Host     string
@@ -246,6 +253,9 @@ type AWXConfig struct {
 	FakeTaskDelay time.Duration
 	FakeFailTask  string
 }
+
+// Configured says whether rvav has an AWX, or the fake one.
+func (c AWXConfig) Configured() bool { return c.Fake || c.URL != "" }
 
 func Load() (Config, error) {
 	c := Config{

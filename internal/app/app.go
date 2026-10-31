@@ -170,41 +170,67 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 			return nil, err
 		}
 		log.Warn("using a fake SOLIDserver in this process (RVAV_FAKE_EFFICIENTIP=1); no real addresses or DNS records are created")
-	} else if cfg.IPAM.URL != "" {
-		if a.IPAM, err = efficientip.New(efficientip.Options{URL: cfg.IPAM.URL, Auth: efficientip.Auth(cfg.IPAM.Auth),
-			Username: cfg.IPAM.Username, Password: cfg.IPAM.Password, Insecure: cfg.IPAM.Insecure, Pin: cfg.IPAM.CertSHA256, Space: cfg.IPAM.Space,
-			DNSServer: cfg.IPAM.DNSServer, DNSView: cfg.IPAM.DNSView, Instance: cfg.IPAM.Instance}); err != nil {
-			return nil, err
-		}
-		if strings.HasPrefix(cfg.IPAM.URL, "http://") {
-			log.Warn("RVAV_EFFICIENTIP_URL is not HTTPS: rvav's SOLIDserver credentials are sent in clear")
-		}
 	} else {
-		return nil, errors.New("set RVAV_EFFICIENTIP_URL, or RVAV_FAKE_EFFICIENTIP=1 for development")
+		a.IPAM = a.efficientIP(cfg.IPAM)
 	}
 
 	if cfg.AWX.Fake {
 		a.AWX = awx.NewFake(cfg.AWX.FakeTaskDelay, cfg.AWX.FakeFailTask)
 		log.Warn("using the fake AWX (RVAV_FAKE_AWX=1); jobs are simulated")
-	} else if cfg.AWX.URL != "" {
-		// Templates become catalog items and day-2 actions, and pickers list
-		// inventories and credentials: only from rvav's own organisation.
-		if cfg.AWX.Organization == "" {
-			return nil, errors.New("set RVAV_AWX_ORGANIZATION: rvav uses the templates, inventories and credentials of its own AWX organisation only")
-		}
-		c, err := awx.NewHTTPClient(cfg.AWX.URL, cfg.AWX.Token, cfg.AWX.TLS())
-		if err != nil {
-			return nil, err
-		}
-		c.Organization = cfg.AWX.Organization
-		a.AWX = c
-		if cfg.AWX.InventorySourceID == 0 {
-			log.Warn("RVAV_AWX_INVENTORY_SOURCE_ID is not set: jobs on rvav's VMs (post-configuration, AWX day-2 actions) will be refused")
-		}
 	} else {
-		return nil, errors.New("set RVAV_AWX_URL, or RVAV_FAKE_AWX=1 for development")
+		a.AWX = a.awxClient(cfg.AWX)
+	}
+	if !cfg.VCenter.Configured() {
+		log.Info("vCenter is not set: set it in Administration › Integrations › vCenter; until then nothing is provisioned nor synced")
 	}
 	return a, nil
+}
+
+// efficientIP is rvav's SOLIDserver. None set, as on a new install, or
+// settings that make no client: every call says why, and the process
+// starts anyway, so that Administration can set it (ADR-0030).
+func (a *App) efficientIP(c config.EfficientIPConfig) efficientip.Client {
+	if c.URL == "" {
+		a.Log.Info("EfficientIP is not set: set it in Administration › Integrations › EfficientIP")
+		return efficientip.NotSet{}
+	}
+	client, err := efficientip.New(efficientip.Options{URL: c.URL, Auth: efficientip.Auth(c.Auth),
+		Username: c.Username, Password: c.Password, Insecure: c.Insecure, Pin: c.CertSHA256, Space: c.Space,
+		DNSServer: c.DNSServer, DNSView: c.DNSView, Instance: c.Instance})
+	if err != nil {
+		a.Log.Error("EfficientIP's settings make no client; change them in Administration › Integrations › EfficientIP", "err", err)
+		return efficientip.NotSet{Err: fmt.Errorf("EfficientIP: %w", err)}
+	}
+	if strings.HasPrefix(c.URL, "http://") {
+		a.Log.Warn("EfficientIP's URL is not HTTPS: rvav's SOLIDserver credentials are sent in clear")
+	}
+	return client
+}
+
+// awxClient is rvav's AWX, or why it has none, as efficientIP.
+func (a *App) awxClient(c config.AWXConfig) awx.Client {
+	if c.URL == "" {
+		a.Log.Info("AWX is not set: set it in Administration › Integrations › AWX")
+		return awx.NotSet{}
+	}
+	// Templates become catalog items and day-2 actions, and pickers list
+	// inventories and credentials: only from rvav's own organisation.
+	if c.Organization == "" {
+		err := errors.New("AWX has no organisation: rvav uses the templates, inventories and credentials of its own " +
+			"organisation only; set it in Administration › Integrations › AWX (or RVAV_AWX_ORGANIZATION)")
+		a.Log.Error(err.Error())
+		return awx.NotSet{Err: err}
+	}
+	client, err := awx.NewHTTPClient(c.URL, c.Token, c.TLS())
+	if err != nil {
+		a.Log.Error("AWX's settings make no client; change them in Administration › Integrations › AWX", "err", err)
+		return awx.NotSet{Err: fmt.Errorf("AWX: %w", err)}
+	}
+	client.Organization = c.Organization
+	if c.InventorySourceID == 0 {
+		a.Log.Warn("AWX's inventory source is not set: jobs on rvav's VMs (post-configuration, AWX day-2 actions) will be refused")
+	}
+	return client
 }
 
 // applyStoredSettings merges the integrations' saved settings into the
@@ -237,7 +263,7 @@ func (a *App) VCenter(ctx context.Context) (vsphere.Driver, error) {
 		return a.vc, nil
 	}
 	if a.Cfg.VCenter.URL == "" {
-		return nil, errors.New("RVAV_VCENTER_URL is not set")
+		return nil, errors.New("vCenter is not set: Administration › Integrations › vCenter")
 	}
 	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.VCenter.Username,
 		a.Cfg.VCenter.Password, a.Cfg.VCenter.TLS())
@@ -440,7 +466,10 @@ func (a *App) RunAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// What waits in the database, at each scrape (S14.5).
+	// What waits in the database, at each scrape (S14.5), from this start's
+	// pool: an API started again in the same process (rvav dev, tests)
+	// replaces the earlier start's.
+	observe.Registry.Unregister(observe.Backlog{})
 	observe.Registry.MustRegister(observe.Backlog{Pool: a.Store.Pool})
 	srv, err := a.APIServer(ctx, &provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
 	if err != nil {
@@ -473,9 +502,14 @@ func (a *App) RunAPI(ctx context.Context) error {
 
 // Activities builds the workflow activities.
 func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
-	vc, err := a.VCenter(ctx)
-	if err != nil {
-		return nil, err
+	// vCenter must answer once it is set; until then the worker starts
+	// without it, and a request fails saying vCenter is not set.
+	var vc vsphere.Driver
+	if a.Cfg.VCenter.Configured() {
+		var err error
+		if vc, err = a.VCenter(ctx); err != nil {
+			return nil, err
+		}
 	}
 	acts := &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
@@ -636,14 +670,22 @@ func (a *App) Dispatcher() *dispatch.Dispatcher {
 
 // RunSync runs the inventory sync until ctx is done.
 func (a *App) RunSync(ctx context.Context) error {
-	// The vCenter integration's must answer; the others are synced too.
-	if _, err := a.VCenter(ctx); err != nil {
-		return err
+	// The vCenter integration's must answer once it is set; the others are
+	// synced too. What isn't set yet, as on a new install, is synced once
+	// it is: saving it restarts this process (ADR-0030).
+	if a.Cfg.VCenter.Configured() {
+		if _, err := a.VCenter(ctx); err != nil {
+			return err
+		}
 	}
-	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval,
-		IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).IPAMSyncInterval }}
-	go func() { _ = subnets.Run(ctx) }()
-	go func() { _ = a.awxCatalog().Run(ctx) }()
+	if a.Cfg.IPAM.Configured() {
+		subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval,
+			IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).IPAMSyncInterval }}
+		go func() { _ = subnets.Run(ctx) }()
+	}
+	if a.Cfg.AWX.Configured() {
+		go func() { _ = a.awxCatalog().Run(ctx) }()
+	}
 	// VMs' tags changed in NSX are drift (ADR-0028).
 	if client, err := a.NSX(); err != nil {
 		return err
@@ -656,6 +698,10 @@ func (a *App) RunSync(ctx context.Context) error {
 	if a.Cfg.Git.Configured() {
 		catalog := a.Core(nil)
 		go func() { _ = catalog.RunCatalogGit(ctx) }()
+	}
+	if !a.Cfg.VCenter.Configured() {
+		<-ctx.Done()
+		return nil
 	}
 	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval,
 		IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).SyncInterval }}

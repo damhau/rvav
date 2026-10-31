@@ -20,8 +20,8 @@
 # fake (RVAV_FAKE_AWX): the stack has no AWX.
 
 # The integrations' variables, blank: an empty variable is unset, so
-# Administration sets each field (internal/config/compose_test.go checks
-# that none is left).
+# Administration sets each field (TestComposeFreshStart, in
+# internal/config/deploy_test.go, checks that none is left).
 x-fresh-env: &fresh-env
   RVAV_AUTH_MODE: oidc
   RVAV_ALLOW_DEV_AUTH: ""

@@ -10,17 +10,14 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// uiVariables are the variables that lock a field of Administration ›
-// Integrations (ADR-0030), and the inventory token's.
+// uiVariables are the variables that lock something Administration sets.
 func uiVariables() map[string]bool {
-	out := map[string]bool{"RVAV_INVENTORY_TOKEN": true}
-	for kind, fields := range Fields {
-		for _, f := range fields {
-			out[f.Env] = true
-			for _, env := range alsoLockedBy[kind][f.Name] {
-				out[env] = true
-			}
-		}
+	out := map[string]bool{}
+	for _, v := range Variables() {
+		out[v] = true
+	}
+	if !out["RVAV_VCENTER_URL"] || !out["RVAV_VRA_PASSWORD"] || !out["RVAV_INVENTORY_TOKEN"] {
+		panic("Variables misses some")
 	}
 	return out
 }

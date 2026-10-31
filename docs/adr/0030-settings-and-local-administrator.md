@@ -294,6 +294,15 @@ Without a restart by hand, in one of two ways:
   stack as a new install: no seed, no integration variables for rvav's
   processes, OIDC sign-in. Its fakes keep their own settings, and the fake
   EfficientIP serves vcsim's networks on an empty database.
+- **Every process starts with the install settings alone.** An
+  integration not set yet makes no process exit:
+  - EfficientIP or AWX answer each call with what to set, and where. The
+    same goes when saved settings make no client (AWX without its
+    organisation), so the API stays up for Administration to correct them.
+  - Without vCenter, the worker starts, and a request fails saying vCenter
+    is not set.
+  - The sync waits. It syncs vCenter, EfficientIP and AWX once each is
+    saved, since saving one starts it again.
 
 ## Consequences
 - rvav is set up from its UI, as vRA is; only the database, keys,

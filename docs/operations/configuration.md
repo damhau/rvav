@@ -149,7 +149,7 @@ with it ([admin guide](../guides/admin.md#trusted-certificates)).
 |---|---|---|---|---|
 | `RVAV_AWX_URL` | none | | Integrations › AWX | AWX's address. |
 | `RVAV_AWX_TOKEN` | none | yes | Integrations › AWX | An OAuth token of rvav's AWX user. |
-| `RVAV_AWX_ORGANIZATION` | none (required with a real AWX) | | Integrations › AWX | The organisation rvav's templates and inventories are in. |
+| `RVAV_AWX_ORGANIZATION` | none (needed with a real AWX: without it, AWX's calls say to set it) | | Integrations › AWX | The organisation rvav's templates and inventories are in. |
 | `RVAV_AWX_INVENTORY_SOURCE_ID` | none | | Integrations › AWX | The inventory source that reads rvav's inventory, refreshed before jobs. |
 | `RVAV_AWX_CATALOG_LABELS` | `catalog` | | Integrations › AWX | Labels of templates offered as catalog items. |
 | `RVAV_AWX_ACTION_LABELS` | `day2` | | Integrations › AWX | Labels of templates offered as day-2 actions. |
