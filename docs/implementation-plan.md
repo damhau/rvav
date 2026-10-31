@@ -57,7 +57,7 @@ Kept out, decided: 7, 26, 28, 29, 36, 42, 48, and NSX load balancers
 (half of 27); Terraform runs as an AWX item for those who need it.
 After C1, U1 settings comes before D1 (decided 2026-10-31): set up from
 the UI, as in vRA, with a local administrator and settings that apply
-without a restart ([section 6](#u1-settings-after-c1-next)).
+without a restart ([section 6](#u1-settings-after-c1-built)).
 
 ### Service Broker
 
@@ -402,7 +402,7 @@ adapters, the second on the deployment's segment, gets an address there.
 changed by a merge request appears in rvav as a draft; a conflict is shown,
 and settled either way.
 
-### U1 Settings (after C1, next)
+### U1 Settings (after C1, built)
 As in vRA, rvav is installed with what it needs to start, and everything
 else is set from the UI (decided 2026-10-31):
 - **What stays at install:** the database, the secrets key, the listen
@@ -448,7 +448,7 @@ else is set from the UI (decided 2026-10-31):
   vCenter, environments and projects, IPAM, AWX, a first item). A System
   page shows the version, the processes and their settings.
 
-**Acceptance:**
+**Acceptance** (`TestU1Acceptance`, `TestInstallSettingsOnly`, `TestLocalAdmin`, `TestIdentityProvider`, `TestSetupChecklist`; Entra ID on the organisation's tenant: [#124](https://github.com/damhau/rvav/issues/124)):
 - **First run:** on a new database, the administrator signs in with the
   install password and changes it. They then set the identity provider and
   test it, map groups, and set vCenter, all with no restart. A user signing
