@@ -43,11 +43,16 @@ type HTTPClient struct {
 // Auth is how rvav signs in to SOLIDserver.
 type Auth string
 
+// Auths are the ways rvav signs in, as configuration.md and Administration
+// list them.
+var Auths = []Auth{AuthNative, AuthBasic, AuthToken}
+
 const (
 	// AuthNative sends the user name and password, base64-encoded, in the
 	// X-IPM-Username and X-IPM-Password headers.
 	AuthNative Auth = "native"
-	AuthBasic  Auth = "basic"
+	// AuthBasic sends them as HTTP basic authentication.
+	AuthBasic Auth = "basic"
 	// AuthToken signs each call with an API token: the key ID, and a SHA3-256
 	// of the secret, the time, the method and the URL.
 	AuthToken Auth = "token"

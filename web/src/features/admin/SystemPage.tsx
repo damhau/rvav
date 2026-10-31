@@ -11,7 +11,7 @@ import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/utils";
 import { roles } from "./Applying";
-import { integrationTitle } from "./IntegrationSettings";
+import { integrationTab, integrationTitle } from "./IntegrationSettings";
 
 type S = components["schemas"];
 
@@ -123,7 +123,7 @@ function Revisions({ system }: { system: S["System"] }) {
               {system.settings.map((r) => (
                 <tr key={r.kind}>
                   <td className={`${td} font-medium`}>
-                    <Link to="/admin/integrations" search={{ tab: r.kind }}>
+                    <Link to="/admin/integrations" search={{ tab: integrationTab(r.kind) }}>
                       {integrationTitle(r.kind)}
                     </Link>
                   </td>

@@ -133,7 +133,7 @@ with it ([admin guide](../guides/admin.md#trusted-certificates)).
 | `RVAV_EFFICIENTIP_URL` | none | | Integrations › EfficientIP | The SOLIDserver's address. |
 | `RVAV_EFFICIENTIP_USERNAME` | none | | Integrations › EfficientIP | rvav's account, or a token's key ID. |
 | `RVAV_EFFICIENTIP_PASSWORD` | none | yes | Integrations › EfficientIP | Its password, or the token's secret. |
-| `RVAV_EFFICIENTIP_AUTH` | `native` | | Integrations › EfficientIP | `native` (user and password) or `token`. |
+| `RVAV_EFFICIENTIP_AUTH` | `native` | | Integrations › EfficientIP | `native` (the user and password in SOLIDserver's own headers), `basic` (HTTP basic authentication) or `token` (an API token: its key ID as the user, its secret as the password). |
 | `RVAV_EFFICIENTIP_INSECURE` | off | | Integrations › EfficientIP | Doesn't check the certificate. For labs only. |
 | `RVAV_EFFICIENTIP_CERT_SHA256` | none | | Integrations › EfficientIP | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 | `RVAV_EFFICIENTIP_SPACE` | all spaces | | Integrations › EfficientIP | The IPAM space rvav's subnets are in. |

@@ -11,6 +11,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/integrations/awx"
 )
 
 // The token AWX's inventory source reads rvav with (ADR-0030): rvav makes
@@ -69,7 +70,7 @@ func (s *Service) MakeInventoryToken(ctx context.Context, p *auth.Principal, w a
 	}
 	source := s.liveConfig(ctx).AWX.InventorySourceID
 	switch {
-	case s.AWX == nil:
+	case !awx.IsSet(s.AWX):
 		return api.InventoryTokenMade{}, &ConflictError{Msg: "Set AWX's connection first."}
 	case source == 0:
 		return api.InventoryTokenMade{}, &ConflictError{Msg: "Set AWX's inventory source ID first: the source that reads rvav's inventory."}

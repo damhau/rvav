@@ -12,9 +12,11 @@ Its first password is secret.env.RVAV_ADMIN_PASSWORD; it must be changed at the 
 {{- else }}
 Its first password was generated, and logged once by the API pod that made the account:
   kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=api -c api --tail=-1 | grep "local administrator created"
-It must be changed at the first sign-in.
+It must be changed at the first sign-in. Once that container has started again (applying a connection
+saved in Administration does), the line is gone: set another instead, below.
 {{- end }}
-`rvav admin reset-password` (in an API pod) sets another.
+Another password, printed once and to be changed at the next sign-in:
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ .Release.Name }}-api -c api -- rvav admin reset-password
 
 Every rvav pod applies the database migrations as it starts. Check them with:
   kubectl -n {{ .Release.Namespace }} logs deploy/{{ .Release.Name }}-api -c migrate

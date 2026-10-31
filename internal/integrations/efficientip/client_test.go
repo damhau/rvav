@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -414,5 +415,42 @@ func TestInstances(t *testing.T) {
 	addresses, records, err = lab.Managed(ctx)
 	if err != nil || len(addresses) != 0 || len(records) != 1 {
 		t.Fatalf("lab's managed: %v %v %v", addresses, records, err)
+	}
+}
+
+// Each way rvav signs in is the one configuration.md's row and the
+// Administration field's hint list.
+func TestAuthsDocumented(t *testing.T) {
+	doc, err := os.ReadFile("../../../docs/operations/configuration.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	form, err := os.ReadFile("../../../web/src/features/admin/IntegrationSettings.tsx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row, hint string
+	for line := range strings.Lines(string(doc)) {
+		if strings.HasPrefix(line, "| `RVAV_EFFICIENTIP_AUTH` |") {
+			row = line
+		}
+	}
+	// The field's definition, on one line or as Prettier breaks it.
+	if _, after, ok := strings.Cut(string(form), `env: "RVAV_EFFICIENTIP_AUTH"`); ok {
+		hint, _, _ = strings.Cut(after, "}")
+	}
+	if row == "" || hint == "" {
+		t.Fatalf("no RVAV_EFFICIENTIP_AUTH in configuration.md (%q) or the form (%q)", row, hint)
+	}
+	for _, a := range Auths {
+		if _, err := New(Options{URL: "https://ipam.corp.example", Auth: a, DNSServer: "ns1"}); err != nil {
+			t.Errorf("%s: %v", a, err)
+		}
+		if !strings.Contains(row, "`"+string(a)+"`") {
+			t.Errorf("configuration.md doesn't list %s: %s", a, row)
+		}
+		if !strings.Contains(hint, string(a)) {
+			t.Errorf("the form's hint doesn't list %s: %s", a, hint)
+		}
 	}
 }

@@ -870,7 +870,11 @@ export function VraImportPage() {
             {status.data && !status.data.configured && (
               <span>
                 rvav reads no vRA itself: set it in{" "}
-                <Link to="/admin/integrations" className="text-accent underline underline-offset-2">
+                <Link
+                  to="/admin/integrations"
+                  search={{ tab: "vra" }}
+                  className="text-accent underline underline-offset-2"
+                >
                   Integrations › vRA
                 </Link>
                 , or upload the file rvav vra-export wrote.

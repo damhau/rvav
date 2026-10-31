@@ -57,7 +57,9 @@ export interface paths {
          * @description The local administrator (ADR-0030): the way in at first start and
          *     when the identity provider is down. Sets the `rvav_session` cookie;
          *     the provider's users sign in with it instead. From the third failure
-         *     in a row, attempts are refused for a while (`429`).
+         *     in a row, attempts are refused for a while (`429`). A username or
+         *     password longer than allowed is a failed sign-in (`401`), as a
+         *     wrong one is.
          */
         post: operations["signIn"];
         delete?: never;
@@ -99,7 +101,8 @@ export interface paths {
         /**
          * End the local session, if there is one
          * @description Deletes the session and clears its cookie. The provider's users sign
-         *     out at the provider.
+         *     out at the provider. With a session, it needs `X-Requested-With`,
+         *     as every change does.
          */
         post: operations["signOut"];
         delete?: never;
@@ -126,6 +129,9 @@ export interface paths {
          *     sign-in: the provider's, and for ten minutes after a provider's test
          *     the origin tried, so its trial sign-in works before it is saved.
          *     nginx copies them into the page's Content-Security-Policy.
+         *     `X-Rvav-Script-Origins` lists where the console's SDK set in
+         *     Administration is served from, which nginx adds to its
+         *     `script-src`.
          */
         get: operations["getAuthOptions"];
         put?: never;
@@ -6191,8 +6197,8 @@ export interface operations {
                     "application/json": components["schemas"]["SignInResult"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            422: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -6216,6 +6222,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
@@ -6238,6 +6245,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            403: components["responses"]["Forbidden"];
         };
     };
     getAuthOptions: {
@@ -6254,6 +6262,8 @@ export interface operations {
                 headers: {
                     /** @description Space-separated origins (scheme, host and port only). */
                     "X-Rvav-Idp-Origins"?: string;
+                    /** @description Space-separated origins of the console's SDK (scheme, host and port only). */
+                    "X-Rvav-Script-Origins"?: string;
                     [name: string]: unknown;
                 };
                 content: {

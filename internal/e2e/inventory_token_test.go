@@ -11,6 +11,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/integrations/awx"
 )
 
 // TestInventoryToken (U1.4): Administration makes the token AWX's inventory
@@ -38,6 +39,15 @@ func TestInventoryToken(t *testing.T) {
 		h.json("POST", "/api/v1/admin/integrations/awx/inventory-token", admin, api.InventoryTokenWrite{}, 409, nil)
 		h.svc.Config.AWX.InventorySourceID = 1
 		h.svc.Config.PublicURL = "https://rvav.corp.example"
+		// AWX's connection isn't set (a new install's client says so).
+		set := h.svc.AWX
+		h.svc.AWX = awx.NotSet{}
+		var problem api.Problem
+		h.json("POST", "/api/v1/admin/integrations/awx/inventory-token", admin, api.InventoryTokenWrite{}, 409, &problem)
+		if problem.Detail == nil || *problem.Detail != "Set AWX's connection first." {
+			t.Fatalf("AWX not set: %+v", problem)
+		}
+		h.svc.AWX = set
 		bad := "ftp://rvav.corp.example"
 		h.json("POST", "/api/v1/admin/integrations/awx/inventory-token", admin, api.InventoryTokenWrite{Url: &bad}, 422, nil)
 		h.json("POST", "/api/v1/admin/integrations/awx/inventory-token", "tnguyen", api.InventoryTokenWrite{}, 403, nil)

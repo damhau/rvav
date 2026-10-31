@@ -154,7 +154,13 @@ const fields: Record<
     secret: { name: "password", label: "Password", env: "RVAV_EFFICIENTIP_PASSWORD", type: "string" },
     settings: [
       { name: "url", label: "URL", env: "RVAV_EFFICIENTIP_URL", type: "string" },
-      { name: "auth", label: "Sign-in", env: "RVAV_EFFICIENTIP_AUTH", type: "string", hint: "native or basic" },
+      {
+        name: "auth",
+        label: "Sign-in",
+        env: "RVAV_EFFICIENTIP_AUTH",
+        type: "string",
+        hint: "native, basic or token (an API token: its key ID as the user, its secret as the password)",
+      },
       { name: "username", label: "User", env: "RVAV_EFFICIENTIP_USERNAME", type: "string" },
       { name: "space", label: "IP space", env: "RVAV_EFFICIENTIP_SPACE", type: "string" },
       { name: "dns_server", label: "DNS server", env: "RVAV_EFFICIENTIP_DNS_SERVER", type: "string" },
@@ -658,6 +664,9 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
 /** An integration's tab, by name. */
 export const integrationTitle = (kind: S["IntegrationKind"]) =>
   kind === "oidc" ? "Identity provider" : fields[kind].title;
+
+/** The tab an integration's panel is in: the console's is in vCenter's. */
+export const integrationTab = (kind: S["IntegrationKind"]) => (kind === "console" ? "vcenter" : kind);
 
 export function IntegrationSettings({ tab }: { tab?: string }) {
   const list = useQuery(adm.integrations());

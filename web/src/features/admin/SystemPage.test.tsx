@@ -16,7 +16,7 @@ describe("System page", () => {
     expect(await screen.findByRole("heading", { name: "System", level: 1 })).toBeInTheDocument();
     const install = await screen.findByRole("region", { name: "This install" });
     expect(install).toHaveTextContent("Version1.4.0");
-    expect(install).toHaveTextContent("Migration 48");
+    expect(install).toHaveTextContent("Migration 49");
 
     const procs = within(screen.getByRole("table", { name: "Processes" })).getAllByRole("row");
     expect(procs).toHaveLength(5);
@@ -64,6 +64,27 @@ describe("System page", () => {
     expect(rows[2]).toHaveTextContent(/^vCenter2.*by .*Applying$/);
     expect(screen.getByRole("region", { name: "This install" })).toHaveTextContent("Revision 2");
     expect(within(screen.getByRole("table", { name: "Processes" })).getAllByText("earlier settings")).toHaveLength(4);
+  });
+
+  it("links each saved setting to its tab, the console's to vCenter's", async () => {
+    const list = await call(api.GET("/admin/integrations"));
+    const console = list.items.find((it) => it.kind === "console")!;
+    await call(
+      api.PUT("/admin/integrations/{kind}", {
+        params: { path: { kind: "console" } },
+        body: { settings: { ...console.settings, username: "svc-console@vsphere.local" } },
+      }),
+    );
+    renderApp("/admin/system");
+    const saved = await screen.findByRole("table", { name: "Settings saved in Administration" });
+    expect(within(saved).getByRole("link", { name: "Console" })).toHaveAttribute(
+      "href",
+      "/admin/integrations?tab=vcenter",
+    );
+    expect(within(saved).getByRole("link", { name: "vCenter" })).toHaveAttribute(
+      "href",
+      "/admin/integrations?tab=vcenter",
+    );
   });
 
   it("on a new install, nothing is saved in Administration yet", async () => {

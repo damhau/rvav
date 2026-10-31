@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
@@ -417,7 +418,7 @@ func (s *Service) dnsZones(ctx context.Context) ([]string, error) {
 // awxOptions are the inventories, or the credentials (of params["kind"]
 // when set), of rvav's AWX organisation.
 func (s *Service) awxOptions(ctx context.Context, source string, params map[string]string) ([]api.Option, error) {
-	if s.AWX == nil {
+	if !awx.IsSet(s.AWX) {
 		return nil, &UpstreamError{System: "AWX", Err: errors.New("no AWX is configured")}
 	}
 	opts := []api.Option{}

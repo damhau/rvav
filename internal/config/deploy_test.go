@@ -123,3 +123,21 @@ func TestChartValuesAreInstallSettings(t *testing.T) {
 		t.Fatalf("rvav.env.example sets %d settings", set)
 	}
 }
+
+// The chart's notes give a way to the local administrator that doesn't
+// depend on the log of the container that made it: applying a connection
+// starts that container again, and the line is gone.
+func TestChartNotesResetPassword(t *testing.T) {
+	b, err := os.ReadFile("../../deploy/helm/rvav/templates/NOTES.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const reset = "kubectl -n {{ .Release.Namespace }} exec deploy/{{ .Release.Name }}-api -c api -- rvav admin reset-password"
+	notes := string(b)
+	if !strings.Contains(notes, reset) {
+		t.Fatalf("NOTES.txt doesn't give %q:\n%s", reset, notes)
+	}
+	if i := strings.Index(notes, reset); strings.LastIndex(notes[:i], "{{- end }}") < strings.LastIndex(notes[:i], "{{- if .Values.secret.env.RVAV_ADMIN_PASSWORD }}") {
+		t.Fatal("the reset is given only when the password was generated: give it either way")
+	}
+}

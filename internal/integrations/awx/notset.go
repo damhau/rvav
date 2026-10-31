@@ -15,6 +15,12 @@ type NotSet struct{ Err error }
 
 var _ Client = NotSet{}
 
+// IsSet says whether c is a client of an AWX set: not nil, nor NotSet.
+func IsSet(c Client) bool {
+	_, notSet := c.(NotSet)
+	return c != nil && !notSet
+}
+
 func (n NotSet) err() error {
 	if n.Err != nil {
 		return n.Err

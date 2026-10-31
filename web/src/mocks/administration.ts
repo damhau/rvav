@@ -106,12 +106,14 @@ function processesNow(a: AdminState): S["Process"][] {
   return a.processes.map((p) => {
     let state: S["Process"]["state"] = "running";
     if (a.applying && p.revision < a.applying.revision) {
+      // Draining from a third of the way, exited for a moment, then
+      // started again with them.
       const gone = t - a.applying.at;
-      if (gone >= p.takes) {
+      if (gone >= p.takes * 1.1) {
         p.revision = a.applying.revision;
         p.started_at = new Date().toISOString();
         p.pid += 1;
-      } else if (gone >= p.takes * 0.9) state = "restarting";
+      } else if (gone >= p.takes) state = "restarting";
       else if (gone >= p.takes / 3) state = "draining";
     }
     return {
@@ -1481,7 +1483,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       }).sort((x, y) => y.revision - x.revision);
       return HttpResponse.json({
         version: "1.4.0",
-        schema: 48,
+        schema: 49,
         revision: Math.max(0, ...connections),
         processes,
         settings,
