@@ -55,6 +55,9 @@ designer, a request's run), A1 custom roles, D2 composite step kinds
 features 17 and 41, and A1 the other half of 44, 100 / 110 = 91%.
 Kept out, decided: 7, 26, 28, 29, 36, 42, 48, and NSX load balancers
 (half of 27); Terraform runs as an AWX item for those who need it.
+After C1, U1 settings comes before D1 (decided 2026-10-31): set up from
+the UI, as in vRA, with a local administrator and settings that apply
+without a restart ([section 6](#u1-settings-after-c1-next)).
 
 ### Service Broker
 
@@ -399,6 +402,62 @@ adapters, the second on the deployment's segment, gets an address there.
 changed by a merge request appears in rvav as a draft; a conflict is shown,
 and settled either way.
 
+### U1 Settings (after C1, next)
+As in vRA, rvav is installed with what it needs to start, and everything
+else is set from the UI (decided 2026-10-31):
+- **What stays at install:** the database, the secrets key, the listen
+  addresses, Temporal and the public URL, shown read only. Everything else
+  is set in the UI. An environment variable still wins, its field locked
+  ([ADR-0020](adr/0020-administration.md)).
+- **A local administrator:** `admin`, the only local account, kept as a
+  break-glass account for first setup and for when the identity provider is
+  down.
+  - Its password is `RVAV_ADMIN_PASSWORD` (a Helm value) if given, otherwise
+    generated at first start and shown once in the log.
+  - It must be changed at first sign-in. Failed attempts slow sign-in down,
+    and every sign-in is audited.
+  - `rvav admin reset-password` resets it from the command line.
+  - Everyone else signs in through the identity provider.
+- **The identity provider in the UI:**
+  - Set in Administration: the OIDC issuer, client, scopes and the claim
+    holding groups or roles.
+  - A test signs in and shows the token's claims and the roles they would
+    give.
+  - The web app reads its sign-in settings from the API.
+  - The setup is written down for Entra ID, Keycloak and Okta.
+- **Settings apply without a restart:**
+  - Read on next use: the identity provider, notifications, allowed hosts
+    and intervals.
+  - The connection clients (vCenter, AWX, EfficientIP, NSX, Git, vRA): the
+    worker and sync processes drain (no new tasks, running activities
+    finish) and exit, and their supervisor (Kubernetes, Compose, systemd)
+    starts them again with the new settings.
+  - The UI shows each process applying, then applied. This revises
+    ADR-0020's restart.
+- **The rest in the UI:**
+  - the sync intervals;
+  - the hosts value sources and webhooks may call;
+  - the console's vCenter account and SDK;
+  - the vRA importer's connection;
+  - the inventory token.
+- **Certificates:** a server's certificate is shown at its test and trusted
+  from there, as in vRA, or comes from a CA bundle set in Administration,
+  instead of turning TLS checks off.
+- **First run:** an install without seed data or integration settings opens
+  on a setup checklist (password, identity provider, the admin group,
+  vCenter, environments and projects, IPAM, AWX, a first item). A System
+  page shows the version, the processes and their settings.
+
+**Acceptance:**
+- **First run:** on a new database, the administrator signs in with the
+  install password and changes it. They then set the identity provider and
+  test it, map groups, and set vCenter, all with no restart. A user signing
+  in through the provider requests a VM, and it is provisioned.
+- **A change while running:** vCenter is changed while a provisioning runs.
+  The running one finishes, and the next one uses the new vCenter.
+- **Break-glass:** with the identity provider down, the local administrator
+  still signs in.
+
 ### D1 One canvas (after N1)
 The canvas rvav's catalog and requests share (React Flow, laid out
 automatically; YAML stays the source of truth), used three ways:
@@ -465,6 +524,7 @@ rebuilt as a composite on the canvas, run end to end.
 | N1 NSX networking | 1.0 (S9, S12, S13), P2 |
 | N2 NSX gaps | N1 |
 | C1 The catalog in Git | S8 |
+| U1 Settings | S9 (ADR-0020), S14 |
 | D1 One canvas | S10 (composites), S12, N1 |
 | A1 Custom roles | S9 |
 | D2 Composite step kinds | D1, the vRO triage of the real vRA (#85) |
