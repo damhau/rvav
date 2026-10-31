@@ -111,7 +111,8 @@ function processesNow(a: AdminState): S["Process"][] {
         p.revision = a.applying.revision;
         p.started_at = new Date().toISOString();
         p.pid += 1;
-      } else if (gone >= p.takes / 3) state = "draining";
+      } else if (gone >= p.takes * 0.9) state = "restarting";
+      else if (gone >= p.takes / 3) state = "draining";
     }
     return {
       id: `${p.host}/${p.role}/${p.pid}`,

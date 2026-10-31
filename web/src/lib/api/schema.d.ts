@@ -2092,8 +2092,10 @@ export interface paths {
          * rvav's processes and the settings revision each runs with
          * @description Each API, worker and sync process records itself every few seconds
          *     (ADR-0030). One that saw newer connection settings is draining,
-         *     before it exits and its supervisor starts it again. Processes not
-         *     seen for 30 seconds are left out.
+         *     before it exits and its supervisor starts it again; restarting
+         *     once it has exited, until it has been started again (its successor,
+         *     of the same role and host, recorded) or for 10 minutes. Processes
+         *     not seen for 30 seconds are left out, but those restarting.
          */
         get: operations["listProcesses"];
         put?: never;
@@ -5518,9 +5520,10 @@ export interface components {
             revision: number;
             /**
              * @description draining - it saw newer connection settings, and exits once its work is done.
+             *     restarting - it exited for them, and its supervisor hasn't started it again yet.
              * @enum {string}
              */
-            state: "running" | "draining";
+            state: "running" | "draining" | "restarting";
             /** Format: date-time */
             started_at: string;
             /** Format: date-time */

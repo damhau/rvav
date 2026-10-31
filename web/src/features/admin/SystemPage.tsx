@@ -79,7 +79,7 @@ function Processes({ system }: { system: S["System"] }) {
                     {p.revision}
                     {p.revision < system.revision && <span className="ml-1.5 text-xs text-warn">earlier settings</span>}
                   </td>
-                  <td className={td}>{p.state === "draining" ? "Finishing its running work" : "Running"}</td>
+                  <td className={td}>{states[p.state]}</td>
                   <td className={td} title={fullDate(p.started_at)}>
                     {relative(p.started_at)}
                   </td>
@@ -202,6 +202,12 @@ function Install({ system }: { system: S["System"] }) {
     </Panel>
   );
 }
+
+const states: Record<components["schemas"]["Process"]["state"], string> = {
+  running: "Running",
+  draining: "Finishing its running work",
+  restarting: "Starting again",
+};
 
 export function SystemPage() {
   const system = useQuery({ ...adm.system(), refetchInterval: 10_000 });

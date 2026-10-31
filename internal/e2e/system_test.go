@@ -98,15 +98,34 @@ func TestSystemPage(t *testing.T) {
 			}
 		}
 
-		// Started again with them, the worker has applied vCenter's.
-		if err := h.store.ProcessGone(ctx, worker.ID); err != nil {
+		// Exited to apply them, and not started again yet (Compose's restart,
+		// Kubernetes' back-off): not applied, the worker shown restarting,
+		// past the 30 s a process that stopped recording itself is listed.
+		if err := h.store.ProcessRestarting(ctx, worker.ID); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := h.store.Pool.Exec(ctx, `update processes set seen_at = now() - interval '1 minute' where id = $1`, worker.ID); err != nil {
+			t.Fatal(err)
+		}
+		if sys, _ = system(); sys.Settings[0].Applies != api.Applying || len(sys.Processes) != 1 ||
+			sys.Processes[0].State != api.ProcessStateRestarting {
+			t.Fatalf("restarting = %+v %+v", sys.Settings[0], sys.Processes)
+		}
+		var vcNow api.IntegrationList
+		h.json("GET", "/api/v1/admin/integrations", admin, nil, 200, &vcNow)
+		for _, it := range vcNow.Items {
+			if it.Kind == "vcenter" && !it.Applying {
+				t.Fatal("vCenter applied with the worker restarting")
+			}
+		}
+
+		// Started again with them (its successor on the same host), the
+		// worker has applied vCenter's, and the one restarting is forgotten.
 		worker.ID, worker.Revision = "rvav-worker-1/worker/8-d4e5f6", vc.Revision
 		if err := h.store.SeeProcess(ctx, worker, time.Now().Add(-time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		if sys, _ = system(); sys.Settings[0].Applies != api.Applied || sys.Processes[0].Revision != vc.Revision {
+		if sys, _ = system(); sys.Settings[0].Applies != api.Applied || len(sys.Processes) != 1 || sys.Processes[0].Revision != vc.Revision {
 			t.Fatalf("applied = %+v %+v", sys.Settings[0], sys.Processes)
 		}
 	})

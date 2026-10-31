@@ -280,10 +280,31 @@ func TestApplyConnections(t *testing.T) {
 		if !claim("rvav-api-1/api/1-aaaaaa") || claim("rvav-api-2/api/1-bbbbbb") {
 			t.Fatal("two APIs drain at once")
 		}
-		if _, err := h.store.Pool.Exec(ctx, `update processes set seen_at = now() - interval '31 seconds' where id = 'rvav-api-1/api/1-aaaaaa'`); err != nil {
+		// Exited, the first isn't running until its supervisor has started
+		// it again (Kubernetes' back-off may take minutes): the second
+		// waits for its successor, not just for the first to exit.
+		if err := h.store.ProcessRestarting(ctx, "rvav-api-1/api/1-aaaaaa"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.store.Pool.Exec(ctx, `update processes set seen_at = now() - interval '1 minute' where id = 'rvav-api-1/api/1-aaaaaa'`); err != nil {
+			t.Fatal(err)
+		}
+		if claim("rvav-api-2/api/1-bbbbbb") {
+			t.Fatal("an API drains while the one before it hasn't been started again")
+		}
+		if err := h.store.SeeProcess(ctx, store.Process{ID: "rvav-api-1/api/2-cccccc", Role: "api", Host: "rvav-api-1", State: "running"}, since); err != nil {
 			t.Fatal(err)
 		}
 		if !claim("rvav-api-2/api/1-bbbbbb") {
+			t.Fatal("the next API doesn't drain once the one before runs again")
+		}
+
+		// One that stopped recording itself (it crashed) holds the others
+		// back for 30 s at most.
+		if _, err := h.store.Pool.Exec(ctx, `update processes set seen_at = now() - interval '31 seconds' where id = 'rvav-api-2/api/1-bbbbbb'`); err != nil {
+			t.Fatal(err)
+		}
+		if !claim("rvav-api-1/api/2-cccccc") {
 			t.Fatal("an API that stopped recording itself holds the others back")
 		}
 	})

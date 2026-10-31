@@ -86,18 +86,27 @@ Without a restart by hand, in one of two ways:
   - an API answers `/readyz` with 503 for 6 s first, so the load balancer
     sends requests elsewhere, then lets requests running finish and ends
     the event streams, which clients reopen. APIs drain one at a time,
-    claimed under an advisory lock; one that stopped recording itself
-    holds the others back for 30 s at most;
+    claimed under an advisory lock: the next once the one before has
+    been started again, not just exited; one that stopped recording
+    itself holds the others back for 30 s at most;
   - the sync loops stop; a pass cut short is done again at the next start;
   - it exits with status 3.
 
   Its supervisor starts it again with the new settings: Kubernetes (the
   container restarts), Compose (`restart: on-failure` in development,
   `always` on a VM) or systemd (`Restart=always`). `rvav dev`, which has
-  none, starts itself again in place.
+  none, starts itself again in place. Kubernetes counts it as a container
+  restart: several within ten minutes of each other wait 10 s, 20 s,
+  40 s… (its back-off), which saving the setup checklist's connections
+  one after the other can reach; saving them within 3 s of each other
+  applies them with one.
 - Each process records itself in the `processes` table every 5 s: role,
   host, version, the settings revision it runs with, running or draining.
-  `GET /admin/processes` lists those seen in the last 30 s. A setting read
+  One that exits to apply settings is kept, restarting, until its
+  successor (of the same role and host: the same pod, container or VM)
+  records itself, or for 10 minutes: meanwhile nothing is applied, and
+  no other API drains. `GET /admin/processes` lists those seen in the
+  last 30 s, and those restarting. A setting read
   on next use moves a process's revision as soon as it reads it. An
   integration is `applying` while a process runs with an earlier
   revision than the integration's; the UI shows each process draining and

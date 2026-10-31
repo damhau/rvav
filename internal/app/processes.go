@@ -56,10 +56,17 @@ func (a *App) Run(ctx context.Context, role string, run func(context.Context) er
 	if err := a.Store.SeeProcess(ctx, p, time.Now().Add(-forgetAfter)); err != nil {
 		return fmt.Errorf("record the process: %w", err)
 	}
+	restarting := false
 	defer func() {
 		gctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if err := a.Store.ProcessGone(gctx, p.ID); err != nil {
+		// One exiting to be started again is kept until it is: a change
+		// isn't applied, nor another API drained, while it isn't running.
+		forget := a.Store.ProcessGone
+		if restarting {
+			forget = a.Store.ProcessRestarting
+		}
+		if err := forget(gctx, p.ID); err != nil {
 			a.Log.Warn("forget the process", "err", err)
 		}
 	}()
@@ -83,6 +90,7 @@ func (a *App) Run(ctx context.Context, role string, run func(context.Context) er
 				a.Log.Info("drained; exiting to apply newer connection settings", "role", role,
 					"drained_in", time.Since(draining).Round(time.Millisecond).String())
 				a.auditProcess(ctx, "settings.process_restart", p, pending, map[string]any{"drained_ms": time.Since(draining).Milliseconds()})
+				restarting = true
 				return ErrRestart
 			}
 			return err

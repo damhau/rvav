@@ -1,7 +1,10 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { renderApp } from "@/test/render";
+import { server } from "@/mocks/node";
+import { renderApp, renderWithQuery } from "@/test/render";
+import { Applying } from "./Applying";
 
 // Saved settings applying (ADR-0030), against the mock API: its processes
 // drain and start again within a second or so of a connection's save.
@@ -36,6 +39,28 @@ describe("saved settings applying", () => {
     // The badge goes once the panel reads that nothing applies any more.
     await screen.findByRole("region", { name: "AWX connection" });
     await expect.poll(() => screen.queryByText("Applying", { selector: "span" }), { timeout: 3000 }).toBeNull();
+  });
+
+  it("isn't applied while a process that exited hasn't been started again", async () => {
+    const at = new Date().toISOString();
+    const proc = { version: "1.4.0", started_at: at, seen_at: at };
+    server.use(
+      http.get("*/api/v1/admin/processes", () =>
+        HttpResponse.json({
+          revision: 7,
+          items: [
+            { ...proc, id: "a/api/1", role: "api", host: "rvav-api-1", revision: 7, state: "running" },
+            // Waiting out Kubernetes' back-off: still on the earlier settings.
+            { ...proc, id: "w/worker/1", role: "worker", host: "rvav-worker-1", revision: 6, state: "restarting" },
+          ],
+        }),
+      ),
+    );
+    renderWithQuery(<Applying revision={7} />);
+    const list = await screen.findByRole("list", { name: "rvav's processes" });
+    expect(within(list).getByText("Exited, starting again")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Applying: each process finishes the work it runs");
+    expect(screen.queryByText(/^Applied: /)).not.toBeInTheDocument();
   });
 
   it("applies a notification channel's on next use, with no process to start again", async () => {

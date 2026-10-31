@@ -58,7 +58,7 @@ export function Applying({ revision }: { revision: number }) {
               <li key={p.id} className="flex items-center gap-1.5">
                 {applied ? (
                   <CircleCheck className="size-3.5 shrink-0 text-ok" aria-hidden />
-                ) : p.state === "draining" ? (
+                ) : p.state !== "running" ? (
                   <LoaderCircle className="size-3.5 shrink-0 animate-spin text-warn" aria-hidden />
                 ) : (
                   <Clock className="size-3.5 shrink-0 text-faint" aria-hidden />
@@ -70,7 +70,9 @@ export function Applying({ revision }: { revision: number }) {
                     ? "Applied"
                     : p.state === "draining"
                       ? "Finishing its running work"
-                      : "Runs with the earlier settings"}
+                      : p.state === "restarting"
+                        ? "Exited, starting again"
+                        : "Runs with the earlier settings"}
                 </span>
               </li>
             );
