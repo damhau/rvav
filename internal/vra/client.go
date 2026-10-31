@@ -67,7 +67,7 @@ func New(o Options) (*Client, error) {
 	if o.Token == "" && (o.Username == "" || o.Password == "") {
 		return nil, errors.New("vra: a refresh token, or a user name and password, is needed")
 	}
-	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
+	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots, Host: u.Hostname()})
 	return &Client{opts: o, base: u, http: &http.Client{Transport: observe.Transport("vra", tr), Timeout: 60 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }

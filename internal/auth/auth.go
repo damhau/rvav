@@ -174,6 +174,17 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	if err != nil {
 		return nil, err
 	}
+	// The local administrator's, while its password must be changed (reset
+	// with `rvav admin reset-password`, which revokes them too): refused.
+	if strings.HasPrefix(u.Subject, "local:") {
+		acc, err := s.LocalAccountOf(ctx, u.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		if err == nil && acc.MustChange {
+			return nil, ErrUnauthenticated
+		}
+	}
 	// No roles from groups: those stored from the last sign-in may be stale,
 	// and automation should not approve anything.
 	p, err := build(ctx, s, u, nil)

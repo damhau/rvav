@@ -52,17 +52,32 @@ func (s *Store) LocalAccountOf(ctx context.Context, userID string) (LocalAccount
 	return a, notFound(err)
 }
 
-// LocalSignInFailed counts a failure. From the third in a row, attempts
-// wait until locked_until: 1 s, then twice as long each time, at most 15
-// minutes.
-func (s *Store) LocalSignInFailed(ctx context.Context, userID string, now time.Time) (LocalAccount, error) {
+// LocalAttempt counts an attempt at the account's password as a failure
+// before the password is checked, unless the account is waiting (ok
+// false, the account as it is): in one statement, so that attempts made at
+// once can't all pass the wait before any is counted. From the third in a
+// row, attempts wait until locked_until: 1 s, then twice as long each
+// time, at most 15 minutes. The right password starts the count again
+// (LocalAttemptRight).
+func (s *Store) LocalAttempt(ctx context.Context, userID string, now time.Time) (a LocalAccount, ok bool, err error) {
 	rows, _ := s.Pool.Query(ctx, `update local_accounts set failed_attempts = failed_attempts + 1,
 			locked_until = case when failed_attempts + 1 >= 3
 				then $2::timestamptz + make_interval(secs => least(power(2, least(failed_attempts - 2, 10)), 900))
 				else locked_until end
-		where user_id = $1 returning `+localCols, userID, now)
-	a, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LocalAccount])
-	return a, notFound(err)
+		where user_id = $1 and (locked_until is null or locked_until <= $2) returning `+localCols, userID, now)
+	a, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LocalAccount])
+	if errors.Is(err, pgx.ErrNoRows) {
+		a, err = s.LocalAccountOf(ctx, userID)
+		return a, false, err
+	}
+	return a, err == nil, err
+}
+
+// LocalAttemptRight starts the count of failures again: the attempt had
+// the right password.
+func (s *Store) LocalAttemptRight(ctx context.Context, userID string) error {
+	_, err := s.Pool.Exec(ctx, `update local_accounts set failed_attempts = 0, locked_until = null where user_id = $1`, userID)
+	return err
 }
 
 // LocalSignInSucceeded starts the count of failures again.
@@ -135,5 +150,11 @@ func (s *Store) DeleteSession(ctx context.Context, idHash string) error {
 // DeleteSessions ends a user's sessions but the one given ("": all).
 func (s *Store) DeleteSessions(ctx context.Context, userID, except string) (int64, error) {
 	tag, err := s.Pool.Exec(ctx, `delete from sessions where user_id = $1 and id_hash <> $2`, userID, except)
+	return tag.RowsAffected(), err
+}
+
+// RevokeUserAPITokens deletes every API token of a user.
+func (s *Store) RevokeUserAPITokens(ctx context.Context, userID string) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `delete from api_tokens where user_id = $1`, userID)
 	return tag.RowsAffected(), err
 }

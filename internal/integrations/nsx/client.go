@@ -73,7 +73,7 @@ func New(o Options) (*Client, error) {
 		return nil, fmt.Errorf("nsx url %q is not valid", o.URL)
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tc := trust.Config(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
+	tc := trust.Config(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots, Host: u.Hostname()})
 	switch {
 	case o.CertFile != "" || o.KeyFile != "":
 		cert, err := tls.LoadX509KeyPair(o.CertFile, o.KeyFile)

@@ -69,6 +69,7 @@ func NewHTTPClient(rawURL, token string, o trust.Options) (*HTTPClient, error) {
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("awx url %q is not valid", rawURL)
 	}
+	o.Host = u.Hostname()
 	tr := trust.Transport(o)
 	return &HTTPClient{base: u, token: token, http: &http.Client{Transport: observe.Transport("awx", tr), Timeout: 30 * time.Second}}, nil
 }

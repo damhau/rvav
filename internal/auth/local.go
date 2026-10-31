@@ -36,20 +36,51 @@ var passwordParams = &argon2id.Params{Memory: 64 * 1024, Iterations: 1, Parallel
 // sign-in attempts in parallel would otherwise take as much as they like.
 var hashSlots = make(chan struct{}, 4)
 
+// slot waits for a hash slot, as long as the request does: one whose
+// client has gone gives up its place.
+func slot(ctx context.Context) (release func(), err error) {
+	select {
+	case hashSlots <- struct{}{}:
+		return func() { <-hashSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// HoldHashSlots takes every hash slot until release is called: for tests
+// of what waits for one.
+func HoldHashSlots() (release func()) {
+	for range cap(hashSlots) {
+		hashSlots <- struct{}{}
+	}
+	return func() {
+		for range cap(hashSlots) {
+			<-hashSlots
+		}
+	}
+}
+
 // HashPassword is a password's argon2id hash, in the PHC string format.
-func HashPassword(password string) (string, error) {
-	hashSlots <- struct{}{}
-	defer func() { <-hashSlots }()
+func HashPassword(ctx context.Context, password string) (string, error) {
+	release, err := slot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	return argon2id.CreateHash(password, passwordParams)
 }
 
 // CheckPassword compares a password with its hash in constant time; a
-// malformed hash never matches.
-func CheckPassword(password, hash string) bool {
-	hashSlots <- struct{}{}
-	defer func() { <-hashSlots }()
+// malformed hash never matches. It fails only when ctx ends before a slot
+// is free.
+func CheckPassword(ctx context.Context, password, hash string) (bool, error) {
+	release, err := slot(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	ok, err := argon2id.ComparePasswordAndHash(password, hash)
-	return err == nil && ok
+	return err == nil && ok, nil
 }
 
 // passwordAlphabet leaves out characters read alike (0 and O, 1, l and I).

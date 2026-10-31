@@ -31,6 +31,11 @@ type Options struct {
 	Pin string
 	// Roots are the CAs; nil means the process's (Roots).
 	Roots *x509.CertPool
+	// Host is the host the connection's URL names. With a pin, a
+	// certificate the CAs vouch for is checked against it: an IP address
+	// is never the handshake's server name, so without it there would be
+	// no name to check, and any certificate the CAs signed would do.
+	Host string
 }
 
 // RootCAs are the CAs the connection trusts: Roots unless given.
@@ -188,7 +193,14 @@ func Config(o Options) *tls.Config {
 			if Fingerprint(cs.PeerCertificates[0]) == pin {
 				return nil
 			}
-			return verify(cs.PeerCertificates, cs.ServerName, roots)
+			host := o.Host
+			if host == "" {
+				host = cs.ServerName
+			}
+			if host == "" {
+				return errors.New("not the pinned certificate, and no host name to check another against")
+			}
+			return verify(cs.PeerCertificates, host, roots)
 		}
 	}
 	return c

@@ -64,23 +64,39 @@ func (s InstallSetting) Shown(c Config) (value *string, set bool) {
 	return &v, set
 }
 
-var dsnPassword = regexp.MustCompile(`(?i)(\bpassword\s*=\s*)('(?:[^'\\]|\\.)*'|\S+)`)
+// dsnPassword is a key=value connection string's password, or
+// sslpassword (the client key's).
+var dsnPassword = regexp.MustCompile(`(?i)(\b\w*password\s*=\s*)('(?:[^'\\]|\\.)*'|\S+)`)
 
-// RedactDatabaseURL takes the password out of a database URL, or of a
-// key=value connection string.
+// RedactDatabaseURL takes the passwords out of a database URL, or of a
+// key=value connection string: the user's, and password or sslpassword
+// in the query. A URL with no host (a Unix socket's, its directory in the
+// query) is a URL too. One url.Parse can't read, a password with a / or #
+// not escaped say, is shown as its scheme only.
 func RedactDatabaseURL(raw string) string {
-	if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.Host != "" {
-		if _, ok := u.User.Password(); ok {
-			u.User = url.UserPassword(u.User.Username(), "xxxxx")
-		}
-		q := u.Query()
-		if q.Has("password") {
-			q.Set("password", "xxxxx")
-			u.RawQuery = q.Encode()
-		}
-		return u.String()
+	scheme, _, isURL := strings.Cut(raw, "://")
+	if !isURL {
+		return dsnPassword.ReplaceAllString(raw, "${1}xxxxx")
 	}
-	return dsnPassword.ReplaceAllString(raw, "${1}xxxxx")
+	u, err := url.Parse(raw)
+	if err != nil {
+		return scheme + "://xxxxx"
+	}
+	if _, ok := u.User.Password(); ok {
+		u.User = url.UserPassword(u.User.Username(), "xxxxx")
+	}
+	q, hidden := u.Query(), false
+	for k := range q {
+		if strings.Contains(strings.ToLower(k), "password") {
+			q.Set(k, "xxxxx")
+			hidden = true
+		}
+	}
+	if hidden {
+		u.RawQuery = q.Encode()
+	}
+	u.Fragment, u.RawFragment = "", ""
+	return u.String()
 }
 
 func onOff(b bool) string {

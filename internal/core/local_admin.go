@@ -34,10 +34,6 @@ func (e *TooManyAttemptsError) Error() string {
 	return fmt.Sprintf("too many failed attempts: try again in %s", e.RetryAfter.Round(time.Second))
 }
 
-// unknownHash is checked against when the username is unknown, so that
-// refusing it takes as long as a wrong password.
-var unknownHash, _ = auth.HashPassword("no local account has this password")
-
 // EnsureLocalAdmin makes the local administrator at first start, with
 // RVAV_ADMIN_PASSWORD or a generated password. It returns whether this
 // call made the account, and the password when rvav generated it, to be
@@ -53,7 +49,7 @@ func (s *Service) EnsureLocalAdmin(ctx context.Context) (created bool, generated
 		generated = auth.GeneratePassword()
 		password = generated
 	}
-	hash, err := auth.HashPassword(password)
+	hash, err := auth.HashPassword(ctx, password)
 	if err != nil {
 		return false, "", err
 	}
@@ -70,6 +66,9 @@ func (s *Service) EnsureLocalAdmin(ctx context.Context) (created bool, generated
 // SignIn checks the local administrator's username and password and starts
 // a session, returning its ID (for the cookie) and whether the password
 // must be changed first. From the third failure in a row, attempts wait.
+// An unknown username is refused at once: the one account's name, admin,
+// is no secret, and checking a password against nothing would only take a
+// hash slot the administrator's sign-in waits for.
 func (s *Service) SignIn(ctx context.Context, username, password string, now time.Time) (sessionID string, mustChange bool, err error) {
 	name := strings.TrimSpace(username)
 	if utf8.RuneCountInString(name) > 64 || utf8.RuneCountInString(password) > maxPasswordLength {
@@ -77,23 +76,19 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	}
 	acc, err := s.Store.LocalAccountByName(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		auth.CheckPassword(password, unknownHash)
 		s.auditSignIn(ctx, nil, "auth.sign_in_failed", "", map[string]any{"username": clipName(name), "reason": "unknown username"})
 		return "", false, ErrBadCredentials
 	}
 	if err != nil {
 		return "", false, err
 	}
-	if acc.LockedUntil != nil && now.Before(*acc.LockedUntil) {
-		return "", false, &TooManyAttemptsError{RetryAfter: acc.LockedUntil.Sub(now)}
+	acc, right, err := s.attempt(ctx, acc.UserID, password, now)
+	if err != nil {
+		return "", false, err
 	}
-	if !auth.CheckPassword(password, acc.PasswordHash) {
-		failed, err := s.Store.LocalSignInFailed(ctx, acc.UserID, now)
-		if err != nil {
-			return "", false, err
-		}
+	if !right {
 		s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
-			map[string]any{"reason": "wrong password", "failures_in_a_row": failed.FailedAttempts})
+			map[string]any{"reason": "wrong password", "failures_in_a_row": acc.FailedAttempts})
 		return "", false, ErrBadCredentials
 	}
 	if err := s.Store.LocalSignInSucceeded(ctx, acc.UserID); err != nil {
@@ -107,9 +102,32 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	return id, acc.MustChange, nil
 }
 
+// attempt checks a password of a local account, counted as a failure
+// before it is checked (store.LocalAttempt) and the count started again if
+// it is right: attempts at once can't pass the wait together. While the
+// account waits, the password isn't checked: TooManyAttemptsError.
+func (s *Service) attempt(ctx context.Context, userID, password string, now time.Time) (store.LocalAccount, bool, error) {
+	acc, ok, err := s.Store.LocalAttempt(ctx, userID, now)
+	if err != nil {
+		return acc, false, err
+	}
+	if !ok {
+		wait := time.Second
+		if acc.LockedUntil != nil && acc.LockedUntil.After(now) {
+			wait = acc.LockedUntil.Sub(now)
+		}
+		return acc, false, &TooManyAttemptsError{RetryAfter: wait}
+	}
+	right, err := auth.CheckPassword(ctx, password, acc.PasswordHash)
+	if err != nil || !right {
+		return acc, false, err
+	}
+	return acc, true, s.Store.LocalAttemptRight(ctx, userID)
+}
+
 // ChangePassword replaces the local administrator's password, checking the
-// current one, and ends the account's other sessions. A wrong current
-// password counts as a failed sign-in.
+// current one, and ends the account's other sessions and its API tokens.
+// A wrong current password counts as a failed sign-in.
 func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current, next string, now time.Time) error {
 	if p.Session == "" {
 		return fmt.Errorf("%w: only the local administrator has a password in rvav; change yours at the identity provider",
@@ -119,22 +137,20 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 	if err != nil {
 		return err
 	}
-	if acc.LockedUntil != nil && now.Before(*acc.LockedUntil) {
-		return &TooManyAttemptsError{RetryAfter: acc.LockedUntil.Sub(now)}
-	}
-	if !auth.CheckPassword(current, acc.PasswordHash) {
-		failed, err := s.Store.LocalSignInFailed(ctx, acc.UserID, now)
-		if err != nil {
-			return err
-		}
-		s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
-			map[string]any{"reason": "wrong current password", "failures_in_a_row": failed.FailedAttempts})
-		return &ValidationError{Errors: []api.FieldError{fieldErr("/current_password", "wrong", "The current password is wrong.")}}
-	}
+	// Checked first, so that a new password refused isn't a failure.
 	if errs := checkNewPassword(acc.Username, current, next); len(errs) > 0 {
 		return &ValidationError{Errors: errs}
 	}
-	hash, err := auth.HashPassword(next)
+	acc, right, err := s.attempt(ctx, acc.UserID, current, now)
+	if err != nil {
+		return err
+	}
+	if !right {
+		s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
+			map[string]any{"reason": "wrong current password", "failures_in_a_row": acc.FailedAttempts})
+		return &ValidationError{Errors: []api.FieldError{fieldErr("/current_password", "wrong", "The current password is wrong.")}}
+	}
+	hash, err := auth.HashPassword(ctx, next)
 	if err != nil {
 		return err
 	}
@@ -145,7 +161,12 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 	if err != nil {
 		return err
 	}
-	s.auditSignIn(ctx, &acc.UserID, "auth.password_changed", acc.UserID, map[string]any{"sessions_ended": ended})
+	revoked, err := s.Store.RevokeUserAPITokens(ctx, acc.UserID)
+	if err != nil {
+		return err
+	}
+	s.auditSignIn(ctx, &acc.UserID, "auth.password_changed", acc.UserID,
+		map[string]any{"sessions_ended": ended, "tokens_revoked": revoked})
 	return nil
 }
 
@@ -196,8 +217,9 @@ func (s *Service) auditSignIn(ctx context.Context, actor *string, action, userID
 
 // ResetLocalAdmin sets the local administrator's password (generated when
 // password is empty, and returned), to be changed at the next sign-in, and
-// ends its sessions: `rvav admin reset-password`. It makes the account if
-// there is none.
+// ends its sessions and revokes its API tokens: `rvav admin
+// reset-password`, for when someone else may know the password. It makes
+// the account if there is none.
 func ResetLocalAdmin(ctx context.Context, st *store.Store, password string) (string, error) {
 	generated := ""
 	if password == "" {
@@ -206,7 +228,7 @@ func ResetLocalAdmin(ctx context.Context, st *store.Store, password string) (str
 	} else if n := utf8.RuneCountInString(password); n < minPasswordLength || n > maxPasswordLength {
 		return "", fmt.Errorf("the password needs %d to %d characters", minPasswordLength, maxPasswordLength)
 	}
-	hash, err := auth.HashPassword(password)
+	hash, err := auth.HashPassword(ctx, password)
 	if err != nil {
 		return "", err
 	}
@@ -221,9 +243,14 @@ func ResetLocalAdmin(ctx context.Context, st *store.Store, password string) (str
 	if err != nil {
 		return "", err
 	}
+	revoked, err := st.RevokeUserAPITokens(ctx, LocalAdminUserID)
+	if err != nil {
+		return "", err
+	}
 	id := SystemUserID
 	if err := st.Audit(ctx, st.Pool, store.AuditEvent{ActorID: &id, Action: "auth.password_reset", TargetType: "user",
-		TargetID: LocalAdminUserID, Detail: map[string]any{"by": "rvav admin reset-password", "sessions_ended": ended}}); err != nil {
+		TargetID: LocalAdminUserID, Detail: map[string]any{"by": "rvav admin reset-password", "sessions_ended": ended,
+			"tokens_revoked": revoked}}); err != nil {
 		return "", err
 	}
 	return generated, nil

@@ -75,9 +75,20 @@ func TestRedactDatabaseURL(t *testing.T) {
 		"host=db user=rvav password=s3cret dbname=rvav":       "host=db user=rvav password=xxxxx dbname=rvav",
 		"host=db password = 'a b\\'c' dbname=rvav":            "host=db password = xxxxx dbname=rvav",
 		"host=db PASSWORD=s3cret":                             "host=db PASSWORD=xxxxx",
+		// A Unix socket's: no host, the directory in the query.
+		"postgres://rvav:s3cret@/rvav?host=/var/run/postgresql": "postgres://rvav:xxxxx@/rvav?host=/var/run/postgresql",
+		// The client key's password.
+		"postgres://rvav:s3cret@db:5432/rvav?sslpassword=s3cret&sslmode=verify-full": "postgres://rvav:xxxxx@db:5432/rvav?sslmode=verify-full&sslpassword=xxxxx",
+		"host=db sslpassword=s3cret sslkey=/k.pem":                                   "host=db sslpassword=xxxxx sslkey=/k.pem",
+		"postgres://rvav:s3cret@db1:5432,db2:5432/rvav":                              "postgres://rvav:xxxxx@db1:5432,db2:5432/rvav",
+		// Not a URL url.Parse reads: the password's / not escaped.
+		"postgres://rvav:s3/cret@db/rvav": "postgres://xxxxx",
 	} {
 		if got := RedactDatabaseURL(in); got != want {
 			t.Errorf("RedactDatabaseURL(%q) = %q, want %q", in, got, want)
+		}
+		if strings.Contains(RedactDatabaseURL(in), "s3") {
+			t.Errorf("RedactDatabaseURL(%q) shows the password", in)
 		}
 	}
 }

@@ -138,14 +138,23 @@ Without a restart by hand, in one of two ways:
   - From the third failure in a row, the account refuses attempts for 1 s,
     then 2 s, 4 s, and so on, up to 15 minutes. While it waits, the answer
     is `429` with `Retry-After`, and the password isn't checked.
+  - An attempt is counted before its password is checked, in one statement
+    with the check that the account isn't waiting, so attempts made at once
+    can't all pass: the fourth waits as the next one would.
   - A successful sign-in starts again from zero.
-  - An unknown username takes as long to refuse as a wrong password.
+  - An unknown username is refused at once. The one account's name,
+    `admin`, is no secret, and checking a password against nothing would
+    only take one of the four hash slots the administrator's sign-in waits
+    for. An attempt waits for a slot only as long as its request does.
 - **Audited:** a sign-in (`auth.sign_in`), a failure
   (`auth.sign_in_failed`), a password change (`auth.password_changed`), a
   reset (`auth.password_reset`) and a sign-out (`auth.sign_out`).
 - **Reset from the command line:** `rvav admin reset-password` sets a new
   generated password (or one read from standard input), to be changed at
-  the next sign-in. It ends every session of the account.
+  the next sign-in. It ends every session of the account and revokes its
+  API tokens, as a password change does (but for the session changing it).
+  While the password must be changed, the account's API tokens are
+  refused.
 
 ### How a local sign-in is held beside the provider's tokens
 - **The provider's users** keep bearer access tokens, kept in the

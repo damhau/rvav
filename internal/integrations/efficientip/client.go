@@ -159,7 +159,7 @@ func New(o Options) (*HTTPClient, error) {
 	if o.DNSServer == "" {
 		return nil, errors.New("efficientip: the DNS server records are created on is not set")
 	}
-	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots})
+	tr := trust.Transport(trust.Options{Insecure: o.Insecure, Pin: o.Pin, Roots: o.Roots, Host: u.Hostname()})
 	// Redirects are not followed: the native sign-in headers would go along
 	// to whatever host the redirect names.
 	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

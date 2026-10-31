@@ -135,7 +135,7 @@ func TestTrust(t *testing.T) {
 		t.Fatal("another certificate's pin was accepted")
 	}
 	// A pin is besides the CAs: a server they vouch for still works.
-	if err := get(signed, Options{Pin: Fingerprint(self.cert), Roots: roots}); err != nil {
+	if err := get(signed, Options{Pin: Fingerprint(self.cert), Roots: roots, Host: "127.0.0.1"}); err != nil {
 		t.Fatalf("pinned elsewhere, CA-signed: %v", err)
 	}
 	if err := get(selfSigned, Options{Insecure: true}); err != nil {
@@ -182,5 +182,44 @@ func TestFingerprintsAndBundles(t *testing.T) {
 	}
 	if p, err := Pool("  "); p != nil || err != nil {
 		t.Fatalf("empty bundle: %v %v", p, err)
+	}
+}
+
+// TestPinAtAnIPAddress: a pinned connection trusts besides its pin only a
+// certificate the CAs vouch for, for the host its URL names. At an IP
+// address, which is never the handshake's server name, a certificate the
+// CA issued for another name was let through: pinning was weaker than not.
+func TestPinAtAnIPAddress(t *testing.T) {
+	year := time.Now().Add(365 * 24 * time.Hour)
+	root := issue(t, "Corp Root CA", true, nil, year)
+	roots, err := Pool(root.pem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(42), Subject: pkix.Name{CommonName: "evil.example"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: year, DNSNames: []string{"evil.example"},
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, root.cert, &key.PublicKey, root.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _ := x509.ParseCertificate(der)
+	evil := serve(t, &issued{cert: cert, key: key})
+	pinned := Fingerprint(issue(t, "awx01", false, nil, year).cert) // the server's own, elsewhere
+	if err := get(evil, Options{Roots: roots}); err == nil {
+		t.Fatal("without a pin, a certificate for evil.example was trusted at 127.0.0.1")
+	}
+	if err := get(evil, Options{Roots: roots, Pin: pinned, Host: "127.0.0.1"}); err == nil {
+		t.Fatal("with a pin, a certificate for evil.example was trusted at 127.0.0.1")
+	}
+	if err := get(evil, Options{Roots: roots, Pin: pinned}); err == nil || !strings.Contains(err.Error(), "no host name") {
+		t.Fatalf("with a pin and no host: %v", err)
+	}
+	// One the CA issued for the address, as a renewed certificate is, is
+	// still trusted besides the pin.
+	renewed := serve(t, issue(t, "awx01", false, root, year))
+	if err := get(renewed, Options{Roots: roots, Pin: pinned, Host: "127.0.0.1"}); err != nil {
+		t.Fatalf("a certificate the CA issued for 127.0.0.1, with a pin: %v", err)
 	}
 }

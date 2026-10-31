@@ -25,7 +25,8 @@ once, and must be changed at the first sign-in (**Account › Change
 password** later). From the third failure in a row, sign-in waits, longer
 each time, up to 15 minutes. Every sign-in and failure is in the audit
 log (**Sign-ins**). A forgotten password is reset on the server:
-`rvav admin reset-password`.
+`rvav admin reset-password`, which ends the account's sessions and
+revokes its API tokens, as changing the password does.
 
 ## First steps
 
