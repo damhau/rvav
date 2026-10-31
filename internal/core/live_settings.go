@@ -45,17 +45,18 @@ type LiveSettings struct {
 // Config is the configuration with the settings saved now. When the
 // database can't be read, the last one read (or the base) is used.
 func (l *LiveSettings) Config(ctx context.Context) config.Config {
-	cfg, _ := l.Snapshot(ctx)
+	cfg, _, _ := l.Snapshot(ctx)
 	return cfg
 }
 
-// Snapshot is Config and the settings revision it was read at (0 when it
-// is the base).
-func (l *LiveSettings) Snapshot(ctx context.Context) (config.Config, int64) {
+// Snapshot is Config, the settings revision it was read at, and whether
+// the saved settings have been read yet: until they have, it is the base
+// (revision 0), which isn't what was saved.
+func (l *LiveSettings) Snapshot(ctx context.Context) (cfg config.Config, rev int64, read bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.loaded && time.Since(l.checked) < l.Every {
-		return l.cfg, l.rev
+		return l.cfg, l.rev, true
 	}
 	if !l.loaded {
 		l.cfg = l.Base
@@ -63,24 +64,24 @@ func (l *LiveSettings) Snapshot(ctx context.Context) (config.Config, int64) {
 	rev, err := l.Store.SettingsRevision(ctx)
 	if err != nil {
 		l.warn(ctx, "reading the settings revision", err)
-		return l.cfg, l.rev
+		return l.cfg, l.rev, l.loaded
 	}
 	if l.loaded && rev == l.rev {
 		l.checked = time.Now()
-		return l.cfg, l.rev
+		return l.cfg, l.rev, true
 	}
 	stored, err := l.Store.StoredIntegrations(ctx)
 	if err != nil {
 		l.warn(ctx, "reading the saved settings", err)
-		return l.cfg, l.rev
+		return l.cfg, l.rev, l.loaded
 	}
-	cfg := l.Base
+	cfg = l.Base
 	if _, err := ApplyStored(&cfg, stored, l.Secrets, l.Log); err != nil {
 		l.warn(ctx, "reading the saved settings", err)
-		return l.cfg, l.rev
+		return l.cfg, l.rev, l.loaded
 	}
 	l.cfg, l.rev, l.loaded, l.checked = cfg, rev, true, time.Now()
-	return cfg, rev
+	return cfg, rev, true
 }
 
 // ConnectionsOf is a configuration without what is read on next use: the

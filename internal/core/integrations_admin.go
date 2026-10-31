@@ -477,6 +477,12 @@ func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret 
 			moved = true
 		}
 	}
+	// The console's password set by its environment variable goes with
+	// vCenter's address set there.
+	if moved && kind == "vcenter" && slices.Contains(config.Locked("console"), "password") {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("/settings/url", "locked_secret",
+			"The console's password is set by RVAV_CONSOLE_VCENTER_PASSWORD: it only goes to the vCenter set with it, so set this one there too.")}}
+	}
 	if !moved || !hasSecret {
 		return nil
 	}

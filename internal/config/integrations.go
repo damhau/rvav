@@ -188,12 +188,18 @@ type SlackSecrets struct {
 // secret only goes where it was given for.
 const ConsoleForKey = "for_vcenter"
 
-// ConsoleFor names a vCenter connection, for ConsoleForKey.
+// ConsoleFor names a vCenter connection, for ConsoleForKey: its URL and
+// how its certificate is checked, so that the console's password, given
+// for one, goes to no other.
 func ConsoleFor(v VCenterConfig) string {
+	s := v.URL
 	if v.Insecure {
-		return v.URL + " insecure"
+		s += " insecure"
 	}
-	return v.URL
+	if pin, ok := trust.NormalFingerprint(v.CertSHA256); ok {
+		s += " pin " + pin
+	}
+	return s
 }
 
 // TLS is how a connection checks its server's certificate (package
@@ -300,6 +306,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("scopes", &c.Auth.Scopes)
 		str("groups_claim", &c.Auth.GroupsClaim)
 	case "vcenter":
+		envFor := ConsoleFor(c.VCenter)
 		str("url", &c.VCenter.URL)
 		str("username", &c.VCenter.Username)
 		secret("password", &c.VCenter.Password)
@@ -307,6 +314,11 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		pin("cert_sha256", &c.VCenter.CertSHA256)
 		str("name", &c.VCenter.Name)
 		dur("sync_interval", &c.SyncInterval)
+		// The console's password set by its environment variable goes only
+		// to the vCenter set with it: elsewhere, VMRC asks each user.
+		if slices.Contains(Locked("console"), "password") && ConsoleFor(c.VCenter) != envFor {
+			c.ConsolePassword = ""
+		}
 	case "console":
 		str("username", &c.ConsoleUsername)
 		// Only to the vCenter it was given for: vCenter's is applied first.

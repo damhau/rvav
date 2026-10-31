@@ -138,6 +138,14 @@ func TestTrustedCertificates(t *testing.T) {
 		}
 		bundle := cert.AnchorPem + idpCert.AnchorPem
 		h.json("PUT", "/api/v1/admin/integrations/trust", admin, api.IntegrationWrite{Settings: map[string]any{"ca_bundle": bundle}}, 200, nil)
+		// Saved without the connections' secrets given again (security.md):
+		// who added which CA is in the audit log, each in full.
+		var audited, by string
+		if err := h.store.Pool.QueryRow(ctx, `select e.detail->'settings'->>'ca_bundle', u.subject from audit_events e
+			join users u on u.id = e.actor_id where e.action = 'settings.integration.trust' order by e.id desc limit 1`).
+			Scan(&audited, &by); err != nil || strings.TrimSpace(audited) != strings.TrimSpace(bundle) || by != "seed:"+admin {
+			t.Fatalf("the bundle's save audited as %.40q by %q: %v", audited, by, err)
+		}
 		h.json("POST", "/api/v1/admin/integrations/trust/test", admin, nil, 200, &test)
 		if !test.Ok || len(test.Checks) != 2 || !strings.HasPrefix(test.Checks[0].Message, "A CA, until ") ||
 			!strings.Contains(test.Checks[0].Message, cert.Sha256) || !strings.Contains(test.Checks[1].Message, idpCert.Sha256) {

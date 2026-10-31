@@ -84,11 +84,15 @@ Without a restart by hand, in one of two ways:
     most `RVAV_DRAIN_TIMEOUT` (5 minutes). An activity still running then
     is cancelled and retried by Temporal, and is idempotent;
   - an API answers `/readyz` with 503 for 6 s first, so the load balancer
-    sends requests elsewhere, then lets requests running finish and ends
-    the event streams, which clients reopen. APIs drain one at a time,
-    claimed under an advisory lock: the next once the one before has
-    been started again, not just exited; one that stopped recording
-    itself holds the others back for 30 s at most;
+    sends requests elsewhere, then lets requests running finish, for at
+    most `RVAV_DRAIN_TIMEOUT` too, and ends the event streams, which
+    clients reopen. A drain cut by the timeout still exits with status 3,
+    audited with `timed_out`. APIs drain one at a time, claimed under an
+    advisory lock: the next once the one before has been started again,
+    not just exited; one that stopped recording itself holds the others
+    back for 30 s at most;
+  - a process compares only once it has read the saved settings: the
+    database not answering at its first look leaves it as it is;
   - the sync loops stop; a pass cut short is done again at the next start;
   - it exits with status 3.
 

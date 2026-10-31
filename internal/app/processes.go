@@ -86,10 +86,19 @@ func (a *App) Run(ctx context.Context, role string, run func(context.Context) er
 	for {
 		select {
 		case err := <-done:
-			if !draining.IsZero() && (err == nil || errors.Is(err, context.Canceled)) {
+			// Drained: what ran finished, or RVAV_DRAIN_TIMEOUT cut it (the
+			// API's Shutdown answers its deadline).
+			cut := errors.Is(err, context.DeadlineExceeded)
+			if !draining.IsZero() && (err == nil || errors.Is(err, context.Canceled) || cut) {
+				extra := map[string]any{"drained_ms": time.Since(draining).Milliseconds()}
+				if cut {
+					a.Log.Warn("the drain ran past RVAV_DRAIN_TIMEOUT: what still ran was cut", "role", role,
+						"timeout", a.Cfg.DrainTimeout.String())
+					extra["timed_out"] = true
+				}
 				a.Log.Info("drained; exiting to apply newer connection settings", "role", role,
 					"drained_in", time.Since(draining).Round(time.Millisecond).String())
-				a.auditProcess(ctx, "settings.process_restart", p, pending, map[string]any{"drained_ms": time.Since(draining).Milliseconds()})
+				a.auditProcess(ctx, "settings.process_restart", p, pending, extra)
 				restarting = true
 				return ErrRestart
 			}
@@ -97,8 +106,10 @@ func (a *App) Run(ctx context.Context, role string, run func(context.Context) er
 		case <-tick.C:
 		}
 		if draining.IsZero() {
-			cfg, rev := a.Live.Snapshot(ctx)
+			cfg, rev, read := a.Live.Snapshot(ctx)
 			switch {
+			case !read:
+				// The database not read yet: what it holds isn't known.
 			case reflect.DeepEqual(core.ConnectionsOf(cfg), core.ConnectionsOf(a.Cfg)):
 				// Nothing to restart for: what changed is read on next use.
 				p.Revision, pending = max(p.Revision, rev), 0

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -108,6 +109,7 @@ func TestConsolePasswordStaysWithItsVCenter(t *testing.T) {
 		"the same":   given,
 		"another":    {URL: "https://vc02.corp.example/sdk"},
 		"TLS off":    {URL: given.URL, Insecure: true},
+		"pinned":     {URL: given.URL, CertSHA256: strings.Repeat("CD:", 31) + "CD"},
 		"no vCenter": {},
 	} {
 		c := Config{VCenter: vc}
@@ -116,5 +118,41 @@ func TestConsolePasswordStaysWithItsVCenter(t *testing.T) {
 		if want := name == "the same"; (c.ConsolePassword == "s3cret") != want || c.ConsoleUsername != "console" {
 			t.Errorf("%s vCenter: password used = %v", name, c.ConsolePassword != "")
 		}
+	}
+}
+
+// The console's password set by RVAV_CONSOLE_VCENTER_PASSWORD goes only to
+// the vCenter set with it (ADR-0030), as vCenter's own does: not to another
+// address saved in Administration, nor with TLS checks off or a pin.
+func TestConsolePasswordFromTheEnvironment(t *testing.T) {
+	for _, k := range []string{"RVAV_VCENTER_URL", "RVAV_VCENTER_INSECURE", "RVAV_VCENTER_CERT_SHA256", "RVAV_VCENTER_USERNAME",
+		"RVAV_VCENTER_PASSWORD", "RVAV_VCENTER_NAME", "RVAV_CONSOLE_VCENTER_USERNAME", "RVAV_WMKS_SDK_URLS"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("RVAV_CONSOLE_VCENTER_PASSWORD", "from-the-env")
+	env := VCenterConfig{URL: "https://vc01.corp.example/sdk"}
+	pin := strings.Repeat("AB:", 31) + "AB"
+	for name, saved := range map[string]map[string]any{
+		"the same":    {"url": env.URL, "username": "svc-rvav"},
+		"another":     {"url": "https://vc02.corp.example/sdk"},
+		"TLS off":     {"insecure": true},
+		"a pin":       {"cert_sha256": pin},
+		"no settings": {},
+	} {
+		c := Config{VCenter: env, ConsolePassword: "from-the-env"}
+		c.ApplyStored("vcenter", Stored{Settings: saved, Secret: "vcenter's"})
+		c.ApplyStored("console", Stored{Settings: map[string]any{ConsoleForKey: ConsoleFor(c.VCenter)}, Secret: "saved"})
+		want := map[bool]string{true: "from-the-env", false: ""}[name == "the same" || name == "no settings"]
+		if c.ConsolePassword != want {
+			t.Errorf("%s vCenter: the console's password = %q, want %q", name, c.ConsolePassword, want)
+		}
+	}
+	// With vCenter's address set by the environment too, a saved one
+	// doesn't apply, and the password goes with it.
+	t.Setenv("RVAV_VCENTER_URL", env.URL)
+	c := Config{VCenter: env, ConsolePassword: "from-the-env"}
+	c.ApplyStored("vcenter", Stored{Settings: map[string]any{"url": "https://vc02.corp.example/sdk"}})
+	if c.VCenter.URL != env.URL || c.ConsolePassword != "from-the-env" {
+		t.Errorf("both set by the environment: %s, %q", c.VCenter.URL, c.ConsolePassword)
 	}
 }

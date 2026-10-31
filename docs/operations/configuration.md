@@ -122,7 +122,7 @@ with it ([admin guide](../guides/admin.md#trusted-certificates)).
 | `RVAV_VCENTER_CERT_SHA256` | none | | Integrations › vCenter | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 | `RVAV_VCENTER_NAME` | `vc01.corp.example` | | Integrations › vCenter | How rvav names this vCenter in the app and on VMs. |
 | `RVAV_CONSOLE_VCENTER_USERNAME` | none | | Integrations › vCenter › Console | An account that may only open consoles: VMRC links carry a clone ticket of it (ADR-0012). |
-| `RVAV_CONSOLE_VCENTER_PASSWORD` | none | yes | Integrations › vCenter › Console | Its password. It goes only to the vCenter connection it was given for: saved in Administration, it is given again when vCenter's address changes or its TLS checks are turned off. |
+| `RVAV_CONSOLE_VCENTER_PASSWORD` | none | yes | Integrations › vCenter › Console | Its password. It goes only to the vCenter connection it was given for: saved in Administration, it is given again when vCenter's address changes, its TLS checks are turned off or a certificate is pinned; set by this variable, vCenter's address, TLS checks and pin can't be changed in Administration. |
 | `RVAV_WMKS_SDK_URLS` | none | | Integrations › vCenter › Console | The WebMKS SDK's scripts, which turn on the console in the browser: paths on the web app (`/wmks/wmks.min.js`), or URLs, whose origins the API gives nginx for the page's Content-Security-Policy. |
 | `RVAV_SYNC_INTERVAL` | `2m` | | Integrations › vCenter | The time between full reads of the inventory; changes come in between from vCenter's notifications. VMs' tags in NSX are compared as often. |
 
