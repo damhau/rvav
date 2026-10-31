@@ -297,6 +297,9 @@ test("the catalog's Git repository: an SSH deploy key keeps its lines, and the t
   expect(sent.secret).toBe(key);
   expect(sent.settings.url).toBe("git@git.corp.example:infra/catalog.git");
   await expect(page.getByText("Git settings saved")).toBeVisible();
+  // The form is made again once the saved settings are read back: type
+  // after that, or the text is lost.
+  await expect(git.getByRole("status")).toContainText("apply when rvav's processes (API and worker) restart");
   await expect(git.getByRole("textbox", { name: "Token or deploy key" })).toHaveValue("");
   await git
     .getByRole("textbox", { name: "Repository" })
