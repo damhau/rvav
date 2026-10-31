@@ -1,6 +1,7 @@
 // Package hosts decides which hosts rvav may call on an administrator's
-// behalf: REST value sources (RVAV_REST_SOURCE_HOSTS) and webhooks
-// (RVAV_WEBHOOK_HOSTS).
+// behalf: REST value sources and webhooks, set in Administration ›
+// Integrations › Allowed hosts or by RVAV_REST_SOURCE_HOSTS and
+// RVAV_WEBHOOK_HOSTS.
 package hosts
 
 import (

@@ -228,7 +228,7 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	target := fill(p("url"), inputs, urlEscape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(ctx, u) {
-		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not in RVAV_REST_SOURCE_HOSTS.", hostOf(target))}
+		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
 	body := fill(p("body"), inputs, jsonEscape)
@@ -365,7 +365,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		ptr := prefix + "/ui_schema/fields/" + name + "/value_source/params"
 		target, _ := params["url"].(string)
 		if u, err := url.Parse(fill(target, nil, urlEscape)); err == nil && !s.REST.Allowed(ctx, u) {
-			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not in RVAV_REST_SOURCE_HOSTS.", u.Host)))
+			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", u.Host)))
 		}
 		if secret, _ := params["secret"].(string); secret != "" {
 			if _, err := s.Store.GetSecret(ctx, secret); errors.Is(err, store.ErrNotFound) {

@@ -69,10 +69,11 @@ type App struct {
 	ntTeams   *notify.TeamsVerifier
 	ntSlack   *notify.Slack
 
-	vcMu    sync.Mutex
-	vc      vsphere.Driver
-	vcs     *vcenters.Set
-	console vsphere.Driver // the console-only account, for VMRC clone tickets
+	vcMu       sync.Mutex
+	vc         vsphere.Driver
+	vcs        *vcenters.Set
+	console    *vsphere.Client // the console-only account, for VMRC clone tickets
+	consoleFor [2]string       // its user and password
 
 	tcOnce sync.Once
 	tc     client.Client
@@ -333,27 +334,46 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: a.restSources(), Config: a.Cfg, Live: a.Live,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
-	if a.Cfg.ConsoleUsername != "" {
-		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
+	svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) {
+		if vc, err := a.consoleAccount(ctx); vc != nil || err != nil {
+			return vc, err
+		}
+		return nil, nil // a nil *vsphere.Client isn't a nil CloneTicketer
 	}
 	return svc
 }
 
-// consoleAccount logs in to vCenter as the console-only account, once it succeeds.
-func (a *App) consoleAccount(ctx context.Context) (vsphere.Driver, error) {
+// consoleAccount is a session of the console-only account saved now
+// (ADR-0030): made once it signs in, and again when the account changes;
+// nil when none is set.
+func (a *App) consoleAccount(ctx context.Context) (*vsphere.Client, error) {
+	c := a.live(ctx)
+	now := [2]string{c.ConsoleUsername, c.ConsolePassword}
 	a.vcMu.Lock()
 	defer a.vcMu.Unlock()
-	if a.console != nil {
+	if a.console != nil && a.consoleFor == now {
 		return a.console, nil
 	}
-	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, a.Cfg.ConsoleUsername,
-		a.Cfg.ConsolePassword, a.Cfg.VCenter.Insecure)
+	if a.console != nil {
+		_ = a.console.Logout(context.WithoutCancel(ctx))
+		a.console = nil
+	}
+	// None, or no password given for this vCenter (its address changed), or
+	// vCenter's settings changed and this process is about to start again
+	// with them: VMRC asks each user to sign in.
+	if now[0] == "" || now[1] == "" || config.ConsoleFor(c.VCenter) != config.ConsoleFor(a.Cfg.VCenter) {
+		return nil, nil
+	}
+	vc, err := vsphere.New(ctx, a.Cfg.VCenter.Name, a.Cfg.VCenter.URL, now[0], now[1], a.Cfg.VCenter.Insecure)
 	if err != nil {
 		return nil, err
 	}
-	a.console = vc
+	a.console, a.consoleFor = vc, now
 	return vc, nil
 }
+
+// wmks are the WebMKS SDK's scripts saved now; none, VMRC only.
+func (a *App) wmks(ctx context.Context) []string { return a.live(ctx).WMKSSDKURLs }
 
 // ensureLocalAdmin makes the local administrator at first start (ADR-0030),
 // logging its password once when rvav generated it.
@@ -375,32 +395,41 @@ func (a *App) ensureLocalAdmin(ctx context.Context, svc *core.Service) error {
 }
 
 // RunAPI serves HTTP until ctx is done.
-func (a *App) RunAPI(ctx context.Context) error {
+// APIServer is the API as RunAPI serves it, its workflows started with w;
+// its event hub runs until ctx is done.
+func (a *App) APIServer(ctx context.Context, w core.Workflows) (*httpapi.Server, error) {
 	authn, err := a.Authenticator(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	svc := a.Core(w)
+	if err := a.ensureLocalAdmin(ctx, svc); err != nil {
+		return nil, err
+	}
+	hub := events.NewHub(a.Store, a.Log)
+	go hub.Run(ctx)
+	go hub.Purge(ctx, 24*time.Hour)
+	return &httpapi.Server{
+		Store: a.Store, Core: svc,
+		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
+		ConsoleInsecure: a.Cfg.VCenter.Insecure, WMKSNow: a.wmks,
+		SecureCookies: strings.HasPrefix(a.Cfg.PublicURL, "https://"),
+		// Teams' and Slack's calls are checked with the settings saved now.
+		TeamsNow: func(ctx context.Context) *notify.TeamsVerifier { _, v, _ := a.notifications(ctx); return v },
+		SlackNow: func(ctx context.Context) *notify.Slack { _, _, s := a.notifications(ctx); return s },
+	}, nil
+}
+
+func (a *App) RunAPI(ctx context.Context) error {
 	tc, err := a.Temporal()
 	if err != nil {
 		return err
 	}
 	// What waits in the database, at each scrape (S14.5).
 	observe.Registry.MustRegister(observe.Backlog{Pool: a.Store.Pool})
-	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
-	if err := a.ensureLocalAdmin(ctx, svc); err != nil {
+	srv, err := a.APIServer(ctx, &provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
+	if err != nil {
 		return err
-	}
-	hub := events.NewHub(a.Store, a.Log)
-	go hub.Run(ctx)
-	go hub.Purge(ctx, 24*time.Hour)
-	srv := &httpapi.Server{
-		Store: a.Store, Core: svc,
-		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
-		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
-		SecureCookies: strings.HasPrefix(a.Cfg.PublicURL, "https://"),
-		// Teams' and Slack's calls are checked with the settings saved now.
-		TeamsNow: func(ctx context.Context) *notify.TeamsVerifier { _, v, _ := a.notifications(ctx); return v },
-		SlackNow: func(ctx context.Context) *notify.Slack { _, _, s := a.notifications(ctx); return s },
 	}
 	httpSrv := &http.Server{Addr: a.Cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	httpSrv.RegisterOnShutdown(srv.StopStreams)

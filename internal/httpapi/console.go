@@ -55,8 +55,34 @@ func (s *Server) takeConsole(ctx context.Context, token string, now time.Time) (
 	return mks, true
 }
 
+// wmks are the WebMKS SDK's scripts now: those saved in Administration, or
+// the environment's.
+func (s *Server) wmks(ctx context.Context) []string {
+	if s.WMKSNow != nil {
+		return s.WMKSNow(ctx)
+	}
+	return s.WMKSSDKURLs
+}
+
+// scriptOrigins are the origins of the SDK's scripts that aren't on the web
+// app's own (a path, /wmks/...), for the page's Content-Security-Policy.
+func scriptOrigins(sdk []string) []string {
+	var out []string
+	for _, raw := range sdk {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			continue
+		}
+		if o := u.Scheme + "://" + u.Host; !slices.Contains(out, o) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 func (s *Server) OpenConsole(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath, resourceID string) {
-	web := len(s.WMKSSDKURLs) > 0
+	sdk := s.wmks(r.Context())
+	web := len(sdk) > 0
 	c, err := s.Core.OpenConsole(r.Context(), principal(r), deploymentID, resourceID, web)
 	if err != nil {
 		s.fail(w, r, err)
@@ -73,7 +99,7 @@ func (s *Server) OpenConsole(w http.ResponseWriter, r *http.Request, deploymentI
 			ExpiresAt time.Time `json:"expires_at"`
 			SdkUrls   []string  `json:"sdk_urls"`
 			Url       string    `json:"url"`
-		}{ExpiresAt: expires, SdkUrls: s.WMKSSDKURLs, Url: "/api/v1/console/" + token}
+		}{ExpiresAt: expires, SdkUrls: sdk, Url: "/api/v1/console/" + token}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

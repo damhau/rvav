@@ -50,7 +50,8 @@ type Service struct {
 	VSphere func(ctx context.Context, name string) (vsphere.Driver, error)
 	// ConsoleAccount, when set, is a session of a vCenter account that may
 	// only open consoles: VMRC links carry a clone ticket of it. Never
-	// rvav's own session, which a clone ticket would hand to the user.
+	// rvav's own session, which a clone ticket would hand to the user. Nil
+	// with no error when no console account is set now.
 	ConsoleAccount func(ctx context.Context) (CloneTicketer, error)
 	// AWXCatalog imports AWX templates into the catalog (ADR-0016).
 	AWXCatalog *awxcatalog.Sync

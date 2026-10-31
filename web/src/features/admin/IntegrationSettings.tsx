@@ -1,8 +1,9 @@
-// vCenter, AWX, EfficientIP, NSX and Git settings (S9, ADR-0020, ADR-0028, ADR-0029): saved from the UI,
-// an environment variable winning and locking its field; the password or
+// Integrations (S9, ADR-0020, ADR-0028, ADR-0029, ADR-0030): saved from the
+// UI, an environment variable winning and locking its field; the password or
 // token is write-only. Saved, a connection applies as each process drains
-// and starts again; notification channels on next use (ADR-0030).
-// The identity provider, first, has a panel of its own.
+// and starts again; the console, vRA, notification channels, allowed hosts
+// and sync intervals on next use. The identity provider, first, has a panel
+// of its own; the console's is in vCenter's tab.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useState } from "react";
@@ -25,22 +26,40 @@ import { VCenters } from "./VCenters";
 type S = components["schemas"];
 type Kind = Exclude<S["IntegrationKind"], "oidc">;
 
-/** Read on next use, with no process to start again (ADR-0030). */
-const onNextUse: Kind[] = ["smtp", "teams", "slack"];
+/** Read on next use, with no process to start again (ADR-0030): from when. */
+const onNextUse: Partial<Record<Kind, string>> = {
+  smtp: "They apply from the next notification.",
+  teams: "They apply from the next notification.",
+  slack: "They apply from the next notification.",
+  console: "They apply from the next console opened.",
+  vra: "They apply from the next read of vRA.",
+  hosts: "They apply from the next call to a host.",
+};
+
+const interval = (what: string): Setting => ({
+  name: "sync_interval",
+  label: "Sync interval",
+  env: "",
+  type: "duration",
+  hint: `How often ${what}, for example 5m or 1h30m (30s to 24h); read on next use`,
+});
 
 interface Setting {
   name: string;
   label: string;
   env: string;
-  type: "string" | "bool" | "int" | "list";
+  type: "string" | "bool" | "int" | "list" | "duration";
   hint?: string;
   // Several lines: a private key, known_hosts lines.
   multiline?: boolean;
 }
 
 // The settings of each integration, as the server's config.Fields; Slack
-// has a second secret, its signing secret.
-const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; settings: Setting[] }> = {
+// has a second secret, its signing secret; the allowed hosts have none.
+const fields: Record<
+  Kind,
+  { title: string; panel?: string; secret?: Setting; signing?: Setting; settings: Setting[]; test?: string }
+> = {
   vcenter: {
     title: "vCenter",
     secret: { name: "password", label: "Password", env: "RVAV_VCENTER_PASSWORD", type: "string" },
@@ -54,7 +73,37 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
       },
       { name: "username", label: "User", env: "RVAV_VCENTER_USERNAME", type: "string" },
       { name: "name", label: "Name shown", env: "RVAV_VCENTER_NAME", type: "string" },
+      { ...interval("the inventory is read in full; changes come in between"), env: "RVAV_SYNC_INTERVAL" },
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_VCENTER_INSECURE", type: "bool" },
+    ],
+  },
+  // The console (ADR-0012): shown in vCenter's tab.
+  console: {
+    title: "Console",
+    panel: "Console",
+    test: "Test console",
+    secret: {
+      name: "password",
+      label: "Password",
+      env: "RVAV_CONSOLE_VCENTER_PASSWORD",
+      type: "string",
+      hint: "Given again when vCenter's address changes: it only goes to the vCenter it was given for",
+    },
+    settings: [
+      {
+        name: "username",
+        label: "Console account",
+        env: "RVAV_CONSOLE_VCENTER_USERNAME",
+        type: "string",
+        hint: "A vCenter account that may only open consoles: VMRC links carry a ticket of it",
+      },
+      {
+        name: "sdk_urls",
+        label: "WebMKS SDK scripts",
+        env: "RVAV_WMKS_SDK_URLS",
+        type: "list",
+        hint: "Comma-separated, in load order; none: VMRC only",
+      },
     ],
   },
   awx: {
@@ -78,6 +127,7 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
         hint: "Comma-separated",
       },
       { name: "inventory_source_id", label: "Inventory source ID", env: "RVAV_AWX_INVENTORY_SOURCE_ID", type: "int" },
+      { ...interval("templates are read"), env: "RVAV_AWX_SYNC_INTERVAL" },
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_AWX_INSECURE", type: "bool" },
     ],
   },
@@ -98,6 +148,7 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
         type: "string",
         hint: "Tags what this rvav creates",
       },
+      { ...interval("subnets are read"), env: "RVAV_IPAM_SYNC_INTERVAL" },
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_EFFICIENTIP_INSECURE", type: "bool" },
     ],
   },
@@ -169,7 +220,37 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
         multiline: true,
         hint: "known_hosts lines, from ssh-keyscan",
       },
+      { ...interval("the repository is read"), env: "RVAV_GIT_SYNC_INTERVAL" },
       { name: "insecure", label: "Skip TLS or host key verification", env: "RVAV_GIT_INSECURE", type: "bool" },
+    ],
+  },
+  // The vRA the importer reads (ADR-0027).
+  vra: {
+    title: "vRA",
+    secret: {
+      name: "credential",
+      label: "Password or refresh token",
+      env: "RVAV_VRA_TOKEN or RVAV_VRA_PASSWORD",
+      type: "string",
+      hint: "With a user, its password; without, a refresh token (an API token)",
+    },
+    settings: [
+      {
+        name: "url",
+        label: "URL",
+        env: "RVAV_VRA_URL",
+        type: "string",
+        hint: "For example https://vra.corp.example",
+      },
+      { name: "username", label: "User", env: "RVAV_VRA_USERNAME", type: "string", hint: "Leave empty for a token" },
+      {
+        name: "domain",
+        label: "Domain",
+        env: "RVAV_VRA_DOMAIN",
+        type: "string",
+        hint: "The user's, for example corp.example",
+      },
+      { name: "insecure", label: "Skip TLS verification", env: "RVAV_VRA_INSECURE", type: "bool" },
     ],
   },
   // Notification channels (S11, ADR-0023).
@@ -197,13 +278,59 @@ const fields: Record<Kind, { title: string; secret: Setting; signing?: Setting; 
         type: "string",
         hint: "Where conversations start, for example https://smba.trafficmanager.net/emea",
       },
+      // Microsoft's public cloud's by default; another cloud's here.
+      {
+        name: "login_url",
+        label: "Sign-in endpoint",
+        env: "RVAV_TEAMS_LOGIN_URL",
+        type: "string",
+        hint: "Where the app gets its tokens; another Microsoft cloud's, if not the public one",
+      },
+      { name: "graph_url", label: "Microsoft Graph", env: "RVAV_TEAMS_GRAPH_URL", type: "string" },
+      {
+        name: "openid_url",
+        label: "Bot Framework's OpenID document",
+        env: "RVAV_TEAMS_OPENID_URL",
+        type: "string",
+        hint: "Its keys check Teams' calls to rvav",
+      },
     ],
   },
   slack: {
     title: "Slack",
     secret: { name: "bot_token", label: "Bot token", env: "RVAV_SLACK_BOT_TOKEN", type: "string" },
     signing: { name: "signing_secret", label: "Signing secret", env: "RVAV_SLACK_SIGNING_SECRET", type: "string" },
-    settings: [],
+    settings: [
+      {
+        name: "api_url",
+        label: "Web API",
+        env: "RVAV_SLACK_API_URL",
+        type: "string",
+        hint: "Slack's, https://slack.com/api, unless another is used",
+      },
+    ],
+  },
+  // The hosts rvav may call on others' behalf; no secret, no test.
+  hosts: {
+    title: "Allowed hosts",
+    panel: "Allowed hosts",
+    test: "Check",
+    settings: [
+      {
+        name: "rest_source_hosts",
+        label: "REST value sources",
+        env: "RVAV_REST_SOURCE_HOSTS",
+        type: "list",
+        hint: "Comma-separated: cmdb.corp.example, *.corp.example, http://host:port for plain http",
+      },
+      {
+        name: "webhook_hosts",
+        label: "Webhooks",
+        env: "RVAV_WEBHOOK_HOSTS",
+        type: "list",
+        hint: "Comma-separated, as above: the hosts subscriptions may post to",
+      },
+    ],
   },
 };
 
@@ -233,7 +360,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Shown from a save until every process applied it, and then said so.
   const [watching] = useState(it.applying);
-  const secretLocked = it.locked.includes(def.secret.name);
+  const secretLocked = def.secret ? it.locked.includes(def.secret.name) : false;
   const signingLocked = def.signing ? it.locked.includes(def.signing.name) : false;
   const body = (): S["IntegrationWrite"] => ({
     settings: Object.fromEntries(
@@ -254,7 +381,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       }),
     ),
     // A key or token pasted with a line break after it.
-    ...(secret.trim() ? { secret: def.secret.multiline ? secret.trim() : secret } : {}),
+    ...(def.secret && secret.trim() ? { secret: def.secret.multiline ? secret.trim() : secret } : {}),
     ...(signing ? { signing_secret: signing } : {}),
   });
   const save = useMutation({
@@ -265,8 +392,8 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       setSecret("");
       setSigning("");
       toast.success(`${def.title} settings saved`, {
-        description: onNextUse.includes(it.kind)
-          ? "They apply from the next notification."
+        description: onNextUse[it.kind]
+          ? onNextUse[it.kind]
           : saved.applying
             ? "Each process applies them once its running work is done."
             : "They apply when rvav's processes start.",
@@ -292,7 +419,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   );
   return (
     <Panel
-      title={`${def.title} connection`}
+      title={def.panel ?? `${def.title} connection`}
       actions={
         <div className="flex items-center gap-2">
           {!it.configured && <Badge tone="warn">Not configured</Badge>}
@@ -357,42 +484,44 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
               </Field>
             );
           })}
-          <Field
-            label={def.secret.label}
-            htmlFor={`${it.kind}-secret`}
-            error={errors["/secret"]}
-            hint={
-              secretLocked
-                ? lockedHint(def.secret)
-                : `${it.secret_set ? "Set; type a new one to replace it" : "Not set"}${def.secret.hint ? `. ${def.secret.hint}` : ""}`
-            }
-          >
-            {def.secret.multiline ? (
-              // A key keeps its lines; masked as it is typed, never shown
-              // after.
-              <Textarea
-                id={`${it.kind}-secret`}
-                rows={3}
-                spellCheck={false}
-                autoComplete="off"
-                className="font-mono text-xs [-webkit-text-security:disc]"
-                disabled={secretLocked}
-                placeholder={it.secret_set ? "••••••••" : undefined}
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-            ) : (
-              <Input
-                id={`${it.kind}-secret`}
-                type="password"
-                autoComplete="new-password"
-                disabled={secretLocked}
-                placeholder={it.secret_set ? "••••••••" : undefined}
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-            )}
-          </Field>
+          {def.secret && (
+            <Field
+              label={def.secret.label}
+              htmlFor={`${it.kind}-secret`}
+              error={errors["/secret"]}
+              hint={
+                secretLocked
+                  ? lockedHint(def.secret)
+                  : `${it.secret_set ? "Set; type a new one to replace it" : "Not set"}${def.secret.hint ? `. ${def.secret.hint}` : ""}`
+              }
+            >
+              {def.secret.multiline ? (
+                // A key keeps its lines; masked as it is typed, never shown
+                // after.
+                <Textarea
+                  id={`${it.kind}-secret`}
+                  rows={3}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="font-mono text-xs [-webkit-text-security:disc]"
+                  disabled={secretLocked}
+                  placeholder={it.secret_set ? "••••••••" : undefined}
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                />
+              ) : (
+                <Input
+                  id={`${it.kind}-secret`}
+                  type="password"
+                  autoComplete="new-password"
+                  disabled={secretLocked}
+                  placeholder={it.secret_set ? "••••••••" : undefined}
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                />
+              )}
+            </Field>
+          )}
           {def.signing && (
             <Field
               label={def.signing.label}
@@ -423,7 +552,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
             Save settings
           </Button>
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
-            {test.isPending ? "Testing…" : "Test connection"}
+            {test.isPending ? "Testing…" : (def.test ?? "Test connection")}
           </Button>
           {it.updated_at && (
             <span className="text-xs text-faint">
@@ -464,7 +593,9 @@ export function IntegrationSettings() {
   const list = useQuery(adm.integrations());
   if (list.isPending) return <Skeleton className="h-64" />;
   if (list.isError) return <ErrorState error={list.error} onRetry={() => void list.refetch()} />;
-  const items = list.data.items;
+  // The console has its panel in vCenter's tab.
+  const console = list.data.items.find((it) => it.kind === "console");
+  const items = list.data.items.filter((it) => it.kind !== "console");
   return (
     <Tabs defaultValue={items[0]?.kind}>
       <TabsList aria-label="Integrations">
@@ -480,6 +611,9 @@ export function IntegrationSettings() {
             <IdentityProvider key={it.updated_at ?? "unsaved"} it={it} />
           ) : (
             <Integration key={it.updated_at ?? "unsaved"} it={{ ...it, kind: it.kind }} />
+          )}
+          {it.kind === "vcenter" && console && (
+            <Integration key={console.updated_at ?? "unsaved"} it={{ ...console, kind: "console" }} />
           )}
           {it.kind === "vcenter" && <VCenters />}
         </TabsContent>

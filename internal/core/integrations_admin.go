@@ -21,6 +21,7 @@ import (
 	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vra"
 )
 
 // Integrations set from the UI (ADR-0020, ADR-0030): environment variables
@@ -28,7 +29,7 @@ import (
 // as each process drains and starts again (app.Run); test connection tries
 // the settings given, saved or not.
 
-var integrationKinds = []string{"oidc", "vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"}
+var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "smtp", "teams", "slack", "hosts"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -42,9 +43,28 @@ func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecret
 	return sec
 }
 
-// address is where an integration goes: its URL, or the mail server.
+// address is where an integration's secret goes: its URL, the mail
+// server, the account; "" when it has none.
 func address(kind string, settings map[string]any) string {
+	str := func(k string) string { v, _ := settings[k].(string); return v }
 	switch kind {
+	case "console":
+		// To the vCenter integration's address, as this account.
+		return str("username")
+	case "slack":
+		return str("api_url")
+	case "hosts":
+		var out []string
+		for _, k := range []string{"rest_source_hosts", "webhook_hosts"} {
+			l, _ := settings[k].([]any)
+			for _, x := range l {
+				out = append(out, fmt.Sprint(x))
+			}
+			if l, ok := settings[k].([]string); ok {
+				out = append(out, l...)
+			}
+		}
+		return strings.Join(out, ",")
 	case "oidc":
 		v, _ := settings["issuer"].(string)
 		return v
@@ -59,7 +79,8 @@ func address(kind string, settings map[string]any) string {
 		if app == "" && tenant == "" && service == "" {
 			return ""
 		}
-		return app + "@" + tenant + " " + service
+		// The client secret goes to the login endpoint.
+		return app + "@" + tenant + " " + service + " " + str("login_url")
 	}
 	v, _ := settings["url"].(string)
 	return v
@@ -83,11 +104,23 @@ func (s *Service) pendingSettings(ctx context.Context, kind string, row *store.I
 	_ = json.Unmarshal(row.Settings, &saved)
 	locked := config.Locked(kind)
 	for k, v := range saved {
-		if !slices.Contains(locked, k) {
+		if !slices.Contains(locked, k) && k != config.ConsoleForKey {
 			out[k] = v
 		}
 	}
 	return out
+}
+
+// consoleSecretSet says whether the console's saved password is used: only
+// with the vCenter connection it was given for.
+func (s *Service) consoleSecretSet(ctx context.Context, row *store.IntegrationSettings) bool {
+	if row == nil || row.SecretCiphertext == nil {
+		return false
+	}
+	var saved map[string]any
+	_ = json.Unmarshal(row.Settings, &saved)
+	vc := s.liveConfig(ctx).VCenter
+	return vc.URL != "" && saved[config.ConsoleForKey] == config.ConsoleFor(vc)
 }
 
 func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.Integration, error) {
@@ -111,6 +144,9 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 		settings := s.pendingSettings(ctx, kind, row)
 		it := api.Integration{Kind: api.IntegrationKind(kind), Settings: settings, Locked: nonNilStrings(config.Locked(kind)),
 			Configured: address(kind, settings) != "" || config.Fake(kind), SecretSet: s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil}
+		if kind == "console" {
+			it.SecretSet = s.Config.SecretSet(kind) || s.consoleSecretSet(ctx, row)
+		}
 		if kind == "slack" {
 			sec := s.storedSlack(row)
 			it.SecretSet = s.Config.Slack.BotToken != "" || sec.BotToken != ""
@@ -152,7 +188,7 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 	locked := config.Locked(kind)
 	settings := map[string]any{}
 	for k, v := range w.Settings {
-		if !slices.Contains(locked, k) && k != "fake" {
+		if !slices.Contains(locked, k) && k != "fake" && k != config.ConsoleForKey {
 			settings[k] = v
 		}
 	}
@@ -179,6 +215,19 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		row = &r
 	}
 	hasSecret := s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil
+	if kind == "console" {
+		// The password goes to the vCenter it is given with; one saved
+		// earlier keeps the vCenter it was given for.
+		if w.Secret != nil && *w.Secret != "" {
+			settings[config.ConsoleForKey] = config.ConsoleFor(s.liveConfig(ctx).VCenter)
+		} else if row != nil {
+			var saved map[string]any
+			_ = json.Unmarshal(row.Settings, &saved)
+			if f, ok := saved[config.ConsoleForKey].(string); ok {
+				settings[config.ConsoleForKey] = f
+			}
+		}
+	}
 	if err := secretGoesWhereGiven(kind, s.pendingSettings(ctx, kind, row), settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
 		return api.Integration{}, err
 	}
@@ -243,6 +292,11 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		row = &r
 	}
 	settings := s.pendingSettings(ctx, kind, row)
+	if kind == "console" && row != nil {
+		var saved map[string]any
+		_ = json.Unmarshal(row.Settings, &saved)
+		settings[config.ConsoleForKey] = saved[config.ConsoleForKey]
+	}
 	secret := ""
 	if row != nil && row.SecretCiphertext != nil {
 		if plain, err := s.Secrets.Open(IntegrationSecretName(kind), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext); err == nil {
@@ -260,7 +314,13 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		if err := secretGoesWhereGiven(kind, settings, w.Settings, given, secret != "" || s.Config.SecretSet(kind)); err != nil {
 			return out, err
 		}
+		if kind == "console" && given {
+			settings[config.ConsoleForKey] = config.ConsoleFor(s.liveConfig(ctx).VCenter)
+		}
 		for k, v := range w.Settings {
+			if k == config.ConsoleForKey {
+				continue
+			}
 			settings[k] = v
 		}
 		switch {
@@ -279,6 +339,9 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		}
 	}
 	cfg := s.Config
+	if kind == "console" {
+		cfg.VCenter = s.liveConfig(ctx).VCenter // the account signs in where vCenter's settings say
+	}
 	cfg.ApplyStored(kind, config.Stored{Settings: settings, Secret: secret})
 	check := func(name string, err error, ok string) bool {
 		c := api.IntegrationCheck{Name: name, Ok: err == nil, Message: ok}
@@ -295,6 +358,13 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		s.testOIDC(ctx, settings, check)
 	case "vcenter":
 		s.testVCenter(ctx, cfg.VCenter, check)
+	case "console":
+		testConsole(ctx, cfg, check)
+	case "vra":
+		testVRA(ctx, cfg.VRA, check)
+	case "hosts":
+		check("Hosts", nil, fmt.Sprintf("REST value sources may call %s; webhooks %s.",
+			hostList(cfg.RESTSourceHosts), hostList(cfg.WebhookHosts)))
 	case "awx":
 		s.testAWX(ctx, cfg.AWX, check)
 	case "efficientip":
@@ -399,12 +469,59 @@ func (s *Service) testVCenter(ctx context.Context, c config.VCenterConfig, check
 	if !check("Sign in", err, "Signed in to "+c.URL+" as "+c.Username+".") {
 		return
 	}
+	defer func() { _ = vc.Logout(context.WithoutCancel(ctx)) }()
 	inv, err := vc.Inventory(ctx)
 	if !check("Inventory", err, fmt.Sprintf("%d clusters, %d datastores, %d networks and %d templates.",
 		len(safeInv(inv).Clusters), len(safeInv(inv).Datastores), len(safeInv(inv).Networks), len(safeInv(inv).Templates))) {
 		return
 	}
 	check("Tagging service", inv.TagsError, "Tags can be read, for placement by tag.")
+}
+
+// testConsole signs in to vCenter as the console's account and gets a
+// clone ticket, as opening a console does (ADR-0012).
+func testConsole(ctx context.Context, c config.Config, check checkFunc) {
+	if c.ConsoleUsername == "" {
+		check("Console account", errors.New("none: VMRC asks each user to sign in to vCenter"), "")
+	} else if c.VCenter.URL == "" {
+		check("Console account", errors.New("set vCenter's connection first"), "")
+	} else if c.ConsolePassword == "" {
+		check("Console account", errors.New("give its password: none was given for vCenter's address now"), "")
+	} else {
+		vc, err := vsphere.New(ctx, c.VCenter.Name, c.VCenter.URL, c.ConsoleUsername, c.ConsolePassword, c.VCenter.Insecure)
+		if check("Sign in", err, "Signed in to "+c.VCenter.URL+" as "+c.ConsoleUsername+".") {
+			defer func() { _ = vc.Logout(context.WithoutCancel(ctx)) }()
+			_, err := vc.CloneTicket(ctx)
+			check("Clone ticket", err, "VMRC links carry a ticket of this account.")
+		}
+	}
+	if len(c.WMKSSDKURLs) == 0 {
+		check("Console in the browser", nil, "No WebMKS SDK: consoles open in VMRC only.")
+	} else {
+		check("Console in the browser", nil, fmt.Sprintf("%d WebMKS SDK scripts, loaded by the browser.", len(c.WMKSSDKURLs)))
+	}
+}
+
+// testVRA signs in to the vRA the importer reads and lists its projects.
+func testVRA(ctx context.Context, c config.VRAConfig, check checkFunc) {
+	if c.URL == "" {
+		check("Settings", errors.New("give vRA's URL"), "")
+		return
+	}
+	client, err := vra.New(vra.Options{URL: c.URL, Token: c.Token, Username: c.Username, Password: c.Password, Domain: c.Domain,
+		Insecure: c.Insecure})
+	if !check("Settings", err, "") {
+		return
+	}
+	projects, err := client.Projects(ctx)
+	check("Sign in", err, fmt.Sprintf("Signed in to %s; %d projects to import.", c.URL, len(projects)))
+}
+
+func hostList(l []string) string {
+	if len(l) == 0 {
+		return "no host"
+	}
+	return strings.Join(l, ", ")
 }
 
 func safeInv(inv *vsphere.Inventory) *vsphere.Inventory {

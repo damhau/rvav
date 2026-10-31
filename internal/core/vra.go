@@ -274,9 +274,10 @@ func (s *Service) VRAImportStatus(ctx context.Context, p *auth.Principal) (api.V
 	if !p.IsAdmin() {
 		return api.VraImportStatus{}, ErrForbidden
 	}
-	out := api.VraImportStatus{Configured: s.Config.VRA.URL != ""}
+	c := s.liveConfig(ctx).VRA
+	out := api.VraImportStatus{Configured: c.URL != ""}
 	if out.Configured {
-		out.Url = &s.Config.VRA.URL
+		out.Url = &c.URL
 	}
 	v, err := s.Store.LatestVRASnapshot(ctx, false)
 	if err == nil {
@@ -314,10 +315,10 @@ func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body io.Reader
 		}
 	}
 	if empty {
-		c := s.Config.VRA
+		c := s.liveConfig(ctx).VRA
 		if c.URL == "" {
 			return api.VraSnapshot{}, &ValidationError{Errors: []api.FieldError{fieldErr("", "not_configured",
-				"rvav has no vRA to read: set RVAV_VRA_URL, or give the file rvav vra-export wrote.")}}
+				"rvav has no vRA to read: set it in Administration › Integrations › vRA, or give the file rvav vra-export wrote.")}}
 		}
 		client, err := vra.New(vra.Options{URL: c.URL, Token: c.Token, Username: c.Username, Password: c.Password, Domain: c.Domain,
 			Insecure: c.Insecure})

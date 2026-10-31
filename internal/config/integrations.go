@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Integration settings set from the UI (ADR-0020): stored in the database,
@@ -17,9 +19,21 @@ import (
 // over the stored value.
 type Field struct {
 	Name, Env string
-	Type      string // string, bool, int or list
+	Type      string // string, bool, int, list or duration (a Go duration: 90s, 5m)
 	Secret    bool   // the password or token: sealed, never shown
 }
+
+// alsoLockedBy are more variables that set a field: vRA's one secret is a
+// refresh token, or a user's password.
+var alsoLockedBy = map[string]map[string][]string{
+	"vra": {"credential": {"RVAV_VRA_PASSWORD"}},
+}
+
+// Intervals: the shortest and longest a sync may be set to from the UI.
+const (
+	MinInterval = 30 * time.Second
+	MaxInterval = 24 * time.Hour
+)
 
 // Fields are the settings of each integration.
 var Fields = map[string][]Field{
@@ -38,6 +52,14 @@ var Fields = map[string][]Field{
 		{"password", "RVAV_VCENTER_PASSWORD", "string", true},
 		{"insecure", "RVAV_VCENTER_INSECURE", "bool", false},
 		{"name", "RVAV_VCENTER_NAME", "string", false},
+		{"sync_interval", "RVAV_SYNC_INTERVAL", "duration", false},
+	},
+	// The console (ADR-0012): a vCenter account that may only open
+	// consoles, for VMRC's clone tickets, and the WebMKS SDK's scripts.
+	"console": {
+		{"username", "RVAV_CONSOLE_VCENTER_USERNAME", "string", false},
+		{"password", "RVAV_CONSOLE_VCENTER_PASSWORD", "string", true},
+		{"sdk_urls", "RVAV_WMKS_SDK_URLS", "list", false},
 	},
 	"awx": {
 		{"url", "RVAV_AWX_URL", "string", false},
@@ -47,6 +69,7 @@ var Fields = map[string][]Field{
 		{"action_labels", "RVAV_AWX_ACTION_LABELS", "list", false},
 		{"inventory_source_id", "RVAV_AWX_INVENTORY_SOURCE_ID", "int", false},
 		{"insecure", "RVAV_AWX_INSECURE", "bool", false},
+		{"sync_interval", "RVAV_AWX_SYNC_INTERVAL", "duration", false},
 	},
 	"efficientip": {
 		{"url", "RVAV_EFFICIENTIP_URL", "string", false},
@@ -58,6 +81,7 @@ var Fields = map[string][]Field{
 		{"dns_view", "RVAV_EFFICIENTIP_DNS_VIEW", "string", false},
 		{"instance_id", "RVAV_INSTANCE_ID", "string", false},
 		{"insecure", "RVAV_EFFICIENTIP_INSECURE", "bool", false},
+		{"sync_interval", "RVAV_IPAM_SYNC_INTERVAL", "duration", false},
 	},
 	// The NSX Manager (ADR-0028): a user and password, or a principal
 	// identity's certificate and key files.
@@ -80,6 +104,16 @@ var Fields = map[string][]Field{
 		{"known_hosts", "RVAV_GIT_KNOWN_HOSTS", "string", false},
 		{"insecure", "RVAV_GIT_INSECURE", "bool", false},
 		{"committer", "RVAV_GIT_COMMITTER", "string", false},
+		{"sync_interval", "RVAV_GIT_SYNC_INTERVAL", "duration", false},
+	},
+	// The vRA the importer reads (ADR-0027): a refresh token, or a user's
+	// password when a user is given.
+	"vra": {
+		{"url", "RVAV_VRA_URL", "string", false},
+		{"username", "RVAV_VRA_USERNAME", "string", false},
+		{"domain", "RVAV_VRA_DOMAIN", "string", false},
+		{"credential", "RVAV_VRA_TOKEN", "string", true},
+		{"insecure", "RVAV_VRA_INSECURE", "bool", false},
 	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
@@ -94,11 +128,23 @@ var Fields = map[string][]Field{
 		{"tenant_id", "RVAV_TEAMS_TENANT_ID", "string", false},
 		{"service_url", "RVAV_TEAMS_SERVICE_URL", "string", false},
 		{"app_password", "RVAV_TEAMS_APP_PASSWORD", "string", true},
+		// Microsoft's public cloud by default; another cloud's (GCC High,
+		// China) are set here.
+		{"login_url", "RVAV_TEAMS_LOGIN_URL", "string", false},
+		{"graph_url", "RVAV_TEAMS_GRAPH_URL", "string", false},
+		{"openid_url", "RVAV_TEAMS_OPENID_URL", "string", false},
 	},
 	// Slack's two secrets are sealed together, as SlackSecrets.
 	"slack": {
 		{"bot_token", "RVAV_SLACK_BOT_TOKEN", "string", true},
 		{"signing_secret", "RVAV_SLACK_SIGNING_SECRET", "string", true},
+		{"api_url", "RVAV_SLACK_API_URL", "string", false},
+	},
+	// The hosts rvav may call (package hosts): REST value sources' and
+	// webhooks'.
+	"hosts": {
+		{"rest_source_hosts", "RVAV_REST_SOURCE_HOSTS", "list", false},
+		{"webhook_hosts", "RVAV_WEBHOOK_HOSTS", "list", false},
 	},
 }
 
@@ -108,11 +154,27 @@ type SlackSecrets struct {
 	SigningSecret string `json:"signing_secret,omitempty"`
 }
 
+// ConsoleForKey keeps, with the console's saved settings, the vCenter
+// connection its password was given for (ConsoleFor). The account signs in
+// to vCenter's address: given another, or its TLS checks turned off, the
+// saved password isn't used until it is given again, as a connection's
+// secret only goes where it was given for.
+const ConsoleForKey = "for_vcenter"
+
+// ConsoleFor names a vCenter connection, for ConsoleForKey.
+func ConsoleFor(v VCenterConfig) string {
+	if v.Insecure {
+		return v.URL + " insecure"
+	}
+	return v.URL
+}
+
 // Locked lists the settings of an integration an environment variable sets.
 func Locked(kind string) []string {
 	var out []string
+	set := func(env string) bool { v, ok := os.LookupEnv(env); return ok && v != "" }
 	for _, f := range Fields[kind] {
-		if v, ok := os.LookupEnv(f.Env); ok && v != "" {
+		if set(f.Env) || slices.ContainsFunc(alsoLockedBy[kind][f.Name], set) {
 			out = append(out, f.Name)
 		}
 	}
@@ -174,6 +236,13 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 			*dst = s.Secret
 		}
 	}
+	dur := func(name string, dst *time.Duration) {
+		if v, ok := s.Settings[name].(string); ok && v != "" && !locked[name] {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				*dst = d
+			}
+		}
+	}
 	switch kind {
 	case "oidc":
 		str("issuer", &c.Auth.OIDCIssuer)
@@ -187,6 +256,14 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		secret("password", &c.VCenter.Password)
 		flag("insecure", &c.VCenter.Insecure)
 		str("name", &c.VCenter.Name)
+		dur("sync_interval", &c.SyncInterval)
+	case "console":
+		str("username", &c.ConsoleUsername)
+		// Only to the vCenter it was given for: vCenter's is applied first.
+		if f, _ := s.Settings[ConsoleForKey].(string); c.VCenter.URL != "" && f == ConsoleFor(c.VCenter) {
+			secret("password", &c.ConsolePassword)
+		}
+		strs("sdk_urls", &c.WMKSSDKURLs)
 	case "awx":
 		str("url", &c.AWX.URL)
 		secret("token", &c.AWX.Token)
@@ -197,6 +274,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 			c.AWX.InventorySourceID = int(v)
 		}
 		flag("insecure", &c.AWX.Insecure)
+		dur("sync_interval", &c.AWX.SyncInterval)
 	case "efficientip":
 		str("url", &c.IPAM.URL)
 		str("auth", &c.IPAM.Auth)
@@ -207,6 +285,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("dns_view", &c.IPAM.DNSView)
 		str("instance_id", &c.IPAM.Instance)
 		flag("insecure", &c.IPAM.Insecure)
+		dur("sync_interval", &c.IPAMSyncInterval)
 	case "nsx":
 		str("url", &c.NSX.URL)
 		str("username", &c.NSX.Username)
@@ -223,6 +302,20 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("known_hosts", &c.Git.KnownHosts)
 		flag("insecure", &c.Git.Insecure)
 		str("committer", &c.Git.Committer)
+		dur("sync_interval", &c.Git.Interval)
+	case "vra":
+		str("url", &c.VRA.URL)
+		str("username", &c.VRA.Username)
+		str("domain", &c.VRA.Domain)
+		flag("insecure", &c.VRA.Insecure)
+		// With a user, the secret is its password; without, a refresh token.
+		if s.Secret != "" && !locked["credential"] {
+			if c.VRA.Username != "" {
+				c.VRA.Password, c.VRA.Token = s.Secret, ""
+			} else {
+				c.VRA.Token, c.VRA.Password = s.Secret, ""
+			}
+		}
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -237,6 +330,15 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("tenant_id", &c.Teams.TenantID)
 		str("service_url", &c.Teams.ServiceURL)
 		secret("app_password", &c.Teams.AppPassword)
+		str("login_url", &c.Teams.LoginURL)
+		str("graph_url", &c.Teams.GraphURL)
+		str("openid_url", &c.Teams.OpenIDURL)
+		c.Teams.ServiceURL = strings.TrimRight(c.Teams.ServiceURL, "/")
+		c.Teams.LoginURL = strings.TrimRight(c.Teams.LoginURL, "/")
+		c.Teams.GraphURL = strings.TrimRight(c.Teams.GraphURL, "/")
+	case "hosts":
+		strs("rest_source_hosts", &c.RESTSourceHosts)
+		strs("webhook_hosts", &c.WebhookHosts)
 	case "slack":
 		var sec SlackSecrets
 		_ = json.Unmarshal([]byte(s.Secret), &sec)
@@ -246,7 +348,21 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		if sec.SigningSecret != "" && !locked["signing_secret"] {
 			c.Slack.SigningSecret = sec.SigningSecret
 		}
+		str("api_url", &c.Slack.APIURL)
 	}
+}
+
+// FormatDuration writes a duration as it would be typed: 2m, 1h30m, 45s.
+func FormatDuration(d time.Duration) string {
+	s := d.String()
+	s = strings.TrimSuffix(s, "m0s")
+	if s != d.String() {
+		s += "m"
+	}
+	if t := strings.TrimSuffix(s, "h0m"); t != s {
+		s = t + "h"
+	}
+	return s
 }
 
 // Settings are an integration's settings as rvav uses them, without the
@@ -257,28 +373,37 @@ func (c Config) Settings(kind string) map[string]any {
 		return map[string]any{"issuer": c.Auth.OIDCIssuer, "discovery_url": c.Auth.OIDCDiscoveryURL, "client_id": c.Auth.OIDCClientID,
 			"scopes": c.Auth.Scopes, "groups_claim": c.Auth.GroupsClaim}
 	case "vcenter":
-		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure, "name": c.VCenter.Name}
+		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure, "name": c.VCenter.Name,
+			"sync_interval": FormatDuration(c.SyncInterval)}
+	case "console":
+		return map[string]any{"username": c.ConsoleUsername, "sdk_urls": nonNil(c.WMKSSDKURLs)}
 	case "awx":
 		return map[string]any{"url": c.AWX.URL, "organization": c.AWX.Organization, "catalog_labels": c.AWX.CatalogLabels,
 			"action_labels": c.AWX.ActionLabels, "inventory_source_id": c.AWX.InventorySourceID, "insecure": c.AWX.Insecure,
-			"fake": c.AWX.Fake}
+			"fake": c.AWX.Fake, "sync_interval": FormatDuration(c.AWX.SyncInterval)}
 	case "efficientip":
 		return map[string]any{"url": c.IPAM.URL, "auth": c.IPAM.Auth, "username": c.IPAM.Username, "space": c.IPAM.Space,
 			"dns_server": c.IPAM.DNSServer, "dns_view": c.IPAM.DNSView, "instance_id": c.IPAM.Instance, "insecure": c.IPAM.Insecure,
-			"fake": c.IPAM.Fake}
+			"fake": c.IPAM.Fake, "sync_interval": FormatDuration(c.IPAMSyncInterval)}
 	case "nsx":
 		return map[string]any{"url": c.NSX.URL, "username": c.NSX.Username, "cert_file": c.NSX.CertFile, "key_file": c.NSX.KeyFile,
 			"insecure": c.NSX.Insecure}
 	case "git":
 		return map[string]any{"url": c.Git.URL, "branch": c.Git.Branch, "dir": c.Git.Dir, "username": c.Git.Username,
-			"known_hosts": c.Git.KnownHosts, "insecure": c.Git.Insecure, "committer": c.Git.Committer}
+			"known_hosts": c.Git.KnownHosts, "insecure": c.Git.Insecure, "committer": c.Git.Committer,
+			"sync_interval": FormatDuration(c.Git.Interval)}
+	case "vra":
+		return map[string]any{"url": c.VRA.URL, "username": c.VRA.Username, "domain": c.VRA.Domain, "insecure": c.VRA.Insecure}
+	case "hosts":
+		return map[string]any{"rest_source_hosts": nonNil(c.RESTSourceHosts), "webhook_hosts": nonNil(c.WebhookHosts)}
 	case "smtp":
 		return map[string]any{"host": c.SMTP.Host, "port": c.SMTP.Port, "tls": c.SMTP.TLS, "from": c.SMTP.From,
 			"username": c.SMTP.Username}
 	case "teams":
-		return map[string]any{"app_id": c.Teams.AppID, "tenant_id": c.Teams.TenantID, "service_url": c.Teams.ServiceURL}
+		return map[string]any{"app_id": c.Teams.AppID, "tenant_id": c.Teams.TenantID, "service_url": c.Teams.ServiceURL,
+			"login_url": c.Teams.LoginURL, "graph_url": c.Teams.GraphURL, "openid_url": c.Teams.OpenIDURL}
 	case "slack":
-		return map[string]any{}
+		return map[string]any{"api_url": c.Slack.APIURL}
 	}
 	return nil
 }
@@ -288,6 +413,10 @@ func (c Config) SecretSet(kind string) bool {
 	switch kind {
 	case "vcenter":
 		return c.VCenter.Password != ""
+	case "console":
+		return c.ConsolePassword != ""
+	case "vra":
+		return c.VRA.Token != "" || c.VRA.Password != ""
 	case "awx":
 		return c.AWX.Token != ""
 	case "efficientip":
@@ -335,14 +464,40 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 			if _, ok := v.([]any); !ok {
 				errs[name] = "A list of text."
 			}
+		case f.Type == "duration":
+			if s, ok := v.(string); !ok {
+				errs[name] = "A duration, for example 5m."
+			} else if d, err := time.ParseDuration(s); s != "" && (err != nil || d < MinInterval || d > MaxInterval) {
+				errs[name] = fmt.Sprintf("A duration from %s to %s, for example 5m or 1h30m.", FormatDuration(MinInterval), FormatDuration(MaxInterval))
+			}
 		}
 	}
-	for _, key := range []string{"url", "service_url", "issuer", "discovery_url"} {
+	for _, key := range []string{"url", "service_url", "issuer", "discovery_url", "login_url", "graph_url", "openid_url", "api_url"} {
 		if kind == "git" {
 			break // an SSH URL too: gitrepo.CheckURL
 		}
 		if u, ok := settings[key].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			errs[key] = "An http or https URL."
+		}
+	}
+	// The WebMKS SDK's scripts, which the browser loads.
+	if l, ok := settings["sdk_urls"].([]any); ok && kind == "console" {
+		for _, x := range l {
+			if u, _ := x.(string); u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "/") {
+				errs["sdk_urls"] = "URLs of the scripts, https:// or a path on rvav's own address (/wmks/wmks.min.js)."
+			}
+		}
+	}
+	// A host rvav may call: a name or an address, a port, a scheme for
+	// plain http (package hosts).
+	for _, key := range []string{"rest_source_hosts", "webhook_hosts"} {
+		l, _ := settings[key].([]any)
+		for _, x := range l {
+			h, _ := x.(string)
+			bare := strings.TrimPrefix(strings.TrimPrefix(h, "http://"), "https://")
+			if u, err := url.Parse("https://" + bare); h != "" && (err != nil || u.Host == "" || u.Host != bare) {
+				errs[key] = fmt.Sprintf("%q is not a host: give a name such as cmdb.corp.example, *.corp.example, or http://host:port for plain http.", h)
+			}
 		}
 	}
 	if kind == "oidc" {
@@ -364,4 +519,11 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 	}
 	return errs
+}
+
+func nonNil(l []string) []string {
+	if l == nil {
+		return []string{}
+	}
+	return l
 }

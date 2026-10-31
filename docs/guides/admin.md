@@ -55,8 +55,8 @@ The order that gets a first request through:
 ### Saved settings apply
 
 No process is restarted by hand (ADR-0030):
-- the identity provider, email, Teams and Slack apply on next use, within
-  seconds;
+- the identity provider, the console, vRA, email, Teams, Slack, the
+  allowed hosts and the sync intervals apply on next use, within seconds;
 - a connection (vCenter, AWX, EfficientIP, NSX, Git) applies as each of
   rvav's processes finishes its running work, exits and is started again
   with it. The panel lists the processes: running with the earlier
@@ -66,6 +66,22 @@ No process is restarted by hand (ADR-0030):
 Settings saved within a few seconds of each other apply together. With a
 single API (Compose, a VM), the page is unavailable for the few seconds it
 takes the API to start again; with two or more, they take turns.
+
+### Where the rest is set
+
+Also in **Administration › Integrations**
+([configuration.md](../operations/configuration.md) says where each
+setting is set):
+- **vCenter › Console:** an account that may only open consoles, whose
+  clone tickets VMRC links carry (without one, VMRC asks each user to
+  sign in), and the WebMKS SDK's scripts, which open consoles in the
+  browser. Its password only goes to the vCenter it was given for: give
+  it again after changing vCenter's address.
+- **vRA:** the vRA the importer reads, with a user and its password, or a
+  refresh token.
+- **Allowed hosts:** the hosts REST value sources and webhooks may call.
+  None listed, none is called.
+- **Sync intervals:** in each connection's tab, how often rvav reads it.
 
 ## The identity provider
 

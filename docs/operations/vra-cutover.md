@@ -146,6 +146,7 @@ every deployment adopted.
    report.
 3. **Switch vRA off**, by the organisation's procedure for it. vRA mustn't
    come back with its leases running.
-4. **Remove vRA from rvav's configuration:** `RVAV_VRA_URL` and its
-   credentials. Revoke vRA's account for rvav. The importer's page keeps
+4. **Remove vRA from rvav's configuration:** clear Administration ›
+   Integrations › vRA, or `RVAV_VRA_URL` and its credentials where the
+   environment sets them. Revoke vRA's account for rvav. The importer's page keeps
    the last estate read, for reference.

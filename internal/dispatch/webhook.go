@@ -88,7 +88,7 @@ func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {
 		allowed = w.HostsNow(ctx)
 	}
 	if !hosts.Allowed(allowed, u) {
-		return Result{Err: u.Host + " is not in RVAV_WEBHOOK_HOSTS."}
+		return Result{Err: u.Host + " is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts)."}
 	}
 	secret, err := w.Secret(ctx, t.Webhook.Secret)
 	if err != nil {

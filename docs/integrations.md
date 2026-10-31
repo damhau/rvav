@@ -95,7 +95,8 @@ How a blueprint is built is in
   changes is read again at once, so a VM powered off in vCenter is off in
   rvav within a second; when anything else changes, its vCenter is read
   again in full a few seconds later, once for a burst of changes.
-- A full read every `RVAV_SYNC_INTERVAL` (2 minutes by default) brings in
+- A full read every sync interval (vCenter's, in Administration ›
+  Integrations › vCenter or `RVAV_SYNC_INTERVAL`; 2 minutes by default) brings in
   what changes all the time and isn't followed (quick stats, free space)
   and what has no change notifications (tags, content library items,
   storage policies), and makes up for a change notification lost.
@@ -321,7 +322,7 @@ Nothing is created or changed in EfficientIP.
   `rvav-group|<group ID>`; a security policy of the firewall rules into
   them; the VMs' tags, once NSX sees them. Adopted vRA deployments bring
   their segment and groups, tagged the same way.
-- **Tag sync:** with the inventory sync, every `RVAV_SYNC_INTERVAL`, each
+- **Tag sync:** with the inventory sync, every vCenter sync interval, each
   VM's tags are compared with those rvav set; one removed shows the VM
   and its deployment as changed outside rvav.
 - **Fake:** `rvav fake-nsx` (the compose stack's `nsx` service) answers
@@ -342,8 +343,9 @@ templates or custom workflows ([ADR-0021](adr/0021-event-subscriptions.md)).
 Writing a custom workflow is covered in
 [custom-workflows.md](custom-workflows.md). For a webhook receiver:
 
-- **Hosts.** rvav posts only to hosts in `RVAV_WEBHOOK_HOSTS` and doesn't
-  follow redirects.
+- **Hosts.** rvav posts only to the hosts listed for webhooks
+  (Administration › Integrations › Allowed hosts, or `RVAV_WEBHOOK_HOSTS`)
+  and doesn't follow redirects.
 - **Body and headers.** The body is the event: `id`, `topic`, `contract`,
   `occurred_at`, `data`. The headers carry `X-Rvav-Event-Id`,
   `X-Rvav-Topic` and `X-Rvav-Signature: t=<unix time>,v1=<hex>`.

@@ -3436,7 +3436,7 @@ export interface components {
             name?: string;
             /**
              * @description Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
-             *     For `rest`: `url` (a host of RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
+             *     For `rest`: `url` (on a host REST value sources may call: Allowed hosts, or RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
              *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
              *     and `meta` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
              *     expression giving a list of strings or of {value, label, meta}) or `value`.
@@ -5363,7 +5363,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "oidc" | "vcenter" | "awx" | "efficientip" | "nsx" | "git" | "smtp" | "teams" | "slack";
+        IntegrationKind: "oidc" | "vcenter" | "console" | "awx" | "efficientip" | "nsx" | "git" | "vra" | "smtp" | "teams" | "slack" | "hosts";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
@@ -5371,16 +5371,26 @@ export interface components {
              * @description oidc (the identity provider, ADR-0030): issuer, discovery_url,
              *     client_id, scopes, groups_claim; no secret (the web app is a
              *     public client, with PKCE).
-             *     vcenter: url, username, insecure, name. awx: url, organization,
-             *     catalog_labels, action_labels, inventory_source_id, insecure.
-             *     efficientip: url, username, dns_server, instance_id, insecure.
-             *     git: url, branch, dir, username, known_hosts, insecure, committer
-             *     (the secret: an HTTPS token, or an SSH deploy key's private key;
-             *     ADR-0029).
+             *     vcenter: url, username, insecure, name, sync_interval.
+             *     console (ADR-0012): username, sdk_urls (the secret: the console
+             *     account's password).
+             *     awx: url, organization, catalog_labels, action_labels,
+             *     inventory_source_id, insecure, sync_interval.
+             *     efficientip: url, username, dns_server, instance_id, insecure,
+             *     sync_interval.
+             *     git: url, branch, dir, username, known_hosts, insecure, committer,
+             *     sync_interval (the secret: an HTTPS token, or an SSH deploy key's
+             *     private key; ADR-0029).
              *     nsx: url, username, cert_file, key_file, insecure (the secret:
              *     the user's password; ADR-0028).
+             *     vra (the importer's, ADR-0027): url, username, domain, insecure
+             *     (the secret: the user's password, or without a user a refresh
+             *     token).
              *     smtp: host, port, tls (starttls, tls, none), from, username.
-             *     teams: app_id, tenant_id. slack: (none besides its secrets).
+             *     teams: app_id, tenant_id, service_url, login_url, graph_url,
+             *     openid_url. slack: api_url.
+             *     hosts: rest_source_hosts, webhook_hosts (no secret).
+             *     A sync_interval is a duration (2m, 1h30m), from 30s to 24h.
              *     The secret is the SMTP password, the Teams app's client secret
              *     or the Slack bot token.
              */
@@ -5401,8 +5411,8 @@ export interface components {
             /**
              * @description A process still runs with earlier settings: it drains (takes no
              *     new task, lets those running finish), exits and is started again
-             *     with these (ADR-0030). Never for oidc, smtp, teams and slack,
-             *     read on next use.
+             *     with these (ADR-0030). Never for oidc, console, vra, smtp,
+             *     teams, slack and hosts, read on next use.
              */
             applying: boolean;
             /** Format: date-time */
@@ -5577,7 +5587,7 @@ export interface components {
         /** @description Exactly one of `webhook`, `awx` and `workflow`. */
         SubscriptionTarget: {
             webhook?: {
-                /** @description An https URL on a host in RVAV_WEBHOOK_HOSTS. */
+                /** @description An https URL on a host webhooks may call (Allowed hosts, or RVAV_WEBHOOK_HOSTS). */
                 url: string;
                 /** @description The stored secret (`/admin/secrets`) the body is signed with. */
                 secret: string;

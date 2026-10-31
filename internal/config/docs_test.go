@@ -67,3 +67,48 @@ func TestEverySettingIsDocumented(t *testing.T) {
 		t.Fatalf("docs/operations/configuration.md: not listed %v; listed but not read %v", missing, extra)
 	}
 }
+
+// The reference says where each setting is set (ADR-0030): in the tab of
+// Administration › Integrations whose field its variable locks, or at
+// install only.
+func TestWhereEachSettingIsSet(t *testing.T) {
+	panel := map[string]string{"oidc": "Identity provider", "vcenter": "vCenter", "console": "vCenter › Console", "awx": "AWX",
+		"efficientip": "EfficientIP", "nsx": "NSX", "git": "Git", "vra": "vRA", "smtp": "Email",
+		"teams": "Microsoft Teams", "slack": "Slack", "hosts": "Allowed hosts"}
+	inUI := map[string]string{}
+	for kind, fields := range Fields {
+		if panel[kind] == "" {
+			t.Errorf("no tab named for %s", kind)
+		}
+		for _, f := range fields {
+			for _, env := range append([]string{f.Env}, alsoLockedBy[kind][f.Name]...) {
+				inUI[env] = "Integrations › " + panel[kind]
+			}
+		}
+	}
+	doc, err := os.ReadFile("../../docs/operations/configuration.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := regexp.MustCompile("(?m)^\\| `(RVAV_[A-Z0-9_]+)` \\|[^|]*\\|[^|]*\\| ([^|]*) \\|").FindAllStringSubmatch(string(doc), -1)
+	listed := map[string]bool{}
+	for _, m := range rows {
+		env, where := m[1], m[2]
+		listed[env] = true
+		want := inUI[env]
+		if want == "" {
+			want = "install"
+		}
+		if where != want {
+			t.Errorf("%s: Set in %q, want %q", env, where, want)
+		}
+	}
+	for env := range inUI {
+		if !listed[env] {
+			t.Errorf("%s, set in %s, has no row", env, inUI[env])
+		}
+	}
+	if len(rows) < len(inUI) {
+		t.Errorf("%d rows for %d settings set in the UI", len(rows), len(inUI))
+	}
+}

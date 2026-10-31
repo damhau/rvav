@@ -1,8 +1,10 @@
 #!/bin/sh
 # Checks the web image's nginx configuration in a real nginx (ADR-0030):
 # the page's Content-Security-Policy lets the browser reach the identity
-# provider's origins the API says, and the one RVAV_WEB_OIDC_AUTHORITY sets;
-# a header that isn't a list of origins is dropped; when the API is down the
+# provider's origins the API says, and the one RVAV_WEB_OIDC_AUTHORITY sets,
+# and load the console's SDK from where the API says it is besides
+# RVAV_WEB_SCRIPT_SOURCES; a header that isn't a list of origins is dropped;
+# when the API is down the
 # page is still served, without them. Runs the stock nginx image with the
 # template, a stand-in page and a stand-in API (nginx too): no build.
 #
@@ -34,7 +36,8 @@ echo '<!doctype html><title>rvav</title>' >"$work/html/index.html"
 echo 'console.log(1)' >"$work/html/assets/app.js"
 chmod -R a+rX "$work"
 
-# A stand-in API: GET /api/v1/auth/options with the header given.
+# A stand-in API: GET /api/v1/auth/options with the providers' origins
+# given, and the console SDK's.
 api() {
 	docker rm -f "$run-api" >/dev/null 2>&1 || true
 	cat >"$work/api/default.conf" <<EOF
@@ -42,6 +45,7 @@ server {
     listen 8080;
     location = /api/v1/auth/options {
         add_header X-Rvav-Idp-Origins "$1" always;
+        add_header X-Rvav-Script-Origins "${2:-}" always;
         default_type application/json;
         return 200 '{}';
     }
@@ -74,6 +78,14 @@ expect_csp() { # path, what connect-src and frame-src hold after 'self'
 	esac
 }
 
+expect_scripts() { # path, what script-src holds after 'self'
+	got=$(csp "$1")
+	case "$got" in
+	*"script-src 'self' $2;"*) echo "ok: $1: scripts $2" ;;
+	*) fail "$1: expected script-src 'self' $2, got: $got" ;;
+	esac
+}
+
 docker network create "$net" >/dev/null
 docker run -d --name "$run-web" --network "$net" \
 	-e RVAV_API_UPSTREAM=http://api:8080 \
@@ -82,7 +94,7 @@ docker run -d --name "$run-web" --network "$net" \
 	-e RVAV_WEB_OIDC_AUTHORITY=https://web.example/realms/rvav \
 	-e RVAV_WEB_OIDC_CLIENT_ID= \
 	-e RVAV_WEB_OIDC_SCOPE= \
-	-e RVAV_WEB_SCRIPT_SOURCES= \
+	-e RVAV_WEB_SCRIPT_SOURCES=https://env.example \
 	-v "$here/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
 	-v "$work/html:/usr/share/nginx/html:ro" "$image" >/dev/null
 for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -94,6 +106,7 @@ docker exec "$run-web" nginx -t >/dev/null 2>&1 || fail "nginx -t"
 # The API isn't there: the page is served, with the web container's origin only.
 headers /deployments | grep -q 'HTTP/1.1 200' || fail "the page isn't served while the API is down"
 expect_csp /deployments "https://web.example "
+expect_scripts /deployments "https://env.example "
 
 # The API says the provider's origin and one being tried.
 api "https://login.microsoftonline.com https://idp.corp.example:8443"
@@ -106,8 +119,14 @@ expect_csp /assets/app.js "https://web.example "
 docker exec "$run-web" wget -qO- http://127.0.0.1:8080/config.js | grep -q '"oidcClientId": ""' ||
 	fail "/config.js"
 
-# A header that isn't a list of origins is dropped.
-api "https://idp.example; script-src *"
-expect_csp /deployments "https://web.example "
+# The console's SDK on a vCenter, set in Administration.
+api "https://login.microsoftonline.com" "https://vc01.corp.example https://vc02.corp.example:9443"
+expect_scripts /deployments "https://env.example https://vc01.corp.example https://vc02.corp.example:9443"
+expect_scripts /assets/app.js "https://env.example "
 
-echo "nginx: the Content-Security-Policy follows the API's identity provider"
+# A header that isn't a list of origins is dropped.
+api "https://idp.example; script-src *" "https://vc.example; script-src *"
+expect_csp /deployments "https://web.example "
+expect_scripts /deployments "https://env.example "
+
+echo "nginx: the Content-Security-Policy follows the API's identity provider and console SDK"

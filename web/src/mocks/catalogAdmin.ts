@@ -229,7 +229,8 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
       errors.push({
         field: `${prefix}/ui_schema/fields/${name}/value_source/params/url`,
         code: "host",
-        message: "The URL's host is not in RVAV_REST_SOURCE_HOSTS (cmdb.corp.example here).",
+        message:
+          "rvav may not call this host: it is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts; cmdb.corp.example here).",
       });
   }
   for (const name of Object.keys(props))

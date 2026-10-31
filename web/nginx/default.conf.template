@@ -15,6 +15,12 @@ map $rvav_api_idp_origins $rvav_idp_origins {
     "~^(https?://[a-zA-Z0-9.:\[\]-]+ ?)+$" $rvav_api_idp_origins;
     default "";
 }
+# Where the VM console's SDK set in Administration is, as the API says:
+# origins only too.
+map $rvav_api_script_origins $rvav_script_origins {
+    "~^(https?://[a-zA-Z0-9.:\[\]-]+ ?)+$" $rvav_api_script_origins;
+    default "";
+}
 
 server {
     listen 8080;
@@ -37,9 +43,10 @@ server {
 
     # What the page may load (S14.6): its own files, tokens from the identity
     # provider (and its silent sign-in frame, which comes back to this
-    # origin), and the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES. The UI
-    # libraries insert style elements. HSTS takes effect over HTTPS only.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${RVAV_WEB_SCRIPT_SOURCES}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' $rvav_web_idp_origin $rvav_idp_origins; frame-src 'self' $rvav_web_idp_origin $rvav_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
+    # origin), and the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES and where
+    # the API says it is. The UI libraries insert style elements. HSTS takes
+    # effect over HTTPS only.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${RVAV_WEB_SCRIPT_SOURCES} $rvav_script_origins; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' $rvav_web_idp_origin $rvav_idp_origins; frame-src 'self' $rvav_web_idp_origin $rvav_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
@@ -121,12 +128,13 @@ server {
         try_files $uri /index.html;
     }
 
-    # The page, never cached, with the identity provider's origins the API
-    # says (ADR-0030).
+    # The page, never cached, with the identity provider's and the console
+    # SDK's origins the API says (ADR-0030).
     location = /index.html {
         expires -1;
         auth_request /_rvav/idp-origins;
         auth_request_set $rvav_api_idp_origins $upstream_http_x_rvav_idp_origins;
+        auth_request_set $rvav_api_script_origins $upstream_http_x_rvav_script_origins;
     }
 
     # Asks the API (GET /api/v1/auth/options); when it can't answer, the page

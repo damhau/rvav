@@ -56,7 +56,40 @@ interface MockProcess {
 }
 
 /** The integrations read on next use (ADR-0030). */
-const LIVE_KINDS = ["oidc", "smtp", "teams", "slack"];
+const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra"];
+
+/** The integrations, in the order the server lists them. */
+const KINDS = [
+  "oidc",
+  "vcenter",
+  "console",
+  "awx",
+  "efficientip",
+  "nsx",
+  "git",
+  "vra",
+  "smtp",
+  "teams",
+  "slack",
+  "hosts",
+] as const;
+
+/** A sync interval as the server takes it: 30s to 24h, as 2m or 1h30m. */
+function intervalOK(v: string): boolean {
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(v);
+  if (!m || v === "") return false;
+  const secs = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+  return secs >= 30 && secs <= 86400;
+}
+
+/** Whether an integration is set up, as the server says. */
+function configuredOf(kind: string, it: { settings: Record<string, unknown>; secret: boolean }): boolean {
+  const s = it.settings;
+  if (kind === "slack") return it.secret;
+  if (kind === "console") return Boolean(s.username);
+  if (kind === "hosts") return [s.rest_source_hosts, s.webhook_hosts].some((l) => Array.isArray(l) && l.length > 0);
+  return Boolean(s.url || s.host || s.app_id || s.issuer);
+}
 
 /** The processes as they are now: those behind drain, then start again. */
 function processesNow(a: AdminState): S["Process"][] {
@@ -233,14 +266,17 @@ function state(db: Db): AdminState {
     ],
     integrations: {
       oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
-      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
-      awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
-      efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false }, secret: true },
+      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example", sync_interval: "2m" }, secret: true },
+      console: { settings: { username: "svc-rvav-console@vsphere.local", sdk_urls: [] }, secret: true },
+      awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false, sync_interval: "5m" }, secret: true },
+      efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false, sync_interval: "5m" }, secret: true },
       nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false }, secret: true },
-      git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example" }, secret: false },
+      git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example", sync_interval: "5m" }, secret: false },
+      vra: { settings: { url: "", username: "", domain: "", insecure: false }, secret: false },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
-      teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea" }, secret: false },
-      slack: { settings: {}, secret: false, signing: false },
+      teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea", login_url: "https://login.microsoftonline.com", graph_url: "https://graph.microsoft.com", openid_url: "https://login.botframework.com/v1/.well-known/openidconfiguration" }, secret: false },
+      slack: { settings: { api_url: "https://slack.com/api" }, secret: false, signing: false },
+      hosts: { settings: { rest_source_hosts: ["cmdb.corp.example"], webhook_hosts: ["hooks.corp.example"] }, secret: false },
     }, // prettier-ignore
   };
   return d.administration;
@@ -1138,25 +1174,21 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
       return HttpResponse.json({
-        items: (["oidc", "vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"] as const).map(
-          (kind) => {
-            const it = st().integrations[kind]!;
-            return {
-              kind,
-              configured:
-                Boolean(it.settings.url ?? it.settings.host ?? it.settings.app_id ?? it.settings.issuer) ||
-                (kind === "slack" && it.secret),
-              settings: it.settings,
-              secret_set: it.secret,
-              ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
-              locked: kind === "vcenter" ? ["url"] : [],
-              ...applyingOf(kind, it.revision ?? 0),
-              ...(it.updated_at
-                ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
-                : {}),
-            };
-          },
-        ),
+        items: KINDS.map((kind) => {
+          const it = st().integrations[kind]!;
+          return {
+            kind,
+            configured: configuredOf(kind, it),
+            settings: it.settings,
+            secret_set: it.secret,
+            ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
+            locked: kind === "vcenter" ? ["url"] : [],
+            ...applyingOf(kind, it.revision ?? 0),
+            ...(it.updated_at
+              ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
+              : {}),
+          };
+        }),
       });
     }),
     http.put(`${base}/admin/integrations/:kind`, async ({ params, request }) => {
@@ -1197,6 +1229,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             kind === "git" ? "An https:// or ssh:// URL, or git@host:path." : "An http or https URL.",
           ),
         ]);
+      const every = w.settings.sync_interval;
+      if (typeof every === "string" && every && !intervalOK(every))
+        return invalid([err("/settings/sync_interval", "A duration from 30s to 24h, for example 5m or 1h30m.")]);
       const it = st().integrations[kind]!;
       const locked = kind === "vcenter" ? ["url"] : [];
       const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
@@ -1213,7 +1248,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       audited(db, `settings.integration.${kind}`, "integration", kind);
       return HttpResponse.json({
         kind,
-        configured: true,
+        configured: configuredOf(kind, it),
         settings: it.settings,
         secret_set: it.secret,
         ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
@@ -1238,6 +1273,42 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       );
       const moved = body && saved.secret ? secretMoves(saved.settings, editable, body.secret) : null;
       if (moved) return moved;
+      const ps = { ...saved.settings, ...editable };
+      const list = (v: unknown) => (Array.isArray(v) && v.length ? v.join(", ") : "no host");
+      if (kind === "hosts")
+        return HttpResponse.json({
+          ok: true,
+          checks: [
+            {
+              name: "Hosts",
+              ok: true,
+              message: `REST value sources may call ${list(ps.rest_source_hosts)}; webhooks ${list(ps.webhook_hosts)}.`,
+            },
+          ],
+        });
+      if (kind === "console") {
+        const sdk = Array.isArray(ps.sdk_urls) ? ps.sdk_urls.length : 0;
+        const account = typeof ps.username === "string" ? ps.username : "";
+        return HttpResponse.json({
+          ok: account !== "",
+          checks: [
+            account
+              ? { name: "Sign in", ok: true, message: `Signed in to vc01.corp.example as ${account}.` }
+              : {
+                  name: "Console account",
+                  ok: false,
+                  message: "none: VMRC asks each user to sign in to vCenter",
+                },
+            {
+              name: "Console in the browser",
+              ok: true,
+              message: sdk
+                ? `${sdk} WebMKS SDK scripts, loaded by the browser.`
+                : "No WebMKS SDK: consoles open in VMRC only.",
+            },
+          ],
+        });
+      }
       const given = editable.url ?? saved.settings.url;
       const url = typeof given === "string" ? given : "";
       const reachable = !url.includes("unreachable");

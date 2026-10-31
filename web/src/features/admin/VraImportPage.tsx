@@ -4,6 +4,7 @@
 // deployments. It can run again. vRA is only read.
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -867,7 +868,13 @@ export function VraImportPage() {
               <span>Move vRA's catalog and deployments to rvav. vRA is only read.</span>
             )}
             {status.data && !status.data.configured && (
-              <span>rvav reads no vRA itself (RVAV_VRA_URL isn't set): upload the file rvav vra-export wrote.</span>
+              <span>
+                rvav reads no vRA itself: set it in{" "}
+                <Link to="/admin/integrations" className="text-accent underline underline-offset-2">
+                  Integrations › vRA
+                </Link>
+                , or upload the file rvav vra-export wrote.
+              </span>
             )}
           </>
         }
@@ -910,7 +917,7 @@ export function VraImportPage() {
             body={
               status.data.configured
                 ? "Read vRA to see what an import would do. Nothing is written until you import."
-                : "Upload the file rvav vra-export wrote, or set RVAV_VRA_URL for rvav to read vRA itself."
+                : "Upload the file rvav vra-export wrote, or set vRA in Integrations for rvav to read it itself."
             }
           />
         </Panel>

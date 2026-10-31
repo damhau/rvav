@@ -49,19 +49,29 @@ come from group mappings that are made in the UI.
 Without a restart by hand, in one of two ways:
 - **On next use:**
   - the identity provider (the token check is built again);
-  - notifications (SMTP, Teams, Slack);
+  - notifications (SMTP, Teams, Slack, with their endpoints);
   - the allowed hosts;
-  - the intervals.
+  - the intervals, kept with their connection's settings;
+  - the console: its account's vCenter session is made again when the
+    account changes, and the WebMKS SDK's scripts are read when a console
+    opens;
+  - vRA: the importer signs in for each read.
 
   Each process reads the current settings revision before using one, at
   most every 2 s, and builds what it needs again when the revision has
   moved. A notification channel is built again only when its own settings
   change, so Teams' tokens are kept otherwise.
+- **A secret only goes where it was given for** (ADR-0020): a new address,
+  or TLS checks turned off, needs it again. The console's account signs in
+  to vCenter's address, so its saved password is kept with the vCenter
+  connection it was given for, and isn't used with another until given
+  again; while a process is about to start again with new vCenter
+  settings, VMRC asks each user to sign in.
 - **Drain and restart:** the connection clients (vCenter, AWX, EfficientIP,
-  NSX, Git, vRA) hold sessions, and the Temporal worker and the sync loops
+  NSX, Git) hold sessions, and the Temporal worker and the sync loops
   are built at start. Swapping them under a running activity is the risk
-  ADR-0020 avoided. The API holds them too: the console's vCenter, the
-  pickers' AWX and EfficientIP. Instead, every process watches for newer
+  ADR-0020 avoided. The API holds them too: the pickers' AWX and
+  EfficientIP. Instead, every process watches for newer
   connection settings and drains:
   - it compares the connections saved now with those it started with (the
     configuration less what is read on next use). An identical save, or a
@@ -201,6 +211,8 @@ Without a restart by hand, in one of two ways:
     (`auth_request`, the `X-Rvav-Idp-Origins` header).
   - The API gives only an `http` or `https` scheme, host and port.
   - When the API can't be reached, the page is served without them.
+  - The console's SDK, when it is loaded from a URL, is allowed the same
+    way (`X-Rvav-Script-Origins`, in `script-src`).
 - `RVAV_OIDC_*` and `RVAV_WEB_OIDC_*` still win:
   - `RVAV_OIDC_*` locks the fields, as for any integration.
   - `RVAV_WEB_OIDC_*`, on the web container, win in the browser, and lock

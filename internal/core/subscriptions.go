@@ -216,9 +216,11 @@ func (s *Service) checkTarget(ctx context.Context, t api.SubscriptionTarget) (js
 		case err != nil || u.Host == "":
 			errs = append(errs, fieldErr("/target/webhook/url", "invalid", "A URL such as https://cmdb.corp.example/rvav."))
 		case !hosts.Allowed(s.liveConfig(ctx).WebhookHosts, u):
-			errs = append(errs, fieldErr("/target/webhook/url", "host", u.Host+" is not in RVAV_WEBHOOK_HOSTS."))
+			errs = append(errs, fieldErr("/target/webhook/url", "host", u.Host+" is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts)."))
 		}
-		if _, err := s.Store.GetSecret(ctx, t.Webhook.Secret); errors.Is(err, store.ErrNotFound) {
+		if strings.TrimSpace(t.Webhook.Secret) == "" {
+			errs = append(errs, fieldErr("/target/webhook/secret", "required", "A webhook's calls are signed: give the stored secret to sign them with."))
+		} else if _, err := s.Store.GetSecret(ctx, t.Webhook.Secret); errors.Is(err, store.ErrNotFound) {
 			errs = append(errs, fieldErr("/target/webhook/secret", "unknown", "There is no stored secret "+t.Webhook.Secret+"."))
 		} else if err != nil {
 			return nil, nil, err

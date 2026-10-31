@@ -69,11 +69,13 @@ func (s *Service) OpenConsole(ctx context.Context, p *auth.Principal, deployment
 	// Without a console account, VMRC asks the user to sign in with their
 	// own vCenter account, whose permissions then apply.
 	out.VMRC = fmt.Sprintf("vmrc://%s/?moid=%s", vc.Host(), url.QueryEscape(target.VM.Moref))
+	var acct CloneTicketer
 	if s.ConsoleAccount != nil && primary {
-		acct, err := s.ConsoleAccount(ctx)
-		if err != nil {
+		if acct, err = s.ConsoleAccount(ctx); err != nil {
 			return out, &UpstreamError{System: "vCenter", Err: err}
 		}
+	}
+	if acct != nil {
 		ticket, err := acct.CloneTicket(ctx)
 		if err != nil {
 			return out, &UpstreamError{System: "vCenter", Err: err}

@@ -267,6 +267,19 @@ func (cl *Client) client(ctx context.Context) (*vim25.Client, error) {
 	return c.Client, nil
 }
 
+// Logout ends the session, for a client replaced by one with other
+// settings.
+func (cl *Client) Logout(ctx context.Context) error {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if cl.c == nil || cl.url == nil {
+		return nil
+	}
+	err := cl.c.Logout(ctx)
+	cl.c = nil
+	return err
+}
+
 // findRef looks up a managed object of kind by its name anywhere in the inventory.
 func findRef(ctx context.Context, c *vim25.Client, kind, name string) (types.ManagedObjectReference, error) {
 	m := view.NewManager(c)

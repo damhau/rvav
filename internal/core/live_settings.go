@@ -15,10 +15,12 @@ import (
 )
 
 // LiveKinds are the integrations whose saved settings apply on next use
-// (ADR-0030): the identity provider and the notification channels. The
-// others, connections, apply when each process that holds them has drained
-// and started again.
-var LiveKinds = []string{"oidc", "smtp", "teams", "slack"}
+// (ADR-0030): the identity provider, the notification channels, the hosts
+// rvav may call, the console (its session is made again) and vRA (the
+// importer signs in for each read). The others, connections, apply when
+// each process that holds them has drained and started again; their sync
+// intervals are read on next use.
+var LiveKinds = []string{"oidc", "smtp", "teams", "slack", "hosts", "console", "vra"}
 
 // LiveSettings are the saved settings as they are now (ADR-0030): what is
 // read on next use follows a change without a restart. The settings
@@ -88,6 +90,8 @@ func ConnectionsOf(c config.Config) config.Config {
 	c.Auth.OIDCIssuer, c.Auth.OIDCDiscoveryURL, c.Auth.OIDCClientID, c.Auth.Scopes, c.Auth.GroupsClaim = "", "", "", "", ""
 	c.SMTP, c.Teams, c.Slack = config.SMTPConfig{}, config.TeamsConfig{}, config.SlackConfig{}
 	c.RESTSourceHosts, c.WebhookHosts = nil, nil
+	c.ConsoleUsername, c.ConsolePassword, c.WMKSSDKURLs = "", "", nil
+	c.VRA = config.VRAConfig{}
 	c.SyncInterval, c.IPAMSyncInterval, c.AWX.SyncInterval, c.Git.Interval = 0, 0, 0, 0
 	return c
 }
@@ -113,7 +117,12 @@ func providerOf(a config.AuthConfig) auth.ProviderSettings {
 // that can't be opened is left out, and logged.
 func ApplyStored(cfg *config.Config, stored map[string]store.IntegrationSettings, box *secrets.Box, log *slog.Logger) (int64, error) {
 	var rev int64
-	for kind, row := range stored {
+	// In the integrations' order: the console's after vCenter's.
+	for _, kind := range integrationKinds {
+		row, ok := stored[kind]
+		if !ok {
+			continue
+		}
 		var s config.Stored
 		if err := json.Unmarshal(row.Settings, &s.Settings); err != nil {
 			return 0, fmt.Errorf("stored %s settings: %w", kind, err)

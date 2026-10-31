@@ -42,9 +42,11 @@ type Server struct {
 	// Heartbeat is the SSE keep-alive interval (15 s when zero).
 	Heartbeat time.Duration
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
-	// order; none means only VMRC links (ADR-0012). ConsoleInsecure skips
-	// the ESXi certificate check when vCenter gives no thumbprint.
+	// order; none means only VMRC links (ADR-0012). WMKSNow, when set,
+	// gives them as saved now (ADR-0030). ConsoleInsecure skips the ESXi
+	// certificate check when vCenter gives no thumbprint.
 	WMKSSDKURLs     []string
+	WMKSNow         func(context.Context) []string
 	ConsoleInsecure bool
 	// Teams checks the calls of rvav's Teams bot; nil when Teams isn't set
 	// up (ADR-0023).

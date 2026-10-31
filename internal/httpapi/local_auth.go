@@ -124,10 +124,12 @@ func plural(n int, word string) string {
 }
 
 // GetAuthOptions says how to sign in. nginx asks for it as it serves the
-// page, and copies X-Rvav-Idp-Origins into its Content-Security-Policy.
+// page, and copies X-Rvav-Idp-Origins into its Content-Security-Policy, and
+// X-Rvav-Script-Origins: where the console's SDK set in Administration is.
 func (s *Server) GetAuthOptions(w http.ResponseWriter, r *http.Request) {
 	opts, origins := s.Core.AuthOptions(r.Context())
 	w.Header().Set("X-Rvav-Idp-Origins", strings.Join(origins, " "))
+	w.Header().Set("X-Rvav-Script-Origins", strings.Join(scriptOrigins(s.wmks(r.Context())), " "))
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, opts)
 }

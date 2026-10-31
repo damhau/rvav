@@ -182,7 +182,8 @@ Markdown or info block, and resource pickers:
   The YAML view edits anything the designer doesn't.
 - Value sources: the built-in ones, `rest` (a URL template with escaped
   inputs, GET or POST, a stored secret as bearer, basic or header, JSONPath
-  mapping, cached; only hosts in `RVAV_REST_SOURCE_HOSTS`, no redirects,
+  mapping, cached; only the hosts listed for REST value sources, in
+  Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`; no redirects,
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
   project, user and environment). Dependencies re-resolve a field when the
   inputs it depends on change.
