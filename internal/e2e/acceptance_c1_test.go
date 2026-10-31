@@ -51,7 +51,8 @@ func (h *harness) restartWith(kind string) {
 // repository; the Git server's webhook asks for a read, and the change
 // becomes a draft, with its commit and diff, not published. The catalog
 // admin publishes it: users can request it, and it is committed back, so
-// the repository and rvav agree. Every step is audited.
+// the repository and rvav agree. Changed on both sides, the item is a
+// conflict shown with both sides, settled for rvav. Every step is audited.
 func TestC1Acceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -175,7 +176,48 @@ func TestC1Acceptance(t *testing.T) {
 		if it.Git.State != api.CatalogItemGitStateSynced || status.Error != nil {
 			t.Fatalf("after publishing the merge = %+v, %+v", it.Git, status)
 		}
-		for _, action := range []string{"catalog.git.commit", "catalog.git.draft", "catalog.version.publish"} {
+		// Changed on both sides: the teammate pushes (no webhook this
+		// time) and the catalog admin publishes before rvav commits. A
+		// conflict, shown with both sides, nothing overwritten; the admin
+		// keeps rvav's, committed over the teammate's change.
+		snap, _ = reader.Read(ctx)
+		mine := editFile(t, snap.Files[slug].Content, func(_, v map[string]any) { relabel("Teammate's label")(nil, v) })
+		theirsAgain := push(t, ctx, reader, "Teammate's label", gitrepo.Change{Path: "catalog/" + slug + ".yaml", Content: mine})
+		h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions", catalogAdmin, api.CatalogItemVersionCreate{}, 201, &draft)
+		h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions/"+draft.Id+"/publish", catalogAdmin,
+			api.CatalogItemVersionPublish{Changelog: new("Ours.")}, 200, nil)
+		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+			h.json("GET", "/api/v1/admin/catalog/items/"+slug, catalogAdmin, nil, 200, &it)
+			if it.Git != nil && it.Git.State == api.CatalogItemGitStateConflict {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("no conflict: %+v", it.Git)
+			}
+		}
+		var both api.CatalogItemGitDetail
+		h.json("GET", "/api/v1/admin/catalog/items/"+slug+"/git", catalogAdmin, nil, 200, &both)
+		if both.Rvav == nil || both.Repository == nil || !strings.Contains(*both.Repository, "Teammate's label") ||
+			strings.Contains(*both.Rvav, "Teammate's label") || len(both.Diff) == 0 || both.File.LastCommit == nil ||
+			both.File.LastCommit.Sha != theirsAgain.SHA {
+			t.Fatalf("the conflict's sides = %+v", both)
+		}
+		if snap, _ = reader.Read(ctx); snap.Head.SHA != theirsAgain.SHA {
+			t.Fatalf("rvav committed over the conflict: %+v", snap.Head)
+		}
+		h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/git/resolve", catalogAdmin, map[string]string{"take": "rvav"}, 200, nil)
+		h.json("POST", "/api/v1/admin/catalog/git/read", catalogAdmin, nil, 200, &status)
+		snap, _ = reader.Read(ctx)
+		if strings.Contains(string(snap.Files[slug].Content), "Teammate's label") || snap.Head.Author != "Léa Martin" {
+			t.Fatalf("after keeping rvav's = %+v", snap.Head)
+		}
+		h.json("GET", "/api/v1/admin/catalog/items/"+slug, catalogAdmin, nil, 200, &it)
+		if it.Git.State != api.CatalogItemGitStateSynced {
+			t.Fatalf("after settling = %+v", it.Git)
+		}
+
+		for _, action := range []string{"catalog.git.commit", "catalog.git.draft", "catalog.git.conflict", "catalog.git.resolve",
+			"catalog.version.publish"} {
 			if h.auditCount(action) == 0 {
 				t.Errorf("%s isn't audited", action)
 			}
