@@ -128,6 +128,41 @@ function processesNow(a: AdminState): S["Process"][] {
 
 const now = () => new Date().toISOString();
 
+/** An install's settings, in config.Install's order. */
+const MOCK_INSTALL: S["InstallSetting"][] = (
+  [
+    ["RVAV_DATABASE_URL", "postgres://rvav:xxxxx@rvav-db.corp.example:5432/rvav?sslmode=require", true, true],
+    ["RVAV_HTTP_ADDR", ":8080", false, false],
+    ["RVAV_METRICS_ADDR", ":9090", false, false],
+    ["RVAV_LOG_LEVEL", "info", false, true],
+    ["RVAV_PUBLIC_URL", "https://rvav.corp.example", false, true],
+    ["RVAV_CORS_ORIGINS", "", false, false],
+    ["RVAV_DRAIN_TIMEOUT", "5m0s", false, false],
+    ["RVAV_ADMIN_PASSWORD", undefined, true, false],
+    ["RVAV_AUTH_MODE", "oidc", false, false],
+    ["RVAV_ALLOW_DEV_AUTH", "off", false, false],
+    ["RVAV_DEV_USER", "lmartin", false, false],
+    ["RVAV_TEMPORAL_ADDRESS", "temporal-frontend.rvav.svc:7233", false, true],
+    ["RVAV_TEMPORAL_NAMESPACE", "rvav", false, true],
+    ["RVAV_TEMPORAL_TASK_QUEUE", "rvav-provision", false, false],
+    ["RVAV_TEMPORAL_TLS", "off", false, false],
+    ["RVAV_TEMPORAL_TLS_CA_FILE", "", false, false],
+    ["RVAV_TEMPORAL_TLS_CERT_FILE", "", false, false],
+    ["RVAV_TEMPORAL_TLS_KEY_FILE", "", false, false],
+    ["RVAV_TEMPORAL_TLS_SERVER_NAME", "", false, false],
+    ["RVAV_TEMPORAL_API_KEY", undefined, true, false],
+    ["RVAV_FAKE_EFFICIENTIP", "off", false, false],
+    ["RVAV_FAKE_EFFICIENTIP_LATENCY", "0s", false, false],
+    ["RVAV_FAKE_AWX", "off", false, false],
+    ["RVAV_FAKE_AWX_TASK_DELAY", "1.5s", false, false],
+    ["RVAV_FAKE_AWX_FAIL_TASK", "", false, false],
+    ["RVAV_GIT_WEBHOOK_SECRET", undefined, true, true],
+    ["RVAV_GIT_CACHE", "/tmp/rvav-git", false, false],
+    ["RVAV_SECRETS_KEY", undefined, true, true],
+    ["RVAV_SECRETS_OLD_KEYS", undefined, true, false],
+  ] as const
+).map(([name, value, secret, set]) => ({ name, ...(value === undefined ? {} : { value }), secret, set }));
+
 /** A setting's text, "" when it isn't a string. */
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -280,7 +315,8 @@ function state(db: Db): AdminState {
     ],
     integrations: {
       oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
-      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, cert_sha256: "", name: "vc01.corp.example", sync_interval: "2m" }, secret: true },
+      vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, cert_sha256: "", name: "vc01.corp.example", sync_interval: "2m" }, secret: true,
+        revision: 1, updated_at: new Date(Date.now() - 3 * 86_400_000).toISOString() },
       console: { settings: { username: "svc-rvav-console@vsphere.local", sdk_urls: [] }, secret: true },
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false, cert_sha256: "", sync_interval: "5m" }, secret: true },
       efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false, cert_sha256: "", sync_interval: "5m" }, secret: true },
@@ -307,6 +343,8 @@ function state(db: Db): AdminState {
         if (Array.isArray(v)) it.settings[k] = [];
       }
       it.secret = false;
+      delete it.revision;
+      delete it.updated_at;
     }
   }
   return d.administration;
@@ -1412,6 +1450,43 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     }),
 
     // ── rvav's processes (ADR-0030) ──
+    // The System page (U1.5): as the server's, with an install's
+    // settings as config.Install lists them.
+    http.get(`${base}/admin/system`, async () => {
+      await wait();
+      const a = st();
+      const connections = Object.entries(a.integrations)
+        .filter(([k]) => !LIVE_KINDS.includes(k))
+        .map(([, it]) => it.revision ?? 0);
+      const processes = processesNow(a);
+      const settings = KINDS.flatMap((kind): S["SettingsRevision"][] => {
+        const it = a.integrations[kind];
+        if (!it?.revision) return [];
+        const revision = it.revision;
+        return [
+          {
+            kind,
+            revision,
+            updated_at: it.updated_at ?? now(),
+            updated_by: { id: db.me.user.id, name: db.me.user.name },
+            applies: LIVE_KINDS.includes(kind)
+              ? "next_use"
+              : processes.some((p) => p.revision < revision)
+                ? "applying"
+                : "applied",
+          },
+        ];
+      }).sort((x, y) => y.revision - x.revision);
+      return HttpResponse.json({
+        version: "1.4.0",
+        schema: 48,
+        revision: Math.max(0, ...connections),
+        processes,
+        settings,
+        install: MOCK_INSTALL,
+      } satisfies S["System"]);
+    }),
+
     http.get(`${base}/admin/processes`, async () => {
       await wait();
       const a = st();

@@ -277,8 +277,16 @@ Without a restart by hand, in one of two ways:
   stays in **Administration › Setup**.
 - Administration pages don't need a project. An administrator in none
   is offered the checklist where others are told to ask for one.
-- A System page shows the version, each process and the settings revision
-  it runs, and the install settings, read only (secrets masked).
+- A System page (`GET /admin/system`, administrators only) shows, read
+  only:
+  - the version and the schema's last migration;
+  - each process and the settings revision it runs;
+  - each kind saved in Administration, with whether it applies on next
+    use, is applying or has applied;
+  - the install settings as the API answering reads them.
+  The install settings are `config.Install`, which a test keeps to
+  configuration.md's install rows. A secret's value is never sent, only
+  whether it is set; the database URL is sent without its password.
 
 ## Consequences
 - rvav is set up from its UI, as vRA is; only the database, keys,

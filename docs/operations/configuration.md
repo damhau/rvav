@@ -12,7 +12,8 @@ the code reads, and only those.
 - **install**: in the environment only. What a process needs before it
   can read its database (the database, the secrets keys, Temporal, where
   it listens, the public URL), the web container's own settings, and
-  development's fakes.
+  development's fakes. **Administration › System** lists the API's, as
+  it reads them, secrets hidden.
 - **Integrations › …**: in that tab of **Administration › Integrations**
   too, where the environment variable, when set, still wins and locks its
   field. An install can leave them all out and set them from the UI.

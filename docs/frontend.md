@@ -272,6 +272,9 @@ ones they may use; auditors see them read only.
   load (`SetupLanding` in `AppShell.tsx`), and the Overview offers the way
   back. Administration pages work without a project, so an administrator
   in none can set rvav up.
+- **System** (`features/admin/SystemPage.tsx`): `GET /admin/system`,
+  read every 10 seconds; read only, each saved setting linking to its
+  tab.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)

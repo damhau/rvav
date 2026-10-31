@@ -71,6 +71,17 @@ Settings saved within a few seconds of each other apply together. With a
 single API (Compose, a VM), the page is unavailable for the few seconds it
 takes the API to start again; with two or more, they take turns.
 
+**Administration › System** shows, read only:
+- the version and the database schema's last migration;
+- each of rvav's processes, its version and the settings it runs with
+  (two versions at once: an upgrade under way, or a process left behind);
+- each setting saved in Administration, by whom, and whether it applies
+  on next use, is applying or has applied;
+- the install settings, from the environment or their default. A secret
+  shows only whether it is set; the database URL is shown without its
+  password. They are changed in the environment of each process, which
+  is then restarted.
+
 ### Where the rest is set
 
 Also in **Administration › Integrations**

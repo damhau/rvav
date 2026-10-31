@@ -29,6 +29,7 @@ const pages = [
   "/admin/vra-import",
   "/admin/subscriptions",
   "/admin/audit",
+  "/admin/system",
 ];
 
 // A list page and the links on it that open a detail page.

@@ -10,7 +10,7 @@ import { adm } from "@/lib/query";
 
 type Process = components["schemas"]["Process"];
 
-const roles: Record<Process["role"], string> = {
+export const roles: Record<Process["role"], string> = {
   api: "API",
   worker: "Worker",
   sync: "Inventory sync",

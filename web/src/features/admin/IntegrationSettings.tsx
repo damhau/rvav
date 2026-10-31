@@ -655,6 +655,10 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   );
 }
 
+/** An integration's tab, by name. */
+export const integrationTitle = (kind: S["IntegrationKind"]) =>
+  kind === "oidc" ? "Identity provider" : fields[kind].title;
+
 export function IntegrationSettings({ tab }: { tab?: string }) {
   const list = useQuery(adm.integrations());
   if (list.isPending) return <Skeleton className="h-64" />;
@@ -667,7 +671,7 @@ export function IntegrationSettings({ tab }: { tab?: string }) {
       <TabsList aria-label="Integrations">
         {items.map((it) => (
           <TabsTrigger key={it.kind} value={it.kind}>
-            {it.kind === "oidc" ? "Identity provider" : fields[it.kind].title}
+            {integrationTitle(it.kind)}
           </TabsTrigger>
         ))}
       </TabsList>

@@ -569,3 +569,8 @@ func (s *Server) SetSetup(w http.ResponseWriter, r *http.Request) {
 	out, err := s.Core.SetSetup(r.Context(), principal(r), b)
 	s.reply(w, r, http.StatusOK, out, err)
 }
+
+func (s *Server) GetSystem(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.System(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}

@@ -2104,6 +2104,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * rvav's version, processes, settings revisions and install settings
+         * @description Read only (ADR-0030). The install settings are those set in the
+         *     environment only, as the API answering reads them: changed there,
+         *     then each process restarted. A secret's value is never sent, only
+         *     whether it is set; the database URL is sent without its password.
+         */
+        get: operations["getSystem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/setup": {
         parameters: {
             query?: never;
@@ -5510,6 +5533,50 @@ export interface components {
              * @description The latest connection settings' revision; a process before it applies them when it starts again.
              */
             revision: number;
+        };
+        SettingsRevision: {
+            kind: components["schemas"]["IntegrationKind"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserRef"];
+            /**
+             * @description next_use: read when next used. applying: a process still runs
+             *     with an earlier revision; applied: every process has it.
+             * @enum {string}
+             */
+            applies: "next_use" | "applying" | "applied";
+        };
+        InstallSetting: {
+            /**
+             * @description The environment variable.
+             * @example RVAV_TEMPORAL_ADDRESS
+             */
+            name: string;
+            /** @description The value in effect, the default when not set. Left out for a secret, but for the database URL, without its password. */
+            value?: string;
+            secret: boolean;
+            /** @description Set in the environment; otherwise the default applies. */
+            set: boolean;
+        };
+        System: {
+            /** @description The version of the API answering. */
+            version: string;
+            /**
+             * Format: int64
+             * @description The last database migration applied.
+             */
+            schema: number;
+            /**
+             * Format: int64
+             * @description The latest connection settings' revision.
+             */
+            revision: number;
+            processes: components["schemas"]["Process"][];
+            /** @description The settings saved in Administration, by kind. */
+            settings: components["schemas"]["SettingsRevision"][];
+            install: components["schemas"]["InstallSetting"][];
         };
         SetupStep: {
             /**
@@ -9773,6 +9840,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProcessList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["System"];
                 };
             };
             401: components["responses"]["Unauthorized"];

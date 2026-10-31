@@ -32,6 +32,7 @@ const admin: [string, string, (r: Roles) => boolean][] = [
   ["subscriptions", "Subscriptions", (r) => r.admin || r.auditor],
   ["workflows", "Custom workflows", (r) => r.admin || r.auditor],
   ["audit", "Audit log", (r) => r.admin || r.auditor || r.projectAdmin],
+  ["system", "System", (r) => r.admin],
 ];
 
 function LiveIndicator() {
