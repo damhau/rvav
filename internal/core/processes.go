@@ -16,6 +16,11 @@ import (
 // running: it does every few seconds.
 const ProcessesSeen = 30 * time.Second
 
+// ProcessReady is how long an API just started may take before its load
+// balancer finds it ready (the chart's readiness probe runs every 5 s):
+// another API doesn't drain meanwhile, so that one is always ready.
+const ProcessReady = 10 * time.Second
+
 // Processes are those running now, and the latest connection settings'
 // revision.
 func (s *Service) Processes(ctx context.Context, p *auth.Principal) (api.ProcessList, error) {

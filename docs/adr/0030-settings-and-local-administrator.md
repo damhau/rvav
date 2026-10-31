@@ -89,8 +89,9 @@ Without a restart by hand, in one of two ways:
     clients reopen. A drain cut by the timeout still exits with status 3,
     audited with `timed_out`. APIs drain one at a time, claimed under an
     advisory lock: the next once the one before has been started again,
-    not just exited; one that stopped recording itself holds the others
-    back for 30 s at most;
+    not just exited, and has run for 10 s, for its load balancer to find
+    it ready (the chart's readiness probe runs every 5 s); one that
+    stopped recording itself holds the others back for 30 s at most;
   - a process compares only once it has read the saved settings: the
     database not answering at its first look leaves it as it is;
   - the sync loops stop; a pass cut short is done again at the next start;

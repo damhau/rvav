@@ -63,10 +63,12 @@ func (s *Store) ConnectionRevision(ctx context.Context, live []string) (int64, e
 	return n, err
 }
 
-// ClaimDrain marks a process draining unless another of its role is, or
-// exited and hasn't been started again yet: those drain one at a time, the
-// next once the one before runs again. False when another is.
-func (s *Store) ClaimDrain(ctx context.Context, id, role string, since time.Time) (bool, error) {
+// ClaimDrain marks a process draining unless another of its role is
+// (seen since then), exited and hasn't been started again yet, or started
+// after started, which a load balancer may not find ready yet: those drain
+// one at a time, the next once the one before runs again and is ready.
+// False when another is.
+func (s *Store) ClaimDrain(ctx context.Context, id, role string, since, started time.Time) (bool, error) {
 	var ok bool
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('rvav.drain.' || $1))`, role); err != nil {
@@ -74,8 +76,9 @@ func (s *Store) ClaimDrain(ctx context.Context, id, role string, since time.Time
 		}
 		tag, err := tx.Exec(ctx, `update processes set state = 'draining', seen_at = now() where id = $1
 			and not exists (select 1 from processes where role = $2 and id <> $1
-				and ((state = 'draining' and seen_at >= $3) or state = 'restarting'))`,
-			id, role, since)
+				and ((state = 'draining' and seen_at >= $3) or state = 'restarting'
+					or (started_at > $4 and seen_at >= $3)))`,
+			id, role, since, started)
 		ok = tag.RowsAffected() == 1
 		return err
 	})

@@ -83,7 +83,8 @@ applies the database migrations as it starts, one at a time.
    connections, and the install settings as the API reads them.
 
 **Applying a connection:** each pod's container exits with status 3 and
-Kubernetes starts it again, the API pods one at a time. Each counts as a
+Kubernetes starts it again, the API pods one at a time: the next once
+the one before has run for 10 s, so that one is always ready. Each counts as a
 container restart: several within ten minutes of each other wait
 Kubernetes' back-off (10 s, 20 s, 40 s…), so save connections together
 where you can (saved within 3 s, they apply with one restart).

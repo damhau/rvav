@@ -73,5 +73,12 @@ func TestProcessDrain(t *testing.T) {
 			where action = 'settings.process_restart' order by id desc limit 1`).Scan(&timedOut); err != nil || !timedOut {
 			t.Fatalf("the restart audited with timed_out=%v: %v", timedOut, err)
 		}
+		// Kept, restarting, until it runs again: another API doesn't drain
+		// meanwhile (it was deleted, and both of the chart's APIs drained).
+		var state string
+		if err := h.store.Pool.QueryRow(ctx, `select state from processes where role = 'worker' order by seen_at desc limit 1`).
+			Scan(&state); err != nil || state != "restarting" {
+			t.Fatalf("after a drain cut by its timeout, the process is %q: %v", state, err)
+		}
 	})
 }

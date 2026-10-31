@@ -120,7 +120,8 @@ func (a *App) Run(ctx context.Context, role string, run func(context.Context) er
 				ok := true
 				if role == "api" {
 					var err error
-					if ok, err = a.Store.ClaimDrain(ctx, p.ID, role, time.Now().Add(-core.ProcessesSeen)); err != nil {
+					if ok, err = a.Store.ClaimDrain(ctx, p.ID, role, time.Now().Add(-core.ProcessesSeen),
+						time.Now().Add(-core.ProcessReady)); err != nil {
 						a.Log.Warn("claim the drain", "err", err)
 						ok = false
 					}

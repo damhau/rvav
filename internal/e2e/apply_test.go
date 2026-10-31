@@ -265,13 +265,23 @@ func TestApplyConnections(t *testing.T) {
 		// stopped recording itself (it crashed) holds the others back for
 		// 30 s at most.
 		since := time.Now().Add(-core.ProcessesSeen)
+		// started puts back when a process started: the chart's APIs have run
+		// for a while.
+		started := func(id string, ago time.Duration) {
+			t.Helper()
+			if _, err := h.store.Pool.Exec(ctx, `update processes set started_at = now() - make_interval(secs => $2) where id = $1`,
+				id, ago.Seconds()); err != nil {
+				t.Fatal(err)
+			}
+		}
 		for _, id := range []string{"rvav-api-1/api/1-aaaaaa", "rvav-api-2/api/1-bbbbbb"} {
 			if err := h.store.SeeProcess(ctx, store.Process{ID: id, Role: "api", Host: id[:10], State: "running"}, since); err != nil {
 				t.Fatal(err)
 			}
+			started(id, time.Hour)
 		}
 		claim := func(id string) bool {
-			ok, err := h.store.ClaimDrain(ctx, id, "api", time.Now().Add(-core.ProcessesSeen))
+			ok, err := h.store.ClaimDrain(ctx, id, "api", time.Now().Add(-core.ProcessesSeen), time.Now().Add(-core.ProcessReady))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -292,11 +302,18 @@ func TestApplyConnections(t *testing.T) {
 		if claim("rvav-api-2/api/1-bbbbbb") {
 			t.Fatal("an API drains while the one before it hasn't been started again")
 		}
+		// Its successor records itself as it starts, before its load
+		// balancer can have found it ready: the second still waits, until
+		// the successor has run for ProcessReady.
 		if err := h.store.SeeProcess(ctx, store.Process{ID: "rvav-api-1/api/2-cccccc", Role: "api", Host: "rvav-api-1", State: "running"}, since); err != nil {
 			t.Fatal(err)
 		}
+		if claim("rvav-api-2/api/1-bbbbbb") {
+			t.Fatal("an API drains while the one before it has only just started again, and may not be ready")
+		}
+		started("rvav-api-1/api/2-cccccc", core.ProcessReady+time.Second)
 		if !claim("rvav-api-2/api/1-bbbbbb") {
-			t.Fatal("the next API doesn't drain once the one before runs again")
+			t.Fatal("the next API doesn't drain once the one before runs again and is ready")
 		}
 
 		// One that stopped recording itself (it crashed) holds the others
