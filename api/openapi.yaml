@@ -77,6 +77,68 @@ paths:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /auth/sign-in:
+    post:
+      tags: [identity]
+      operationId: signIn
+      summary: Sign in with the local administrator's username and password
+      description: |
+        The local administrator (ADR-0030): the way in at first start and
+        when the identity provider is down. Sets the `rvav_session` cookie;
+        the provider's users sign in with it instead. From the third failure
+        in a row, attempts are refused for a while (`429`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignInRequest" }
+      responses:
+        "200":
+          description: Signed in; the session is in the `rvav_session` cookie
+          headers:
+            Set-Cookie:
+              description: The session (HttpOnly, SameSite=Strict).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignInResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/password:
+    post:
+      tags: [identity]
+      operationId: changePassword
+      summary: Change the local administrator's password
+      description: |
+        Needed at the first sign-in and after a reset; the session may do
+        nothing else until then. Ends the account's other sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChange" }
+      responses:
+        "204": { description: Changed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/sign-out:
+    post:
+      tags: [identity]
+      operationId: signOut
+      summary: End the local session, if there is one
+      description: |
+        Deletes the session and clears its cookie. The provider's users sign
+        out at the provider.
+      security: []
+      responses:
+        "204": { description: Signed out }
+
   /me/notifications:
     get:
       tags: [notifications]
@@ -3545,6 +3607,15 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    TooManyRequests:
+      description: Too many attempts; try again after `Retry-After` seconds
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     ValidationFailed:
       description: One or more inputs are invalid. See `errors`.
       content:
@@ -4152,6 +4223,14 @@ components:
       properties:
         user: { $ref: "#/components/schemas/UserRef" }
         title: { type: string, description: Job title from the identity provider. }
+        local:
+          type: boolean
+          description: Signed in with the local administrator's account (ADR-0030), not through the identity provider.
+        password_change_required:
+          type: boolean
+          description: |
+            The local administrator must change the password before doing
+            anything else (first sign-in, or after a reset).
         global_roles:
           type: array
           items:
@@ -4173,6 +4252,32 @@ components:
     ProjectRole:
       type: string
       enum: [project-admin, member, viewer]
+
+    SignInRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 64, description: The local account's name (`admin`). }
+        password: { type: string, maxLength: 256 }
+
+    SignInResult:
+      type: object
+      required: [password_change_required]
+      properties:
+        password_change_required:
+          type: boolean
+          description: The password must be changed before anything else.
+
+    PasswordChange:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, maxLength: 256 }
+        new_password:
+          type: string
+          minLength: 12
+          maxLength: 256
+          description: At least 12 characters, other than the current password and the username.
 
     EnvironmentKey:
       type: string

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -46,6 +47,10 @@ Usage:
   rvav fake-efficientip    serve a fake SOLIDserver on RVAV_HTTP_ADDR (development)
   rvav awx-bootstrap [-content deploy/awx/content.yml] [-rvav-url URL -rvav-token TOKEN]
                            set up rvav's test content in the AWX at RVAV_AWX_URL
+  rvav admin reset-password [-password-stdin]
+                           set a new password for the local administrator (generated and
+                           printed, or read from stdin), to be changed at the next sign-in;
+                           ends its sessions
   rvav api-token -user ID -name NAME [-scope inventory] [-days N] [-revoke]
                            make an API token for a user and print it once
                            (-revoke deletes the user's tokens of that name)
@@ -337,6 +342,33 @@ func run(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		fmt.Println(token)
+		return nil
+	case "admin":
+		if len(args) == 0 || args[0] != "reset-password" {
+			return errors.New("usage: rvav admin reset-password [-password-stdin]")
+		}
+		fs := flag.NewFlagSet("admin reset-password", flag.ExitOnError)
+		fromStdin := fs.Bool("password-stdin", false, "read the new password from stdin instead of generating one")
+		_ = fs.Parse(args[1:])
+		password := ""
+		if *fromStdin {
+			b, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
+			if err != nil {
+				return err
+			}
+			if password = strings.TrimRight(string(b), "\r\n"); password == "" {
+				return errors.New("no password on stdin")
+			}
+		}
+		generated, err := core.ResetLocalAdmin(ctx, a.Store, password)
+		if err != nil {
+			return err
+		}
+		if generated != "" {
+			fmt.Println(generated)
+		}
+		fmt.Fprintf(os.Stderr, "the password of %s is reset: it must be changed at the next sign-in, and its sessions have ended\n",
+			core.LocalAdminUsername)
 		return nil
 	case "secrets":
 		if len(args) != 1 || args[0] != "rotate" {

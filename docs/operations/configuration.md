@@ -32,12 +32,24 @@ Traces use OpenTelemetry's standard variables, read by every process:
 
 ## Sign-in
 
+The local administrator, `admin`, is the way in at first start and when
+the identity provider is down (ADR-0030). The API makes it at its first
+start: with `RVAV_ADMIN_PASSWORD`, or with a password it generates and logs
+once (`local administrator created`, with the password). Either must be
+changed at the first sign-in. `rvav admin reset-password` sets another,
+generated and printed, or read from stdin with `-password-stdin`; it must
+be changed at the next sign-in too, and the account's sessions end.
+
+Without `RVAV_OIDC_ISSUER`, only the local administrator and API tokens
+sign in, and `/readyz` doesn't wait for a provider.
+
 | Setting | Default | Secret | What |
 |---|---|---|---|
+| `RVAV_ADMIN_PASSWORD` | generated, logged once | yes | The local administrator's first password, read when the account is made and ignored afterwards. |
 | `RVAV_AUTH_MODE` | `oidc` | | `oidc` in production. `dev` trusts a header and starts only with `RVAV_ALLOW_DEV_AUTH`; the Helm chart refuses it. |
 | `RVAV_ALLOW_DEV_AUTH` | off | | Allows `dev` sign-in, for developer machines and tests only. |
 | `RVAV_DEV_USER` | `lmartin` | | Who `dev` sign-in is when no header names a user. |
-| `RVAV_OIDC_ISSUER` | none (required with `oidc`) | | The identity provider's issuer, as in its tokens. |
+| `RVAV_OIDC_ISSUER` | none | | The identity provider's issuer, as in its tokens. None: only the local administrator and API tokens sign in. |
 | `RVAV_OIDC_DISCOVERY_URL` | the issuer | | Where rvav reads the provider's discovery document, when it reaches it at another address than the browser (inside a cluster). |
 | `RVAV_OIDC_CLIENT_ID` | `rvav` | | The client tokens are issued to. |
 | `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | The token claim with the user's groups (roles and approver groups map to them). |

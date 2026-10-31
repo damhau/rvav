@@ -50,6 +50,9 @@ type Server struct {
 	Teams *notify.TeamsVerifier
 	// Slack answers rvav's Slack app; nil when Slack isn't set up.
 	Slack *notify.Slack
+	// SecureCookies marks the local session's cookie Secure: rvav is served
+	// over HTTPS (RVAV_PUBLIC_URL).
+	SecureCookies bool
 
 	secrets sync.Map // version ID -> map[string]bool
 }
@@ -167,7 +170,8 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")
-			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID, X-Request-Id, "+auth.DevUserHeader)
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID, X-Request-Id, X-Requested-With, "+
+				auth.DevUserHeader)
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			h.Set("Access-Control-Expose-Headers", "Location, X-Request-Id, X-Rvav-Auth-Mode")
 			if r.Method == http.MethodOptions {
@@ -183,11 +187,18 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The console's WebSocket carries its own single-use token (ADR-0012);
 		// Teams and Slack sign their calls (ADR-0023).
-		if strings.HasPrefix(r.URL.Path, "/api/v1/console/") || strings.HasPrefix(r.URL.Path, "/api/v1/integrations/") {
+		// Signing in needs no sign-in (ADR-0030).
+		if strings.HasPrefix(r.URL.Path, "/api/v1/console/") || strings.HasPrefix(r.URL.Path, "/api/v1/integrations/") ||
+			(r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/sign-in") {
 			next.ServeHTTP(w, r)
 			return
 		}
-		p, err := s.Auth.Authenticate(r)
+		p, err := s.signedIn(r)
+		// Nor signing out: without a session, there is nothing to end.
+		if err != nil && r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/sign-out" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if err != nil {
 			if errors.Is(err, auth.ErrProviderUnavailable) {
 				s.Log.Warn("authenticate", "err", err, "request_id", requestID(r.Context()))
@@ -204,6 +215,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="rvav"`)
 			s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Sign in required",
 				"Send a valid access token in the Authorization header.", nil)
+			return
+		}
+		if p.Session != "" && !s.sessionMayDo(w, r, p) {
 			return
 		}
 		if p.Scope == auth.ScopeInventory && !(r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/ansible/inventory")) {

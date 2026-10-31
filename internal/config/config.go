@@ -81,6 +81,10 @@ type AuthConfig struct {
 	// AllowDev must be set (RVAV_ALLOW_DEV_AUTH=1) for dev mode to start, so
 	// that a stray RVAV_AUTH_MODE=dev can't open a real installation.
 	AllowDev bool
+	// AdminPassword is the local administrator's first password
+	// (RVAV_ADMIN_PASSWORD, ADR-0030); empty: rvav generates one and logs it
+	// once. Ignored once the account exists.
+	AdminPassword string
 }
 
 type TemporalConfig struct {
@@ -238,6 +242,7 @@ func Load() (Config, error) {
 			GroupsClaim:      env("RVAV_OIDC_GROUPS_CLAIM", "groups"),
 			DevUser:          env("RVAV_DEV_USER", "lmartin"),
 			AllowDev:         boolean("RVAV_ALLOW_DEV_AUTH"),
+			AdminPassword:    env("RVAV_ADMIN_PASSWORD", ""),
 		},
 		Temporal: TemporalConfig{
 			Address:   env("RVAV_TEMPORAL_ADDRESS", "localhost:7233"),
@@ -369,12 +374,10 @@ func Load() (Config, error) {
 		return c, err
 	}
 
+	// Without an identity provider, only the local administrator and API
+	// tokens sign in (ADR-0030).
 	switch c.Auth.Mode {
-	case "oidc":
-		if c.Auth.OIDCIssuer == "" {
-			return c, fmt.Errorf("RVAV_OIDC_ISSUER is required when RVAV_AUTH_MODE=oidc")
-		}
-	case "dev":
+	case "oidc", "dev":
 	default:
 		return c, fmt.Errorf("RVAV_AUTH_MODE must be oidc or dev, got %q", c.Auth.Mode)
 	}

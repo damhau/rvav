@@ -5,6 +5,7 @@ go 1.27.0
 toolchain go1.27.3
 
 require (
+	github.com/alexedwards/argon2id v1.0.0
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/emersion/go-smtp v0.25.0
 	github.com/fergusstrange/embedded-postgres v1.34.0

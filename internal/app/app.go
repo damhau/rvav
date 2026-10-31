@@ -314,6 +314,9 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 			"default_user", a.Cfg.Auth.DevUser, "switch_with_header", auth.DevUserHeader)
 		return &auth.Dev{Store: a.Store, DefaultUser: a.Cfg.Auth.DevUser}, nil
 	}
+	if a.Cfg.Auth.OIDCIssuer == "" {
+		a.Log.Info("no identity provider set: the local administrator and API tokens sign in (ADR-0030)")
+	}
 	o, err := auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCDiscoveryURL, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
 	if err != nil {
 		// Requests answer 503 and /readyz fails until the provider answers.
@@ -352,6 +355,25 @@ func (a *App) consoleAccount(ctx context.Context) (vsphere.Driver, error) {
 	return vc, nil
 }
 
+// ensureLocalAdmin makes the local administrator at first start (ADR-0030),
+// logging its password once when rvav generated it.
+func (a *App) ensureLocalAdmin(ctx context.Context, svc *core.Service) error {
+	created, generated, err := svc.EnsureLocalAdmin(ctx)
+	switch {
+	case err != nil:
+		return fmt.Errorf("local administrator: %w", err)
+	case generated != "":
+		// Shown once, to whoever installs rvav: it must be changed at the
+		// first sign-in, and `rvav admin reset-password` sets another.
+		a.Log.Warn("local administrator created: sign in as admin with this password and change it",
+			"username", core.LocalAdminUsername, "password", generated)
+	case created:
+		a.Log.Info("local administrator created with RVAV_ADMIN_PASSWORD; it must be changed at the first sign-in",
+			"username", core.LocalAdminUsername)
+	}
+	return nil
+}
+
 // RunAPI serves HTTP until ctx is done.
 func (a *App) RunAPI(ctx context.Context) error {
 	authn, err := a.Authenticator(ctx)
@@ -364,13 +386,18 @@ func (a *App) RunAPI(ctx context.Context) error {
 	}
 	// What waits in the database, at each scrape (S14.5).
 	observe.Registry.MustRegister(observe.Backlog{Pool: a.Store.Pool})
+	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
+	if err := a.ensureLocalAdmin(ctx, svc); err != nil {
+		return err
+	}
 	hub := events.NewHub(a.Store, a.Log)
 	go hub.Run(ctx)
 	go hub.Purge(ctx, 24*time.Hour)
 	srv := &httpapi.Server{
-		Store: a.Store, Core: a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue}),
+		Store: a.Store, Core: svc,
 		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
 		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
+		SecureCookies: strings.HasPrefix(a.Cfg.PublicURL, "https://"),
 	}
 	if a.Cfg.Teams.AppID != "" {
 		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL, TenantID: a.Cfg.Teams.TenantID}

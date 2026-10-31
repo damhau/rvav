@@ -43,6 +43,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with the local administrator's username and password
+         * @description The local administrator (ADR-0030): the way in at first start and
+         *     when the identity provider is down. Sets the `rvav_session` cookie;
+         *     the provider's users sign in with it instead. From the third failure
+         *     in a row, attempts are refused for a while (`429`).
+         */
+        post: operations["signIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the local administrator's password
+         * @description Needed at the first sign-in and after a reset; the session may do
+         *     nothing else until then. Ends the account's other sessions.
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the local session, if there is one
+         * @description Deletes the session and clears its cookie. The provider's users sign
+         *     out at the provider.
+         */
+        post: operations["signOut"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/notifications": {
         parameters: {
             query?: never;
@@ -3026,6 +3091,13 @@ export interface components {
             user: components["schemas"]["UserRef"];
             /** @description Job title from the identity provider. */
             title?: string;
+            /** @description Signed in with the local administrator's account (ADR-0030), not through the identity provider. */
+            local?: boolean;
+            /**
+             * @description The local administrator must change the password before doing
+             *     anything else (first sign-in, or after a reset).
+             */
+            password_change_required?: boolean;
             global_roles: ("admin" | "catalog-admin" | "auditor" | "user")[];
             /**
              * @description Projects the caller works in: their memberships, and every project
@@ -3039,6 +3111,20 @@ export interface components {
         };
         /** @enum {string} */
         ProjectRole: "project-admin" | "member" | "viewer";
+        SignInRequest: {
+            /** @description The local account's name (`admin`). */
+            username: string;
+            password: string;
+        };
+        SignInResult: {
+            /** @description The password must be changed before anything else. */
+            password_change_required: boolean;
+        };
+        PasswordChange: {
+            current_password: string;
+            /** @description At least 12 characters, other than the current password and the username. */
+            new_password: string;
+        };
         /**
          * @example dev
          * @example tst
@@ -5542,6 +5628,17 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description Too many attempts; try again after `Retry-After` seconds */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description One or more inputs are invalid. See `errors`. */
         ValidationFailed: {
             headers: {
@@ -5646,6 +5743,79 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    signIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in; the session is in the `rvav_session` cookie */
+            200: {
+                headers: {
+                    /** @description The session (HttpOnly, SameSite=Strict). */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    signOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listNotifications: {

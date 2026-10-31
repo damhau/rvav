@@ -37,6 +37,12 @@ type Principal struct {
 	Groups []string
 	// Scope limits an API token to one use (ScopeInventory); "" otherwise.
 	Scope string
+	// Session is the hash of the local session's ID when the caller signed
+	// in with the local administrator's account (ADR-0030); "" otherwise.
+	Session string
+	// MustChangePassword: the local administrator must change the password
+	// before doing anything else.
+	MustChangePassword bool
 }
 
 // ScopeInventory: the token only reads the Ansible inventory.
@@ -240,24 +246,39 @@ func (o *OIDC) remember(key [32]byte, t seenToken) {
 // The provider is discovered on first use and again after a failure, so the
 // API starts, and recovers, while the provider is down. The error says
 // whether it was reachable now; the API runs either way.
+//
+// Without an issuer there is no provider: API tokens and the local
+// administrator sign in, and the provider's tokens are refused (ADR-0030).
 func NewOIDC(ctx context.Context, s *store.Store, issuer, discoveryURL, clientID, groupsClaim string) (*OIDC, error) {
 	if discoveryURL == "" {
 		discoveryURL = issuer
 	}
 	o := &OIDC{Store: s, GroupsClaim: groupsClaim, issuer: issuer, discoveryURL: discoveryURL, clientID: clientID}
+	if issuer == "" {
+		return o, nil
+	}
 	_, err := o.verifierFor(ctx)
 	return o, err
 }
+
+// ErrNoProvider: no identity provider is set.
+var ErrNoProvider = errors.New("no identity provider is set")
 
 // Ready reports whether the provider has been discovered. The API's
 // readiness check uses it, so a wrong issuer or a provider that never comes
 // up keeps new instances out of service instead of answering 503.
 func (o *OIDC) Ready(ctx context.Context) error {
+	if o.issuer == "" {
+		return nil
+	}
 	_, err := o.verifierFor(ctx)
 	return err
 }
 
 func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
+	if o.issuer == "" {
+		return nil, ErrNoProvider
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.verifier != nil {
@@ -337,6 +358,9 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 		return apiToken(ctx, o.Store, token)
 	}
 	v, err := o.verifierFor(ctx)
+	if errors.Is(err, ErrNoProvider) {
+		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
+	}
 	if err != nil {
 		return nil, err
 	}

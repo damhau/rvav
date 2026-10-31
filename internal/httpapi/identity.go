@@ -32,6 +32,9 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	if p.User.Title != "" {
 		out.Title = &p.User.Title
 	}
+	if p.Session != "" {
+		out.Local, out.PasswordChangeRequired = present.Ptr(true), present.Ptr(p.MustChangePassword)
+	}
 	for _, g := range p.GlobalRoles {
 		out.GlobalRoles = append(out.GlobalRoles, api.MeGlobalRoles(g))
 	}
