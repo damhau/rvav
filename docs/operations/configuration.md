@@ -40,8 +40,14 @@ changed at the first sign-in. `rvav admin reset-password` sets another,
 generated and printed, or read from stdin with `-password-stdin`; it must
 be changed at the next sign-in too, and the account's sessions end.
 
-Without `RVAV_OIDC_ISSUER`, only the local administrator and API tokens
-sign in, and `/readyz` doesn't wait for a provider.
+The identity provider is set in **Administration › Integrations ›
+Identity provider**, tested there with a trial sign-in, and applies
+without a restart ([admin guide](../guides/admin.md#the-identity-provider)).
+The `RVAV_OIDC_*` variables below win over it and lock their fields. Until
+a provider is set, only the local administrator and API tokens sign in.
+`/readyz` waits for a provider only when `RVAV_OIDC_ISSUER` sets it: one
+set in Administration doesn't hold it, so the local administrator can
+still sign in and correct a wrong one.
 
 | Setting | Default | Secret | What |
 |---|---|---|---|
@@ -49,10 +55,11 @@ sign in, and `/readyz` doesn't wait for a provider.
 | `RVAV_AUTH_MODE` | `oidc` | | `oidc` in production. `dev` trusts a header and starts only with `RVAV_ALLOW_DEV_AUTH`; the Helm chart refuses it. |
 | `RVAV_ALLOW_DEV_AUTH` | off | | Allows `dev` sign-in, for developer machines and tests only. |
 | `RVAV_DEV_USER` | `lmartin` | | Who `dev` sign-in is when no header names a user. |
-| `RVAV_OIDC_ISSUER` | none | | The identity provider's issuer, as in its tokens. None: only the local administrator and API tokens sign in. |
+| `RVAV_OIDC_ISSUER` | Administration's | | The identity provider's issuer, as in its tokens and as the browser reaches it. None: only the local administrator and API tokens sign in. |
 | `RVAV_OIDC_DISCOVERY_URL` | the issuer | | Where rvav reads the provider's discovery document, when it reaches it at another address than the browser (inside a cluster). |
-| `RVAV_OIDC_CLIENT_ID` | `rvav` | | The client tokens are issued to. |
-| `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | The token claim with the user's groups (roles and approver groups map to them). |
+| `RVAV_OIDC_CLIENT_ID` | `rvav` | | The web app's client at the provider; tokens must have it as their audience. |
+| `RVAV_OIDC_SCOPES` | `openid profile email` | | The scopes the web app asks for, space-separated: with Entra ID, a scope of rvav's API (`api://<client>/access`) and `offline_access`. |
+| `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | The token claim with the user's groups (roles and approver groups map to them); `roles` for Entra ID's app roles. |
 
 ## Temporal
 
@@ -230,14 +237,18 @@ only reads.
 
 ## The web app
 
-The web image reads these at start-up and gives them to the browser
-(`/config.js`); they default to the values the image was built with.
+The web app reads its sign-in settings from the API (`GET
+/api/v1/auth/options`), and nginx asks the API for the provider's origin
+when it serves the page, for its Content-Security-Policy. The
+`RVAV_WEB_OIDC_*` variables are for a browser that must sign in otherwise
+than the API says: they win in the browser (`/config.js`), and lock their
+fields in Administration.
 
 | Setting | Default | Secret | What |
 |---|---|---|---|
 | `RVAV_API_UPSTREAM` | `http://api:8080` | | The API, as nginx reaches it (the service's full name on Kubernetes). |
 | `RVAV_WEB_AUTH_MODE` | the build's (`oidc`) | | `oidc`, or `dev` with a dev-auth API. |
-| `RVAV_WEB_OIDC_AUTHORITY` | the build's | | The identity provider's issuer, as the browser reaches it. |
-| `RVAV_WEB_OIDC_CLIENT_ID` | `rvav` | | The browser's client. |
-| `RVAV_WEB_OIDC_SCOPE` | `openid profile email` | | The scopes it asks for (add `offline_access` for Entra ID). |
+| `RVAV_WEB_OIDC_AUTHORITY` | the API's | | The identity provider's issuer, as the browser reaches it. |
+| `RVAV_WEB_OIDC_CLIENT_ID` | the API's | | The browser's client. |
+| `RVAV_WEB_OIDC_SCOPE` | the API's | | The scopes it asks for. |
 | `RVAV_WEB_SCRIPT_SOURCES` | none | | Where the browser may load scripts from besides the web app: the origins of `RVAV_WMKS_SDK_URLS` (`https://vc01.corp.example`), for the Content-Security-Policy. Add `'unsafe-eval'` only if the console's SDK needs it. |

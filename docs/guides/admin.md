@@ -30,10 +30,13 @@ log (**Sign-ins**). A forgotten password is reset on the server:
 The order that gets a first request through:
 
 0. **Sign in as `admin`** and choose its password.
-1. **Integrations:** vCenter, AWX and EfficientIP, with rvav's service
+1. **The identity provider** (**Integrations › Identity provider**), and
+   a group of it mapped to `admin` (**Projects › OIDC group mappings**):
+   [the identity provider](#the-identity-provider).
+2. **Integrations:** vCenter, AWX and EfficientIP, with rvav's service
    accounts ([integrations.md](../integrations.md)). Each has a test. Its
    password or token is sealed and never shown again.
-2. **Infrastructure:**
+3. **Infrastructure:**
    - **Templates:** the vCenter templates offered, by OS.
    - **Sizes:** the CPU, memory and disk choices.
    - **Networks:** each vSphere network's subnet. The subnets come from
@@ -41,13 +44,125 @@ The order that gets a first request through:
      none.
    - **Placement:** which cluster and datastore serve which environment and
      project.
-3. **Projects:**
+4. **Projects:**
    - each with its members or the groups that map to its roles (viewer,
      member, project admin);
    - its quotas, per environment or for the project as a whole, hard or
      soft.
-4. **Policies.**
-5. **The catalog.**
+5. **Policies.**
+6. **The catalog.**
+
+## The identity provider
+
+Everyone but the local administrator signs in with the organisation's
+identity provider (OpenID Connect), and gets roles from its groups
+([ADR-0030](../adr/0030-settings-and-local-administrator.md)). It is set
+in **Administration › Integrations › Identity provider**:
+
+1. **Register rvav at the provider** as a single-page application (a
+   public client, authorization code with PKCE, no secret):
+   - the redirect URI the panel shows, `https://<rvav>/auth/callback`;
+   - `https://<rvav>/`, where sign-out comes back.
+2. **Fill in the panel:**
+   - **Issuer:** as in the tokens' `iss`, and as the browser reaches it.
+   - **Discovery URL:** only when rvav reaches the provider at another
+     address than the browser (inside a cluster).
+   - **Client ID:** the client registered. Access tokens must have it as
+     their audience (`aud`).
+   - **Scopes:** `openid profile email`, and what the provider needs for
+     an access token meant for rvav (below).
+   - **Groups claim:** the claim with the user's groups, `groups` by
+     default; `roles` for Entra ID's app roles.
+3. **Test provider:** rvav reads the discovery document and the signing
+   keys. The browser fetches tokens at the provider, so its token endpoint
+   must be at the issuer's origin.
+4. **Try signing in:** a window signs in at the provider with the settings
+   in the panel, before they are saved. The panel then shows the token's
+   claims, the groups rvav reads, and the roles the group mappings give,
+   or why rvav refuses the token. Nothing is saved, and no user is made.
+5. **Map a group to `admin`** (**Projects › OIDC group mappings**), and
+   others to the projects' roles. Use the values the trial showed.
+6. **Save settings.** The provider applies within seconds, without a
+   restart. A provider changed or cleared no longer signs anyone in. The
+   local administrator still signs in when it is down.
+
+An environment variable (`RVAV_OIDC_*` on the API, `RVAV_WEB_OIDC_*` on the
+web container) wins over the panel and locks its field
+([configuration](../operations/configuration.md#sign-in)).
+
+### Microsoft Entra ID
+
+One app registration is both the web app and the API its tokens are for.
+In **App registrations › New registration**:
+- **Authentication:** add the **Single-page application** platform, with
+  both redirect URIs. Not **Web**: the browser exchanges the code itself.
+- **Expose an API:** set the Application ID URI (`api://<client ID>`), and
+  add a scope, `access`, that admins and users can consent to. Without a
+  scope of its own, Entra ID gives a token for Microsoft Graph, which
+  rvav can't check.
+- **Manifest:** set `requestedAccessTokenVersion` to `2`. A v1 token has
+  another issuer (`https://sts.windows.net/<tenant>/`) and audience.
+- **Groups or app roles:**
+  - **Token configuration › Add groups claim:** security groups, in the
+    access token. The claim holds the groups' object IDs: map those. A
+    user in more than 200 groups gets none in the token: prefer app roles,
+    or **Groups assigned to the application**.
+  - **App roles** (recommended): add one per rvav role, for example
+    `rvav-admins`, and assign groups to them in **Enterprise applications ›
+    rvav › Users and groups**. Set the groups claim to `roles`, and map
+    the roles' values.
+
+In rvav:
+- **Issuer:** `https://login.microsoftonline.com/<tenant ID>/v2.0`.
+- **Client ID:** the Application (client) ID.
+- **Scopes:** `openid profile email offline_access api://<client ID>/access`.
+  `offline_access` gives the refresh token sessions renew with.
+
+### Keycloak
+
+In the realm, **Clients › Create client**:
+- **OpenID Connect,** client authentication off, standard flow only.
+- **Valid redirect URIs** `https://<rvav>/auth/callback`; **Valid post
+  logout redirect URIs** `https://<rvav>/`; **Web origins**
+  `https://<rvav>`.
+- **Advanced › Proof Key for Code Exchange:** `S256`.
+- **Client scopes › rvav-dedicated:**
+  - an **Audience** mapper including the client, in the access token:
+    Keycloak puts the client in `aud` only with one;
+  - a **Group Membership** mapper, claim `groups`, in the access token.
+    rvav drops the leading `/` of a full group path.
+
+In rvav, the issuer is `https://<keycloak>/realms/<realm>`, as Keycloak's
+hostname setting makes it. When rvav reaches Keycloak inside the cluster,
+the discovery URL is that address, `http://keycloak.<namespace>.svc:8080/realms/<realm>`.
+
+### Okta
+
+- **Applications › Create App Integration:** OIDC, **Single-Page
+  Application**, grant types authorization code (and refresh token).
+  Sign-in redirect URI `https://<rvav>/auth/callback`, sign-out redirect
+  URI `https://<rvav>/`; rvav's origin is then a trusted origin (CORS).
+- **Security › API › Authorization Servers:** Okta's own (org)
+  authorization server issues tokens only Okta can check. Use a custom one
+  whose **Audience** is the application's client ID. Add a **groups**
+  claim to it: in the access token, value type Groups, filtered (for
+  example starting with `rvav-`).
+
+In rvav, the issuer is `https://<org>.okta.com/oauth2/<server ID>`.
+
+### When the trial refuses the token
+
+| The trial says | Change |
+|---|---|
+| The token is for Microsoft Graph | Add a scope of rvav's API (`api://<client ID>/access`) to the scopes. |
+| Entra ID gave a v1 token | `requestedAccessTokenVersion: 2` in the manifest. |
+| `expected audience` | Make the provider put the client ID in `aud`: Keycloak's audience mapper, Okta's authorization server audience. |
+| The access token is not a JWT | The provider gave a token for itself: ask for a scope of rvav's API, or use a custom authorization server (Okta). |
+| The token has no `groups` claim | Add the groups claim to the access token, or set the claim to `roles` for Entra ID's app roles. |
+| Roles given: none | No group mapping matches the groups shown: map them. |
+
+A redirect URI error is the provider's (`AADSTS50011` for Entra ID): the
+URI registered must be the one the panel shows, exactly.
 
 ## NSX networks
 

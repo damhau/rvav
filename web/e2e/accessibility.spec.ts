@@ -88,9 +88,9 @@ for (const theme of ["light", "dark"] as const) {
       });
     }
 
-    // Before the app: the sign-in page and the local administrator's
-    // password change (ADR-0030).
-    for (const path of ["/sign-in", "/change-password"]) {
+    // Before the app: the sign-in page, the local administrator's
+    // password change, and a trial sign-in's window (ADR-0030).
+    for (const path of ["/sign-in", "/change-password", "/auth/trial"]) {
       test(`axe: ${path}`, async ({ page }) => {
         await page.goto(path);
         await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();

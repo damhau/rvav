@@ -12,6 +12,7 @@ import {
   signInWithProvider,
   signOut,
   signedInLocally,
+  trialResult,
 } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
@@ -289,6 +290,33 @@ export function ChangePasswordPage() {
           </Button>
         </div>
       </form>
+    </Screen>
+  );
+}
+
+/**
+ * The window of a provider's trial sign-in, once it is over (ADR-0030): the
+ * token went back to the Administration page, which shows what rvav reads
+ * from it; this window closes.
+ */
+export function TrialWindowPage({ result = trialResult() }: { result?: { token?: string; error?: string } }) {
+  useEffect(() => {
+    if (!result.token) return;
+    const t = setTimeout(() => globalThis.close(), 1200);
+    return () => clearTimeout(t);
+  }, [result.token]);
+  return (
+    <Screen
+      title="Trial sign-in"
+      lead="Signing in at the identity provider with the settings being tried, before they are saved."
+    >
+      {result.token ? (
+        <p role="status" className="text-[13px]">
+          Signed in at the provider. What rvav reads from the token is on the Administration page; this window closes.
+        </p>
+      ) : (
+        <Alert>The trial sign-in failed: {result.error ?? "no token came back."}</Alert>
+      )}
     </Screen>
   );
 }

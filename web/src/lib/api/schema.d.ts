@@ -108,6 +108,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How to sign in, for the web app's sign-in page (ADR-0030)
+         * @description The identity provider the browser signs in with, as saved in
+         *     Administration or set by `RVAV_OIDC_*`; none until one is set (the
+         *     local administrator signs in). Read on each page load, so a change
+         *     applies without a restart.
+         *
+         *     `X-Rvav-Idp-Origins` lists the origins the page may reach for
+         *     sign-in: the provider's, and for ten minutes after a provider's test
+         *     the origin tried, so its trial sign-in works before it is saved.
+         *     nginx copies them into the page's Content-Security-Policy.
+         */
+        get: operations["getAuthOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/notifications": {
         parameters: {
             query?: never;
@@ -2096,6 +2124,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/integrations/oidc/trial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a token from a trial sign-in against the provider settings given
+         * @description The web app signs in at the provider in a new window, with the
+         *     settings given (not saved yet), and sends the access token here.
+         *     rvav checks it as it would a request's (signature, issuer, audience,
+         *     expiry), and says which claims it carries, the groups it reads from
+         *     them, and the roles the group mappings give. Nothing is saved: no
+         *     user is made.
+         */
+        post: operations["trialIdentityProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/onboarding/vms": {
         parameters: {
             query?: never;
@@ -3111,6 +3164,51 @@ export interface components {
         };
         /** @enum {string} */
         ProjectRole: "project-admin" | "member" | "viewer";
+        AuthOptions: {
+            provider?: components["schemas"]["AuthProvider"];
+        };
+        AuthProvider: {
+            /**
+             * @description The issuer, as the browser reaches it.
+             * @example https://login.microsoftonline.com/0f1e2d3c-0000-4000-8000-000000000000/v2.0
+             */
+            authority: string;
+            client_id: string;
+            /**
+             * @description Space-separated scopes the web app asks for.
+             * @example openid profile email api://rvav/access
+             */
+            scope: string;
+        };
+        OidcTrialRequest: {
+            /** @description The provider settings tried, over the saved ones (environment variables still win). */
+            settings: {
+                [key: string]: unknown;
+            };
+            access_token: string;
+        };
+        OidcTrial: {
+            /** @description rvav accepts the token with these settings. */
+            accepted: boolean;
+            /** @description Why it doesn't, when it doesn't. */
+            message?: string;
+            subject?: string;
+            name?: string;
+            email?: string;
+            /** @description The access token's claims, read even when it isn't accepted. */
+            claims: {
+                [key: string]: unknown;
+            };
+            groups_claim?: string;
+            /** @description The groups or roles read from the groups claim. */
+            groups: string[];
+            global_roles: string[];
+            project_roles: components["schemas"]["OidcTrialProjectRole"][];
+        };
+        OidcTrialProjectRole: {
+            project: components["schemas"]["ProjectRef"];
+            role: string;
+        };
         SignInRequest: {
             /** @description The local account's name (`admin`). */
             username: string;
@@ -5240,12 +5338,15 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "vcenter" | "awx" | "efficientip" | "nsx" | "git" | "smtp" | "teams" | "slack";
+        IntegrationKind: "oidc" | "vcenter" | "awx" | "efficientip" | "nsx" | "git" | "smtp" | "teams" | "slack";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
             /**
-             * @description vcenter: url, username, insecure, name. awx: url, organization,
+             * @description oidc (the identity provider, ADR-0030): issuer, discovery_url,
+             *     client_id, scopes, groups_claim; no secret (the web app is a
+             *     public client, with PKCE).
+             *     vcenter: url, username, insecure, name. awx: url, organization,
              *     catalog_labels, action_labels, inventory_source_id, insecure.
              *     efficientip: url, username, dns_server, instance_id, insecure.
              *     git: url, branch, dir, username, known_hosts, insecure, committer
@@ -5267,7 +5368,11 @@ export interface components {
             signing_secret_set?: boolean;
             /** @description Settings an environment variable sets, which win and can't be changed here. */
             locked: string[];
-            /** @description Saved settings differ from what rvav's processes started with. */
+            /**
+             * @description Saved settings differ from what rvav's processes started with.
+             *     Never for oidc: the token check follows the saved settings
+             *     (ADR-0030).
+             */
             restart_needed: boolean;
             /** Format: date-time */
             updated_at?: string;
@@ -5815,6 +5920,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getAuthOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sign-in options */
+            200: {
+                headers: {
+                    /** @description Space-separated origins (scheme, host and port only). */
+                    "X-Rvav-Idp-Origins"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthOptions"];
+                };
             };
         };
     };
@@ -9434,6 +9561,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationTest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    trialIdentityProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcTrialRequest"];
+            };
+        };
+        responses: {
+            /** @description What rvav reads from the token, accepted or not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcTrial"];
                 };
             };
             401: components["responses"]["Unauthorized"];

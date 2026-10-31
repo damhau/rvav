@@ -72,6 +72,15 @@ jobs:
       - uses: actions/checkout@v7
       - run: make lint-chart
 
+  # The web image's nginx, in a real nginx: the page's Content-Security-Policy
+  # follows the identity provider the API says (ADR-0030).
+  nginx:
+    name: Web nginx
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: make check-nginx
+
   spec:
     name: API spec
     runs-on: ubuntu-24.04

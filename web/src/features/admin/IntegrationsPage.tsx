@@ -117,7 +117,7 @@ export function IntegrationsPage() {
     <Page>
       <PageHeader
         title="Integrations"
-        meta="How rvav connects to vCenter, AWX and EfficientIP, and whether EfficientIP agrees with what rvav recorded."
+        meta="Where users sign in, how rvav connects to vCenter, AWX and EfficientIP, and whether EfficientIP agrees with what rvav recorded."
       />
       <IntegrationSettings />
       <Panel

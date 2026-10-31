@@ -138,25 +138,53 @@ Without a restart by hand, in one of two ways:
   straight to it next time, as before. Signing out forgets it.
 - rvav starts without an identity provider: `RVAV_OIDC_ISSUER` is no
   longer required. Until one is set, only the local administrator and API
-  tokens sign in. `/readyz` waits for the provider only when one is set.
+  tokens sign in.
+- `/readyz` waits for the provider only when `RVAV_OIDC_ISSUER` sets it,
+  as before. One set in Administration doesn't hold it: a wrong one, or
+  one that is down, must not keep the local administrator from signing
+  in to correct it.
 
 ### The identity provider in the UI
 - Administration sets the provider as an integration (`oidc`):
   - the issuer;
   - the discovery URL, when the API reaches the provider at another
     address;
-  - the client ID;
-  - the scopes;
+  - the client ID, the audience tokens must have;
+  - the scopes (`RVAV_OIDC_SCOPES`);
   - the claim holding groups or roles (`groups`, or `roles` for Entra ID
     app roles).
 - **Its test** reads discovery and the keys. A trial sign-in, in a new
   window, then shows the token's claims and the roles the group mappings
-  would give.
+  would give. Both use the settings in the form, before they are saved:
+  - The page may reach only the saved provider's origin
+    (Content-Security-Policy), and the browser fetches tokens there. So a
+    test that reaches the provider lets pages reach its origin for ten
+    minutes (`oidc_trial_origins`). This gives nothing an administrator
+    couldn't give by saving the provider.
+  - The new window runs the whole sign-in itself, its page loaded with
+    that origin allowed, and passes the access token back to the
+    Administration page.
+  - The API checks the token as it would a request's (signature, issuer,
+    audience, expiry, against the settings given). It says why it refuses
+    one, with the usual fixes: a token for Microsoft Graph, a v1 token, a
+    missing audience. Nothing is saved, and no user is made.
+- **Applied on next use:**
+  - The token check reads the settings revision, at most every two
+    seconds.
+  - When the provider's settings changed, the check is built again, and
+    tokens checked with the earlier ones are forgotten.
+  - A provider changed or cleared no longer signs anyone in.
 - **The web app reads its sign-in settings from the API** (public
   `GET /auth/options`), no longer from nginx's environment.
-- **The Content-Security-Policy follows the setting:** nginx asks the API
-  for the provider's origin when it serves the app.
-- `RVAV_OIDC_*` and `RVAV_WEB_OIDC_*` still win.
+- **The Content-Security-Policy follows the setting:**
+  - nginx asks the API for the origins when it serves the page
+    (`auth_request`, the `X-Rvav-Idp-Origins` header).
+  - The API gives only an `http` or `https` scheme, host and port.
+  - When the API can't be reached, the page is served without them.
+- `RVAV_OIDC_*` and `RVAV_WEB_OIDC_*` still win:
+  - `RVAV_OIDC_*` locks the fields, as for any integration.
+  - `RVAV_WEB_OIDC_*`, on the web container, win in the browser, and lock
+    their fields in the page.
 
 ### Certificates
 - A connection's test shows the server's certificate: subject, issuer,

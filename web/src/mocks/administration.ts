@@ -181,6 +181,7 @@ function state(db: Db): AdminState {
     ], // prettier-ignore
     vcenters: [],
     integrations: {
+      oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
       awx: { settings: { url: "https://awx.corp.example", organization: "rvav", catalog_labels: ["catalog"], action_labels: ["day2"], inventory_source_id: 12, insecure: false }, secret: true },
       efficientip: { settings: { url: "https://ipam.corp.example", auth: "native", username: "rvav", space: "", dns_server: "ns1.corp.example", dns_view: "", instance_id: "rvav", insecure: false }, secret: true },
@@ -1063,28 +1064,49 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
       return HttpResponse.json({
-        items: (["vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"] as const).map((kind) => {
-          const it = st().integrations[kind]!;
-          return {
-            kind,
-            configured:
-              Boolean(it.settings.url ?? it.settings.host ?? it.settings.app_id) || (kind === "slack" && it.secret),
-            settings: it.settings,
-            secret_set: it.secret,
-            ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
-            locked: kind === "vcenter" ? ["url"] : [],
-            restart_needed: Boolean(it.updated_at),
-            ...(it.updated_at
-              ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
-              : {}),
-          };
-        }),
+        items: (["oidc", "vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"] as const).map(
+          (kind) => {
+            const it = st().integrations[kind]!;
+            return {
+              kind,
+              configured:
+                Boolean(it.settings.url ?? it.settings.host ?? it.settings.app_id ?? it.settings.issuer) ||
+                (kind === "slack" && it.secret),
+              settings: it.settings,
+              secret_set: it.secret,
+              ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
+              locked: kind === "vcenter" ? ["url"] : [],
+              // The provider applies on next use (ADR-0030).
+              restart_needed: kind !== "oidc" && Boolean(it.updated_at),
+              ...(it.updated_at
+                ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
+                : {}),
+            };
+          },
+        ),
       });
     }),
     http.put(`${base}/admin/integrations/:kind`, async ({ params, request }) => {
       await wait();
       const kind = String(params.kind);
       const w = (await request.json()) as S["IntegrationWrite"];
+      if (kind === "oidc") {
+        const bad = providerErrors(w.settings);
+        if (bad.length) return invalid(bad);
+        const it = st().integrations.oidc!;
+        it.settings = { ...it.settings, ...w.settings };
+        it.updated_at = now();
+        audited(db, "settings.integration.oidc", "integration", "oidc");
+        return HttpResponse.json({
+          kind,
+          configured: Boolean(it.settings.issuer),
+          settings: it.settings,
+          secret_set: false,
+          locked: [],
+          restart_needed: false,
+          updated_at: it.updated_at,
+        });
+      }
       const url = w.settings.url;
       if (kind === "git" && typeof url === "string" && /^[a-z+]+:\/\/[^/@]*:[^/@]*@/.test(url))
         return invalid([
@@ -1131,6 +1153,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const raw = await request.text();
       const body = raw ? (JSON.parse(raw) as S["IntegrationWrite"]) : undefined;
       const saved = st().integrations[kind]!;
+      if (kind === "oidc") {
+        const bad = providerErrors(body?.settings ?? {});
+        if (bad.length) return invalid(bad);
+        return HttpResponse.json(providerTest({ ...saved.settings, ...body?.settings }));
+      }
       const editable = Object.fromEntries(
         Object.entries(body?.settings ?? {}).filter(([k]) => !(kind === "vcenter" && k === "url")),
       );
@@ -1154,5 +1181,103 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       }
       return HttpResponse.json({ ok: checks.every((c) => c.ok), checks });
     }),
+    // A trial sign-in's token (ADR-0030): the mock's trial window sends
+    // "mock-trial-token", for a user in rvav-web and rvav-catalog-admins.
+    http.post(`${base}/admin/integrations/oidc/trial`, async ({ request }) => {
+      await wait();
+      const w = (await request.json()) as S["OidcTrialRequest"];
+      if (!w.access_token) return invalid([err("/access_token", "The trial sign-in's access token.")]);
+      const bad = providerErrors(w.settings);
+      if (bad.length) return invalid(bad);
+      const ps = { ...st().integrations.oidc!.settings, ...w.settings };
+      const claim = typeof ps.groups_claim === "string" && ps.groups_claim ? ps.groups_claim : "groups";
+      const groups = ["rvav-web", "rvav-catalog-admins"];
+      const who = { sub: "a3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d", name: "Ada Lovelace", email: "ada@corp.example" };
+      const claims: Record<string, unknown> = {
+        iss: ps.issuer,
+        aud: "rvav",
+        ...who,
+        groups,
+        exp: Math.floor(Date.now() / 1000) + 300,
+      };
+      const accepted = ps.client_id === "rvav";
+      const mine = st().groups.filter((g) => claim === "groups" && groups.includes(g.oidc_group));
+      return HttpResponse.json({
+        accepted,
+        ...(accepted
+          ? claim in claims
+            ? {}
+            : { message: `The token has no ${claim} claim, so no group mapping gives a role.` }
+          : {
+              message: `oidc: expected audience "${String(ps.client_id)}" got ["rvav"]. rvav expects the client ID as the audience: set the provider to put it in aud (Keycloak: an audience mapper).`,
+            }),
+        subject: who.sub,
+        name: who.name,
+        email: who.email,
+        claims,
+        groups_claim: claim,
+        groups: claim in claims ? groups : [],
+        global_roles: accepted ? mine.filter((g) => !g.project).map((g) => g.role) : [],
+        project_roles: accepted
+          ? mine.filter((g) => g.project).map((g) => ({ project: g.project!, role: g.role }))
+          : [],
+      } satisfies S["OidcTrial"]);
+    }),
+    http.get(`${base}/auth/options`, async () => {
+      await wait();
+      const ps = st().integrations.oidc!.settings;
+      return HttpResponse.json(
+        ps.issuer
+          ? {
+              provider: {
+                authority: ps.issuer,
+                client_id: ps.client_id || "rvav",
+                scope: ps.scopes || "openid profile email",
+              },
+            }
+          : {},
+      );
+    }),
   ];
+}
+
+// The provider's settings as the server checks them (config.CheckSettings).
+function providerErrors(given: Record<string, unknown>): S["FieldError"][] {
+  const out: S["FieldError"][] = [];
+  for (const f of ["issuer", "discovery_url"]) {
+    const v = given[f];
+    if (typeof v === "string" && v && !/^https?:\/\//.test(v)) out.push(err(`/settings/${f}`, "An http or https URL."));
+  }
+  const scopes = typeof given.scopes === "string" ? given.scopes.trim() : "";
+  if (scopes && !scopes.split(/\s+/).includes("openid"))
+    out.push(err("/settings/scopes", "The scopes must include openid."));
+  const claim = given.groups_claim;
+  if (typeof claim === "string" && /[\s"']/.test(claim))
+    out.push(err("/settings/groups_claim", "A claim name, without spaces or quotes."));
+  return out;
+}
+
+// A provider's test: unreachable when its issuer says so.
+function providerTest(ps: Record<string, unknown>): S["IntegrationTest"] {
+  const issuer = typeof ps.issuer === "string" ? ps.issuer : "";
+  if (!issuer) return { ok: false, checks: [{ name: "Issuer", ok: false, message: "no issuer is set" }] };
+  if (!ps.client_id) return { ok: false, checks: [{ name: "Client", ok: false, message: "no client ID is set" }] };
+  if (issuer.includes("unreachable"))
+    return {
+      ok: false,
+      checks: [
+        {
+          name: "Discovery",
+          ok: false,
+          message: `Get "${issuer}/.well-known/openid-configuration": dial tcp: lookup: no such host`,
+        },
+      ],
+    };
+  return {
+    ok: true,
+    checks: [
+      { name: "Discovery", ok: true, message: `${issuer} answered: sign-in at ${issuer}/protocol/openid-connect/auth` },
+      { name: "Signing keys", ok: true, message: "1 published: k1 (RS256)" },
+    ],
+  };
 }

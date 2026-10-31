@@ -139,6 +139,33 @@ paths:
       responses:
         "204": { description: Signed out }
 
+  /auth/options:
+    get:
+      tags: [identity]
+      operationId: getAuthOptions
+      summary: How to sign in, for the web app's sign-in page (ADR-0030)
+      description: |
+        The identity provider the browser signs in with, as saved in
+        Administration or set by `RVAV_OIDC_*`; none until one is set (the
+        local administrator signs in). Read on each page load, so a change
+        applies without a restart.
+
+        `X-Rvav-Idp-Origins` lists the origins the page may reach for
+        sign-in: the provider's, and for ten minutes after a provider's test
+        the origin tried, so its trial sign-in works before it is saved.
+        nginx copies them into the page's Content-Security-Policy.
+      security: []
+      responses:
+        "200":
+          description: The sign-in options
+          headers:
+            X-Rvav-Idp-Origins:
+              description: Space-separated origins (scheme, host and port only).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthOptions" }
+
   /me/notifications:
     get:
       tags: [notifications]
@@ -2778,6 +2805,33 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/integrations/oidc/trial:
+    post:
+      tags: [admin]
+      operationId: trialIdentityProvider
+      summary: Check a token from a trial sign-in against the provider settings given
+      description: |
+        The web app signs in at the provider in a new window, with the
+        settings given (not saved yet), and sends the access token here.
+        rvav checks it as it would a request's (signature, issuer, audience,
+        expiry), and says which claims it carries, the groups it reads from
+        them, and the roles the group mappings give. Nothing is saved: no
+        user is made.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OidcTrialRequest" }
+      responses:
+        "200":
+          description: What rvav reads from the token, accepted or not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OidcTrial" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/onboarding/vms:
     get:
       tags: [admin]
@@ -4253,6 +4307,67 @@ components:
       type: string
       enum: [project-admin, member, viewer]
 
+    AuthOptions:
+      type: object
+      properties:
+        provider: { $ref: "#/components/schemas/AuthProvider" }
+    AuthProvider:
+      type: object
+      required: [authority, client_id, scope]
+      properties:
+        authority:
+          type: string
+          description: The issuer, as the browser reaches it.
+          examples: [https://login.microsoftonline.com/0f1e2d3c-0000-4000-8000-000000000000/v2.0]
+        client_id: { type: string }
+        scope:
+          type: string
+          description: Space-separated scopes the web app asks for.
+          examples: ["openid profile email api://rvav/access"]
+    OidcTrialRequest:
+      type: object
+      required: [settings, access_token]
+      additionalProperties: false
+      properties:
+        settings:
+          type: object
+          additionalProperties: true
+          description: The provider settings tried, over the saved ones (environment variables still win).
+        access_token: { type: string, minLength: 1, writeOnly: true }
+    OidcTrial:
+      type: object
+      required: [accepted, claims, groups, global_roles, project_roles]
+      properties:
+        accepted:
+          type: boolean
+          description: rvav accepts the token with these settings.
+        message:
+          type: string
+          description: Why it doesn't, when it doesn't.
+        subject: { type: string }
+        name: { type: string }
+        email: { type: string }
+        claims:
+          type: object
+          additionalProperties: true
+          description: The access token's claims, read even when it isn't accepted.
+        groups_claim: { type: string }
+        groups:
+          type: array
+          description: The groups or roles read from the groups claim.
+          items: { type: string }
+        global_roles:
+          type: array
+          items: { type: string }
+        project_roles:
+          type: array
+          items: { $ref: "#/components/schemas/OidcTrialProjectRole" }
+    OidcTrialProjectRole:
+      type: object
+      required: [project, role]
+      properties:
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        role: { type: string }
     SignInRequest:
       type: object
       required: [username, password]
@@ -6992,7 +7107,7 @@ components:
         value: { type: object, additionalProperties: true }
     IntegrationKind:
       type: string
-      enum: [vcenter, awx, efficientip, nsx, git, smtp, teams, slack]
+      enum: [oidc, vcenter, awx, efficientip, nsx, git, smtp, teams, slack]
     Integration:
       type: object
       required: [kind, configured, settings, secret_set, locked, restart_needed]
@@ -7003,6 +7118,9 @@ components:
           type: object
           additionalProperties: true
           description: |
+            oidc (the identity provider, ADR-0030): issuer, discovery_url,
+            client_id, scopes, groups_claim; no secret (the web app is a
+            public client, with PKCE).
             vcenter: url, username, insecure, name. awx: url, organization,
             catalog_labels, action_labels, inventory_source_id, insecure.
             efficientip: url, username, dns_server, instance_id, insecure.
@@ -7027,7 +7145,10 @@ components:
           items: { type: string }
         restart_needed:
           type: boolean
-          description: Saved settings differ from what rvav's processes started with.
+          description: |
+            Saved settings differ from what rvav's processes started with.
+            Never for oidc: the token check follows the saved settings
+            (ADR-0030).
         updated_at: { type: string, format: date-time }
         updated_by: { $ref: "#/components/schemas/UserRef" }
     IntegrationList:

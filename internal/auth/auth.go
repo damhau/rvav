@@ -105,6 +105,13 @@ func ForUser(ctx context.Context, s *store.Store, userID string) (*Principal, er
 	return build(ctx, s, u, groups)
 }
 
+// FromGroups is the principal of a user with these groups and no roles of
+// their own: what the group mappings give, shown by the provider's trial
+// sign-in (ADR-0030).
+func FromGroups(ctx context.Context, s *store.Store, groups []string) (*Principal, error) {
+	return build(ctx, s, store.User{}, groups)
+}
+
 // build combines a user's own roles with those granted by OIDC groups.
 func build(ctx context.Context, s *store.Store, u store.User, groups []string) (*Principal, error) {
 	p := &Principal{User: u, GlobalRoles: append([]string{}, u.GlobalRoles...), ProjectRoles: map[string]string{}, Groups: groups}
@@ -174,18 +181,46 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	return p, err
 }
 
+// ProviderSettings are what the token check needs from the identity
+// provider's settings.
+type ProviderSettings struct {
+	Issuer string
+	// DiscoveryURL is where the API reaches the provider, when that differs
+	// from the issuer in tokens. Empty means the issuer.
+	DiscoveryURL string
+	// ClientID is the audience a token must have.
+	ClientID string
+	// GroupsClaim holds the user's groups (or Entra ID's app roles); empty
+	// means groups.
+	GroupsClaim string
+}
+
+func (ps ProviderSettings) normal() ProviderSettings {
+	if ps.DiscoveryURL == "" {
+		ps.DiscoveryURL = ps.Issuer
+	}
+	if ps.GroupsClaim == "" {
+		ps.GroupsClaim = "groups"
+	}
+	return ps
+}
+
 // OIDC validates access tokens issued by the organisation's identity provider.
 type OIDC struct {
-	Store       *store.Store
-	GroupsClaim string
+	Store *store.Store
 	// RetryInterval is how long a failed discovery is remembered before the
 	// next request tries again (default 5 s); requests meanwhile answer 503
 	// at once instead of queueing.
 	RetryInterval time.Duration
 
-	issuer, discoveryURL, clientID string
+	// settings gives the provider's settings as they are now (ADR-0030); the
+	// check is built again when they change.
+	settings func(context.Context) ProviderSettings
+	// holdReady: the provider was set at install, and /readyz waits for it.
+	holdReady bool
 
 	mu       sync.Mutex
+	built    ProviderSettings // what verifier was built with
 	verifier *oidc.IDTokenVerifier
 	failedAt time.Time
 	lastErr  error
@@ -238,10 +273,18 @@ func (o *OIDC) remember(key [32]byte, t seenToken) {
 	o.seen[key] = t
 }
 
-// NewOIDC prepares token checks against the provider. discoveryURL, when set,
-// is where the API reaches the provider when that differs from the issuer in
-// tokens (for example http://keycloak:8080 inside docker compose versus
-// http://localhost:8081 in the browser).
+// forget drops the tokens checked with other settings: a provider changed
+// or removed no longer signs anyone in.
+func (o *OIDC) forget() {
+	o.seenMu.Lock()
+	defer o.seenMu.Unlock()
+	o.seen = nil
+}
+
+// NewOIDC prepares token checks against a provider set at install.
+// discoveryURL, when set, is where the API reaches the provider when that
+// differs from the issuer in tokens (for example http://keycloak:8080
+// inside docker compose versus http://localhost:8081 in the browser).
 //
 // The provider is discovered on first use and again after a failure, so the
 // API starts, and recovers, while the provider is down. The error says
@@ -250,71 +293,102 @@ func (o *OIDC) remember(key [32]byte, t seenToken) {
 // Without an issuer there is no provider: API tokens and the local
 // administrator sign in, and the provider's tokens are refused (ADR-0030).
 func NewOIDC(ctx context.Context, s *store.Store, issuer, discoveryURL, clientID, groupsClaim string) (*OIDC, error) {
-	if discoveryURL == "" {
-		discoveryURL = issuer
+	ps := ProviderSettings{Issuer: issuer, DiscoveryURL: discoveryURL, ClientID: clientID, GroupsClaim: groupsClaim}
+	return NewLiveOIDC(ctx, s, issuer != "", func(context.Context) ProviderSettings { return ps })
+}
+
+// NewLiveOIDC prepares token checks that follow the provider's settings as
+// they are saved (ADR-0030): settings is called on each check, and the
+// check is built again when they changed. holdReady says the provider was
+// set at install: /readyz then waits for it. One set in Administration
+// doesn't hold it, so that the local administrator can still sign in and
+// correct a wrong one.
+func NewLiveOIDC(ctx context.Context, s *store.Store, holdReady bool, settings func(context.Context) ProviderSettings) (*OIDC, error) {
+	o := &OIDC{Store: s, settings: settings, holdReady: holdReady}
+	_, _, err := o.verifierFor(ctx)
+	if errors.Is(err, ErrNoProvider) {
+		err = nil
 	}
-	o := &OIDC{Store: s, GroupsClaim: groupsClaim, issuer: issuer, discoveryURL: discoveryURL, clientID: clientID}
-	if issuer == "" {
-		return o, nil
-	}
-	_, err := o.verifierFor(ctx)
 	return o, err
 }
 
 // ErrNoProvider: no identity provider is set.
 var ErrNoProvider = errors.New("no identity provider is set")
 
-// Ready reports whether the provider has been discovered. The API's
-// readiness check uses it, so a wrong issuer or a provider that never comes
-// up keeps new instances out of service instead of answering 503.
+// Ready reports whether the provider set at install has been discovered.
+// The API's readiness check uses it, so a wrong issuer or a provider that
+// never comes up keeps new instances out of service instead of answering
+// 503.
 func (o *OIDC) Ready(ctx context.Context) error {
-	if o.issuer == "" {
+	if !o.holdReady {
 		return nil
 	}
-	_, err := o.verifierFor(ctx)
+	_, _, err := o.verifierFor(ctx)
+	if errors.Is(err, ErrNoProvider) {
+		return nil
+	}
 	return err
 }
 
-func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {
-	if o.issuer == "" {
-		return nil, ErrNoProvider
+func (o *OIDC) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, ProviderSettings, error) {
+	ps := o.settings(ctx).normal()
+	if ps.Issuer == "" {
+		return nil, ps, ErrNoProvider
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if ps != o.built {
+		o.built, o.verifier, o.lastErr = ps, nil, nil
+		o.forget()
+	}
 	if o.verifier != nil {
-		return o.verifier, nil
+		return o.verifier, ps, nil
 	}
 	retry := o.RetryInterval
 	if retry == 0 {
 		retry = 5 * time.Second
 	}
 	if o.lastErr != nil && time.Since(o.failedAt) < retry {
-		return nil, o.lastErr
+		return nil, ps, o.lastErr
 	}
-	if o.discoveryURL != o.issuer {
-		ctx = oidc.InsecureIssuerURLContext(ctx, o.issuer)
+	v, _, err := newVerifier(ctx, ps)
+	if err != nil {
+		o.failedAt, o.lastErr = time.Now(), fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
+		return nil, ps, o.lastErr
+	}
+	o.verifier, o.lastErr = v, nil
+	return v, ps, nil
+}
+
+// ProviderInfo is what a provider's discovery document says.
+type ProviderInfo struct {
+	Issuer                string   `json:"issuer"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	JWKSURL               string   `json:"jwks_uri"`
+	Algs                  []string `json:"id_token_signing_alg_values_supported"`
+}
+
+// newVerifier reads the provider's discovery document and builds the token
+// check for its keys.
+func newVerifier(ctx context.Context, ps ProviderSettings) (*oidc.IDTokenVerifier, ProviderInfo, error) {
+	var meta ProviderInfo
+	if ps.DiscoveryURL != ps.Issuer {
+		ctx = oidc.InsecureIssuerURLContext(ctx, ps.Issuer)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	provider, err := oidc.NewProvider(ctx, o.discoveryURL)
+	provider, err := oidc.NewProvider(ctx, ps.DiscoveryURL)
 	if err != nil {
-		o.failedAt, o.lastErr = time.Now(), fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
-		return nil, o.lastErr
-	}
-	var meta struct {
-		JWKSURL string   `json:"jwks_uri"`
-		Algs    []string `json:"id_token_signing_alg_values_supported"`
+		return nil, meta, fmt.Errorf("discovery for %s: %v", ps.Issuer, err)
 	}
 	if err := provider.Claims(&meta); err != nil {
-		o.failedAt, o.lastErr = time.Now(), fmt.Errorf("%w: discovery for %s: %v", ErrProviderUnavailable, o.issuer, err)
-		return nil, o.lastErr
+		return nil, meta, fmt.Errorf("discovery for %s: %v", ps.Issuer, err)
 	}
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
 	keys := keySet{oidc.NewRemoteKeySet(context.Background(), meta.JWKSURL)}
-	o.verifier = oidc.NewVerifier(o.issuer, keys, &oidc.Config{ClientID: o.clientID, SupportedSigningAlgs: signingAlgs(meta.Algs)})
-	o.lastErr = nil
-	return o.verifier, nil
+	return oidc.NewVerifier(ps.Issuer, keys, &oidc.Config{ClientID: ps.ClientID, SupportedSigningAlgs: signingAlgs(meta.Algs)}), meta, nil
 }
 
 // signingAlgs are the algorithms the provider advertises that rvav accepts:
@@ -348,6 +422,20 @@ func (k keySet) VerifySignature(ctx context.Context, jwt string) ([]byte, error)
 	return payload, err
 }
 
+// groupsIn reads the groups (or roles) a token's claims carry; Keycloak's
+// full group paths lose their leading slash.
+func groupsIn(claims map[string]any, claim string) []string {
+	var groups []string
+	if raw, ok := claims[claim].([]any); ok {
+		for _, g := range raw {
+			if s, ok := g.(string); ok {
+				groups = append(groups, strings.TrimPrefix(s, "/"))
+			}
+		}
+	}
+	return groups
+}
+
 func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	token := bearer(r)
 	if token == "" {
@@ -357,7 +445,7 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if strings.HasPrefix(token, TokenPrefix) {
 		return apiToken(ctx, o.Store, token)
 	}
-	v, err := o.verifierFor(ctx)
+	v, ps, err := o.verifierFor(ctx)
 	if errors.Is(err, ErrNoProvider) {
 		return nil, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
@@ -391,14 +479,7 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if name == "" {
 		name = str("preferred_username")
 	}
-	var groups []string
-	if raw, ok := claims[o.GroupsClaim].([]any); ok {
-		for _, g := range raw {
-			if s, ok := g.(string); ok {
-				groups = append(groups, strings.TrimPrefix(s, "/"))
-			}
-		}
-	}
+	groups := groupsIn(claims, ps.GroupsClaim)
 	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("email"), str("title"))
 	if err != nil {
 		return nil, err

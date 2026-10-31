@@ -25,3 +25,31 @@ func TestStoredSettings(t *testing.T) {
 		t.Fatalf("errors = %v", errs)
 	}
 }
+
+// The identity provider's settings (ADR-0030): URLs, a claim's name, and
+// openid among the scopes; an environment variable wins.
+func TestProviderSettings(t *testing.T) {
+	t.Setenv("RVAV_OIDC_ISSUER", "")
+	t.Setenv("RVAV_OIDC_CLIENT_ID", "rvav-env")
+	c := Config{Auth: AuthConfig{OIDCClientID: "rvav-env", Scopes: "openid profile email", GroupsClaim: "groups"}}
+	c.ApplyStored("oidc", Stored{Settings: map[string]any{"issuer": "https://login.microsoftonline.com/t1/v2.0", "client_id": "rvav-ui",
+		"scopes": "openid profile api://rvav/access", "groups_claim": "roles", "discovery_url": ""}})
+	if c.Auth.OIDCIssuer != "https://login.microsoftonline.com/t1/v2.0" || c.Auth.OIDCClientID != "rvav-env" ||
+		c.Auth.Scopes != "openid profile api://rvav/access" || c.Auth.GroupsClaim != "roles" || c.Auth.OIDCDiscoveryURL != "" {
+		t.Fatalf("auth = %+v", c.Auth)
+	}
+	if locked := Locked("oidc"); !slices.Equal(locked, []string{"client_id"}) {
+		t.Fatalf("locked = %v", locked)
+	}
+	errs := CheckSettings("oidc", map[string]any{"issuer": "login.example", "discovery_url": "ftp://x", "scopes": "profile email",
+		"groups_claim": "my groups", "secret": "x"})
+	for _, f := range []string{"issuer", "discovery_url", "scopes", "groups_claim", "secret"} {
+		if errs[f] == "" {
+			t.Errorf("%s: no error in %v", f, errs)
+		}
+	}
+	if errs := CheckSettings("oidc", map[string]any{"issuer": "http://localhost:8081/realms/rvav", "scopes": "",
+		"groups_claim": "roles"}); len(errs) != 0 {
+		t.Fatalf("good settings: %v", errs)
+	}
+}

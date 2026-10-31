@@ -1,6 +1,7 @@
 // vCenter, AWX, EfficientIP, NSX and Git settings (S9, ADR-0020, ADR-0028, ADR-0029): saved from the UI,
 // an environment variable winning and locking its field; the password or
 // token is write-only; saved settings apply when rvav's processes restart.
+// The identity provider, first, has a panel of its own (ADR-0030).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useState } from "react";
@@ -16,10 +17,11 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
+import { IdentityProvider } from "./IdentityProvider";
 import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
-type Kind = S["IntegrationKind"];
+type Kind = Exclude<S["IntegrationKind"], "oidc">;
 
 interface Setting {
   name: string;
@@ -209,7 +211,7 @@ const text = (v: unknown, type: Setting["type"]) =>
       ? String(v)
       : "";
 
-function Integration({ it }: { it: S["Integration"] }) {
+function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   const qc = useQueryClient();
   const def = fields[it.kind];
   const editable = def.settings.filter((f) => !it.locked.includes(f.name));
@@ -460,13 +462,17 @@ export function IntegrationSettings() {
       <TabsList aria-label="Integrations">
         {items.map((it) => (
           <TabsTrigger key={it.kind} value={it.kind}>
-            {fields[it.kind].title}
+            {it.kind === "oidc" ? "Identity provider" : fields[it.kind].title}
           </TabsTrigger>
         ))}
       </TabsList>
       {items.map((it) => (
         <TabsContent key={it.kind} value={it.kind} className="flex flex-col gap-4 pt-4">
-          <Integration key={it.updated_at ?? "unsaved"} it={it} />
+          {it.kind === "oidc" ? (
+            <IdentityProvider key={it.updated_at ?? "unsaved"} it={it} />
+          ) : (
+            <Integration key={it.updated_at ?? "unsaved"} it={{ ...it, kind: it.kind }} />
+          )}
           {it.kind === "vcenter" && <VCenters />}
         </TabsContent>
       ))}

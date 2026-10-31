@@ -9,9 +9,9 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check check-quick web-quick web-e2e build test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick check-nginx web-quick web-e2e build test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
-check: gen-check lint-spec lint-chart vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
+check: gen-check lint-spec lint-chart check-nginx vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
 
 build: ## Build rvav and rvav-vcsim into ./bin
@@ -55,6 +55,10 @@ api-docs: ## The API reference, one HTML file built from the spec, into dist/api
 	mkdir -p dist
 	npx --yes @redocly/cli@1 build-docs --config api/redocly.yaml --disableGoogleFont \
 		--title "rvav API $$(sed -n 's/^  version: //p' api/openapi.yaml | head -1)" -o dist/api-reference.html api/openapi.yaml
+
+check-nginx: ## The web image's nginx configuration in a real nginx (Docker): the CSP follows the API's identity provider
+	@if ! docker info >/dev/null 2>&1; then echo "Docker not reachable: nginx isn't checked here (CI does)"; exit 0; fi; \
+	web/nginx/check.sh
 
 lint-chart: ## The Helm chart lints, renders, and refuses dev sign-in (from its values and its Secret)
 	@if ! command -v helm >/dev/null; then echo "helm not installed: the chart isn't checked here (CI does)"; exit 0; fi; \

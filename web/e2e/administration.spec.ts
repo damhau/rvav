@@ -238,6 +238,7 @@ test("integration settings: locked fields, the write-only secret, test connectio
   page,
 }) => {
   await open(page, "Integrations", "Integrations");
+  await page.getByRole("tab", { name: "vCenter" }).click();
   const vcenter = page.getByRole("region", { name: "vCenter connection" });
   await expect(vcenter.getByRole("textbox", { name: "URL" })).toBeDisabled();
   await expect(vcenter.getByText("Set by RVAV_VCENTER_URL")).toBeVisible();
@@ -272,6 +273,38 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await expect(awx.getByText("An http or https URL.")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Run the check" })).toBeVisible();
+});
+
+test("the identity provider: tested, tried in a window of its own, and applied without a restart (U1.2)", async ({
+  page,
+}) => {
+  await open(page, "Integrations", "Integrations");
+  await expect(page.getByRole("tab", { name: "Identity provider" })).toHaveAttribute("aria-selected", "true");
+  const idp = page.getByRole("region", { name: "Identity provider" });
+  await expect(idp.getByText(/\/auth\/callback$/)).toBeVisible();
+  const tryIt = idp.getByRole("button", { name: "Try signing in" });
+  await expect(tryIt).toBeDisabled();
+  await idp.getByRole("button", { name: "Test provider" }).click();
+  await expect(page.getByRole("region", { name: "Identity provider test" })).toContainText("Every check passed");
+
+  // The trial window signs in (the mock's token), sends the token back and closes.
+  const popup = page.waitForEvent("popup");
+  await tryIt.click();
+  const trialWindow = await popup;
+  await expect(trialWindow.getByRole("status")).toContainText("Signed in at the provider");
+  const trial = page.getByRole("region", { name: "Trial sign-in" });
+  await expect(trial).toContainText("rvav accepts this token.");
+  await expect(trial).toContainText("ada@corp.example");
+  await expect(trial.getByText("catalog-admin", { exact: true })).toBeVisible();
+  await trial.getByText("The token's claims").click();
+  await expect(trial.locator("pre")).toContainText('"aud": "rvav"');
+  await trialWindow.waitForEvent("close");
+
+  await idp.getByRole("textbox", { name: "Groups claim" }).fill("roles");
+  await idp.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByText("Identity provider saved")).toBeVisible();
+  await expect(page.getByText("Restart needed")).toBeHidden();
+  await expect(idp.getByRole("textbox", { name: "Groups claim" })).toHaveValue("roles");
 });
 
 test("the catalog's Git repository: an SSH deploy key keeps its lines, and the test reads the branch (C1.1)", async ({
@@ -356,6 +389,7 @@ test("an auditor reads the administration pages without changing them", async ({
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {
   await open(page, "Integrations", "Integrations");
+  await page.getByRole("tab", { name: "vCenter" }).click();
   const vcenters = page.getByRole("region", { name: "vCenters" });
   await expect(vcenters.getByRole("row", { name: /vc01\.corp\.example/ })).toContainText("The connection above");
   await vcenters.getByRole("button", { name: "Add a vCenter" }).click();

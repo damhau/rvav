@@ -6,11 +6,13 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-# Vite reads these at build time: rebuild the image to change them.
+# Vite reads these at build time: rebuild the image to change them. The
+# identity provider comes from the API (Administration, ADR-0030): set
+# VITE_OIDC_* only for a browser that must sign in otherwise, as they win.
 ARG VITE_AUTH_MODE=oidc
 ARG VITE_OIDC_AUTHORITY=
-ARG VITE_OIDC_CLIENT_ID=rvav
-ARG VITE_OIDC_SCOPE="openid profile email"
+ARG VITE_OIDC_CLIENT_ID=
+ARG VITE_OIDC_SCOPE=
 ENV VITE_API_MODE=real \
     VITE_AUTH_MODE=${VITE_AUTH_MODE} \
     VITE_OIDC_AUTHORITY=${VITE_OIDC_AUTHORITY} \
@@ -23,15 +25,16 @@ FROM nginx:1.30-alpine
 RUN apk upgrade --no-cache
 ARG VITE_AUTH_MODE=oidc
 ARG VITE_OIDC_AUTHORITY=
-ARG VITE_OIDC_CLIENT_ID=rvav
-ARG VITE_OIDC_SCOPE="openid profile email"
+ARG VITE_OIDC_CLIENT_ID=
+ARG VITE_OIDC_SCOPE=
 # The image renders templates with envsubst at start-up (RVAV_API_UPSTREAM),
 # and NGINX_ENTRYPOINT_LOCAL_RESOLVERS has it read the nameservers from
 # /etc/resolv.conf: Docker's DNS, or the cluster DNS on Kubernetes.
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-# The sign-in settings at run time (/config.js), the build's by default; the
-# origins of the console's SDK scripts, for the Content-Security-Policy.
+# The sign-in settings at run time (/config.js), the build's by default and
+# empty unless set: the API's then; the origins of the console's SDK
+# scripts, for the Content-Security-Policy.
 ENV RVAV_API_UPSTREAM=http://api:8080 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     RVAV_WEB_AUTH_MODE=${VITE_AUTH_MODE} \

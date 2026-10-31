@@ -24,7 +24,5 @@ secret:
     RVAV_VCENTER_PASSWORD: pass
     RVAV_EFFICIENTIP_PASSWORD: rvav
     RVAV_SECRETS_KEY: a2luZC1vbmx5LXNlY3JldHMta2V5LTMyLWJ5dGVzISE=
-web:
-  oidcAuthority: http://localhost:18181/realms/rvav
 migrate: { seed: true }
 ingress: { enabled: false }

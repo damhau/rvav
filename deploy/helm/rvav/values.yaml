@@ -69,12 +69,14 @@ secret:
 nsx:
   certSecret: ""
 
-# The web app's sign-in, read by the browser at run time (/config.js).
 web:
   replicas: 2
-  oidcAuthority: https://sso.corp.example/realms/rvav
-  oidcClientId: rvav
-  oidcScope: openid profile email
+  # The browser signs in with the identity provider the API says (set in
+  # Administration, or config.RVAV_OIDC_*). These win over it in the browser
+  # (RVAV_WEB_OIDC_*, /config.js) and lock their fields; empty: the API's.
+  oidcAuthority: ""
+  oidcClientId: ""
+  oidcScope: ""
   # Origins the browser may load the VM console's SDK from (the origins of
   # config.RVAV_WMKS_SDK_URLS), for the Content-Security-Policy.
   scriptSources: ""

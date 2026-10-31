@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/mail"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -22,6 +23,16 @@ type Field struct {
 
 // Fields are the settings of each integration.
 var Fields = map[string][]Field{
+	// The identity provider (ADR-0030): the web app is a public client
+	// (PKCE), so there is no secret. The token check follows a change at
+	// once; the others wait for a restart (ADR-0020).
+	"oidc": {
+		{"issuer", "RVAV_OIDC_ISSUER", "string", false},
+		{"discovery_url", "RVAV_OIDC_DISCOVERY_URL", "string", false},
+		{"client_id", "RVAV_OIDC_CLIENT_ID", "string", false},
+		{"scopes", "RVAV_OIDC_SCOPES", "string", false},
+		{"groups_claim", "RVAV_OIDC_GROUPS_CLAIM", "string", false},
+	},
 	"vcenter": {
 		{"url", "RVAV_VCENTER_URL", "string", false},
 		{"username", "RVAV_VCENTER_USERNAME", "string", false},
@@ -165,6 +176,12 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		}
 	}
 	switch kind {
+	case "oidc":
+		str("issuer", &c.Auth.OIDCIssuer)
+		str("discovery_url", &c.Auth.OIDCDiscoveryURL)
+		str("client_id", &c.Auth.OIDCClientID)
+		str("scopes", &c.Auth.Scopes)
+		str("groups_claim", &c.Auth.GroupsClaim)
 	case "vcenter":
 		str("url", &c.VCenter.URL)
 		str("username", &c.VCenter.Username)
@@ -237,6 +254,9 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 // secret.
 func (c Config) Settings(kind string) map[string]any {
 	switch kind {
+	case "oidc":
+		return map[string]any{"issuer": c.Auth.OIDCIssuer, "discovery_url": c.Auth.OIDCDiscoveryURL, "client_id": c.Auth.OIDCClientID,
+			"scopes": c.Auth.Scopes, "groups_claim": c.Auth.GroupsClaim}
 	case "vcenter":
 		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure, "name": c.VCenter.Name}
 	case "awx":
@@ -318,12 +338,20 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 			}
 		}
 	}
-	for _, key := range []string{"url", "service_url"} {
+	for _, key := range []string{"url", "service_url", "issuer", "discovery_url"} {
 		if kind == "git" {
 			break // an SSH URL too: gitrepo.CheckURL
 		}
 		if u, ok := settings[key].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			errs[key] = "An http or https URL."
+		}
+	}
+	if kind == "oidc" {
+		if c, ok := settings["groups_claim"].(string); ok && strings.ContainsAny(c, " \t\"'") {
+			errs["groups_claim"] = "A claim's name, for example groups or roles."
+		}
+		if sc, ok := settings["scopes"].(string); ok && sc != "" && !slices.Contains(strings.Fields(sc), "openid") {
+			errs["scopes"] = "Include openid, for example openid profile email."
 		}
 	}
 	if kind == "smtp" {

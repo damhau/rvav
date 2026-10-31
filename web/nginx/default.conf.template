@@ -1,10 +1,18 @@
 # Serves the built web app and proxies the API on the same origin.
 # ${RVAV_API_UPSTREAM} is filled in by the nginx image at start-up, and
 # ${NGINX_LOCAL_RESOLVERS} with the nameservers from /etc/resolv.conf.
-# The identity provider's origin, from its issuer (RVAV_WEB_OIDC_AUTHORITY):
-# the browser fetches tokens there (Content-Security-Policy below).
-map "${RVAV_WEB_OIDC_AUTHORITY}" $rvav_idp_origin {
+# The identity provider's origins, where the browser fetches tokens
+# (Content-Security-Policy below): the one RVAV_WEB_OIDC_AUTHORITY sets, and
+# those the API says when the page is served (ADR-0030): the provider set
+# in Administration, and providers being tried there.
+map "${RVAV_WEB_OIDC_AUTHORITY}" $rvav_web_idp_origin {
     "~^(?<origin>https?://[^/]+)" $origin;
+    default "";
+}
+# Only origins (scheme, host, port) separated by spaces: nothing that could
+# end the directive.
+map $rvav_api_idp_origins $rvav_idp_origins {
+    "~^(https?://[a-zA-Z0-9.:\[\]-]+ ?)+$" $rvav_api_idp_origins;
     default "";
 }
 
@@ -31,7 +39,7 @@ server {
     # provider (and its silent sign-in frame, which comes back to this
     # origin), and the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES. The UI
     # libraries insert style elements. HSTS takes effect over HTTPS only.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${RVAV_WEB_SCRIPT_SOURCES}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' $rvav_idp_origin; frame-src 'self' $rvav_idp_origin; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${RVAV_WEB_SCRIPT_SOURCES}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' $rvav_web_idp_origin $rvav_idp_origins; frame-src 'self' $rvav_web_idp_origin $rvav_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
@@ -42,7 +50,7 @@ server {
     gzip_types text/css application/javascript application/json image/svg+xml;
 
     # Settings the web app reads at run time (S14.2): its sign-in, from the
-    # container's RVAV_WEB_* environment (the image's build values by default).
+    # container's RVAV_WEB_* environment, which wins over the API's.
     location = /config.js {
         default_type application/javascript;
         add_header Cache-Control "no-store" always;
@@ -108,9 +116,36 @@ server {
         try_files $uri =404;
     }
 
-    # Client-side routes all load index.html, which is never cached.
+    # Client-side routes all load index.html.
     location / {
-        expires -1;
         try_files $uri /index.html;
+    }
+
+    # The page, never cached, with the identity provider's origins the API
+    # says (ADR-0030).
+    location = /index.html {
+        expires -1;
+        auth_request /_rvav/idp-origins;
+        auth_request_set $rvav_api_idp_origins $upstream_http_x_rvav_idp_origins;
+    }
+
+    # Asks the API (GET /api/v1/auth/options); when it can't answer, the page
+    # is served without them, and the local administrator can still sign in.
+    location = /_rvav/idp-origins {
+        internal;
+        proxy_pass $api_upstream/api/v1/auth/options;
+        proxy_method GET;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 3s;
+        proxy_intercept_errors on;
+        error_page 400 401 403 404 405 429 500 502 503 504 = @rvav_no_idp_origins;
+    }
+
+    location @rvav_no_idp_origins {
+        return 204;
     }
 }

@@ -79,3 +79,18 @@ func (s *Store) ResealIntegration(ctx context.Context, kind string, oldNonce []b
 		where kind = $1 and secret_nonce = $5`, kind, v.KeyID, v.Nonce, v.Ciphertext, oldNonce)
 	return tag.RowsAffected() == 1, err
 }
+
+// TryOrigin lets the sign-in page reach a provider being tried until the
+// given time (ADR-0030); those whose time is over are dropped.
+func (s *Store) TryOrigin(ctx context.Context, origin string, until time.Time) error {
+	_, err := s.Pool.Exec(ctx, `with gone as (delete from oidc_trial_origins where expires_at <= now() and origin <> $1)
+		insert into oidc_trial_origins (origin, expires_at) values ($1, $2)
+		on conflict (origin) do update set expires_at = greatest(oidc_trial_origins.expires_at, excluded.expires_at)`, origin, until)
+	return err
+}
+
+// TrialOrigins are the origins of the providers being tried now.
+func (s *Store) TrialOrigins(ctx context.Context) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select origin from oidc_trial_origins where expires_at > now() order by origin`)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}

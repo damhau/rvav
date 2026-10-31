@@ -28,7 +28,7 @@ import (
 // effect when rvav's processes restart; test connection tries the settings
 // given, saved or not.
 
-var integrationKinds = []string{"vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"}
+var integrationKinds = []string{"oidc", "vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -45,6 +45,9 @@ func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecret
 // address is where an integration goes: its URL, or the mail server.
 func address(kind string, settings map[string]any) string {
 	switch kind {
+	case "oidc":
+		v, _ := settings["issuer"].(string)
+		return v
 	case "smtp":
 		v, _ := settings["host"].(string)
 		return v
@@ -66,9 +69,13 @@ func address(kind string, settings map[string]any) string {
 func IntegrationSecretName(kind string) string { return "integration:" + kind }
 
 // pendingSettings are the settings saved for an integration over those this
-// process uses: what rvav will use after a restart.
-func (s *Service) pendingSettings(kind string, row *store.IntegrationSettings) map[string]any {
+// process uses: what rvav will use after a restart, or uses now for those
+// applied on next use.
+func (s *Service) pendingSettings(ctx context.Context, kind string, row *store.IntegrationSettings) map[string]any {
 	out := s.Config.Settings(kind)
+	if s.Live != nil && slices.Contains(liveKinds, kind) {
+		out = s.Live.Config(ctx).Settings(kind)
+	}
 	if row == nil {
 		return out
 	}
@@ -97,7 +104,7 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 		if r, ok := stored[kind]; ok {
 			row = &r
 		}
-		settings := s.pendingSettings(kind, row)
+		settings := s.pendingSettings(ctx, kind, row)
 		it := api.Integration{Kind: api.IntegrationKind(kind), Settings: settings, Locked: nonNilStrings(config.Locked(kind)),
 			Configured: address(kind, settings) != "" || config.Fake(kind), SecretSet: s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil}
 		if kind == "slack" {
@@ -107,7 +114,7 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 			it.Configured = it.SecretSet
 		}
 		if row != nil {
-			it.RestartNeeded = row.Revision > s.SettingsRevision
+			it.RestartNeeded = row.Revision > s.SettingsRevision && !slices.Contains(liveKinds, kind)
 			it.UpdatedAt = &row.UpdatedAt
 			if row.UpdatedBy != nil {
 				it.UpdatedBy = &api.UserRef{Id: *row.UpdatedBy, Name: deref(row.UpdatedByName)}
@@ -132,6 +139,9 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		return api.Integration{}, ErrForbidden
 	}
 	if err := checkIntegrationKind(kind); err != nil {
+		return api.Integration{}, err
+	}
+	if err := noSecretFor(kind, &w); err != nil {
 		return api.Integration{}, err
 	}
 	locked := config.Locked(kind)
@@ -164,7 +174,7 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		row = &r
 	}
 	hasSecret := s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil
-	if err := secretGoesWhereGiven(kind, s.pendingSettings(kind, row), settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
+	if err := secretGoesWhereGiven(kind, s.pendingSettings(ctx, kind, row), settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
 		return api.Integration{}, err
 	}
 	var sealed *store.Sealed
@@ -227,7 +237,7 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 	if r, ok := stored[kind]; ok {
 		row = &r
 	}
-	settings := s.pendingSettings(kind, row)
+	settings := s.pendingSettings(ctx, kind, row)
 	secret := ""
 	if row != nil && row.SecretCiphertext != nil {
 		if plain, err := s.Secrets.Open(IntegrationSecretName(kind), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext); err == nil {
@@ -235,6 +245,9 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		}
 	}
 	if w != nil {
+		if err := noSecretFor(kind, w); err != nil {
+			return out, err
+		}
 		for field, msg := range config.CheckSettings(kind, withoutFake(w.Settings)) {
 			return out, &ValidationError{Errors: []api.FieldError{fieldErr("/settings/"+field, "invalid", msg)}}
 		}
@@ -273,6 +286,8 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	switch kind {
+	case "oidc":
+		s.testOIDC(ctx, settings, check)
 	case "vcenter":
 		s.testVCenter(ctx, cfg.VCenter, check)
 	case "awx":
@@ -310,6 +325,16 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 	out.Ok = !slices.ContainsFunc(out.Checks, func(c api.IntegrationCheck) bool { return !c.Ok })
 	s.audit(ctx, p, "settings.test."+kind, "integration", kind, nil, map[string]any{"ok": out.Ok})
 	return out, nil
+}
+
+// noSecretFor refuses a secret for an integration that has none: the
+// identity provider's web app is a public client.
+func noSecretFor(kind string, w *api.IntegrationWrite) error {
+	if kind != "oidc" || (w.Secret == nil || *w.Secret == "") && (w.SigningSecret == nil || *w.SigningSecret == "") {
+		return nil
+	}
+	return &ValidationError{Errors: []api.FieldError{fieldErr("/secret", "invalid",
+		"The identity provider has no secret: rvav's web app signs in as a public client, with PKCE.")}}
 }
 
 func withoutFake(m map[string]any) map[string]any {

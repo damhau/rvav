@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -120,4 +121,22 @@ func plural(n int, word string) string {
 		return "1 " + word
 	}
 	return strconv.Itoa(n) + " " + word + "s"
+}
+
+// GetAuthOptions says how to sign in. nginx asks for it as it serves the
+// page, and copies X-Rvav-Idp-Origins into its Content-Security-Policy.
+func (s *Server) GetAuthOptions(w http.ResponseWriter, r *http.Request) {
+	opts, origins := s.Core.AuthOptions(r.Context())
+	w.Header().Set("X-Rvav-Idp-Origins", strings.Join(origins, " "))
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, opts)
+}
+
+func (s *Server) TrialIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	var body api.OidcTrialRequest
+	if !s.decode(w, r, &body) {
+		return
+	}
+	out, err := s.Core.TrialIdentityProvider(r.Context(), principal(r), body)
+	s.reply(w, r, http.StatusOK, out, err)
 }

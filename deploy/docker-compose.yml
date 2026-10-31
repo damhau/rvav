@@ -222,13 +222,12 @@ services:
   # The web app, served by nginx, which proxies /api to the api service.
   # Sign-in follows RVAV_AUTH_MODE; it is baked in at build time, so after
   # changing it run: docker compose -f deploy/docker-compose.yml up --build web
+  # The identity provider is the API's (RVAV_OIDC_* above, or Administration).
   web:
     build:
       context: ../web
       args:
         VITE_AUTH_MODE: ${RVAV_AUTH_MODE:-dev}
-        VITE_OIDC_AUTHORITY: http://localhost:${RVAV_KEYCLOAK_PORT:-8081}/realms/rvav
-        VITE_OIDC_CLIENT_ID: rvav
     environment:
       RVAV_API_UPSTREAM: http://api:8080
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_WEB_PORT:-3000}:8080"]

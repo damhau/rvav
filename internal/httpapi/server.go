@@ -187,9 +187,10 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The console's WebSocket carries its own single-use token (ADR-0012);
 		// Teams and Slack sign their calls (ADR-0023).
-		// Signing in needs no sign-in (ADR-0030).
+		// Signing in needs no sign-in, nor reading how to (ADR-0030).
 		if strings.HasPrefix(r.URL.Path, "/api/v1/console/") || strings.HasPrefix(r.URL.Path, "/api/v1/integrations/") ||
-			(r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/sign-in") {
+			(r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/sign-in") ||
+			(r.Method == http.MethodGet && r.URL.Path == "/api/v1/auth/options") {
 			next.ServeHTTP(w, r)
 			return
 		}

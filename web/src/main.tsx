@@ -35,6 +35,15 @@ async function boot() {
   }
   const state = await initAuth();
   if (state === "redirecting") return;
+  if (state === "trial") {
+    const { TrialWindowPage } = await import("@/features/account/SignIn");
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <TrialWindowPage />
+      </StrictMode>,
+    );
+    return;
+  }
   if (state === "sign-in" || state === "change-password") {
     // Before the app: nobody is signed in, or the local administrator must
     // change the password first (ADR-0030).

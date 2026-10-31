@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -55,6 +54,8 @@ type App struct {
 	// SettingsRevision is the revision of the saved settings this process
 	// started with.
 	SettingsRevision int64
+	// Live reads the settings saved now, for those applied on next use.
+	Live *core.LiveSettings
 
 	vcMu    sync.Mutex
 	vc      vsphere.Driver
@@ -114,10 +115,12 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, err
 	}
 	// Connection settings saved from the UI, where no environment variable
-	// sets them (ADR-0020); they take effect here, at start.
+	// sets them (ADR-0020); they take effect here, at start. Those read on
+	// next use follow the saved ones (ADR-0030).
 	if err := a.applyStoredSettings(ctx); err != nil {
 		return nil, err
 	}
+	a.Live = &core.LiveSettings{Store: st, Secrets: a.Secrets, Base: cfg, Every: 2 * time.Second, Log: log}
 	cfg = a.Cfg
 	// Notifications are queued on the channels set up (ADR-0023).
 	for ch := range a.senders() {
@@ -183,25 +186,8 @@ func (a *App) applyStoredSettings(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for kind, row := range stored {
-		var s config.Stored
-		if err := json.Unmarshal(row.Settings, &s.Settings); err != nil {
-			return fmt.Errorf("stored %s settings: %w", kind, err)
-		}
-		if row.SecretCiphertext != nil {
-			plain, err := a.Secrets.Open(core.IntegrationSecretName(kind), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext)
-			if err != nil {
-				a.Log.Warn("the stored "+kind+" password or token can't be opened; it is not used", "err", err)
-			} else {
-				s.Secret = string(plain)
-			}
-		}
-		a.Cfg.ApplyStored(kind, s)
-		if row.Revision > a.SettingsRevision {
-			a.SettingsRevision = row.Revision
-		}
-	}
-	return nil
+	a.SettingsRevision, err = core.ApplyStored(&a.Cfg, stored, a.Secrets, a.Log)
+	return err
 }
 
 func (a *App) Close() {
@@ -317,7 +303,9 @@ func (a *App) Authenticator(ctx context.Context) (auth.Authenticator, error) {
 	if a.Cfg.Auth.OIDCIssuer == "" {
 		a.Log.Info("no identity provider set: the local administrator and API tokens sign in (ADR-0030)")
 	}
-	o, err := auth.NewOIDC(ctx, a.Store, a.Cfg.Auth.OIDCIssuer, a.Cfg.Auth.OIDCDiscoveryURL, a.Cfg.Auth.OIDCClientID, a.Cfg.Auth.GroupsClaim)
+	// The token check follows the provider saved in Administration; one set
+	// at install holds /readyz until it answers.
+	o, err := auth.NewLiveOIDC(ctx, a.Store, slices.Contains(config.Locked("oidc"), "issuer"), a.Live.Provider)
 	if err != nil {
 		// Requests answer 503 and /readyz fails until the provider answers.
 		a.Log.Warn("identity provider not reachable yet; not ready until it is", "err", err)
@@ -331,7 +319,7 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		VCenter:    func(ctx context.Context, name string) (core.ConsoleSource, error) { return a.VCenters().Get(ctx, name) },
 		VSphere:    func(ctx context.Context, name string) (vsphere.Driver, error) { return a.VCenters().Get(ctx, name) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
-		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision,
+		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision, Live: a.Live,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }

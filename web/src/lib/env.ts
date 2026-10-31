@@ -21,14 +21,14 @@ export const env = {
     const m = pick(runtime.authMode, e.VITE_AUTH_MODE);
     return m === "dev" ? "none" : (m ?? "oidc");
   })(),
-  oidcAuthority: pick(runtime.oidcAuthority, e.VITE_OIDC_AUTHORITY) ?? "",
-  oidcClientId: pick(runtime.oidcClientId, e.VITE_OIDC_CLIENT_ID) ?? "rvav",
   /**
-   * No `offline_access` by default: tokens stay in memory and renew with the
-   * normal refresh token. Add it for providers that only issue refresh tokens
-   * with it (Entra ID).
+   * The identity provider comes from the API (`GET /auth/options`, set in
+   * Administration, ADR-0030). These, from RVAV_WEB_OIDC_* or the build,
+   * win over it in the browser; empty: the API's.
    */
-  oidcScope: pick(runtime.oidcScope, e.VITE_OIDC_SCOPE) ?? "openid profile email",
+  oidcAuthority: pick(runtime.oidcAuthority, e.VITE_OIDC_AUTHORITY) ?? "",
+  oidcClientId: pick(runtime.oidcClientId, e.VITE_OIDC_CLIENT_ID) ?? "",
+  oidcScope: pick(runtime.oidcScope, e.VITE_OIDC_SCOPE) ?? "",
   mockTickMs: Number(e.VITE_MOCK_TICK_MS ?? 900),
   mockLatencyMs: Number(e.VITE_MOCK_LATENCY_MS ?? 180),
 } as const;

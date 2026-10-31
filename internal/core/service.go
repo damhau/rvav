@@ -66,6 +66,9 @@ type Service struct {
 	// settings applied; SettingsRevision is theirs (ADR-0020).
 	Config           config.Config
 	SettingsRevision int64
+	// Live reads the settings saved now: those applied on next use follow
+	// it (ADR-0030). Without it, Config is used.
+	Live *LiveSettings
 	// Dispatcher delivers events to subscriptions: their test runs here
 	// (ADR-0021).
 	Dispatcher *dispatch.Dispatcher

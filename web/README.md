@@ -33,10 +33,10 @@ refreshes the committed ones in `e2e/__screenshots__`.
 
 ## Configuration
 
-Copy `.env.example` to `.env.local`. `VITE_API_MODE` picks `mock` or `real`. Real mode signs in with
-`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID` and `VITE_OIDC_SCOPE` (default `openid profile email`; add
-`offline_access` for providers that need it for refresh tokens, such as Entra ID), unless `VITE_AUTH_MODE=none` (or `dev`), which sends
-no token and is meant for a local API started with `RVAV_AUTH_MODE=dev`. In mock mode, `VITE_MOCK_TICK_MS` sets how fast
+Copy `.env.example` to `.env.local`. `VITE_API_MODE` picks `mock` or `real`. Real mode signs in with the identity
+provider the API says (`GET /api/v1/auth/options`: set in Administration, or `RVAV_OIDC_*`), or as the local administrator;
+`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID` and `VITE_OIDC_SCOPE` win over the API's when set. `VITE_AUTH_MODE=none`
+(or `dev`) sends no token and is meant for a local API started with `RVAV_AUTH_MODE=dev`. In mock mode, `VITE_MOCK_TICK_MS` sets how fast
 provisioning steps advance.
 
 ## Docker image
@@ -45,8 +45,9 @@ provisioning steps advance.
 with buffering off for `/api/v1/events`, so the browser uses a single origin
 and needs no CORS. It looks the API up at request time with the nameservers from `/etc/resolv.conf`, so a recreated API
 container is found again. nginx ignores DNS search domains: on Kubernetes, set `RVAV_API_UPSTREAM` to
-the service's full name (`http://rvav-api.<namespace>.svc.cluster.local:8080`). Sign-in is fixed at build time with the `VITE_AUTH_MODE`,
-`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID` and `VITE_OIDC_SCOPE` build arguments. Docker
+the service's full name (`http://rvav-api.<namespace>.svc.cluster.local:8080`). The sign-in mode is fixed at build time (`VITE_AUTH_MODE`); the identity
+provider is the API's, and nginx asks the API for its origins when it serves the page, for the Content-Security-Policy
+(`nginx/check.sh` checks it in a real nginx). `RVAV_WEB_OIDC_*` override the API's in the browser. Docker
 Compose builds it as the `web` service (see `deploy/README.md`).
 
 ## Layout

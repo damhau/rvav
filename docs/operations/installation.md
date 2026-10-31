@@ -50,8 +50,6 @@ applies the database migrations as it starts, one at a time.
      # ...
    secret:
      existingSecret: rvav-env
-   web:
-     oidcAuthority: https://sso.corp.example/realms/rvav
    ingress:
      host: rvav.corp.example
      className: nginx
