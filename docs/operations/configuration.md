@@ -139,7 +139,7 @@ still sign in and correct a wrong one.
 | `RVAV_FAKE_AWX` | off | | install | Simulates AWX jobs. For development only. |
 | `RVAV_FAKE_AWX_TASK_DELAY` | `1.5s` | | install | How long each simulated task takes. |
 | `RVAV_FAKE_AWX_FAIL_TASK` | none | | install | A simulated task that fails, to try failures. |
-| `RVAV_INVENTORY_TOKEN` | none | yes | install | `rvav awx-bootstrap`: the rvav API token AWX's inventory source uses. |
+| `RVAV_INVENTORY_TOKEN` | none | yes | Integrations › AWX | The rvav API token AWX's inventory source reads rvav with, which `rvav awx-bootstrap` puts in AWX. Unset, AWX's tab makes one (Inventory token) and puts it in AWX; set, it makes none. |
 
 ## NSX
 

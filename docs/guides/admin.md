@@ -82,6 +82,13 @@ setting is set):
 - **Allowed hosts:** the hosts REST value sources and webhooks may call.
   None listed, none is called.
 - **Sync intervals:** in each connection's tab, how often rvav reads it.
+- **AWX › Inventory token:** the token AWX's inventory source reads rvav's
+  VMs with. rvav makes it for a user of its own (an auditor no one signs
+  in as), valid a year, and puts it in the source's "rvav API" credential
+  with rvav's address as AWX reaches it (empty keeps the one AWX has); the
+  one before is revoked and the source synced. Make a new one before it
+  expires. Set the inventory source ID first; `RVAV_INVENTORY_TOKEN` locks
+  it.
 
 ## The identity provider
 

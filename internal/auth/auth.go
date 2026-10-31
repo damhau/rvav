@@ -480,6 +480,9 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 		name = str("preferred_username")
 	}
 	groups := groupsIn(claims, ps.GroupsClaim)
+	if ReservedSubject(idt.Subject) {
+		return nil, fmt.Errorf("%w: the subject %q is one of rvav's own users'", ErrUnauthenticated, idt.Subject)
+	}
 	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("email"), str("title"))
 	if err != nil {
 		return nil, err
@@ -494,6 +497,19 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	}
 	o.remember(key, seenToken{userID: u.ID, groups: groups, until: until})
 	return build(ctx, o.Store, u, groups)
+}
+
+// ReservedSubject says whether a subject is one of rvav's own users': the
+// local administrator (local:), seeded users waiting for their first
+// sign-in (seed:), and users rvav acts as itself (system:). A provider's
+// token is never taken as one of them, whatever its subject.
+func ReservedSubject(subject string) bool {
+	for _, prefix := range []string{"local:", "seed:", "system:"} {
+		if strings.HasPrefix(subject, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Dev trusts a fixed user, or the one named in the X-Rvav-Dev-User header.

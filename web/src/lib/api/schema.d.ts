@@ -2149,6 +2149,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/integrations/awx/inventory-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The token AWX's inventory source reads rvav with
+         * @description rvav's inventory in AWX is filled by an inventory source (the AWX
+         *     integration's inventory_source_id) that reads GET /ansible/inventory
+         *     with an rvav API token, kept in an AWX credential of the rvav API
+         *     type. This says which token rvav made for it, if any. Locked when
+         *     RVAV_INVENTORY_TOKEN sets the token (rvav awx-bootstrap puts that one
+         *     in AWX).
+         */
+        get: operations["getInventoryToken"];
+        put?: never;
+        /**
+         * Make a token for AWX's inventory source and put it in AWX
+         * @description Makes an API token that only reads the inventory, for rvav's AWX
+         *     inventory user (an auditor that can't sign in), valid a year. It goes
+         *     in the source's rvav API credential, or one of that name made in its
+         *     organisation and set on the source, with rvav's address as AWX
+         *     reaches it: the url given, or else the one the credential has, or
+         *     else rvav's public URL. Then the earlier tokens are revoked and the
+         *     source is synced. Audited.
+         */
+        post: operations["makeInventoryToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/integrations/oidc/trial": {
         parameters: {
             query?: never;
@@ -5501,6 +5536,40 @@ export interface components {
             name: string;
             ok: boolean;
             message: string;
+        };
+        InventoryToken: {
+            /** @description RVAV_INVENTORY_TOKEN sets the token; rvav makes none. */
+            locked: boolean;
+            /** @description AWX's inventory source ID is set, so a token can be put in AWX. */
+            source_set: boolean;
+            /** @description rvav's public URL, the address used when the credential has none and none is given. */
+            public_url?: string;
+            /** @description The token made last, while it is valid. */
+            token?: components["schemas"]["ApiToken"];
+        };
+        InventoryTokenWrite: {
+            /**
+             * Format: uri
+             * @description rvav's address as AWX reaches it; empty keeps the one the credential has.
+             * @example http://rvav-api.rvav.svc.cluster.local:8080
+             */
+            url?: string;
+        };
+        InventoryTokenMade: {
+            token: components["schemas"]["ApiToken"];
+            /**
+             * @description The AWX credential it is in.
+             * @example rvav API
+             */
+            credential: string;
+            /** @description The address AWX reads rvav at. */
+            url: string;
+            /** @description The credential was set on the inventory source now. */
+            attached: boolean;
+            /** @description Earlier tokens revoked. */
+            revoked?: number;
+            /** @description The inventory source's sync started, or why it couldn't be. */
+            update?: string;
         };
         ApiToken: {
             id: string;
@@ -9660,6 +9729,57 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getInventoryToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token, if one was made */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryToken"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    makeInventoryToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InventoryTokenWrite"];
+            };
+        };
+        responses: {
+            /** @description Made and in AWX */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTokenMade"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     trialIdentityProvider: {

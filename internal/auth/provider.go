@@ -116,6 +116,9 @@ func TrialToken(ctx context.Context, ps ProviderSettings, token string) Trial {
 		t.Name = str("preferred_username")
 	}
 	t.Groups = groupsIn(t.Claims, ps.GroupsClaim)
+	if t.Refused == nil && ReservedSubject(t.Subject) {
+		t.Refused = fmt.Errorf("the subject %q is one of rvav's own users', which a provider's token is never taken as", t.Subject)
+	}
 	return t
 }
 

@@ -3,6 +3,7 @@ package awx
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -270,22 +271,9 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, rvav Rvav, l
 // once to show whether AWX reaches rvav.
 func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, project int, rvav Rvav, log *slog.Logger) (int, error) {
 	ri := content.RvavInventory
-	ct, err := c.find(ctx, "/credential_types/", ri.CredentialType, 0)
+	ct, err := c.rvavCredentialType(ctx, ri.CredentialType)
 	if err != nil {
-		return 0, fmt.Errorf("credential type: %w", err)
-	}
-	if ct == 0 { // created once: AWX refuses changes to a credential type in use
-		var created named
-		if err := c.do(ctx, http.MethodPost, "/credential_types/", nil, map[string]any{"name": ri.CredentialType, "kind": "cloud",
-			"description": "rvav's URL and an API token, for the rvav.platform inventory plugin",
-			"inputs": map[string]any{"fields": []map[string]any{
-				{"id": "url", "label": "rvav URL", "type": "string"},
-				{"id": "token", "label": "API token", "type": "string", "secret": true}},
-				"required": []string{"url", "token"}},
-			"injectors": map[string]any{"env": map[string]string{"RVAV_URL": "{{ url }}", "RVAV_TOKEN": "{{ token }}"}}}, &created); err != nil {
-			return 0, fmt.Errorf("credential type: %w", err)
-		}
-		ct = created.ID
+		return 0, err
 	}
 	inventory, err := c.ensure(ctx, "/inventories/", ri.Name, org, map[string]any{
 		"description": "rvav's VMs, from rvav (rvav.platform.rvav)"})
@@ -318,6 +306,122 @@ func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, pr
 	}
 	log.Info("set RVAV_AWX_INVENTORY_SOURCE_ID for rvav's worker", "RVAV_AWX_INVENTORY_SOURCE_ID", source)
 	return source, nil
+}
+
+// rvavCredentialType finds the credential type that gives the inventory
+// plugin RVAV_URL and RVAV_TOKEN, or makes it.
+func (c *HTTPClient) rvavCredentialType(ctx context.Context, name string) (int, error) {
+	ct, err := c.find(ctx, "/credential_types/", name, 0)
+	if err != nil {
+		return 0, fmt.Errorf("credential type: %w", err)
+	}
+	if ct != 0 { // created once: AWX refuses changes to a credential type in use
+		return ct, nil
+	}
+	var created named
+	if err := c.do(ctx, http.MethodPost, "/credential_types/", nil, map[string]any{"name": name, "kind": "cloud",
+		"description": "rvav's URL and an API token, for the rvav.platform inventory plugin",
+		"inputs": map[string]any{"fields": []map[string]any{
+			{"id": "url", "label": "rvav URL", "type": "string"},
+			{"id": "token", "label": "API token", "type": "string", "secret": true}},
+			"required": []string{"url", "token"}},
+		"injectors": map[string]any{"env": map[string]string{"RVAV_URL": "{{ url }}", "RVAV_TOKEN": "{{ token }}"}}}, &created); err != nil {
+		return 0, fmt.Errorf("credential type: %w", err)
+	}
+	return created.ID, nil
+}
+
+// RvavCredentialType and RvavCredential name what rvav's inventory source
+// reads rvav with, as deploy/awx/content.yml and awx-bootstrap name them.
+const (
+	RvavCredentialType = "rvav API"
+	RvavCredential     = "rvav API"
+)
+
+// SetRvavCredential puts rvav's URL and an API token in the credential an
+// inventory source reads rvav with (ADR-0030): the source's own when it is
+// of the rvav API type, or else one of that name in the inventory's
+// organisation, made when missing and set on the source. The URL is
+// rvavURL, or else the one the credential has, or else defaultURL.
+func (c *HTTPClient) SetRvavCredential(ctx context.Context, sourceID int, rvavURL, defaultURL, token string) (RvavCredentialSet, error) {
+	var src struct {
+		Inventory  int  `json:"inventory"`
+		Credential *int `json:"credential"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/inventory_sources/%d/", sourceID), nil, nil, &src); err != nil {
+		return RvavCredentialSet{}, fmt.Errorf("inventory source %d: %w", sourceID, err)
+	}
+	ct, err := c.rvavCredentialType(ctx, RvavCredentialType)
+	if err != nil {
+		return RvavCredentialSet{}, err
+	}
+	type credential struct {
+		Name           string            `json:"name"`
+		CredentialType int               `json:"credential_type"`
+		Inputs         map[string]string `json:"inputs"`
+	}
+	get := func(id int) (credential, error) {
+		var cred credential
+		err := c.do(ctx, http.MethodGet, fmt.Sprintf("/credentials/%d/", id), nil, nil, &cred)
+		return cred, err
+	}
+	out := RvavCredentialSet{URL: rvavURL}
+	if src.Credential != nil {
+		cred, err := get(*src.Credential)
+		if err != nil {
+			return RvavCredentialSet{}, fmt.Errorf("the source's credential: %w", err)
+		}
+		if cred.CredentialType == ct {
+			out.ID, out.Name = *src.Credential, cred.Name
+			if out.URL == "" {
+				out.URL = cred.Inputs["url"]
+			}
+		}
+	}
+	org := 0
+	if out.ID == 0 {
+		var inv struct {
+			Organization int `json:"organization"`
+		}
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/inventories/%d/", src.Inventory), nil, nil, &inv); err != nil {
+			return RvavCredentialSet{}, fmt.Errorf("the source's inventory: %w", err)
+		}
+		org = inv.Organization
+		id, err := c.find(ctx, "/credentials/", RvavCredential, org)
+		if err != nil {
+			return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", RvavCredential, err)
+		}
+		if id != 0 && out.URL == "" {
+			if cred, err := get(id); err == nil && cred.CredentialType == ct {
+				out.URL = cred.Inputs["url"]
+			}
+		}
+	}
+	if out.URL == "" {
+		out.URL = defaultURL
+	}
+	if out.URL == "" {
+		return RvavCredentialSet{}, errors.New("no rvav URL: give the address AWX reaches rvav at")
+	}
+	inputs := map[string]any{"inputs": map[string]string{"url": out.URL, "token": token}}
+	if out.ID != 0 {
+		if err := c.do(ctx, http.MethodPatch, fmt.Sprintf("/credentials/%d/", out.ID), nil, inputs, nil); err != nil {
+			return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", out.Name, err)
+		}
+		return out, nil
+	}
+	inputs["credential_type"] = ct
+	inputs["description"] = "rvav's API for the rvav inventory"
+	id, err := c.ensure(ctx, "/credentials/", RvavCredential, org, inputs)
+	if err != nil {
+		return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", RvavCredential, err)
+	}
+	if err := c.do(ctx, http.MethodPatch, fmt.Sprintf("/inventory_sources/%d/", sourceID), nil,
+		map[string]any{"credential": id}, nil); err != nil {
+		return RvavCredentialSet{}, fmt.Errorf("inventory source %d: %w", sourceID, err)
+	}
+	out.ID, out.Name, out.Attached = id, RvavCredential, true
+	return out, nil
 }
 
 func (c *HTTPClient) syncProject(ctx context.Context, project int) error {

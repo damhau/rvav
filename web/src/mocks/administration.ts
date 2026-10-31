@@ -42,6 +42,9 @@ interface AdminState {
   revision: number;
   /** The last connection saved: processes drain, then start again with it. */
   applying?: { revision: number; at: number };
+  /** The token AWX's inventory source reads rvav with, and the address it
+   * reads rvav at (U1.4). */
+  inventory: { token?: S["ApiToken"]; url?: string };
   seq: number;
 }
 
@@ -257,6 +260,7 @@ function state(db: Db): AdminState {
       },
     ], // prettier-ignore
     vcenters: [],
+    inventory: {},
     revision: 1,
     processes: [
       { role: "api", host: "rvav-api-7d9f-2k4xq", revision: 1, started_at: ago(3), takes: 600, pid: 1 },
@@ -1326,6 +1330,58 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         checks.push({ name: "Tagging service", ok: true, message: "Tags can be read, for placement by tag." });
       }
       return HttpResponse.json({ ok: checks.every((c) => c.ok), checks });
+    }),
+    // The token AWX's inventory source reads rvav with (U1.4): made for
+    // rvav's inventory user and put in AWX, the earlier one revoked.
+    http.get(`${base}/admin/integrations/awx/inventory-token`, async () => {
+      await wait();
+      const a = st();
+      return HttpResponse.json({
+        locked: false,
+        source_set: Number(a.integrations.awx!.settings.inventory_source_id) > 0,
+        public_url: "https://rvav.corp.example",
+        ...(a.inventory.token ? { token: a.inventory.token } : {}),
+      } satisfies S["InventoryToken"]);
+    }),
+    http.post(`${base}/admin/integrations/awx/inventory-token`, async ({ request }) => {
+      await wait();
+      const a = st();
+      const raw = await request.text();
+      const w = (raw ? JSON.parse(raw) : {}) as S["InventoryTokenWrite"];
+      const given = w.url?.trim() ?? "";
+      if (given && !/^https?:\/\/[^/\s]+/.test(given))
+        return invalid([err("/url", "rvav's address as AWX reaches it, such as https://rvav.corp.example.")]);
+      if (!(Number(a.integrations.awx!.settings.inventory_source_id) > 0))
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          "Set AWX's inventory source ID first: the source that reads rvav's inventory.",
+        );
+      const attached = !a.inventory.url;
+      a.inventory.url = given || a.inventory.url || "https://rvav.corp.example";
+      const revoked = a.inventory.token ? 1 : 0;
+      const id = `tok_inv${++a.seq}`;
+      a.inventory.token = {
+        id,
+        name: "AWX inventory",
+        scope: "inventory",
+        user: { id: "usr_rvav-inventory", name: "AWX inventory (rvav)" },
+        created_at: now(),
+        expires_at: new Date(Date.now() + 365 * 86_400_000).toISOString(),
+      };
+      audited(db, "awx.inventory_token", "api_token", id, { url: a.inventory.url, revoked });
+      return HttpResponse.json(
+        {
+          token: a.inventory.token,
+          credential: "rvav API",
+          url: a.inventory.url,
+          attached,
+          revoked,
+          update: `AWX is syncing the inventory source with it (update ${a.seq}).`,
+        } satisfies S["InventoryTokenMade"],
+        { status: 201 },
+      );
     }),
     // A trial sign-in's token (ADR-0030): the mock's trial window sends
     // "mock-trial-token", for a user in rvav-web and rvav-catalog-admins.

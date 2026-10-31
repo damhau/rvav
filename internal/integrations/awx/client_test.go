@@ -139,3 +139,99 @@ func TestGetJobNotFound(t *testing.T) {
 		t.Fatalf("500 = %v", err)
 	}
 }
+
+// TestSetRvavCredential: the token goes in the source's rvav API credential,
+// keeping the address AWX has; a source without one gets the organisation's,
+// made with the address given, or else the default.
+func TestSetRvavCredential(t *testing.T) {
+	type call struct {
+		method, path string
+		body         map[string]any
+	}
+	run := func(t *testing.T, sourceCred string, haveNamed bool, rvavURL string) (RvavCredentialSet, []call, error) {
+		var calls []call
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			path := strings.TrimPrefix(r.URL.Path, "/api/v2")
+			calls = append(calls, call{r.Method, path, body})
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == "GET" && path == "/inventory_sources/3/":
+				_, _ = fmt.Fprintf(w, `{"id": 3, "inventory": 12, "credential": %s}`, sourceCred)
+			case r.Method == "GET" && path == "/credential_types/":
+				_, _ = w.Write([]byte(`{"results": [{"id": 30, "name": "rvav API"}]}`))
+			case r.Method == "GET" && path == "/credentials/40/":
+				_, _ = w.Write([]byte(`{"id": 40, "name": "rvav (lab)", "credential_type": 30,
+					"inputs": {"url": "http://rvav-api:8080", "token": "$encrypted$"}}`))
+			case r.Method == "GET" && path == "/credentials/41/":
+				_, _ = w.Write([]byte(`{"id": 41, "name": "Machine", "credential_type": 1, "inputs": {}}`))
+			case r.Method == "GET" && path == "/inventories/12/":
+				_, _ = w.Write([]byte(`{"id": 12, "organization": 5}`))
+			case r.Method == "GET" && path == "/credentials/":
+				if haveNamed && r.URL.Query().Get("organization") == "5" {
+					_, _ = w.Write([]byte(`{"results": [{"id": 40, "name": "rvav API"}]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"results": []}`))
+			case r.Method == "POST" && path == "/credentials/":
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"id": 42, "name": "rvav API"}`))
+			case r.Method == "PATCH":
+				_, _ = w.Write([]byte(`{}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer srv.Close()
+		c, err := NewHTTPClient(srv.URL, "token", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		set, err := c.SetRvavCredential(context.Background(), 3, rvavURL, "https://rvav.corp.example", "rvav_pat_new")
+		return set, calls, err
+	}
+	writes := func(calls []call) []call {
+		var out []call
+		for _, c := range calls {
+			if c.method != "GET" {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+	inputs := func(c call) map[string]any { m, _ := c.body["inputs"].(map[string]any); return m }
+
+	t.Run("the source's own, keeping its address", func(t *testing.T) {
+		set, calls, err := run(t, "40", false, "")
+		w := writes(calls)
+		if err != nil || set.ID != 40 || set.Attached || set.URL != "http://rvav-api:8080" || len(w) != 1 ||
+			w[0].path != "/credentials/40/" || inputs(w[0])["token"] != "rvav_pat_new" || inputs(w[0])["url"] != "http://rvav-api:8080" {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+	t.Run("the source's own, at the address given", func(t *testing.T) {
+		set, calls, err := run(t, "40", false, "https://rvav.lab.example")
+		w := writes(calls)
+		if err != nil || set.URL != "https://rvav.lab.example" || inputs(w[0])["url"] != "https://rvav.lab.example" {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+	t.Run("another kind on the source: the organisation's, set on it", func(t *testing.T) {
+		set, calls, err := run(t, "41", true, "")
+		w := writes(calls)
+		if err != nil || set.ID != 40 || !set.Attached || set.URL != "http://rvav-api:8080" || len(w) != 2 ||
+			w[0].path != "/credentials/40/" || w[1].path != "/inventory_sources/3/" || w[1].body["credential"] != float64(40) {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+	t.Run("none: made with the default address", func(t *testing.T) {
+		set, calls, err := run(t, "null", false, "")
+		w := writes(calls)
+		if err != nil || set.ID != 42 || !set.Attached || set.URL != "https://rvav.corp.example" || len(w) != 2 ||
+			w[0].method != "POST" || w[0].body["credential_type"] != float64(30) || w[0].body["organization"] != float64(5) ||
+			inputs(w[0])["url"] != "https://rvav.corp.example" || w[1].body["credential"] != float64(42) {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+}

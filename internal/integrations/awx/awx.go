@@ -139,6 +139,19 @@ type Client interface {
 	// kind is set.
 	Credentials(ctx context.Context, organization, kind string) ([]Credential, error)
 	GetInventoryUpdate(ctx context.Context, id int) (Job, error)
+	// SetRvavCredential puts rvav's URL and an API token in the credential
+	// the inventory source reads rvav with: the URL given, or else the one
+	// the credential has, or else defaultURL.
+	SetRvavCredential(ctx context.Context, sourceID int, rvavURL, defaultURL, token string) (RvavCredentialSet, error)
+}
+
+// RvavCredentialSet is the credential SetRvavCredential filled, with the
+// URL it gave: Attached when it was set on the source then.
+type RvavCredentialSet struct {
+	ID       int
+	Name     string
+	URL      string
+	Attached bool
 }
 
 // Done reports whether a job status is final.

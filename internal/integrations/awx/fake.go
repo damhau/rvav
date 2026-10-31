@@ -2,6 +2,7 @@ package awx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -32,6 +33,7 @@ type Fake struct {
 	nextJob int
 	jobs    map[int]*fakeJob
 	now     func() time.Time
+	rvav    map[int][2]string // inventory source -> rvav's URL and token
 }
 
 type fakeJob struct {
@@ -269,6 +271,35 @@ func (f *Fake) GetInventoryUpdate(ctx context.Context, id int) (Job, error) {
 	j, err := f.GetJob(ctx, id, false)
 	j.URL = fmt.Sprintf("https://awx.corp.example/#/inventories/inventory/1/sources/1/jobs/%d", id)
 	return j, err
+}
+
+// SetRvavCredential records rvav's URL and token for the source.
+func (f *Fake) SetRvavCredential(_ context.Context, sourceID int, rvavURL, defaultURL, token string) (RvavCredentialSet, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rvav == nil {
+		f.rvav = map[int][2]string{}
+	}
+	had, ok := f.rvav[sourceID]
+	if rvavURL == "" {
+		rvavURL = had[0]
+	}
+	if rvavURL == "" {
+		rvavURL = defaultURL
+	}
+	if rvavURL == "" {
+		return RvavCredentialSet{}, errors.New("no rvav URL: give the address AWX reaches rvav at")
+	}
+	f.rvav[sourceID] = [2]string{rvavURL, token}
+	return RvavCredentialSet{ID: 7, Name: RvavCredential, URL: rvavURL, Attached: !ok}, nil
+}
+
+// RvavCredentialOf is the URL and token SetRvavCredential last gave the
+// source.
+func (f *Fake) RvavCredentialOf(sourceID int) (rvavURL, token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rvav[sourceID][0], f.rvav[sourceID][1]
 }
 
 func playTitle(template string) string {

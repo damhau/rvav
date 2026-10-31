@@ -138,3 +138,11 @@ func SearchText(q string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return "%" + r.Replace(q) + "%"
 }
+
+// EnsureSystemUser makes a user rvav acts as itself, for a token it makes
+// (ADR-0030): no one signs in as it, and its roles are its own.
+func (s *Store) EnsureSystemUser(ctx context.Context, id, subject, name string, roles []string) error {
+	_, err := s.Pool.Exec(ctx, `insert into users (id, subject, name, global_roles) values ($1, $2, $3, $4)
+		on conflict (id) do nothing`, id, subject, name, roles)
+	return err
+}

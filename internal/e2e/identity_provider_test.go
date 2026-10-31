@@ -137,6 +137,10 @@ func TestIdentityProvider(t *testing.T) {
 		if tr.Accepted || !strings.Contains(deref(tr.Message), "Microsoft Graph") {
 			t.Fatalf("trial of a Graph token: %+v", tr)
 		}
+		tr = trial(given, idp.token("local:admin", "Admin", "", []string{"u1-ops"}, tokenOpts{}))
+		if tr.Accepted || !strings.Contains(deref(tr.Message), "one of rvav's own users'") || len(tr.GlobalRoles) != 0 {
+			t.Fatalf("trial of a token with the local administrator's subject: %+v", tr)
+		}
 		tr = trial(given, "opaque-token")
 		if tr.Accepted || !strings.Contains(deref(tr.Message), "not a JWT") {
 			t.Fatalf("trial of an opaque token: %+v", tr)
@@ -204,7 +208,7 @@ func TestIdentityProvider(t *testing.T) {
 			t.Fatalf("a token of the provider the environment sets = %d", code)
 		}
 
-		for action, want := range map[string]int{"settings.integration.oidc": 4, "settings.test.oidc": 3, "settings.trial.oidc": 5} {
+		for action, want := range map[string]int{"settings.integration.oidc": 4, "settings.test.oidc": 3, "settings.trial.oidc": 6} {
 			if n := h.auditCount(action); n != want {
 				t.Errorf("audit %s: %d, want %d", action, n, want)
 			}

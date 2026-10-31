@@ -2826,6 +2826,54 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/integrations/awx/inventory-token:
+    get:
+      tags: [admin]
+      operationId: getInventoryToken
+      summary: The token AWX's inventory source reads rvav with
+      description: |
+        rvav's inventory in AWX is filled by an inventory source (the AWX
+        integration's inventory_source_id) that reads GET /ansible/inventory
+        with an rvav API token, kept in an AWX credential of the rvav API
+        type. This says which token rvav made for it, if any. Locked when
+        RVAV_INVENTORY_TOKEN sets the token (rvav awx-bootstrap puts that one
+        in AWX).
+      responses:
+        "200":
+          description: The token, if one was made
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: makeInventoryToken
+      summary: Make a token for AWX's inventory source and put it in AWX
+      description: |
+        Makes an API token that only reads the inventory, for rvav's AWX
+        inventory user (an auditor that can't sign in), valid a year. It goes
+        in the source's rvav API credential, or one of that name made in its
+        organisation and set on the source, with rvav's address as AWX
+        reaches it: the url given, or else the one the credential has, or
+        else rvav's public URL. Then the earlier tokens are revoked and the
+        source is synced. Audited.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InventoryTokenWrite" }
+      responses:
+        "201":
+          description: Made and in AWX
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryTokenMade" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
   /admin/integrations/oidc/trial:
     post:
       tags: [admin]
@@ -7292,6 +7340,42 @@ components:
         name: { type: string, examples: [Sign in] }
         ok: { type: boolean }
         message: { type: string }
+    InventoryToken:
+      type: object
+      required: [locked, source_set]
+      properties:
+        locked:
+          type: boolean
+          description: RVAV_INVENTORY_TOKEN sets the token; rvav makes none.
+        source_set:
+          type: boolean
+          description: AWX's inventory source ID is set, so a token can be put in AWX.
+        public_url:
+          type: string
+          description: rvav's public URL, the address used when the credential has none and none is given.
+        token:
+          description: The token made last, while it is valid.
+          $ref: "#/components/schemas/ApiToken"
+    InventoryTokenWrite:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: rvav's address as AWX reaches it; empty keeps the one the credential has.
+          examples: ["http://rvav-api.rvav.svc.cluster.local:8080"]
+    InventoryTokenMade:
+      type: object
+      required: [token, credential, url, attached]
+      properties:
+        token: { $ref: "#/components/schemas/ApiToken" }
+        credential: { type: string, description: The AWX credential it is in., examples: [rvav API] }
+        url: { type: string, description: The address AWX reads rvav at. }
+        attached: { type: boolean, description: The credential was set on the inventory source now. }
+        revoked: { type: integer, description: Earlier tokens revoked. }
+        update:
+          type: string
+          description: The inventory source's sync started, or why it couldn't be.
     ApiToken:
       type: object
       required: [id, name, scope, user, created_at]

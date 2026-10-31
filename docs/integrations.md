@@ -200,7 +200,12 @@ deployment context.
 
 - rvav exposes `GET /api/v1/ansible/inventory`, authenticated with an API
   token of a user with the auditor role, made with the inventory scope so
-  it reads nothing else (`rvav api-token -user usr_svc-awx -scope inventory`).
+  it reads nothing else. **Administration › Integrations › AWX › Inventory
+  token** makes one, for rvav's own inventory user (an auditor no one signs
+  in as), and puts it in the source's "rvav API" credential with rvav's
+  address as AWX reaches it; making another revokes it. By hand:
+  `rvav api-token -user usr_svc-awx -scope inventory`, then
+  `rvav awx-bootstrap -rvav-token`.
 - The output contains hosts (managed VMs with `ansible_host` = IP), groups built
   from project, environment, catalog item, the item's tags and OS family, and
   hostvars (`rvav_deployment_id`, `rvav_project`, `rvav_owner`, and in

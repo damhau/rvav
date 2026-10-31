@@ -146,6 +146,20 @@ func (s *Server) TestIntegration(w http.ResponseWriter, r *http.Request, kind ap
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+func (s *Server) GetInventoryToken(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.InventoryToken(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) MakeInventoryToken(w http.ResponseWriter, r *http.Request) {
+	var b api.InventoryTokenWrite
+	if r.ContentLength != 0 && !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.MakeInventoryToken(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
 func (s *Server) DeleteLeasePolicy(w http.ResponseWriter, r *http.Request, params api.DeleteLeasePolicyParams) {
 	s.replyEmpty(w, r, s.Core.DeleteLeaseOverride(r.Context(), principal(r), params.Environment, params.ProjectId))
 }

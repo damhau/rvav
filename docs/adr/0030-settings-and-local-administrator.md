@@ -36,7 +36,9 @@ come from group mappings that are made in the UI.
   - the hosts value sources and webhooks may call;
   - the sync intervals;
   - the console;
-  - the inventory token;
+  - the inventory token: rvav makes it for a user of its own
+    (`system:inventory`, an auditor no one signs in as) and puts it in
+    AWX's credential;
   - trusted certificates.
 
   Each is stored as ADR-0020 stores integration settings, its secret

@@ -29,7 +29,10 @@ The templates that run on VMs (`ask_inventory` in `content.yml`) prompt for
 an inventory, and rvav launches them on its own: the inventory "rvav",
 filled from rvav's API by the `rvav.platform` collection
 ([ADR-0017](../../docs/adr/0017-awx-inventory.md)). Its source needs rvav's
-URL as the AWX reaches it, and an API token:
+URL as the AWX reaches it, and an API token. Once `rvav awx-bootstrap` has
+made the source, **Administration › Integrations › AWX › Inventory token**
+makes a token and puts it, with that URL, in the source's credential;
+without the UI, make one by hand and give it to the bootstrap:
 
 ```sh
 token=$(rvav api-token -user usr_svc-awx -name awx-inventory -scope inventory)

@@ -21,6 +21,7 @@ import { adm } from "@/lib/query";
 import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
 import { IdentityProvider } from "./IdentityProvider";
+import { InventoryToken } from "./InventoryToken";
 import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
@@ -616,6 +617,7 @@ export function IntegrationSettings() {
             <Integration key={console.updated_at ?? "unsaved"} it={{ ...console, kind: "console" }} />
           )}
           {it.kind === "vcenter" && <VCenters />}
+          {it.kind === "awx" && <InventoryToken />}
         </TabsContent>
       ))}
     </Tabs>

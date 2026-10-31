@@ -218,6 +218,10 @@ func TestOIDCTokens(t *testing.T) {
 			"another issuer": idp.token("kc-lea", "Léa Martin", "", nil, tokenOpts{issuer: "https://evil.example"}),
 			"not a token":    "abc.def.ghi",
 			"bad API token":  auth.TokenPrefix + "nope",
+			// rvav's own users' subjects: never a provider's token's user.
+			"the local administrator": idp.token("local:admin", "Admin", "", []string{"/rvav-admins"}, tokenOpts{}),
+			"a seeded user":           idp.token("seed:lmartin", "Léa Martin", "", nil, tokenOpts{}),
+			"rvav's inventory user":   idp.token("system:inventory", "AWX", "", nil, tokenOpts{}),
 		} {
 			if code, _, _ := me(tok); code != http.StatusUnauthorized {
 				t.Errorf("%s: %d, want 401", name, code)
