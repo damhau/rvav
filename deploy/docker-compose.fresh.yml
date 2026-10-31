@@ -1,0 +1,69 @@
+# A new install, set up from its UI only (U1.5, ADR-0030): no seed data and
+# no integration settings in the environment, sign-in with the local
+# administrator until an identity provider is set in Administration.
+#
+#   docker compose -p rvav-fresh -f deploy/docker-compose.yml \
+#     -f deploy/docker-compose.fresh.yml up --build
+#
+# A project of its own (-p) keeps its database apart from the development
+# stack's; `down -v` with the same -p removes it. Host ports are the base
+# file's RVAV_*_PORT variables. admin's password is RVAV_ADMIN_PASSWORD, or
+# generated and logged once: docker compose -p rvav-fresh logs api.
+#
+# The development fakes run as in the base file, with their own settings:
+# in Administration, vCenter is https://vcsim:8989/sdk (user, pass, TLS
+# checks off), EfficientIP http://efficientip:8080 (rvav, rvav, DNS server
+# ns1.corp.example), NSX http://nsx:8080 (rvav-nsx, nsx), email mailpit
+# port 1025 without TLS, and Keycloak's realm the identity provider
+# (issuer http://localhost:8081/realms/rvav, discovery URL
+# http://keycloak:8080/realms/rvav, client rvav). AWX stays the in-process
+# fake (RVAV_FAKE_AWX): the stack has no AWX.
+
+# The integrations' variables, blank: an empty variable is unset, so
+# Administration sets each field (internal/config/compose_test.go checks
+# that none is left).
+x-fresh-env: &fresh-env
+  RVAV_AUTH_MODE: oidc
+  RVAV_ALLOW_DEV_AUTH: ""
+  RVAV_OIDC_ISSUER: ""
+  RVAV_OIDC_DISCOVERY_URL: ""
+  RVAV_OIDC_CLIENT_ID: ""
+  RVAV_VCENTER_URL: ""
+  RVAV_VCENTER_USERNAME: ""
+  RVAV_VCENTER_PASSWORD: ""
+  RVAV_VCENTER_INSECURE: ""
+  RVAV_EFFICIENTIP_URL: ""
+  RVAV_EFFICIENTIP_USERNAME: ""
+  RVAV_EFFICIENTIP_PASSWORD: ""
+  RVAV_EFFICIENTIP_DNS_SERVER: ""
+  RVAV_NSX_URL: ""
+  RVAV_NSX_USERNAME: ""
+  RVAV_NSX_PASSWORD: ""
+  RVAV_REST_SOURCE_HOSTS: ""
+  RVAV_WEBHOOK_HOSTS: ""
+  RVAV_VRA_URL: ""
+  RVAV_VRA_TOKEN: ""
+  RVAV_VRA_USERNAME: ""
+  RVAV_VRA_PASSWORD: ""
+  RVAV_VRA_DOMAIN: ""
+  RVAV_VRA_INSECURE: ""
+  RVAV_SMTP_HOST: ""
+  RVAV_SMTP_PORT: ""
+  RVAV_SMTP_TLS: ""
+  RVAV_SMTP_FROM: ""
+
+services:
+  # The schema only: no example organisation or catalog.
+  migrate:
+    command: ["migrate"]
+    environment: *fresh-env
+  api:
+    environment: *fresh-env
+  worker:
+    environment: *fresh-env
+  sync:
+    environment: *fresh-env
+  web:
+    build:
+      args:
+        VITE_AUTH_MODE: oidc

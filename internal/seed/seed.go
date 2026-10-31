@@ -92,6 +92,18 @@ var groups = []struct{ group, project, role string }{
 	{"rvav-core", "core", "member"},
 }
 
+// Subnets are the subnets of the networks vcsim-bootstrap makes, in
+// corp.example, as the seed maps them and the development fake of
+// EfficientIP serves them.
+func Subnets() []store.NetworkSubnet {
+	out := make([]store.NetworkSubnet, len(subnets))
+	for i, n := range subnets {
+		n.DNSZone, n.DNSServers = "corp.example", []string{"10.10.0.53", "10.10.1.53"}
+		out[i] = n
+	}
+	return out
+}
+
 var subnets = []store.NetworkSubnet{
 	{Network: "dvpg-app-dev-vl310", Subnet: "10.31.10.0/24", Gateway: "10.31.10.1"},
 	{Network: "dvpg-db-dev-vl320", Subnet: "10.32.20.0/24", Gateway: "10.32.20.1"},

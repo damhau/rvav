@@ -287,6 +287,13 @@ Without a restart by hand, in one of two ways:
   The install settings are `config.Install`, which a test keeps to
   configuration.md's install rows. A secret's value is never sent, only
   whether it is set; the database URL is sent without its password.
+- **What an install is given:** the chart's values and the VM's
+  `rvav.env.example` hold the install settings only. An integration's
+  variables are left as examples, since each would lock its field. Tests
+  keep it so. `deploy/docker-compose.fresh.yml` starts the development
+  stack as a new install: no seed, no integration variables for rvav's
+  processes, OIDC sign-in. Its fakes keep their own settings, and the fake
+  EfficientIP serves vcsim's networks on an empty database.
 
 ## Consequences
 - rvav is set up from its UI, as vRA is; only the database, keys,

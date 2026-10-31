@@ -14,35 +14,23 @@ webImage:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
-# Plain settings (a ConfigMap). RVAV_AUTH_MODE is always oidc: dev
-# authentication can't be enabled from the chart.
+# Plain settings (a ConfigMap): those set at install only
+# (configuration.md's "Set in: install"). The identity provider, vCenter,
+# AWX, EfficientIP, NSX, Git, vRA and the notification channels are set in
+# Administration › Integrations (ADR-0030). RVAV_AUTH_MODE is always oidc:
+# dev authentication can't be enabled from the chart.
 config:
   RVAV_PUBLIC_URL: https://rvav.corp.example
-  RVAV_OIDC_ISSUER: https://sso.corp.example/realms/rvav
-  RVAV_OIDC_CLIENT_ID: rvav
   RVAV_TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
   RVAV_TEMPORAL_NAMESPACE: rvav
-  RVAV_VCENTER_URL: https://vc01.corp.example/sdk
-  RVAV_VCENTER_USERNAME: svc-rvav@vsphere.local
-  RVAV_VCENTER_NAME: vc01.corp.example
-  RVAV_EFFICIENTIP_URL: https://ipam.corp.example
-  RVAV_EFFICIENTIP_USERNAME: rvav
-  RVAV_EFFICIENTIP_DNS_SERVER: ns1.corp.example
-  RVAV_AWX_URL: https://awx.corp.example
-  RVAV_AWX_ORGANIZATION: rvav
-  # The NSX Manager rvav makes networks and security groups in (ADR-0028):
-  # a user and password, or a principal identity's certificate and key
-  # (from nsx.certSecret, below).
-  # RVAV_NSX_URL: https://nsx.corp.example
-  # RVAV_NSX_USERNAME: svc-rvav
+  # An integration's variables may still be set here (and its password in
+  # the Secret): each wins over Administration and locks its field.
+  # RVAV_OIDC_ISSUER: https://sso.corp.example/realms/rvav
+  # RVAV_VCENTER_URL: https://vc01.corp.example/sdk
+  # RVAV_VCENTER_USERNAME: svc-rvav@vsphere.local
+  # NSX's principal identity, from nsx.certSecret below, is set in a file:
   # RVAV_NSX_CERT_FILE: /etc/rvav/nsx/tls.crt
   # RVAV_NSX_KEY_FILE: /etc/rvav/nsx/tls.key
-  # RVAV_NSX_INSECURE: "false"
-  # The vRA the importer reads, while projects move from it (ADR-0027);
-  # remove once vRA is switched off.
-  # RVAV_VRA_URL: https://vra.corp.example
-  # RVAV_VRA_USERNAME: svc-rvav-import
-  # RVAV_VRA_DOMAIN: corp.example
 
 # Passwords and keys (a Secret). Leave `create` false and name
 # `existingSecret` to use a Secret made elsewhere (sealed-secrets, External
@@ -56,13 +44,8 @@ secret:
     # The local administrator's first password (ADR-0030), changed at the
     # first sign-in; empty: the API generates one and logs it once.
     RVAV_ADMIN_PASSWORD: ""
-    RVAV_VCENTER_PASSWORD: ""
-    RVAV_EFFICIENTIP_PASSWORD: ""
-    RVAV_AWX_TOKEN: ""
-    RVAV_NSX_PASSWORD: ""
-    # The vRA importer's account: an API token, or a user's password.
-    RVAV_VRA_TOKEN: ""
-    RVAV_VRA_PASSWORD: ""
+    # With an integration's variables in `config`, its password or token:
+    # RVAV_VCENTER_PASSWORD: ""
 
 # NSX's principal identity (ADR-0028): a kubernetes.io/tls Secret, mounted
 # read only at /etc/rvav/nsx (tls.crt, tls.key) in api, worker and sync.

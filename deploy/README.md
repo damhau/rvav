@@ -20,6 +20,12 @@ created its `default` namespace, and the web app waits until the API is
 ready. `docker compose -f deploy/docker-compose.yml up --build -d --wait`
 returns once everything is healthy.
 
+It starts seeded, with every integration set in its environment.
+`-f deploy/docker-compose.fresh.yml` over it starts a new install
+instead, set up from the UI: no seed, no integration variables, the local
+administrator signing in and the setup checklist
+([installation.md](../docs/operations/installation.md#trying-a-new-install)).
+
 When a port is already taken, change it with `RVAV_API_PORT`,
 `RVAV_WEB_PORT`, `RVAV_KEYCLOAK_PORT`, `RVAV_TEMPORAL_PORT`,
 `RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the

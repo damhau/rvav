@@ -35,6 +35,7 @@ import (
 	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/secrets"
+	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vcenters"
@@ -107,6 +108,13 @@ func NewFakeEfficientIP(ctx context.Context, st *store.Store) (*efficientip.Fake
 	networks, err := st.NetworkSubnets(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// A new install has no network mappings (U1.5): the fake serves those
+	// of vcsim's networks, which the sync then reads from it.
+	if len(networks) == 0 {
+		for _, n := range seed.Subnets() {
+			networks[n.Network] = n
+		}
 	}
 	// In a fixed order, so subnet IDs are the same each time the fake starts.
 	for _, network := range slices.Sorted(maps.Keys(networks)) {

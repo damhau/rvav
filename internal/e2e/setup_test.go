@@ -15,6 +15,8 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/httpapi"
+	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/seed"
 )
 
 // json sends a request as the web app does, checks the status and decodes
@@ -128,6 +130,24 @@ func TestSetupChecklist(t *testing.T) {
 			"url": h.ipamURL, "username": "rvav", "dns_server": "ns1.corp.example"}, Secret: new("rvav")}, 200, nil)
 		want[api.SetupStepKeyIpam] = h.ipamURL
 		check(want)
+		// On a database without network mappings the development fake serves
+		// vcsim's networks; the sync reads them as it would a SOLIDserver's.
+		if err := (&inventory.SubnetSync{Store: h.store, IPAM: h.svc.IPAM, Log: discardLog()}).SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var mappings api.NetworkMappingList
+		a.json("GET", "/api/v1/admin/network-mappings", nil, 200, &mappings)
+		got := map[string]string{}
+		for _, m := range mappings.Items {
+			if m.Source == api.NetworkMappingSourceEfficientip {
+				got[m.Network] = m.Subnet
+			}
+		}
+		for _, n := range seed.Subnets() {
+			if got[n.Network] != n.Subnet {
+				t.Fatalf("network mappings = %+v, want %s on %s", mappings.Items, n.Subnet, n.Network)
+			}
+		}
 		a.json("PUT", "/api/v1/admin/integrations/awx", api.IntegrationWrite{Settings: map[string]any{
 			"url": "https://awx.corp.example"}, Secret: new("awx-token")}, 200, nil)
 		want[api.SetupStepKeyAwx] = "https://awx.corp.example"
