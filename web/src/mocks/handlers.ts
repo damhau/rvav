@@ -43,6 +43,7 @@ import { reportHandlers } from "./reports";
 import { governanceHandlers } from "./governance";
 import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
+import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
@@ -314,6 +315,7 @@ export const handlers = [
   ...reportHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
+  ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),
 
   // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).

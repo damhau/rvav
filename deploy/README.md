@@ -59,7 +59,10 @@ records as missing. Set
 looks in the timeline.
 
 To use Keycloak sign-in instead of dev authentication, start with
-`RVAV_AUTH_MODE=oidc`. Tokens are issued for `http://localhost:8081/realms/rvav`
+`RVAV_AUTH_MODE=oidc`. rvav's sign-in page then offers single sign-on
+(Keycloak) and the local administrator, `admin` (ADR-0030), whose first
+password is `RVAV_ADMIN_PASSWORD`, or the one the API generated:
+`docker compose -f deploy/docker-compose.yml logs api | grep "local administrator created"`. Tokens are issued for `http://localhost:8081/realms/rvav`
 and the API discovers Keycloak at `http://keycloak:8080` inside the network.
 The web app reads the same variable, but at build time, so rebuild it when you
 switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --build`.

@@ -32,6 +32,7 @@ const kinds = [
   { value: "naming.", label: "Naming" },
   { value: "settings.", label: "Settings" },
   { value: "token.", label: "API tokens" },
+  { value: "auth.", label: "Sign-ins" },
 ];
 
 /** The start of a local day, or of the day after it: "To" includes the day chosen. */

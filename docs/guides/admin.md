@@ -13,10 +13,23 @@ is in the [operations guides](../operations/README.md); using it, in the
 Roles are given to groups of the identity provider. Every change made
 here is in the **Audit log**.
 
+**The local administrator,** `admin`, is rvav's only local account
+(ADR-0030). It signs in on rvav's sign-in page, below single sign-on:
+- at first, before an identity provider is set up;
+- when the identity provider is down.
+
+Its first password is given at installation, or generated and logged
+once, and must be changed at the first sign-in (**Account › Change
+password** later). From the third failure in a row, sign-in waits, longer
+each time, up to 15 minutes. Every sign-in and failure is in the audit
+log (**Sign-ins**). A forgotten password is reset on the server:
+`rvav admin reset-password`.
+
 ## First steps
 
 The order that gets a first request through:
 
+0. **Sign in as `admin`** and choose its password.
 1. **Integrations:** vCenter, AWX and EfficientIP, with rvav's service
    accounts ([integrations.md](../integrations.md)). Each has a test. Its
    password or token is sealed and never shown again.

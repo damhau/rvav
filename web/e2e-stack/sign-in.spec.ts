@@ -18,9 +18,12 @@ for (const { user, name, role } of [
     await expect(account).toContainText(name);
     await expect(account).toContainText(role);
 
-    // Signing out ends the Keycloak session: the next visit asks again.
+    // Signing out ends the Keycloak session and forgets the way chosen:
+    // back on rvav's sign-in page, and single sign-on asks again.
     await account.click();
     await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Sign in to rvav" })).toBeVisible();
+    await page.getByRole("button", { name: "Sign in with single sign-on" }).click();
     await page.waitForURL(/\/realms\/rvav\/protocol\/openid-connect\/auth/);
   });
 }

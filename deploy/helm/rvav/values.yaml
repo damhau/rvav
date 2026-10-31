@@ -53,6 +53,9 @@ secret:
   env:
     RVAV_DATABASE_URL: ""
     RVAV_SECRETS_KEY: ""
+    # The local administrator's first password (ADR-0030), changed at the
+    # first sign-in; empty: the API generates one and logs it once.
+    RVAV_ADMIN_PASSWORD: ""
     RVAV_VCENTER_PASSWORD: ""
     RVAV_EFFICIENTIP_PASSWORD: ""
     RVAV_AWX_TOKEN: ""

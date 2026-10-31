@@ -40,6 +40,7 @@ export function setTransport(t: Transport) {
 export async function rawFetch(request: Request): Promise<Response> {
   const token = await getAccessToken();
   if (token) request.headers.set("Authorization", `Bearer ${token}`);
+  request.headers.set("X-Requested-With", "rvav");
   return transport(request);
 }
 
@@ -51,6 +52,9 @@ const auth: Middleware = {
   async onRequest({ request }) {
     const token = await getAccessToken();
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
+    // The local administrator's session is a cookie: a change made with it
+    // needs this header, which another site can't send (ADR-0030).
+    request.headers.set("X-Requested-With", "rvav");
     return request;
   },
 };

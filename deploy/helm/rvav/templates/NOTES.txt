@@ -1,10 +1,20 @@
 rvav {{ .Chart.AppVersion }} is installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
 
 {{- if .Values.ingress.enabled }}
-Open https://{{ .Values.ingress.host }} and sign in with {{ .Values.web.oidcAuthority }}.
+Open https://{{ .Values.ingress.host }}.
 {{- else }}
 The web app is the service {{ .Release.Name }}-web (port 80); put an ingress or a load balancer in front of it.
 {{- end }}
+
+The local administrator, admin, signs in at first, and when the identity provider is down (ADR-0030).
+{{- if .Values.secret.env.RVAV_ADMIN_PASSWORD }}
+Its first password is secret.env.RVAV_ADMIN_PASSWORD; it must be changed at the first sign-in.
+{{- else }}
+Its first password was generated, and logged once by the API pod that made the account:
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=api -c api --tail=-1 | grep "local administrator created"
+It must be changed at the first sign-in.
+{{- end }}
+`rvav admin reset-password` (in an API pod) sets another.
 
 Every rvav pod applies the database migrations as it starts. Check them with:
   kubectl -n {{ .Release.Namespace }} logs deploy/{{ .Release.Name }}-api -c migrate

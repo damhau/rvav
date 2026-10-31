@@ -64,9 +64,14 @@ applies the database migrations as it starts, one at a time.
    helm upgrade --install rvav deploy/helm/rvav -n rvav --create-namespace -f site-values.yaml --wait
    ```
 
-3. Check it: the API pods are ready once they reach the database and the
-   identity provider (`/readyz`). Sign in as an administrator (a member of
-   the group mapped to `admin`) and check Integrations.
+3. Check it: the API pods are ready once they reach the database, and
+   the identity provider when one is set (`/readyz`).
+4. Sign in as `admin`, the local administrator (ADR-0030), and choose its
+   password. Its first one is `secret.env.RVAV_ADMIN_PASSWORD`, or, without
+   it, the one the API generated and logged once; the chart's notes say
+   how to find it. `rvav admin reset-password`, run in an API pod, sets
+   another. Then set up the rest from **Administration**
+   ([admin guide](../guides/admin.md#first-steps)).
 
 **Ingress:** the ingress sends everything to the web app, which proxies
 `/api/` to the API. It must not buffer the live updates (SSE), close the
@@ -102,6 +107,10 @@ plugin):
    only (`chmod 600`).
 3. Set the version in `/etc/rvav/version.env` (`RVAV_VERSION=1.0.0`).
 4. Start it: `systemctl enable --now rvav`.
+5. Sign in as `admin`, the local administrator (ADR-0030), and choose its
+   password. Its first one is `RVAV_ADMIN_PASSWORD` in `rvav.env`, or the
+   one the API generated and logged once:
+   `docker compose -f /opt/rvav/docker-compose.yml logs api | grep "local administrator created"`.
 
 The web app listens on `127.0.0.1:8080` (`RVAV_WEB_BIND` to change it).
 Put the site's reverse proxy or load balancer, with TLS, in front of it.

@@ -88,6 +88,16 @@ for (const theme of ["light", "dark"] as const) {
       });
     }
 
+    // Before the app: the sign-in page and the local administrator's
+    // password change (ADR-0030).
+    for (const path of ["/sign-in", "/change-password"]) {
+      test(`axe: ${path}`, async ({ page }) => {
+        await page.goto(path);
+        await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+        await scan(page, path);
+      });
+    }
+
     test("axe: an approval open in the inbox", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);

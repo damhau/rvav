@@ -33,7 +33,17 @@ async function boot() {
     const { startMocks } = await import("./mocks/browser");
     await startMocks();
   }
-  if ((await initAuth()) === "redirecting") return;
+  const state = await initAuth();
+  if (state === "redirecting") return;
+  if (state === "sign-in" || state === "change-password") {
+    // Before the app: nobody is signed in, or the local administrator must
+    // change the password first (ADR-0030).
+    const { ChangePasswordPage, SignInPage } = await import("@/features/account/SignIn");
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>{state === "sign-in" ? <SignInPage /> : <ChangePasswordPage />}</StrictMode>,
+    );
+    return;
+  }
 
   const queryClient = createQueryClient();
   const router = createAppRouter(queryClient);

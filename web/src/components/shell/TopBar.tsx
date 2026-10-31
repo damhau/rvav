@@ -1,10 +1,21 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Check, ChevronDown, KeyRound, LogOut, Menu as MenuIcon, Monitor, Moon, Search, Sun } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  KeyRound,
+  LockKeyhole,
+  LogOut,
+  Menu as MenuIcon,
+  Monitor,
+  Moon,
+  Search,
+  Sun,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Kbd } from "@/components/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
-import { signOut } from "@/lib/auth";
+import { CHANGE_PASSWORD_PATH, signOut } from "@/lib/auth";
 import { isMock } from "@/lib/env";
 import { useCurrentProject } from "@/lib/project";
 import { useTheme, type Theme } from "@/lib/theme";
@@ -98,12 +109,17 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
             </button>
           </MenuTrigger>
           <MenuContent>
-            <MenuLabel>{me.user.email}</MenuLabel>
+            <MenuLabel>{me.local ? "Signed in with the local account" : me.user.email}</MenuLabel>
             {me.title && <p className="px-2 pb-1 text-xs text-muted">{me.title}</p>}
             <MenuSeparator />
             <MenuItem onSelect={() => void navigate({ to: "/tokens" })}>
               <KeyRound /> API tokens
             </MenuItem>
+            {me.local && (
+              <MenuItem onSelect={() => globalThis.location.assign(CHANGE_PASSWORD_PATH)}>
+                <LockKeyhole /> Change password
+              </MenuItem>
+            )}
             {isMock ? (
               <p className="max-w-56 px-2 py-1.5 text-xs text-faint">
                 Mock mode: signed in with a development identity.
