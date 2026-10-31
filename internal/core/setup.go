@@ -56,8 +56,10 @@ func (s *Service) Setup(ctx context.Context, p *auth.Principal) (api.Setup, erro
 	if group.Done {
 		group.Detail = strings.Join(st.AdminGroups, ", ")
 	}
-	projects := api.SetupStep{Key: api.SetupStepKeyProjects, Done: st.Environments > 0 && st.Projects > 0,
-		Detail: plural(st.Environments, "environment") + ", " + plural(st.Projects, "project")}
+	// A project with nowhere to place its VMs can't request any.
+	projects := api.SetupStep{Key: api.SetupStepKeyProjects, Done: st.Environments > 0 && st.Projects > 0 && st.Placements > 0,
+		Detail: plural(st.Environments, "environment") + ", " + plural(st.Projects, "project") + ", " +
+			plural(st.Placements, "placement rule")}
 	item := api.SetupStep{Key: api.SetupStepKeyCatalogItem, Done: st.PublishedItems > 0,
 		Detail: fmt.Sprintf("%s, %d published", plural(st.Items, "item"), st.PublishedItems)}
 

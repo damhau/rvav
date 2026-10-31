@@ -47,7 +47,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   },
   projects: {
     title: "Add environments and projects",
-    what: "The environments VMs deploy to (development, production, …), and the projects that request in them, with their members or groups.",
+    what: "The environments VMs deploy to (development, production, …), the projects that request in them, with their members or groups, and a placement rule for each: where its VMs go.",
     target: { to: "/admin/projects", label: "Projects" },
   },
   ipam: {

@@ -34,7 +34,9 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await expect(page).toHaveURL(/\/admin\/setup$/);
   await expect(page.getByRole("heading", { name: "Set up rvav", level: 1 })).toBeVisible();
   await expect(page.getByText("0 of 8 done")).toBeVisible();
-  await expect(step(page, "Add environments and projects")).toContainText("0 environments, 0 projects");
+  await expect(step(page, "Add environments and projects")).toContainText(
+    "0 environments, 0 projects, 0 placement rules",
+  );
   await page.screenshot({ path: `${shots}/setup-checklist.png`, fullPage: true });
 
   // The identity provider, in its tab.
@@ -68,11 +70,27 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await dialog.getByRole("checkbox", { name: "Development" }).check();
   await dialog.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("heading", { name: "Web", level: 1 })).toBeVisible();
+  // Where its VMs go: without a placement rule it can't request any.
+  await checklist(page);
+  await expect(step(page, "Add environments and projects")).toContainText(
+    "Now: 1 environment, 1 project, 0 placement rules",
+  );
+  await step(page, "Add environments and projects").getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("link", { name: "Web" }).click();
+  await page.getByRole("tab", { name: "Placement" }).click();
+  await page.getByRole("button", { name: "New rule" }).click();
+  const rule = page.getByRole("dialog", { name: "New placement rule for Web in dev" });
+  await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
+  await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
+  await rule.getByRole("button", { name: "Save rule" }).click();
+  await expect(rule).toBeHidden();
 
   // vCenter, in its tab: nothing set by the environment here.
   await checklist(page);
   await expect(step(page, "Map a group to admin")).toContainText("Done: rvav-admins");
-  await expect(step(page, "Add environments and projects")).toContainText("Done: 1 environment, 1 project");
+  await expect(step(page, "Add environments and projects")).toContainText(
+    "Done: 1 environment, 1 project, 1 placement rule",
+  );
   await step(page, "Connect vCenter").getByRole("link", { name: "vCenter" }).click();
   await expect(page.getByRole("tab", { name: "vCenter" })).toHaveAttribute("aria-selected", "true");
   const vcenter = page.getByRole("region", { name: "vCenter connection" });

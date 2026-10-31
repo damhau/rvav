@@ -96,7 +96,7 @@ func TestSetupChecklist(t *testing.T) {
 		want := map[api.SetupStepKey]string{api.SetupStepKeyPassword: "Changed from the install's."}
 		st = check(want)
 		if st.Steps[1].Detail != "None: only the local administrator can sign in." || st.Steps[3].Detail != "Not set." ||
-			st.Steps[4].Detail != "0 environments, 0 projects" || st.Steps[7].Detail != "0 items, 0 published" {
+			st.Steps[4].Detail != "0 environments, 0 projects, 0 placement rules" || st.Steps[7].Detail != "0 items, 0 published" {
 			t.Fatalf("an empty install = %+v", st.Steps)
 		}
 
@@ -118,11 +118,18 @@ func TestSetupChecklist(t *testing.T) {
 		want[api.SetupStepKeyVcenter] = vcsim
 		check(want)
 
-		// An environment is not enough: a project too.
+		// An environment is not enough: a project too, and where its VMs
+		// go, without which it can't request any.
 		a.json("POST", "/api/v1/admin/environments", api.AdminEnvironment{Key: "dev", Name: "Development", Order: 1}, 201, nil)
 		check(want)
-		a.json("POST", "/api/v1/admin/projects", api.AdminProjectCreate{Code: "web", Name: "Web", Environments: []string{"dev"}}, 201, nil)
-		want[api.SetupStepKeyProjects] = "1 environment, 1 project"
+		var web api.AdminProject
+		a.json("POST", "/api/v1/admin/projects", api.AdminProjectCreate{Code: "web", Name: "Web", Environments: []string{"dev"}}, 201, &web)
+		if st = check(want); st.Steps[4].Detail != "1 environment, 1 project, 0 placement rules" {
+			t.Fatalf("a project without placement = %+v", st.Steps[4])
+		}
+		a.json("POST", "/api/v1/admin/placement-rules", api.PlacementRuleWrite{ProjectId: web.Id, Environment: "dev",
+			Clusters: []string{"GVA-DEV-*"}, Datastores: []string{"vsan-*"}, Networks: []string{"dvpg-*-dev-*"}, Folder: "/GVA/vm/rvav/web/dev"}, 201, nil)
+		want[api.SetupStepKeyProjects] = "1 environment, 1 project, 1 placement rule"
 		check(want)
 
 		// IPAM and AWX.

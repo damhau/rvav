@@ -364,6 +364,7 @@ function setupOf(db: Db): S["Setup"] {
   const admins = [...new Set(a.groups.filter((g) => g.role === "admin" && !g.project).map((g) => g.oidc_group))].sort();
   const published = db.items.filter((i) => adminItemOf(db, i).published_version).length;
   const changed = localAdminPasswordChanged();
+  const placements = a.rules.filter((r) => db.projects.some((p) => p.id === r.project.id)).length;
   const steps: S["SetupStep"][] = [
     {
       key: "password",
@@ -379,8 +380,8 @@ function setupOf(db: Db): S["Setup"] {
     connection("vcenter", "vcenter"),
     {
       key: "projects",
-      done: db.environments.length > 0 && db.projects.length > 0,
-      detail: `${plural(db.environments.length, "environment")}, ${plural(db.projects.length, "project")}`,
+      done: db.environments.length > 0 && db.projects.length > 0 && placements > 0,
+      detail: `${plural(db.environments.length, "environment")}, ${plural(db.projects.length, "project")}, ${plural(placements, "placement rule")}`,
     },
     connection("ipam", "efficientip"),
     connection("awx", "awx"),

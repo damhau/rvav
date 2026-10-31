@@ -257,7 +257,7 @@ Without a restart by hand, in one of two ways:
   - the identity provider;
   - a group mapped to `admin`;
   - vCenter;
-  - environments and projects;
+  - environments and projects, with a placement rule;
   - IPAM;
   - AWX;
   - a first catalog item.
@@ -267,7 +267,8 @@ Without a restart by hand, in one of two ways:
   - an issuer;
   - a group with the global `admin` role;
   - vCenter, EfficientIP and AWX configured (or their development fake);
-  - an environment and an unarchived project;
+  - an environment, an unarchived project and a placement rule for it
+    (without one, the project can't request anything);
   - a published item.
   Undoing a step (the last admin mapping removed) undoes its tick.
 - **When it opens:** an administrator signing in lands on it once per page

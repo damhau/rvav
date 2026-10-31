@@ -4,7 +4,10 @@ import "context"
 
 // SetupState is what the setup checklist is read from (ADR-0030).
 type SetupState struct {
-	Environments, Projects  int
+	Environments, Projects int
+	// Placements are the placement rules of unarchived projects: without
+	// one, a project's requests have nowhere to go.
+	Placements              int
 	Items, PublishedItems   int
 	AdminGroups             []string
 	PasswordChanged, Seeded bool
@@ -18,6 +21,7 @@ func (s *Store) SetupState(ctx context.Context, localAdmin string) (SetupState, 
 	err := s.Pool.QueryRow(ctx, `select
 		(select count(*) from environments),
 		(select count(*) from projects where archived_at is null),
+		(select count(*) from placement_rules r join projects p on p.id = r.project_id where p.archived_at is null),
 		(select count(*) from catalog_items),
 		(select count(*) from catalog_items where published_version_id is not null),
 		(select coalesce(array_agg(distinct oidc_group order by oidc_group), '{}') from group_mappings
@@ -25,7 +29,7 @@ func (s *Store) SetupState(ctx context.Context, localAdmin string) (SetupState, 
 		exists (select 1 from local_accounts where username = $1 and not must_change),
 		exists (select 1 from users where subject like 'seed:%'),
 		coalesce((select hidden from setup_checklist), false)`, localAdmin).
-		Scan(&st.Environments, &st.Projects, &st.Items, &st.PublishedItems, &st.AdminGroups,
+		Scan(&st.Environments, &st.Projects, &st.Placements, &st.Items, &st.PublishedItems, &st.AdminGroups,
 			&st.PasswordChanged, &st.Seeded, &st.Hidden)
 	return st, err
 }
