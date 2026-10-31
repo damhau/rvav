@@ -1,7 +1,7 @@
 // The sign-in page and the local administrator's password change (ADR-0030).
 // Both are shown before the app, outside its router: nobody is signed in
 // yet, or the session may do nothing but change the password.
-import { KeyRound, LogIn } from "lucide-react";
+import { KeyRound, LogIn, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import type { Problem } from "@/lib/api/types";
@@ -9,6 +9,7 @@ import {
   CHANGE_PASSWORD_PATH,
   SIGN_IN_PATH,
   hasProvider,
+  signInProblem,
   signInWithProvider,
   signOut,
   signedInLocally,
@@ -54,6 +55,16 @@ function Alert({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The seconds left before another attempt, outside the alert: read when asked, not each second. */
+function Left({ seconds }: { seconds: number }) {
+  if (seconds <= 0) return null;
+  return (
+    <p aria-live="off" className="-mt-1.5 text-xs text-muted tabular-nums">
+      {seconds === 1 ? "1 second" : `${seconds} seconds`} left.
+    </p>
+  );
+}
+
 const unreachable = "Can't reach the rvav API. Check your connection and try again.";
 
 /** Seconds left before another attempt, counting down from a 429's Retry-After. */
@@ -76,10 +87,19 @@ function useWait() {
   };
 }
 
-export function SignInPage({ provider = hasProvider() }: { provider?: boolean }) {
+const providerDown =
+  "The identity provider can't be reached. Sign in as the local administrator, or try single sign-on again later.";
+
+export function SignInPage({
+  provider = hasProvider(),
+  problem = signInProblem(),
+}: {
+  provider?: boolean;
+  problem?: ReturnType<typeof signInProblem>;
+}) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(problem === "provider" ? providerDown : null);
   const [busy, setBusy] = useState(false);
   const wait = useWait();
 
@@ -115,14 +135,25 @@ export function SignInPage({ provider = hasProvider() }: { provider?: boolean })
     <Screen
       title="Sign in to rvav"
       lead={
-        provider
-          ? "Sign in with your organisation's account."
-          : "No identity provider is set up yet. Sign in as the local administrator to set one up in Administration."
+        problem === "api"
+          ? "rvav's API isn't answering: it may be starting again with newer settings."
+          : provider
+            ? "Sign in with your organisation's account."
+            : "No identity provider is set up yet. Sign in as the local administrator to set one up in Administration."
       }
     >
+      {problem === "api" && (
+        <Button variant="primary" className="w-full" onClick={() => globalThis.location.reload()}>
+          <RotateCw aria-hidden /> Try again
+        </Button>
+      )}
       {provider && (
         <>
-          <Button variant="primary" className="w-full" onClick={() => void signInWithProvider(target())}>
+          <Button
+            variant={problem === "api" ? "secondary" : "primary"}
+            className="w-full"
+            onClick={() => void signInWithProvider(target()).catch(() => setError(providerDown))}
+          >
             <LogIn aria-hidden /> Sign in with single sign-on
           </Button>
           <div className="flex items-center gap-3 text-xs text-faint" aria-hidden>
@@ -161,15 +192,11 @@ export function SignInPage({ provider = hasProvider() }: { provider?: boolean })
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
-        {error && (
-          <Alert>
-            {error}
-            {wait.left > 0 && ` ${wait.left === 1 ? "1 second" : `${wait.left} seconds`} left.`}
-          </Alert>
-        )}
+        {error && <Alert>{error}</Alert>}
+        <Left seconds={wait.left} />
         <Button
           type="submit"
-          variant={provider ? "secondary" : "primary"}
+          variant={provider || problem === "api" ? "secondary" : "primary"}
           className="w-full"
           disabled={busy || wait.left > 0 || username.trim() === "" || password === ""}
         >
@@ -275,12 +302,8 @@ export function ChangePasswordPage() {
             onChange={(e) => setRepeat(e.target.value)}
           />
         </Field>
-        {error && (
-          <Alert>
-            {error}
-            {wait.left > 0 && ` ${wait.left === 1 ? "1 second" : `${wait.left} seconds`} left.`}
-          </Alert>
-        )}
+        {error && <Alert>{error}</Alert>}
+        <Left seconds={wait.left} />
         <div className="flex items-center gap-2">
           <Button type="submit" variant="primary" disabled={busy || wait.left > 0 || current === "" || next === ""}>
             Change password

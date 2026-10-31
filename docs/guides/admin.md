@@ -16,7 +16,9 @@ here is in the **Audit log**.
 **The local administrator,** `admin`, is rvav's only local account
 (ADR-0030). It signs in on rvav's sign-in page, below single sign-on:
 - at first, before an identity provider is set up;
-- when the identity provider is down.
+- when the identity provider is down. A browser that signed in with it
+  before goes back to it by itself; when its page doesn't work, open
+  `https://<rvav>/sign-in`, which never does.
 
 Its first password is given at installation, or generated and logged
 once, and must be changed at the first sign-in (**Account › Change

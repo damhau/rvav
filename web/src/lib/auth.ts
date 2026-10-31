@@ -47,6 +47,17 @@ let renewing: Promise<void> | null = null;
 let method: SignInMethod | null = null;
 let provider: ProviderConfig | null = null;
 let trialOutcome: TrialMessage = {};
+let problem: SignInProblem | null = null;
+
+/**
+ * Why the sign-in page is shown other than because nobody is signed in:
+ * rvav's API didn't answer (starting again with newer settings, or down),
+ * or the identity provider couldn't be reached.
+ */
+export type SignInProblem = "api" | "provider";
+
+/** What kept the browser from signing in by itself, if anything. */
+export const signInProblem = () => problem;
 
 /** The provider settings: the web container's win over the API's. */
 export function providerConfig(api: components["schemas"]["AuthProvider"] | undefined): ProviderConfig | null {
@@ -81,8 +92,10 @@ async function loadOptions() {
       return;
     }
   } catch {
-    // The API is down: the app says so once it loads.
+    // No answer at all: as a 502 from the web container.
   }
+  // Not "no provider": the API didn't say.
+  problem = "api";
   provider = providerConfig(undefined);
 }
 
@@ -156,12 +169,19 @@ export async function initAuth(): Promise<"ready" | "redirecting" | "sign-in" | 
   await loadOptions();
 
   if (path === CALLBACK_PATH && provider) {
-    manager = await createManager(provider);
-    const user = await manager.signinRedirectCallback();
-    remember("provider");
-    const target = typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";
-    globalThis.history.replaceState({}, "", target);
-    return "ready";
+    try {
+      manager = await createManager(provider);
+      const user = await manager.signinRedirectCallback();
+      remember("provider");
+      const target = typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";
+      globalThis.history.replaceState({}, "", target);
+      return "ready";
+    } catch {
+      // The provider's token endpoint didn't answer, or the code was refused.
+      problem = "provider";
+      globalThis.history.replaceState({}, "", SIGN_IN_PATH);
+      return "sign-in";
+    }
   }
 
   const local = await localSession();
@@ -172,15 +192,25 @@ export async function initAuth(): Promise<"ready" | "redirecting" | "sign-in" | 
     return "ready";
   }
 
-  if (remembered() === "provider" && provider) {
+  // The sign-in page itself is never left by itself: it is the way in for
+  // the local administrator when the provider is down (break-glass).
+  if (remembered() === "provider" && provider && path !== SIGN_IN_PATH) {
     method = "provider";
-    manager = await createManager(provider);
-    const user = await manager.getUser();
-    if (!user || user.expired) {
-      await manager.signinRedirect({ state: path === SIGN_IN_PATH ? "/" : here() });
-      return "redirecting";
+    try {
+      manager = await createManager(provider);
+      const user = await manager.getUser();
+      if (!user || user.expired) {
+        await manager.signinRedirect({ state: here() });
+        return "redirecting";
+      }
+      return "ready";
+    } catch {
+      // Its discovery document didn't answer: the sign-in page says so,
+      // with the local administrator below.
+      method = null;
+      problem = "provider";
+      return "sign-in";
     }
-    return "ready";
   }
   return "sign-in";
 }

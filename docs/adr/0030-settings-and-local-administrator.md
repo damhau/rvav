@@ -168,6 +168,12 @@ Without a restart by hand, in one of two ways:
   set.
 - The way chosen is remembered in the browser, so the provider's users go
   straight to it next time, as before. Signing out forgets it.
+- `/sign-in` itself never goes on to the provider by itself, whatever is
+  remembered: it is the way in when the provider is down. A provider that
+  doesn't answer (its discovery document or token endpoint) brings the
+  browser back to the sign-in page, saying so, the local account below.
+  An API that doesn't answer (starting again with newer settings) is said
+  as such, with a retry, not as "no identity provider".
 - rvav starts without an identity provider: `RVAV_OIDC_ISSUER` is no
   longer required. Until one is set, only the local administrator and API
   tokens sign in.

@@ -28,6 +28,23 @@ describe("the sign-in page", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 
+  it("says when the provider can't be reached, the local administrator below", () => {
+    render(<SignInPage provider problem="provider" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("The identity provider can't be reached.");
+    expect(screen.getByRole("button", { name: "Sign in with single sign-on" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Local administrator" })).toBeInTheDocument();
+  });
+
+  it("says the API isn't answering, not that no provider is set, and offers to try again", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...globalThis.location, pathname: "/", search: "", assign, reload });
+    render(<SignInPage provider={false} problem="api" />);
+    expect(screen.getByText(/rvav's API isn't answering/)).toBeInTheDocument();
+    expect(screen.queryByText(/No identity provider/)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Try again" }));
+    expect(reload).toHaveBeenCalled();
+  });
+
   it("refuses a wrong password, waits after three, then goes to the password change", async () => {
     const user = userEvent.setup();
     render(<SignInPage provider={false} />);
@@ -43,12 +60,15 @@ describe("the sign-in page", () => {
     }
     await user.type(password, MOCK_ADMIN_PASSWORD);
     await user.click(submit);
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Too many failed attempts in a row.*1 second left/);
+    // The alert says it once; the countdown beside it isn't announced each second.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/^Too many failed attempts in a row. Wait before trying again.$/);
+    expect(screen.getByText("1 second left.")).toHaveAttribute("aria-live", "off");
     expect(submit).toBeDisabled();
     expect(assign).not.toHaveBeenCalled();
 
     // Once the wait is over, the right password goes on to the change.
-    await waitFor(() => expect(screen.getByRole("alert")).not.toHaveTextContent(/left/), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByText(/left\./)).not.toBeInTheDocument(), { timeout: 3000 });
     await user.type(password, MOCK_ADMIN_PASSWORD);
     expect(submit).toBeEnabled();
     await user.click(submit);
