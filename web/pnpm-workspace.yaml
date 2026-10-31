@@ -16,3 +16,10 @@ minimumReleaseAgeExclude:
   - '@typescript-eslint/utils@8.72.1'
   - '@typescript-eslint/visitor-keys@8.72.1'
   - typescript-eslint@8.72.1
+# pnpm audit: advisories set aside, each until its tracking issue is done.
+auditConfig:
+  ignoreGhsas:
+    # minimatch < 11.0.1, moderate, in dev tooling only (eslint,
+    # typescript-eslint, openapi-typescript); no release of them takes the
+    # fixed 11.x yet, and 11.x breaks them (#117).
+    - GHSA-g3hv-75wg-m249
