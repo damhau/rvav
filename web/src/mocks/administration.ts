@@ -33,11 +33,55 @@ interface AdminState {
   day2: S["Day2Policy"][];
   integrations: Record<
     string,
-    { settings: Record<string, unknown>; secret: boolean; signing?: boolean; updated_at?: string }
+    { settings: Record<string, unknown>; secret: boolean; signing?: boolean; updated_at?: string; revision?: number }
   >;
   /** vCenters added besides the integration's (ADR-0024). */
   vcenters: S["VCenter"][];
+  /** rvav's processes (ADR-0030), and the settings revision. */
+  processes: MockProcess[];
+  revision: number;
+  /** The last connection saved: processes drain, then start again with it. */
+  applying?: { revision: number; at: number };
   seq: number;
+}
+
+interface MockProcess {
+  role: S["Process"]["role"];
+  host: string;
+  revision: number;
+  started_at: string;
+  /** How long after a connection is saved it has drained and started again. */
+  takes: number;
+  pid: number;
+}
+
+/** The integrations read on next use (ADR-0030). */
+const LIVE_KINDS = ["oidc", "smtp", "teams", "slack"];
+
+/** The processes as they are now: those behind drain, then start again. */
+function processesNow(a: AdminState): S["Process"][] {
+  const t = Date.now();
+  return a.processes.map((p) => {
+    let state: S["Process"]["state"] = "running";
+    if (a.applying && p.revision < a.applying.revision) {
+      const gone = t - a.applying.at;
+      if (gone >= p.takes) {
+        p.revision = a.applying.revision;
+        p.started_at = new Date().toISOString();
+        p.pid += 1;
+      } else if (gone >= p.takes / 3) state = "draining";
+    }
+    return {
+      id: `${p.host}/${p.role}/${p.pid}`,
+      role: p.role,
+      host: p.host,
+      version: "1.4.0",
+      revision: p.revision,
+      state,
+      started_at: p.started_at,
+      seen_at: new Date().toISOString(),
+    };
+  });
 }
 
 const now = () => new Date().toISOString();
@@ -180,6 +224,13 @@ function state(db: Db): AdminState {
       },
     ], // prettier-ignore
     vcenters: [],
+    revision: 1,
+    processes: [
+      { role: "api", host: "rvav-api-7d9f-2k4xq", revision: 1, started_at: ago(3), takes: 600, pid: 1 },
+      { role: "worker", host: "rvav-worker-5c6b-8wq2n", revision: 1, started_at: ago(3), takes: 900, pid: 1 },
+      { role: "worker", host: "rvav-worker-5c6b-tz7vd", revision: 1, started_at: ago(3), takes: 1200, pid: 1 },
+      { role: "sync", host: "rvav-sync-69d4-m3b8r", revision: 1, started_at: ago(3), takes: 450, pid: 1 },
+    ],
     integrations: {
       oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, name: "vc01.corp.example" }, secret: true },
@@ -294,6 +345,19 @@ function secretMoves(current: Record<string, unknown>, given: Record<string, unk
 
 export function administrationHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const st = () => state(db);
+  /** A save's revision: a connection's drains the processes, one read on next use doesn't. */
+  const saved = (kind: string) => {
+    const a = st();
+    a.revision += 1;
+    if (LIVE_KINDS.includes(kind)) {
+      for (const p of a.processes) if (!a.applying || p.revision >= a.applying.revision) p.revision = a.revision;
+    } else a.applying = { revision: a.revision, at: Date.now() };
+    return a.revision;
+  };
+  const applyingOf = (kind: string, revision: number) => ({
+    revision,
+    applying: !LIVE_KINDS.includes(kind) && processesNow(st()).some((p) => p.revision < revision),
+  });
   const project = (id: string) => db.projects.find((p) => p.id === id || p.code === id);
   const user = (id: string) => db.users.find((u) => u.id === id);
   const adminProject = (p: Db["projects"][number]): S["AdminProject"] => {
@@ -1060,6 +1124,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       });
     }),
 
+    // ── rvav's processes (ADR-0030) ──
+    http.get(`${base}/admin/processes`, async () => {
+      await wait();
+      const a = st();
+      const connections = Object.entries(a.integrations)
+        .filter(([k]) => !LIVE_KINDS.includes(k))
+        .map(([, it]) => it.revision ?? 0);
+      return HttpResponse.json({ items: processesNow(a), revision: Math.max(0, ...connections) });
+    }),
+
     // ── Integrations ──
     http.get(`${base}/admin/integrations`, async () => {
       await wait();
@@ -1076,8 +1150,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
               secret_set: it.secret,
               ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
               locked: kind === "vcenter" ? ["url"] : [],
-              // The provider applies on next use (ADR-0030).
-              restart_needed: kind !== "oidc" && Boolean(it.updated_at),
+              ...applyingOf(kind, it.revision ?? 0),
               ...(it.updated_at
                 ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
                 : {}),
@@ -1096,6 +1169,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         const it = st().integrations.oidc!;
         it.settings = { ...it.settings, ...w.settings };
         it.updated_at = now();
+        it.revision = saved(kind);
         audited(db, "settings.integration.oidc", "integration", "oidc");
         return HttpResponse.json({
           kind,
@@ -1103,7 +1177,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           settings: it.settings,
           secret_set: false,
           locked: [],
-          restart_needed: false,
+          ...applyingOf(kind, it.revision),
           updated_at: it.updated_at,
         });
       }
@@ -1135,6 +1209,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (w.secret) it.secret = true;
       if (w.signing_secret) it.signing = true;
       it.updated_at = now();
+      it.revision = saved(kind);
       audited(db, `settings.integration.${kind}`, "integration", kind);
       return HttpResponse.json({
         kind,
@@ -1143,7 +1218,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         secret_set: it.secret,
         ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
         locked,
-        restart_needed: true,
+        ...applyingOf(kind, it.revision),
         updated_at: it.updated_at,
       });
     }),

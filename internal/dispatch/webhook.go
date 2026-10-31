@@ -39,10 +39,12 @@ func StoredSecret(st *store.Store, box *secrets.Box) SecretFunc {
 
 // Webhook posts events, signed, to allowed hosts.
 type Webhook struct {
-	// Hosts are RVAV_WEBHOOK_HOSTS: no list, no webhooks.
-	Hosts  []string
-	Secret SecretFunc
-	Client *http.Client
+	// Hosts are RVAV_WEBHOOK_HOSTS: no list, no webhooks. HostsNow, when
+	// set, gives them as saved now (ADR-0030).
+	Hosts    []string
+	HostsNow func(context.Context) []string
+	Secret   SecretFunc
+	Client   *http.Client
 }
 
 // WebhookTarget is a subscription's webhook.
@@ -81,7 +83,11 @@ func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {
 	if err != nil {
 		return Result{Err: "Not a URL: " + err.Error()}
 	}
-	if !hosts.Allowed(w.Hosts, u) {
+	allowed := w.Hosts
+	if w.HostsNow != nil {
+		allowed = w.HostsNow(ctx)
+	}
+	if !hosts.Allowed(allowed, u) {
 		return Result{Err: u.Host + " is not in RVAV_WEBHOOK_HOSTS."}
 	}
 	secret, err := w.Secret(ctx, t.Webhook.Secret)

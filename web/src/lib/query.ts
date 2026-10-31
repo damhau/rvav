@@ -153,6 +153,7 @@ export const adm = {
     get(["admin", "approval-policies"], (signal) => call(api.GET("/admin/approval-policies", { signal }))),
   day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),
   integrations: () => get(["admin", "integrations"], (signal) => call(api.GET("/admin/integrations", { signal }))),
+  processes: () => get(["admin", "processes"], (signal) => call(api.GET("/admin/processes", { signal }))),
   vcenters: () => get(["admin", "vcenters"], (signal) => call(api.GET("/admin/vcenters", { signal }))),
   // Events, subscriptions and custom workflows (S10, ADR-0021 and ADR-0022).
   eventTopics: () =>

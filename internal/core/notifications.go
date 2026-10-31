@@ -137,13 +137,14 @@ func (s *Service) MarkNotificationsRead(ctx context.Context, p *auth.Principal, 
 }
 
 // setUpChannels are the channels rvav can send on.
-func (s *Service) setUpChannels() []string {
+func (s *Service) setUpChannels(ctx context.Context) []string {
 	if s.Notifier == nil {
 		return nil
 	}
+	senders := s.Notifier.Current(ctx)
 	var out []string
 	for _, ch := range notificationChannels {
-		if _, ok := s.Notifier.Senders[ch]; ok {
+		if _, ok := senders[ch]; ok {
 			out = append(out, ch)
 		}
 	}
@@ -170,7 +171,7 @@ func (s *Service) NotificationPreferences(ctx context.Context, p *auth.Principal
 			Kind     api.NotificationKind      `json:"kind"`
 		}{Channels: rule.Channels, Default: !chosen, Kind: kind})
 	}
-	setUp := s.setUpChannels()
+	setUp := s.setUpChannels(ctx)
 	names := map[string]string{"email": "Email", "teams": "Teams", "slack": "Slack"}
 	for _, ch := range notificationChannels {
 		c := struct {

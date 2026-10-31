@@ -112,7 +112,9 @@ The S8 acceptance.
 2. **Integrations**: vCenter, AWX and EfficientIP settings. A field set by
    an environment variable is locked and says which; the password or token
    is write-only. **Test connection** with the settings on screen. After a
-   save: "apply when rvav's processes restart".
+   save, the panel lists rvav's processes finishing their running work and
+   starting again with the settings, then "Applied", with no restart by
+   hand.
 3. **API tokens** (account menu): make one for a pipeline, scope and
    expiry (a year at most); the value shows once. Marc sees everyone's and
    can revoke them.

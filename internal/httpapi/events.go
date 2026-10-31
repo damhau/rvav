@@ -158,6 +158,8 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		select {
 		case <-ctx.Done():
 			return
+		case <-s.stopping():
+			return // the client reconnects, to this process's successor
 		case <-sub.Lagged:
 			control("resync")
 			return // the client reconnects with Last-Event-ID

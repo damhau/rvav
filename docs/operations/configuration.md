@@ -7,6 +7,15 @@ ConfigMap and its `secret.env` values a Secret; with Compose they are in
 (`internal/config/docs_test.go`) checks that this page lists every setting
 the code reads, and only those.
 
+Most connections and channels can be set in **Administration ›
+Integrations** instead, where an environment variable still wins and
+locks its field. Saved, they apply without a restart by hand (ADR-0030):
+the identity provider, email, Teams and Slack on next use; a connection
+(vCenter, AWX, EfficientIP, NSX, Git) once each process has drained (no
+new work, running work finished, within `RVAV_DRAIN_TIMEOUT`), exited with
+status 3 and been started again by its supervisor: Kubernetes, Compose's
+`restart` policy, or systemd. Run rvav's processes under one of those.
+
 **Secret** marks a value to keep in the Secret (or a vault that fills it),
 never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 `5m`, `2h`); lists are comma-separated; booleans are `1`, `true`, `yes` or
@@ -23,6 +32,7 @@ never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 | `RVAV_PUBLIC_URL` | `http://localhost:5173` | | The web app's address, for links in notifications. |
 | `RVAV_CORS_ORIGINS` | none | | Origins allowed to call the API from another site (the Vite dev server). Not needed when the web app proxies the API. |
 | `RVAV_INSTANCE_ID` | `rvav` | | Tells this rvav's objects in EfficientIP from another's on a shared SOLIDserver. |
+| `RVAV_DRAIN_TIMEOUT` | `5m` | | How long a process applying newer connection settings lets its running work finish before it exits; a worker's activity still running then is retried by the next worker. Also how long a worker stopped by Kubernetes or Compose waits for its activities, within their grace period. |
 
 Traces use OpenTelemetry's standard variables, read by every process:
 `OTEL_EXPORTER_OTLP_ENDPOINT` (an OTLP/HTTP collector, for example

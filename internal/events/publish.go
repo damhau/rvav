@@ -22,6 +22,9 @@ type Publisher struct {
 	// Channels are the notification channels set up besides the app
 	// (email, teams, slack): deliveries are queued only on those.
 	Channels []string
+	// ChannelsNow, when set, gives them as saved now, in place of Channels
+	// (ADR-0030).
+	ChannelsNow func(context.Context) []string
 
 	secrets sync.Map // version ID -> map[string]bool
 }
@@ -109,7 +112,11 @@ func (p *Publisher) Notify(ctx context.Context, n store.NewNotification) {
 	if n.UserID == "" {
 		return
 	}
-	kept, created, err := p.Store.InsertNotification(ctx, n, p.Channels)
+	channels := p.Channels
+	if p.ChannelsNow != nil {
+		channels = p.ChannelsNow(ctx)
+	}
+	kept, created, err := p.Store.InsertNotification(ctx, n, channels)
 	if err != nil {
 		p.Logger.Warn("keep notification", "kind", n.Kind, "user", n.UserID, "err", err)
 		return

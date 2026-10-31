@@ -23,10 +23,10 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// The vCenter, AWX and EfficientIP connections, set from the UI (ADR-0020):
-// environment variables win and lock their fields; saved settings take
-// effect when rvav's processes restart; test connection tries the settings
-// given, saved or not.
+// Integrations set from the UI (ADR-0020, ADR-0030): environment variables
+// win and lock their fields; saved settings apply on next use (LiveKinds) or
+// as each process drains and starts again (app.Run); test connection tries
+// the settings given, saved or not.
 
 var integrationKinds = []string{"oidc", "vcenter", "awx", "efficientip", "nsx", "git", "smtp", "teams", "slack"}
 
@@ -69,11 +69,11 @@ func address(kind string, settings map[string]any) string {
 func IntegrationSecretName(kind string) string { return "integration:" + kind }
 
 // pendingSettings are the settings saved for an integration over those this
-// process uses: what rvav will use after a restart, or uses now for those
-// applied on next use.
+// process uses: what rvav's processes use once they have applied them, or
+// use now for those read on next use.
 func (s *Service) pendingSettings(ctx context.Context, kind string, row *store.IntegrationSettings) map[string]any {
 	out := s.Config.Settings(kind)
-	if s.Live != nil && slices.Contains(liveKinds, kind) {
+	if s.Live != nil && slices.Contains(LiveKinds, kind) {
 		out = s.Live.Config(ctx).Settings(kind)
 	}
 	if row == nil {
@@ -98,6 +98,10 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 	if err != nil {
 		return nil, err
 	}
+	procs, err := s.Store.Processes(ctx, time.Now().Add(-ProcessesSeen))
+	if err != nil {
+		return nil, err
+	}
 	out := []api.Integration{}
 	for _, kind := range integrationKinds {
 		var row *store.IntegrationSettings
@@ -114,7 +118,8 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 			it.Configured = it.SecretSet
 		}
 		if row != nil {
-			it.RestartNeeded = row.Revision > s.SettingsRevision && !slices.Contains(liveKinds, kind)
+			it.Revision = row.Revision
+			it.Applying = !slices.Contains(LiveKinds, kind) && slices.ContainsFunc(procs, func(p store.Process) bool { return p.Revision < row.Revision })
 			it.UpdatedAt = &row.UpdatedAt
 			if row.UpdatedBy != nil {
 				it.UpdatedBy = &api.UserRef{Id: *row.UpdatedBy, Name: deref(row.UpdatedByName)}

@@ -35,8 +35,10 @@ type Syncer struct {
 	VSphere  vsphere.Driver
 	Events   *events.Publisher
 	Log      *slog.Logger
-	// Interval is the time between full reads.
-	Interval time.Duration
+	// Interval is the time between full reads; IntervalNow, when set, gives
+	// it as saved now (ADR-0030).
+	Interval    time.Duration
+	IntervalNow func(context.Context) time.Duration
 	// Settle is how long a change other than a VM's waits before its
 	// vCenter is read in full, as such changes come in bursts (5s when 0).
 	Settle time.Duration
@@ -130,9 +132,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 	}()
 	defer s.running.Wait() // the watchers stop with ctx
-	s.Log.Info("inventory sync started", "interval", s.Interval.String())
-	t := time.NewTicker(s.Interval)
-	defer t.Stop()
+	s.Log.Info("inventory sync started", "interval", every(ctx, s.Interval, s.IntervalNow).String())
 	for {
 		start := time.Now()
 		targets, names, err := s.syncAll(ctx)
@@ -152,9 +152,17 @@ func (s *Syncer) Run(ctx context.Context) error {
 			default:
 				return nil
 			}
-		case <-t.C:
+		case <-time.After(max(every(ctx, s.Interval, s.IntervalNow)-time.Since(start), 0)):
 		}
 	}
+}
+
+// every is an interval as saved now, when it is read on next use.
+func every(ctx context.Context, fixed time.Duration, now func(context.Context) time.Duration) time.Duration {
+	if now != nil {
+		return now(ctx)
+	}
+	return fixed
 }
 
 // SyncOnce reads every vCenter in full; one that fails doesn't stop the

@@ -43,7 +43,7 @@ func TestRESTAllowedSchemes(t *testing.T) {
 		"ftp://cmdb.corp.example/x":    false,
 	} {
 		u, _ := url.Parse(raw)
-		if got := r.Allowed(u); got != want {
+		if got := r.Allowed(t.Context(), u); got != want {
 			t.Errorf("Allowed(%s) = %v, want %v", raw, got, want)
 		}
 	}

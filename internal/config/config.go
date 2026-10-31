@@ -54,6 +54,9 @@ type Config struct {
 	SyncInterval time.Duration
 	// How often the network mappings are read from EfficientIP.
 	IPAMSyncInterval time.Duration
+	// DrainTimeout is how long a process applying newer connection
+	// settings lets its running work finish before it exits (ADR-0030).
+	DrainTimeout time.Duration
 
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
 	// order (RVAV_WMKS_SDK_URLS, comma-separated). Without them the console
@@ -374,6 +377,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.SyncInterval, err = duration("RVAV_SYNC_INTERVAL", 2*time.Minute); err != nil {
+		return c, err
+	}
+	if c.DrainTimeout, err = duration("RVAV_DRAIN_TIMEOUT", 5*time.Minute); err != nil {
 		return c, err
 	}
 

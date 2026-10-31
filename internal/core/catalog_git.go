@@ -172,7 +172,7 @@ type GitSyncReport struct {
 func (s *Service) RunCatalogGit(ctx context.Context) error {
 	s.Log.Info("catalog in Git started", "repository", s.Config.Git.URL, "interval", s.Config.Git.Interval.String())
 	for {
-		due, err := s.Store.GitDue(ctx, s.Config.Git.Interval)
+		due, err := s.Store.GitDue(ctx, s.liveConfig(ctx).Git.Interval)
 		if err == nil && due {
 			_, err = s.SyncCatalogGit(ctx)
 		}
@@ -478,7 +478,7 @@ func (g *gitSync) conflict(ctx context.Context, f store.GitFile, it store.AdminI
 // audited.
 func (g *gitSync) failed(ctx context.Context, f store.GitFile, cause error) {
 	g.rep.Failed++
-	wait := min(30*time.Second<<min(f.Attempts, 10), max(g.s.Config.Git.Interval, time.Minute))
+	wait := min(30*time.Second<<min(f.Attempts, 10), max(g.s.liveConfig(ctx).Git.Interval, time.Minute))
 	if err := g.s.Store.GitCommitFailed(ctx, f.Path, cause.Error(), time.Now().Add(wait)); err != nil {
 		g.s.Log.Error("catalog in Git: record a failed commit", "path", f.Path, "err", err)
 	}

@@ -562,11 +562,42 @@ func TestIntegrationSettings(t *testing.T) {
 			t.Fatalf("bad settings = %v", fields)
 		}
 
+		// A worker runs with the settings before (ADR-0030): saved, the
+		// vCenter's apply once it has drained and started again.
+		worker := store.Process{ID: "rvav-worker-1/worker/7-a1b2c3", Role: "worker", Host: "rvav-worker-1", Version: "1.4.0", State: "running"}
+		if err := h.store.SeeProcess(ctx, worker, time.Now().Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
 		var vc api.Integration
 		h.json("PUT", "/api/v1/admin/integrations/vcenter", admin, api.IntegrationWrite{Settings: map[string]any{"url": vcsim,
 			"username": "user", "insecure": true, "name": "vc01.corp.example"}, Secret: new("pass")}, 200, &vc)
-		if !vc.SecretSet || !vc.RestartNeeded || vc.Settings["url"] != vcsim || vc.Settings["password"] != nil {
+		if !vc.SecretSet || !vc.Applying || vc.Revision == 0 || vc.Settings["url"] != vcsim || vc.Settings["password"] != nil {
 			t.Fatalf("saved vcenter = %+v", vc)
+		}
+		var procs api.ProcessList
+		h.json("GET", "/api/v1/admin/processes", "lmartin", nil, 403, nil)
+		h.json("GET", "/api/v1/admin/processes", admin, nil, 200, &procs)
+		if len(procs.Items) != 1 || procs.Items[0].Id != worker.ID || procs.Items[0].Role != api.Worker ||
+			procs.Items[0].Revision != 0 || procs.Revision != vc.Revision {
+			t.Fatalf("processes = %+v", procs)
+		}
+		// Started again with them, it applied them.
+		worker.ID, worker.Revision = "rvav-worker-1/worker/8-d4e5f6", vc.Revision
+		if err := h.store.ProcessGone(ctx, "rvav-worker-1/worker/7-a1b2c3"); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.store.SeeProcess(ctx, worker, time.Now().Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		var list api.IntegrationList
+		h.json("GET", "/api/v1/admin/integrations", admin, nil, 200, &list)
+		for _, it := range list.Items {
+			if it.Applying {
+				t.Fatalf("%s still applying", it.Kind)
+			}
+		}
+		if err := h.store.ProcessGone(ctx, worker.ID); err != nil {
+			t.Fatal(err)
 		}
 		_, raw, _ := h.do("GET", "/api/v1/admin/integrations", admin, nil)
 		if strings.Contains(string(raw), `"pass"`) {

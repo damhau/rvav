@@ -63,9 +63,8 @@ type Service struct {
 	Secrets *secrets.Box
 	REST    *RESTSources
 	// Config is the configuration this process started with, saved
-	// settings applied; SettingsRevision is theirs (ADR-0020).
-	Config           config.Config
-	SettingsRevision int64
+	// settings applied (ADR-0020).
+	Config config.Config
 	// Live reads the settings saved now: those applied on next use follow
 	// it (ADR-0030). Without it, Config is used.
 	Live *LiveSettings

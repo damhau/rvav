@@ -124,9 +124,13 @@ spec:
             - { name: http, containerPort: 8080 }
             - { name: metrics, containerPort: 9090 }
           {{- if eq .component "api" }}
+          # An API draining to apply newer connection settings answers 503
+          # for 6 s before it stops taking requests (ADR-0030): one probe
+          # takes it out of the Service.
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 5
+            failureThreshold: 1
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10

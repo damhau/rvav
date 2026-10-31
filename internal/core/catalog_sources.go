@@ -137,8 +137,10 @@ func str(v any) string {
 type RESTSources struct {
 	// Hosts are the allowed hosts: "cmdb.corp.example", "*.corp.example"
 	// (subdomains), "host:8443".
-	Hosts  []string
-	Client *http.Client
+	Hosts []string
+	// HostsNow, when set, gives them as saved now (ADR-0030).
+	HostsNow func(context.Context) []string
+	Client   *http.Client
 
 	mu    sync.Mutex
 	cache map[string]restEntry
@@ -165,8 +167,14 @@ func NewRESTSources(hosts []string) *RESTSources {
 }
 
 // Allowed says whether a URL's host may be called (package hosts).
-func (r *RESTSources) Allowed(u *url.URL) bool {
-	return r != nil && hosts.Allowed(r.Hosts, u)
+func (r *RESTSources) Allowed(ctx context.Context, u *url.URL) bool {
+	if r == nil {
+		return false
+	}
+	if r.HostsNow != nil {
+		return hosts.Allowed(r.HostsNow(ctx), u)
+	}
+	return hosts.Allowed(r.Hosts, u)
 }
 
 var inputRef = regexp.MustCompile(`\$\{inputs\.([a-zA-Z0-9_]+)\}`)
@@ -219,7 +227,7 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	}
 	target := fill(p("url"), inputs, urlEscape)
 	u, err := url.Parse(target)
-	if err != nil || !r.Allowed(u) {
+	if err != nil || !r.Allowed(ctx, u) {
 		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not in RVAV_REST_SOURCE_HOSTS.", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
@@ -356,7 +364,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		params := *src.Params
 		ptr := prefix + "/ui_schema/fields/" + name + "/value_source/params"
 		target, _ := params["url"].(string)
-		if u, err := url.Parse(fill(target, nil, urlEscape)); err == nil && !s.REST.Allowed(u) {
+		if u, err := url.Parse(fill(target, nil, urlEscape)); err == nil && !s.REST.Allowed(ctx, u) {
 			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not in RVAV_REST_SOURCE_HOSTS.", u.Host)))
 		}
 		if secret, _ := params["secret"].(string); secret != "" {

@@ -120,6 +120,11 @@ func (s *Server) GetIntegrations(w http.ResponseWriter, r *http.Request) {
 	s.reply(w, r, http.StatusOK, api.IntegrationList{Items: items}, err)
 }
 
+func (s *Server) ListProcesses(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.Processes(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) SetIntegration(w http.ResponseWriter, r *http.Request, kind api.IntegrationKindPath) {
 	var b api.IntegrationWrite
 	if !s.decode(w, r, &b) {

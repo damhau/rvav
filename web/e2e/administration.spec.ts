@@ -234,7 +234,7 @@ test("the administration pages work from the keyboard", async ({ page }) => {
   await expect(page.getByRole("button", { name: "New day-2 policy" })).toBeFocused();
 });
 
-test("integration settings: locked fields, the write-only secret, test connection and the restart notice", async ({
+test("integration settings: locked fields, the write-only secret, test connection, and each process applying them (U1.3)", async ({
   page,
 }) => {
   await open(page, "Integrations", "Integrations");
@@ -254,7 +254,13 @@ test("integration settings: locked fields, the write-only secret, test connectio
   // The new password is sent once, with the save.
   expect(((await put).postDataJSON() as { secret?: string }).secret).toBe("n3w-secret");
   await expect(page.getByText("vCenter settings saved")).toBeVisible();
-  await expect(vcenter.getByRole("status")).toContainText("apply when rvav's processes (API and worker) restart");
+  // Each process drains and starts again with them, then they are applied.
+  const applying = vcenter.getByRole("region", { name: "Applying the settings" });
+  await expect(applying.getByRole("status")).toContainText("Applying: each process finishes the work it runs");
+  await expect(applying.getByRole("listitem")).toHaveCount(4);
+  await expect(applying.getByRole("status")).toHaveText("Applied: every process runs with these settings.");
+  await expect(applying.getByRole("listitem").filter({ hasText: "Applied" })).toHaveCount(4);
+  await expect(page.getByText("Applying", { exact: true })).toBeHidden();
   await expect(vcenter.getByLabel("Password")).toHaveValue("");
   await expect(vcenter.getByRole("textbox", { name: "User" })).toHaveValue("svc-rvav2@vsphere.local");
 
@@ -303,7 +309,7 @@ test("the identity provider: tested, tried in a window of its own, and applied w
   await idp.getByRole("textbox", { name: "Groups claim" }).fill("roles");
   await idp.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByText("Identity provider saved")).toBeVisible();
-  await expect(page.getByText("Restart needed")).toBeHidden();
+  await expect(page.getByRole("region", { name: "Applying the settings" })).toBeHidden();
   await expect(idp.getByRole("textbox", { name: "Groups claim" })).toHaveValue("roles");
 });
 
@@ -332,7 +338,7 @@ test("the catalog's Git repository: an SSH deploy key keeps its lines, and the t
   await expect(page.getByText("Git settings saved")).toBeVisible();
   // The form is made again once the saved settings are read back: type
   // after that, or the text is lost.
-  await expect(git.getByRole("status")).toContainText("apply when rvav's processes (API and worker) restart");
+  await expect(git.getByRole("region", { name: "Applying the settings" })).toBeVisible();
   await expect(git.getByRole("textbox", { name: "Token or deploy key" })).toHaveValue("");
   await git
     .getByRole("textbox", { name: "Repository" })

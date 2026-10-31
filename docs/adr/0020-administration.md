@@ -1,6 +1,7 @@
 # ADR-0020: Administration: projects, placement, governance and settings
 
-- Status: accepted
+- Status: accepted; how saved settings take effect revised by
+  [ADR-0030](0030-settings-and-local-administrator.md)
 - Date: 2026-10-28
 
 ## Context
@@ -87,7 +88,9 @@ The vCenter, AWX and EfficientIP connections are stored in the database
   process records the settings revision it started with, and the UI says
   when a restart is needed. Clients hold sessions, and Temporal workers and
   the sync loops are built at start: swapping them under running activities
-  is a risk for something that rarely changes.
+  is a risk for something that rarely changes. *(Revised by ADR-0030:
+  they apply without a restart by hand, on next use or as each process
+  drains and starts again.)*
 - **Test connection** uses the settings given, saved or not, and says
   which checks pass (reach the server, sign in, see what rvav needs).
 - **A password or token goes only where it was given for.** Testing or

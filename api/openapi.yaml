@@ -2748,13 +2748,32 @@ paths:
     get:
       tags: [admin]
       operationId: getIntegrations
-      summary: The vCenter, AWX and EfficientIP connections (secrets never returned)
+      summary: The identity provider, connections and notification channels (secrets never returned)
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/IntegrationList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/processes:
+    get:
+      tags: [admin]
+      operationId: listProcesses
+      summary: rvav's processes and the settings revision each runs with
+      description: |
+        Each API, worker and sync process records itself every few seconds
+        (ADR-0030). One that saw newer connection settings is draining,
+        before it exits and its supervisor starts it again. Processes not
+        seen for 30 seconds are left out.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessList" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -2767,8 +2786,10 @@ paths:
       summary: Save a connection's settings
       description: |
         Fields set by environment variables can't be changed here (ADR-0020).
-        rvav's processes use saved settings after they restart; the answer
-        says when a restart is needed.
+        Saved settings apply without a restart by hand (ADR-0030): the
+        identity provider and notifications on next use; a connection when
+        each process holding it has drained and been started again by its
+        supervisor (`applying` until then).
       requestBody:
         required: true
         content:
@@ -7110,7 +7131,7 @@ components:
       enum: [oidc, vcenter, awx, efficientip, nsx, git, smtp, teams, slack]
     Integration:
       type: object
-      required: [kind, configured, settings, secret_set, locked, restart_needed]
+      required: [kind, configured, settings, secret_set, locked, revision, applying]
       properties:
         kind: { $ref: "#/components/schemas/IntegrationKind" }
         configured: { type: boolean }
@@ -7143,14 +7164,50 @@ components:
           type: array
           description: Settings an environment variable sets, which win and can't be changed here.
           items: { type: string }
-        restart_needed:
+        revision:
+          type: integer
+          format: int64
+          description: The settings revision these were saved at; 0 when none are saved.
+        applying:
           type: boolean
           description: |
-            Saved settings differ from what rvav's processes started with.
-            Never for oidc: the token check follows the saved settings
-            (ADR-0030).
+            A process still runs with earlier settings: it drains (takes no
+            new task, lets those running finish), exits and is started again
+            with these (ADR-0030). Never for oidc, smtp, teams and slack,
+            read on next use.
         updated_at: { type: string, format: date-time }
         updated_by: { $ref: "#/components/schemas/UserRef" }
+    Process:
+      type: object
+      required: [id, role, host, version, revision, state, started_at, seen_at]
+      properties:
+        id: { type: string, example: rvav-worker-7d9f-2k4xq/worker/1f3a }
+        role:
+          type: string
+          enum: [api, worker, sync, dev]
+        host: { type: string, description: The host name (a pod's name on Kubernetes). }
+        version: { type: string }
+        revision:
+          type: integer
+          format: int64
+          description: The settings revision it started with.
+        state:
+          type: string
+          enum: [running, draining]
+          description: draining - it saw newer connection settings, and exits once its work is done.
+        started_at: { type: string, format: date-time }
+        seen_at: { type: string, format: date-time }
+    ProcessList:
+      type: object
+      required: [items, revision]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Process" }
+        revision:
+          type: integer
+          format: int64
+          description: The latest connection settings' revision; a process before it applies them when it starts again.
     IntegrationList:
       type: object
       required: [items]

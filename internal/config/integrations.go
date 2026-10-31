@@ -10,8 +10,8 @@ import (
 )
 
 // Integration settings set from the UI (ADR-0020): stored in the database,
-// used when rvav's processes start, and only where no environment variable
-// sets them.
+// and used only where no environment variable sets them; saved, they apply
+// on next use or as each process drains and starts again (ADR-0030).
 
 // Field is an integration setting and the environment variable that wins
 // over the stored value.
@@ -24,8 +24,7 @@ type Field struct {
 // Fields are the settings of each integration.
 var Fields = map[string][]Field{
 	// The identity provider (ADR-0030): the web app is a public client
-	// (PKCE), so there is no secret. The token check follows a change at
-	// once; the others wait for a restart (ADR-0020).
+	// (PKCE), so there is no secret. It is read on next use.
 	"oidc": {
 		{"issuer", "RVAV_OIDC_ISSUER", "string", false},
 		{"discovery_url", "RVAV_OIDC_DISCOVERY_URL", "string", false},

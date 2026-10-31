@@ -80,7 +80,10 @@ const Retention = 90 * 24 * time.Hour
 type Notifier struct {
 	Store   *store.Store
 	Senders map[string]Sender
-	Log     *slog.Logger
+	// SendersNow, when set, gives the channels as saved now, in place of
+	// Senders (ADR-0030).
+	SendersNow func(context.Context) map[string]Sender
+	Log        *slog.Logger
 	// PublicURL starts the links in messages.
 	PublicURL string
 	// Interval between rounds; 2 s when zero.
@@ -199,8 +202,16 @@ func (n *Notifier) deliver(ctx context.Context, d store.Delivery) {
 	}
 }
 
+// Current are the channels set up now, by name.
+func (n *Notifier) Current(ctx context.Context) map[string]Sender {
+	if n.SendersNow != nil {
+		return n.SendersNow(ctx)
+	}
+	return n.Senders
+}
+
 func (n *Notifier) send(ctx context.Context, d store.Delivery) (string, string, error) {
-	s, ok := n.Senders[d.Channel]
+	s, ok := n.Current(ctx)[d.Channel]
 	if !ok {
 		return "", "", Permanent(errors.New(d.Channel + " is not set up"))
 	}

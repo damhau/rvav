@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
@@ -50,6 +51,16 @@ type Server struct {
 	Teams *notify.TeamsVerifier
 	// Slack answers rvav's Slack app; nil when Slack isn't set up.
 	Slack *notify.Slack
+	// TeamsNow and SlackNow, when set, give them as saved now, in place of
+	// Teams and Slack (ADR-0030).
+	TeamsNow func(context.Context) *notify.TeamsVerifier
+	SlackNow func(context.Context) *notify.Slack
+	// Draining makes /readyz answer 503: the process is about to exit, to
+	// apply newer connection settings (ADR-0030).
+	Draining atomic.Bool
+
+	stopOnce, closeOnce sync.Once
+	stop                chan struct{}
 	// SecureCookies marks the local session's cookie Secure: rvav is served
 	// over HTTPS (RVAV_PUBLIC_URL).
 	SecureCookies bool
@@ -73,6 +84,12 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		// Draining to apply newer connection settings (ADR-0030): the load
+		// balancer stops sending requests before the process exits.
+		if s.Draining.Load() {
+			http.Error(w, "draining to apply newer settings", http.StatusServiceUnavailable)
+			return
+		}
 		if err := s.Store.Pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
@@ -366,4 +383,16 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// StopStreams ends the event streams, which an HTTP server's Shutdown
+// doesn't: their clients reconnect where the next process serves them.
+func (s *Server) StopStreams() {
+	ch := s.stopping()
+	s.closeOnce.Do(func() { close(ch) })
+}
+
+func (s *Server) stopping() chan struct{} {
+	s.stopOnce.Do(func() { s.stop = make(chan struct{}) })
+	return s.stop
 }

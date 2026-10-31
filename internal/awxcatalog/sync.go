@@ -27,6 +27,8 @@ type Sync struct {
 	ActionLabels []string
 	Log          *slog.Logger
 	Interval     time.Duration
+	// IntervalNow, when set, gives it as saved now (ADR-0030).
+	IntervalNow func(context.Context) time.Duration
 }
 
 func (s *Sync) Run(ctx context.Context) error {
@@ -37,7 +39,7 @@ func (s *Sync) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(s.Interval):
+		case <-time.After(s.interval(ctx)):
 		}
 	}
 }
@@ -258,4 +260,11 @@ func (s *Sync) create(ctx context.Context, t awx.Template, survey []awx.SurveyQu
 		Category: category, Type: typ, Icon: icon, AWXID: t.ID, AWXName: t.Name,
 		Schema: j(schema), UI: j(ui), Initial: j(initial), Blueprint: j(bp)}
 	return it.ID, s.Store.CreateAWXItem(ctx, it)
+}
+
+func (s *Sync) interval(ctx context.Context) time.Duration {
+	if s.IntervalNow != nil {
+		return s.IntervalNow(ctx)
+	}
+	return s.Interval
 }

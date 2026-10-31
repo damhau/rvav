@@ -295,8 +295,11 @@ ones they may use; auditors see them read only.
   each (`features/admin/IntegrationSettings.tsx`). A field an environment
   variable sets is disabled and names the variable; the password or token
   is write-only (left empty, it stays as it is). **Test connection** runs
-  the server's checks with the settings on screen; after a save the page
-  says the settings apply when rvav's processes restart. The vCenter tab
+  the server's checks with the settings on screen. After a save, a
+  connection's panel shows it applying: each of rvav's processes
+  (`GET /admin/processes`) finishing its running work, then started again
+  with the settings, until all have them (`features/admin/Applying.tsx`,
+  ADR-0030); notification channels apply on next use. The vCenter tab
   lists every vCenter rvav manages below its connection
   (`features/admin/VCenters.tsx`): the others are added, tested, changed
   and removed there, with what the sync last read from each. The

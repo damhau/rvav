@@ -19,6 +19,8 @@ type SubnetSync struct {
 	IPAM     efficientip.Client
 	Log      *slog.Logger
 	Interval time.Duration
+	// IntervalNow, when set, gives it as saved now (ADR-0030).
+	IntervalNow func(context.Context) time.Duration
 }
 
 func (s *SubnetSync) Run(ctx context.Context) error {
@@ -31,7 +33,7 @@ func (s *SubnetSync) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(s.Interval):
+		case <-time.After(every(ctx, s.Interval, s.IntervalNow)):
 		}
 	}
 }

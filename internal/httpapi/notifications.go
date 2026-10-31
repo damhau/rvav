@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -62,7 +63,8 @@ func (s *Server) TestNotificationChannel(w http.ResponseWriter, r *http.Request)
 // TeamsMessages answers rvav's Teams bot: Approve and Reject on an
 // approval card decide it as the user it was sent to (ADR-0023).
 func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
-	if s.Teams == nil {
+	teams := s.teams(r.Context())
+	if teams == nil {
 		s.problem(w, r, http.StatusNotFound, "not_found", "Teams is not set up", "", nil)
 		return
 	}
@@ -90,7 +92,7 @@ func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, r, http.StatusBadRequest, "bad_request", "Not a Bot Framework activity", err.Error(), nil)
 		return
 	}
-	if err := s.Teams.Verify(r.Context(), r.Header.Get("Authorization"), notify.Activity{ChannelID: act.ChannelID,
+	if err := teams.Verify(r.Context(), r.Header.Get("Authorization"), notify.Activity{ChannelID: act.ChannelID,
 		ServiceURL: act.ServiceURL, TenantID: act.ChannelData.Tenant.ID}); err != nil {
 		s.Log.Warn("a Teams call was refused", "err", err)
 		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Not a call from Teams", "", nil)
@@ -124,7 +126,8 @@ func (s *Server) TeamsMessages(w http.ResponseWriter, r *http.Request) {
 // Reject asks for the comment in a dialog, which decides when sent
 // (ADR-0023).
 func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
-	if s.Slack == nil {
+	sl := s.slack(r.Context())
+	if sl == nil {
 		s.problem(w, r, http.StatusNotFound, "not_found", "Slack is not set up", "", nil)
 		return
 	}
@@ -133,7 +136,7 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, r, http.StatusBadRequest, "bad_request", "Can't read the request", err.Error(), nil)
 		return
 	}
-	if err := notify.VerifySlack(r.Header, body, s.Slack.Config.SigningSecret); err != nil {
+	if err := notify.VerifySlack(r.Header, body, sl.Config.SigningSecret); err != nil {
 		s.Log.Warn("a Slack call was refused", "err", err)
 		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Not a call from Slack", "", nil)
 		return
@@ -172,7 +175,7 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 				s.Log.Warn("answer Slack", "err", err)
 			}
 		case notify.SlackReject:
-			if _, err := s.Slack.API().OpenViewContext(ctx, cb.TriggerID, notify.RejectDialog(data, cb.Container.ChannelID,
+			if _, err := sl.API().OpenViewContext(ctx, cb.TriggerID, notify.RejectDialog(data, cb.Container.ChannelID,
 				cb.Container.MessageTs)); err != nil {
 				s.Log.Warn("open Slack's reject dialog", "err", err)
 			}
@@ -203,7 +206,7 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if meta.Channel != "" && meta.TS != "" {
-			if _, _, _, err := s.Slack.API().UpdateMessageContext(ctx, meta.Channel, meta.TS, slack.MsgOptionText(meta.Title, false),
+			if _, _, _, err := sl.API().UpdateMessageContext(ctx, meta.Channel, meta.TS, slack.MsgOptionText(meta.Title, false),
 				slack.MsgOptionBlocks(notify.DecidedBlocks(meta.CardData, false, by)...)); err != nil {
 				s.Log.Warn("update the Slack message", "err", err)
 			}
@@ -244,4 +247,20 @@ func (s *Server) UpdateRequestDraft(w http.ResponseWriter, r *http.Request, id a
 
 func (s *Server) DeleteRequestDraft(w http.ResponseWriter, r *http.Request, id api.IdPath) {
 	s.replyEmpty(w, r, s.Core.DeleteRequestDraft(r.Context(), principal(r), id))
+}
+
+// teams checks Teams' calls with the settings saved now (ADR-0030).
+func (s *Server) teams(ctx context.Context) *notify.TeamsVerifier {
+	if s.TeamsNow != nil {
+		return s.TeamsNow(ctx)
+	}
+	return s.Teams
+}
+
+// slack answers Slack with the settings saved now (ADR-0030).
+func (s *Server) slack(ctx context.Context) *notify.Slack {
+	if s.SlackNow != nil {
+		return s.SlackNow(ctx)
+	}
+	return s.Slack
 }

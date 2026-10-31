@@ -3,6 +3,7 @@ package provision
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
@@ -64,9 +65,16 @@ func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
 
 // NewWorker registers the workflow and activities on the task queue.
 func NewWorker(c client.Client, taskQueue string, a *Activities) worker.Worker {
+	return NewDrainingWorker(c, taskQueue, a, 0)
+}
+
+// NewDrainingWorker is a worker whose Stop lets running activities finish
+// for up to stopTimeout (ADR-0030): those still running then are cancelled
+// and tried again by the next worker.
+func NewDrainingWorker(c client.Client, taskQueue string, a *Activities, stopTimeout time.Duration) worker.Worker {
 	// The client's tracing interceptor (app.Temporal) applies to the
 	// worker too: traces go on into workflows and activities (S14.5).
-	w := worker.New(c, taskQueue, worker.Options{})
+	w := worker.New(c, taskQueue, worker.Options{WorkerStopTimeout: stopTimeout})
 	w.RegisterWorkflow(Provision)
 	w.RegisterWorkflow(Housekeeping)
 	w.RegisterWorkflow(RollbackWorkflow)

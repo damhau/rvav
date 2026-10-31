@@ -53,25 +53,45 @@ Without a restart by hand, in one of two ways:
   - the allowed hosts;
   - the intervals.
 
-  Each process reads the current settings revision before using one, and
-  builds what it needs again when the revision has moved.
+  Each process reads the current settings revision before using one, at
+  most every 2 s, and builds what it needs again when the revision has
+  moved. A notification channel is built again only when its own settings
+  change, so Teams' tokens are kept otherwise.
 - **Drain and restart:** the connection clients (vCenter, AWX, EfficientIP,
   NSX, Git, vRA) hold sessions, and the Temporal worker and the sync loops
   are built at start. Swapping them under a running activity is the risk
-  ADR-0020 avoided. Instead, a process that holds them and sees a newer
-  revision drains:
+  ADR-0020 avoided. The API holds them too: the console's vCenter, the
+  pickers' AWX and EfficientIP. Instead, every process watches for newer
+  connection settings and drains:
+  - it compares the connections saved now with those it started with (the
+    configuration less what is read on next use). An identical save, or a
+    change to what is read on next use, drains nothing;
+  - it waits until the connections have been left alone for 3 s, so that
+    settings saved together apply with one restart;
   - it takes no new task and lets its running activities finish, for at
-    most a bounded time;
-  - an activity still running then is retried by Temporal, and is
-    idempotent;
+    most `RVAV_DRAIN_TIMEOUT` (5 minutes). An activity still running then
+    is cancelled and retried by Temporal, and is idempotent;
+  - an API answers `/readyz` with 503 for 6 s first, so the load balancer
+    sends requests elsewhere, then lets requests running finish and ends
+    the event streams, which clients reopen. APIs drain one at a time,
+    claimed under an advisory lock; one that stopped recording itself
+    holds the others back for 30 s at most;
+  - the sync loops stop; a pass cut short is done again at the next start;
   - it exits with status 3.
 
-  Its supervisor starts it again with the new settings: Kubernetes,
-  Compose (`restart: on-failure`) or systemd (`Restart=on-failure`). The
-  API process holds none of them across requests.
-- Each process records the revision it runs with (ADR-0020). The UI shows
-  a change as applying until every process has it, then applied, in place
-  of the restart notice.
+  Its supervisor starts it again with the new settings: Kubernetes (the
+  container restarts), Compose (`restart: on-failure` in development,
+  `always` on a VM) or systemd (`Restart=always`). `rvav dev`, which has
+  none, starts itself again in place.
+- Each process records itself in the `processes` table every 5 s: role,
+  host, version, the settings revision it runs with, running or draining.
+  `GET /admin/processes` lists those seen in the last 30 s. A setting read
+  on next use moves a process's revision as soon as it reads it. An
+  integration is `applying` while a process runs with an earlier
+  revision than the integration's; the UI shows each process draining and
+  starting again, then the change applied, in place of ADR-0020's restart
+  notice. Each drain and each exit to apply settings is audited
+  (`settings.process_drain`, `settings.process_restart`).
 
 ### The local administrator
 - **One local account,** `admin`, with the global `admin` role: the way in
@@ -215,9 +235,13 @@ Without a restart by hand, in one of two ways:
   shown once, slows down guessing, is audited, and can be reset only by
   someone with the database credentials and the command line. Its session
   is the one cookie rvav sets, guarded against cross-site requests.
-- **A connection change restarts the worker and the sync process,** each
-  draining first. A provisioning running then finishes, or its activity
-  is retried by Temporal.
+- **A connection change restarts every process,** each draining first. A
+  provisioning running then finishes, or its activity is retried by
+  Temporal. With one API (Compose, a VM), the UI is unavailable for the few
+  seconds it takes to start again; with two or more, the others answer.
+- **A process that holds a fake (development's fake EfficientIP and AWX)
+  starts it again empty.** Addresses rvav recorded are not offered again;
+  a fake job in flight when the process drained is finished first.
 - **Two ways to sign in, one principal.** The local account is kept for
   first setup and break-glass. Day-to-day access goes through the
   provider and its groups.

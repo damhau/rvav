@@ -154,7 +154,7 @@ func TestIdentityProvider(t *testing.T) {
 		var it api.Integration
 		h.json("PUT", "/api/v1/admin/integrations/oidc", admin, api.IntegrationWrite{Settings: map[string]any{"issuer": idp.issuer,
 			"client_id": "rvav", "scopes": "openid profile email offline_access", "groups_claim": "groups"}}, 200, &it)
-		if !it.Configured || it.RestartNeeded || it.SecretSet {
+		if !it.Configured || it.Applying || it.SecretSet {
 			t.Fatalf("saved provider: %+v", it)
 		}
 		if code := me(token); code != http.StatusOK {

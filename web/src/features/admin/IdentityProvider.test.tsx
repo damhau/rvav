@@ -127,7 +127,7 @@ describe("the identity provider", () => {
     expect(await screen.findByText("Identity provider saved")).toBeInTheDocument();
     // The panel shows the saved settings.
     expect(await screen.findByText(/^Saved /)).toBeInTheDocument();
-    expect(screen.queryByText("Restart needed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Applying")).not.toBeInTheDocument();
     cleanup();
     expect(within(await panel()).getByLabelText("Scopes")).toHaveValue("openid profile email offline_access");
   });

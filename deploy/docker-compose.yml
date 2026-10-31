@@ -183,6 +183,9 @@ services:
   api:
     build: { context: .., dockerfile: Dockerfile }
     command: ["api"]
+    # A process that drained to apply newer connection settings exits with
+    # status 3 to be started again (ADR-0030), as the worker and sync are.
+    restart: on-failure
     environment: *rvav-env
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_API_PORT:-8080}:8080"]
     depends_on:

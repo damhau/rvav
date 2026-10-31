@@ -2071,8 +2071,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The vCenter, AWX and EfficientIP connections (secrets never returned) */
+        /** The identity provider, connections and notification channels (secrets never returned) */
         get: operations["getIntegrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/processes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * rvav's processes and the settings revision each runs with
+         * @description Each API, worker and sync process records itself every few seconds
+         *     (ADR-0030). One that saw newer connection settings is draining,
+         *     before it exits and its supervisor starts it again. Processes not
+         *     seen for 30 seconds are left out.
+         */
+        get: operations["listProcesses"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2094,8 +2117,10 @@ export interface paths {
         /**
          * Save a connection's settings
          * @description Fields set by environment variables can't be changed here (ADR-0020).
-         *     rvav's processes use saved settings after they restart; the answer
-         *     says when a restart is needed.
+         *     Saved settings apply without a restart by hand (ADR-0030): the
+         *     identity provider and notifications on next use; a connection when
+         *     each process holding it has drained and been started again by its
+         *     supervisor (`applying` until then).
          */
         put: operations["setIntegration"];
         post?: never;
@@ -5369,14 +5394,51 @@ export interface components {
             /** @description Settings an environment variable sets, which win and can't be changed here. */
             locked: string[];
             /**
-             * @description Saved settings differ from what rvav's processes started with.
-             *     Never for oidc: the token check follows the saved settings
-             *     (ADR-0030).
+             * Format: int64
+             * @description The settings revision these were saved at; 0 when none are saved.
              */
-            restart_needed: boolean;
+            revision: number;
+            /**
+             * @description A process still runs with earlier settings: it drains (takes no
+             *     new task, lets those running finish), exits and is started again
+             *     with these (ADR-0030). Never for oidc, smtp, teams and slack,
+             *     read on next use.
+             */
+            applying: boolean;
             /** Format: date-time */
             updated_at?: string;
             updated_by?: components["schemas"]["UserRef"];
+        };
+        Process: {
+            /** @example rvav-worker-7d9f-2k4xq/worker/1f3a */
+            id: string;
+            /** @enum {string} */
+            role: "api" | "worker" | "sync" | "dev";
+            /** @description The host name (a pod's name on Kubernetes). */
+            host: string;
+            version: string;
+            /**
+             * Format: int64
+             * @description The settings revision it started with.
+             */
+            revision: number;
+            /**
+             * @description draining - it saw newer connection settings, and exits once its work is done.
+             * @enum {string}
+             */
+            state: "running" | "draining";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            seen_at: string;
+        };
+        ProcessList: {
+            items: components["schemas"]["Process"][];
+            /**
+             * Format: int64
+             * @description The latest connection settings' revision; a process before it applies them when it starts again.
+             */
+            revision: number;
         };
         IntegrationList: {
             items: components["schemas"]["Integration"][];
@@ -9504,6 +9566,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listProcesses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessList"];
                 };
             };
             401: components["responses"]["Unauthorized"];

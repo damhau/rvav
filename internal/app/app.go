@@ -56,6 +56,18 @@ type App struct {
 	SettingsRevision int64
 	// Live reads the settings saved now, for those applied on next use.
 	Live *core.LiveSettings
+	// Watch paces how the process records itself and applies newer
+	// connection settings (ADR-0030).
+	Watch Watch
+
+	// The notification channels, as saved now: built again when their
+	// settings change (ADR-0030).
+	ntMu      sync.Mutex
+	ntFor     notifyConfig
+	ntBuilt   bool
+	ntSenders map[string]notify.Sender
+	ntTeams   *notify.TeamsVerifier
+	ntSlack   *notify.Slack
 
 	vcMu    sync.Mutex
 	vc      vsphere.Driver
@@ -73,6 +85,7 @@ type App struct {
 // the catalog labels, and those with an action label as day-2 actions.
 func (a *App) awxCatalog() *awxcatalog.Sync {
 	return &awxcatalog.Sync{Store: a.Store, AWX: a.AWX, Log: a.Log, Interval: a.Cfg.AWX.SyncInterval,
+		IntervalNow:  func(ctx context.Context) time.Duration { return a.live(ctx).AWX.SyncInterval },
 		Filter:       awx.TemplateFilter{Organization: a.Cfg.AWX.Organization, Labels: a.Cfg.AWX.CatalogLabels},
 		ActionLabels: a.Cfg.AWX.ActionLabels}
 }
@@ -121,11 +134,10 @@ func Open(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, error
 		return nil, err
 	}
 	a.Live = &core.LiveSettings{Store: st, Secrets: a.Secrets, Base: cfg, Every: 2 * time.Second, Log: log}
+	a.Watch = Watch{Every: 5 * time.Second, Settle: 3 * time.Second, Grace: 6 * time.Second}
 	cfg = a.Cfg
-	// Notifications are queued on the channels set up (ADR-0023).
-	for ch := range a.senders() {
-		a.Events.Channels = append(a.Events.Channels, ch)
-	}
+	// Notifications are queued on the channels set up now (ADR-0023).
+	a.Events.ChannelsNow = a.channels
 
 	if cfg.IPAM.Fake {
 		fake, err := NewFakeEfficientIP(ctx, st)
@@ -319,7 +331,7 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		VCenter:    func(ctx context.Context, name string) (core.ConsoleSource, error) { return a.VCenters().Get(ctx, name) },
 		VSphere:    func(ctx context.Context, name string) (vsphere.Driver, error) { return a.VCenters().Get(ctx, name) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
-		Secrets: a.Secrets, REST: core.NewRESTSources(a.Cfg.RESTSourceHosts), Config: a.Cfg, SettingsRevision: a.SettingsRevision, Live: a.Live,
+		Secrets: a.Secrets, REST: a.restSources(), Config: a.Cfg, Live: a.Live,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
 	if a.Cfg.ConsoleUsername != "" {
 		svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) { return a.consoleAccount(ctx) }
@@ -386,14 +398,12 @@ func (a *App) RunAPI(ctx context.Context) error {
 		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
 		WMKSSDKURLs: a.Cfg.WMKSSDKURLs, ConsoleInsecure: a.Cfg.VCenter.Insecure,
 		SecureCookies: strings.HasPrefix(a.Cfg.PublicURL, "https://"),
-	}
-	if a.Cfg.Teams.AppID != "" {
-		srv.Teams = &notify.TeamsVerifier{AppID: a.Cfg.Teams.AppID, OpenIDURL: a.Cfg.Teams.OpenIDURL, TenantID: a.Cfg.Teams.TenantID}
-	}
-	if a.Cfg.Slack.BotToken != "" {
-		srv.Slack = &notify.Slack{Config: a.Cfg.Slack, Store: a.Store}
+		// Teams' and Slack's calls are checked with the settings saved now.
+		TeamsNow: func(ctx context.Context) *notify.TeamsVerifier { _, v, _ := a.notifications(ctx); return v },
+		SlackNow: func(ctx context.Context) *notify.Slack { _, _, s := a.notifications(ctx); return s },
 	}
 	httpSrv := &http.Server{Addr: a.Cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv.RegisterOnShutdown(srv.StopStreams)
 	errc := make(chan error, 1)
 	go func() {
 		a.Log.Info("api listening", "addr", a.Cfg.HTTPAddr)
@@ -403,7 +413,15 @@ func (a *App) RunAPI(ctx context.Context) error {
 	case err := <-errc:
 		return err
 	case <-ctx.Done():
-		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		wait := 10 * time.Second
+		if Draining(ctx) {
+			// Not ready first, so the load balancer sends requests to
+			// the other APIs; then those running finish (ADR-0030).
+			srv.Draining.Store(true)
+			time.Sleep(a.Watch.Grace)
+			wait = a.Cfg.DrainTimeout
+		}
+		sctx, cancel := context.WithTimeout(context.Background(), wait)
 		defer cancel()
 		return httpSrv.Shutdown(sctx)
 	}
@@ -452,7 +470,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Retention and lease policies start requests of their own.
 	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
 	acts.Housekeeper = svc
-	w := provision.NewWorker(tc, a.Cfg.Temporal.TaskQueue, acts)
+	// Stopped to apply newer settings, running activities finish first,
+	// within RVAV_DRAIN_TIMEOUT (ADR-0030).
+	w := provision.NewDrainingWorker(tc, a.Cfg.Temporal.TaskQueue, acts, a.Cfg.DrainTimeout)
 	if err := w.Start(); err != nil {
 		return err
 	}
@@ -484,29 +504,83 @@ func (a *App) RunWorker(ctx context.Context) error {
 	return nil
 }
 
-// senders are the notification channels set up, by name.
-func (a *App) senders() map[string]notify.Sender {
+// live is the configuration as saved now (ADR-0030).
+func (a *App) live(ctx context.Context) config.Config {
+	if a.Live == nil {
+		return a.Cfg
+	}
+	return a.Live.Config(ctx)
+}
+
+// notifyConfig is what the notification channels are built from.
+type notifyConfig struct {
+	SMTP  config.SMTPConfig
+	Teams config.TeamsConfig
+	Slack config.SlackConfig
+}
+
+// notifications are the channels set up now, by name, and what checks
+// Teams' and Slack's calls (nil when not set up): built again when their
+// settings change, else kept, with the tokens they hold.
+func (a *App) notifications(ctx context.Context) (map[string]notify.Sender, *notify.TeamsVerifier, *notify.Slack) {
+	c := a.live(ctx)
+	now := notifyConfig{SMTP: c.SMTP, Teams: c.Teams, Slack: c.Slack}
+	a.ntMu.Lock()
+	defer a.ntMu.Unlock()
+	if a.ntBuilt && a.ntFor == now {
+		return a.ntSenders, a.ntTeams, a.ntSlack
+	}
 	out := map[string]notify.Sender{}
-	if a.Cfg.SMTP.Host != "" {
-		out["email"] = &notify.Email{Config: a.Cfg.SMTP}
+	var teams *notify.TeamsVerifier
+	var slack *notify.Slack
+	if now.SMTP.Host != "" {
+		out["email"] = &notify.Email{Config: now.SMTP}
 	}
-	if a.Cfg.Teams.AppID != "" && a.Cfg.Teams.AppPassword != "" {
-		out["teams"] = &notify.Teams{Config: a.Cfg.Teams, Store: a.Store}
+	if now.Teams.AppID != "" && now.Teams.AppPassword != "" {
+		out["teams"] = &notify.Teams{Config: now.Teams, Store: a.Store}
 	}
-	if a.Cfg.Slack.BotToken != "" {
-		out["slack"] = &notify.Slack{Config: a.Cfg.Slack, Store: a.Store}
+	if now.Teams.AppID != "" {
+		teams = &notify.TeamsVerifier{AppID: now.Teams.AppID, OpenIDURL: now.Teams.OpenIDURL, TenantID: now.Teams.TenantID}
 	}
-	return out
+	if now.Slack.BotToken != "" {
+		slack = &notify.Slack{Config: now.Slack, Store: a.Store}
+		out["slack"] = slack
+	}
+	if a.ntBuilt {
+		a.Log.Info("notification channels changed; used from now on", "channels", slices.Sorted(maps.Keys(out)))
+	}
+	a.ntFor, a.ntBuilt, a.ntSenders, a.ntTeams, a.ntSlack = now, true, out, teams, slack
+	return out, teams, slack
+}
+
+// senders are the notification channels set up now, by name.
+func (a *App) senders(ctx context.Context) map[string]notify.Sender {
+	s, _, _ := a.notifications(ctx)
+	return s
+}
+
+// channels are their names, those notifications are queued on.
+func (a *App) channels(ctx context.Context) []string {
+	return slices.Sorted(maps.Keys(a.senders(ctx)))
 }
 
 // Notifier sends notifications on their channels.
 func (a *App) Notifier() *notify.Notifier {
-	return &notify.Notifier{Store: a.Store, Senders: a.senders(), Log: a.Log, PublicURL: a.Cfg.PublicURL}
+	return &notify.Notifier{Store: a.Store, SendersNow: a.senders, Log: a.Log, PublicURL: a.Cfg.PublicURL}
+}
+
+// restSources call the URLs of `rest` value sources, on the hosts allowed
+// now.
+func (a *App) restSources() *core.RESTSources {
+	r := core.NewRESTSources(a.Cfg.RESTSourceHosts)
+	r.HostsNow = func(ctx context.Context) []string { return a.live(ctx).RESTSourceHosts }
+	return r
 }
 
 // Dispatcher delivers integration events to subscriptions.
 func (a *App) Dispatcher() *dispatch.Dispatcher {
-	t := dispatch.Targets{Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets)}}
+	t := dispatch.Targets{Webhook: &dispatch.Webhook{Hosts: a.Cfg.WebhookHosts, Secret: dispatch.StoredSecret(a.Store, a.Secrets),
+		HostsNow: func(ctx context.Context) []string { return a.live(ctx).WebhookHosts }}}
 	if a.AWX != nil {
 		t.AWX = &dispatch.AWX{Client: a.AWX}
 	}
@@ -522,14 +596,16 @@ func (a *App) RunSync(ctx context.Context) error {
 	if _, err := a.VCenter(ctx); err != nil {
 		return err
 	}
-	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval}
+	subnets := &inventory.SubnetSync{Store: a.Store, IPAM: a.IPAM, Log: a.Log, Interval: a.Cfg.IPAMSyncInterval,
+		IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).IPAMSyncInterval }}
 	go func() { _ = subnets.Run(ctx) }()
 	go func() { _ = a.awxCatalog().Run(ctx) }()
 	// VMs' tags changed in NSX are drift (ADR-0028).
 	if client, err := a.NSX(); err != nil {
 		return err
 	} else if client != nil {
-		tags := &inventory.NSXTagSync{Store: a.Store, NSX: client, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
+		tags := &inventory.NSXTagSync{Store: a.Store, NSX: client, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval,
+			IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).SyncInterval }}
 		go func() { _ = tags.Run(ctx) }()
 	}
 	// The catalog's repository (ADR-0029).
@@ -537,6 +613,7 @@ func (a *App) RunSync(ctx context.Context) error {
 		catalog := a.Core(nil)
 		go func() { _ = catalog.RunCatalogGit(ctx) }()
 	}
-	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval}
+	s := &inventory.Syncer{Store: a.Store, VCenters: a.VCenters(), Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval,
+		IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).SyncInterval }}
 	return s.Run(ctx)
 }

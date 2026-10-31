@@ -1,7 +1,8 @@
 // vCenter, AWX, EfficientIP, NSX and Git settings (S9, ADR-0020, ADR-0028, ADR-0029): saved from the UI,
 // an environment variable winning and locking its field; the password or
-// token is write-only; saved settings apply when rvav's processes restart.
-// The identity provider, first, has a panel of its own (ADR-0030).
+// token is write-only. Saved, a connection applies as each process drains
+// and starts again; notification channels on next use (ADR-0030).
+// The identity provider, first, has a panel of its own.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useState } from "react";
@@ -16,12 +17,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
+import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
 import { IdentityProvider } from "./IdentityProvider";
 import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
 type Kind = Exclude<S["IntegrationKind"], "oidc">;
+
+/** Read on next use, with no process to start again (ADR-0030). */
+const onNextUse: Kind[] = ["smtp", "teams", "slack"];
 
 interface Setting {
   name: string;
@@ -226,6 +231,8 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   const [secret, setSecret] = useState("");
   const [signing, setSigning] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Shown from a save until every process applied it, and then said so.
+  const [watching] = useState(it.applying);
   const secretLocked = it.locked.includes(def.secret.name);
   const signingLocked = def.signing ? it.locked.includes(def.signing.name) : false;
   const body = (): S["IntegrationWrite"] => ({
@@ -253,11 +260,17 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   const save = useMutation({
     mutationFn: () =>
       call(api.PUT("/admin/integrations/{kind}", { params: { path: { kind: it.kind } }, body: body() })),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: ["admin", "integrations"] });
       setSecret("");
       setSigning("");
-      toast.success(`${def.title} settings saved`, { description: "They apply when rvav's processes restart." });
+      toast.success(`${def.title} settings saved`, {
+        description: onNextUse.includes(it.kind)
+          ? "They apply from the next notification."
+          : saved.applying
+            ? "Each process applies them once its running work is done."
+            : "They apply when rvav's processes start.",
+      });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
@@ -283,7 +296,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       actions={
         <div className="flex items-center gap-2">
           {!it.configured && <Badge tone="warn">Not configured</Badge>}
-          {it.restart_needed && <Badge tone="warn">Restart needed</Badge>}
+          {it.applying && <Badge tone="warn">Applying</Badge>}
         </div>
       }
     >
@@ -295,12 +308,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
           save.mutate();
         }}
       >
-        {it.restart_needed && (
-          <p role="status" className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
-            Saved settings apply when rvav's processes (API and worker) restart; until then they run with the earlier
-            ones.
-          </p>
-        )}
+        {(watching || it.applying) && <Applying revision={it.revision} />}
         <div className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2">
           {def.settings.map((f) => {
             const locked = it.locked.includes(f.name);

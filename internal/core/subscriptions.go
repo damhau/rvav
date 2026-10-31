@@ -215,7 +215,7 @@ func (s *Service) checkTarget(ctx context.Context, t api.SubscriptionTarget) (js
 		switch {
 		case err != nil || u.Host == "":
 			errs = append(errs, fieldErr("/target/webhook/url", "invalid", "A URL such as https://cmdb.corp.example/rvav."))
-		case !hosts.Allowed(s.Config.WebhookHosts, u):
+		case !hosts.Allowed(s.liveConfig(ctx).WebhookHosts, u):
 			errs = append(errs, fieldErr("/target/webhook/url", "host", u.Host+" is not in RVAV_WEBHOOK_HOSTS."))
 		}
 		if _, err := s.Store.GetSecret(ctx, t.Webhook.Secret); errors.Is(err, store.ErrNotFound) {

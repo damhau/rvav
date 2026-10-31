@@ -84,7 +84,12 @@ func main() {
 	cmd, args := os.Args[1], os.Args[2:]
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, cmd, args); err != nil && !errors.Is(err, context.Canceled) {
+	err := run(ctx, cmd, args)
+	if errors.Is(err, app.ErrRestart) {
+		stop()
+		restart(cmd)
+	}
+	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "rvav %s: %v\n", cmd, err)
 		os.Exit(1)
 	}
@@ -339,11 +344,11 @@ func run(ctx context.Context, cmd string, args []string) error {
 
 	switch cmd {
 	case "api":
-		return a.RunAPI(ctx)
+		return a.Run(ctx, "api", a.RunAPI)
 	case "worker":
-		return a.RunWorker(ctx)
+		return a.Run(ctx, "worker", a.RunWorker)
 	case "sync":
-		return a.RunSync(ctx)
+		return a.Run(ctx, "sync", a.RunSync)
 	case "api-token":
 		fs := flag.NewFlagSet("api-token", flag.ExitOnError)
 		user := fs.String("user", "", "the user the token acts as, for example usr_svc-awx")
@@ -426,16 +431,24 @@ func run(ctx context.Context, cmd string, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(report)
 	case "dev":
-		errc := make(chan error, 3)
-		go func() { errc <- fmt.Errorf("sync: %w", a.RunSync(ctx)) }()
-		go func() { errc <- fmt.Errorf("worker: %w", a.RunWorker(ctx)) }()
-		go func() { errc <- fmt.Errorf("api: %w", a.RunAPI(ctx)) }()
-		err := <-errc
-		stop := ctx.Err() != nil
-		if stop {
-			return nil
-		}
-		return err
+		return a.Run(ctx, "dev", func(ctx context.Context) error {
+			// All three until one stops; to drain, all three do.
+			ctx, cancel := context.WithCancelCause(ctx)
+			defer cancel(nil)
+			errc := make(chan error, 3)
+			go func() { errc <- fmt.Errorf("sync: %w", a.RunSync(ctx)) }()
+			go func() { errc <- fmt.Errorf("worker: %w", a.RunWorker(ctx)) }()
+			go func() { errc <- fmt.Errorf("api: %w", a.RunAPI(ctx)) }()
+			err := <-errc
+			if ctx.Err() != nil {
+				for range 2 {
+					<-errc
+				}
+				return nil
+			}
+			cancel(err)
+			return err
+		})
 	}
 	fmt.Fprint(os.Stderr, usage)
 	return fmt.Errorf("unknown command %q", cmd)
@@ -501,4 +514,19 @@ func runSeed(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	log.Info("seed data loaded")
 	return nil
+}
+
+// restart ends a process that drained to apply newer connection settings
+// (ADR-0030): with ExitRestart, for its supervisor to start it again; `rvav
+// dev`, which has none, starts itself again in place.
+func restart(cmd string) {
+	if cmd == "dev" {
+		if exe, err := os.Executable(); err == nil {
+			fmt.Fprintln(os.Stderr, "rvav dev: starting again with the newer connection settings")
+			err = syscall.Exec(exe, os.Args, os.Environ())
+			fmt.Fprintf(os.Stderr, "rvav dev: can't start again: %v\n", err)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "rvav %s: %v; exiting with status %d to be started again\n", cmd, app.ErrRestart, app.ExitRestart)
+	os.Exit(app.ExitRestart)
 }

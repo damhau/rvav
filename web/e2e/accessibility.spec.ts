@@ -98,6 +98,21 @@ for (const theme of ["light", "dark"] as const) {
       });
     }
 
+    // A connection's saved settings applying, then applied (ADR-0030).
+    test("axe: a connection's settings applying", async ({ page }) => {
+      await page.goto("/admin/integrations");
+      await loaded(page);
+      await page.getByRole("main").getByRole("tab", { name: "AWX" }).click();
+      const awx = page.getByRole("region", { name: "AWX connection" });
+      await awx.getByRole("textbox", { name: "Organisation" }).fill("rvav-test");
+      await awx.getByRole("button", { name: "Save settings" }).click();
+      const applying = page.getByRole("region", { name: "Applying the settings" });
+      await expect(applying.getByText("Finishing its running work").first()).toBeVisible();
+      await scan(page, "/admin/integrations › AWX (applying)");
+      await expect(applying.getByRole("status")).toHaveText("Applied: every process runs with these settings.");
+      await scan(page, "/admin/integrations › AWX (applied)");
+    });
+
     test("axe: an approval open in the inbox", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);

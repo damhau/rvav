@@ -17,19 +17,21 @@ import (
 // reads it from the API, the token check follows it, and a test and a
 // trial sign-in check it before it is saved.
 
-// liveKinds are the integrations whose saved settings apply on next use,
-// without a restart.
-var liveKinds = []string{"oidc"}
-
 // trialFor is how long the sign-in page may reach a provider being tried.
 const trialFor = 10 * time.Minute
 
 // authConfig is the sign-in configuration as saved now.
 func (s *Service) authConfig(ctx context.Context) config.AuthConfig {
+	return s.liveConfig(ctx).Auth
+}
+
+// liveConfig is the configuration as saved now, for what is read on next
+// use (ADR-0030); without Live, the one this process started with.
+func (s *Service) liveConfig(ctx context.Context) config.Config {
 	if s.Live != nil {
-		return s.Live.Config(ctx).Auth
+		return s.Live.Config(ctx)
 	}
-	return s.Config.Auth
+	return s.Config
 }
 
 // AuthOptions say how the browser signs in now, and the origins the page
