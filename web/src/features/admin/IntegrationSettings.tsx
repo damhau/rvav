@@ -655,7 +655,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   );
 }
 
-export function IntegrationSettings() {
+export function IntegrationSettings({ tab }: { tab?: string }) {
   const list = useQuery(adm.integrations());
   if (list.isPending) return <Skeleton className="h-64" />;
   if (list.isError) return <ErrorState error={list.error} onRetry={() => void list.refetch()} />;
@@ -663,7 +663,7 @@ export function IntegrationSettings() {
   const console = list.data.items.find((it) => it.kind === "console");
   const items = list.data.items.filter((it) => it.kind !== "console");
   return (
-    <Tabs defaultValue={items[0]?.kind}>
+    <Tabs key={tab} defaultValue={items.some((it) => it.kind === tab) ? tab : items[0]?.kind}>
       <TabsList aria-label="Integrations">
         {items.map((it) => (
           <TabsTrigger key={it.kind} value={it.kind}>

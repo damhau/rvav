@@ -20,6 +20,7 @@ interface Roles {
 // The administration pages, each for those who may use it (ADR-0020); the
 // server decides again.
 const admin: [string, string, (r: Roles) => boolean][] = [
+  ["setup", "Setup", (r) => r.admin],
   ["catalog-items", "Catalog items", (r) => r.admin || r.catalogAdmin],
   ["day2-actions", "Day-2 actions", (r) => r.admin],
   ["policies", "Policies", (r) => r.admin || r.auditor],

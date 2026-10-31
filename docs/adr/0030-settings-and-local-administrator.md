@@ -261,6 +261,22 @@ Without a restart by hand, in one of two ways:
   - IPAM;
   - AWX;
   - a first catalog item.
+- **What makes a step done** is read from what is saved, not ticked by
+  hand:
+  - the administrator's password no longer the install's;
+  - an issuer;
+  - a group with the global `admin` role;
+  - vCenter, EfficientIP and AWX configured (or their development fake);
+  - an environment and an unarchived project;
+  - a published item.
+  Undoing a step (the last admin mapping removed) undoes its tick.
+- **When it opens:** an administrator signing in lands on it once per page
+  load while it is open: some step remains, no administrator hid it
+  (`PUT /admin/setup`, audited), and the database holds no seed users (a
+  seeded install is a development or demo one). Hidden or complete, it
+  stays in **Administration › Setup**.
+- Administration pages don't need a project. An administrator in none
+  is offered the checklist where others are told to ask for one.
 - A System page shows the version, each process and the settings revision
   it runs, and the install settings, read only (secrets masked).
 

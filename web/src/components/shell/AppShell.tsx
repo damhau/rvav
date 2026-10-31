@@ -1,19 +1,40 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Dialog } from "radix-ui";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { EmptyState, Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { useCurrentProject } from "@/lib/project";
+import { adm } from "@/lib/query";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
 // The palette (and cmdk) loads the first time someone opens it.
 const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
-/** Pages that work without a project: approving, and the requests one decides on. */
-const withoutProject = (path: string) => path.startsWith("/approvals") || /^\/requests\/[^/]+$/.test(path);
+/** Pages that work without a project: approving, the requests one decides
+ * on, API tokens and administration (an administrator setting up a new
+ * install is in none yet; the server decides who may see each). */
+const withoutProject = (path: string) =>
+  path.startsWith("/approvals") || /^\/requests\/[^/]+$/.test(path) || path.startsWith("/admin/") || path === "/tokens";
 
 function NoProject() {
+  const { me } = useCurrentProject();
+  if (me.global_roles.includes("admin")) {
+    return (
+      <Page>
+        <EmptyState
+          title="You are not in a project yet"
+          body="Catalog, deployments and requests belong to projects. As an administrator, set rvav up: its connections, environments and projects, and a first catalog item."
+          action={
+            <Button variant="primary" size="sm" asChild>
+              <Link to="/admin/setup">Set up rvav</Link>
+            </Button>
+          }
+        />
+      </Page>
+    );
+  }
   return (
     <Page>
       <EmptyState
@@ -29,9 +50,29 @@ function NoProject() {
   );
 }
 
+// Administrators land on the setup checklist while it is open, once per page
+// load (U1.5, ADR-0030): a new install's first sign-in.
+let landedOnSetup = false;
+
+function SetupLanding() {
+  const { me } = useCurrentProject();
+  const setup = useQuery({ ...adm.setup(), enabled: me.global_roles.includes("admin") && !landedOnSetup });
+  const navigate = useNavigate();
+  const open = setup.data?.open ?? false;
+  useEffect(() => {
+    if (open && !landedOnSetup) {
+      landedOnSetup = true;
+      void navigate({ to: "/admin/setup", replace: true });
+    }
+  }, [open, navigate]);
+  return null;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { projectId } = useCurrentProject();
-  const path = useRouterState({ select: (s) => s.location.pathname });
+  // The location whose pages are on screen: while the next page's code loads,
+  // location is already the next one but the outlet still shows the last.
+  const path = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [paletteLoaded, setPaletteLoaded] = useState(false);
@@ -77,6 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenPalette={() => setPaletteOpen(true)} onOpenNav={() => setNavOpen(true)} />
         <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+          {path === "/" && <SetupLanding />}
           {projectId || withoutProject(path) ? children : <NoProject />}
         </main>
       </div>

@@ -174,6 +174,8 @@ type harness struct {
 	wf    *recorder
 	awx   *awx.Fake
 	ipam  *efficientip.FakeServer
+	// ipamURL is the fake EfficientIP's address.
+	ipamURL string
 }
 
 // allowWebhooks lets subscriptions post to a test server.
@@ -247,6 +249,12 @@ func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWo
 }
 
 func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
+	return setupWith(t, ctx, c, true)
+}
+
+// setupWith starts with the seed's data, or on a database with the schema
+// only, as an install starts (U1.5).
+func setupWith(t *testing.T, ctx context.Context, c *vim25.Client, seeded bool) *harness {
 	// Four connections, as a small API pod has by default: a transaction
 	// that holds a lock and waits for another connection deadlocks here,
 	// whatever the machine (S14.7).
@@ -266,8 +274,10 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 	if err := store.Migrate(ctx, url); err != nil {
 		t.Fatal(err)
 	}
-	if err := seed.Run(ctx, st); err != nil {
-		t.Fatal(err)
+	if seeded {
+		if err := seed.Run(ctx, st); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := vsphere.Bootstrap(ctx, c, vsphere.DefaultLayout()); err != nil {
 		t.Fatal(err)
@@ -316,7 +326,8 @@ func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},
 		AWX:     &dispatch.AWX{Client: fakeAWX, Poll: 20 * time.Millisecond}}}
 	svc.Dispatcher, acts.Subscriptions = disp, disp
-	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX, ipam: fakeIPAM}
+	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX, ipam: fakeIPAM,
+		ipamURL: ipamSrv.URL}
 }
 
 func TestSlice1EndToEnd(t *testing.T) {

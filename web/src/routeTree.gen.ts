@@ -21,6 +21,7 @@ import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastr
 import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
+import { Route as AdminSetupRouteImport } from "./routes/admin/setup"
 import { Route as AdminVraImportRouteImport } from "./routes/admin/vra-import"
 import { Route as AdminWorkflowsRouteImport } from "./routes/admin/workflows"
 import { Route as ApprovalsApprovalIdRouteImport } from "./routes/approvals_.$approvalId"
@@ -96,6 +97,11 @@ const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   id: "/admin/policies",
   path: "/admin/policies",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSetupRoute = AdminSetupRouteImport.update({
+  id: "/admin/setup",
+  path: "/admin/setup",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminVraImportRoute = AdminVraImportRouteImport.update({
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/setup": typeof AdminSetupRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -224,6 +231,7 @@ export interface FileRoutesByTo {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/setup": typeof AdminSetupRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/setup": typeof AdminSetupRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals_/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -287,6 +296,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/setup"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -317,6 +327,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/setup"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -347,6 +358,7 @@ export interface FileRouteTypes {
     | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/setup"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals_/$approvalId"
@@ -378,6 +390,7 @@ export interface RootRouteChildren {
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
+  AdminSetupRoute: typeof AdminSetupRoute
   AdminVraImportRoute: typeof AdminVraImportRoute
   AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   ApprovalsApprovalIdRoute: typeof ApprovalsApprovalIdRoute
@@ -480,6 +493,13 @@ declare module "@tanstack/react-router" {
       path: "/admin/policies"
       fullPath: "/admin/policies"
       preLoaderRoute: typeof AdminPoliciesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/setup": {
+      id: "/admin/setup"
+      path: "/admin/setup"
+      fullPath: "/admin/setup"
+      preLoaderRoute: typeof AdminSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/vra-import": {
@@ -610,6 +630,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIntegrationsRoute: AdminIntegrationsRoute,
   AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
+  AdminSetupRoute: AdminSetupRoute,
   AdminVraImportRoute: AdminVraImportRoute,
   AdminWorkflowsRoute: AdminWorkflowsRoute,
   ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,

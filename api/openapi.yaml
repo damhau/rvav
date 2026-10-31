@@ -2777,6 +2777,43 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/setup:
+    get:
+      tags: [admin]
+      operationId: getSetup
+      summary: The setup checklist
+      description: |
+        The steps that set rvav up from its UI (ADR-0030), each done or not,
+        with what is there now. An administrator lands on it (`open`) while
+        a step remains, unless it was hidden or the install was seeded.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Setup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      operationId: setSetup
+      summary: Hide the setup checklist, or have it open at sign-in again
+      description: Hidden, it stays in Administration; audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Setup" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/integrations/{kind}:
     parameters:
       - { $ref: "#/components/parameters/IntegrationKindPath" }
@@ -7266,6 +7303,42 @@ components:
           type: integer
           format: int64
           description: The latest connection settings' revision; a process before it applies them when it starts again.
+    SetupStep:
+      type: object
+      required: [key, done, detail]
+      properties:
+        key:
+          type: string
+          enum: [password, provider, admin_group, vcenter, projects, ipam, awx, catalog_item]
+          description: |
+            password - the local administrator's password changed from the
+            install's; provider - the identity provider set; admin_group - a
+            group mapped to admin; vcenter, ipam (EfficientIP), awx - the
+            connection set; projects - an environment and a project; and
+            catalog_item - an item published.
+        done: { type: boolean }
+        detail:
+          type: string
+          description: What there is now, as "2 environments, 1 project" or the connection's address.
+          examples: ["https://vc01.corp.example/sdk"]
+    Setup:
+      type: object
+      required: [steps, complete, hidden, open]
+      properties:
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/SetupStep" }
+        complete: { type: boolean, description: Every step is done. }
+        hidden: { type: boolean, description: An administrator hid it. }
+        open:
+          type: boolean
+          description: "Administrators land on it: a step remains, it isn't hidden, and the install wasn't seeded."
+    SetupWrite:
+      type: object
+      required: [hidden]
+      additionalProperties: false
+      properties:
+        hidden: { type: boolean }
     IntegrationList:
       type: object
       required: [items]

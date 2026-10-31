@@ -11,6 +11,9 @@ export const MOCK_ADMIN_PASSWORD = "install-password";
 
 const state = { password: MOCK_ADMIN_PASSWORD, mustChange: true, failures: 0, lockedUntil: 0 };
 
+/** The local administrator's password changed from the install's (U1.5). */
+export const localAdminPasswordChanged = () => !state.mustChange;
+
 export function resetSignIn() {
   Object.assign(state, { password: MOCK_ADMIN_PASSWORD, mustChange: true, failures: 0, lockedUntil: 0 });
 }

@@ -154,6 +154,7 @@ export const adm = {
   day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),
   integrations: () => get(["admin", "integrations"], (signal) => call(api.GET("/admin/integrations", { signal }))),
   processes: () => get(["admin", "processes"], (signal) => call(api.GET("/admin/processes", { signal }))),
+  setup: () => get(["admin", "setup"], (signal) => call(api.GET("/admin/setup", { signal }))),
   inventoryToken: () =>
     get(["admin", "inventory-token"], (signal) => call(api.GET("/admin/integrations/awx/inventory-token", { signal }))),
   vcenters: () => get(["admin", "vcenters"], (signal) => call(api.GET("/admin/vcenters", { signal }))),

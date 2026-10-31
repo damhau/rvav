@@ -19,7 +19,8 @@ function state(db: Db): GovernanceState {
   if (!d.governance) {
     const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
     const lea = { id: db.me.user.id, name: db.me.user.name };
-    const web = db.projects[0]!;
+    // A new install (U1.5) has no projects; its log starts empty.
+    const web = db.projects[0] ?? { id: "prj_web", code: "web", name: "Web" };
     const project = { id: web.id, code: web.code, name: web.name };
     d.governance = {
       seq: 100,
@@ -37,6 +38,7 @@ function state(db: Db): GovernanceState {
         { id: "1", at: ago(60 * 50), actor: lea, action: "token.create", target_type: "api_token", target_id: "tok_ci", project: null, detail: { name: "GitLab pipeline" } },
       ], // prettier-ignore
     };
+    if (db.fresh) d.governance.audit = [];
   }
   return d.governance;
 }

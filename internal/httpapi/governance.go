@@ -555,3 +555,17 @@ func (s *Server) ExportReport(w http.ResponseWriter, r *http.Request, params api
 	w.Header().Set("Content-Disposition", `attachment; filename="rvav-`+string(params.Section)+`.csv"`)
 	_ = csv.NewWriter(w).WriteAll(rows)
 }
+
+func (s *Server) GetSetup(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.Setup(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) SetSetup(w http.ResponseWriter, r *http.Request) {
+	var b api.SetupWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetSetup(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, out, err)
+}

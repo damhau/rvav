@@ -265,6 +265,13 @@ The other administration pages ([ADR-0020](adr/0020-administration.md))
 are in `features/admin/governance/`. The sidebar shows each person the
 ones they may use; auditors see them read only.
 
+- **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
+  checklist, from `GET /admin/setup`, read again each time it opens. Each
+  step links to its page (an integration's tab through `?tab=`). While it
+  is open, an administrator lands on it from the Overview once per page
+  load (`SetupLanding` in `AppShell.tsx`), and the Overview offers the way
+  back. Administration pages work without a project, so an administrator
+  in none can set rvav up.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)
@@ -332,7 +339,9 @@ they opened (`components/ui/dialog.tsx`); Radix only does that for a
 The mock backend follows the placement rules, naming policies and project
 quotas set on these pages. `rvav.mock.as` in localStorage set to
 `project-admin` or `auditor` makes the mock user one (Playwright uses it
-for what those roles see).
+for what those roles see). `rvav.mock.fresh` set to `1` makes it a new
+install: no environments, projects, items or integration settings, and
+the setup checklist open (`e2e/setup.spec.ts` follows it).
 
 ## Extensibility
 

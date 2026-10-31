@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CircleX, Clock3, Hourglass, Plus } from "lucide-react";
+import { CircleX, Clock3, Hourglass, ListChecks, Plus } from "lucide-react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { ItemIcon, itemTypeLabel, Time } from "@/components/common/misc";
@@ -9,7 +9,7 @@ import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import type { QuotaResource } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
-import { q } from "@/lib/query";
+import { adm, q } from "@/lib/query";
 import { leaseLabel, roughDuration } from "@/lib/utils";
 import { ProgressSegments } from "@/features/requests/ProgressBar";
 
@@ -255,6 +255,28 @@ function Favourites() {
   );
 }
 
+/** While the setup checklist is open (U1.5), the way back to it. */
+function SetupNotice() {
+  const { me } = useCurrentProject();
+  const setup = useQuery({ ...adm.setup(), enabled: me.global_roles.includes("admin") });
+  if (!setup.data?.open) return null;
+  const done = setup.data.steps.filter((s) => s.done).length;
+  return (
+    <section
+      aria-label="Setup"
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]"
+    >
+      <ListChecks className="size-4 text-accent" aria-hidden />
+      <span className="flex-1">
+        Setting up rvav: {done} of {setup.data.steps.length} steps done.
+      </span>
+      <Button size="sm" asChild>
+        <Link to="/admin/setup">Continue setup</Link>
+      </Button>
+    </section>
+  );
+}
+
 export function OverviewPage() {
   const { projectId, project } = useCurrentProject();
   const deployments = useInfiniteQuery(q.deployments({ projectId, limit: 200 }));
@@ -285,6 +307,7 @@ export function OverviewPage() {
           </Button>
         }
       />
+      <SetupNotice />
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
           <Panel title="Needs your attention" flush>

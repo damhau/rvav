@@ -49,6 +49,19 @@ export interface Db {
   idempotency: Map<string, { body: string; status: number; response: unknown }>;
   ipNext: Record<string, number>;
   seq: { request: number; id: number; moref: number; event: number };
+  /** A new install (U1.5): the schema only, no seed nor integration settings. */
+  fresh: boolean;
+}
+
+/** rvav.mock.fresh in localStorage set to "1" starts the mock as a new
+ * install: no environments, projects, items, requests or integration
+ * settings, to follow the setup checklist. */
+function mockFresh(): boolean {
+  try {
+    return localStorage.getItem("rvav.mock.fresh") === "1";
+  } catch {
+    return false;
+  }
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -1121,6 +1134,26 @@ export function createDb(now = Date.now()): Db {
   const ipNext: Record<string, number> = {};
   for (const n of networks) ipNext[n.name] = n.nextHost;
 
+  if (mockFresh()) {
+    return {
+      me: { ...me, projects: [] },
+      users,
+      environments: [],
+      projects: [],
+      quota: {},
+      categories,
+      items: [],
+      favourites: new Set(),
+      forms: {},
+      requests: [],
+      approvals: [],
+      deployments: [],
+      idempotency: new Map(),
+      ipNext: {},
+      seq: { request: 10000, id: idSeq + 1000, moref: moref + 500, event: 0 },
+      fresh: true,
+    };
+  }
   return {
     me,
     users,
@@ -1146,11 +1179,16 @@ export function createDb(now = Date.now()): Db {
     idempotency: new Map(),
     ipNext,
     seq: { request: 10491, id: idSeq + 1000, moref: moref + 500, event: 0 },
+    fresh: false,
   };
 }
 
-export let db: Db = createDb();
+export const db: Db = createDb();
 
 export function resetDb(now?: number) {
-  db = createDb(now);
+  // In place: handlers hold the object, and the state they add to it (an
+  // administration's, a governance's) goes with the rest.
+  const next = createDb(now);
+  for (const k of Object.keys(db)) delete (db as unknown as Record<string, unknown>)[k];
+  Object.assign(db, next);
 }

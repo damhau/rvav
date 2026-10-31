@@ -27,7 +27,11 @@ log (**Sign-ins**). A forgotten password is reset on the server:
 
 ## First steps
 
-The order that gets a first request through:
+The order that gets a first request through. On a new install,
+**Administration › Setup** lists these steps. It opens when `admin` signs
+in, and ticks each step once its page has what it needs. **Don't open it
+at sign-in** keeps it for later; it stops opening by itself once every
+step is done.
 
 0. **Sign in as `admin`** and choose its password.
 1. **The identity provider** (**Integrations › Identity provider**), and

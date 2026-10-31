@@ -14,8 +14,6 @@ async function tab(name: string) {
 }
 
 describe("server certificates", () => {
-  // First: the mock's administration state lasts the file, and a test
-  // below adds to the bundle.
   it("refuses a private key in the CA bundle", async () => {
     const user = await tab("Trusted certificates");
     const bundle = await screen.findByRole("region", { name: "CA bundle" });

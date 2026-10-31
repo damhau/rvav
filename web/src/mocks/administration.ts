@@ -5,10 +5,12 @@
 // the UI shows them.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
 import { clusters, datastores, networks } from "./inventory";
 import type { Db } from "./seed";
+import { localAdminPasswordChanged } from "./signIn";
 
 type S = components["schemas"];
 
@@ -45,6 +47,8 @@ interface AdminState {
   /** The token AWX's inventory source reads rvav with, and the address it
    * reads rvav at (U1.4). */
   inventory: { token?: S["ApiToken"]; url?: string };
+  /** The setup checklist hidden (U1.5). */
+  setupHidden: boolean;
   seq: number;
 }
 
@@ -138,8 +142,9 @@ function state(db: Db): AdminState {
   const d = db as Db & { administration?: AdminState };
   if (d.administration) return d.administration;
   const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  // A new install has no projects: it gets none of what refers to them.
   const ref = (id: string) => {
-    const p = db.projects.find((x) => x.id === id)!;
+    const p = db.projects.find((x) => x.id === id) ?? { id, code: id, name: id };
     return { id: p.id, code: p.code, name: p.name };
   };
   const rules: S["PlacementRule"][] = [];
@@ -288,8 +293,63 @@ function state(db: Db): AdminState {
       hosts: { settings: { rest_source_hosts: ["cmdb.corp.example"], webhook_hosts: ["hooks.corp.example"] }, secret: false },
       trust: { settings: { ca_bundle: "" }, secret: false },
     }, // prettier-ignore
+    setupHidden: false,
   };
+  if (db.fresh) {
+    // A new install: nothing set but what rvav starts with.
+    const a = d.administration;
+    Object.assign(a, { groups: [], mappings: [], templates: [], quotas: {}, vcenters: [], inventory: {} });
+    for (const it of Object.values(a.integrations)) {
+      for (const [k, v] of Object.entries(it.settings)) {
+        const address =
+          /^(url|issuer|discovery_url|client_id|host|username|app_id|tenant_id|organization|dns_server|name)$/;
+        if (address.test(k) && typeof v === "string") it.settings[k] = "";
+        if (Array.isArray(v)) it.settings[k] = [];
+      }
+      it.secret = false;
+    }
+  }
   return d.administration;
+}
+
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+/** The setup checklist, from what the mock holds, as the server reads it. */
+function setupOf(db: Db): S["Setup"] {
+  const a = state(db);
+  const connection = (key: S["SetupStep"]["key"], kind: string): S["SetupStep"] => {
+    const it = a.integrations[kind]!;
+    const url = typeof it.settings.url === "string" ? it.settings.url : "";
+    return configuredOf(kind, it) ? { key, done: true, detail: url } : { key, done: false, detail: "Not set." };
+  };
+  const issuer = typeof a.integrations.oidc!.settings.issuer === "string" ? a.integrations.oidc!.settings.issuer : "";
+  const admins = [...new Set(a.groups.filter((g) => g.role === "admin" && !g.project).map((g) => g.oidc_group))].sort();
+  const published = db.items.filter((i) => adminItemOf(db, i).published_version).length;
+  const changed = localAdminPasswordChanged();
+  const steps: S["SetupStep"][] = [
+    {
+      key: "password",
+      done: changed,
+      detail: changed ? "Changed from the install's." : "The install's password is still the administrator's.",
+    },
+    issuer
+      ? { key: "provider", done: true, detail: issuer }
+      : { key: "provider", done: false, detail: "None: only the local administrator can sign in." },
+    admins.length > 0
+      ? { key: "admin_group", done: true, detail: admins.join(", ") }
+      : { key: "admin_group", done: false, detail: "No group is mapped to admin." },
+    connection("vcenter", "vcenter"),
+    {
+      key: "projects",
+      done: db.environments.length > 0 && db.projects.length > 0,
+      detail: `${plural(db.environments.length, "environment")}, ${plural(db.projects.length, "project")}`,
+    },
+    connection("ipam", "efficientip"),
+    connection("awx", "awx"),
+    { key: "catalog_item", done: published > 0, detail: `${plural(db.items.length, "item")}, ${published} published` },
+  ];
+  const complete = steps.every((s) => s.done);
+  return { steps, complete, hidden: a.setupHidden, open: !complete && !a.setupHidden && db.fresh };
 }
 
 /** The lease policy that applies to a project's environment. */
@@ -1338,6 +1398,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       });
     }),
 
+    // ── The setup checklist (U1.5, ADR-0030) ──
+    http.get(`${base}/admin/setup`, async () => {
+      await wait();
+      return HttpResponse.json(setupOf(db));
+    }),
+    http.put(`${base}/admin/setup`, async ({ request }) => {
+      await wait();
+      const w = (await request.json()) as S["SetupWrite"];
+      st().setupHidden = w.hidden;
+      audited(db, w.hidden ? "setup.hidden" : "setup.shown", "setup", "checklist");
+      return HttpResponse.json(setupOf(db));
+    }),
+
     // ── rvav's processes (ADR-0030) ──
     http.get(`${base}/admin/processes`, async () => {
       await wait();
@@ -1360,7 +1433,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             settings: it.settings,
             secret_set: it.secret,
             ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
-            locked: kind === "vcenter" ? ["url"] : [],
+            locked: kind === "vcenter" && !db.fresh ? ["url"] : [],
             ...applyingOf(kind, it.revision ?? 0),
             ...(it.updated_at
               ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
@@ -1415,7 +1488,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (typeof w.settings.cert_sha256 === "string")
         w.settings.cert_sha256 = normalFingerprint(w.settings.cert_sha256);
       const it = st().integrations[kind]!;
-      const locked = kind === "vcenter" ? ["url"] : [];
+      // RVAV_VCENTER_URL in the mock's environment, not a new install's.
+      const locked = kind === "vcenter" && !db.fresh ? ["url"] : [];
       const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
       const moved = it.secret ? secretMoves(it.settings, given, w.secret) : null;
       if (moved) return moved;

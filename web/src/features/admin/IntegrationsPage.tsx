@@ -110,7 +110,7 @@ function Report({ report }: { report: IpamReconcile }) {
   );
 }
 
-export function IntegrationsPage() {
+export function IntegrationsPage({ tab }: { tab?: string }) {
   const [run, setRun] = useState(false);
   const report = useQuery({ ...q.ipamReconcile(), enabled: run });
   return (
@@ -119,7 +119,7 @@ export function IntegrationsPage() {
         title="Integrations"
         meta="Where users sign in, how rvav connects to vCenter, AWX and EfficientIP, and whether EfficientIP agrees with what rvav recorded."
       />
-      <IntegrationSettings />
+      <IntegrationSettings tab={tab} />
       <Panel
         title="EfficientIP reconcile"
         flush

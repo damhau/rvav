@@ -2104,6 +2104,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The setup checklist
+         * @description The steps that set rvav up from its UI (ADR-0030), each done or not,
+         *     with what is there now. An administrator lands on it (`open`) while
+         *     a step remains, unless it was hidden or the install was seeded.
+         */
+        get: operations["getSetup"];
+        /**
+         * Hide the setup checklist, or have it open at sign-in again
+         * @description Hidden, it stays in Administration; audited.
+         */
+        put: operations["setSetup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/integrations/{kind}": {
         parameters: {
             query?: never;
@@ -5484,6 +5510,35 @@ export interface components {
              * @description The latest connection settings' revision; a process before it applies them when it starts again.
              */
             revision: number;
+        };
+        SetupStep: {
+            /**
+             * @description password - the local administrator's password changed from the
+             *     install's; provider - the identity provider set; admin_group - a
+             *     group mapped to admin; vcenter, ipam (EfficientIP), awx - the
+             *     connection set; projects - an environment and a project; and
+             *     catalog_item - an item published.
+             * @enum {string}
+             */
+            key: "password" | "provider" | "admin_group" | "vcenter" | "projects" | "ipam" | "awx" | "catalog_item";
+            done: boolean;
+            /**
+             * @description What there is now, as "2 environments, 1 project" or the connection's address.
+             * @example https://vc01.corp.example/sdk
+             */
+            detail: string;
+        };
+        Setup: {
+            steps: components["schemas"]["SetupStep"][];
+            /** @description Every step is done. */
+            complete: boolean;
+            /** @description An administrator hid it. */
+            hidden: boolean;
+            /** @description Administrators land on it: a step remains, it isn't hidden, and the install wasn't seeded. */
+            open: boolean;
+        };
+        SetupWrite: {
+            hidden: boolean;
         };
         IntegrationList: {
             items: components["schemas"]["Integration"][];
@@ -9720,6 +9775,55 @@ export interface operations {
                     "application/json": components["schemas"]["ProcessList"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Setup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Setup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
