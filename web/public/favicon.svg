@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- rvav's mark, as in the sidebar: "rv" in IBM Plex Mono (600, to stay sharp
+       at 16 px; the glyphs' outlines) on the text colour, inverted in dark mode -->
+  <style>
+    rect { fill: #14191c; }
+    path { fill: #f3f5f6; }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #e4e9ec; }
+      path { fill: #0f1315; }
+    }
+  </style>
+  <rect width="32" height="32" rx="6"/>
+  <path d="M5.13 19.14H7.69V12.86H5.13V10.84H10.25V13.66H10.41Q10.55 13.12 10.8 12.61Q11.05 12.1 11.44 11.71Q11.83 11.32 12.39 11.08Q12.95 10.84 13.73 10.84H14.85V13.24H12.73Q11.57 13.24 10.91 13.92Q10.25 14.6 10.25 15.66V19.14H13.83V21.16H5.13ZM20.09 21.16 16.39 10.84H19.07L20.45 15.22L21.61 19.02H21.75L22.91 15.22L24.29 10.84H26.87L23.17 21.16Z"/>
+</svg>
