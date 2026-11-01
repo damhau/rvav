@@ -105,7 +105,9 @@ setting is set):
   VMs with. rvav makes it for a user of its own (an auditor no one signs
   in as), valid a year, and puts it in the source's "rvav API" credential
   with rvav's address as AWX reaches it (empty keeps the one AWX has); the
-  one before is revoked and the source synced. Make a new one before it
+  one before is revoked and the source synced. On awxnext, whose rvav
+  source reads rvav itself, the credential is of awxnext's managed type
+  rvav, and its TLS settings are kept. Make a new one before it
   expires. Set the inventory source ID first; `RVAV_INVENTORY_TOKEN` locks
   it.
 

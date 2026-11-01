@@ -193,17 +193,20 @@ the inventory and launches the template on rvav's inventory with the VM as
 
 ### Dynamic inventory: AWX pulls from rvav
 
-AWX gets its host list from rvav through a custom **inventory plugin** that rvav
-ships (an Ansible collection, for example `rvav.platform`). Hosts and variables
-come straight from the rvav database, so they're always correct and include
-deployment context.
+AWX gets its host list from rvav's API. On AWX, a custom **inventory plugin**
+that rvav ships (the `rvav.platform` collection) reads it. On awxnext, an
+**rvav source** reads it: awxnext's own source type, which reads rvav itself
+([ADR-0031](adr/0031-awxnext-rvav-source.md)). Hosts and variables come straight
+from the rvav database, so they're always correct and include deployment
+context.
 
 - rvav exposes `GET /api/v1/ansible/inventory`, authenticated with an API
   token of a user with the auditor role, made with the inventory scope so
   it reads nothing else. **Administration › Integrations › AWX › Inventory
   token** makes one, for rvav's own inventory user (an auditor no one signs
   in as), and puts it in the source's "rvav API" credential with rvav's
-  address as AWX reaches it; making another revokes it. By hand:
+  address as AWX reaches it (on awxnext, a credential of its managed type
+  rvav); making another revokes it. By hand:
   `rvav api-token -user usr_svc-awx -scope inventory`, then
   `rvav awx-bootstrap -rvav-token`.
 - The output contains hosts (managed VMs with `ansible_host` = IP), groups built
@@ -216,7 +219,15 @@ deployment context.
 - In AWX: an inventory "rvav" with an inventory source pointing to an SCM project
   that contains the plugin config (`deploy/awx/inventory/rvav.yml`). Its
   credential is a custom credential type "rvav API" that injects `RVAV_URL`
-  and `RVAV_TOKEN`. `rvav awx-bootstrap` sets this up in a test AWX.
+  and `RVAV_TOKEN`.
+- In awxnext: an inventory "rvav" with an inventory source of the type rvav,
+  and a credential of awxnext's managed type rvav (rvav's address and the
+  token, and TLS settings). No project, collection or execution environment:
+  awxnext's server reads rvav, and refuses loopback and link-local addresses
+  unless its `INVENTORY_SOURCE_ALLOWED_LOCAL_ADDRESSES` lists them.
+- `rvav awx-bootstrap` sets either up, by what the AWX offers: an rvav source
+  where `OPTIONS /inventory_sources/` lists the type, the source from the
+  project elsewhere. Administration's AWX test says which the source is.
 - **Freshness**: before launching a job that targets a newly provisioned VM, the
   workflow calls `POST /inventory_sources/{id}/update/` and waits for it to
   finish. Then it launches on that source's inventory with

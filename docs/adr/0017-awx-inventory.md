@@ -1,6 +1,7 @@
 # ADR-0017: AWX reads rvav's VMs from rvav, and rvav's jobs run on that inventory
 
-- Status: accepted
+- Status: accepted; on awxnext, the source revised by
+  [ADR-0031](0031-awxnext-rvav-source.md)
 - Date: 2026-10-27
 
 ## Context

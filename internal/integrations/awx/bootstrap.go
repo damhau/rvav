@@ -265,18 +265,29 @@ func Bootstrap(ctx context.Context, c *HTTPClient, content Content, rvav Rvav, l
 	return c.rvavInventory(ctx, content, org, project, rvav, log)
 }
 
-// rvavInventory sets up rvav's inventory: the credential type that gives
-// the inventory plugin RVAV_URL and RVAV_TOKEN, the inventory, and, with
-// rvav's URL and a token, a credential and the inventory's source, synced
-// once to show whether AWX reaches rvav.
+// rvavInventory sets up rvav's inventory and, with rvav's URL and a token,
+// a credential and the inventory's source, synced once to show whether AWX
+// reaches rvav. On an AWX that offers the rvav source type (awxnext), the
+// source is one, which AWX reads rvav with itself; on another, it is from
+// the project, whose plugin configuration (SourcePath) runs the
+// rvav.platform inventory plugin with a credential of type CredentialType
+// giving it RVAV_URL and RVAV_TOKEN.
 func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, project int, rvav Rvav, log *slog.Logger) (int, error) {
 	ri := content.RvavInventory
-	ct, err := c.rvavCredentialType(ctx, ri.CredentialType)
+	native, err := c.NativeSource(ctx)
 	if err != nil {
 		return 0, err
 	}
-	inventory, err := c.ensure(ctx, "/inventories/", ri.Name, org, map[string]any{
-		"description": "rvav's VMs, from rvav (rvav.platform.rvav)"})
+	source := RvavSourceBody(native, project, ri.SourcePath)
+	ct, err := c.sourceCredentialType(ctx, source["source"].(string), ri.CredentialType)
+	if err != nil {
+		return 0, err
+	}
+	description := "rvav's VMs, from rvav (rvav.platform.rvav)"
+	if native {
+		description = "rvav's VMs, which AWX reads from rvav (an rvav source)"
+	}
+	inventory, err := c.ensure(ctx, "/inventories/", ri.Name, org, map[string]any{"description": description})
 	if err != nil {
 		return 0, fmt.Errorf("rvav inventory: %w", err)
 	}
@@ -284,18 +295,19 @@ func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, pr
 		log.Info("no rvav URL and token: the rvav inventory has no source yet", "inventory", ri.Name)
 		return 0, nil
 	}
-	cred, err := c.ensure(ctx, "/credentials/", ri.Name+" API", org, map[string]any{"credential_type": ct,
-		"description": "rvav's API for the rvav inventory", "inputs": map[string]string{"url": rvav.URL, "token": rvav.Token}})
+	cred, err := c.ensureCredential(ctx, ri.Name+" API", org, ct, map[string]any{"url": rvav.URL, "token": rvav.Token})
 	if err != nil {
 		return 0, fmt.Errorf("rvav credential: %w", err)
 	}
-	source, err := c.ensureAt(ctx, fmt.Sprintf("/inventories/%d/inventory_sources/", inventory), "/inventory_sources/", ri.Name, 0,
-		map[string]any{"source": "scm", "source_project": project, "source_path": ri.SourcePath, "credential": cred,
-			"overwrite": true, "overwrite_vars": true, "update_on_launch": false})
+	for k, v := range map[string]any{"credential": cred, "overwrite": true, "overwrite_vars": true, "update_on_launch": false} {
+		source[k] = v
+	}
+	sourceID, err := c.ensureAt(ctx, fmt.Sprintf("/inventories/%d/inventory_sources/", inventory), "/inventory_sources/", ri.Name, 0, source)
 	if err != nil {
 		return 0, fmt.Errorf("rvav inventory source: %w", err)
 	}
-	id, err := c.UpdateInventorySource(ctx, source)
+	log.Info("rvav inventory source", "type", source["source"], "native", native)
+	id, err := c.UpdateInventorySource(ctx, sourceID)
 	if err == nil {
 		err = c.waitUpdate(ctx, "/inventory_updates/", id)
 	}
@@ -304,8 +316,120 @@ func (c *HTTPClient) rvavInventory(ctx context.Context, content Content, org, pr
 	} else {
 		log.Info("rvav inventory synced", "inventory", ri.Name)
 	}
-	log.Info("set RVAV_AWX_INVENTORY_SOURCE_ID for rvav's worker", "RVAV_AWX_INVENTORY_SOURCE_ID", source)
-	return source, nil
+	log.Info("set RVAV_AWX_INVENTORY_SOURCE_ID for rvav's worker", "RVAV_AWX_INVENTORY_SOURCE_ID", sourceID)
+	return sourceID, nil
+}
+
+// RvavSource is the inventory source type awxnext reads rvav with itself,
+// and RvavNamespace the namespace of the managed credential type it takes
+// (awxnext's M4-11). AWX has neither: there, a source from a project runs
+// the rvav.platform inventory plugin.
+const (
+	RvavSource    = "rvav"
+	RvavNamespace = "rvav"
+)
+
+// NativeSource reports whether this AWX offers the rvav source type, from
+// the source types its API accepts (OPTIONS /inventory_sources/).
+func (c *HTTPClient) NativeSource(ctx context.Context) (bool, error) {
+	var opts struct {
+		Actions map[string]map[string]json.RawMessage `json:"actions"`
+	}
+	if err := c.do(ctx, http.MethodOptions, "/inventory_sources/", nil, nil, &opts); err != nil {
+		return false, fmt.Errorf("the inventory source types: %w", err)
+	}
+	for _, action := range []string{"POST", "GET"} {
+		var field struct {
+			Choices [][]any `json:"choices"`
+		}
+		if raw, ok := opts.Actions[action]["source"]; ok && json.Unmarshal(raw, &field) == nil {
+			for _, ch := range field.Choices {
+				if len(ch) > 0 && ch[0] == RvavSource {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+// RvavSourceBody is what rvav's inventory source is given: an rvav source,
+// with no project, on an AWX that offers the type (native), or else one
+// from the project at path.
+func RvavSourceBody(native bool, project int, path string) map[string]any {
+	if native {
+		return map[string]any{"source": RvavSource, "source_project": nil, "source_path": "", "source_vars": ""}
+	}
+	return map[string]any{"source": "scm", "source_project": project, "source_path": path}
+}
+
+// sourceCredentialType is the credential type a source of this type reads
+// rvav with: AWX's managed rvav type for an rvav source, or else the
+// custom type named name, made when missing.
+func (c *HTTPClient) sourceCredentialType(ctx context.Context, source, name string) (int, error) {
+	if source != RvavSource {
+		return c.rvavCredentialType(ctx, name)
+	}
+	var res struct{ Results []named }
+	if err := c.do(ctx, http.MethodGet, "/credential_types/", url.Values{"namespace": {RvavNamespace}, "managed": {"true"}}, nil, &res); err != nil {
+		return 0, fmt.Errorf("credential type: %w", err)
+	}
+	if len(res.Results) == 0 {
+		return 0, errors.New("AWX has rvav sources but no rvav credential type")
+	}
+	return res.Results[0].ID, nil
+}
+
+// findCredential returns the ID of the organisation's credential of this
+// name and type (0 if none): AWX names credentials per type.
+func (c *HTTPClient) findCredential(ctx context.Context, name string, org, ct int) (int, error) {
+	var res struct{ Results []named }
+	q := url.Values{"name": {name}, "organization": {fmt.Sprint(org)}, "credential_type": {fmt.Sprint(ct)}}
+	if err := c.do(ctx, http.MethodGet, "/credentials/", q, nil, &res); err != nil {
+		return 0, err
+	}
+	if len(res.Results) == 0 {
+		return 0, nil
+	}
+	return res.Results[0].ID, nil
+}
+
+// ensureCredential sets inputs in the organisation's credential of this name
+// and type, made when missing. Inputs of an existing one that inputs doesn't
+// give are kept: AWX replaces them all.
+func (c *HTTPClient) ensureCredential(ctx context.Context, name string, org, ct int, inputs map[string]any) (int, error) {
+	id, err := c.findCredential(ctx, name, org, ct)
+	if err != nil {
+		return 0, err
+	}
+	if id != 0 {
+		return id, c.setInputs(ctx, id, inputs)
+	}
+	var created named
+	if err := c.do(ctx, http.MethodPost, "/credentials/", nil, map[string]any{"name": name, "organization": org,
+		"credential_type": ct, "description": "rvav's API for the rvav inventory", "inputs": inputs}, &created); err != nil {
+		return 0, err
+	}
+	return created.ID, nil
+}
+
+// setInputs sets inputs in a credential, keeping its others (secret ones
+// come back as $encrypted$, which AWX keeps as they are).
+func (c *HTTPClient) setInputs(ctx context.Context, id int, inputs map[string]any) error {
+	var cred struct {
+		Inputs map[string]any `json:"inputs"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/credentials/%d/", id), nil, nil, &cred); err != nil {
+		return err
+	}
+	merged := map[string]any{}
+	for k, v := range cred.Inputs {
+		merged[k] = v
+	}
+	for k, v := range inputs {
+		merged[k] = v
+	}
+	return c.do(ctx, http.MethodPatch, fmt.Sprintf("/credentials/%d/", id), nil, map[string]any{"inputs": merged}, nil)
 }
 
 // rvavCredentialType finds the credential type that gives the inventory
@@ -333,6 +457,7 @@ func (c *HTTPClient) rvavCredentialType(ctx context.Context, name string) (int, 
 
 // RvavCredentialType and RvavCredential name what rvav's inventory source
 // reads rvav with, as deploy/awx/content.yml and awx-bootstrap name them.
+// On an AWX with rvav sources, the credential is of its managed rvav type.
 const (
 	RvavCredentialType = "rvav API"
 	RvavCredential     = "rvav API"
@@ -340,32 +465,36 @@ const (
 
 // SetRvavCredential puts rvav's URL and an API token in the credential an
 // inventory source reads rvav with (ADR-0030): the source's own when it is
-// of the rvav API type, or else one of that name in the inventory's
-// organisation, made when missing and set on the source. The URL is
-// rvavURL, or else the one the credential has, or else defaultURL.
+// of the type the source takes (AWX's managed rvav type for an rvav source,
+// rvav API for one from a project), or else one of that type named rvav
+// API in the inventory's organisation, made when missing and set on the
+// source. The URL is rvavURL, or else the one the credential has, or else
+// defaultURL. The credential's other inputs are kept.
 func (c *HTTPClient) SetRvavCredential(ctx context.Context, sourceID int, rvavURL, defaultURL, token string) (RvavCredentialSet, error) {
 	var src struct {
-		Inventory  int  `json:"inventory"`
-		Credential *int `json:"credential"`
+		Inventory  int    `json:"inventory"`
+		Source     string `json:"source"`
+		Credential *int   `json:"credential"`
 	}
 	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/inventory_sources/%d/", sourceID), nil, nil, &src); err != nil {
 		return RvavCredentialSet{}, fmt.Errorf("inventory source %d: %w", sourceID, err)
 	}
-	ct, err := c.rvavCredentialType(ctx, RvavCredentialType)
+	ct, err := c.sourceCredentialType(ctx, src.Source, RvavCredentialType)
 	if err != nil {
 		return RvavCredentialSet{}, err
 	}
 	type credential struct {
-		Name           string            `json:"name"`
-		CredentialType int               `json:"credential_type"`
-		Inputs         map[string]string `json:"inputs"`
+		Name           string         `json:"name"`
+		CredentialType int            `json:"credential_type"`
+		Inputs         map[string]any `json:"inputs"`
 	}
 	get := func(id int) (credential, error) {
 		var cred credential
 		err := c.do(ctx, http.MethodGet, fmt.Sprintf("/credentials/%d/", id), nil, nil, &cred)
 		return cred, err
 	}
-	out := RvavCredentialSet{URL: rvavURL}
+	urlOf := func(cred credential) string { u, _ := cred.Inputs["url"].(string); return u }
+	out := RvavCredentialSet{URL: rvavURL, Native: src.Source == RvavSource}
 	if src.Credential != nil {
 		cred, err := get(*src.Credential)
 		if err != nil {
@@ -374,7 +503,7 @@ func (c *HTTPClient) SetRvavCredential(ctx context.Context, sourceID int, rvavUR
 		if cred.CredentialType == ct {
 			out.ID, out.Name = *src.Credential, cred.Name
 			if out.URL == "" {
-				out.URL = cred.Inputs["url"]
+				out.URL = urlOf(cred)
 			}
 		}
 	}
@@ -387,13 +516,13 @@ func (c *HTTPClient) SetRvavCredential(ctx context.Context, sourceID int, rvavUR
 			return RvavCredentialSet{}, fmt.Errorf("the source's inventory: %w", err)
 		}
 		org = inv.Organization
-		id, err := c.find(ctx, "/credentials/", RvavCredential, org)
+		orgCred, err := c.findCredential(ctx, RvavCredential, org, ct)
 		if err != nil {
 			return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", RvavCredential, err)
 		}
-		if id != 0 && out.URL == "" {
-			if cred, err := get(id); err == nil && cred.CredentialType == ct {
-				out.URL = cred.Inputs["url"]
+		if orgCred != 0 && out.URL == "" {
+			if cred, err := get(orgCred); err == nil {
+				out.URL = urlOf(cred)
 			}
 		}
 	}
@@ -403,16 +532,14 @@ func (c *HTTPClient) SetRvavCredential(ctx context.Context, sourceID int, rvavUR
 	if out.URL == "" {
 		return RvavCredentialSet{}, errors.New("no rvav URL: give the address AWX reaches rvav at")
 	}
-	inputs := map[string]any{"inputs": map[string]string{"url": out.URL, "token": token}}
+	inputs := map[string]any{"url": out.URL, "token": token}
 	if out.ID != 0 {
-		if err := c.do(ctx, http.MethodPatch, fmt.Sprintf("/credentials/%d/", out.ID), nil, inputs, nil); err != nil {
+		if err := c.setInputs(ctx, out.ID, inputs); err != nil {
 			return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", out.Name, err)
 		}
 		return out, nil
 	}
-	inputs["credential_type"] = ct
-	inputs["description"] = "rvav's API for the rvav inventory"
-	id, err := c.ensure(ctx, "/credentials/", RvavCredential, org, inputs)
+	id, err := c.ensureCredential(ctx, RvavCredential, org, ct, inputs)
 	if err != nil {
 		return RvavCredentialSet{}, fmt.Errorf("credential %s: %w", RvavCredential, err)
 	}

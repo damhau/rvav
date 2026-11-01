@@ -337,6 +337,19 @@ func (c *HTTPClient) InventoryOfSource(ctx context.Context, sourceID int) (int, 
 	return res.Inventory, nil
 }
 
+// InventorySource is an inventory source's name and type: rvav for one AWX
+// reads rvav with itself (awxnext), scm for one from a project.
+type InventorySource struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+func (c *HTTPClient) InventorySource(ctx context.Context, sourceID int) (InventorySource, error) {
+	var res InventorySource
+	err := c.do(ctx, http.MethodGet, fmt.Sprintf("/inventory_sources/%d/", sourceID), nil, nil, &res)
+	return res, err
+}
+
 // list reads every page of a list (200 objects a page, 50 pages at most)
 // into add.
 func (c *HTTPClient) list(ctx context.Context, path string, q url.Values, add func(raw json.RawMessage) error) error {

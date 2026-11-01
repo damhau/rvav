@@ -600,7 +600,17 @@ func (s *Service) testAWX(ctx context.Context, c config.AWXConfig, roots *x509.C
 	check("Catalog templates", err, fmt.Sprintf("%d templates with the label %v.", len(templates), c.CatalogLabels))
 	if c.InventorySourceID == 0 {
 		check("Inventory source", errors.New("not set: jobs on rvav's VMs will be refused"), "")
+		return
 	}
+	src, err := client.InventorySource(ctx, c.InventorySourceID)
+	how := fmt.Sprintf("of type %s", src.Source)
+	switch src.Source {
+	case awx.RvavSource:
+		how = "an rvav source: AWX reads rvav itself"
+	case "scm":
+		how = "from a project: the rvav.platform inventory plugin reads rvav"
+	}
+	check("Inventory source", err, fmt.Sprintf("%s (%d), %s.", src.Name, c.InventorySourceID, how))
 }
 
 func (s *Service) testEfficientIP(ctx context.Context, c config.EfficientIPConfig, roots *x509.CertPool, check checkFunc) {

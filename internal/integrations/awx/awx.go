@@ -152,6 +152,9 @@ type RvavCredentialSet struct {
 	Name     string
 	URL      string
 	Attached bool
+	// Native: the source is an rvav source, which AWX (awxnext) reads rvav
+	// with itself, rather than one from a project with the plugin.
+	Native bool
 }
 
 // Done reports whether a job status is final.

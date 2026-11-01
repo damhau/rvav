@@ -20,7 +20,8 @@ machine_credential:
   username: rvav
 
 # rvav's VMs, read from rvav by the rvav.platform inventory plugin
-# (ansible/, installed from collections/requirements.yml). Templates with
+# (ansible/, installed from collections/requirements.yml), or, on awxnext,
+# by an rvav source (source_path and credential_type are then unused). Templates with
 # ask_inventory run on rvav's VMs: rvav launches them against this
 # inventory. Its source needs rvav's URL as AWX reaches it and an API token
 # (rvav awx-bootstrap -rvav-url ... -rvav-token ...).

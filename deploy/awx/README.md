@@ -19,7 +19,8 @@ RVAV_AWX_URL=http://awx.example:8052 RVAV_AWX_TOKEN=... rvav awx-bootstrap
 It creates what is missing and updates what exists, then syncs the project
 from GitHub (so the AWX needs to reach github.com). It never touches other
 organisations; the one object outside `rvav-test` is the credential type
-"rvav API" (AWX's credential types belong to no organisation). Run it again
+"rvav API" (AWX's credential types belong to no organisation), which it
+doesn't make on awxnext. Run it again
 after changing `content.yml`; the project follows `main`, so push playbook
 changes first.
 
@@ -28,8 +29,11 @@ changes first.
 The templates that run on VMs (`ask_inventory` in `content.yml`) prompt for
 an inventory, and rvav launches them on its own: the inventory "rvav",
 filled from rvav's API by the `rvav.platform` collection
-([ADR-0017](../../docs/adr/0017-awx-inventory.md)). Its source needs rvav's
-URL as the AWX reaches it, and an API token. Once `rvav awx-bootstrap` has
+([ADR-0017](../../docs/adr/0017-awx-inventory.md)). On awxnext, which offers
+an rvav source type, the source is one of those, and awxnext reads rvav
+itself: no collection or execution environment
+([ADR-0031](../../docs/adr/0031-awxnext-rvav-source.md)). Its source needs
+rvav's URL as the AWX reaches it, and an API token. Once `rvav awx-bootstrap` has
 made the source, **Administration › Integrations › AWX › Inventory token**
 makes a token and puts it, with that URL, in the source's credential;
 without the UI, make one by hand and give it to the bootstrap:

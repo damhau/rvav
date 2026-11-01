@@ -144,13 +144,15 @@ func TestGetJobNotFound(t *testing.T) {
 
 // TestSetRvavCredential: the token goes in the source's rvav API credential,
 // keeping the address AWX has; a source without one gets the organisation's,
-// made with the address given, or else the default.
+// made with the address given, or else the default. An rvav source
+// (awxnext's) takes a credential of AWX's managed rvav type instead, whose
+// other inputs are kept.
 func TestSetRvavCredential(t *testing.T) {
 	type call struct {
 		method, path string
 		body         map[string]any
 	}
-	run := func(t *testing.T, sourceCred string, haveNamed bool, rvavURL string) (RvavCredentialSet, []call, error) {
+	run := func(t *testing.T, source, sourceCred string, haveNamed bool, rvavURL string) (RvavCredentialSet, []call, error) {
 		var calls []call
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var body map[string]any
@@ -160,9 +162,14 @@ func TestSetRvavCredential(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			switch {
 			case r.Method == "GET" && path == "/inventory_sources/3/":
-				_, _ = fmt.Fprintf(w, `{"id": 3, "inventory": 12, "credential": %s}`, sourceCred)
+				_, _ = fmt.Fprintf(w, `{"id": 3, "inventory": 12, "source": %q, "credential": %s}`, source, sourceCred)
+			case r.Method == "GET" && path == "/credential_types/" && r.URL.Query().Get("namespace") == "rvav":
+				_, _ = w.Write([]byte(`{"results": [{"id": 31, "name": "rvav"}]}`))
 			case r.Method == "GET" && path == "/credential_types/":
 				_, _ = w.Write([]byte(`{"results": [{"id": 30, "name": "rvav API"}]}`))
+			case r.Method == "GET" && path == "/credentials/43/":
+				_, _ = w.Write([]byte(`{"id": 43, "name": "rvav (awxnext)", "credential_type": 31,
+					"inputs": {"url": "https://rvav.lab.example", "token": "$encrypted$", "verify_ssl": false, "ssl_ca_cert": "PEM"}}`))
 			case r.Method == "GET" && path == "/credentials/40/":
 				_, _ = w.Write([]byte(`{"id": 40, "name": "rvav (lab)", "credential_type": 30,
 					"inputs": {"url": "http://rvav-api:8080", "token": "$encrypted$"}}`))
@@ -171,7 +178,7 @@ func TestSetRvavCredential(t *testing.T) {
 			case r.Method == "GET" && path == "/inventories/12/":
 				_, _ = w.Write([]byte(`{"id": 12, "organization": 5}`))
 			case r.Method == "GET" && path == "/credentials/":
-				if haveNamed && r.URL.Query().Get("organization") == "5" {
+				if q := r.URL.Query(); haveNamed && q.Get("organization") == "5" && q.Get("credential_type") == "30" {
 					_, _ = w.Write([]byte(`{"results": [{"id": 40, "name": "rvav API"}]}`))
 					return
 				}
@@ -205,7 +212,7 @@ func TestSetRvavCredential(t *testing.T) {
 	inputs := func(c call) map[string]any { m, _ := c.body["inputs"].(map[string]any); return m }
 
 	t.Run("the source's own, keeping its address", func(t *testing.T) {
-		set, calls, err := run(t, "40", false, "")
+		set, calls, err := run(t, "scm", "40", false, "")
 		w := writes(calls)
 		if err != nil || set.ID != 40 || set.Attached || set.URL != "http://rvav-api:8080" || len(w) != 1 ||
 			w[0].path != "/credentials/40/" || inputs(w[0])["token"] != "rvav_pat_new" || inputs(w[0])["url"] != "http://rvav-api:8080" {
@@ -213,14 +220,14 @@ func TestSetRvavCredential(t *testing.T) {
 		}
 	})
 	t.Run("the source's own, at the address given", func(t *testing.T) {
-		set, calls, err := run(t, "40", false, "https://rvav.lab.example")
+		set, calls, err := run(t, "scm", "40", false, "https://rvav.lab.example")
 		w := writes(calls)
 		if err != nil || set.URL != "https://rvav.lab.example" || inputs(w[0])["url"] != "https://rvav.lab.example" {
 			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
 		}
 	})
 	t.Run("another kind on the source: the organisation's, set on it", func(t *testing.T) {
-		set, calls, err := run(t, "41", true, "")
+		set, calls, err := run(t, "scm", "41", true, "")
 		w := writes(calls)
 		if err != nil || set.ID != 40 || !set.Attached || set.URL != "http://rvav-api:8080" || len(w) != 2 ||
 			w[0].path != "/credentials/40/" || w[1].path != "/inventory_sources/3/" || w[1].body["credential"] != float64(40) {
@@ -228,7 +235,7 @@ func TestSetRvavCredential(t *testing.T) {
 		}
 	})
 	t.Run("none: made with the default address", func(t *testing.T) {
-		set, calls, err := run(t, "null", false, "")
+		set, calls, err := run(t, "scm", "null", false, "")
 		w := writes(calls)
 		if err != nil || set.ID != 42 || !set.Attached || set.URL != "https://rvav.corp.example" || len(w) != 2 ||
 			w[0].method != "POST" || w[0].body["credential_type"] != float64(30) || w[0].body["organization"] != float64(5) ||
@@ -236,4 +243,58 @@ func TestSetRvavCredential(t *testing.T) {
 			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
 		}
 	})
+	t.Run("an rvav source's own, keeping its other inputs", func(t *testing.T) {
+		set, calls, err := run(t, "rvav", "43", false, "")
+		w := writes(calls)
+		if err != nil || set.ID != 43 || !set.Native || set.Attached || set.URL != "https://rvav.lab.example" || len(w) != 1 ||
+			w[0].path != "/credentials/43/" || inputs(w[0])["token"] != "rvav_pat_new" ||
+			inputs(w[0])["verify_ssl"] != false || inputs(w[0])["ssl_ca_cert"] != "PEM" {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+	t.Run("an rvav source with a plugin's credential: one of the managed type", func(t *testing.T) {
+		set, calls, err := run(t, "rvav", "40", true, "")
+		w := writes(calls)
+		if err != nil || set.ID != 42 || !set.Native || !set.Attached || set.URL != "https://rvav.corp.example" || len(w) != 2 ||
+			w[0].method != "POST" || w[0].body["credential_type"] != float64(31) || w[1].body["credential"] != float64(42) {
+			t.Fatalf("set = %+v, %v; writes %+v", set, err, w)
+		}
+	})
+}
+
+// TestNativeSource: an rvav source where the API offers the type, as
+// awxnext's does; one from the project where it doesn't, as AWX's.
+func TestNativeSource(t *testing.T) {
+	for name, tc := range map[string]struct {
+		options string
+		want    bool
+	}{
+		"awxnext": {`{"actions": {"POST": {"source": {"type": "choice", "choices": [["scm", "Sourced from a Project"], ["rvav", "rvav"]]},
+			"verbosity": {"choices": [[0, "0 (WARNING)"]]}}}}`, true},
+		"AWX":            {`{"actions": {"POST": {"source": {"type": "choice", "choices": [["file", "File, Directory or Script"], ["scm", "Sourced from a Project"]]}}}}`, false},
+		"AWX, read only": {`{"actions": {"GET": {"source": {"type": "choice", "choices": [["scm", "Sourced from a Project"]]}}}}`, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodOptions || r.URL.Path != "/api/v2/inventory_sources/" {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = w.Write([]byte(tc.options))
+			}))
+			defer srv.Close()
+			c, err := NewHTTPClient(srv.URL, "token", trust.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := c.NativeSource(context.Background()); err != nil || got != tc.want {
+				t.Fatalf("NativeSource = %v, %v", got, err)
+			}
+			body := RvavSourceBody(tc.want, 7, "deploy/awx/inventory/rvav.yml")
+			if tc.want && (body["source"] != "rvav" || body["source_project"] != nil || body["source_path"] != "") ||
+				!tc.want && (body["source"] != "scm" || body["source_project"] != 7) {
+				t.Fatalf("source = %v", body)
+			}
+		})
+	}
 }
