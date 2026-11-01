@@ -21,6 +21,18 @@ map $rvav_api_script_origins $rvav_script_origins {
     "~^(https?://[a-zA-Z0-9.:\[\]-]+ ?)+$" $rvav_api_script_origins;
     default "";
 }
+# Each directive's sources after 'self', joined: one space before them when
+# there are any, none when there aren't. Either source may be empty (no
+# RVAV_WEB_OIDC_AUTHORITY, the provider set in Administration only), which
+# left two spaces, or one before the semicolon.
+map "$rvav_web_idp_origin $rvav_idp_origins" $rvav_csp_idp_origins {
+    "~^\s*(?<sources>\S(.*\S)?)\s*$" " $sources";
+    default "";
+}
+map "${RVAV_WEB_SCRIPT_SOURCES} $rvav_script_origins" $rvav_csp_script_origins {
+    "~^\s*(?<sources>\S(.*\S)?)\s*$" " $sources";
+    default "";
+}
 
 server {
     listen 8080;
@@ -46,7 +58,7 @@ server {
     # origin), and the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES and where
     # the API says it is. The UI libraries insert style elements. HSTS takes
     # effect over HTTPS only.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${RVAV_WEB_SCRIPT_SOURCES} $rvav_script_origins; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' $rvav_web_idp_origin $rvav_idp_origins; frame-src 'self' $rvav_web_idp_origin $rvav_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'$rvav_csp_script_origins; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'$rvav_csp_idp_origins; frame-src 'self'$rvav_csp_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;

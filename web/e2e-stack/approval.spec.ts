@@ -13,6 +13,12 @@ test("an infrastructure lead lowers a production VM to 32 GB and approves it", a
   await page.goto("/catalog/rhel9-server/request");
   await signIn(page, "thomas");
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
+  // In Web Platform, not the first of Thomas's projects: project-setup.spec
+  // makes him a member of a "Payments" project, which comes first, while
+  // this runs or on a stack it ran on before.
+  await page.getByRole("button", { name: /^Project/ }).click();
+  await page.getByRole("menuitem", { name: /^Web Platform/ }).click();
+  await expect(page.getByRole("button", { name: /^Project/ })).toContainText("Web Platform");
   await page.getByRole("radio", { name: "prd" }).click();
   await page.getByRole("textbox", { name: "Role" }).fill(role);
   await page.getByRole("radio", { name: /^X-Large/ }).check();

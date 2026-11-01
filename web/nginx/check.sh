@@ -70,43 +70,55 @@ csp() {
 	headers "$1" | sed -n 's/^ *Content-Security-Policy: //p'
 }
 
+# What a directive holds: 'self', then one space and the sources if there
+# are any. Exactly: an empty source left two spaces, or one before the
+# semicolon (the compose stack's, with the provider set in Administration).
+want() { echo "'self'${1:+ $1};"; }
+
 expect_csp() { # path, what connect-src and frame-src hold after 'self'
 	got=$(csp "$1")
+	w=$(want "$2")
 	case "$got" in
-	*"connect-src 'self' $2;"*"frame-src 'self' $2;"*) echo "ok: $1: $2" ;;
-	*) fail "$1: expected connect-src and frame-src 'self' $2, got: $got" ;;
+	*"connect-src $w "*"frame-src $w "*) echo "ok: $1: $w" ;;
+	*) fail "$1: expected connect-src and frame-src $w, got: $got" ;;
 	esac
 }
 
 expect_scripts() { # path, what script-src holds after 'self'
 	got=$(csp "$1")
+	w=$(want "$2")
 	case "$got" in
-	*"script-src 'self' $2;"*) echo "ok: $1: scripts $2" ;;
-	*) fail "$1: expected script-src 'self' $2, got: $got" ;;
+	*"script-src $w "*) echo "ok: $1: scripts $w" ;;
+	*) fail "$1: expected script-src $w, got: $got" ;;
 	esac
 }
 
+web() { # RVAV_WEB_OIDC_AUTHORITY, RVAV_WEB_SCRIPT_SOURCES
+	docker rm -f "$run-web" >/dev/null 2>&1 || true
+	docker run -d --name "$run-web" --network "$net" \
+		-e RVAV_API_UPSTREAM=http://api:8080 \
+		-e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+		-e RVAV_WEB_AUTH_MODE=oidc \
+		-e RVAV_WEB_OIDC_AUTHORITY="$1" \
+		-e RVAV_WEB_OIDC_CLIENT_ID= \
+		-e RVAV_WEB_OIDC_SCOPE= \
+		-e RVAV_WEB_SCRIPT_SOURCES="$2" \
+		-v "$here/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
+		-v "$work/html:/usr/share/nginx/html:ro" "$image" >/dev/null
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		headers /config.js | grep -q 'HTTP/1.1 200' && break
+		sleep 0.5
+	done
+	docker exec "$run-web" nginx -t >/dev/null 2>&1 || fail "nginx -t"
+}
+
 docker network create "$net" >/dev/null
-docker run -d --name "$run-web" --network "$net" \
-	-e RVAV_API_UPSTREAM=http://api:8080 \
-	-e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-	-e RVAV_WEB_AUTH_MODE=oidc \
-	-e RVAV_WEB_OIDC_AUTHORITY=https://web.example/realms/rvav \
-	-e RVAV_WEB_OIDC_CLIENT_ID= \
-	-e RVAV_WEB_OIDC_SCOPE= \
-	-e RVAV_WEB_SCRIPT_SOURCES=https://env.example \
-	-v "$here/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
-	-v "$work/html:/usr/share/nginx/html:ro" "$image" >/dev/null
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-	headers /config.js | grep -q 'HTTP/1.1 200' && break
-	sleep 0.5
-done
-docker exec "$run-web" nginx -t >/dev/null 2>&1 || fail "nginx -t"
+web https://web.example/realms/rvav https://env.example
 
 # The API isn't there: the page is served, with the web container's origin only.
 headers /deployments | grep -q 'HTTP/1.1 200' || fail "the page isn't served while the API is down"
-expect_csp /deployments "https://web.example "
-expect_scripts /deployments "https://env.example "
+expect_csp /deployments "https://web.example"
+expect_scripts /deployments "https://env.example"
 
 # The API says the provider's origin and one being tried.
 api "https://login.microsoftonline.com https://idp.corp.example:8443"
@@ -115,18 +127,31 @@ expect_csp / "https://web.example https://login.microsoftonline.com https://idp.
 expect_csp /index.html "https://web.example https://login.microsoftonline.com https://idp.corp.example:8443"
 headers /index.html | grep -qi 'Cache-Control: no-cache' || fail "the page may be cached"
 # Files and the API don't ask it.
-expect_csp /assets/app.js "https://web.example "
+expect_csp /assets/app.js "https://web.example"
 docker exec "$run-web" wget -qO- http://127.0.0.1:8080/config.js | grep -q '"oidcClientId": ""' ||
 	fail "/config.js"
 
 # The console's SDK on a vCenter, set in Administration.
 api "https://login.microsoftonline.com" "https://vc01.corp.example https://vc02.corp.example:9443"
 expect_scripts /deployments "https://env.example https://vc01.corp.example https://vc02.corp.example:9443"
-expect_scripts /assets/app.js "https://env.example "
+expect_scripts /assets/app.js "https://env.example"
 
 # A header that isn't a list of origins is dropped.
 api "https://idp.example; script-src *" "https://vc.example; script-src *"
-expect_csp /deployments "https://web.example "
-expect_scripts /deployments "https://env.example "
+expect_csp /deployments "https://web.example"
+expect_scripts /deployments "https://env.example"
+
+# Neither set in the web container, the provider set in Administration
+# only (the compose stack): no space but the one before each source.
+docker rm -f "$run-api" >/dev/null 2>&1 || true
+web "" ""
+expect_csp /deployments ""
+expect_scripts /deployments ""
+api "http://localhost:28081" "https://vc01.corp.example"
+expect_csp /deployments "http://localhost:28081"
+expect_scripts /deployments "https://vc01.corp.example"
+api "https://login.microsoftonline.com https://idp.corp.example:8443 "
+expect_csp /deployments "https://login.microsoftonline.com https://idp.corp.example:8443"
+expect_scripts /deployments ""
 
 echo "nginx: the Content-Security-Policy follows the API's identity provider and console SDK"
