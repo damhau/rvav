@@ -133,7 +133,7 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
     <Page>
       <PageHeader
         title="Catalog"
-        meta={`Items shared with ${project.name}. VM blueprints run in rvav; AWX items launch job templates on awx.corp.example.`}
+        meta={`Items shared with ${project.name}. VM blueprints run in rvav; AWX items launch job templates in AWX.`}
         actions={
           <span className="relative flex items-center">
             <Search className="pointer-events-none absolute left-2.5 size-3.5 text-faint" aria-hidden />

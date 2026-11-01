@@ -329,17 +329,7 @@ function Quota({ lines }: { lines: S["ReportQuotaLine"][] }) {
           <h3 className="text-[13px] font-medium">{key}</h3>
           {ls.map((l) => {
             const [name, unit] = resourceLabel[l.resource];
-            return l.limit !== undefined && l.limit !== null ? (
-              <Meter key={l.resource} label={name} used={l.used} total={l.limit} unit={unit} />
-            ) : (
-              <div key={l.resource} className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="text-muted">{name}</span>
-                <span className="tnum">
-                  {l.used}
-                  {unit ? ` ${unit}` : ""} <span className="text-faint">· no limit</span>
-                </span>
-              </div>
-            );
+            return <Meter key={l.resource} label={name} used={l.used} total={l.limit} unit={unit} />;
           })}
         </section>
       ))}

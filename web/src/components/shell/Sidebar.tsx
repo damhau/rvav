@@ -145,7 +145,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="mt-auto flex flex-col gap-1 border-t border-line px-2 pt-2.5 text-[11px] text-faint">
         <LiveIndicator />
-        <span className="font-mono">vc01.corp.example</span>
       </div>
     </nav>
   );

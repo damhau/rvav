@@ -18,6 +18,7 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } fr
 import { CHANGE_PASSWORD_PATH, signOut } from "@/lib/auth";
 import { isMock } from "@/lib/env";
 import { useCurrentProject } from "@/lib/project";
+import { accountRole, roleLabel } from "./roles";
 import { useTheme, type Theme } from "@/lib/theme";
 import { initials } from "@/lib/utils";
 
@@ -27,10 +28,9 @@ const themes: { value: Theme; label: string; icon: React.ElementType }[] = [
   { value: "dark", label: "Dark", icon: Moon },
 ];
 
-const roleLabel = { "project-admin": "Project admin", member: "Member", viewer: "Viewer" } as const;
-
 export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void; onOpenNav: () => void }) {
-  const { me, project, role, setProjectId } = useCurrentProject();
+  const { me, projectId, project, role, setProjectId } = useCurrentProject();
+  const ownRole = accountRole(me, projectId, role);
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const ThemeIcon = themes.find((t) => t.value === theme)?.icon ?? Monitor;
@@ -104,7 +104,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               </span>
               <span className="hidden flex-col text-left leading-tight sm:flex">
                 <span className="font-medium">{me.user.name}</span>
-                <span className="text-[11px] text-faint">{roleLabel[role]}</span>
+                {ownRole && <span className="text-[11px] text-faint">{ownRole}</span>}
               </span>
             </button>
           </MenuTrigger>

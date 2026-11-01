@@ -232,7 +232,7 @@ function Summary({
                     unit={quotaLabel[l.resource][1]}
                     used={l.used}
                     adding={l.adding}
-                    total={l.limit ?? l.used + l.adding}
+                    total={l.limit}
                   />
                 ))}
               </div>

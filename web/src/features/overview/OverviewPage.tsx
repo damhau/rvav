@@ -209,7 +209,7 @@ function Quota() {
               label={quotaLabel[l.resource][0]}
               unit={quotaLabel[l.resource][1]}
               used={l.used + l.reserved}
-              total={l.limit ?? Math.max(1, l.used)}
+              total={l.limit}
             />
           ))}
         </div>

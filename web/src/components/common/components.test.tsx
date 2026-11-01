@@ -34,6 +34,15 @@ describe("Meter", () => {
     render(<Meter label="vCPU" used={150} adding={16} total={160} />);
     expect(screen.getByText("166")).toHaveClass("text-bad");
   });
+
+  it("draws no bar without a limit, rather than one full and amber", () => {
+    // A new install's projects have no quota until one is set: the bar was
+    // drawn against the usage itself, 4 / 4 GB in the colour of a quota used up.
+    const { container } = render(<Meter label="Memory" unit="GB" used={0} adding={4} total={null} />);
+    expect(container).toHaveTextContent("Memory4 GB · no limit");
+    expect(container).not.toHaveTextContent("/");
+    expect(container.querySelector(".bg-warn, .bg-bad, .bg-accent")).toBeNull();
+  });
 });
 
 describe("ErrorState", () => {

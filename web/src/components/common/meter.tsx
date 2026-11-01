@@ -1,6 +1,10 @@
 import { cn } from "@/lib/utils";
 
-/** Quota/usage bar. `adding` shows what a pending request would add. */
+/**
+ * Quota/usage bar. `adding` shows what a pending request would add. With no
+ * `total` there is no limit, and so no bar: one drawn against the usage itself
+ * would be full, in the colour of a quota nearly used up.
+ */
 export function Meter({
   label,
   used,
@@ -10,14 +14,25 @@ export function Meter({
 }: {
   label: string;
   used: number;
-  total: number;
+  total?: number | null;
   unit?: string;
   adding?: number;
 }) {
-  const pct = (v: number) => Math.min(100, (v / total) * 100);
   const after = used + adding;
-  const tone = after > total ? "bg-bad" : after / total > 0.85 ? "bg-warn" : "bg-accent";
   const fmt = (v: number) => (Number.isInteger(v) ? v : v.toFixed(1));
+  if (total === undefined || total === null) {
+    return (
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-muted">{label}</span>
+        <span className="tnum">
+          {fmt(after)}
+          {unit ? ` ${unit}` : ""} <span className="text-faint">· no limit</span>
+        </span>
+      </div>
+    );
+  }
+  const pct = (v: number) => Math.min(100, (v / total) * 100);
+  const tone = after > total ? "bg-bad" : after / total > 0.85 ? "bg-warn" : "bg-accent";
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2 text-xs">

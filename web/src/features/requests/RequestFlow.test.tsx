@@ -27,6 +27,15 @@ describe("request form against the mock API", () => {
     expect(db.requests.some((r) => r.request.title.includes("Bad"))).toBe(false);
   });
 
+  it("says a resource with no limit has none, instead of drawing it used up", async () => {
+    const web = db.projects[0]!;
+    db.quota[web.id]!.limits.memory_gb = null;
+    await openForm();
+    const summary = screen.getByRole("region", { name: "Summary" });
+    expect(summary).toHaveTextContent(/Memory464 GB · no limit/);
+    expect(summary).toHaveTextContent(/vCPU116 \/ 160/);
+  });
+
   it("shows the approval path for production", async () => {
     const user = userEvent.setup();
     await openForm();
