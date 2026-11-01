@@ -8,6 +8,11 @@ and systemd (ADR-0009). Both use the same two images:
 - `ghcr.io/damhau/rvav-web`: the web app (nginx), which also proxies the
   API on the same origin.
 
+A release is tagged with its version (`1.2.3`). Each commit to `main` that
+passes CI is also published, as `main-<commit time, UTC, YYYYMMDDHHMMSS>-<commit>`:
+those tags sort by date, for an install that follows `main` (Argo CD Image
+Updater, `updateStrategy: alphabetical`).
+
 An install is given only what rvav needs before it can read its database:
 the database, the secrets key, Temporal, its addresses and the local
 administrator's first password ([configuration.md](configuration.md),

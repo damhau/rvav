@@ -116,3 +116,28 @@ jobs:
       - run: pnpm build
       # The browser tests run daily: browser.yml.
 
+
+  # On main, once every check passes: both images on ghcr.io, tagged
+  # main-<commit time, UTC, YYYYMMDDHHMMSS>-<commit>, which sort by date, for
+  # an install that follows main (Argo CD Image Updater, installation.md).
+  # Releases are release.yml's, tagged 1.2.3.
+  images:
+    name: Images of main
+    needs: [go, e2e, ansible, python, chart, nginx, spec, web]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag
+        run: echo "TAG=main-$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S)-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Build and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          images="ghcr.io/$GITHUB_REPOSITORY:$TAG ghcr.io/$GITHUB_REPOSITORY-web:$TAG"
+          make images IMAGES="$images"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for i in $images; do docker push "$i"; done
