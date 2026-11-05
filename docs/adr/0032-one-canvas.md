@@ -23,7 +23,7 @@ them) that a list doesn't show either. A request's run is a timeline, in
 which a parallel group is a run of lines. And people coming from vRA
 expect its design canvas.
 
-D1 ([implementation plan](../implementation-plan.md#d1-one-canvas-after-n1))
+D1 ([implementation plan](../implementation-plan.md#d1-one-canvas-after-n1-built))
 asks for one canvas used three ways: an item's topology (D1.2), the
 composite designer (D1.3) and a request's run (D1.4).
 
@@ -252,8 +252,11 @@ differ, and none fits rvav's design system).
   control, so the designer needs no mouse. **Add a step** opens on what
   the step runs; an added step's editor takes the focus, a removed step's
   goes to the step before it, and a moved step's stays on its button.
-- D1.5 checks the pages that use the canvas with the keyboard only and
-  with axe in both themes.
+- D1.5 checks the pages that use the canvas with the keyboard only (a
+  step added, bound, published, requested and followed, and a failed run
+  retried: `web/e2e/one-canvas.spec.ts`) and with axe in both themes (the
+  three-tier item's request form, a composite draft with a step
+  selected, a run failed and running: `accessibility.spec.ts`).
 
 ## Consequences
 - Composite authors and readers of a multi-VM item get a picture, and the

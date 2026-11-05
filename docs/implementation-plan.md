@@ -84,7 +84,7 @@ without a restart ([section 6](#u1-settings-after-c1-built)).
 | # | vRA feature | Weight | rvav | Slice |
 |---|---|---|---|---|
 | 16 | Cloud templates with versions | H | 1.0 | S8 |
-| 17 | Visual template designer (canvas) | M | After N1: an item's topology on a canvas, beside its YAML and form designer (half) | D1 |
+| 17 | Visual template designer (canvas) | M | After N1: an item's topology on a canvas, beside its YAML and form designer, built ([ADR-0032](adr/0032-one-canvas.md)) (half) | D1 |
 | 18 | Multi-machine templates, extra disks and networks | H | 1.0 | S12 |
 | 19 | Image and flavour mappings | H | 1.0, as template and size catalogues | S9 |
 | 20 | Cloud zones, placement, capability tags | H | 1.0 | S9 |
@@ -113,7 +113,7 @@ without a restart ([section 6](#u1-settings-after-c1-built)).
 |---|---|---|---|---|
 | 39 | Workflow engine and custom workflows | H | 1.0, with Temporal ([ADR-0007](adr/0007-extensibility-model.md)) | S1, S10 |
 | 40 | Plugins: AD, SQL, REST, PowerShell, SSH | M | 1.0, as Ansible modules | S6 |
-| 41 | vRO visual workflow designer | M | After N1: composite items on a canvas, then step kinds for waits, people and REST, logic in CEL; no scripts (half) | D1, D2 |
+| 41 | vRO visual workflow designer | M | After N1: composite items on a canvas, built ([ADR-0032](adr/0032-one-canvas.md)), then step kinds for waits, people and REST, logic in CEL; no scripts (half) | D1, D2 |
 | 42 | Multi-tenancy (organisations) | L | No ([ADR-0002](adr/0002-single-organisation.md)) | – |
 | 43 | Single sign-on | H | 1.0 | S1, S2 |
 | 44 | Role-based access, custom roles | M | Half: fixed roles in 1.0; custom roles after N1 | S9, A1 |
@@ -458,7 +458,7 @@ else is set from the UI (decided 2026-10-31):
 - **Break-glass:** with the identity provider down, the local administrator
   still signs in.
 
-### D1 One canvas (after N1)
+### D1 One canvas (after N1, built)
 The canvas rvav's catalog and requests share (React Flow, laid out
 automatically; YAML stays the source of truth), used three ways:
 - **an item's topology:** a VM item's components, disks, networks and
@@ -473,7 +473,7 @@ UX borrowed from Windmill (typed step inputs, bindings), Kestra (code and
 graph side by side) and n8n (the run on the graph); no code from them.
 ADR-0007's "no visual designer" is revised in this slice's ADR.
 
-**Acceptance:** the seeded PostgreSQL composite edited on the canvas
+**Acceptance** (`TestD1Acceptance`, `TestCompositeDesigner`, `TestRequestTopology`, `TestRequestFormTopology`; in the browser, on the mock API: `one-canvas.spec.ts`, `composite-designer.spec.ts`, `request-run.spec.ts`, `topology.spec.ts`, `accessibility.spec.ts`): the seeded PostgreSQL composite edited on the canvas
 (a step added, its inputs bound, a condition set) and published; its
 request followed on the same graph; a three-tier item's topology shown;
 keyboard and axe in both themes.

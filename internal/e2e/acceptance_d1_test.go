@@ -55,7 +55,8 @@ with:
 // the item publishes and runs against the fake NSX Manager the compose
 // stack runs (TestCompositeDesigner and TestRequestTopology hold the
 // designer's targets and the topology's projection; the pages' specs are
-// web/e2e/composite-designer.spec.ts and request-run.spec.ts).
+// web/e2e/one-canvas.spec.ts, with the keyboard only, and
+// composite-designer.spec.ts and request-run.spec.ts).
 func TestD1Acceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")

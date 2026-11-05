@@ -358,7 +358,8 @@ An item's tabs:
   an item that isn't published, a workflow that isn't registered for
   composite steps, a VM step with a condition, an undo or an input from
   a step, a step using a later one. Save the draft, publish it, and
-  request it to try it.
+  request it to try it: the request's page draws its run on the graph of
+  the version requested, each step with its live status.
 - **Versions:**
   - publish a draft;
   - compare two versions;

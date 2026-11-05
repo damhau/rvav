@@ -11,10 +11,14 @@ and fixed, and what still needs a person.
 (Actions › Browser tests). It runs on the mock API.
 
 - **axe** (WCAG 2.0, 2.1 and 2.2, levels A and AA):
-  - on all 20 pages and in each of their tabs;
+  - on all 24 pages and in each of their tabs, the three-tier item's
+    request form and its topology among them;
   - on a detail page reached from each list (requests, deployments,
     catalog items, projects, subscriptions);
   - on an approval opened in the inbox;
+  - on the canvas (D1): a composite draft's Definition tab with a step
+    selected and its editor open, and a composite request's run, failed
+    (REQ-10484) and then running once retried;
   - in the light and the dark themes.
 - **Structure, as a screen reader navigates it:** on every page,
   - one banner, a navigation and one main region;
@@ -29,7 +33,13 @@ and fixed, and what still needs a person.
     (the role typed in, the size cards, the cluster, datastore and network
     pickers, the post-configuration jobs, the lease, the justification);
   - the focused element is always visible;
-  - Enter on "Submit request" sends it and opens the request's page.
+  - Enter on "Submit request" sends it and opens the request's page;
+  - on the canvas (`one-canvas.spec.ts`): a step added to the PostgreSQL
+    composite, its inputs bound and a condition set, the draft saved,
+    published and requested, then the request's run followed on its
+    graph, and a failed run retried and followed to its end. The graph
+    is one Tab stop; the arrow keys, Home and End move between its
+    nodes, Enter selects one and Escape clears it.
 - **Dialogs:** opened from the keyboard, a dialog takes the focus and keeps
   it while tabbing. Escape closes it and gives the focus back to its button.
 
@@ -52,6 +62,13 @@ Already in place before the audit:
 - reduced motion respected;
 - status shown with an icon and text, never colour alone;
 - menus and dialogs (Radix) with focus management.
+
+## Found and fixed (D1, the canvas)
+
+| Finding | WCAG | Fix |
+|---|---|---|
+| A node's visible text, read without spaces between its badge, title and status, wasn't a run of words in its name. | 2.5.3 Label in name | Spaces between them, and the name lists what the node shows in its order before its relations. |
+| On a running request's timeline, the steps not started yet were drawn at 55% opacity, too faint for their AWX label and title. | 1.4.3 Contrast | The muted and faint text colours, which keep their contrast. |
 
 ## What still needs a person
 

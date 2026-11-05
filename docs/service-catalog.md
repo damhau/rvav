@@ -95,6 +95,15 @@ The placement rule of the project and environment says where the segment
 goes (its Tier-1 and EfficientIP block). Without an NSX Manager, such an
 item can't be saved.
 
+The seeded **Three-tier application** (`three-tier`) is such an item:
+one to three web servers kept on separate hosts, an application server
+and a database server on a segment of their own, each tier in a group
+made for it with the rules between them (the database's ends with a
+drop), and the database server in the existing `grp-backup-clients` too.
+On the compose stack, a placement rule's segments go on the fake NSX's
+Tier-1 `t1-gva-dev`, their subnets from EfficientIP's `nsx-gva-dev`
+block.
+
 The seeded **PostgreSQL 16 cluster** is the reference: a composite whose
 first step is the `pg-node` item (one component of three nodes kept on
 separate hosts, each with a data disk, made a Patroni cluster by the AWX

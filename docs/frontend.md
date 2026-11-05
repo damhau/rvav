@@ -490,6 +490,17 @@ nothing about it (positions, layout) is stored.
   status out of what sizes a node.
 - **Themes:** only React Flow's `base.css` is imported; `canvas.css` points
   its variables at the app's tokens, and the nodes are our own components.
+- **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
+  beside its YAML and on the request form), `composite-designer.spec.ts`
+  (the designer, to a request), `request-run.spec.ts` (a failed run
+  retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
+  same with the keyboard only; `accessibility.spec.ts` scans the
+  designer and a run. The mocks can't approve as someone else, so a
+  spec's own composite request is followed as far as its approval, and
+  the seeded REQ-10484 is retried to follow a run to its end
+  (`TestD1Acceptance` follows one through the API). `page.goto` resets
+  the mocks: a spec that publishes, then requests, gets there through
+  the app.
 
 ## Request options
 
@@ -654,7 +665,10 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
   - landmarks and headings;
   - reflow at 320 px;
   - a request made with the keyboard only;
-  - a dialog's focus handling.
+  - a dialog's focus handling;
+  - the canvas: a composite draft with a step selected, and a composite
+    request's run, failed and running (`e2e/one-canvas.spec.ts` designs,
+    requests and follows one with the keyboard only).
 - Full keyboard support, visible focus rings, a skip-to-content link.
 - Colour is never the only signal: status always has an icon and text.
 - **Text colours:** the `faint` text colour keeps 4.5:1 on every background
