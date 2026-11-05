@@ -1527,13 +1527,15 @@ export interface paths {
          * What a composite item's steps can run, with their inputs and outputs
          * @description For the composite designer (ADR-0022, ADR-0032): the published items
          *     a step may request (VM, AWX and custom workflow items: composites
-         *     don't nest), the AWX templates imported from AWX, and the custom
-         *     workflows registered for composite steps. Each says the inputs its
-         *     step's `with` binds (from the item's form, the template's survey or
-         *     the workflow's input schema) and the outputs later steps read as
-         *     `steps.<key>.<name>`. A step may also name an AWX template not
-         *     listed (any template AWX has): its inputs are then the author's.
-         *     Catalog admins and administrators.
+         *     don't nest; a workflow item only while its custom workflow is
+         *     registered for catalog items and enabled), the AWX templates
+         *     imported from AWX, and the custom workflows registered for composite
+         *     steps and enabled. Each says the inputs its step's `with` binds
+         *     (from the item's form, the template's survey or the workflow's input
+         *     schema), the outputs later steps read as `steps.<key>.<name>`, and
+         *     the projects it is offered to when not all of them. A step may also
+         *     name an AWX template not listed (any template AWX has): its inputs
+         *     are then the author's. Catalog admins and administrators.
          */
         get: operations["listCompositeStepTargets"];
         put?: never;
@@ -3103,7 +3105,9 @@ export interface components {
              */
             kind: "item" | "awx" | "workflow";
             /**
-             * @description The name a step gives it, under `kind`.
+             * @description The name a step gives it, under `kind`. A job template and a
+             *     workflow template may have the same name: `awx_workflow` (and
+             *     `awx_id`) tell them apart.
              * @example db-user
              */
             ref: string;
@@ -3113,6 +3117,21 @@ export interface components {
             item_type?: components["schemas"]["CatalogItemType"];
             /** @description An AWX workflow template, named `awx.job_template` with `awx.workflow` true. */
             awx_workflow?: boolean;
+            /**
+             * @description An AWX template's ID in AWX (a job template's or a workflow
+             *     template's: they are numbered apart). A step writes it as
+             *     `awx.template_id`, beside the name: it is then launched by ID,
+             *     whatever the template is called since (ADR-0016).
+             * @example 47
+             */
+            awx_id?: number;
+            /**
+             * @description The projects it is offered to, when not every project: a custom
+             *     workflow registered for some projects, or a workflow item whose
+             *     workflow is. A request of the composite from another project is
+             *     refused. Absent when every project may use it.
+             */
+            project_ids?: string[];
             /**
              * @description What it runs, which says its outputs and whether it is planned.
              * @enum {string}

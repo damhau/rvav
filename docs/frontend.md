@@ -250,7 +250,7 @@ Catalog admins and administrators build items under **Catalog items**
   selected node's editor under it (its `renderDetails`). Each edit is a
   pure function from the editor's text to a new one (`composite/edits.ts`,
   on the `yaml` Document API, so comments, quoting and inline maps
-  survive), written into the editor through its handle (`YamlEditor`'s
+  survive until a save, which stores JSON), written into the editor through its handle (`YamlEditor`'s
   `ref`: `apply`, `undo`, `redo`) as one isolated step of CodeMirror's
   history: typed and designed edits are undone in the order they were
   made, from the buttons, Ctrl+Z, or Ctrl+Shift+Z and Ctrl+Y outside the
@@ -259,7 +259,10 @@ Catalog admins and administrators build items under **Catalog items**
   `composite/scope.ts` says what an input of a step can be bound to at its
   place (the form's inputs, the request's environment and project, the
   outputs of the slots before it, none for a VM step) and what the server
-  would refuse when the item is requested, in its words. Those problems,
+  would refuse when the item is requested, in its words (with the item's
+  entitlements, a workflow not offered to all its projects). A picker's
+  value names an AWX template as a job or workflow template
+  (`targetValue`), and a step is found by its `template_id` when it has one. Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from

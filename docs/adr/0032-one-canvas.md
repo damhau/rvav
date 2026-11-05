@@ -127,10 +127,13 @@ differ, and none fits rvav's design system).
 - **What a step can run comes from the server**, in one call:
   `GET /admin/catalog/composite-steps` (catalog admins and administrators)
   lists what ADR-0022 allows a step to name. Published items other than
-  composites (they don't nest), with their form's inputs; the AWX
-  templates imported from AWX, with their survey's questions; and the
-  custom workflows registered for composite steps, with their input
-  schema's properties. Each says what it runs, whether it is planned with
+  composites (they don't nest; a workflow item only while its workflow
+  can start), with their form's inputs; the AWX templates imported from
+  AWX, with their survey's questions and their ID in AWX; and the
+  custom workflows registered for composite steps and enabled, with their
+  input schema's properties. A workflow offered to some projects only (a
+  workflow step's, or a workflow item's) says which (`project_ids`): the
+  server refuses a request from another. Each says what it runs, whether it is planned with
   the request (a VM item: its inputs come from the form only, it has no
   condition or undo) and its outputs (a VM step's `name`, `fqdn`, `ip`,
   `moref`, `deployment_id` and `vms`; an AWX step's `job_id`; a custom
@@ -138,12 +141,24 @@ differ, and none fits rvav's design system).
   each, since the picker needs them all, and `/admin/workflows` is for
   administrators only. A template no one imported can still be named by
   hand; its step gives its job's ID.
+- **An AWX template is named by its name and its ID.** A job template and
+  a workflow template may share a name, so the picker tells them apart
+  (`awx_workflow`). Picked from the list, a template is written as
+  `awx.job_template` and `awx.template_id` (the server launches it by ID,
+  as an item made from it: ADR-0016), and the step is found in the list
+  by that ID, whatever the template is called since. Picking another
+  template replaces both and drops the previous one's `title`; one named
+  by hand has no ID. An undo is launched as a job template by name only
+  (`undo.job_template`), so its picker offers job templates.
 - **Edits are made on the YAML document, not on its data.** Each canvas
   edit is a function from the editor's text to a new text
   (`composite/edits.ts`), made with the `yaml` library's Document API
   (`parseDocument`, then the nodes' `set`, `delete` and list splices, then
   `toString`), not `parse` then `stringify`: comments, quoting, inline
-  maps and key order survive, and only the nodes edited change. A text in
+  maps and key order survive, and only the nodes edited change. They
+  survive the canvas's edits, not a save: the server stores the
+  definition as JSON, and the editor reloads `toYaml(stored.definition)`,
+  without comments, as an export has them. A text in
   the server's style (indent 2, no line width, the form `toYaml` writes)
   comes back byte for byte but for the edit; another indentation is made
   the server's on the first canvas edit. New keys go in a fixed order
@@ -180,9 +195,10 @@ differ, and none fits rvav's design system).
 - **Problems on their step:** the structural checks (`lib/composite.ts`),
   what the server would refuse when the item is requested
   (`core.evaluateComposite`: an item that isn't published, a custom
-  workflow not registered for composite steps, a VM step with a condition,
-  an undo or an input from a step), in its words, once the targets are
-  loaded; and the server's last refusal of a save, kept with the text it
+  workflow not registered for composite steps, one not offered to every
+  project the composite is offered to, from the targets' `project_ids`
+  and the item's entitlements, a VM step with a condition, an undo or an
+  input from a step), in its words, once the targets are loaded; and the server's last refusal of a save, kept with the text it
   refused and shown while the text is that one. All go on the node their
   pointer falls in (`addProblems`, `nodeForPointer`), a group's on its
   frame, and in the list under the graph.

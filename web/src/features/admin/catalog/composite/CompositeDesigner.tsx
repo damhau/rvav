@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { type Option, Select } from "@/components/ui/select";
-import type { CompositeStepInput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import type { CatalogEntitlements, CompositeStepInput, CompositeStepTarget, FieldError } from "@/lib/api/types";
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
@@ -39,6 +39,7 @@ import {
   findTarget,
   flatten,
   formInputsOf,
+  listedTarget,
   openEarlier,
   type Source,
   type StepTarget,
@@ -98,9 +99,9 @@ const byName = "awx-by-name";
 /** What a step can run, for a picker: grouped, the step's own first if it isn't listed. */
 function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Option[] {
   const out: Option[] = targets.map((t) => ({
-    value: targetValue(t),
+    value: targetValue(listedTarget(t)),
     label: t.title,
-    meta: t.ref,
+    meta: t.awx_workflow ? `${t.ref} (workflow)` : t.ref,
     group: kindGroup[t.kind],
   }));
   if (current?.ref && !findTarget(targets, current))
@@ -114,15 +115,17 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Op
   return out;
 }
 
+/** The target a picker's value names (targetValue): a listed AWX template with its ID. */
 function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Target | undefined {
   const i = value.indexOf(":");
   const kind = value.slice(0, i);
   const ref = value.slice(i + 1);
-  if (kind !== "item" && kind !== "awx" && kind !== "workflow") return undefined;
-  if (kind === "awx") {
-    const t = targets.find((x) => x.kind === "awx" && x.ref === ref);
-    return { kind, ref, workflow: Boolean(t?.awx_workflow) };
+  if (kind === "awx" || kind === "awx-workflow") {
+    const workflow = kind === "awx-workflow";
+    const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
+    return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
+  if (kind !== "item" && kind !== "workflow") return undefined;
   return { kind, ref };
 }
 
@@ -131,7 +134,11 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
   const step: Raw = { key };
   if (title.trim()) step.title = title.trim();
   if (target.kind === "awx")
-    step.awx = target.workflow ? { job_template: target.ref, workflow: true } : { job_template: target.ref };
+    step.awx = {
+      job_template: target.ref,
+      ...(target.templateId ? { template_id: target.templateId } : {}),
+      ...(target.workflow ? { workflow: true } : {}),
+    };
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -139,7 +146,16 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
   return step;
 }
 
-export default function CompositeDesigner({ name, design }: { name: string; design: Design }) {
+export default function CompositeDesigner({
+  name,
+  design,
+  entitlements,
+}: {
+  name: string;
+  design: Design;
+  /** Who may request the composite: a step whose target isn't offered to them all is flagged. */
+  entitlements?: CatalogEntitlements;
+}) {
   const { text, onEdit, history } = design;
   const targetsQuery = useQuery(q.compositeStepTargets());
   const targets = useMemo(() => targetsQuery.data?.items ?? [], [targetsQuery.data]);
@@ -154,12 +170,12 @@ export default function CompositeDesigner({ name, design }: { name: string; desi
     (t: string) => {
       const d = parseDefinition(t);
       return [
-        ...(d && targetsQuery.data ? designerProblems(d, targetsQuery.data.items) : []),
+        ...(d && targetsQuery.data ? designerProblems(d, targetsQuery.data.items, entitlements) : []),
         // The steps' only: the rest are on their lines in the editor.
         ...(server && server.text === t ? server.errors.filter((e) => within(e.field, edits.blueprintPrefix)) : []),
       ];
     },
-    [targetsQuery.data, server],
+    [targetsQuery.data, server, entitlements],
   );
 
   /** Makes an edit, then selects a node and focuses an element of its details. */
@@ -416,7 +432,14 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
       focus: "cd-heading",
     });
   };
-  const runsValue = byNameOpen ? byName : target ? targetValue(target) : "";
+  // A listed template as listed: by its ID, it may be called otherwise now.
+  const runsValue = byNameOpen
+    ? byName
+    : listed
+      ? targetValue(listedTarget(listed))
+      : target
+        ? targetValue(target)
+        : "";
 
   return (
     <section aria-label={`Selected: ${title}`} className={panel}>
@@ -513,6 +536,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
                 return setByNameOpen(true);
               }
               setByNameOpen(false);
+              if (v === runsValue) return;
               const t = parseTarget(v, targets);
               if (t) apply(() => edits.setTarget(text, id, t));
             }}
@@ -653,8 +677,9 @@ function UndoEditor({
     : undefined;
   const options: Option[] = [
     { value: "none", label: "Nothing" },
+    // An undo is launched as a job template, by its name.
     ...targetOptions(
-      targets.filter((t) => t.kind !== "item"),
+      targets.filter((t) => t.kind !== "item" && !t.awx_workflow),
       current,
     ),
   ];

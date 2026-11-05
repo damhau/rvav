@@ -18,6 +18,7 @@ export const yamlOutput = { indent: 2, lineWidth: 0, flowCollectionPadding: fals
 /** The order a step's keys are written in, so a key added lands where a reader expects it. */
 const stepOrder = ["key", "title", "item", "awx", "workflow", "when", "with", "undo"];
 const undoOrder = ["job_template", "workflow", "with"];
+const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
 
 export const blueprintPrefix = "/definition/blueprint";
 
@@ -299,9 +300,17 @@ export function setStepField(text: string, id: string, field: "key" | "title" | 
 }
 
 export type Target =
-  { kind: "item"; ref: string } | { kind: "awx"; ref: string; workflow?: boolean } | { kind: "workflow"; ref: string };
+  | { kind: "item"; ref: string }
+  /** An AWX template: its name, whether it is a workflow template, its ID in AWX when known. */
+  | { kind: "awx"; ref: string; workflow?: boolean; templateId?: number }
+  | { kind: "workflow"; ref: string };
 
-/** What a step runs: one of an item, an AWX template or a custom workflow; the others are removed. */
+/**
+ * What a step runs: one of an item, an AWX template or a custom workflow;
+ * the others are removed. An AWX template is written by its name and, when
+ * known, its ID (awx.template_id: it is launched by it); another template's
+ * ID and title go with it, its inputs' bindings stay.
+ */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node } = locate(doc, id);
@@ -309,11 +318,30 @@ export function setTarget(text: string, id: string, t: Target): string {
   if (t.kind === "awx") {
     const awx = node.get("awx", true);
     if (isMap(awx)) {
-      put(doc, awx, "job_template", t.ref, ["job_template", "title", "workflow"]);
-      if (t.workflow) put(doc, awx, "workflow", true);
+      const was = awx.toJSON() as Raw;
+      const same =
+        Boolean(was.workflow) === Boolean(t.workflow) &&
+        (typeof was.template_id === "number" && t.templateId
+          ? was.template_id === t.templateId
+          : was.job_template === t.ref);
+      put(doc, awx, "job_template", t.ref, awxOrder);
+      if (t.templateId) put(doc, awx, "template_id", t.templateId, awxOrder);
+      else awx.delete("template_id");
+      if (t.workflow) put(doc, awx, "workflow", true, awxOrder);
       else awx.delete("workflow");
+      if (!same) awx.delete("title");
     } else
-      put(doc, node, "awx", t.workflow ? { job_template: t.ref, workflow: true } : { job_template: t.ref }, stepOrder);
+      put(
+        doc,
+        node,
+        "awx",
+        {
+          job_template: t.ref,
+          ...(t.templateId ? { template_id: t.templateId } : {}),
+          ...(t.workflow ? { workflow: true } : {}),
+        },
+        stepOrder,
+      );
   } else put(doc, node, t.kind, t.ref, stepOrder);
   return save(doc);
 }

@@ -138,13 +138,30 @@ describe("the composite designer's edits", () => {
     const awx = setTarget(pg, "step:owner", { kind: "awx", ref: "pg-create-role" });
     expect(readStep(awx, "step:owner")!.step).toMatchObject({ awx: { job_template: "pg-create-role" } });
     expect(readStep(awx, "step:owner")!.step.item).toBeUndefined();
-    // An AWX step keeps its title when its template changes.
-    const backups = setTarget(pg, "step:backups", { kind: "awx", ref: "fw-flow-request", workflow: true });
+    // Another AWX template: its name and ID, not the previous one's title.
+    const backups = setTarget(pg, "step:backups", {
+      kind: "awx",
+      ref: "fw-flow-request",
+      workflow: true,
+      templateId: 12,
+    });
     expect(readStep(backups, "step:backups")!.step.awx).toEqual({
       job_template: "fw-flow-request",
-      title: "pgBackRest stanza",
+      template_id: 12,
       workflow: true,
     });
+    // Then one named only: the previous one's ID goes too, or it would launch that one.
+    const named = setTarget(backups, "step:backups", { kind: "awx", ref: "pg-drop-role" });
+    expect(readStep(named, "step:backups")!.step.awx).toEqual({ job_template: "pg-drop-role" });
+    // The same template again keeps the title written for it.
+    const same = setTarget(pg, "step:backups", { kind: "awx", ref: "pgbackrest-stanza", templateId: 106 });
+    expect(readStep(same, "step:backups")!.step.awx).toEqual({
+      job_template: "pgbackrest-stanza",
+      template_id: 106,
+      title: "pgBackRest stanza",
+    });
+    const fresh = setTarget(pg, "step:owner", { kind: "awx", ref: "monitoring-agent", templateId: 105 });
+    expect(readStep(fresh, "step:owner")!.step.awx).toEqual({ job_template: "monitoring-agent", template_id: 105 });
     const wf = setTarget(pg, "step:backups", { kind: "workflow", ref: "register-monitoring" });
     expect(readStep(wf, "step:backups")!.step).toMatchObject({ key: "backups", workflow: "register-monitoring" });
     expect(readStep(wf, "step:backups")!.step.awx).toBeUndefined();

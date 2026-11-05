@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { parse, stringify } from "yaml";
 import { describe, expect, it } from "vitest";
+import type { CatalogEntitlements } from "@/lib/api/types";
 import { seededBlueprint } from "@/mocks/blueprints";
+import { workflowRegistrations } from "@/mocks/extensibility";
+import { db } from "@/mocks/seed";
 import { renderWithQuery } from "@/test/render";
 import CompositeDesigner from "./CompositeDesigner";
 
@@ -18,7 +21,15 @@ const pg = stringify(
 );
 
 /** The editor's part: the text and a history of the designer's edits. */
-function Harness({ initial, refused }: { initial: string; refused?: { field: string; message: string } }) {
+function Harness({
+  initial,
+  refused,
+  entitlements,
+}: {
+  initial: string;
+  refused?: { field: string; message: string };
+  entitlements?: CatalogEntitlements;
+}) {
   const [history, setHistory] = useState([initial]);
   const [at, setAt] = useState(0);
   const text = history[at] ?? initial;
@@ -26,6 +37,7 @@ function Harness({ initial, refused }: { initial: string; refused?: { field: str
     <>
       <CompositeDesigner
         name="PostgreSQL 16 cluster"
+        entitlements={entitlements}
         design={{
           text,
           onEdit: (next) => {
@@ -87,7 +99,8 @@ describe("the composite designer", () => {
     expect(step("monitor")).toEqual({
       key: "monitor",
       title: "Monitoring agent",
-      awx: { job_template: "monitoring-agent" },
+      // By its ID in AWX too: it is launched by it.
+      awx: { job_template: "monitoring-agent", template_id: 105 },
     });
     // The new step is selected, its details focused.
     const details = await screen.findByRole("region", { name: "Selected: Monitoring agent" });
@@ -171,6 +184,25 @@ describe("the composite designer", () => {
     await waitFor(() =>
       expect(node(/^Item The database's owner\./).getAttribute("aria-label")).not.toContain("Refused by the server."),
     );
+  });
+
+  it("says a step's custom workflow isn't offered to a project the item is offered to", async () => {
+    workflowRegistrations(db).find((w) => w.key === "register-monitoring")!.project_ids = ["prj_data"];
+    const projects = db.projects.map((p) => ({ id: p.id, code: p.code, name: p.name }));
+    const other = projects.find((p) => p.id !== "prj_data")!;
+    const text = pg.replace("  steps:\n", "  steps:\n    - key: mon\n      workflow: register-monitoring\n");
+    const { unmount } = renderWithQuery(
+      <Harness initial={text} entitlements={{ all_projects: false, project_ids: ["prj_data", other.id], projects }} />,
+    );
+    const message = `mon: the custom workflow register-monitoring isn't offered to ${other.code}, which may request this item.`;
+    await waitFor(() => expect(screen.getByRole("list", { name: "Problems in the steps" })).toHaveTextContent(message));
+    unmount();
+    // Offered to the data project only: nothing to say.
+    renderWithQuery(
+      <Harness initial={text} entitlements={{ all_projects: false, project_ids: ["prj_data"], projects }} />,
+    );
+    await waitFor(() => expect(node(/^Workflow mon\./)).toBeDefined());
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
   it("toggles undoing what was built from the end node, and leaves a text that doesn't parse to the editor", async () => {

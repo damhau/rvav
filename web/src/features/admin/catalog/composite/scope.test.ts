@@ -8,7 +8,20 @@ import { db } from "@/mocks/seed";
 import { minimalChange } from "../YamlEditor";
 import { writtenBinding } from "./CompositeDesigner";
 import { addStep, setBinding, setStepField, setUndo } from "./edits";
-import { bindingSources, designerProblems, flatten, formInputsOf, openEarlier, outputsOf } from "./scope";
+import type { CatalogEntitlements, CompositeStepTarget } from "@/lib/api/types";
+import {
+  bindingSources,
+  designerProblems,
+  findTarget,
+  flatten,
+  formInputsOf,
+  listedTarget,
+  notOfferedTo,
+  openEarlier,
+  outputsOf,
+  targetOf,
+  targetValue,
+} from "./scope";
 
 const targets = compositeStepTargets(db, workflowRegistrations(db));
 const form = {
@@ -118,6 +131,71 @@ describe("what the server would refuse when the item is requested", () => {
       "/definition/blueprint/steps/1/parallel/0",
       "/definition/blueprint/steps/1/parallel/1",
     ]);
+  });
+
+  it("says a step whose target isn't offered to every project that may request the composite", () => {
+    const limited = (t: CompositeStepTarget): CompositeStepTarget => ({ ...t, project_ids: ["prj_data"] });
+    const some = targets.map((t) => (t.ref === "register-monitoring" || t.ref === "decommission" ? limited(t) : t));
+    const projects = db.projects.map((p) => ({ id: p.id, code: p.code, name: p.name }));
+    const data = projects.find((p) => p.id === "prj_data")!;
+    const others = projects.filter((p) => p.id !== "prj_data");
+    const offered = (ids: string[], all = false): CatalogEntitlements => ({
+      all_projects: all,
+      project_ids: ids,
+      projects,
+    });
+    let t = addStep(pg, { key: "mon", workflow: "register-monitoring" }, "end");
+    t = setUndo(t, "step:owner", { kind: "workflow", ref: "register-monitoring" });
+    // Offered to the data project only, as the workflow is: nothing to say.
+    expect(designerProblems(def(t), some, offered(["prj_data"]))).toEqual([]);
+    expect(designerProblems(def(t), targets, offered([], true))).toEqual([]);
+    // Offered to others: both the step and the undo are refused for them.
+    expect(designerProblems(def(t), some, offered(["prj_data", others[0]!.id]))).toEqual([
+      {
+        field: "/definition/blueprint/steps/1/parallel/0/undo/workflow",
+        code: "not_available",
+        message: `The database's owner (undo): the custom workflow register-monitoring isn't offered to ${others[0]!.code}, which may request this item.`,
+      },
+      {
+        field: "/definition/blueprint/steps/2/workflow",
+        code: "not_available",
+        message: `mon: the custom workflow register-monitoring isn't offered to ${others[0]!.code}, which may request this item.`,
+      },
+    ]);
+    // To every project: the others are named, a long list cut short.
+    const all = notOfferedTo(limited(targets[0]!), offered([], true));
+    expect(all).toEqual(others.map((p) => p.code).sort());
+    expect(all).not.toContain(data.code);
+    const many = designerProblems(def(t), some, offered([], true))[1]!.message;
+    expect(many).toContain(others.length > 4 ? `and ${others.length - 3} other projects` : all.at(-1));
+    // Without the entitlements, or a target offered to all: nothing.
+    expect(notOfferedTo(targets[0], offered(["prj_data", others[0]!.id]))).toEqual([]);
+    expect(designerProblems(def(t), some)).toEqual([]);
+  });
+
+  it("finds an AWX template as the step names it: job or workflow template, by its ID when it gives one", () => {
+    const awx = (name: string, workflow: boolean, id: number): CompositeStepTarget => ({
+      kind: "awx",
+      ref: name,
+      title: name,
+      runs: "awx",
+      planned: false,
+      inputs: [],
+      outputs: [],
+      open_outputs: false,
+      awx_id: id,
+      ...(workflow ? { awx_workflow: true } : {}),
+    });
+    const list = [awx("deploy", false, 7), awx("deploy", true, 7), awx("renamed", false, 9)];
+    // Same name, one a workflow template: distinct values, each found.
+    expect(list.map((t) => targetValue(listedTarget(t)))).toEqual(["awx:deploy", "awx-workflow:deploy", "awx:renamed"]);
+    expect(findTarget(list, targetOf({ awx: { job_template: "deploy" } }))).toBe(list[0]);
+    expect(findTarget(list, targetOf({ awx: { job_template: "deploy", workflow: true } }))).toBe(list[1]);
+    // Launched by its ID: found under its name now, not under the one written.
+    expect(findTarget(list, targetOf({ awx: { job_template: "deploy", template_id: 9 } }))).toBe(list[2]);
+    expect(findTarget(list, targetOf({ awx: { job_template: "deploy", template_id: 8 } }))).toBeUndefined();
+    // Every template the server lists has its ID.
+    expect(targets.filter((t) => t.kind === "awx" && !t.awx_id)).toEqual([]);
   });
 
   it("goes on the node it is about, or on the group whose pointer holds it", () => {

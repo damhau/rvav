@@ -420,6 +420,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
             {designed ? (
               <CompositeDesigner
                 name={item.name}
+                entitlements={item.entitlements}
                 design={{
                   text,
                   onEdit: (next) => editor.current?.apply(next),

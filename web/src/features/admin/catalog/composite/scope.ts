@@ -5,7 +5,7 @@
 // those running at the same time, nor any for a VM step, which is planned
 // when the request is submitted); and what the server would refuse when the
 // item is requested, said on the step before then.
-import type { CompositeStepOutput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import type { CatalogEntitlements, CompositeStepOutput, CompositeStepTarget, FieldError } from "@/lib/api/types";
 
 type Raw = Record<string, unknown>;
 
@@ -17,22 +17,69 @@ export const stepRef = /\bsteps\.([a-z][a-z0-9_]*)/;
 export interface StepTarget {
   kind: CompositeStepTarget["kind"];
   ref: string;
+  /** An AWX workflow template (awx.workflow). */
   workflow?: boolean;
+  /** An AWX template's ID (awx.template_id): it is launched by it, whatever its name. */
+  templateId?: number;
 }
 
 /** What a step names: an item, an AWX template or a custom workflow (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
-  if (step.awx !== undefined) return { kind: "awx", ref: str(awx.job_template), workflow: awx.workflow === true };
+  if (step.awx !== undefined) {
+    const id = typeof awx.template_id === "number" && awx.template_id > 0 ? awx.template_id : undefined;
+    return {
+      kind: "awx",
+      ref: str(awx.job_template),
+      workflow: awx.workflow === true,
+      ...(id ? { templateId: id } : {}),
+    };
+  }
   if (str(step.workflow)) return { kind: "workflow", ref: str(step.workflow) };
   return undefined;
 }
 
-export const targetValue = (t: StepTarget) => `${t.kind}:${t.ref}`;
+/** What a listed target is as a step names it. */
+export function listedTarget(t: CompositeStepTarget): StepTarget {
+  return {
+    kind: t.kind,
+    ref: t.ref,
+    ...(t.awx_workflow ? { workflow: true } : {}),
+    ...(t.awx_id ? { templateId: t.awx_id } : {}),
+  };
+}
 
+/** A picker's value for a target, unique among them: a job template and a workflow template may share a name. */
+export const targetValue = (t: StepTarget) => `${t.kind === "awx" && t.workflow ? "awx-workflow" : t.kind}:${t.ref}`;
+
+/**
+ * The listed target a step names. An AWX template is a job template or a
+ * workflow template as the step says, found by its ID when the step gives
+ * one (it is launched by it), else by its name.
+ */
 export function findTarget(targets: CompositeStepTarget[], t: StepTarget | undefined) {
-  return t ? targets.find((x) => x.kind === t.kind && x.ref === t.ref) : undefined;
+  if (!t) return undefined;
+  if (t.kind !== "awx") return targets.find((x) => x.kind === t.kind && x.ref === t.ref);
+  const awx = targets.filter((x) => x.kind === "awx" && Boolean(x.awx_workflow) === Boolean(t.workflow));
+  return t.templateId ? awx.find((x) => x.awx_id === t.templateId) : awx.find((x) => x.ref === t.ref);
+}
+
+/**
+ * The codes of the projects that may request the composite (its
+ * entitlements: every project, or those listed) and that a target isn't
+ * offered to (its project_ids). Empty when it is offered to each of them.
+ */
+export function notOfferedTo(t: CompositeStepTarget | undefined, offered: CatalogEntitlements | undefined): string[] {
+  const limits = t?.project_ids;
+  if (!limits?.length || !offered) return [];
+  const projects = offered.projects ?? [];
+  const ids = offered.all_projects ? projects.map((p) => p.id) : offered.project_ids;
+  const code = (id: string) => projects.find((p) => p.id === id)?.code ?? id;
+  return ids
+    .filter((id) => !limits.includes(id))
+    .map(code)
+    .sort();
 }
 
 /** What a step gives the steps after it: its target's outputs, or an AWX job's ID for a template not listed. */
@@ -143,35 +190,58 @@ export function openEarlier(def: Raw, g: number, targets: CompositeStepTarget[])
     .map((s) => s.key);
 }
 
+/** Projects' codes in a sentence: the first three, then how many more. */
+function listing(codes: string[]) {
+  const shown = codes.length > 4 ? [...codes.slice(0, 3), `${codes.length - 3} other projects`] : codes;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : (shown[0] ?? "");
+}
+
 /**
  * What the server would refuse when the item is requested (core.evaluateComposite),
  * in its words, with the pointer of what it is about: an item that isn't
- * published (or doesn't exist, or is a composite), a custom workflow not
- * registered for composite steps, and a VM step with a condition, an undo
- * or an input from a step. Known only once the targets are loaded.
+ * published (or doesn't exist, or is a composite, or a workflow item whose
+ * workflow can't start), a custom workflow not registered for composite
+ * steps, one not offered to a project the composite is offered to (its
+ * entitlements, `offered`: a request from that project is refused), and a
+ * VM step with a condition, an undo or an input from a step. Known only
+ * once the targets are loaded.
  */
-export function designerProblems(def: Raw, targets: CompositeStepTarget[]): FieldError[] {
+export function designerProblems(
+  def: Raw,
+  targets: CompositeStepTarget[],
+  offered?: CatalogEntitlements,
+): FieldError[] {
   const out: FieldError[] = [];
   const add = (field: string, code: string, message: string) => out.push({ field, code, message });
+  const notOffered = (field: string, what: string, t: CompositeStepTarget | undefined) => {
+    const missing = notOfferedTo(t, offered);
+    if (missing.length > 0)
+      add(field, "not_available", `${what} isn't offered to ${listing(missing)}, which may request this item.`);
+  };
   for (const s of flatten(obj(def.blueprint))) {
     const t = targetOf(s.step);
     const found = findTarget(targets, t);
     if (t?.kind === "item" && !found)
       add(`${s.pointer}/item`, "not_available", `${s.label} uses ${t.ref}, which isn't published.`);
+    if (t?.kind === "item") notOffered(`${s.pointer}/item`, `${s.label}: ${t.ref}'s custom workflow`, found);
     if (t?.kind === "workflow" && !found)
       add(
         `${s.pointer}/workflow`,
         "not_available",
         `${s.label}: no custom workflow ${t.ref} is registered for composite steps.`,
       );
+    if (t?.kind === "workflow") notOffered(`${s.pointer}/workflow`, `${s.label}: the custom workflow ${t.ref}`, found);
     const undo = obj(s.step.undo);
     const undoFlow = str(undo.workflow);
-    if (undoFlow && !targets.some((x) => x.kind === "workflow" && x.ref === undoFlow))
+    const undoTarget = targets.find((x) => x.kind === "workflow" && x.ref === undoFlow);
+    if (undoFlow && !undoTarget)
       add(
         `${s.pointer}/undo/workflow`,
         "not_available",
         `${s.label} (undo): no custom workflow ${undoFlow} is registered for composite steps.`,
       );
+    if (undoFlow)
+      notOffered(`${s.pointer}/undo/workflow`, `${s.label} (undo): the custom workflow ${undoFlow}`, undoTarget);
     if (!found?.planned) continue;
     if (s.step.undo !== undefined)
       add(`${s.pointer}/undo`, "invalid", `${s.label}: a VM isn't undone by a job or workflow; a failure deletes it.`);

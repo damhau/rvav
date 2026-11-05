@@ -47,7 +47,10 @@ func stepTarget(kind api.CompositeStepTargetKind, ref, title string, runs api.Co
 
 // CompositeStepTargets lists the published items a step may request (not
 // composites: they don't nest), the AWX templates imported from AWX and the
-// custom workflows registered for composite steps.
+// custom workflows registered for composite steps: what evaluateComposite
+// runs. A workflow item is left out while its workflow can't start (not
+// registered for catalog items, or disabled), and a workflow offered to some
+// projects only says which: a request from another is refused.
 func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (api.CompositeStepTargetList, error) {
 	out := api.CompositeStepTargetList{Items: []api.CompositeStepTarget{}}
 	if !canAdminCatalog(p) {
@@ -73,6 +76,7 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 				continue // nothing a step could run
 			}
 			var runs api.CompositeStepTargetRuns
+			var projects []string
 			switch bp.Kind {
 			case blueprint.KindVM:
 				runs = api.StepRunsVm
@@ -80,10 +84,20 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 				runs = api.StepRunsAwx
 			case blueprint.KindWorkflow:
 				runs = api.StepRunsWorkflow
+				// As evaluateComposite checks it, for every project.
+				reg, why, err := s.usableWorkflow(ctx, bp.Workflow, "catalog_item", "")
+				if err != nil {
+					return out, err
+				}
+				if why != "" {
+					continue
+				}
+				projects = reg.ProjectIDs
 			default:
 				continue
 			}
 			t := stepTarget(api.StepTargetItem, it.Slug, it.Name, runs, formInputs(v.FormSchema, v.UISchema))
+			t.ProjectIds = projectLimits(projects)
 			t.ItemType = present.Ptr(api.CatalogItemType(it.Type))
 			if it.Summary != "" {
 				t.Summary = present.Ptr(it.Summary)
@@ -114,6 +128,7 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 		sj, _ := json.Marshal(schema)
 		uj, _ := json.Marshal(ui)
 		t := stepTarget(api.StepTargetAwx, r.Name, title, api.StepRunsAwx, formInputs(sj, uj))
+		t.AwxId = present.Ptr(r.AWXID)
 		if r.Workflow {
 			t.AwxWorkflow = present.Ptr(true)
 		}
@@ -130,6 +145,7 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 		}
 		t := stepTarget(api.StepTargetWorkflow, reg.Key, reg.Title, api.StepRunsWorkflow,
 			formInputs(reg.InputSchema, nil))
+		t.ProjectIds = projectLimits(reg.ProjectIDs)
 		if reg.Description != "" {
 			t.Summary = present.Ptr(reg.Description)
 		}
@@ -143,6 +159,16 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 		out.Items = append(out.Items, list...)
 	}
 	return out, nil
+}
+
+// projectLimits are the projects a target is offered to, nil for all of them.
+func projectLimits(ids []string) *[]string {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := slices.Clone(ids)
+	slices.Sort(out)
+	return &out
 }
 
 // formInputs are a form's inputs a step binds: its JSON Schema's

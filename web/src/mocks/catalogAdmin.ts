@@ -516,9 +516,10 @@ function formInputs(schema: Record<string, unknown>, ui?: S["UiSchema"]): S["Com
   });
 }
 
-/** AWX templates imported but not made items, with their surveys' questions. */
-const otherTemplates: { name: string; workflow?: boolean; schema: Record<string, unknown> }[] = [
+/** AWX templates imported but not made items, with their IDs in AWX and their surveys' questions. */
+const otherTemplates: { id: number; name: string; workflow?: boolean; schema: Record<string, unknown> }[] = [
   {
+    id: 105,
     name: "monitoring-agent",
     schema: {
       required: ["monitoring_agent", "listen_port"],
@@ -529,18 +530,22 @@ const otherTemplates: { name: string; workflow?: boolean; schema: Record<string,
     },
   },
   {
+    id: 106,
     name: "pgbackrest-stanza",
     schema: {
       required: ["retention_days"],
       properties: { retention_days: { type: "integer", title: "Retention (days)" }, hosts: { type: "string", title: "Hosts" } },
     },
   },
-  { name: "pgbackrest-stanza-delete", schema: { properties: { hosts: { type: "string", title: "Hosts" } } } },
-  { name: "pg-drop-role", schema: { required: ["role_name"], properties: { role_name: { type: "string", title: "Role name" } } } },
-  { name: "linux-baseline", schema: { properties: {} } },
-  { name: "patroni-cluster", schema: { properties: {} } },
-  { name: "postgresql-install", schema: { properties: {} } },
+  { id: 107, name: "pgbackrest-stanza-delete", schema: { properties: { hosts: { type: "string", title: "Hosts" } } } },
+  { id: 108, name: "pg-drop-role", schema: { required: ["role_name"], properties: { role_name: { type: "string", title: "Role name" } } } },
+  { id: 101, name: "linux-baseline", schema: { properties: {} } },
+  { id: 102, name: "patroni-cluster", schema: { properties: {} } },
+  { id: 103, name: "postgresql-install", schema: { properties: {} } },
 ]; // prettier-ignore
+
+/** The projects a target is offered to, absent for all (core.projectLimits). */
+const projectLimits = (ids: string[] | undefined) => (ids?.length ? { project_ids: [...ids].sort() } : {});
 
 const displayName = (template: string) => {
   const s = template.replace(/[-_]/g, " ");
@@ -557,21 +562,28 @@ export function compositeStepTargets(db: Db, workflows: S["WorkflowRegistration"
     const published = (st.versions[item.id] ?? []).find((v) => v.state === "published");
     const kind = published?.definition.blueprint.kind;
     if (!published || item.type === "composite" || (kind !== "vm" && kind !== "awx" && kind !== "workflow")) continue;
+    // A workflow item while its workflow can start (core.usableWorkflow).
+    const flow =
+      kind === "workflow" ? workflows.find((w) => w.key === published.definition.blueprint.workflow) : undefined;
+    if (kind === "workflow" && !(flow?.enabled && flow.usages.includes("catalog_item"))) continue;
     const inputs = formInputs(published.definition.form_schema, published.definition.ui_schema);
     items.push({
       ...target({ kind: "item", ref: item.slug, title: item.name, runs: kind, inputs }),
+      ...projectLimits(flow?.project_ids),
       item_type: item.type,
       summary: item.summary,
     });
     if (item.source.kind === "awx" && item.source.awx_template_name)
       templates.push({
         ...target({ kind: "awx", ref: item.source.awx_template_name, title: item.name, runs: "awx", inputs }),
+        ...(item.source.awx_template_id ? { awx_id: item.source.awx_template_id } : {}),
         ...(item.type === "awx_workflow" ? { awx_workflow: true } : {}),
       });
   }
   for (const t of otherTemplates)
     templates.push({
       ...target({ kind: "awx", ref: t.name, title: displayName(t.name), runs: "awx", inputs: formInputs(t.schema) }),
+      awx_id: t.id,
       ...(t.workflow ? { awx_workflow: true } : {}),
     });
   const flows = workflows
@@ -584,6 +596,7 @@ export function compositeStepTargets(db: Db, workflows: S["WorkflowRegistration"
         runs: "workflow",
         inputs: formInputs(w.input_schema ?? {}),
       }),
+      ...projectLimits(w.project_ids),
       ...(w.description ? { summary: w.description } : {}),
     }));
   return [...items.sort(byTitle), ...templates.sort(byTitle), ...flows.sort(byTitle)];

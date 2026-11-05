@@ -327,14 +327,20 @@ An item's tabs:
   cloud-init), sizes, naming, tags or placement, and of a composite
   step's bindings only the earlier steps they use.
 - **Designing a composite:** in a composite's draft, the graph edits the
-  YAML beside it, and the YAML the graph; your comments in the YAML are
-  kept. Select a step (click it, or the arrow keys and Enter) and its
-  editor opens under the graph:
+  YAML beside it, and the YAML the graph. Your comments in the YAML stay
+  through the graph's edits, but not through a save: rvav stores the
+  definition, not its text, and the editor shows it again without them
+  (as an export does). Put what a reader needs in step titles and the
+  item's description. Select a step (click it, or the arrow keys and
+  Enter) and its editor opens under the graph:
   - **Add a step** runs a published item (not another composite), an AWX
     template imported from AWX (or any template, by its name) or a
     custom workflow registered for composite steps. It goes after the
     selected step, at the same time as it, or at the end. Its inputs
-    named as the form's are bound to them.
+    named as the form's are bound to them. An AWX template picked from
+    the list is written with its ID in AWX (`template_id`) beside its
+    name, so it is launched even if renamed; picking another drops the
+    previous one's ID and title.
   - **Move earlier**, **Move later**, **Run with the step before** and
     **Remove step** change the order; a step in a group of steps that run
     at the same time is moved out of it, before or after.
@@ -356,8 +362,10 @@ An item's tabs:
 
   What the server would refuse is on the step it is about as you design:
   an item that isn't published, a workflow that isn't registered for
-  composite steps, a VM step with a condition, an undo or an input from
-  a step, a step using a later one. Save the draft, publish it, and
+  composite steps, a workflow (a step's, an undo's or a workflow item's)
+  not offered to every project the composite is offered to (a request
+  from one of the others is refused), a VM step with a condition, an
+  undo or an input from a step, a step using a later one. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.
 - **Versions:**

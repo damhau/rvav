@@ -1872,13 +1872,15 @@ paths:
       description: |
         For the composite designer (ADR-0022, ADR-0032): the published items
         a step may request (VM, AWX and custom workflow items: composites
-        don't nest), the AWX templates imported from AWX, and the custom
-        workflows registered for composite steps. Each says the inputs its
-        step's `with` binds (from the item's form, the template's survey or
-        the workflow's input schema) and the outputs later steps read as
-        `steps.<key>.<name>`. A step may also name an AWX template not
-        listed (any template AWX has): its inputs are then the author's.
-        Catalog admins and administrators.
+        don't nest; a workflow item only while its custom workflow is
+        registered for catalog items and enabled), the AWX templates
+        imported from AWX, and the custom workflows registered for composite
+        steps and enabled. Each says the inputs its step's `with` binds
+        (from the item's form, the template's survey or the workflow's input
+        schema), the outputs later steps read as `steps.<key>.<name>`, and
+        the projects it is offered to when not all of them. A step may also
+        name an AWX template not listed (any template AWX has): its inputs
+        are then the author's. Catalog admins and administrators.
       responses:
         "200":
           description: OK
@@ -4183,7 +4185,10 @@ components:
             workflow registered for composite steps, by key).
         ref:
           type: string
-          description: The name a step gives it, under `kind`.
+          description: |
+            The name a step gives it, under `kind`. A job template and a
+            workflow template may have the same name: `awx_workflow` (and
+            `awx_id`) tell them apart.
           examples: [db-user]
         title: { type: string, examples: [Create database user] }
         summary: { type: string }
@@ -4191,6 +4196,22 @@ components:
         awx_workflow:
           type: boolean
           description: An AWX workflow template, named `awx.job_template` with `awx.workflow` true.
+        awx_id:
+          type: integer
+          description: |
+            An AWX template's ID in AWX (a job template's or a workflow
+            template's: they are numbered apart). A step writes it as
+            `awx.template_id`, beside the name: it is then launched by ID,
+            whatever the template is called since (ADR-0016).
+          examples: [47]
+        project_ids:
+          type: array
+          description: |
+            The projects it is offered to, when not every project: a custom
+            workflow registered for some projects, or a workflow item whose
+            workflow is. A request of the composite from another project is
+            refused. Absent when every project may use it.
+          items: { type: string }
         runs:
           type: string
           enum: [vm, awx, workflow]
