@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { parse, stringify } from "yaml";
 import { describe, expect, it } from "vitest";
 import type { CatalogEntitlements } from "@/lib/api/types";
@@ -8,6 +9,7 @@ import { seededBlueprint } from "@/mocks/blueprints";
 import { workflowRegistrations } from "@/mocks/extensibility";
 import { db } from "@/mocks/seed";
 import { renderWithQuery } from "@/test/render";
+import YamlEditor, { type EditorHistory, type YamlEditorHandle } from "../YamlEditor";
 import CompositeDesigner from "./CompositeDesigner";
 
 const pg = stringify(
@@ -53,6 +55,35 @@ function Harness({
       <pre data-testid="yaml">{text}</pre>
     </>
   );
+}
+
+/** The designer beside the real editor, as the Definition tab has them: one text, one history (CodeMirror's). */
+function EditorHarness({ initial }: { initial: string }) {
+  const [text, setText] = useState(initial);
+  const editor = useRef<YamlEditorHandle>(null);
+  const [history, setHistory] = useState<EditorHistory>({ canUndo: false, canRedo: false });
+  return (
+    <>
+      <YamlEditor ref={editor} value={text} onChange={setText} onHistory={setHistory} label="Definition" />
+      <CompositeDesigner
+        name="PostgreSQL 16 cluster"
+        design={{
+          text,
+          onEdit: (next) => editor.current?.apply(next),
+          history,
+          undo: () => editor.current?.undo(),
+          redo: () => editor.current?.redo(),
+        }}
+      />
+      <pre data-testid="yaml">{text}</pre>
+    </>
+  );
+}
+
+/** Types into the editor, as a keystroke does: an edit of its own in its history. */
+function typeIn(edit: (doc: string) => { from: number; to?: number; insert: string }) {
+  const view = EditorView.findFromDOM(document.querySelector<HTMLElement>(".cm-editor")!)!;
+  act(() => view.dispatch({ changes: edit(view.state.doc.toString()), userEvent: "input.type" }));
 }
 
 const yaml = () => screen.getByTestId("yaml").textContent ?? "";
@@ -216,5 +247,86 @@ describe("the composite designer", () => {
     renderWithQuery(<Harness initial={pg + "  steps: [\n"} />);
     expect(screen.getByText(/^The YAML doesn't parse at line \d+/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add a step" })).not.toBeInTheDocument();
+  });
+
+  it("keeps focus in the designer when an undo removes what had it, so redo works from the keyboard", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    await user.click(screen.getByRole("button", { name: "Add a step" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+    await pick(user, within(dialog).getByRole("combobox", { name: "What it runs" }), /^Monitoring agent/);
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+    const details = await screen.findByRole("region", { name: "Selected: Monitoring agent" });
+    await waitFor(() => expect(within(details).getByRole("heading", { name: /Monitoring agent/ })).toHaveFocus());
+
+    // Undone: its details go, with the focus they had.
+    await user.keyboard("{Control>}z{/Control}");
+    expect(steps()).not.toContain("monitoring_agent");
+    expect(screen.queryByRole("region", { name: "Selected: Monitoring agent" })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(within(screen.getByRole("application")).getAllByRole("button")).toContain(document.activeElement);
+    await user.keyboard("{Control>}y{/Control}");
+    expect(steps()).toContain("monitoring_agent");
+    expect(await screen.findByRole("region", { name: "Selected: Monitoring agent" })).toBeInTheDocument();
+  });
+
+  it("focuses the row of a variable added to a step or its undo", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    fireEvent.click(node(/^AWX Backups\./));
+    const details = screen.getByRole("region", { name: "Selected: Backups" });
+    await user.type(within(details).getByRole("textbox", { name: "Add a variable" }), "stanza{Enter}");
+    await waitFor(() => expect(within(details).getByRole("combobox", { name: /^stanza/ })).toHaveFocus());
+    await user.type(within(details).getByRole("textbox", { name: "Add a variable to the undo" }), "force{Enter}");
+    await waitFor(() => expect(within(details).getByRole("combobox", { name: /^force/ })).toHaveFocus());
+  });
+});
+
+describe("the composite designer beside the editor", () => {
+  it("undoes and redoes typed and designed edits in the order they were made", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<EditorHarness initial={pg} />);
+    typeIn(() => ({ from: 0, insert: "# one\n" }));
+    fireEvent.click(node(/^AWX Backups\./));
+    await user.click(
+      within(screen.getByRole("region", { name: "Selected: Backups" })).getByRole("button", { name: "Remove step" }),
+    );
+    expect(steps()).toEqual(["nodes", "owner"]);
+    typeIn(() => ({ from: 0, insert: "# two\n" }));
+    const after = yaml();
+    expect(after.startsWith("# two\n# one\n")).toBe(true);
+
+    const undo = screen.getByRole("button", { name: "Undo" });
+    await user.click(undo);
+    expect(yaml().startsWith("# one\n")).toBe(true);
+    expect(steps()).toEqual(["nodes", "owner"]);
+    await user.click(undo);
+    expect(yaml().startsWith("# one\n")).toBe(true);
+    expect(steps()).toEqual(["nodes", ["owner", "backups"]]);
+    await user.click(undo);
+    expect(yaml()).toBe(pg);
+    expect(undo).toBeDisabled();
+
+    const redo = screen.getByRole("button", { name: "Redo" });
+    for (let i = 0; i < 3; i++) await user.click(redo);
+    expect(yaml()).toBe(after);
+    expect(redo).toBeDisabled();
+  });
+
+  it("keeps the last graph while the text doesn't parse, and edits nothing from it", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<EditorHarness initial={pg} />);
+    typeIn((doc) => ({ from: doc.length, insert: "  steps: [\n" }));
+    expect(
+      screen.getByText(/^The YAML doesn't parse at line \d+: the graph shows the definition as it last parsed\.$/),
+    ).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: "Add a step" });
+    expect(add).toBeDisabled();
+    await user.click(add);
+    expect(screen.queryByRole("dialog", { name: "Add a step" })).not.toBeInTheDocument();
+    fireEvent.click(node(/^AWX Backups\./));
+    expect(screen.getByRole("note")).toHaveTextContent("The YAML doesn't parse: fix it in the editor");
+    expect(screen.queryByRole("button", { name: "Remove step" })).not.toBeInTheDocument();
   });
 });

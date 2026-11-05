@@ -236,7 +236,12 @@ Catalog admins and administrators build items under **Catalog items**
   composite's graph: `DefinitionGraph.tsx`, loaded
   lazily with the tab so React Flow stays out of the other pages, draws
   the editor's text (`useDeferredValue`, so typing stays quick) through
-  `drawDefinition` (parse, take `blueprint`, `blueprintGraph`). The text
+  `drawDefinition` (parse, take `blueprint`, `blueprintGraph`). A text is
+  parsed once for all that read it on a keystroke (the graph, the
+  designer, the step selected, their problems: `parseText`, which keeps
+  the last few, read only), and the graph keeps its object while what it
+  draws is the same, so a keystroke outside the blueprint doesn't lay it
+  out again. The text
   is the editor's state, which starts from the designer's unsaved working
   copy when there is one, so the graph follows the draft as typed and as
   designed. When the text doesn't parse, or has no blueprint the canvas

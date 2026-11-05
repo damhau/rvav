@@ -293,6 +293,11 @@ differ, and none fits rvav's design system).
   control, so the designer needs no mouse. **Add a step** opens on what
   the step runs; an added step's editor takes the focus, a removed step's
   goes to the step before it, and a moved step's stays on its button.
+  When what had the focus goes (an undo removing the step whose editor
+  had it), it goes to the selected node or the graph's Tab stop, so
+  Ctrl+Z and Ctrl+Y go on working; a variable added to a step or its
+  undo focuses its row. Nodes are announced as buttons (React Flow's
+  `aria-roledescription` "node" is dropped).
 - D1.5 checks the pages that use the canvas with the keyboard only (a
   step added, bound, published, requested and followed, and a failed run
   retried: `web/e2e/one-canvas.spec.ts`) and with axe in both themes (the

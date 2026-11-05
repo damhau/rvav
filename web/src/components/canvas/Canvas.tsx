@@ -245,7 +245,8 @@ function toFlow(
       focusable: n.id === focusable,
       ariaRole: "button",
       ariaLabel: describeNode(n, st),
-      domAttributes: { "aria-pressed": n.id === selected },
+      // A button, as announced: React Flow would describe it as a "node".
+      domAttributes: { "aria-pressed": n.id === selected, "aria-roledescription": undefined },
       handles: handles(box.width, box.height),
     } satisfies CardNode);
   }

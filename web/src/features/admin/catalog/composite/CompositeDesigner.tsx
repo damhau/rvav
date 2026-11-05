@@ -19,7 +19,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { parse } from "yaml";
 import { type CanvasNode, NodeDetails, within } from "@/components/canvas";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,6 +29,7 @@ import type { CatalogEntitlements, CompositeStepInput, CompositeStepTarget, Fiel
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
+import { parseText } from "../definitionYaml";
 import { CommitInput } from "../designer/Properties";
 import type { EditorHistory } from "../YamlEditor";
 import * as edits from "./edits";
@@ -56,14 +56,10 @@ const variablePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const panel = "flex flex-col gap-3 rounded-md border border-line bg-surface p-3 text-xs";
 const legend = "mb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase";
 
-/** The definition in a text, or undefined when it doesn't parse. */
+/** The definition in a text, or undefined when it doesn't parse. Shared with the graph's: read only. */
 function parseDefinition(text: string): Raw | undefined {
-  try {
-    const d: unknown = parse(text);
-    return d && typeof d === "object" ? (d as Raw) : undefined;
-  } catch {
-    return undefined;
-  }
+  const d = parseText(text).value;
+  return d && typeof d === "object" ? (d as Raw) : undefined;
 }
 
 /** What a binding written out is: a number or a boolean as such, anything else a CEL expression; empty unbinds. */
@@ -212,6 +208,35 @@ export default function CompositeDesigner({
     return () => el.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
+  // Focus stays in the designer when what had it goes (an undo that removes
+  // the step whose details had it): on the selected step's heading or node,
+  // else the graph's Tab stop, so Ctrl+Z and Ctrl+Y go on working.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    let last: HTMLElement | null = null;
+    const onFocus = (e: FocusEvent) => {
+      last = e.target as HTMLElement;
+    };
+    const keep = new MutationObserver(() => {
+      if (!last || last.isConnected) return;
+      last = null;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      const to =
+        el.querySelector<HTMLElement>("#cd-heading") ??
+        el.querySelector<HTMLElement>(".react-flow__node[aria-pressed=true]") ??
+        el.querySelector<HTMLElement>(".react-flow__node[tabindex='0']") ??
+        el;
+      to.focus();
+    });
+    el.addEventListener("focusin", onFocus);
+    keep.observe(el, { childList: true, subtree: true });
+    return () => {
+      el.removeEventListener("focusin", onFocus);
+      keep.disconnect();
+    };
+  }, []);
+
   const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected };
   const renderDetails = (node: CanvasNode): ReactNode => {
     if (!def)
@@ -254,7 +279,7 @@ export default function CompositeDesigner({
   );
 
   return (
-    <div ref={box} className="min-w-0">
+    <div ref={box} tabIndex={-1} className="min-w-0 outline-none">
       <DefinitionGraph
         text={text}
         name={name}
@@ -623,6 +648,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         {(target?.kind !== "item" || !listed) && (
           <AddVariable
             id="cd-add-input"
+            rowId={(n) => `cd-in-${n}`}
             label={target?.kind === "awx" ? "Add a variable" : "Add an input"}
             taken={[...inputs.map((i) => i.name), ...others]}
             onAdd={(n) => setExtra((x) => [...x, n])}
@@ -740,20 +766,29 @@ function UndoEditor({
               }}
             />
           ))}
-          <AddVariable id="cd-undo-add" label="Add a variable to the undo" taken={names} onAdd={onExtra} />
+          <AddVariable
+            id="cd-undo-add"
+            rowId={(n) => `cd-undo-in-${n}`}
+            label="Add a variable to the undo"
+            taken={names}
+            onAdd={onExtra}
+          />
         </>
       )}
     </>
   );
 }
 
+/** A name to add to a step's inputs or its undo's; the row added for it (rowId) is focused. */
 function AddVariable({
   id,
+  rowId,
   label,
   taken,
   onAdd,
 }: {
   id: string;
+  rowId: (name: string) => string;
   label: string;
   taken: string[];
   onAdd: (name: string) => void;
@@ -767,7 +802,7 @@ function AddVariable({
     setError(undefined);
     setName("");
     onAdd(n);
-    requestAnimationFrame(() => document.getElementById(`${id}-${n}`)?.focus());
+    requestAnimationFrame(() => document.getElementById(rowId(n))?.focus());
   };
   return (
     <div className="flex items-end gap-2">

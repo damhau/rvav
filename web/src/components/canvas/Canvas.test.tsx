@@ -5,6 +5,30 @@ import { describe, expect, it, vi } from "vitest";
 import { Canvas } from "./Canvas";
 import { compositeGraph, vmGraph } from "./blueprint";
 
+// React Flow's fitView, as the canvas calls it: jsdom draws at 0×0, where a
+// fit moves nothing to see.
+const fitView = vi.hoisted(() => vi.fn());
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const flow = await importOriginal<typeof import("@xyflow/react")>();
+  const { useMemo } = await import("react");
+  return {
+    ...flow,
+    useReactFlow: () => {
+      const rf = flow.useReactFlow();
+      return useMemo(
+        () => ({
+          ...rf,
+          fitView: (o?: Parameters<typeof rf.fitView>[0]) => {
+            fitView(o);
+            return rf.fitView(o);
+          },
+        }),
+        [rf],
+      );
+    },
+  };
+});
+
 const graph = compositeGraph({
   kind: "composite",
   rollback_on_failure: true,
@@ -154,10 +178,31 @@ describe("Canvas", () => {
     const { rerender } = render(<Canvas graph={graph} label="Run" status={{ "step:vm": "running" }} />);
     const before = where();
     expect(before.nodes.length).toBe(graph.nodes.length + graph.groups.length);
+    fitView.mockClear();
     rerender(<Canvas graph={graph} label="Run" status={{ "step:vm": "done", "step:db_user": "running" }} />);
     expect(node(/^Item The VM/).getAttribute("aria-label")).toMatch(/^Item The VM\. Done\./);
     expect(node(/^AWX Database user/).getAttribute("aria-label")).toMatch(/^AWX Database user\. Running\./);
     expect(where()).toEqual(before);
+    expect(fitView).not.toHaveBeenCalled();
+
+    // Another graph (an edit in the designer) is fitted again, once.
+    const more = compositeGraph({
+      kind: "composite",
+      steps: [
+        { key: "vm", title: "The VM", item: "rhel9-server" },
+        { key: "extra", title: "Extra", workflow: "register-monitoring" },
+      ],
+    });
+    rerender(<Canvas graph={more} label="Run" status={{ "step:vm": "done" }} />);
+    expect(node(/^Workflow Extra/)).toBeInTheDocument();
+    expect(fitView).toHaveBeenCalledTimes(1);
+  });
+
+  it("announces its nodes as buttons, not as React Flow's nodes", () => {
+    render(<Canvas graph={graph} label="Steps" />);
+    const cards = screen.getAllByRole("button").filter((b) => b.classList.contains("react-flow__node"));
+    expect(cards).toHaveLength(graph.nodes.length);
+    for (const c of cards) expect(c).not.toHaveAttribute("aria-roledescription");
   });
 });
 

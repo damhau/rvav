@@ -17,6 +17,9 @@ Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
 // React Flow measures its edges' labels.
 (SVGElement.prototype as unknown as { getBBox?: () => DOMRect }).getBBox ??= () => new DOMRect(0, 0, 0, 0);
+// CodeMirror measures its text.
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect(0, 0, 0, 0);
 window.matchMedia ??= (query: string) =>
   ({
     matches: false,

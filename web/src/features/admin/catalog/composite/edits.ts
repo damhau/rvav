@@ -28,6 +28,7 @@ import {
   YAMLMap,
   YAMLSeq,
 } from "yaml";
+import { parseText } from "../definitionYaml";
 
 type Raw = Record<string, unknown>;
 
@@ -502,8 +503,10 @@ export function readStep(
   text: string,
   id: string,
 ): { step: Raw; g: number; j: number | null; pointer: string } | undefined {
+  // The text the graph and the designer parsed, read only.
+  const { doc, error } = parseText(text);
+  if (error) return undefined;
   try {
-    const doc = load(text);
     const at = locate(doc, id);
     return { step: (at.node.toJS(doc) as Raw) ?? {}, g: at.g, j: at.j, pointer: at.pointer };
   } catch {

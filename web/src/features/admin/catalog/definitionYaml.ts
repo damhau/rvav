@@ -1,5 +1,5 @@
 // A version's definition as YAML, and server problems mapped to its lines.
-import { isMap, isSeq, LineCounter, parseDocument, stringify, type Node } from "yaml";
+import { type Document, isMap, isSeq, LineCounter, parseDocument, stringify, type Node } from "yaml";
 import type { CatalogVersionDefinition, FieldError } from "@/lib/api/types";
 import type { LineProblem } from "./YamlEditor";
 
@@ -24,10 +24,46 @@ export function fromYaml(text: string): { def?: CatalogVersionDefinition; proble
   return { def: { form_schema, ui_schema, initial_values: initial_values ?? {}, blueprint, ...rest }, problems: [] };
 }
 
+/** An editor's text parsed: shared by all that read it, so read only. */
+export interface ParsedText {
+  doc: Document.Parsed;
+  lines: LineCounter;
+  /** What it says, when it parses. */
+  value?: unknown;
+  /** Why it doesn't parse. */
+  error?: string;
+}
+
+// The texts parsed last. On a keystroke the graph, the designer, the step
+// selected and their problems all read the same text (and the graph a
+// deferred one): it is parsed once.
+const recent: { text: string; parsed: ParsedText }[] = [];
+
+/** A text parsed, once for as long as it is among the last few read. */
+export function parseText(text: string): ParsedText {
+  const hit = recent.find((r) => r.text === text);
+  if (hit) return hit.parsed;
+  const lines = new LineCounter();
+  const doc = parseDocument(text, { lineCounter: lines });
+  const parsed: ParsedText = { doc, lines };
+  const broken = doc.errors[0];
+  if (broken) parsed.error = `The YAML doesn't parse at line ${lines.linePos(broken.pos[0]).line}`;
+  else
+    try {
+      parsed.value = doc.toJS();
+    } catch (e) {
+      // An alias with no anchor before it.
+      parsed.error = `The YAML doesn't parse: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  recent.unshift({ text, parsed });
+  recent.length = Math.min(recent.length, 4);
+  return parsed;
+}
+
 /** The line of the node a server pointer (under prefix) names, or the deepest on its way. */
 export function problemsOnLines(text: string, errors: FieldError[], prefix = "/definition"): LineProblem[] {
-  const lc = new LineCounter();
-  const doc = parseDocument(text, { lineCounter: lc });
+  if (errors.length === 0) return [];
+  const { doc, lines: lc } = parseText(text);
   return errors.map((e) => {
     const path = e.field.startsWith(prefix) ? e.field.slice(prefix.length) : e.field;
     let node: Node | null = doc.contents;

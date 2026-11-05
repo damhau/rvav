@@ -13,10 +13,9 @@
 // with its own problems and the canvas's selection, actions and details.
 import { TriangleAlert } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
-import { LineCounter, parseDocument } from "yaml";
 import { addProblems, blueprintGraph, Canvas, type CanvasGraph, type CanvasProps } from "@/components/canvas";
 import type { FieldError } from "@/lib/api/types";
-import { problemsOnLines } from "./definitionYaml";
+import { parseText, problemsOnLines } from "./definitionYaml";
 
 export interface Drawn {
   graph: CanvasGraph | null;
@@ -26,16 +25,8 @@ export interface Drawn {
 
 /** The graph of the blueprint in a definition's YAML, or why there is none. */
 export function drawDefinition(text: string): Drawn {
-  const lc = new LineCounter();
-  const doc = parseDocument(text, { lineCounter: lc });
-  const broken = doc.errors[0];
-  if (broken) return { graph: null, reason: `The YAML doesn't parse at line ${lc.linePos(broken.pos[0]).line}` };
-  let def: unknown;
-  try {
-    def = doc.toJS();
-  } catch (e) {
-    return { graph: null, reason: `The YAML doesn't parse: ${e instanceof Error ? e.message : String(e)}` };
-  }
+  const { value: def, error } = parseText(text);
+  if (error) return { graph: null, reason: error };
   const blueprint = def && typeof def === "object" ? (def as Record<string, unknown>).blueprint : undefined;
   if (!blueprint || typeof blueprint !== "object") return { graph: null, reason: "The definition has no blueprint" };
   const graph = blueprintGraph(blueprint);
@@ -68,10 +59,13 @@ export default function DefinitionGraph({ text, name, composite, problemsFor, ca
     const d = drawDefinition(current);
     return d.graph && problemsFor ? { ...d, graph: addProblems(d.graph, problemsFor(current)) } : d;
   }, [current, problemsFor]);
-  // The last graph drawn, for the moments the text has none.
-  const [kept, setKept] = useState<CanvasGraph | null>(drawn.graph);
-  if (drawn.graph && drawn.graph !== kept) setKept(drawn.graph);
-  const graph = drawn.graph ?? kept;
+  // The last graph drawn, for the moments the text has none, and kept while
+  // what it draws is the same: a keystroke outside the blueprint (the form,
+  // a comment) doesn't lay the graph out again.
+  const key = drawn.graph && JSON.stringify(drawn.graph);
+  const [kept, setKept] = useState({ key, graph: drawn.graph });
+  if (key && key !== kept.key) setKept({ key, graph: drawn.graph });
+  const graph = kept.graph;
   const lines = useMemo(
     () => (drawn.graph ? problemsOnLines(current, drawn.graph.problems) : []),
     [drawn.graph, current],
