@@ -8,7 +8,26 @@
 //
 // A step is named by its node's ID on the canvas: `step:<key>`, or
 // `step@<pointer>` when its key is missing or taken twice.
-import { Document, isMap, isScalar, isSeq, parseDocument, type Node, YAMLMap, YAMLSeq } from "yaml";
+//
+// An edit changes the step it is made on and no other, whatever anchors
+// and aliases (&name, *name) the text shares between steps: a step whose
+// part is an alias gets a copy of what it named before that part is edited,
+// and an alias elsewhere whose anchor the edit changed, removed or moved
+// after it becomes a copy of what it named before the edit.
+import {
+  type Alias,
+  Document,
+  isAlias,
+  isMap,
+  isNode,
+  isScalar,
+  isSeq,
+  parseDocument,
+  type Node,
+  visit,
+  YAMLMap,
+  YAMLSeq,
+} from "yaml";
 
 type Raw = Record<string, unknown>;
 
@@ -35,13 +54,86 @@ interface Located {
 /** Thrown when an edit can't be made: the YAML doesn't parse, or the step isn't there. */
 export class EditError extends Error {}
 
+/** What each alias of a document named when it was loaded: its data, and a copy of it. */
+type Shared = Map<Alias, { json: string; copy: unknown }>;
+const shared = new WeakMap<Document, Shared>();
+
+const dataOf = (doc: Document, node: Node) => JSON.stringify(node.toJS(doc));
+
+/** A copy of a node, its aliases replaced by copies of what they name, without anchors. */
+function copyOf(doc: Document, node: unknown): unknown {
+  if (isAlias(node)) {
+    const target = node.resolve(doc);
+    if (!target) throw new EditError(`The alias *${node.source} names no anchor before it.`);
+    return copyOf(doc, target);
+  }
+  if (!isNode(node)) return node;
+  const out = node.clone();
+  if (isScalar(out) || isMap(out) || isSeq(out)) out.anchor = undefined;
+  if (isMap(node) && isMap(out))
+    out.items = node.items.map((p) => {
+      const c = p.clone();
+      c.key = copyOf(doc, p.key);
+      c.value = copyOf(doc, p.value);
+      return c;
+    });
+  else if (isSeq(node) && isSeq(out)) out.items = node.items.map((i) => copyOf(doc, i));
+  return out;
+}
+
+/** Notes what each alias names now, to keep it so through the edit (save). */
+function remember(doc: Document) {
+  const now: Shared = new Map();
+  visit(doc, {
+    Alias(_, a) {
+      const target = a.resolve(doc);
+      if (!target) throw new EditError(`The alias *${a.source} names no anchor before it.`);
+      now.set(a, { json: dataOf(doc, target), copy: copyOf(doc, target) });
+    },
+  });
+  shared.set(doc, now);
+}
+
 function load(text: string): Document {
   const doc = parseDocument(text);
   if (doc.errors.length > 0) throw new EditError("The YAML doesn't parse.");
+  remember(doc);
   return doc;
 }
 
-const save = (doc: Document) => doc.toString(yamlOutput);
+/**
+ * The text of an edited document. An alias whose anchor the edit changed,
+ * removed or moved after it is replaced by a copy of what it named: the
+ * other steps keep their data.
+ */
+function save(doc: Document): string {
+  const before = shared.get(doc);
+  if (before?.size)
+    visit(doc, {
+      Alias(_, a) {
+        const was = before.get(a);
+        if (!was) return undefined;
+        const target = a.resolve(doc);
+        let same = false;
+        try {
+          same = target !== undefined && dataOf(doc, target) === was.json;
+        } catch {
+          // It names something holding an alias the edit broke.
+        }
+        return same ? undefined : (was.copy as Node);
+      },
+    });
+  return doc.toString(yamlOutput);
+}
+
+/** A map's value at a key to edit: an alias there is replaced by a copy of what it names first. */
+function own(doc: Document, map: YAMLMap, key: string): unknown {
+  const value: unknown = map.get(key, true);
+  if (!isAlias(value)) return value;
+  const copy = copyOf(doc, value);
+  map.set(key, copy);
+  return copy;
+}
 
 function blueprintOf(doc: Document): YAMLMap {
   const bp = doc.getIn(["blueprint"], true);
@@ -293,6 +385,8 @@ export function setStepField(text: string, id: string, field: "key" | "title" | 
         const n = holder.get(key, true);
         if (isScalar(n) && typeof n.value === "string") n.value = n.value.replace(old, `steps.${v}`);
       }
+    // Every step's are renamed, an alias's with its anchor's: what they name now is kept.
+    remember(doc);
   }
   if (!v && field !== "key") at.node.delete(field);
   else put(doc, at.node, field, v, stepOrder);
@@ -316,9 +410,9 @@ export function setTarget(text: string, id: string, t: Target): string {
   const { node } = locate(doc, id);
   for (const k of ["item", "awx", "workflow"]) if (k !== t.kind) node.delete(k);
   if (t.kind === "awx") {
-    const awx = node.get("awx", true);
+    const awx = own(doc, node, "awx");
     if (isMap(awx)) {
-      const was = awx.toJSON() as Raw;
+      const was = awx.toJS(doc) as Raw;
       const same =
         Boolean(was.workflow) === Boolean(t.workflow) &&
         (typeof was.template_id === "number" && t.templateId
@@ -361,12 +455,12 @@ export function setBinding(
   const { node } = locate(doc, id);
   let holder: YAMLMap = node;
   if (scope === "undo") {
-    const undo = node.get("undo", true);
+    const undo = own(doc, node, "undo");
     if (!isMap(undo)) throw new EditError("The step has no undo.");
     holder = undo;
   }
   const order = scope === "undo" ? undoOrder : stepOrder;
-  const current = holder.get("with", true);
+  const current = own(doc, holder, "with");
   if (value === undefined) {
     if (isMap(current)) {
       current.delete(name);
@@ -388,7 +482,7 @@ export function setUndo(text: string, id: string, undo: Undo): string {
     return save(doc);
   }
   const key = undo.kind === "awx" ? "job_template" : "workflow";
-  const current = node.get("undo", true);
+  const current = own(doc, node, "undo");
   if (isMap(current)) {
     current.delete(undo.kind === "awx" ? "workflow" : "job_template");
     put(doc, current, key, undo.ref, undoOrder);
@@ -411,7 +505,7 @@ export function readStep(
   try {
     const doc = load(text);
     const at = locate(doc, id);
-    return { step: (at.node.toJSON() as Raw) ?? {}, g: at.g, j: at.j, pointer: at.pointer };
+    return { step: (at.node.toJS(doc) as Raw) ?? {}, g: at.g, j: at.j, pointer: at.pointer };
   } catch {
     return undefined;
   }

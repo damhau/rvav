@@ -214,3 +214,107 @@ describe("the composite designer's edits", () => {
     expect(() => addStep("blueprint: [\n", {}, "end")).toThrow("The YAML doesn't parse.");
   });
 });
+
+// Steps that share bindings through an anchor (&) and its aliases (*).
+const anchored = `form_schema: {type: object}
+ui_schema: {layout: {kind: page, sections: []}, fields: {}}
+initial_values: {}
+blueprint:
+  kind: composite
+  steps:
+    - key: vm
+      item: rhel9-server
+    - key: a
+      awx: {job_template: one}
+      with: &common {size: inputs.size, cpu: steps.vm.fqdn}
+      undo: &undo {job_template: one-undo, with: {size: inputs.size}}
+    - key: b
+      awx: {job_template: two}
+      with: *common
+      undo: *undo
+    - key: c
+      awx: {job_template: three}
+      with: *common
+`;
+
+/** Each step's data, by key, as the canvas and the server read it. */
+const data = (text: string) =>
+  Object.fromEntries(
+    (blueprint(text).steps as Record<string, unknown>[]).flatMap((s) =>
+      (Array.isArray(s.parallel) ? (s.parallel as Record<string, unknown>[]) : [s]).map(
+        (x): [string, Record<string, unknown>] => [String(x.key), x],
+      ),
+    ),
+  );
+const common = { size: "inputs.size", cpu: "steps.vm.fqdn" };
+
+describe("the edits of steps that share an anchor", () => {
+  it("read an alias as what it names", () => {
+    expect(readStep(anchored, "step:b")!.step.with).toEqual(common);
+    expect(readStep(anchored, "step:b")!.step.undo).toEqual({
+      job_template: "one-undo",
+      with: { size: "inputs.size" },
+    });
+  });
+
+  it("bind and unbind a step's input through its alias: that step gets a copy, the others keep theirs", () => {
+    const bound = setBinding(anchored, "step:b", "size", "inputs.other");
+    expect(data(bound).b!.with).toEqual({ ...common, size: "inputs.other" });
+    expect(data(bound).a!.with).toEqual(common);
+    expect(data(bound).c!.with).toEqual(common);
+    // c still shares a's.
+    expect(bound).toContain("with: *common");
+
+    const unbound = setBinding(anchored, "step:b", "cpu", undefined);
+    expect(data(unbound).b!.with).toEqual({ size: "inputs.size" });
+    expect(data(unbound).a!.with).toEqual(common);
+
+    const undo = setBinding(anchored, "step:b", "size", "steps.a.job_id", "undo");
+    expect(data(undo).b!.undo).toEqual({ job_template: "one-undo", with: { size: "steps.a.job_id" } });
+    expect(data(undo).a!.undo).toEqual({ job_template: "one-undo", with: { size: "inputs.size" } });
+    expect(data(setUndo(anchored, "step:b", { kind: "workflow", ref: "cleanup" })).a!.undo).toEqual({
+      job_template: "one-undo",
+      with: { size: "inputs.size" },
+    });
+  });
+
+  it("change the anchor's step only: the aliases keep what they named", () => {
+    const bound = setBinding(anchored, "step:a", "size", "inputs.other");
+    expect(data(bound).a!.with).toEqual({ ...common, size: "inputs.other" });
+    expect(data(bound).b!.with).toEqual(common);
+    expect(data(bound).c!.with).toEqual(common);
+    const cleared = setBinding(setBinding(anchored, "step:a", "size", undefined), "step:a", "cpu", undefined);
+    expect(data(cleared).a!.with).toBeUndefined();
+    expect(data(cleared).b!.with).toEqual(common);
+    expect(data(setUndo(anchored, "step:a", null)).b!.undo).toEqual({
+      job_template: "one-undo",
+      with: { size: "inputs.size" },
+    });
+  });
+
+  it("remove or move the anchor's step, or an alias's before it, without changing the others", () => {
+    const steps = (text: string) => {
+      const d = data(text);
+      return { b: d.b, c: d.c };
+    };
+    const before = steps(anchored);
+    const removed = removeStep(anchored, "step:a");
+    expect(shape(removed)).toEqual(["vm", "b", "c"]);
+    expect(steps(removed)).toEqual(before);
+    const later = moveStep(anchored, "step:a", 1);
+    expect(shape(later)).toEqual(["vm", "b", "a", "c"]);
+    expect(steps(later)).toEqual(before);
+    expect(data(later).a).toEqual(data(anchored).a);
+    const earlier = moveStep(anchored, "step:b", -1);
+    expect(shape(earlier)).toEqual(["vm", "b", "a", "c"]);
+    expect(steps(earlier)).toEqual(before);
+    const joined = joinPrevious(moveStep(anchored, "step:a", -1), "step:vm");
+    expect(steps(joined)).toEqual(before);
+  });
+
+  it("rename a key in every step, aliases with their anchor", () => {
+    const renamed = setStepField(anchored, "step:vm", "key", "server");
+    for (const k of ["a", "b", "c"]) expect(data(renamed)[k]!.with).toEqual({ ...common, cpu: "steps.server.fqdn" });
+    expect(renamed).toContain("with: *common");
+  });
+});

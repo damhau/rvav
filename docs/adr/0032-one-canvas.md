@@ -177,9 +177,14 @@ differ, and none fits rvav's design system).
   comes back byte for byte but for the edit; another indentation is made
   the server's on the first canvas edit. New keys go in a fixed order
   (`key`, `title`, what it runs, `when`, `with`, `undo`). Renaming a key
-  renames `steps.<key>` in the composite's conditions and bindings. A
-  text that doesn't parse can't be edited on the canvas: the editor says
-  why and the last graph stays.
+  renames `steps.<key>` in the composite's conditions and bindings. An
+  edit changes its step and no other, whatever YAML anchors and aliases
+  (`&common`, `*common`) the steps share: a part of the step that is an
+  alias becomes a copy of what it named before it is edited, and an alias
+  elsewhere whose anchor the edit changed, removed or moved after it
+  becomes a copy of what it named (a rename changes every step, aliases
+  with their anchor). A text that doesn't parse can't be edited on the
+  canvas: the editor says why and the last graph stays.
 - **Undo and redo are the editor's.** A canvas edit is written into the
   editor as one transaction of the smallest change, isolated in its
   history (`isolateHistory`), so CodeMirror's history holds typed and

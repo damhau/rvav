@@ -334,7 +334,10 @@ An item's tabs:
   through the graph's edits, but not through a save: rvav stores the
   definition, not its text, and the editor shows it again without them
   (as an export does). Put what a reader needs in step titles and the
-  item's description. Select a step (click it, or the arrow keys and
+  item's description. Steps that share bindings through a YAML anchor
+  (`with: *common`) don't change with the one you edit: it gets its own
+  copy, and the others keep theirs, even when you remove or move the
+  step holding the anchor. Select a step (click it, or the arrow keys and
   Enter) and its editor opens under the graph:
   - **Add a step** runs a published item (not another composite), an AWX
     template imported from AWX (or any template, by its name) or a
