@@ -187,6 +187,48 @@ differ, and none fits rvav's design system).
   pointer falls in (`addProblems`, `nodeForPointer`), a group's on its
   frame, and in the list under the graph.
 
+### A request's run (D1.4)
+- **Composites only.** A composite's request page draws its run on the
+  graph of its steps, the timeline its list view. A VM item's request
+  keeps the timeline alone. Its graph is drawn by network, not by time: a
+  run makes the segments, then one step for all the security groups and
+  their rules, then each component in turn, so the groups would all turn
+  at once and the components one after the other, which says less than
+  the timeline, where each component's step already holds its VMs' steps.
+  A single-VM item's graph is one node. A composite's graph is the order
+  its steps run in, so the run fits it.
+- **The version requested, as its requester saw it.** The graph comes from
+  `GET /requests/{id}/topology`: the topology of the version the request
+  was made from, not the item's latest, projected as the form's
+  (`blueprint.Topology`), for whoever may read the request. It is a call
+  of its own, not a field of `Request`, since `request.updated` events
+  replace the request and lists carry it, and a version's topology never
+  changes: the page reads it once. Day-2 requests run an action and have
+  none.
+- **Steps to nodes.** A composite's steps run as `step:<key>`, the node's
+  ID. The steps before them (submitted, approval) are the Request node's;
+  those after (ready, a rollback) the Done node's, whose status is the
+  ready step's. A node's status is its step's, from the event stream: not
+  started, running, done, failed, skipped, or **undone**, which the step
+  doesn't store: a step is undone when it was cancelled after its
+  `/undo` step ran, and a VM step is undone when the request was rolled
+  back (its VMs deleted). A node without a step yet is not started.
+- **Live, without moving.** The graph is built once from the topology;
+  events change only the statuses, which don't size the nodes, so the
+  layout and the view stay where the reader put them. The selection
+  doesn't follow the running step either.
+- **A node selected** shows its part of the run: its steps as the
+  timeline shows them, with their AWX jobs' tasks and errors, and the
+  page's AWX output panel shows its job. A failed request opens with the
+  node it failed at selected (the node holding the request's error step,
+  however deep), its error and the request's own **Retry from the failed
+  step** and **Roll back**, with their permissions; with another node
+  selected they stay under the graph, once.
+- **The timeline is the list view.** It says all the graph does, in run
+  order, and more (each step's time, detail and tasks); it replaces the
+  canvas's own list there (`Canvas`'s `list` prop) and keeps its live
+  region.
+
 ### Accessibility
 - The graph is one Tab stop, on the node last visited (roving tabindex).
   The arrow keys move to the nearest node that way (the next layer, or
@@ -201,6 +243,7 @@ differ, and none fits rvav's design system).
 - A **List** view shows the same model in reading order: a composite's
   steps as an ordered list, a parallel group as a list within it; a VM
   item's nodes with their relations. Selection is shared with the graph.
+  A request's run has its **Timeline** there instead (D1.4).
 - The selected node's details, untruncated, are under the canvas; in the
   composite designer they are the node's editor, every edit a labelled
   control, so the designer needs no mouse. **Add a step** opens on what

@@ -92,6 +92,7 @@ export const keys = {
     list: (f: RequestFilters) => ["requests", "list", f] as const,
     detail: (key: string) => ["requests", "detail", key] as const,
     steps: (requestId: string) => ["requests", "steps", requestId] as const,
+    topology: (requestId: string) => ["requests", "topology", requestId] as const,
     logHead: (requestId: string, stepId: string) => ["requests", "log-head", requestId, stepId] as const,
   },
   approvals: {
@@ -443,6 +444,14 @@ export const q = {
       queryKey: keys.requests.steps(requestId),
       queryFn: ({ signal }) =>
         call(api.GET("/requests/{requestId}/steps", { params: { path: { requestId } }, signal })),
+    }),
+  /** What the requested version builds (ADR-0032): it never changes, so it is read once. */
+  requestTopology: (requestId: string) =>
+    queryOptions({
+      queryKey: keys.requests.topology(requestId),
+      queryFn: ({ signal }) =>
+        call(api.GET("/requests/{requestId}/topology", { params: { path: { requestId } }, signal })),
+      staleTime: Infinity,
     }),
   /** Approvals the caller may decide (pending), or decided ones. */
   approvals: (status: ApprovalStatus[] = ["pending"]) =>

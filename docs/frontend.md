@@ -447,13 +447,15 @@ nothing about it (positions, layout) is stored.
   draft's is the composite designer
   (`features/admin/catalog/composite/CompositeDesigner.tsx`), and the
   request form, under its fields (`features/requests/RequestTopology.tsx`;
-  see Multi-VM items).
+  see Multi-VM items), and a composite request's page (below).
 - **`Canvas`**: `graph` and `label` (names the region and its list), and
   optionally `status` (by node ID: a run's step status, or `undone`),
   `selected` and `onSelect` (controlled, or left to the canvas),
   `renderDetails` (what shows under the canvas for the selected node; by
   default `NodeDetails`, all the node shows), `actions` (the caller's
-  buttons beside the view switch), `defaultView` and `height`. Read only:
+  buttons beside the view switch), `defaultView`, or `view` and
+  `onViewChange` (controlled), `list` (the caller's own list view, named
+  by its button; no node details under it) and `height`. Read only:
   the designer edits the YAML, and the graph drawn from it again comes
   back. `addProblems(graph, errors)` puts more problems (JSON pointers) on
   the nodes, or the parallel groups, they fall in.
@@ -469,6 +471,23 @@ nothing about it (positions, layout) is stored.
   group a list within it) or a VM item's nodes with their relations, for
   screen readers and anyone who would rather read. It shares the
   selection.
+- **A request's run** (`features/requests/RequestRun.tsx`, loaded lazily
+  by `RequestDetailPage` for a composite's provisioning request): the
+  graph of `GET /requests/{id}/topology` (`q.requestTopology`, read once:
+  the requested version's topology never changes), with each node's
+  status from the steps query, which the event stream keeps current.
+  `run.ts` maps steps to nodes (`runSteps`: `step:<key>` on its node,
+  submitted and approval on `inputs`, the rest on `end`), their status
+  (`runStatus`, with `undone` for a step whose `/undo` ran or a VM step
+  of a request rolled back), the node a failed request failed at
+  (`failedNode`, selected at first) and the AWX job to show
+  (`pickLogStep`, through nested steps; the selected node's, unless one
+  was chosen). The selected node's details are its steps as a
+  `Timeline`, plus `FailureActions` on the failed node, or under the
+  graph when another is selected. The list view is the request's
+  `Timeline` and its `FailureActions`. The graph object is memoized from
+  the topology, so events never lay it out or fit it again; keep a run's
+  status out of what sizes a node.
 - **Themes:** only React Flow's `base.css` is imported; `canvas.css` points
   its variables at the app's tokens, and the nodes are our own components.
 

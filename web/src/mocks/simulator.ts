@@ -305,6 +305,9 @@ function vmOf(d: DeploymentDetail) {
 /** Finish a step; one of several VMs' steps keeps saying which VM it was for. */
 function complete(r: StoredRequest, s: Step) {
   completeStep(r, s);
+  // A step that isn't a job is done with what it did (a composite's VM step run again).
+  for (const c of s.children)
+    if (c.status === "pending" || c.status === "running") Object.assign(c, { status: "done", finished_at: now() });
   const vm = s.key.split("@")[1];
   if (vm && !s.key.startsWith("vsphere.drs_rule") && !s.title.includes(vm)) s.title = `${s.title} · ${vm}`;
 }

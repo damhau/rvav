@@ -43,6 +43,16 @@ export interface CanvasProps {
   onSelect?: (id: string | null) => void;
   /** The view it opens with (default: the graph); the reader can switch. */
   defaultView?: CanvasView;
+  /** The view shown, for a caller that keeps it; leave undefined to let the canvas keep it. */
+  view?: CanvasView;
+  /** The reader switched views. */
+  onViewChange?: (view: CanvasView) => void;
+  /**
+   * The caller's own list instead of the one drawn from the graph, named by
+   * its button (a request's run: its timeline, which says more than the
+   * graph). No node details are shown under it: it carries them.
+   */
+  list?: { label: string; content: ReactNode };
   /** Shown under the canvas for the selected node; by default all it shows, in full. Return null for nothing. */
   renderDetails?: (node: CanvasNode) => ReactNode;
   /** Beside the view switch: the caller's own buttons. */
@@ -70,12 +80,20 @@ export function Canvas({
   selected,
   onSelect,
   defaultView = "graph",
+  view: shown,
+  onViewChange,
+  list,
   renderDetails,
   actions,
   height,
   className,
 }: CanvasProps) {
-  const [view, setView] = useState<CanvasView>(defaultView);
+  const [ownView, setOwnView] = useState<CanvasView>(defaultView);
+  const view = shown ?? ownView;
+  const setView = (v: CanvasView) => {
+    if (shown === undefined) setOwnView(v);
+    onViewChange?.(v);
+  };
   const [own, setOwn] = useState<string | null>(null);
   const controlled = selected !== undefined;
   const current = controlled ? selected : own;
@@ -100,7 +118,7 @@ export function Canvas({
                 view === v ? "bg-accent-soft text-accent" : "text-muted hover:text-fg",
               )}
             >
-              {v === "graph" ? "Graph" : "List"}
+              {v === "graph" ? "Graph" : (list?.label ?? "List")}
             </button>
           ))}
         </div>
@@ -120,10 +138,13 @@ export function Canvas({
             height={height}
           />
         </ReactFlowProvider>
+      ) : list ? (
+        list.content
       ) : (
         <CanvasList graph={graph} label={label} status={status} selected={selectedNode?.id ?? null} onSelect={select} />
       )}
       {selectedNode &&
+        !(list && view === "list") &&
         (renderDetails ? (
           renderDetails(selectedNode)
         ) : (

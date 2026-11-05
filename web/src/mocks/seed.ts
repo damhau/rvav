@@ -797,6 +797,142 @@ export function createDb(now = Date.now()): Db {
     ] as const
   ).map(([kind, text], n) => ({ n, text, kind }));
 
+  // A composite that failed (D1.4): its nodes built, its owner's job failed,
+  // its backups' stanza undone and its nodes deleted (rollback_on_failure).
+  const pgCluster = items.find((i) => i.slug === "postgres-cluster")!;
+  const pgNodes = ["web-dev-pgorders001", "web-dev-pgorders002", "web-dev-pgorders003"];
+  const pgTask = (title: string, status: Step["status"] = "done", error?: string) =>
+    step({ key: "awx.task", title, status, system: "awx", ...(error ? { error } : {}) });
+  const ownerJob = step({
+    key: "step:owner",
+    title: "The database's owner · pg-create-role",
+    detail: "limit=localhost",
+    system: "awx",
+    status: "failed",
+    started_at: ago(52),
+    finished_at: ago(51),
+    has_log: true,
+    error: 'role "orders_owner": permission denied to create role',
+    external_ref: { kind: "awx_job", id: "18236", url: "https://awx.corp.example/#/jobs/playbook/18236/output" },
+    children: [
+      pgTask("Gathering Facts"),
+      pgTask("pg-create-role : connect to the primary"),
+      pgTask("pg-create-role : create role", "failed", "permission denied to create role"),
+    ],
+  });
+  const ownerLog: LogLine[] = (
+    [
+      ["header", "PLAY [pg-create-role] ****************************************************"],
+      ["plain", ""],
+      ["header", "TASK [Gathering Facts] ******************************************************"],
+      ["ok", "ok: [localhost]"],
+      ["plain", ""],
+      ["header", "TASK [pg-create-role : connect to the primary] ******************************"],
+      ["ok", "ok: [localhost]"],
+      ["plain", ""],
+      ["header", "TASK [pg-create-role : create role] *****************************************"],
+      [
+        "failed",
+        'fatal: [localhost]: FAILED! => {"changed": false, "msg": "permission denied to create role orders_owner"}',
+      ],
+      ["plain", ""],
+      ["recap", "PLAY RECAP ******************************************************************"],
+      ["failed", "localhost                  : ok=2    changed=0    unreachable=0    failed=1    skipped=0"],
+    ] as const
+  ).map(([kind, text], n) => ({ n, text, kind }));
+  const failedComposite: StoredRequest = {
+    request: {
+      ...reqBase("REQ-10484", pgCluster, web, "dev", lea, 60 * 5, "PostgreSQL 16 cluster · orders"),
+      status: "failed",
+      inputs: {
+        role: "orders",
+        vm_name: pgNodes[0],
+        pg_version: "16.6",
+        backup_retention_days: 14,
+        size: "M",
+        network: "dvpg-app-dev-vl310",
+      },
+      justification: "The order service's database.",
+      started_at: ago(58),
+      finished_at: ago(50),
+      progress: { done: 3, total: 6 },
+      error: { step_id: ownerJob.id, message: "The database's owner could not be created: permission denied." },
+    },
+    steps: [
+      step({
+        key: "request.submit",
+        title: "Submitted",
+        status: "done",
+        system: "rvav",
+        started_at: ago(60 * 5),
+        finished_at: ago(60 * 5),
+      }),
+      step({
+        key: "policy.approval",
+        title: "Approved by Marc Keller",
+        detail: "Composite items need sign-off · Infrastructure leads",
+        system: "policy",
+        status: "done",
+        started_at: ago(60 * 5),
+        finished_at: ago(58),
+      }),
+      step({
+        key: "step:nodes",
+        title: "Database nodes",
+        detail: pgNodes.join(", "),
+        system: "vcenter",
+        status: "done",
+        started_at: ago(58),
+        finished_at: ago(52),
+        children: [
+          ...pgNodes.map((vm) =>
+            step({
+              key: `vsphere.clone@${vm}`,
+              title: `Clone from tpl-rhel9.4-2026.10 · ${vm}`,
+              status: "done",
+              system: "vcenter",
+            }),
+          ),
+          step({ key: "vsphere.drs_rule", title: "Keep the VMs on separate hosts", status: "done", system: "vcenter" }),
+        ],
+      }),
+      ownerJob,
+      step({
+        key: "step:backups",
+        title: "Backups · pgbackrest-stanza",
+        detail: "Undone.",
+        system: "awx",
+        status: "cancelled",
+        started_at: ago(52),
+        finished_at: ago(50),
+        has_log: true,
+        children: [
+          pgTask("Gathering Facts"),
+          pgTask("pgbackrest-stanza : run"),
+          step({
+            key: "step:backups/undo",
+            title: "Undo Backups · pgbackrest-stanza-delete",
+            status: "done",
+            system: "awx",
+            started_at: ago(51),
+            finished_at: ago(50),
+          }),
+        ],
+      }),
+      step({ key: "request.ready", title: "Ready", status: "pending", system: "rvav" }),
+      step({
+        key: "rollback",
+        title: "Rolled back",
+        detail: pgNodes.map((vm) => `deleted VM ${vm}`).join(", "),
+        system: "rvav",
+        status: "done",
+        started_at: ago(50),
+        finished_at: ago(50),
+      }),
+    ],
+    logs: { [ownerJob.id]: ownerLog },
+  };
+
   const requests: StoredRequest[] = [
     {
       request: {
@@ -880,6 +1016,7 @@ export function createDb(now = Date.now()): Db {
       ],
       logs: { [failedJob.id]: failedLog },
     },
+    failedComposite,
     pendingApproval(
       "REQ-10477",
       rhel,

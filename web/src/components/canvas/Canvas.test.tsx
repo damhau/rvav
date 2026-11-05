@@ -145,6 +145,20 @@ describe("Canvas", () => {
     expectNamesHoldText();
     expect(screen.getByRole("img", { name: "Failed" })).toBeInTheDocument();
   });
+
+  it("draws a run's statuses where the nodes are: nothing moves nor is fitted again", () => {
+    const where = () => ({
+      viewport: document.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform,
+      nodes: [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((n) => n.style.transform),
+    });
+    const { rerender } = render(<Canvas graph={graph} label="Run" status={{ "step:vm": "running" }} />);
+    const before = where();
+    expect(before.nodes.length).toBe(graph.nodes.length + graph.groups.length);
+    rerender(<Canvas graph={graph} label="Run" status={{ "step:vm": "done", "step:db_user": "running" }} />);
+    expect(node(/^Item The VM/).getAttribute("aria-label")).toMatch(/^Item The VM\. Done\./);
+    expect(node(/^AWX Database user/).getAttribute("aria-label")).toMatch(/^AWX Database user\. Running\./);
+    expect(where()).toEqual(before);
+  });
 });
 
 describe("the list view", () => {
@@ -213,5 +227,35 @@ describe("the list view", () => {
     expect(items[2]).toHaveTextContent("Allows HTTPS from Any");
     await user.click(screen.getByRole("button", { name: "Graph" }));
     expect(screen.getByRole("application", { name: "Topology" })).toBeInTheDocument();
+  });
+
+  it("is the caller's own list when it gives one, and keeps the view it is given", async () => {
+    const user = userEvent.setup();
+    function Run() {
+      const [view, setView] = useState<"graph" | "list">("graph");
+      return (
+        <>
+          <Canvas
+            graph={graph}
+            label="Run"
+            selected="step:vm"
+            view={view}
+            onViewChange={setView}
+            list={{ label: "Timeline", content: <ol aria-label="Timeline of the run" /> }}
+          />
+          <output>{view}</output>
+        </>
+      );
+    }
+    render(<Run />);
+    expect(screen.getByRole("region", { name: "Selected: The VM" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Timeline" }));
+    expect(screen.getByRole("status")).toHaveTextContent("list");
+    expect(screen.getByRole("list", { name: "Timeline of the run" })).toBeInTheDocument();
+    // The caller's list says it all: no node details under it, and not the graph's list.
+    expect(screen.queryByRole("region", { name: "Selected: The VM" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Run" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Graph" }));
+    expect(screen.getByRole("application", { name: "Run" })).toBeInTheDocument();
   });
 });

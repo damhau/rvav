@@ -56,9 +56,18 @@ DNS record, the VM cloned and customised, each AWX job with its tasks and
 output. It updates live. You are told when it is ready, or why it failed,
 in the app and on your chosen channels.
 
+A composite's request (a PostgreSQL cluster, say) shows its steps as a
+graph, in the order they run, each with its status: not started, running,
+done, failed, skipped, or undone (what a failure took back). It updates
+live and stays where you put it. Select a step, with the mouse or with the
+arrow keys and Enter, to see what it did under the graph and its AWX
+job's output beside it. **Timeline** shows the same steps as a list, with
+their times and tasks.
+
 - **Waiting for approval:** the approvers and their deadline are shown.
   Cancel request still works.
-- **Failed:** the error names the step and the system.
+- **Failed:** the error names the step and the system. On a composite's
+  graph, the step that failed is selected.
   - **Retry from the failed step** once the cause is fixed: done steps
     aren't repeated.
   - **Roll back:** removes the VMs, addresses and DNS records it made. A

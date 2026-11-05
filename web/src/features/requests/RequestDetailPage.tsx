@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { blueprintGraph } from "@/components/canvas/blueprint";
 import { ApprovalHistory } from "@/components/common/approvals";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
@@ -12,13 +13,18 @@ import { Timeline } from "@/components/common/timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { RequestStatus, ServiceRequest, Step } from "@/lib/api/types";
+import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
 import { useRequestStream } from "@/lib/live/LiveProvider";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { duration, toText } from "@/lib/utils";
+import { FailureActions } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
+import { failedNode, flatten, pickLogStep, runSteps } from "./run";
+
+// A composite's run on its graph: React Flow loads with it, on its pages only.
+const RequestRun = lazy(() => import("./RequestRun"));
 
 const cancellable: RequestStatus[] = ["pending_approval", "scheduled", "queued", "running"];
 
@@ -72,81 +78,6 @@ function CancelButton({ request }: { request: ServiceRequest }) {
   );
 }
 
-/** Retry from the failed step, or roll back what a failed provisioning request built. */
-function FailureActions({ request }: { request: ServiceRequest }) {
-  const qc = useQueryClient();
-  const [confirmRollback, setConfirmRollback] = useState(false);
-  const done = (r: ServiceRequest, what: string) => {
-    qc.setQueryData(keys.requests.detail(r.number), r);
-    void qc.invalidateQueries({ queryKey: keys.requests.steps(r.id) });
-    if (r.deployment_ids?.[0]) void qc.invalidateQueries({ queryKey: keys.deployments.detail(r.deployment_ids[0]) });
-    toast.success(`${r.number}: ${what}`);
-  };
-  const failed = (e: unknown) =>
-    toast.error(isApiError(e) ? e.problem.title : "That didn't work", {
-      description: isApiError(e) ? e.problem.detail : undefined,
-    });
-  const params = { params: { path: { requestId: request.id } } };
-  const retry = useMutation({
-    mutationFn: () => call(api.POST("/requests/{requestId}/retry", params)),
-    onSuccess: (r) => done(r, "running again from the failed step"),
-    onError: failed,
-  });
-  const rollback = useMutation({
-    mutationFn: () => call(api.POST("/requests/{requestId}/rollback", params)),
-    onSuccess: (r) => {
-      setConfirmRollback(false);
-      done(r, "rolling back");
-    },
-    onError: failed,
-  });
-  return (
-    <div role="alert" className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3">
-      <span className="font-semibold text-bad">{request.error?.message}</span>
-      <span className="text-xs">
-        {request.kind === "day2"
-          ? "Retrying runs the failed step and the ones after it; the steps that were done are kept."
-          : "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes the VM, its IP address and DNS records."}
-      </span>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
-          Retry from the failed step
-        </Button>
-        {request.kind !== "day2" && (
-          <Dialog open={confirmRollback} onOpenChange={setConfirmRollback}>
-            <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
-              Roll back
-            </Button>
-            <DialogContent
-              title={`Roll back ${request.number}?`}
-              description="Deletes what it created: the VM, its IP address and DNS records. You can retry it afterwards."
-            >
-              <div className="flex justify-end gap-2 px-4 py-3">
-                <DialogClose asChild>
-                  <Button>Keep it</Button>
-                </DialogClose>
-                <Button variant="danger-solid" onClick={() => rollback.mutate()} disabled={rollback.isPending}>
-                  Roll back
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function pickLogStep(steps: Step[], chosen: string | null): Step | undefined {
-  const awx = steps.filter((s) => s.has_log);
-  return (
-    awx.find((s) => s.id === chosen) ??
-    awx.find((s) => s.status === "running") ??
-    awx.findLast((s) => s.status !== "pending") ??
-    awx[0]
-  );
-}
-
 export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   useNow(1000);
   const request = useQuery(q.request(requestKey));
@@ -161,6 +92,15 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const levels = approvals.data?.items ?? [];
   const mine = levels.find((a) => a.can_decide);
   const [chosenLog, setChosenLog] = useState<string | null>(null);
+  // A composite's run is drawn on what its version builds (ADR-0032).
+  const composite = request.data?.kind === "provision" && request.data.catalog_item.type === "composite";
+  const topology = useQuery({ ...q.requestTopology(id ?? ""), enabled: Boolean(id) && composite });
+  const graph = useMemo(() => {
+    const g = topology.data?.topology ? blueprintGraph(topology.data.topology, "/topology") : null;
+    return g?.kind === "composite" ? g : null;
+  }, [topology.data]);
+  // The node selected: at first, the one the request failed at.
+  const [chosenNode, setChosenNode] = useState<string | null | undefined>(undefined);
 
   if (request.isError) {
     return (
@@ -174,7 +114,14 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
     );
   }
   const r = request.data;
-  const logStep = steps.data ? pickLogStep(steps.data.items, chosenLog) : undefined;
+  const all = steps.data?.items ?? [];
+  const byNode = graph ? runSteps(graph, all) : undefined;
+  const selectedNode = chosenNode !== undefined ? chosenNode : r && byNode ? (failedNode(r, byNode) ?? null) : null;
+  // The job chosen, else the selected node's, else the request's.
+  const logStep =
+    (chosenLog ? flatten(all).find((s) => s.id === chosenLog && s.has_log) : undefined) ??
+    pickLogStep((selectedNode && byNode?.get(selectedNode)) || [], null) ??
+    pickLogStep(all, null);
   const deploymentId = r?.deployment_ids?.[0];
   const running = r && ["running", "queued", "cancelling"].includes(r.status);
   const elapsed = r?.started_at ? duration(r.started_at, r.finished_at) : null;
@@ -261,18 +208,35 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
             ) : null
           }
         >
-          {steps.isPending ? (
+          {steps.isPending || (composite && topology.isPending) ? (
             <SkeletonRows rows={6} cols={2} />
           ) : steps.isError ? (
             <ErrorState error={steps.error} onRetry={() => void steps.refetch()} className="p-0" />
+          ) : r && graph ? (
+            <Suspense fallback={<SkeletonRows rows={6} cols={2} />}>
+              <RequestRun
+                request={r}
+                graph={graph}
+                steps={steps.data.items}
+                selected={selectedNode}
+                onSelect={(node) => {
+                  setChosenNode(node);
+                  setChosenLog(null);
+                }}
+                logStep={logStep?.id ?? null}
+                onOpenLog={(s) => setChosenLog(s.id)}
+              />
+            </Suspense>
           ) : (
-            <Timeline
-              steps={steps.data.items}
-              onOpenLog={(s) => setChosenLog(s.id)}
-              selectedLogStep={logStep?.id ?? null}
-            />
+            <>
+              <Timeline
+                steps={steps.data.items}
+                onOpenLog={(s) => setChosenLog(s.id)}
+                selectedLogStep={logStep?.id ?? null}
+              />
+              {r?.status === "failed" && r.error && <FailureActions request={r} />}
+            </>
           )}
-          {r?.status === "failed" && r.error && <FailureActions request={r} />}
         </Panel>
 
         <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-4">

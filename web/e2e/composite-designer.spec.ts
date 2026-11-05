@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 // canvas, from the keyboard, its inputs bound to an earlier step's output
 // and to a number and a condition set; the YAML beside it follows, an edit
 // is undone and redone; the draft is saved, published and requested, and
-// the step runs between the nodes and the database's owner.
+// the step is on the request's run, between the nodes and the database's owner.
 
 test("a composite's steps edited on the canvas, published and requested", async ({ page }) => {
   const errors: string[] = [];
@@ -82,6 +82,10 @@ test("a composite's steps edited on the canvas, published and requested", async 
   await page.getByRole("textbox", { name: "Database name" }).fill("ledger");
   await page.getByRole("button", { name: "Submit for approval" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
+  // On the request's run (D1.4), a node of its own; on its timeline, after the nodes.
+  const run = page.getByRole("application", { name: /^Run of REQ-\d+$/ });
+  await expect(run.getByRole("button", { name: /^AWX Monitoring agent\. Not started\./ })).toBeVisible();
+  await page.getByRole("button", { name: "Timeline" }).click();
   await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText(
     /Database nodes[\s\S]*Monitoring agent · monitoring-agent[\s\S]*The database's owner/,
   );

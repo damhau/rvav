@@ -76,11 +76,13 @@ export function Timeline({
             <span className="pt-0.5">
               <StepIcon status={s.status} />
             </span>
-            <div className={cn("flex min-w-0 flex-col pb-4", s.status === "pending" && "opacity-55")}>
+            {/* Not started reads quieter, in colours that keep their contrast (no opacity). */}
+            <div className="flex min-w-0 flex-col pb-4">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span
                   className={cn(
                     "text-[13px]",
+                    s.status === "pending" && "text-muted",
                     s.status === "running" && "font-semibold",
                     s.status === "failed" && "font-semibold text-bad",
                   )}
@@ -88,7 +90,12 @@ export function Timeline({
                   {s.title}
                 </span>
                 {system && s.system && (
-                  <span className={cn("font-mono text-[10px] tracking-wide uppercase", systemTone[s.system])}>
+                  <span
+                    className={cn(
+                      "font-mono text-[10px] tracking-wide uppercase",
+                      s.status === "pending" ? "text-faint" : systemTone[s.system],
+                    )}
+                  >
                     {system}
                   </span>
                 )}
