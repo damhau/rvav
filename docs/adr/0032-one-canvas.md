@@ -46,6 +46,13 @@ composite designer (D1.3) and a request's run (D1.4).
   structural checks the server makes (`lib/composite.ts`, shared with the
   mock) on the node they are about, and the server's problems at their
   JSON pointer on the node that pointer falls in (`nodeForPointer`).
+- **Requesters see a topology, not the blueprint.** The request form
+  draws from its form's `topology` (D1.2): the part of the blueprint the
+  canvas draws (`blueprint.Topology`), without guest settings, sizes,
+  naming, tags, placement or AWX variables, and of a composite step's
+  bindings only the `steps.<key>` they use, since a binding's literal may
+  be anything. Its lists keep their positions, so a pointer means the
+  same in both. AWX and workflow items have none.
 - **No scripting language.** Conditions and bindings stay CEL, as in
   ADR-0022; there is no code node. Work that needs a language is an AWX
   playbook or a custom workflow: ADR-0007's levels 2 and 3 are unchanged,

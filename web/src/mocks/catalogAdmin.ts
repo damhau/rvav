@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { readComposite } from "@/lib/composite";
-import { seededBlueprint } from "./blueprints";
+import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
@@ -350,12 +350,21 @@ function serve(db: Db, item: StoredItem, v: Version | undefined) {
     return;
   }
   item.version = { id: v.id, number: v.number, published_at: v.published_at };
-  db.forms[item.id] = {
+  db.forms[item.id] = versionForm(item, v);
+}
+
+/** A version's request form, as GET /catalog/items/{id}/form gives it. */
+function versionForm(item: StoredItem, v: Version): S["RequestForm"] {
+  const bp = v.definition.blueprint;
+  const topology = topologyOf(bp);
+  return {
     item_id: item.id,
     version_id: v.id,
     schema: v.definition.form_schema,
     ui_schema: v.definition.ui_schema,
     initial_values: v.definition.initial_values,
+    ...(bp.kind === "vm" && Array.isArray(bp.components) && bp.components.length > 0 ? { one_deployment: true } : {}),
+    ...(topology ? { topology } : {}),
   };
 }
 
@@ -368,13 +377,7 @@ export function designerForm(db: Db, versionId: string, projectCode: string, asU
   for (const item of db.items) {
     const v = st.versions[item.id]?.find((x) => x.id === versionId);
     if (!v) continue;
-    const form: S["RequestForm"] = {
-      item_id: item.id,
-      version_id: v.id,
-      schema: v.definition.form_schema,
-      ui_schema: v.definition.ui_schema,
-      initial_values: v.definition.initial_values,
-    };
+    const form = versionForm(item, v);
     const userId = asUserId ?? db.me.user.id;
     const member = previewMembers[projectCode]?.some((m) => m.id === userId) ?? false;
     return { item, form, member, user: { id: userId, roles: [], groups: userGroups[userId] ?? [] } };

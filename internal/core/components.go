@@ -37,6 +37,16 @@ func OneDeployment(raw json.RawMessage) *bool {
 	return present.Ptr(true)
 }
 
+// Topology is what a request form draws of what the item builds, without
+// what only its administrators see (ADR-0032); nil for AWX and workflow
+// items.
+func Topology(raw json.RawMessage) *map[string]any {
+	if t := blueprint.Topology(raw); t != nil {
+		return &t
+	}
+	return nil
+}
+
 // vmPart is one component, evaluated.
 type vmPart struct {
 	comp blueprint.Component

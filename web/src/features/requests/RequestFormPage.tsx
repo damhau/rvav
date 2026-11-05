@@ -1,12 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+// The graph's model only: the canvas itself (React Flow) loads with RequestTopology.
+import { blueprintGraph } from "@/components/canvas/blueprint";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -29,6 +31,8 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, newIdempotencyKey, roughDuration } from "@/lib/utils";
 import { ComponentsPreview } from "./ComponentsPreview";
+
+const RequestTopology = lazy(() => import("./RequestTopology"));
 
 const quotaLabel: Record<QuotaResource, [string, string]> = {
   vcpu: ["vCPU", ""],
@@ -428,6 +432,12 @@ function RequestFormBody({
     if (serverErrors?.fields[name]) setServerErrors((s) => s && { ...s, fields: { ...s.fields, [name]: "" } });
   };
 
+  // What the item builds, drawn when there is more to it than one VM on a
+  // network (the summary says that much): a composite's steps, an item's
+  // components, segments and groups.
+  const graph = useMemo(() => (form.topology ? blueprintGraph(form.topology, "/topology") : null), [form.topology]);
+  const drawn = graph && (graph.kind === "composite" || graph.nodes.length > 2) ? graph : null;
+
   const lease = preview.data?.lease;
   const leaseOptions =
     lease && lease.max_days !== null && lease.max_days !== undefined
@@ -458,6 +468,11 @@ function RequestFormBody({
             />
           }
         />
+        {drawn && (
+          <Suspense>
+            <RequestTopology graph={drawn} name={item.name} components={preview.data?.components} />
+          </Suspense>
+        )}
         <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
           <legend className="sr-only">Lease and reason</legend>
           <div className="border-b border-line px-4 py-2.5 text-[13px] font-semibold" aria-hidden>

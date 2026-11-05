@@ -180,3 +180,96 @@ export function seededBlueprint(slug: string): Blueprint | undefined {
   const bp = seeded[slug];
   return bp ? structuredClone(bp) : undefined;
 }
+
+// ---- What a requester sees of a blueprint -----------------------------------
+
+type Keep = (v: unknown) => unknown;
+const isObject = (v: unknown): v is Blueprint => typeof v === "object" && v !== null && !Array.isArray(v);
+const asIs: Keep = (v) => v;
+const fields =
+  (keys: Record<string, Keep>): Keep =>
+  (v) => {
+    if (!isObject(v)) return null;
+    const out: Blueprint = {};
+    for (const [k, keep] of Object.entries(keys)) {
+      const kept = k in v ? keep(v[k]) : null;
+      if (kept !== null && kept !== undefined) out[k] = kept;
+    }
+    return out;
+  };
+const each =
+  (keep: Keep): Keep =>
+  (v) =>
+    Array.isArray(v) ? v.map(keep) : null;
+const values =
+  (keep: Keep): Keep =>
+  (v) =>
+    isObject(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, keep(x)])) : null;
+const stepRefs: Keep = (v) =>
+  isObject(v)
+    ? Object.fromEntries(
+        Object.entries(v).flatMap(([k, x]) => {
+          const refs = typeof x === "string" ? (x.match(/\bsteps\.[a-z][a-z0-9_]*/g) ?? []) : [];
+          return refs.length > 0 ? [[k, refs.join(" ")]] : [];
+        }),
+      )
+    : null;
+
+const bindings = fields({ network: asIs, groups: asIs, template: asIs, post_config: asIs });
+const guestOS = fields({ os_family: asIs });
+const disks = each(fields({ size_gb: asIs, storage_policy: asIs }));
+const nics = each(fields({ key: asIs, network: asIs, ipam: asIs }));
+const vmTopology = fields({
+  kind: asIs,
+  template: asIs,
+  library: asIs,
+  guest: guestOS,
+  bindings,
+  awx_templates: values(fields({ title: asIs })),
+  disks,
+  nics,
+  groups: asIs,
+  segments: each(fields({ key: asIs, title: asIs })),
+  security_groups: each(
+    fields({ key: asIs, title: asIs, rules: each(fields({ from: asIs, services: asIs, action: asIs })) }),
+  ),
+  components: each(
+    fields({
+      key: asIs,
+      title: asIs,
+      count: asIs,
+      template: asIs,
+      library: asIs,
+      guest: guestOS,
+      bindings,
+      disks,
+      nics,
+      anti_affinity: asIs,
+      groups: asIs,
+    }),
+  ),
+});
+const stepKeys: Record<string, Keep> = {
+  key: asIs,
+  title: asIs,
+  item: asIs,
+  awx: fields({ job_template: asIs, title: asIs }),
+  workflow: asIs,
+  when: asIs,
+  with: stepRefs,
+  undo: fields({ job_template: asIs, workflow: asIs, with: stepRefs }),
+};
+const step = fields(stepKeys);
+stepKeys.parallel = each(step);
+const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps: each(step) });
+
+/**
+ * What a request form gets of a blueprint to draw what the item builds, as
+ * the server's blueprint.Topology gives it (ADR-0032): the part the canvas
+ * draws, without guest settings, sizes, naming or a step's binding literals.
+ * Undefined for the kinds the canvas doesn't draw.
+ */
+export function topologyOf(bp: Blueprint | undefined): Blueprint | undefined {
+  const keep = bp?.kind === "vm" ? vmTopology : bp?.kind === "composite" ? compositeTopology : undefined;
+  return keep ? (keep(bp) as Blueprint) : undefined;
+}

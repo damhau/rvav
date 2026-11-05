@@ -321,7 +321,11 @@ An item's tabs:
   are on its nodes and listed with their lines. While the YAML doesn't
   parse, the graph stays as it last parsed and says so. **Graph** and
   **List** show the same thing; the arrow keys move between nodes, Enter
-  shows one's details.
+  shows one's details. Requesters see the same graph on the request form
+  of an item with more than one VM or step, without what only you see:
+  no guest settings (domain, join credential, administrator password,
+  cloud-init), sizes, naming, tags or placement, and of a composite
+  step's bindings only the earlier steps they use.
 - **Versions:**
   - publish a draft;
   - compare two versions;

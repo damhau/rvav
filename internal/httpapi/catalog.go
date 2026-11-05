@@ -138,6 +138,7 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 		out.InitialValues = map[string]any{}
 	}
 	out.OneDeployment = core.OneDeployment(ver.Blueprint)
+	out.Topology = core.Topology(ver.Blueprint)
 	writeJSON(w, http.StatusOK, out)
 }
 

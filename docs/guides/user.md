@@ -28,6 +28,14 @@ shows under your name.
    - the size and the quota it uses;
    - whether someone must approve it, and who;
    - the lease, and the placement.
+
+   For an item that builds more than one VM, or runs several steps, the
+   **Topology** under the fields draws what it builds: its servers and
+   how many, their networks and NSX segments, the security groups and the
+   rules between them (a composite: its steps, in the order they run,
+   those that run at the same time side by side). The counts and names
+   follow what you fill in. **List** gives the same as a list; select a
+   node to read all it says.
 3. **Lease and reason:** how long you need it, within what the environment
    allows. In production the reason is what approvers read.
 4. **Options:**

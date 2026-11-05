@@ -70,6 +70,7 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 		out.Form.InitialValues = map[string]any{}
 	}
 	out.Form.OneDeployment = OneDeployment(v.Blueprint)
+	out.Form.Topology = Topology(v.Blueprint)
 	inputs := map[string]any{}
 	for k, val := range q.Inputs {
 		inputs[k] = val

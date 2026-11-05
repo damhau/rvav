@@ -424,7 +424,9 @@ nothing about it (positions, layout) is stored.
   between a VM item's groups are left out of the layout and drawn as
   brackets on their right, so the groups stay in one column.
 - **Where it is used:** an item's Definition tab, beside the YAML
-  (`features/admin/catalog/DefinitionGraph.tsx`).
+  (`features/admin/catalog/DefinitionGraph.tsx`), and the request form,
+  under its fields (`features/requests/RequestTopology.tsx`; see Multi-VM
+  items).
 - **`Canvas`**: `graph` and `label` (names the region and its list), and
   optionally `status` (by node ID: a run's step status, or `undone`),
   `selected` and `onSelect` (controlled, or left to the canvas),
@@ -478,6 +480,19 @@ A blueprint with components builds one deployment
   network and next free address, tags, and **On separate hosts** for
   anti-affinity. It replaces the single VM's name, placement and address
   lines.
+- **Request form's topology:** under the fields, a **Topology** section
+  (a composite's: **Steps, in the order they run**) draws what the item
+  builds on the canvas. It is drawn from the form's `topology`
+  (`RequestForm.topology`: the part of the blueprint the canvas draws,
+  without guest settings, sizes, naming or a step's binding literals,
+  which a requester doesn't see; `blueprint.Topology` on the server,
+  `topologyOf` in the mocks) and `withPreview` puts the preview's counts
+  and names on the components (a composite's step: what the item it
+  requests builds), so it follows the values. Only when there is more
+  than one VM on a network to draw: a single-VM item's summary says it
+  all. `RequestTopology` is loaded lazily, and the form imports only the
+  graph's model (`components/canvas/blueprint`), so React Flow stays out
+  of the other pages.
 - **Deployment page:** the VMs are grouped by component (a row heading
   per component), the placement panel gives each cluster, datastore and
   network once, and the DRS rules keeping VMs apart.

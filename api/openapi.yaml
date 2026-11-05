@@ -4707,6 +4707,25 @@ components:
             The item builds one deployment however many VMs (a blueprint with
             components, ADR-0024): how many of each is in the form, and the
             request's `count` stays 1.
+        topology:
+          type: object
+          additionalProperties: true
+          description: |
+            What the item builds, for the request form to draw (ADR-0032): the
+            part of the version's blueprint the canvas shows, in the
+            blueprint's own shape, lists keeping their positions. A VM item's
+            `kind`, `template`, `library`, `guest.os_family`, `disks`
+            (`size_gb`, `storage_policy`), `nics` (`key`, `network`, `ipam`),
+            `groups`, `segments`, `security_groups` with their `rules`,
+            `awx_templates` (titles only), `bindings` (`network`, `groups`,
+            `template`, `post_config` only) and `components` with the same
+            and their `key`, `title`, `count` and `anti_affinity`; a
+            composite's `kind`, `rollback_on_failure` and `steps` (`key`,
+            `title`, `item`, `awx`, `workflow`, `when`, `undo`, `parallel`),
+            each binding in `with` reduced to the `steps.<key>` it names.
+            Nothing else of the blueprint (guest settings, secrets, sizes,
+            naming, placement, tags, variables). Absent for AWX and workflow
+            items.
 
     UiSchema:
       type: object

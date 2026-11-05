@@ -20,6 +20,7 @@ import type {
 } from "@/lib/api/types";
 import type { StoredApproval } from "./approvals";
 import { factsFor } from "./approvals";
+import { seededBlueprint, topologyOf } from "./blueprints";
 import { formFor } from "./forms";
 import { DOMAIN, networks, templates, VCENTER } from "./inventory";
 
@@ -323,7 +324,10 @@ export function createDb(now = Date.now()): Db {
     }),
   ];
   const forms: Record<string, RequestForm> = {};
-  for (const i of items) forms[i.id] = formFor(i.slug, i.id, i.version.id);
+  for (const i of items) {
+    const topology = topologyOf(seededBlueprint(i.slug));
+    forms[i.id] = { ...formFor(i.slug, i.id, i.version.id), ...(topology ? { topology } : {}) };
+  }
 
   // ── Deployments ───────────────────────────────────────────────────────
   const netFor = (env: EnvironmentKey) => networks.find((n) => n.env === env)!;
