@@ -47,13 +47,16 @@ function ProblemList({ id, list }: { id: string; list: Problem[] }) {
 }
 
 /** A text input written to the definition when it loses focus (or on Enter). */
-function CommitInput({
+export function CommitInput({
   id,
   value,
   onCommit,
   className,
   invalid,
   describedBy,
+  label,
+  placeholder,
+  disabled,
 }: {
   id: string;
   value: string;
@@ -61,6 +64,10 @@ function CommitInput({
   className?: string;
   invalid?: boolean;
   describedBy?: string;
+  /** Its name, when no label element names it. */
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const [shown, setShown] = useState(value);
@@ -78,6 +85,9 @@ function CommitInput({
       className={className}
       aria-invalid={invalid || undefined}
       aria-describedby={describedBy}
+      aria-label={label}
+      placeholder={placeholder}
+      disabled={disabled}
     />
   );
 }

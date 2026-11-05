@@ -16,18 +16,19 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail } from "@/lib/api/types";
+import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail, FieldError } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { GitBadge, ItemGitTab } from "./GitPanels";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
 import { FormDesigner } from "./designer/FormDesigner";
-import type { LineProblem } from "./YamlEditor";
+import type { EditorHistory, LineProblem, YamlEditorHandle } from "./YamlEditor";
 
 const YamlEditor = lazy(() => import("./YamlEditor"));
 // The canvas (React Flow) loads with the Definition tab, not with the page.
 const DefinitionGraph = lazy(() => import("./DefinitionGraph"));
+const CompositeDesigner = lazy(() => import("./composite/CompositeDesigner"));
 
 /** The editor's text doesn't parse: what is wrong, and where. */
 class YamlProblems extends Error {
@@ -298,6 +299,12 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
   const pending = copy?.dirty ? copy : undefined;
   const [text, setText] = useState("");
   const [problems, setProblems] = useState<LineProblem[]>([]);
+  // The server's last refusal, with the text it refused: the composite
+  // designer shows its problems on their steps while the text is that one.
+  const [refused, setRefused] = useState<{ text: string; errors: FieldError[] }>();
+  // The composite designer writes into the editor, as steps of its history.
+  const editor = useRef<YamlEditorHandle>(null);
+  const [editorHistory, setEditorHistory] = useState<EditorHistory>({ canUndo: false, canRedo: false });
   const original = useMemo(
     () => (pending ? toYaml(pending.def) : version.data ? toYaml(version.data.definition) : ""),
     [pending, version.data],
@@ -305,6 +312,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
   useEffect(() => {
     setText(original);
     setProblems(pending ? problemsOnLines(original, pending.problems) : []);
+    setRefused(pending?.problems.length ? { text: original, errors: pending.problems } : undefined);
   }, [original, pending]);
   const dirty = text !== original || Boolean(pending);
   useEffect(() => onDirty(text !== original), [text, original, onDirty]);
@@ -335,13 +343,16 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
       resetDraft(v.id, stored.definition, v.revision); // the designer opens what was saved
       setText(toYaml(stored.definition));
       setProblems([]);
+      setRefused(undefined);
       refresh();
       toast.success(`Draft ${shown!.number} saved`);
     },
     onError: (e) => {
       if (e instanceof YamlProblems) setProblems(e.problems);
-      else if (isApiError(e) && e.fieldErrors.length) setProblems(problemsOnLines(text, e.fieldErrors));
-      else if (isApiError(e) && e.status === 409) {
+      else if (isApiError(e) && e.fieldErrors.length) {
+        setProblems(problemsOnLines(text, e.fieldErrors));
+        setRefused({ text, errors: e.fieldErrors });
+      } else if (isApiError(e) && e.status === 409) {
         toastError(e, "Saving failed");
         void version.refetch();
       } else toastError(e, "Saving failed");
@@ -349,6 +360,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
   });
   if (!shown) return null;
   const drawn = item.type === "vm_blueprint" || item.type === "composite";
+  const designed = item.type === "composite" && editable;
   return (
     <Panel
       title={editable ? `Draft ${shown.number}` : `Version ${shown.number} (read only)`}
@@ -383,6 +395,8 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
             <Suspense fallback={<Skeleton className="h-64" />}>
               <YamlEditor
                 key={shown.id}
+                ref={editor}
+                onHistory={setEditorHistory}
                 value={text}
                 onChange={setText}
                 readOnly={!editable}
@@ -403,7 +417,21 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
         </div>
         {drawn && version.data && (
           <Suspense fallback={<Skeleton className="h-64" />}>
-            <DefinitionGraph text={text} name={item.name} composite={item.type === "composite"} />
+            {designed ? (
+              <CompositeDesigner
+                name={item.name}
+                design={{
+                  text,
+                  onEdit: (next) => editor.current?.apply(next),
+                  history: editorHistory,
+                  undo: () => editor.current?.undo(),
+                  redo: () => editor.current?.redo(),
+                  serverProblems: refused,
+                }}
+              />
+            ) : (
+              <DefinitionGraph text={text} name={item.name} composite={item.type === "composite"} />
+            )}
           </Suspense>
         )}
       </div>

@@ -100,6 +100,26 @@ export function nodeForPointer(graph: CanvasGraph, pointer: string): CanvasNode 
   return best;
 }
 
+/**
+ * The graph with more problems on it: each on the node its pointer is
+ * about (nodeForPointer), else on the parallel group it is in, unless it
+ * already says so; those about neither are only in the graph's list.
+ */
+export function addProblems(graph: CanvasGraph, errors: FieldError[]): CanvasGraph {
+  if (errors.length === 0) return graph;
+  const nodes = new Map(graph.nodes.map((n) => [n.id, { ...n, problems: [...n.problems] }]));
+  const groups = new Map(graph.groups.map((g) => [g.id, { ...g, problems: [...g.problems] }]));
+  const problems = [...graph.problems];
+  for (const e of errors) {
+    if (!problems.some((p) => p.field === e.field && p.message === e.message)) problems.push(e);
+    const node = nodeForPointer(graph, e.field);
+    const group = node ? undefined : graph.groups.find((g) => g.pointer && within(e.field, g.pointer));
+    const into = node ? nodes.get(node.id) : group ? groups.get(group.id) : undefined;
+    if (into && !into.problems.includes(e.message)) into.problems.push(e.message);
+  }
+  return { ...graph, nodes: [...nodes.values()], groups: [...groups.values()], problems };
+}
+
 /** Whether pointer is at or under prefix. */
 export function within(pointer: string, prefix: string): boolean {
   return pointer === prefix || pointer.startsWith(prefix + "/");

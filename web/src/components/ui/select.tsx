@@ -6,6 +6,15 @@ export interface Option {
   value: string;
   label: string;
   meta?: string;
+  /** Options with a group are listed under its heading, the groups in the order they first come. */
+  group?: string;
+}
+
+/** Options in groups: those without one first, under no heading. */
+function grouped(options: Option[]): [string | undefined, Option[]][] {
+  const out = new Map<string | undefined, Option[]>();
+  for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
+  return [...out.entries()].sort(([a], [b]) => Number(a !== undefined) - Number(b !== undefined));
 }
 
 export function Select({
@@ -17,6 +26,7 @@ export function Select({
   loading,
   disabled,
   className,
+  onCloseAutoFocus,
   ...aria
 }: {
   "aria-invalid"?: boolean;
@@ -30,6 +40,8 @@ export function Select({
   loading?: boolean;
   disabled?: boolean;
   className?: string;
+  /** When the list closes and gives the focus back to the select: prevent it to put the focus elsewhere. */
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
   return (
     <S.Root value={value} onValueChange={onChange} disabled={disabled || loading}>
@@ -54,25 +66,40 @@ export function Select({
         <S.Content
           position="popper"
           sideOffset={4}
-          className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-line bg-surface shadow-pop"
+          onCloseAutoFocus={onCloseAutoFocus}
+          className="z-50 max-h-72 max-w-[var(--radix-select-content-available-width)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-line bg-surface shadow-pop"
         >
           <S.Viewport className="p-1">
-            {options.map((o) => (
-              <S.Item
-                key={o.value}
-                value={o.value}
-                className="relative flex cursor-default items-center gap-3 rounded-sm py-1.5 pr-2 pl-6 text-[13px] outline-none select-none data-[highlighted]:bg-sunken"
-              >
-                <S.ItemIndicator className="absolute left-1.5">
-                  <Check className="size-3.5 text-accent" />
-                </S.ItemIndicator>
-                <S.ItemText>{o.label}</S.ItemText>
-                {o.meta && <span className="ml-auto font-mono text-[11px] text-faint">{o.meta}</span>}
-              </S.Item>
-            ))}
+            {grouped(options).map(([group, list]) =>
+              group === undefined ? (
+                list.map((o) => <Item key={o.value} option={o} />)
+              ) : (
+                <S.Group key={group}>
+                  <S.Label className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted">{group}</S.Label>
+                  {list.map((o) => (
+                    <Item key={o.value} option={o} />
+                  ))}
+                </S.Group>
+              ),
+            )}
           </S.Viewport>
         </S.Content>
       </S.Portal>
     </S.Root>
+  );
+}
+
+function Item({ option: o }: { option: Option }) {
+  return (
+    <S.Item
+      value={o.value}
+      className="relative flex cursor-default items-center gap-3 rounded-sm py-1.5 pr-2 pl-6 text-[13px] outline-none select-none data-[highlighted]:bg-sunken"
+    >
+      <S.ItemIndicator className="absolute left-1.5">
+        <Check className="size-3.5 text-accent" />
+      </S.ItemIndicator>
+      <S.ItemText>{o.label}</S.ItemText>
+      {o.meta && <span className="ml-auto font-mono text-[11px] text-faint">{o.meta}</span>}
+    </S.Item>
   );
 }

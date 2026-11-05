@@ -115,6 +115,78 @@ differ, and none fits rvav's design system).
   status's colour. The layout doesn't depend on the status, so nothing
   moves while a request runs.
 
+### The composite designer (D1.3)
+- **Where:** a composite draft's Definition tab: the canvas beside the
+  YAML editor, as for any item, with **Add a step**, **Undo** and **Redo**
+  above it and the selected node's editor under it. A step's editor holds
+  every edit of it: move it earlier or later, run it with the step before,
+  remove it, its key, title, what it runs, its condition, its inputs'
+  bindings and its undo. The Request node lists the form's inputs; Done
+  says whether a failure undoes what was built. Published versions keep
+  the read-only graph.
+- **What a step can run comes from the server**, in one call:
+  `GET /admin/catalog/composite-steps` (catalog admins and administrators)
+  lists what ADR-0022 allows a step to name. Published items other than
+  composites (they don't nest), with their form's inputs; the AWX
+  templates imported from AWX, with their survey's questions; and the
+  custom workflows registered for composite steps, with their input
+  schema's properties. Each says what it runs, whether it is planned with
+  the request (a VM item: its inputs come from the form only, it has no
+  condition or undo) and its outputs (a VM step's `name`, `fqdn`, `ip`,
+  `moref`, `deployment_id` and `vms`; an AWX step's `job_id`; a custom
+  workflow's whatever it returns). One endpoint rather than an item's form
+  each, since the picker needs them all, and `/admin/workflows` is for
+  administrators only. A template no one imported can still be named by
+  hand; its step gives its job's ID.
+- **Edits are made on the YAML document, not on its data.** Each canvas
+  edit is a function from the editor's text to a new text
+  (`composite/edits.ts`), made with the `yaml` library's Document API
+  (`parseDocument`, then the nodes' `set`, `delete` and list splices, then
+  `toString`), not `parse` then `stringify`: comments, quoting, inline
+  maps and key order survive, and only the nodes edited change. A text in
+  the server's style (indent 2, no line width, the form `toYaml` writes)
+  comes back byte for byte but for the edit; another indentation is made
+  the server's on the first canvas edit. New keys go in a fixed order
+  (`key`, `title`, what it runs, `when`, `with`, `undo`). Renaming a key
+  renames `steps.<key>` in the composite's conditions and bindings. A
+  text that doesn't parse can't be edited on the canvas: the editor says
+  why and the last graph stays.
+- **Undo and redo are the editor's.** A canvas edit is written into the
+  editor as one transaction of the smallest change, isolated in its
+  history (`isolateHistory`), so CodeMirror's history holds typed and
+  designed edits in the order they were made. **Undo** and **Redo** above
+  the canvas, Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y outside the text fields,
+  go back through both; there is no second history to keep in step. A
+  text from outside (loading, a save that changes it, **Undo changes**)
+  starts the history again.
+- **Parallel groups:** a step is added after the selected one, at the
+  same time as it, or at the end. A step added beside one on its own makes
+  a group of the two; a group left with one step becomes that step again.
+  Moving a step on its own swaps it with the slot beside it; moving one in
+  a group takes it out, before or after the group; **Run with the step
+  before** joins the previous slot (or its group).
+- **Bindings:** a step's inputs are its target's (an item's form, a
+  template's survey, a workflow's schema), in their order; an AWX or
+  workflow step may bind more variables. Each is bound through a picker
+  that offers what exists at that point: the form's inputs, the request's
+  `environment` and `project`, and the outputs of the steps in the slots
+  before it, not of those beside it in its group nor after it (none for a
+  VM step, planned from the form), grouped by where they come from; or
+  **A value or CEL expression**, where a number or a boolean is written as
+  one and anything else is CEL. A custom workflow's outputs are open, so
+  the picker says to write them as CEL. A required input left unbound is
+  said on the input, not as a problem: AWX takes extra variables, and the
+  server doesn't refuse it.
+- **Problems on their step:** the structural checks (`lib/composite.ts`),
+  what the server would refuse when the item is requested
+  (`core.evaluateComposite`: an item that isn't published, a custom
+  workflow not registered for composite steps, a VM step with a condition,
+  an undo or an input from a step), in its words, once the targets are
+  loaded; and the server's last refusal of a save, kept with the text it
+  refused and shown while the text is that one. All go on the node their
+  pointer falls in (`addProblems`, `nodeForPointer`), a group's on its
+  frame, and in the list under the graph.
+
 ### Accessibility
 - The graph is one Tab stop, on the node last visited (roving tabindex).
   The arrow keys move to the nearest node that way (the next layer, or
@@ -129,7 +201,11 @@ differ, and none fits rvav's design system).
 - A **List** view shows the same model in reading order: a composite's
   steps as an ordered list, a parallel group as a list within it; a VM
   item's nodes with their relations. Selection is shared with the graph.
-- The selected node's details, untruncated, are under the canvas.
+- The selected node's details, untruncated, are under the canvas; in the
+  composite designer they are the node's editor, every edit a labelled
+  control, so the designer needs no mouse. **Add a step** opens on what
+  the step runs; an added step's editor takes the focus, a removed step's
+  goes to the step before it, and a moved step's stays on its button.
 - D1.5 checks the pages that use the canvas with the keyboard only and
   with axe in both themes.
 
@@ -141,6 +217,9 @@ differ, and none fits rvav's design system).
   softened: they get a designer, though not one that runs code.
 - Two dependencies (React Flow with its d3 parts, and dagre), loaded only
   with the routes that use the canvas.
+- The designer knows what the server refuses at request time only as far
+  as `scope.ts` repeats `evaluateComposite`'s checks; a new check there
+  should be repeated, or it shows only once a request is refused.
 - Large VM items can be dense on an automatic layout. The list view and
   zoom are the fallback; ELK is the next step if layouts need it.
 - The model is the contract between the three uses: a new blueprint field

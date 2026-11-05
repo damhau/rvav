@@ -8,10 +8,14 @@
 // the last graph that did and says why above it: the reader keeps their
 // place (zoom, selection, focus) through a keystroke that breaks the YAML
 // for a moment, and the graph catches up when it parses again.
+//
+// The composite designer (composite/CompositeDesigner) draws through it,
+// with its own problems and the canvas's selection, actions and details.
 import { TriangleAlert } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { LineCounter, parseDocument } from "yaml";
-import { blueprintGraph, Canvas, type CanvasGraph } from "@/components/canvas";
+import { addProblems, blueprintGraph, Canvas, type CanvasGraph, type CanvasProps } from "@/components/canvas";
+import type { FieldError } from "@/lib/api/types";
 import { problemsOnLines } from "./definitionYaml";
 
 export interface Drawn {
@@ -51,12 +55,19 @@ export interface DefinitionGraphProps {
   /** The item's name, for the canvas's label. */
   name: string;
   composite: boolean;
+  /** More problems with a text than the structural ones, shown on their nodes (the designer's and the server's). */
+  problemsFor?: (text: string) => FieldError[];
+  /** The designer's selection, actions and details. */
+  canvas?: Pick<CanvasProps, "selected" | "onSelect" | "renderDetails" | "actions">;
 }
 
-export default function DefinitionGraph({ text, name, composite }: DefinitionGraphProps) {
+export default function DefinitionGraph({ text, name, composite, problemsFor, canvas }: DefinitionGraphProps) {
   // Typing stays quick: the graph is drawn again once React has time.
   const current = useDeferredValue(text);
-  const drawn = useMemo(() => drawDefinition(current), [current]);
+  const drawn = useMemo(() => {
+    const d = drawDefinition(current);
+    return d.graph && problemsFor ? { ...d, graph: addProblems(d.graph, problemsFor(current)) } : d;
+  }, [current, problemsFor]);
   // The last graph drawn, for the moments the text has none.
   const [kept, setKept] = useState<CanvasGraph | null>(drawn.graph);
   if (drawn.graph && drawn.graph !== kept) setKept(drawn.graph);
@@ -78,7 +89,7 @@ export default function DefinitionGraph({ text, name, composite }: DefinitionGra
           </span>
         </p>
       )}
-      {graph && <Canvas graph={graph} label={`${composite ? "Steps" : "Topology"} of ${name}`} />}
+      {graph && <Canvas graph={graph} label={`${composite ? "Steps" : "Topology"} of ${name}`} {...canvas} />}
       {lines.length > 0 && (
         <ul aria-label={`Problems in the ${what}`} className="flex flex-col gap-0.5 text-xs text-warn">
           {lines.map((p, i) => (

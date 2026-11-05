@@ -244,6 +244,24 @@ Catalog admins and administrators build items under **Catalog items**
   line saying why; the graph's own problems are listed with their lines
   (`problemsOnLines`). The Form designer tab has no graph: its edits
   don't change the blueprint.
+- A **composite draft's** graph is the **composite designer**
+  (`composite/CompositeDesigner.tsx`, loaded lazily with the tab): the
+  same graph, with **Add a step**, **Undo** and **Redo** above it and the
+  selected node's editor under it (its `renderDetails`). Each edit is a
+  pure function from the editor's text to a new one (`composite/edits.ts`,
+  on the `yaml` Document API, so comments, quoting and inline maps
+  survive), written into the editor through its handle (`YamlEditor`'s
+  `ref`: `apply`, `undo`, `redo`) as one isolated step of CodeMirror's
+  history: typed and designed edits are undone in the order they were
+  made, from the buttons, Ctrl+Z, or Ctrl+Shift+Z and Ctrl+Y outside the
+  text fields (`onHistory` says what can be). What a step can run comes
+  from `GET /admin/catalog/composite-steps` (`q.compositeStepTargets`);
+  `composite/scope.ts` says what an input of a step can be bound to at its
+  place (the form's inputs, the request's environment and project, the
+  outputs of the slots before it, none for a VM step) and what the server
+  would refuse when the item is requested, in its words. Those problems,
+  and the server's last refusal of a save while the text is the one it
+  refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from
   any widget, move fields and sections with buttons, so by keyboard), a
   live preview, and the selected field's or section's properties (label,
@@ -381,12 +399,13 @@ them.
   day-2 action when that usage is ticked). The list says what uses each
   one and how many runs haven't ended; removing one in use shows the
   server's refusal.
-- **Composite items** are written in the item's Definition tab, like the
-  others. Beside the YAML, the canvas draws the steps as they will run
-  (see Catalog administration): groups, parallel steps, conditions, what
-  each runs, uses and undoes, with the server's structural checks on
-  their steps while typing (`lib/composite.ts`; the mock reuses them, CEL
-  included). Saving puts the server's problems on their lines.
+- **Composite items** are written in the item's Definition tab, in the
+  YAML or on the canvas beside it, the composite designer (see Catalog
+  administration): groups, parallel steps, conditions, what each runs,
+  uses and undoes, with the server's structural checks on their steps
+  while typing (`lib/composite.ts`; the mock reuses them, CEL included)
+  and what it would refuse when the item is requested. Saving puts the
+  server's problems on their lines and on their steps.
 
 The mock backend (`mocks/extensibility.ts`) seeds a blocking CMDB check, a
 ServiceNow subscription with a failed run, the `webhook-signing` secret and
@@ -424,16 +443,20 @@ nothing about it (positions, layout) is stored.
   between a VM item's groups are left out of the layout and drawn as
   brackets on their right, so the groups stay in one column.
 - **Where it is used:** an item's Definition tab, beside the YAML
-  (`features/admin/catalog/DefinitionGraph.tsx`), and the request form,
-  under its fields (`features/requests/RequestTopology.tsx`; see Multi-VM
-  items).
+  (`features/admin/catalog/DefinitionGraph.tsx`), where a composite
+  draft's is the composite designer
+  (`features/admin/catalog/composite/CompositeDesigner.tsx`), and the
+  request form, under its fields (`features/requests/RequestTopology.tsx`;
+  see Multi-VM items).
 - **`Canvas`**: `graph` and `label` (names the region and its list), and
   optionally `status` (by node ID: a run's step status, or `undone`),
   `selected` and `onSelect` (controlled, or left to the canvas),
   `renderDetails` (what shows under the canvas for the selected node; by
   default `NodeDetails`, all the node shows), `actions` (the caller's
   buttons beside the view switch), `defaultView` and `height`. Read only:
-  the designer edits the blueprint and passes the new graph.
+  the designer edits the YAML, and the graph drawn from it again comes
+  back. `addProblems(graph, errors)` puts more problems (JSON pointers) on
+  the nodes, or the parallel groups, they fall in.
 - **Keyboard:** the graph is one Tab stop, on the node last visited. The
   arrow keys move to the nearest node that way, Home and End to the first
   and last, Enter or Space selects, Escape clears. Each node is a button

@@ -326,6 +326,39 @@ An item's tabs:
   no guest settings (domain, join credential, administrator password,
   cloud-init), sizes, naming, tags or placement, and of a composite
   step's bindings only the earlier steps they use.
+- **Designing a composite:** in a composite's draft, the graph edits the
+  YAML beside it, and the YAML the graph; your comments in the YAML are
+  kept. Select a step (click it, or the arrow keys and Enter) and its
+  editor opens under the graph:
+  - **Add a step** runs a published item (not another composite), an AWX
+    template imported from AWX (or any template, by its name) or a
+    custom workflow registered for composite steps. It goes after the
+    selected step, at the same time as it, or at the end. Its inputs
+    named as the form's are bound to them.
+  - **Move earlier**, **Move later**, **Run with the step before** and
+    **Remove step** change the order; a step in a group of steps that run
+    at the same time is moved out of it, before or after.
+  - **Runs**, **When** (a CEL condition: the step is skipped when it is
+    false) and **Undone by** (an AWX template or custom workflow run when
+    a later step fails and **Undo what was built when a step fails** is
+    on, on the Done node).
+  - Each **input** is bound to the form's inputs, the request's
+    environment or project, or an output of a step that runs before it
+    (`steps.nodes.fqdn`, `steps.monitor.job_id`), picked from what exists
+    there, or written: a number, `true`, a quoted string, or a CEL
+    expression. Steps that run at the same time can't use each other's
+    outputs.
+  - A VM item's step is planned when the request is submitted: its inputs
+    come from the form only, and it has no condition or undo (a failure
+    deletes its VMs).
+  - **Undo** and **Redo** (Ctrl+Z, Ctrl+Shift+Z) go back through the
+    graph's edits and your typing alike.
+
+  What the server would refuse is on the step it is about as you design:
+  an item that isn't published, a workflow that isn't registered for
+  composite steps, a VM step with a condition, an undo or an input from
+  a step, a step using a later one. Save the draft, publish it, and
+  request it to try it.
 - **Versions:**
   - publish a draft;
   - compare two versions;

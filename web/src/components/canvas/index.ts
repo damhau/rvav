@@ -4,9 +4,11 @@ export { Canvas, NodeDetails, type CanvasProps, type CanvasView } from "./Canvas
 export { CanvasList } from "./CanvasList";
 export { blueprintGraph, compositeGraph, vmGraph } from "./blueprint";
 export {
+  addProblems,
   describeNode,
   nodeForPointer,
   statusLabel,
+  within,
   type CanvasDirection,
   type CanvasEdge,
   type CanvasEdgeKind,
