@@ -10,13 +10,16 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 // the same edit to its end through the API. The mouse's path is
 // composite-designer.spec.ts and request-run.spec.ts.
 
+type Way = "Tab" | "Shift+Tab";
+
 /**
  * Tab until `target` has the focus: Shift+Tab when it comes before what has
  * the focus (the page has no positive tabindex, so Tab follows the DOM).
- * When nothing has (what had it went away), from where it was: forward,
- * then back.
+ * When nothing has (what had it went away, a button gone or disabled), Tab
+ * goes on from where it was: `gone` is the way to the target from there, as
+ * the reader knows it (else forward, then back: a walk to the page's end).
  */
-async function tabTo(page: Page, target: Locator) {
+async function tabTo(page: Page, target: Locator, gone?: Way) {
   await expect(target).toBeVisible();
   const at = () => target.evaluate((e) => e === document.activeElement);
   const before = await target.evaluate((e) => {
@@ -24,7 +27,8 @@ async function tabTo(page: Page, target: Locator) {
     if (!now || now === document.body) return undefined;
     return !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
-  const ways = before === undefined ? ["Tab", "Shift+Tab"] : [before ? "Shift+Tab" : "Tab"];
+  const back = (w: Way): Way => (w === "Tab" ? "Shift+Tab" : "Tab");
+  const ways: Way[] = before === undefined ? [gone ?? "Tab", back(gone ?? "Tab")] : [before ? "Shift+Tab" : "Tab"];
   for (const key of ways) {
     for (let i = 0; i < 150; i++) {
       if (await at()) return;
@@ -32,6 +36,13 @@ async function tabTo(page: Page, target: Locator) {
     }
   }
   if (!(await at())) throw new Error(`${ways.join(" then ")} never reached ${target.toString()}`);
+}
+
+/** The page's skip link, then Enter: Tab goes on from the page's content, past the navigation. */
+async function skipToContent(page: Page) {
+  // The page's first Tab stop: the first Tab of a page just opened.
+  await tabTo(page, page.getByRole("link", { name: "Skip to content" }), "Tab");
+  await page.keyboard.press("Enter");
 }
 
 /** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
@@ -51,6 +62,24 @@ async function choose(page: Page, name: string | RegExp) {
 /** Drawn: React has rendered what a key changed, and run its effects. */
 const drawn = (page: Page) =>
   page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+/**
+ * The tabs are one Tab stop, the arrow keys between them, each tab shown as
+ * it is reached: from the one selected to `name`, a key at a time, back on
+ * the tabs (above their panel) if what one showed took the focus.
+ */
+async function selectTab(page: Page, name: string, key: "ArrowRight" | "ArrowLeft") {
+  const target = page.getByRole("tab", { name, exact: true });
+  const selected = page.getByRole("tab", { selected: true });
+  for (let i = 0; i < 8 && (await target.getAttribute("aria-selected")) !== "true"; i++) {
+    await tabTo(page, selected, "Shift+Tab");
+    const was = (await selected.textContent()) ?? "";
+    await page.keyboard.press(key);
+    await expect(selected).not.toHaveText(was);
+    await drawn(page);
+  }
+  await expect(target).toHaveAttribute("aria-selected", "true");
+}
 
 /**
  * On a graph, the arrow keys from the focused node to `target`: along each
@@ -76,19 +105,20 @@ async function arrowTo(page: Page, target: Locator) {
 }
 
 test("a composite's step added, published, requested and followed, with the keyboard only", async ({ page }) => {
+  // Some 170 keys, each awaited and checked: over 30 s on a slow CI runner.
+  test.slow();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/admin/catalog-items");
+  await skipToContent(page);
   await tabTo(page, page.getByRole("region", { name: "Items" }).getByRole("link", { name: "PostgreSQL 16 cluster" }));
   await page.keyboard.press("Enter");
   await tabTo(page, page.getByRole("button", { name: "New draft" }));
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
-  // The tabs: one Tab stop, the arrow keys between them.
-  await tabTo(page, page.getByRole("tab", { name: "Versions" }));
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("tab", { name: "Definition" })).toHaveAttribute("aria-selected", "true");
+  // The tabs, above the button gone.
+  await tabTo(page, page.getByRole("tab", { name: "Versions" }), "Shift+Tab");
+  await selectTab(page, "Definition", "ArrowRight");
   const editor = page.getByRole("textbox", { name: /^Definition of PostgreSQL 16 cluster/ });
   const steps = page.getByRole("region", { name: "Steps of PostgreSQL 16 cluster" });
   const node = (name: RegExp) => steps.getByRole("button", { name });
@@ -138,16 +168,18 @@ test("a composite's step added, published, requested and followed, with the keyb
   await tabTo(page, page.getByRole("button", { name: "Save draft" }));
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
-  await tabTo(page, page.getByRole("tab", { name: "Definition" }));
+  // Save draft, disabled once saved, lets the focus go: the tabs are above it.
+  await tabTo(page, page.getByRole("tab", { name: "Definition" }), "Shift+Tab");
   await page.keyboard.press("Home");
   await expect(page.getByRole("tab", { name: "Versions" })).toHaveAttribute("aria-selected", "true");
   await tabTo(page, page.getByRole("button", { name: "Publish" }));
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
 
-  // Requested.
-  await tabTo(page, page.getByRole("link", { name: "Catalog", exact: true }));
+  // Requested: the navigation is above the button gone.
+  await tabTo(page, page.getByRole("link", { name: "Catalog", exact: true }), "Shift+Tab");
   await page.keyboard.press("Enter");
+  await skipToContent(page);
   await tabTo(page, page.getByRole("link", { name: /^PostgreSQL 16 cluster/ }));
   await page.keyboard.press("Enter");
   await tabTo(page, page.getByRole("textbox", { name: "Database name" }));
@@ -180,6 +212,7 @@ test("a failed composite request retried and followed to its end, with the keybo
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/requests");
+  await skipToContent(page);
   await tabTo(page, page.getByRole("link", { name: /PostgreSQL 16 cluster · orders/ }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/requests\/REQ-10484$/);
@@ -201,8 +234,8 @@ test("a failed composite request retried and followed to its end, with the keybo
   await expect(node(/^Done\. Done\./)).toBeVisible({ timeout: 15_000 });
   for (const name of [/^Item Database nodes\. Done\./, /^Item The database's owner\. Done\./, /^AWX Backups\. Done\./])
     await expect(node(name)).toBeVisible();
-  // Its last step's details, from the keyboard: back to the graph, where it was left, End, then Enter.
-  await tabTo(page, node(/^AWX Backups/));
+  // Its last step's details, from the keyboard: back up to the graph from Retry, gone, where it was left, End, then Enter.
+  await tabTo(page, node(/^AWX Backups/), "Shift+Tab");
   await page.keyboard.press("End");
   await expect(node(/^Done\. Done\./)).toBeFocused();
   await page.keyboard.press("Enter");
