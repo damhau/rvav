@@ -31,14 +31,14 @@ func TestRequestFormTopology(t *testing.T) {
 		def.Blueprint["guest"] = map[string]any{"os_family": "linux", "domain": "corp.example", "time_zone": "Europe/Zurich",
 			"cloud_init": map[string]any{"user_data": "#cloud-config\nruncmd:\n  - echo tt-cloud-init\n"}}
 		var item api.AdminCatalogItem
-		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "three-tier", Name: "Three-tier application",
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "n1-three-tier", Name: "N1 three tiers",
 			Summary: "Web, application and database tiers on NSX.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
-		h.json("POST", "/api/v1/admin/catalog/items/three-tier/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
-		h.json("PUT", "/api/v1/admin/catalog/items/three-tier/entitlements", admin, api.CatalogEntitlements{AllProjects: true,
+		h.json("POST", "/api/v1/admin/catalog/items/n1-three-tier/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/n1-three-tier/entitlements", admin, api.CatalogEntitlements{AllProjects: true,
 			ProjectIds: []string{}}, 200, nil)
 
 		var form api.RequestForm
-		h.json("GET", "/api/v1/catalog/items/three-tier/form?project_id=prj_web", "tnguyen", nil, 200, &form)
+		h.json("GET", "/api/v1/catalog/items/n1-three-tier/form?project_id=prj_web", "tnguyen", nil, 200, &form)
 		if form.Topology == nil {
 			t.Fatal("the three-tier form has no topology")
 		}

@@ -86,10 +86,10 @@ func TestN1Acceptance(t *testing.T) {
 
 		def := threeTier()
 		var item api.AdminCatalogItem
-		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "three-tier", Name: "Three-tier application",
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "n1-three-tier", Name: "N1 three tiers",
 			Summary: "Web, application and database tiers on NSX.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
-		h.json("POST", "/api/v1/admin/catalog/items/three-tier/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
-		h.json("PUT", "/api/v1/admin/catalog/items/three-tier/entitlements", admin, api.CatalogEntitlements{AllProjects: true,
+		h.json("POST", "/api/v1/admin/catalog/items/n1-three-tier/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/n1-three-tier/entitlements", admin, api.CatalogEntitlements{AllProjects: true,
 			ProjectIds: []string{}}, 200, nil)
 
 		var req api.Request

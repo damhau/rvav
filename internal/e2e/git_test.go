@@ -467,9 +467,11 @@ func TestCatalogGitDrafts(t *testing.T) {
 		_, reader := useGit(h)
 		var items api.AdminCatalogItemPage
 		h.json("GET", "/api/v1/admin/catalog/items?source=native&state=published&limit=100", admin, nil, 200, &items)
+		// Items whose drafts need nothing more: the three-tier item's ask
+		// NSX, which this harness has none of.
 		var slugs []string
 		for _, it := range items.Items {
-			if it.Slug != "rhel9-server" {
+			if it.Slug != "rhel9-server" && it.Slug != "three-tier" {
 				slugs = append(slugs, it.Slug)
 			}
 		}

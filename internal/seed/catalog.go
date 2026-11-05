@@ -141,6 +141,62 @@ func pgCluster() (schema, ui, initial, blueprint map[string]any) {
 	return schema, ui, map[string]any{"pg_version": "16.6", "size": "M", "data_gb": 100}, blueprint
 }
 
+// threeTier is a multi-VM item on NSX (ADR-0028), as N1's acceptance: web,
+// application and database tiers on one segment made for the deployment,
+// each in a security group of its own, with the firewall rules between
+// them; the database servers in an existing group too. Its Tier-1, IP
+// block, services and existing group are the fake NSX Manager's and the
+// development EfficientIP's (nsx.SampleInfra), so it runs on the compose
+// stack once a placement rule makes segments. How many web servers is the
+// only choice.
+func threeTier() (schema, ui, initial, blueprint map[string]any) {
+	schema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"required": []string{"web_nodes", "cluster", "datastore"}, "properties": map[string]any{
+			"web_nodes": map[string]any{"type": "integer", "minimum": 1, "maximum": 3},
+			"cluster":   map[string]any{"type": "string", "minLength": 1},
+			"datastore": map[string]any{"type": "string", "minLength": 1},
+		}}
+	ui = map[string]any{"layout": map[string]any{"kind": "page", "sections": []map[string]any{
+		{"key": "tiers", "title": "Tiers", "columns": 2, "fields": []string{"web_nodes"}},
+		{"key": "placement", "title": "Placement", "columns": 2, "fields": []string{"cluster", "datastore"}},
+	}}, "fields": map[string]any{
+		"web_nodes": map[string]any{"widget": "number", "label": "Web servers",
+			"help": "1 to 3, kept on separate hosts. An application and a database server come with them."},
+		"cluster": map[string]any{"widget": "vsphere_cluster", "label": "Cluster",
+			"value_source": map[string]any{"kind": "builtin", "name": "vsphere.clusters"}, "depends_on": []string{"$environment"}},
+		"datastore": map[string]any{"widget": "vsphere_datastore", "label": "Datastore",
+			"value_source": map[string]any{"kind": "builtin", "name": "vsphere.datastores", "params": map[string]any{"cluster": "${inputs.cluster}"}},
+			"depends_on":   []string{"$environment", "cluster"}},
+	}}
+	rule := func(from, service string) map[string]any {
+		return map[string]any{"from": []any{from}, "services": []any{service}}
+	}
+	blueprint = map[string]any{
+		"kind": "vm", "naming": "{project}-{environment}-tt{component}{seq:02}", "deployment_name": "{project}-{environment}-threetier",
+		"rollback_on_failure": true, "template": "tpl-rhel9.4-2026.10",
+		"guest": map[string]any{"os_family": "linux", "domain": "corp.example", "time_zone": "Europe/Zurich"},
+		"bindings": map[string]any{"vcpu": "4", "memory_gb": "16", "disk_gb": "80", "cluster": "inputs.cluster",
+			"datastore": "inputs.datastore", "network": "segments.app"},
+		"awx_templates": map[string]any{"linux-baseline": map[string]any{"title": "Corporate baseline", "job_template": "linux-baseline"}},
+		"segments":      []any{map[string]any{"key": "app", "title": "Application"}},
+		"components": []any{
+			map[string]any{"key": "web", "title": "Web", "count": "inputs.web_nodes", "anti_affinity": true, "groups": []any{"web"},
+				"bindings": map[string]any{"post_config": `["linux-baseline"]`}},
+			map[string]any{"key": "app", "title": "Application", "count": 1, "groups": []any{"app"}},
+			map[string]any{"key": "db", "title": "Database", "count": 1, "groups": []any{"db", "nsx:grp-backup-clients"},
+				"bindings": map[string]any{"vcpu": "8", "memory_gb": "32", "disk_gb": "120"},
+				"disks":    []any{map[string]any{"size_gb": 200}}},
+		},
+		"security_groups": []any{
+			map[string]any{"key": "web", "title": "Web", "rules": []any{rule("any", "HTTPS")}},
+			map[string]any{"key": "app", "title": "Application", "rules": []any{rule("web", "HTTP")}},
+			map[string]any{"key": "db", "title": "Database", "rules": []any{rule("app", "PostgreSQL"),
+				map[string]any{"from": []any{"any"}, "services": []any{"any"}, "action": "drop"}}},
+		},
+	}
+	return schema, ui, map[string]any{"web_nodes": 2}, blueprint
+}
+
 // vmItem builds a VM blueprint whose form matches the request mockup:
 // role and name, size, placement and network, then AWX post-configuration.
 func vmItem(template, osFamily, required string, post []option, defaultPost []string) (schema, ui, initial, blueprint map[string]any) {
@@ -277,6 +333,12 @@ func catalogItems() []item {
 	add(item{slug: "windows-server", name: "Windows Server 2025", category: "compute", typ: "vm_blueprint", icon: "monitor",
 		summary: "Domain-joined Windows Server 2025 Standard with the CIS level 1 GPO set.",
 		tags:    []string{"windows"}, version: "1.8", projects: all}, s, u, in, bp)
+
+	s, u, in, bp = threeTier()
+	add(item{slug: "three-tier", name: "Three-tier application", category: "compute", typ: "vm_blueprint", icon: "layers",
+		summary:     "Web, application and database tiers on an NSX segment of their own, with the firewall rules between them.",
+		description: "Web servers kept on separate hosts, an application server and a database server, each tier in an NSX security group of its own; the segment, groups and rules are made for the deployment and deleted with it.",
+		tags:        []string{"linux", "nsx"}, version: "1.0", projects: all}, s, u, in, bp)
 
 	// The PostgreSQL cluster (ADR-0024): three nodes kept on separate hosts,
 	// made a Patroni cluster by AWX, then the database's owner role. Its
