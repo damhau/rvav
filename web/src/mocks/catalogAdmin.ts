@@ -439,6 +439,19 @@ export function publishedBlueprint(db: Db, item: StoredItem): Record<string, unk
   return published?.definition.blueprint ?? seededBlueprint(item.slug);
 }
 
+/**
+ * What the version a request was made from builds, as its form draws it
+ * (GET /requests/{id}/topology, ADR-0032): not the item's latest. A day-2
+ * request runs an action, not the item: none.
+ */
+export function requestTopology(db: Db, r: S["Request"]): S["RequestTopology"] {
+  const item = db.items.find((i) => i.id === r.catalog_item.id);
+  if (r.kind === "day2" || !item) return {};
+  const v = (state(db).versions[item.id] ?? []).find((x) => x.id === r.version.id);
+  const topology = topologyOf(v?.definition.blueprint ?? seededBlueprint(item.slug));
+  return topology ? { topology } : {};
+}
+
 /** The item as catalog admins see it. */
 export const adminItemOf = (db: Db, item: StoredItem) => adminItem(db, item);
 

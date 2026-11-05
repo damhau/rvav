@@ -34,6 +34,7 @@ import {
   draftFromRepository,
   itemFile,
   notMember,
+  requestTopology,
 } from "./catalogAdmin";
 import { catalogGitHandlers } from "./catalogGit";
 import { administrationHandlers } from "./administration";
@@ -647,6 +648,14 @@ export const handlers = [
     const r = requestByKey(params.requestId);
     return r && visibleRequest(r.request)
       ? json<Ok<"/requests/{requestId}/steps", "get">>({ items: r.steps })
+      : notFound("Request");
+  }),
+
+  http.get<{ requestId: string }>(`${base}/requests/:requestId/topology`, async ({ params }) => {
+    await wait();
+    const r = requestByKey(params.requestId);
+    return r && visibleRequest(r.request)
+      ? json<S["RequestTopology"]>(requestTopology(db, r.request))
       : notFound("Request");
   }),
 

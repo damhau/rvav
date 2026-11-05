@@ -600,6 +600,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What the requested version builds, for the request's page to draw its run on
+         * @description The topology of the catalog item version the request was made from,
+         *     not the item's latest (ADR-0032): the projection the request form
+         *     gets as `RequestForm.topology`, so nothing a requester doesn't see
+         *     (guest settings, secrets, sizes, naming, placement, tags,
+         *     variables). A composite's steps run as `step:<key>`, the key the
+         *     canvas gives the step's node. Whoever may read the request may read
+         *     it; it doesn't change, so it can be cached.
+         */
+        get: operations["getRequestTopology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/{requestId}/steps/{stepId}/log": {
         parameters: {
             query?: never;
@@ -3929,6 +3958,15 @@ export interface components {
                 message: string;
             } | null;
         };
+        RequestTopology: {
+            /**
+             * @description The requested version's topology, as `RequestForm.topology`.
+             *     Absent for AWX and workflow items, and for day-2 requests.
+             */
+            topology?: {
+                [key: string]: unknown;
+            };
+        };
         RequestPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Request"][];
         };
@@ -7151,6 +7189,31 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["Step"][];
                     };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getRequestTopology: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestTopology"];
                 };
             };
             401: components["responses"]["Unauthorized"];

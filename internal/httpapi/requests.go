@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -172,6 +173,26 @@ func (s *Server) ListRequestSteps(w http.ResponseWriter, r *http.Request, reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": present.StepTree(steps)})
+}
+
+// GetRequestTopology is what the requested version builds, as its form
+// draws it (ADR-0032): the request's page draws its run on it. A day-2
+// request runs an action, not its item's blueprint: it has none.
+func (s *Server) GetRequestTopology(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath) {
+	row, ok := s.visibleRequest(w, r, requestID)
+	if !ok {
+		return
+	}
+	out := api.RequestTopology{}
+	if row.Kind != "day2" {
+		ver, err := s.Store.GetVersion(r.Context(), row.VersionID)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		out.Topology = core.Topology(ver.Blueprint)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) GetStepLog(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath, stepID string, params api.GetStepLogParams) {

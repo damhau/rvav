@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
@@ -95,6 +96,90 @@ func TestRequestFormTopology(t *testing.T) {
 		h.json("GET", "/api/v1/catalog/items/firewall-flow/form?project_id=prj_web", "lmartin", nil, 200, &awx)
 		if awx.Topology != nil {
 			t.Fatalf("an AWX item's topology: %v", *awx.Topology)
+		}
+	})
+}
+
+// TestRequestTopology: a request's page draws its run on what the version
+// it was made from builds (D1.4, ADR-0032): the form's projection of that
+// version, not of a later one, for whoever may read the request.
+func TestRequestTopology(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		topologyOf := func(request, user string) string {
+			t.Helper()
+			var got api.RequestTopology
+			h.json("GET", "/api/v1/requests/"+request+"/topology", user, nil, 200, &got)
+			if got.Topology == nil {
+				return ""
+			}
+			b, _ := json.Marshal(*got.Topology)
+			return string(b)
+		}
+
+		// The seeded composite, requested: the topology its form had.
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/postgres-cluster/form?project_id=prj_data", "sbrunner", nil, 200, &form)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "sbrunner", api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId,
+			ProjectId: "prj_data", Environment: "dev", Inputs: map[string]any{"name": "ledger", "pg_version": "16.6", "size": "S",
+				"data_gb": 50, "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01", "network": "dvpg-db-dev-vl320"}},
+			202, &req, "Idempotency-Key", uuid.NewString())
+		want, _ := json.Marshal(*form.Topology)
+		if got := topologyOf(req.Id, "sbrunner"); got != string(want) {
+			t.Fatalf("the request's topology = %s, its form's %s", got, want)
+		}
+
+		// A later version with a step more: the request keeps its own.
+		var draft api.CatalogItemVersionDetail
+		h.json("POST", "/api/v1/admin/catalog/items/postgres-cluster/versions", admin, api.CatalogItemVersionCreate{}, 201, &draft)
+		def := draft.Definition
+		def.Blueprint["steps"] = append(def.Blueprint["steps"].([]any),
+			map[string]any{"key": "monitor", "title": "Monitoring", "awx": map[string]any{"job_template": "monitoring-agent"}})
+		h.json("PUT", "/api/v1/admin/catalog/items/postgres-cluster/versions/"+draft.Id, admin,
+			api.CatalogItemVersionUpdate{Definition: def, BaseRevision: &draft.Revision}, 200, &draft)
+		h.json("POST", "/api/v1/admin/catalog/items/postgres-cluster/versions/"+draft.Id+"/publish", admin, nil, 200, nil)
+		var later api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/postgres-cluster/form?project_id=prj_data", "sbrunner", nil, 200, &later)
+		if b, _ := json.Marshal(*later.Topology); !strings.Contains(string(b), `"key":"monitor"`) {
+			t.Fatalf("the later version's topology = %s", b)
+		}
+		if got := topologyOf(req.Number, "sbrunner"); got != string(want) {
+			t.Fatalf("after a later version, the request's topology = %s", got)
+		}
+		// Whoever may read the request; nobody else.
+		if got := topologyOf(req.Id, admin); got != string(want) {
+			t.Fatalf("an administrator reads %s", got)
+		}
+		h.json("GET", "/api/v1/requests/"+req.Id+"/topology", "tnguyen", nil, 404, nil)
+
+		// A VM item's: the form's projection, without its guest settings.
+		var rhel api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id=prj_web", "tnguyen", nil, 200, &rhel)
+		var vm api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: rhel.ItemId, VersionId: rhel.VersionId,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "topo", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
+			202, &vm, "Idempotency-Key", uuid.NewString())
+		got := topologyOf(vm.Id, "tnguyen")
+		if want, _ := json.Marshal(*rhel.Topology); got != string(want) || !strings.Contains(got, `"kind":"vm"`) ||
+			strings.Contains(got, "corp.example") {
+			t.Fatalf("the VM item's request's topology = %s, its form's %s", got, want)
+		}
+
+		// A day-2 request runs an action, not the item: it has none.
+		h.runWorkflow(vm.Id, nil)
+		h.waitStatus(vm.Id, "tnguyen", api.RequestStatusSucceeded)
+		h.json("GET", "/api/v1/requests/"+vm.Id, "tnguyen", nil, 200, &vm)
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+(*vm.DeploymentIds)[0]+"/actions", "tnguyen",
+			api.Day2Draft{Action: "delete", Inputs: map[string]any{}}, 202, &del, "Idempotency-Key", uuid.NewString())
+		if got := topologyOf(del.Id, "tnguyen"); got != "" {
+			t.Fatalf("a day-2 request's topology = %s", got)
 		}
 	})
 }
