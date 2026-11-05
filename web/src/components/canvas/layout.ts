@@ -5,7 +5,7 @@
 // layout is needed. Sizes are fixed by what a node shows, so the layout
 // needs no measuring and is the same in a test as in a browser.
 import dagre, { type EdgeLabel, type GraphLabel, type NodeLabel } from "@dagrejs/dagre";
-import type { CanvasDirection, CanvasGraph, CanvasNode, CanvasNodeKind } from "./graph";
+import { subtitleOf, type CanvasDirection, type CanvasGraph, type CanvasNode, type CanvasNodeKind } from "./graph";
 
 export interface Box {
   x: number;
@@ -45,7 +45,7 @@ const TITLE = 20;
 const ROW = 16;
 
 export function nodeHeight(n: CanvasNode): number {
-  const rows = (n.subtitle ? 1 : 0) + n.lines.length + (n.problems.length > 0 ? 1 : 0);
+  const rows = (subtitleOf(n) ? 1 : 0) + n.lines.length + (n.problems.length > 0 ? 1 : 0);
   return CHROME + TITLE + ROW * rows;
 }
 

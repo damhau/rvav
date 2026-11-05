@@ -22,7 +22,7 @@ type FieldState = components["schemas"]["FieldState"];
 import { toText } from "@/lib/utils";
 import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
-import { MULTI_SLUG, previewComponents, webAppParts, webAppVMs } from "./components";
+import { multiParts, partVMs, previewComponents } from "./components";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
 
@@ -285,17 +285,19 @@ export function validateInputs(
 }
 
 export function vmCount(item: StoredItem, count: number, inputs: Inputs = {}) {
-  if (item.slug === MULTI_SLUG) return webAppVMs(inputs);
+  const parts = multiParts(item.slug, inputs);
+  if (parts) return partVMs(parts);
   if (item.type === "vm_blueprint") return count;
   if (item.slug === "postgres-cluster") return 3 * count;
   return 0;
 }
 
 export function demand(item: StoredItem, inputs: Inputs, count: number): Record<QuotaResource, number> {
-  if (item.slug === MULTI_SLUG) {
+  const parts = multiParts(item.slug, inputs);
+  if (parts) {
     // Every component's VMs (ADR-0024).
     const out = { vcpu: 0, memory_gb: 0, storage_gb: 0, vm_count: 0 };
-    for (const p of webAppParts(inputs)) {
+    for (const p of parts) {
       const size = sizes[p.size] ?? sizes.M;
       out.vcpu += size.vcpu * p.count;
       out.memory_gb += size.memoryGb * p.count;
@@ -399,7 +401,7 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
   });
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   if (count < 1 || count > 20) errors.push({ field: "/count", code: "range", message: "Between 1 and 20." });
-  if (item.slug === MULTI_SLUG && count !== 1)
+  if (multiParts(item.slug, inputs) && count !== 1)
     errors.push({
       field: "/count",
       code: "out_of_range",

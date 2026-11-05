@@ -20,13 +20,14 @@ import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail } f
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { GitBadge, ItemGitTab } from "./GitPanels";
-import { CompositeOutline } from "./CompositeOutline";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
 import { FormDesigner } from "./designer/FormDesigner";
 import type { LineProblem } from "./YamlEditor";
 
 const YamlEditor = lazy(() => import("./YamlEditor"));
+// The canvas (React Flow) loads with the Definition tab, not with the page.
+const DefinitionGraph = lazy(() => import("./DefinitionGraph"));
 
 /** The editor's text doesn't parse: what is wrong, and where. */
 class YamlProblems extends Error {
@@ -347,6 +348,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
     },
   });
   if (!shown) return null;
+  const drawn = item.type === "vm_blueprint" || item.type === "composite";
   return (
     <Panel
       title={editable ? `Draft ${shown.number}` : `Version ${shown.number} (read only)`}
@@ -373,28 +375,38 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
       )}
       {version.isPending && <Skeleton className="h-64" />}
       {version.isError && <ErrorState error={version.error} onRetry={() => void version.refetch()} />}
-      {version.data && (
-        <Suspense fallback={<Skeleton className="h-64" />}>
-          <YamlEditor
-            key={shown.id}
-            value={text}
-            onChange={setText}
-            readOnly={!editable}
-            problems={problems}
-            label={`Definition of ${item.name} ${shown.number}`}
-          />
-        </Suspense>
-      )}
-      {problems.length > 0 && (
-        <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-xs text-bad">
-          {problems.map((p, i) => (
-            <li key={i}>
-              Line {p.line}: {p.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      {item.type === "composite" && <CompositeOutline text={text} />}
+      {/* The YAML and, for the kinds the canvas draws, its graph beside it
+          (below it on narrower screens), drawn from the text as it is typed. */}
+      <div className={cn("grid gap-4", drawn && "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
+        <div className="min-w-0">
+          {version.data && (
+            <Suspense fallback={<Skeleton className="h-64" />}>
+              <YamlEditor
+                key={shown.id}
+                value={text}
+                onChange={setText}
+                readOnly={!editable}
+                problems={problems}
+                label={`Definition of ${item.name} ${shown.number}`}
+              />
+            </Suspense>
+          )}
+          {problems.length > 0 && (
+            <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-xs text-bad">
+              {problems.map((p, i) => (
+                <li key={i}>
+                  Line {p.line}: {p.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {drawn && version.data && (
+          <Suspense fallback={<Skeleton className="h-64" />}>
+            <DefinitionGraph text={text} name={item.name} composite={item.type === "composite"} />
+          </Suspense>
+        )}
+      </div>
     </Panel>
   );
 }

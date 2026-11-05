@@ -6,7 +6,7 @@ import { TriangleAlert } from "lucide-react";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
 import type { CanvasGraph, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
-import { statusLabel } from "./graph";
+import { statusLabel, subtitleOf } from "./graph";
 import { NodeIcon, StatusIcon } from "./nodes";
 
 interface ListProps {
@@ -36,7 +36,7 @@ export function NodeFacts({ node }: { node: CanvasNode }) {
   const labelled = node.lines.filter((l) => l.label);
   return (
     <>
-      {node.subtitle && <div className="font-mono text-faint">{node.subtitle}</div>}
+      {subtitleOf(node) && <div className="font-mono text-faint">{node.subtitle}</div>}
       {labelled.length > 0 && (
         <dl className="mt-0.5 grid grid-cols-[auto_1fr] gap-x-2">
           {labelled.map((l, i) => (
@@ -92,8 +92,12 @@ function Item({
         className="flex w-full items-center gap-1.5 rounded-sm text-left font-medium hover:underline"
       >
         <NodeIcon node={node} />
-        {node.badge && <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{node.badge}</span>}
-        <span className="min-w-0 flex-1">{node.title}</span>
+        {node.badge && (
+          <>
+            <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{node.badge}</span>{" "}
+          </>
+        )}
+        <span className="min-w-0 flex-1">{node.title}</span>{" "}
         {status && (
           <span className="flex items-center gap-1 font-normal text-muted">
             <StatusIcon status={status} />

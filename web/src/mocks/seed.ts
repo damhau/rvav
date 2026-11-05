@@ -216,6 +216,22 @@ export function createDb(now = Date.now()): Db {
       projectIds: both,
     }),
     item({
+      key: "threetier",
+      slug: "three-tier",
+      name: "Three-tier application",
+      summary:
+        "Web, application and database tiers on an NSX segment of their own, with the firewall rules between them.",
+      category: "compute",
+      type: "vm_blueprint",
+      icon: "layers",
+      version: "1.0",
+      typical_duration_seconds: 1500,
+      approval: "conditional",
+      requests_last_30_days: 2,
+      source: { kind: "native" },
+      projectIds: both,
+    }),
+    item({
       key: "pgcluster",
       slug: "postgres-cluster",
       name: "PostgreSQL 16 cluster",

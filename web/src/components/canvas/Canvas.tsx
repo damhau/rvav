@@ -143,7 +143,11 @@ export function NodeDetails({ node, status }: { node: CanvasNode; status?: Canva
     >
       <div className="flex items-center gap-1.5 text-[13px] font-medium">
         <NodeIcon node={node} />
-        {node.badge && <span className="text-[10px] tracking-wide text-faint uppercase">{node.badge}</span>}
+        {node.badge && (
+          <>
+            <span className="text-[10px] tracking-wide text-faint uppercase">{node.badge}</span>{" "}
+          </>
+        )}
         {node.title}
         {status && (
           <span className="ml-auto flex items-center gap-1 text-xs font-normal text-muted">

@@ -207,10 +207,52 @@ function webApp(itemId: string, versionId: string): RequestForm {
   return { ...form, one_deployment: true };
 }
 
+/**
+ * A three-tier item on NSX (ADR-0028), as N1's acceptance: web, application
+ * and database tiers on a segment made for the deployment, each in a
+ * security group of its own. How many web servers is the only choice.
+ */
+function threeTier(itemId: string, versionId: string): RequestForm {
+  const form = build(itemId, versionId, {
+    properties: {
+      web_nodes: { type: "integer", minimum: 1, maximum: 4 },
+      cluster: { type: "string" },
+      datastore: { type: "string" },
+    },
+    required: ["web_nodes", "cluster", "datastore"],
+    sections: [
+      { key: "tiers", title: "Tiers", columns: 2, fields: ["web_nodes"] },
+      { key: "placement", title: "Placement", columns: 2, fields: ["cluster", "datastore"] },
+    ],
+    fields: {
+      web_nodes: {
+        widget: "number",
+        label: "Web servers",
+        help: "1 to 4, kept on separate hosts. An application and a database server come with them.",
+      },
+      cluster: {
+        widget: "vsphere_cluster",
+        label: "Cluster",
+        value_source: { kind: "builtin", name: "vsphere.clusters" },
+      },
+      datastore: {
+        widget: "vsphere_datastore",
+        label: "Datastore",
+        value_source: { kind: "builtin", name: "vsphere.datastores", params: { cluster: "${inputs.cluster}" } },
+        depends_on: ["cluster"],
+      },
+    },
+    initial: { web_nodes: 2 },
+  });
+  return { ...form, one_deployment: true };
+}
+
 export function formFor(slug: string, itemId: string, versionId: string): RequestForm {
   switch (slug) {
     case "web-app":
       return webApp(itemId, versionId);
+    case "three-tier":
+      return threeTier(itemId, versionId);
     case "rhel9-server":
     case "ubuntu-server":
       return vmBlueprint(itemId, versionId, linuxPost, ["linux-baseline", "idm-join", "monitoring-agent"]);

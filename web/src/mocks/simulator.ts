@@ -16,7 +16,7 @@ import type {
 import { completeDay2Step, day2Finished } from "./day2";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
-import { MULTI_SLUG, webAppName, webAppParts } from "./components";
+import { multiName, multiParts } from "./components";
 import { reserveIp, summarize, vmNames } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 
@@ -108,17 +108,18 @@ export function planSteps(
   const steps = [submitted, policy];
   const jobBase = 18240 + (db.seq.request % 50) * 3;
 
-  if (item.slug === MULTI_SLUG) {
+  const parts = multiParts(item.slug, inputs);
+  if (parts) {
     // One deployment for every component's VMs (ADR-0024); each VM's steps
     // carry its name after "@".
-    host = webAppName(project, env, inputs);
+    host = multiName(item.slug, project, env, inputs);
     const subnet = networks.find((n) => n.name === text(inputs.network))?.subnet ?? "";
-    for (const p of webAppParts(inputs)) {
+    for (const p of parts) {
       const names = vmNames(db, project, env, p.role, p.count);
       for (const name of names) {
         steps.push(
           step(`ipam.reserve@${name}`, `Reserve an IP address · ${name}`, "efficientip", {
-            detail: `Subnet ${subnet}`,
+            detail: p.segment ? `In the new NSX segment ${p.segment}` : `Subnet ${subnet}`,
           }),
           step(`dns.create@${name}`, `Create A and PTR records · ${name}`, "efficientip", {
             detail: `${name}.${DOMAIN}`,
@@ -314,7 +315,9 @@ function completeStep(r: StoredRequest, s: Step) {
     }
     case "vsphere.clone": {
       // Its component: the one whose role is in its name.
-      const part = multi ? webAppParts(inputs).find((p) => host.includes(`-${p.role}`)) : undefined;
+      const part = multi
+        ? multiParts(r.request.catalog_item.slug, inputs)?.find((p) => host.includes(`-${p.role}`))
+        : undefined;
       const component = part?.key ?? "vm";
       const size = sizes[part?.size ?? (inputs.size as SizeKey) ?? "M"] ?? sizes.M;
       const template =

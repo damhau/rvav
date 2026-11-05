@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CanvasDirection, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
-import { statusLabel } from "./graph";
+import { statusLabel, subtitleOf } from "./graph";
 import { sides } from "./layout";
 
 export function NodeIcon({ node, className }: { node: CanvasNode; className?: string }) {
@@ -130,31 +130,38 @@ export function CardView({ data }: NodeProps<CardNode>) {
       )}
     >
       <Handles direction={direction} />
+      {/* Spaces between the words of separate elements: not drawn (in a flex row, or
+          ending a line), but read, so the node's text is its name's words in order,
+          "1 VM Web", not "1 VMWeb" (WCAG 2.5.3, describeNode). */}
       <div className="flex h-5 items-center gap-1.5">
         <NodeIcon node={node} />
         {node.badge && (
-          <span className="shrink-0 text-[10px] font-medium tracking-wide text-faint uppercase">{node.badge}</span>
+          <>
+            <span className="shrink-0 text-[10px] font-medium tracking-wide text-faint uppercase">
+              {node.badge}
+            </span>{" "}
+          </>
         )}
         <span className="min-w-0 flex-1 truncate font-medium" title={node.title}>
           {node.title}
-        </span>
+        </span>{" "}
         {status && (
           // Colour is never the only signal: the status has its word too.
           <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted">
             <StatusIcon status={status} />
             <span aria-hidden>{statusLabel(status)}</span>
           </span>
-        )}
+        )}{" "}
       </div>
-      {node.subtitle && (
+      {subtitleOf(node) && (
         <div className="h-4 truncate font-mono text-faint" title={node.subtitle}>
-          {node.subtitle}
+          {node.subtitle}{" "}
         </div>
       )}
       {node.lines.map((l, i) => (
         <div key={i} className="h-4 truncate" title={l.label ? `${l.label}: ${l.text}` : l.text}>
           {l.label && <span className="text-faint">{l.label} </span>}
-          <span className={cn(l.mono && "font-mono")}>{l.text}</span>
+          <span className={cn(l.mono && "font-mono")}>{l.text}</span>{" "}
         </div>
       ))}
       {node.problems.length > 0 && (

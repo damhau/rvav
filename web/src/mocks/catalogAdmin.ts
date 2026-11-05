@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { readComposite } from "@/lib/composite";
+import { seededBlueprint } from "./blueprints";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
@@ -87,7 +88,7 @@ function state(db: Db): AdminState {
             form_schema: form?.schema ?? { type: "object", properties: {} },
             ui_schema: form?.ui_schema ?? { layout: { kind: "page", sections: [] }, fields: {} },
             initial_values: form?.initial_values ?? {},
-            blueprint: blueprintFor(item),
+            blueprint: seededBlueprint(item.slug) ?? blueprintFor(item),
           },
         },
       ];

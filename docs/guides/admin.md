@@ -309,7 +309,19 @@ An item's tabs:
 - **Form designer:** fields, sections, rules, value sources (lists from
   vCenter, AWX, EfficientIP or a REST call), and fields approvers may
   change. Preview the form as any user.
-- **Definition:** the whole version as YAML, to review or paste.
+- **Definition:** the whole version as YAML, to review or paste. A VM
+  blueprint's or a composite's graph is beside it (below it on a narrow
+  screen), drawn from the YAML as you type: a VM item's components (how
+  many VMs, template, disks, kept apart), the networks and NSX segments
+  they are on, the security groups they are in and the rules between
+  them, drops and rejects in red; a composite's steps in the order they
+  run, those that run at the same time in one frame, a condition on a
+  dashed edge, what each step runs, uses and undoes. Problems the graph
+  finds (a segment or group nobody declared, a step using a later one)
+  are on its nodes and listed with their lines. While the YAML doesn't
+  parse, the graph stays as it last parsed and says so. **Graph** and
+  **List** show the same thing; the arrow keys move between nodes, Enter
+  shows one's details.
 - **Versions:**
   - publish a draft;
   - compare two versions;

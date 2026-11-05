@@ -117,14 +117,22 @@ const statusWords: Record<CanvasStatus, string> = {
 
 export const statusLabel = (s: CanvasStatus) => statusWords[s];
 
-/** Everything a node shows, as one sentence list: its accessible name. */
+/** A node's subtitle, when it says more than its title (a key the title already is says nothing). */
+export const subtitleOf = (n: CanvasNode) => (n.subtitle && n.subtitle !== n.title ? n.subtitle : undefined);
+
+/**
+ * Everything a node shows, as one sentence list: its accessible name. What
+ * the card shows comes first, in the card's order (WCAG 2.5.3: the name
+ * holds the visible text, in order), then its relations, which it doesn't.
+ */
 export function describeNode(n: CanvasNode, status?: CanvasStatus): string {
   const parts = [[n.badge, n.title].filter(Boolean).join(" ")];
-  if (n.subtitle && n.subtitle !== n.title) parts.push(n.subtitle);
-  for (const l of n.lines) parts.push(l.label ? `${l.label}: ${l.text}` : l.text);
-  parts.push(...n.relations);
   if (status) parts.push(statusLabel(status));
+  const subtitle = subtitleOf(n);
+  if (subtitle) parts.push(subtitle);
+  for (const l of n.lines) parts.push(l.label ? `${l.label}: ${l.text}` : l.text);
   if (n.problems.length > 0)
     parts.push(`${n.problems.length === 1 ? "1 problem" : `${n.problems.length} problems`}: ${n.problems.join(" ")}`);
+  parts.push(...n.relations);
   return parts.join(". ");
 }

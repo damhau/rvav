@@ -141,16 +141,20 @@ test("a composite item's steps, checked while edited and when saved", async ({ p
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: "Definition of VM with a database user 1.0" });
   await expect(editor).toContainText("kind: composite");
-  const steps = page.getByRole("region", { name: "Composite steps" });
-  await expect(steps).toContainText("No step yet");
+  // Its steps drawn beside the YAML (ADR-0032), from the text as it is typed.
+  const steps = page.getByRole("region", { name: "Steps of VM with a database user" });
+  await expect(steps.getByRole("button", { name: /^Done\..*No step yet$/ })).toBeVisible();
 
   // A step that uses a later one: said while typing, and refused when saved.
   await editor.click();
   await page.keyboard.press("Control+A");
   await page.keyboard.insertText(brokenSteps);
-  await expect(steps.getByRole("list", { name: "Problems in the steps" })).toContainText(
+  await expect(page.getByRole("list", { name: "Problems in the steps" })).toContainText(
     "steps.vm is not an earlier step.",
   );
+  await expect(
+    steps.getByRole("button", { name: /^Item db_user\..*steps\.vm is not an earlier step\./ }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("list", { name: "Problems in the definition" })).toContainText(
     "steps.vm is not an earlier step.",
@@ -161,8 +165,10 @@ test("a composite item's steps, checked while edited and when saved", async ({ p
   await page.keyboard.press("Control+A");
   await page.keyboard.insertText(goodSteps);
   await expect(steps.getByText("At the same time")).toBeVisible();
-  await expect(steps).toContainText("Undone by pg-drop-role");
-  await expect(steps.getByRole("list", { name: "Problems in the steps" })).toHaveCount(0);
+  await expect(
+    steps.getByRole("button", { name: /^Item db_user\..*Undo: pg-drop-role\. Runs after vm\./ }),
+  ).toBeVisible();
+  await expect(page.getByRole("list", { name: "Problems in the steps" })).toHaveCount(0);
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Draft 1.0 saved")).toBeVisible();
   expect(errors).toEqual([]);

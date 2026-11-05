@@ -26,6 +26,18 @@ const graph = compositeGraph({
 
 const node = (name: RegExp) => screen.getByRole("button", { name });
 
+/**
+ * What each node shows is the start of its name, word for word (WCAG 2.5.3,
+ * axe's label-content-name-mismatch): its words apart ("1 VM Web", not
+ * "1 VMWeb") and in the same order.
+ */
+function expectNamesHoldText() {
+  const words = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const cards = screen.getAllByRole("button").filter((b) => b.classList.contains("react-flow__node"));
+  for (const b of cards)
+    expect(words(b.getAttribute("aria-label") ?? "")).toMatch(new RegExp(`^${words(b.textContent ?? "")}`));
+}
+
 describe("Canvas", () => {
   it("draws every node as a button that says all it shows, and the graph is one Tab stop", () => {
     render(<Canvas graph={graph} label="Steps" />);
@@ -42,6 +54,7 @@ describe("Canvas", () => {
       "AWX Notice. notice. Runs: dba-notice. When: inputs.notify. Runs after Database user and Monitoring",
       "Done. On a failure: undo what was built. After Notice",
     ]);
+    expectNamesHoldText();
     expect(nodes.filter((b) => b.getAttribute("tabindex") === "0").map((b) => b.dataset.id)).toEqual(["inputs"]);
     // Zooming has buttons of its own.
     expect(within(app).getByRole("button", { name: "Fit to view" })).toBeInTheDocument();
@@ -124,10 +137,12 @@ describe("Canvas", () => {
         status={{ "step:vm": "done", "step:db_user": "failed", "step:monitoring": "undone", "step:notice": "skipped" }}
       />,
     );
-    expect(node(/^Item The VM/).getAttribute("aria-label")).toMatch(/\. Done$/);
-    expect(node(/^AWX Database user/).getAttribute("aria-label")).toMatch(/\. Failed$/);
-    expect(node(/^Workflow Monitoring/).getAttribute("aria-label")).toMatch(/\. Undone$/);
-    expect(node(/^AWX Notice/).getAttribute("aria-label")).toMatch(/\. Skipped$/);
+    // Where the card shows it: after the title.
+    expect(node(/^Item The VM/).getAttribute("aria-label")).toMatch(/^Item The VM\. Done\. vm\./);
+    expect(node(/^AWX Database user/).getAttribute("aria-label")).toMatch(/^AWX Database user\. Failed\./);
+    expect(node(/^Workflow Monitoring/).getAttribute("aria-label")).toMatch(/^Workflow Monitoring\. Undone\./);
+    expect(node(/^AWX Notice/).getAttribute("aria-label")).toMatch(/^AWX Notice\. Skipped\./);
+    expectNamesHoldText();
     expect(screen.getByRole("img", { name: "Failed" })).toBeInTheDocument();
   });
 });
@@ -148,10 +163,10 @@ describe("the list view", () => {
       .filter((li) => li.parentElement === list);
     expect(top).toHaveLength(5);
     [
-      /^RequestThe form's values/,
-      /^ItemThe VMRunningvm/,
-      /^At the same timeAWXDatabase user/,
-      /^AWXNoticenotice/,
+      /^Request The form's values/,
+      /^Item The VM Runningvm/,
+      /^At the same timeAWX Database user/,
+      /^AWX Notice notice/,
       /^Done/,
     ].forEach((text, i) => expect(top[i]?.textContent).toMatch(text));
     const inGroup = within(top[2]!).getByRole("list", { name: "At the same time" });
@@ -187,10 +202,10 @@ describe("the list view", () => {
     const items = within(list)
       .getAllByRole("listitem")
       .filter((li) => li.parentElement === list);
-    expect(items.map((li) => within(li).getAllByRole("button")[0]!.textContent)).toEqual([
-      "2 VMsWeb",
-      "SegmentApplication",
-      "GroupWeb servers",
+    expect(items.map((li) => within(li).getAllByRole("button")[0]!.textContent?.trim())).toEqual([
+      "2 VMs Web",
+      "Segment Application",
+      "Group Web servers",
       "Any",
     ]);
     expect(items[0]).toHaveTextContent("Adapter nic1 on Application");

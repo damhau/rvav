@@ -231,6 +231,19 @@ Catalog admins and administrators build items under **Catalog items**
   `/definition`, shows on its line (`definitionYaml.ts` walks the YAML
   document to the pointer's node). Published and deprecated versions are
   read only; leaving the tab with unsaved YAML asks first.
+- Beside the editor (from `xl`, the graph taking three fifths of the
+  width; below it on narrower screens), a VM blueprint's or a
+  composite's graph: `DefinitionGraph.tsx`, loaded
+  lazily with the tab so React Flow stays out of the other pages, draws
+  the editor's text (`useDeferredValue`, so typing stays quick) through
+  `drawDefinition` (parse, take `blueprint`, `blueprintGraph`). The text
+  is the editor's state, which starts from the designer's unsaved working
+  copy when there is one, so the graph follows the draft as typed and as
+  designed. When the text doesn't parse, or has no blueprint the canvas
+  draws, the last graph stays (zoom, selection and focus with it) under a
+  line saying why; the graph's own problems are listed with their lines
+  (`problemsOnLines`). The Form designer tab has no graph: its edits
+  don't change the blueprint.
 - The **form designer** has three panes: the fields by section (add from
   any widget, move fields and sections with buttons, so by keyboard), a
   live preview, and the selected field's or section's properties (label,
@@ -369,11 +382,11 @@ them.
   one and how many runs haven't ended; removing one in use shows the
   server's refusal.
 - **Composite items** are written in the item's Definition tab, like the
-  others. Under the YAML, `CompositeOutline` shows the steps as they will
-  run: groups, parallel steps, what each runs, uses and undoes. It also
-  shows the server's structural checks while typing
-  (`lib/composite.ts`; the mock and the canvas reuse them, CEL included). Saving
-  puts the server's problems on their lines.
+  others. Beside the YAML, the canvas draws the steps as they will run
+  (see Catalog administration): groups, parallel steps, conditions, what
+  each runs, uses and undoes, with the server's structural checks on
+  their steps while typing (`lib/composite.ts`; the mock reuses them, CEL
+  included). Saving puts the server's problems on their lines.
 
 The mock backend (`mocks/extensibility.ts`) seeds a blocking CMDB check, a
 ServiceNow subscription with a failed run, the `webhook-signing` secret and
@@ -410,6 +423,8 @@ nothing about it (positions, layout) is stored.
   A parallel group is laid out as one node holding its steps. Rules
   between a VM item's groups are left out of the layout and drawn as
   brackets on their right, so the groups stay in one column.
+- **Where it is used:** an item's Definition tab, beside the YAML
+  (`features/admin/catalog/DefinitionGraph.tsx`).
 - **`Canvas`**: `graph` and `label` (names the region and its list), and
   optionally `status` (by node ID: a run's step status, or `undone`),
   `selected` and `onSelect` (controlled, or left to the canvas),
@@ -420,7 +435,11 @@ nothing about it (positions, layout) is stored.
 - **Keyboard:** the graph is one Tab stop, on the node last visited. The
   arrow keys move to the nearest node that way, Home and End to the first
   and last, Enter or Space selects, Escape clears. Each node is a button
-  whose name says all it shows, its relations and its status.
+  whose name is what it shows, word for word and in the card's order
+  (badge and title, status, key, lines, problems; WCAG 2.5.3, which axe
+  checks), then its relations. The card puts a space between words of
+  separate elements even where none is drawn, so its text reads as the
+  name does.
 - **List view:** the same model as an ordered list of steps (a parallel
   group a list within it) or a VM item's nodes with their relations, for
   screen readers and anyone who would rather read. It shares the
@@ -463,8 +482,14 @@ A blueprint with components builds one deployment
   per component), the placement panel gives each cluster, datastore and
   network once, and the DRS rules keeping VMs apart.
 - **Mocks:** the **Web application** item (`mocks/components.ts`) builds
-  web servers kept apart and a database server; its steps name their VM
-  after `@`, without the component steps the server nests them under.
+  web servers kept apart and a database server on the request's network;
+  the **Three-tier application** item, N1's acceptance item, web,
+  application and database tiers on an NSX segment made for the
+  deployment, each in a security group of its own, the database in an
+  existing group too. Their steps name their VM after `@`, without the
+  component steps the server nests them under. `mocks/blueprints.ts`
+  holds the seeded items' blueprints, which the Definition tab shows and
+  the canvas draws.
 
 ## Drift
 

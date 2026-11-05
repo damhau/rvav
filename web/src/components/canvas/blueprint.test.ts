@@ -334,8 +334,8 @@ describe("blueprintGraph", () => {
   it("names each node with everything it shows", () => {
     const g = compositeGraph(parallel);
     expect(describeNode(node(g, "step:db_user"), "failed")).toBe(
-      "AWX Create the database user. db_user. Runs: pg-create-role. Uses: vm. Undo: pg-drop-role. " +
-        "Runs after vm. At the same time as monitoring. Failed",
+      "AWX Create the database user. Failed. db_user. Runs: pg-create-role. Uses: vm. Undo: pg-drop-role. " +
+        "Runs after vm. At the same time as monitoring",
     );
   });
 
