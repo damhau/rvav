@@ -34,7 +34,9 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   await expect(page.getByText(`${secret} stored`)).toBeVisible();
 
   // The RHEL item exported, renamed and imported: a new item with a draft.
-  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
+  // Items are found by their exact name: the stack keeps those of earlier
+  // runs and checks (a vRA import's "RHEL 9 Server").
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server", exact: true }).click();
   const download = page.waitForEvent("download");
   await page
     .getByRole("button", { name: /^Export .* as YAML$/ })
@@ -113,7 +115,7 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
 
   // A new version renames the field; rolled back, the deployment stays on the first.
   await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
-  await page.getByRole("region", { name: "Items" }).getByRole("link", { name }).click();
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name, exact: true }).click();
   await page.getByRole("button", { name: "New draft" }).click();
   const draftToast = page.getByText(/^Draft (\d+\.\d+) made from the published version$/);
   await expect(draftToast).toBeVisible();
