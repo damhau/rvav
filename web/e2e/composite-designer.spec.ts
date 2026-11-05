@@ -82,7 +82,7 @@ test("a composite's steps edited on the canvas, published and requested", async 
   await page.getByRole("textbox", { name: "Database name" }).fill("ledger");
   await page.getByRole("button", { name: "Submit for approval" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
-  await expect(page.getByRole("region", { name: "Steps" })).toContainText(
+  await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText(
     /Database nodes[\s\S]*Monitoring agent · monitoring-agent[\s\S]*The database's owner/,
   );
   expect(errors).toEqual([]);

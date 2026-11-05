@@ -199,9 +199,16 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
     "ubuntu-web",
   );
   // In-app navigation: a reload would start the mock backend afresh.
+  // Other items are at 1.0 too (the three-tier application): the version is
+  // read on this item's card, the innermost element with its link and summary.
+  const card = page
+    .locator("div")
+    .filter({ has: page.getByRole("link", { name: "Ubuntu web", exact: true }) })
+    .filter({ hasText: "Ubuntu with nginx and a backup policy." })
+    .last();
   const requestForm = async (label: string, version: string) => {
     await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
-    await expect(page.getByText(`v${version}`, { exact: true })).toBeVisible();
+    await expect(card.getByText(`v${version}`, { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Ubuntu web" }).click();
     await expect(page.getByRole("combobox", { name: label })).toBeVisible();
   };

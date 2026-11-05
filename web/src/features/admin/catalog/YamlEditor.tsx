@@ -105,6 +105,12 @@ export default function YamlEditor({
         if (!v) return;
         const change = minimalChange(v.state.doc.toString(), next);
         if (change.from === change.to && !change.insert) return;
+        // The cursor goes to the change first, outside the history: Undo and
+        // Redo put back the selection from before a change and scroll to it,
+        // so they then show the lines they change rather than where the
+        // cursor was (the top, when nobody clicked in the text). The editor
+        // draws only the lines near what is in view.
+        v.dispatch({ selection: { anchor: change.from }, annotations: Transaction.addToHistory.of(false) });
         v.dispatch({
           changes: change,
           annotations: [isolateHistory.of("full"), Transaction.userEvent.of("input.designer")],
