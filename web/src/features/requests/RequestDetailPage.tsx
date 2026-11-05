@@ -21,7 +21,7 @@ import { keys, q } from "@/lib/query";
 import { duration, toText } from "@/lib/utils";
 import { FailureActions } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
-import { failedNode, flatten, pickLogStep, runSteps } from "./run";
+import { failedNode, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
 
 // A composite's run on its graph: React Flow loads with it, on its pages only.
 const RequestRun = lazy(() => import("./RequestRun"));
@@ -234,7 +234,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 onOpenLog={(s) => setChosenLog(s.id)}
                 selectedLogStep={logStep?.id ?? null}
               />
-              {r?.status === "failed" && r.error && <FailureActions request={r} />}
+              {r?.status === "failed" && r.error && (
+                <FailureActions request={r} rolledBack={rollbackOf(steps.data.items)} />
+              )}
             </>
           )}
         </Panel>

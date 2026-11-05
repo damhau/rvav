@@ -20,6 +20,9 @@ export function runSteps(graph: CanvasGraph, steps: Step[]): Map<string, Step[]>
   return out;
 }
 
+/** The step of a rollback that finished: what the request built is deleted. */
+export const rollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollback" && s.status === "done");
+
 /**
  * A step's status on the graph. Undone, where the request said so: a step
  * whose undo ran (cancelled, with its `/undo` step done), or the VMs of a
@@ -38,7 +41,7 @@ const weight: CanvasStatus[] = ["failed", "running", "pending", "cancelled", "un
 /** Each node's status: its steps', or not started while it has none. The end is the ready step's. */
 export function runStatus(graph: CanvasGraph, byNode: Map<string, Step[]>): Record<string, CanvasStatus> {
   const all = [...byNode.values()].flat();
-  const rolledBack = all.some((s) => s.key === "rollback" && s.status === "done");
+  const rolledBack = Boolean(rollbackOf(all));
   const out: Record<string, CanvasStatus> = {};
   for (const n of graph.nodes) {
     const own = (byNode.get(n.id) ?? []).filter((s) => n.kind !== "end" || ready.has(s.key));

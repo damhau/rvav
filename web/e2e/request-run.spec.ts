@@ -32,6 +32,9 @@ test("a composite request's run: failed, retried and followed on its graph", asy
   const owner = page.getByRole("region", { name: "Selected: The database's owner" });
   await expect(owner).toContainText("permission denied to create role");
   await expect(owner.getByRole("alert")).toContainText("could not be created: permission denied");
+  // Rolled back already (rollback_on_failure): nothing left to roll back, a retry runs it all again.
+  await expect(owner.getByRole("alert")).toContainText("It was rolled back: deleted VM web-dev-pgorders001");
+  await expect(page.getByRole("button", { name: "Roll back" })).toHaveCount(0);
   await expect(page.getByRole("log", { name: "Output of The database's owner · pg-create-role" })).toContainText(
     "permission denied to create role orders_owner",
   );
@@ -41,15 +44,15 @@ test("a composite request's run: failed, retried and followed on its graph", asy
   const backups = page.getByRole("region", { name: "Selected: Backups" });
   await expect(backups).toContainText("Undo Backups · pgbackrest-stanza-delete");
   await expect(backups.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Retry from the failed step" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(1);
 
   // Retried: followed live to the end, the graph not moved.
   const before = await placed(run);
-  await page.getByRole("button", { name: "Retry from the failed step" }).click();
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(node(/^Done\. Done\./)).toBeVisible({ timeout: 15_000 });
   for (const name of [/^Item Database nodes\. Done\./, /^Item The database's owner\. Done\./, /^AWX Backups\. Done\./])
     await expect(node(name)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry from the failed step" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
   expect(await placed(run)).toEqual(before);
 
   // The timeline is the list view: every step, in order.

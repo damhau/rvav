@@ -223,7 +223,10 @@ differ, and none fits rvav's design system).
   node it failed at selected (the node holding the request's error step,
   however deep), its error and the request's own **Retry from the failed
   step** and **Roll back**, with their permissions; with another node
-  selected they stay under the graph, once.
+  selected they stay under the graph, once. Once rolled back (a `rollback`
+  step done, by hand or by `rollback_on_failure`), it says what was
+  deleted and offers only **Retry**, which then runs every step after the
+  approval again, as the server does; Roll back would find nothing left.
 - **The timeline is the list view.** It says all the graph does, in run
   order, and more (each step's time, detail and tasks); it replaces the
   canvas's own list there (`Canvas`'s `list` prop) and keeps its live

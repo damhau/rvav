@@ -14,7 +14,7 @@ import { NodeIcon, StatusIcon } from "@/components/canvas/nodes";
 import { Timeline } from "@/components/common/timeline";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 import { FailureActions } from "./FailureActions";
-import { failedNode, flatten, runStatus, runSteps } from "./run";
+import { failedNode, flatten, rollbackOf, runStatus, runSteps } from "./run";
 
 export interface RequestRunProps {
   request: ServiceRequest;
@@ -33,7 +33,10 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
   const byNode = useMemo(() => runSteps(graph, steps), [graph, steps]);
   const status = useMemo(() => runStatus(graph, byNode), [graph, byNode]);
   const failed = failedNode(request, byNode);
-  const failure = request.status === "failed" && request.error ? <FailureActions request={request} /> : null;
+  const failure =
+    request.status === "failed" && request.error ? (
+      <FailureActions request={request} rolledBack={rollbackOf(steps)} />
+    ) : null;
 
   return (
     <>

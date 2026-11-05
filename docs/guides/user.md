@@ -72,6 +72,9 @@ their times and tasks.
     aren't repeated.
   - **Roll back:** removes the VMs, addresses and DNS records it made. A
     composite's AWX and workflow steps aren't undone by it.
+  - Once rolled back (by you, or by a composite that undoes what it built
+    when it fails), there is nothing left to roll back: **Retry** runs it
+    all again, without a new approval.
 - **Request again:** a new request with the same answers.
 
 ## Your deployments

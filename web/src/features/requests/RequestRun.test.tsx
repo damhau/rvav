@@ -38,7 +38,7 @@ describe("a composite request's run on its graph", () => {
     );
     expect(owner).toHaveTextContent("permission denied to create role");
     expect(within(owner).getByRole("alert")).toHaveTextContent(/could not be created: permission denied/);
-    expect(within(owner).getByRole("button", { name: "Retry from the failed step" })).toBeInTheDocument();
+    expect(within(owner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(
       await screen.findByRole("log", { name: "Output of The database's owner · pg-create-role" }),
     ).toHaveTextContent("permission denied to create role orders_owner");
@@ -52,7 +52,7 @@ describe("a composite request's run on its graph", () => {
     expect(backups).toHaveTextContent("Undone.");
     expect(backups).toHaveTextContent("Undo Backups · pgbackrest-stanza-delete");
     expect(within(backups).queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Retry from the failed step" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
 
     fireEvent.click(within(run).getByRole("button", { name: /^Done/ }));
     expect(screen.getByRole("region", { name: "Selected: Done" })).toHaveTextContent(
@@ -67,7 +67,7 @@ describe("a composite request's run on its graph", () => {
     const steps = screen.getByRole("region", { name: "Steps" });
     expect(within(steps).getAllByRole("listitem").length).toBeGreaterThan(6);
     expect(steps).toHaveTextContent(/Database nodes.*The database's owner · pg-create-role.*Backups.*Undone\./);
-    expect(screen.getAllByRole("button", { name: "Retry from the failed step" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     expect(screen.queryByRole("application", { name: "Run of REQ-10484" })).not.toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe("a composite request's run on its graph", () => {
     const user = userEvent.setup();
     const { run } = await openRun();
     const before = where(run);
-    await user.click(screen.getByRole("button", { name: "Retry from the failed step" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     // Steps advance through live events (20 ms per tick in tests).
     await waitFor(() => expect(names(run)).toContain("Done. Done"), { timeout: 8000 });
     expect(names(run)).toEqual([

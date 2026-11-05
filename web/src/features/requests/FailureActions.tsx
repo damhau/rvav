@@ -4,11 +4,17 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { ServiceRequest } from "@/lib/api/types";
+import type { ServiceRequest, Step } from "@/lib/api/types";
 import { keys } from "@/lib/query";
 
-/** Retry from the failed step, or roll back what a failed provisioning request built. */
-export function FailureActions({ request }: { request: ServiceRequest }) {
+/**
+ * Retry from the failed step, or roll back what a failed provisioning request
+ * built. Once rolled back (its `rollback` step done: by hand, or by a
+ * composite's rollback_on_failure), there is nothing left to roll back, and
+ * a retry runs every step after the approval again, as the server does.
+ */
+export function FailureActions({ request, rolledBack }: { request: ServiceRequest; rolledBack?: Step }) {
+  const undone = request.kind !== "day2" && rolledBack;
   const qc = useQueryClient();
   const [confirmRollback, setConfirmRollback] = useState(false);
   const done = (r: ServiceRequest, what: string) => {
@@ -24,7 +30,7 @@ export function FailureActions({ request }: { request: ServiceRequest }) {
   const params = { params: { path: { requestId: request.id } } };
   const retry = useMutation({
     mutationFn: () => call(api.POST("/requests/{requestId}/retry", params)),
-    onSuccess: (r) => done(r, "running again from the failed step"),
+    onSuccess: (r) => done(r, undone ? "running again" : "running again from the failed step"),
     onError: failed,
   });
   const rollback = useMutation({
@@ -41,13 +47,15 @@ export function FailureActions({ request }: { request: ServiceRequest }) {
       <span className="text-xs">
         {request.kind === "day2"
           ? "Retrying runs the failed step and the ones after it; the steps that were done are kept."
-          : "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes the VM, its IP address and DNS records."}
+          : undone
+            ? `It was rolled back: ${undone.detail || "what it created was deleted"}. Retry runs it again from its first step, without asking for approval again.`
+            : "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes the VM, its IP address and DNS records."}
       </span>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
-          Retry from the failed step
+          {undone ? "Retry" : "Retry from the failed step"}
         </Button>
-        {request.kind !== "day2" && (
+        {request.kind !== "day2" && !undone && (
           <Dialog open={confirmRollback} onOpenChange={setConfirmRollback}>
             <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
               Roll back
