@@ -209,7 +209,11 @@ Markdown or info block, and resource pickers:
   checked.
 - For AWX items, the form can choose the launch's inventory and credentials
   (inputs picked from `awx.inventories` and `awx.credentials`), which the
-  template must prompt for.
+  template must prompt for. A composite's step running such an item
+  launches with what its bindings give those inputs, not as extra
+  variables: bind them to the composite's own `awx.inventories` and
+  `awx.credentials` pickers, so a requester's choice is checked as the
+  item's form checks it.
 
 Not built yet: tabs and wizard steps (forms render as sections), file upload, async
 server-side validation rules, and the group and AWX host pickers.

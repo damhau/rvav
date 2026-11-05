@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -347,37 +346,23 @@ func orDefault(s, def string) string {
 // credentials (not extra variables), and the other inputs as extra
 // variables.
 func awxLaunch(ev *Evaluation) (provision.Job, map[string]any) {
-	a := ev.Blueprint.AWX
-	job := provision.Job{Key: a.JobTemplate, Title: a.Title, Template: a.JobTemplate, TemplateID: a.TemplateID, Workflow: a.Workflow}
-	if job.TemplateID == 0 && ev.Item.AWXTemplateID != nil && deref(ev.Item.AWXTemplateName) == a.JobTemplate {
-		job.TemplateID = *ev.Item.AWXTemplateID
-	}
+	job := awxItemJob(ev.Item, ev.Blueprint.AWX, ev.Blueprint.AWX.JobTemplate)
 	vars := map[string]any{}
 	for k, v := range ev.Inputs {
 		vars[k] = v
 	}
-	toID := func(v any) int {
-		n, _ := strconv.Atoi(fmt.Sprint(v))
-		return n
-	}
-	if a.Inventory != "" {
-		job.Inventory = toID(vars[a.Inventory])
-		delete(vars, a.Inventory)
-	}
-	for _, name := range a.Credentials {
-		switch v := vars[name].(type) {
-		case []any:
-			for _, x := range v {
-				if id := toID(x); id != 0 {
-					job.Credentials = append(job.Credentials, id)
-				}
-			}
-		default:
-			if id := toID(v); id != 0 {
-				job.Credentials = append(job.Credentials, id)
-			}
-		}
-		delete(vars, name)
-	}
+	job.TakeLaunchInputs(vars)
 	return job, vars
+}
+
+// awxItemJob is the job an AWX item launches, under key: by its template's
+// AWX ID when rvav knows it, with the inputs that are its launch's
+// inventory and credentials (taken from its inputs when it runs).
+func awxItemJob(item store.CatalogItem, a *blueprint.AWXTemplate, key string) provision.Job {
+	job := provision.Job{Key: key, Title: a.Title, Template: a.JobTemplate, TemplateID: a.TemplateID, Workflow: a.Workflow,
+		InventoryInput: a.Inventory, CredentialInputs: a.Credentials}
+	if job.TemplateID == 0 && item.AWXTemplateID != nil && deref(item.AWXTemplateName) == a.JobTemplate {
+		job.TemplateID = *item.AWXTemplateID
+	}
+	return job
 }

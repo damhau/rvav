@@ -5,6 +5,7 @@ package provision
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/damhau/rvav/internal/blueprint"
@@ -450,6 +451,55 @@ type Job struct {
 	// form chose them).
 	Inventory   int   `json:"inventory,omitempty"`
 	Credentials []int `json:"credentials,omitempty"`
+	// InventoryInput and CredentialInputs name an AWX item's inputs that are
+	// its launch's inventory and credentials (its blueprint's awx.inventory
+	// and awx.credentials): a composite step's values for them are taken
+	// out of its extra variables when it runs (TakeLaunchInputs), as a plain
+	// request's are when it is submitted.
+	InventoryInput   string   `json:"inventory_input,omitempty"`
+	CredentialInputs []string `json:"credential_inputs,omitempty"`
+}
+
+// TakeLaunchInputs moves the values of the job's launch inputs out of vars
+// (its extra variables) into its inventory and credentials: an ID, or a
+// list of them for credentials, as a number or its digits.
+func (j *Job) TakeLaunchInputs(vars map[string]any) {
+	if j.InventoryInput != "" {
+		j.Inventory = awxID(vars[j.InventoryInput])
+		delete(vars, j.InventoryInput)
+	}
+	for _, name := range j.CredentialInputs {
+		switch v := vars[name].(type) {
+		case []any:
+			for _, x := range v {
+				if id := awxID(x); id != 0 {
+					j.Credentials = append(j.Credentials, id)
+				}
+			}
+		default:
+			if id := awxID(v); id != 0 {
+				j.Credentials = append(j.Credentials, id)
+			}
+		}
+		delete(vars, name)
+	}
+}
+
+// awxID is an AWX object's ID from an input's value, 0 when it isn't one.
+func awxID(v any) int {
+	switch n := v.(type) {
+	case float64:
+		if n == float64(int(n)) {
+			return int(n)
+		}
+		return 0
+	case int:
+		return n
+	case int64:
+		return int(n)
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(v)))
+	return n
 }
 
 // StepDef is a step created, pending, when the request is submitted:

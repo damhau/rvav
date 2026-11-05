@@ -138,12 +138,16 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 		out = vmOutputs(vms)
 	case c.AWX != nil:
 		vars := values
+		// An AWX item's inventory and credentials are the launch's, not
+		// extra variables.
+		job := *c.AWX
+		job.TakeLaunchInputs(vars)
 		ctxVars := map[string]any{"steps": outputs}
 		for k, v := range info.Plan.Context {
 			ctxVars[k] = v
 		}
 		vars["rvav"] = ctxVars
-		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: *c.AWX, ExtraVars: vars}
+		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job, ExtraVars: vars}
 		if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
 			return stepResult{failed: key, err: err}
 		}

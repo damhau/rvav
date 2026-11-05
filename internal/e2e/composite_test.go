@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/awxcatalog"
+	"github.com/damhau/rvav/internal/integrations/awx"
 )
 
 // TestCompositeItems: a composite item builds a VM, then creates a database
@@ -229,4 +232,92 @@ func keysOf(m map[string]api.Step) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// TestCompositeAWXItemLaunch: a composite's step running an AWX item whose
+// form picks the launch's inventory and credentials launches its job with
+// them, as a request of the item does, not as extra variables; an item
+// linked to its AWX template launches it by ID there too (D1.5 review).
+func TestCompositeAWXItemLaunch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, web = "lmartin", "prj_web"
+		// An AWX item whose form picks its inventory and machine credential
+		// (TestAWXLaunchSettingsFromTheForm's).
+		role := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "required": []any{"role"}, "properties": map[string]any{
+				"role": map[string]any{"type": "string"}, "inventory": map[string]any{"type": "string"}, "machine": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"role":      {Widget: api.UiWidgetText, Label: "Role"},
+				"inventory": {Widget: api.UiWidgetAwxInventory, Label: "Inventory", ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("awx.inventories")}},
+				"machine": {Widget: api.UiWidgetAwxCredential, Label: "Machine credential", ValueSource: &api.ValueSource{Kind: api.Builtin,
+					Name: new("awx.credentials"), Params: &map[string]any{"kind": "ssh"}}},
+			}},
+			Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Create role", "job_template": "pg-create-role",
+				"inventory": "inventory", "credentials": []any{"machine"}}},
+		}
+		role.UiSchema.Layout.Kind = api.Page
+		role.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Role", Fields: []string{"role", "inventory", "machine"}}}
+		var roleItem api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "pg-role", Name: "PostgreSQL role",
+			Summary: "A role.", Category: "compute", Type: api.AwxJobTemplate, Definition: &role}, 201, &roleItem)
+		h.json("POST", "/api/v1/admin/catalog/items/pg-role/versions/"+roleItem.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+
+		// A composite running it and the seeded db-user, its inventory picked
+		// in the composite's own form, its credential bound to an ID.
+		h.svc.AWXCatalog = &awxcatalog.Sync{Store: h.store, AWX: h.awx, Log: h.acts.Log, Filter: awx.TemplateFilter{Labels: []string{"rvav"}}}
+		h.json("POST", "/api/v1/admin/awx/templates/sync", "mkeller", nil, 200, nil)
+		def := api.CatalogVersionDefinition{
+			FormSchema: map[string]any{"type": "object", "required": []any{"role", "inventory"}, "properties": map[string]any{
+				"role": map[string]any{"type": "string"}, "inventory": map[string]any{"type": "string"}}},
+			UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+				"role":      {Widget: api.UiWidgetText, Label: "Role"},
+				"inventory": {Widget: api.UiWidgetAwxInventory, Label: "Inventory", ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("awx.inventories")}},
+			}},
+			InitialValues: map[string]any{},
+			Blueprint: map[string]any{"kind": "composite", "steps": []any{
+				map[string]any{"key": "role", "item": "pg-role", "with": map[string]any{"role": "inputs.role", "inventory": "inputs.inventory", "machine": 4}},
+				map[string]any{"key": "user", "item": "db-user", "with": map[string]any{"database": "inputs.role", "role_name": "inputs.role", "privileges": `"read"`}},
+			}},
+		}
+		def.UiSchema.Layout.Kind = api.Page
+		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Role", Fields: []string{"role", "inventory"}}}
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "pg-roles", Name: "PostgreSQL roles",
+			Summary: "Roles.", Category: "compute", Type: api.Composite, Definition: &def}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/pg-roles/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/pg-roles/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+			ProjectId: web, Environment: "dev", Inputs: map[string]any{"role": "app", "inventory": "3"}},
+			202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		launched := func(key string) awx.LaunchRequest {
+			t.Helper()
+			step, err := h.store.GetStepByKey(ctx, req.Id, key)
+			if err != nil || step.ExternalID == nil {
+				t.Fatalf("%s = %+v, %v", key, step, err)
+			}
+			id, _ := strconv.Atoi(*step.ExternalID)
+			return h.awx.Launched(id)
+		}
+		if job := launched("step:role"); job.Inventory != 3 || fmt.Sprint(job.Credentials) != "[4]" || job.ExtraVars["role"] != "app" ||
+			job.ExtraVars["inventory"] != nil || job.ExtraVars["machine"] != nil {
+			t.Fatalf("the role's job was launched with %+v", job)
+		}
+		// The seeded item, linked to its template by the sync: by its ID.
+		var templateID int
+		if err := h.store.Pool.QueryRow(ctx, `select coalesce((s->'awx'->>'template_id')::int, 0)
+			from requests r, jsonb_array_elements(r.plan->'composite') s where r.id = $1 and s->>'key' = 'user'`, req.Id).Scan(&templateID); err != nil || templateID == 0 {
+			t.Fatalf("the db-user step's job has no template ID: %d, %v", templateID, err)
+		}
+		if job := launched("step:user"); job.Inventory != 0 || job.ExtraVars["role_name"] != "app" {
+			t.Fatalf("the user's job was launched with %+v", job)
+		}
+	})
 }

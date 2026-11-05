@@ -217,8 +217,10 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 					add("", "not_available", label+": "+st.Item+" has no AWX template.")
 					continue
 				}
-				part.job = &provision.Job{Key: st.Key, Title: bp.AWX.Title, Template: bp.AWX.JobTemplate,
-					TemplateID: bp.AWX.TemplateID, Workflow: bp.AWX.Workflow}
+				// As the item launches it (awxLaunch): by its AWX ID when known,
+				// its launch inputs the job's inventory and credentials.
+				job := awxItemJob(item, bp.AWX, st.Key)
+				part.job = &job
 			case blueprint.KindWorkflow:
 				reg, why, err := s.usableWorkflow(ctx, bp.Workflow, "catalog_item", ev.Project.ID)
 				if err != nil {
@@ -242,7 +244,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 				part.title = title
 			}
 			part.job = &provision.Job{Key: st.Key, Title: title, Template: st.AWX.JobTemplate, TemplateID: st.AWX.TemplateID,
-				Workflow: st.AWX.Workflow}
+				Workflow: st.AWX.Workflow, InventoryInput: st.AWX.Inventory, CredentialInputs: st.AWX.Credentials}
 		case st.Workflow != "":
 			reg, why, err := s.usableWorkflow(ctx, st.Workflow, "composite_step", ev.Project.ID)
 			if err != nil {
