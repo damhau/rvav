@@ -6,7 +6,7 @@
 //
 // Loaded lazily, like the topology on the request form: React Flow stays out
 // of the other pages.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, type CanvasGraph, type CanvasNode, type CanvasStatus, type CanvasView } from "@/components/canvas";
 import { NodeFacts } from "@/components/canvas/CanvasList";
 import { statusLabel } from "@/components/canvas/graph";
@@ -33,10 +33,18 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
   const byNode = useMemo(() => runSteps(graph, steps), [graph, steps]);
   const status = useMemo(() => runStatus(graph, byNode), [graph, byNode]);
   const failed = failedNode(request, byNode);
-  const failure =
-    request.status === "failed" && request.error ? (
-      <FailureActions request={request} rolledBack={rollbackOf(steps)} />
-    ) : null;
+  // The failure's box is drawn where the selection is (the failed node's
+  // details, or under the graph) or in the timeline: it is an alert where it
+  // first appears only, so moving the selection doesn't have it read again.
+  const failureKey =
+    request.status === "failed" && request.error ? `${request.finished_at ?? ""} ${request.error.message}` : null;
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    announced.current = failureKey;
+  }, [failureKey]);
+  const failure = failureKey ? (
+    <FailureActions request={request} rolledBack={rollbackOf(steps)} announce={announced.current !== failureKey} />
+  ) : null;
 
   return (
     <>

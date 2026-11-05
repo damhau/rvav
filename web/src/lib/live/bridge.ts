@@ -105,6 +105,10 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       // A day-2 request started or ended: the deployment's history changed.
       if (r.deployment_id && before?.status !== r.status)
         void qc.invalidateQueries({ queryKey: keys.deployments.history(r.deployment_id) });
+      // Retried: the server reset its steps and deleted its rollback, with no
+      // step event, so pages open elsewhere read them again.
+      if (before?.status === "failed" && r.status !== "failed")
+        void qc.invalidateQueries({ queryKey: keys.requests.steps(r.id) });
       break;
     }
     case "request.step": {

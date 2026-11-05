@@ -49,6 +49,18 @@ describe("applyEvent", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.requests.lists() });
   });
 
+  it("a request retried reads its steps again: the server reset them and deleted its rollback, with no step event", () => {
+    const qc = new QueryClient();
+    const r = { ...sampleRequest(), status: "failed" as const };
+    qc.setQueryData(keys.requests.detail(r.number), r);
+    qc.setQueryData(keys.requests.steps(r.id), { items: [step("rollback", "done")] });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    applyEvent(qc, { id: "e2r", at, type: "request.updated", data: { ...r, error: null } });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: keys.requests.steps(r.id) });
+    applyEvent(qc, { id: "e2s", at, type: "request.updated", data: { ...r, status: "queued", error: null } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.requests.steps(r.id) });
+  });
+
   it("request.step updates a nested step in the cached tree", () => {
     const qc = new QueryClient();
     const tree = [step("a", "done"), step("job", "running", [step("t1", "done"), step("t2", "running")])];

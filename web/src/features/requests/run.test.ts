@@ -61,6 +61,45 @@ describe("a composite's run on its graph", () => {
     expect(runStatus(graph, runSteps(graph, steps))).toMatchObject({ inputs: "done", "step:nodes": "running" });
   });
 
+  it("puts the checks of blocking subscriptions, before the steps, on the request: running, then stopping it", () => {
+    const check = step("check:sub_cmdb", "running", { id: "stp_check" });
+    const checks = step("checks", "running", { children: [check] });
+    const steps = [
+      step("submit", "done"),
+      step("policy", "done"),
+      checks,
+      step("step:nodes", "pending"),
+      step("step:owner", "pending"),
+      step("step:backups", "pending"),
+      step("ready", "pending"),
+    ];
+    expect(
+      runSteps(graph, steps)
+        .get("inputs")!
+        .map((s) => s.key),
+    ).toEqual(["submit", "policy", "checks"]);
+    expect(runStatus(graph, runSteps(graph, steps))).toMatchObject({ inputs: "running", end: "pending" });
+
+    check.status = "failed";
+    checks.status = "failed";
+    const stopped = { ...stored().request, error: { step_id: "stp_check", message: "The CMDB said no." } };
+    const byNode = runSteps(graph, steps);
+    expect(failedNode(stopped, byNode)).toBe("inputs");
+    expect(runStatus(graph, byNode)).toMatchObject({ inputs: "failed", "step:nodes": "pending", end: "pending" });
+    // Another step the server would add before the composite's: the request's too; after them, the end's.
+    const more = [...steps.slice(0, 3), step("precheck", "done"), ...steps.slice(3), step("audit", "done")];
+    expect(
+      runSteps(graph, more)
+        .get("inputs")!
+        .map((s) => s.key),
+    ).toContain("precheck");
+    expect(
+      runSteps(graph, more)
+        .get("end")!
+        .map((s) => s.key),
+    ).toEqual(["ready", "audit"]);
+  });
+
   it("finds the node the request failed at, by the step it names, however deep", () => {
     const r = stored();
     expect(failedNode(r.request, runSteps(graph, r.steps))).toBe("step:owner");

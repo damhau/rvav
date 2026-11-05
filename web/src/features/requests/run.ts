@@ -1,22 +1,29 @@
 // A request's run on its graph (D1.4, ADR-0032): which of its steps each
 // node draws, and their status. A composite's steps run as step:<key>, its
-// nodes' IDs; the steps before them (submitted, approval) are the request's,
-// the ones after (ready, a rollback) its end's.
+// nodes' IDs; the steps before them (submitted, approval, the checks of
+// blocking subscriptions) are the request's, the ones after (ready, a
+// rollback) its end's.
 import type { CanvasGraph, CanvasStatus } from "@/components/canvas/graph";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 
-const before = new Set(["submit", "policy", "request.submit", "policy.approval"]);
+// The server's (submit, policy, checks) and the mock's.
+const before = new Set(["submit", "policy", "checks", "request.submit", "policy.approval"]);
 const ready = new Set(["ready", "request.ready"]);
 
-/** A run's top-level steps by the node that draws them, in the graph's order. */
+/**
+ * A run's top-level steps by the node that draws them, in the graph's order.
+ * A step no node draws goes on the request's when it comes before the
+ * composite's first step (the server adds the checks there), else on its end.
+ */
 export function runSteps(graph: CanvasGraph, steps: Step[]): Map<string, Step[]> {
   const out = new Map<string, Step[]>(graph.nodes.map((n) => [n.id, []]));
   const start = graph.nodes.find((n) => n.kind === "inputs")?.id;
   const end = graph.nodes.find((n) => n.kind === "end")?.id;
-  for (const s of steps) {
-    const id = out.has(s.key) ? s.key : before.has(s.key) ? start : end;
+  const first = steps.findIndex((s) => s.key.startsWith("step:"));
+  steps.forEach((s, i) => {
+    const id = out.has(s.key) ? s.key : before.has(s.key) || i < first ? start : end;
     if (id) out.get(id)!.push(s);
-  }
+  });
   return out;
 }
 

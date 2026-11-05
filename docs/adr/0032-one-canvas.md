@@ -241,9 +241,10 @@ differ, and none fits rvav's design system).
   changes: the page reads it once. Day-2 requests run an action and have
   none.
 - **Steps to nodes.** A composite's steps run as `step:<key>`, the node's
-  ID. The steps before them (submitted, approval) are the Request node's;
-  those after (ready, a rollback) the Done node's, whose status is the
-  ready step's. A node's status is its step's, from the event stream: not
+  ID. The steps before them (submitted, approval, the checks of blocking
+  subscriptions, and any other the server adds before the first) are the
+  Request node's; those after (ready, a rollback) the Done node's, whose
+  status is the ready step's. A node's status is its step's, from the event stream: not
   started, running, done, failed, skipped, or **undone**, which the step
   doesn't store: a step is undone when it was cancelled after its
   `/undo` step ran, and a VM step is undone when the request was rolled
@@ -258,10 +259,15 @@ differ, and none fits rvav's design system).
   node it failed at selected (the node holding the request's error step,
   however deep), its error and the request's own **Retry from the failed
   step** and **Roll back**, with their permissions; with another node
-  selected they stay under the graph, once. Once rolled back (a `rollback`
+  selected they stay under the graph, once. The failure is an alert where
+  it first appears only: moved by the selection or to the timeline, it is
+  not read out again. Once rolled back (a `rollback`
   step done, by hand or by `rollback_on_failure`), it says what was
   deleted and offers only **Retry**, which then runs every step after the
   approval again, as the server does; Roll back would find nothing left.
+  A retry resets the steps and deletes the rollback with no step event: a
+  page open elsewhere reads the steps again when the request leaves
+  failed (`lib/live/bridge.ts`).
 - **The timeline is the list view.** It says all the graph does, in run
   order, and more (each step's time, detail and tasks); it replaces the
   canvas's own list there (`Canvas`'s `list` prop) and keeps its live

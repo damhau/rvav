@@ -12,9 +12,22 @@ import { keys } from "@/lib/query";
  * built. Once rolled back (its `rollback` step done: by hand, or by a
  * composite's rollback_on_failure), there is nothing left to roll back, and
  * a retry runs every step after the approval again, as the server does.
+ *
+ * The box is an alert, read out when it appears, unless `announce` is false
+ * when it mounts: a page that moves it (a run's, with the selection) has it
+ * read once.
  */
-export function FailureActions({ request, rolledBack }: { request: ServiceRequest; rolledBack?: Step }) {
+export function FailureActions({
+  request,
+  rolledBack,
+  announce = true,
+}: {
+  request: ServiceRequest;
+  rolledBack?: Step;
+  announce?: boolean;
+}) {
   const undone = request.kind !== "day2" && rolledBack;
+  const [alert] = useState(announce);
   const qc = useQueryClient();
   const [confirmRollback, setConfirmRollback] = useState(false);
   const done = (r: ServiceRequest, what: string) => {
@@ -42,7 +55,11 @@ export function FailureActions({ request, rolledBack }: { request: ServiceReques
     onError: failed,
   });
   return (
-    <div role="alert" className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3">
+    <div
+      role={alert ? "alert" : "group"}
+      aria-label={alert ? undefined : `${request.number} failed`}
+      className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
+    >
       <span className="font-semibold text-bad">{request.error?.message}</span>
       <span className="text-xs">
         {request.kind === "day2"
