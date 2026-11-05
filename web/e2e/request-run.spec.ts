@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, test } from "@playwright/test";
 
 // A composite request's run on its graph (D1.4, ADR-0032) on the mock
@@ -6,7 +5,8 @@ import { expect, type Locator, test } from "@playwright/test";
 // that failed (REQ-10484) opens on its graph, the failed step selected with
 // its error, its job's output and Retry; another node shows its steps.
 // Retried, the run is followed live to the end, the graph staying where it
-// is; its timeline is the list view. Axe finds nothing, in either theme.
+// is; its timeline is the list view. accessibility.spec.ts scans it, failed
+// and running, in either theme; one-canvas.spec.ts does it with the keyboard.
 
 // Where the graph and its nodes are drawn.
 const placed = (run: Locator) =>
@@ -63,16 +63,3 @@ test("a composite request's run: failed, retried and followed on its graph", asy
   );
   expect(errors).toEqual([]);
 });
-
-for (const theme of ["light", "dark"] as const) {
-  test(`axe: a failed composite request's run, ${theme} theme`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("rvav.theme", t), theme);
-    await page.goto("/requests/REQ-10484");
-    await expect(page.getByRole("region", { name: "Selected: The database's owner" })).toBeVisible();
-    await expect(page.getByRole("log", { name: /^Output of / })).toContainText("PLAY RECAP");
-    const result = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-      .analyze();
-    expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
-  });
-}

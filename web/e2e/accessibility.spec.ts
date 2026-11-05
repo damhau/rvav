@@ -11,6 +11,7 @@ const pages = [
   "/catalog",
   "/catalog/rhel9-server/request",
   "/catalog/web-app/request",
+  "/catalog/three-tier/request",
   "/requests",
   "/deployments",
   "/approvals",
@@ -120,6 +121,36 @@ for (const theme of ["light", "dark"] as const) {
       await loaded(page);
       await page.getByRole("main").locator("[aria-pressed=false]").first().click();
       await scanAll(page, "/approvals (an approval open)");
+    });
+
+    // The canvas (D1, ADR-0032): a composite's steps in its draft's
+    // Definition tab, a step selected with all it binds; a composite
+    // request's run, failed, then running again once retried.
+    test("axe: a composite draft's steps, a step selected", async ({ page }) => {
+      await page.goto("/admin/catalog-items");
+      await loaded(page);
+      await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "PostgreSQL 16 cluster" }).click();
+      await page.getByRole("button", { name: "New draft" }).click();
+      await page.getByRole("tab", { name: "Definition" }).click();
+      await loaded(page);
+      await page
+        .getByRole("region", { name: "Steps of PostgreSQL 16 cluster" })
+        .getByRole("button", { name: /^AWX Backups\./ })
+        .click();
+      await expect(page.getByRole("region", { name: "Selected: Backups" }).getByRole("combobox").first()).toBeVisible();
+      await scan(page, "/admin/catalog-items/postgres-cluster › Definition (a step selected)");
+    });
+
+    test("axe: a composite request's run, failed then running", async ({ page }) => {
+      await page.goto("/requests/REQ-10484");
+      await expect(page.getByRole("region", { name: "Selected: The database's owner" })).toBeVisible();
+      await expect(page.getByRole("log", { name: /^Output of / })).toContainText("PLAY RECAP");
+      await loaded(page);
+      await scan(page, "/requests/REQ-10484 (failed)");
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      const run = page.getByRole("application", { name: "Run of REQ-10484" });
+      await expect(run.getByRole("button", { name: /\. Running\./ }).first()).toBeVisible();
+      await scan(page, "/requests/REQ-10484 (running)");
     });
 
     for (const [list, link] of details) {
