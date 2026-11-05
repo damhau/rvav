@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
-import { readComposite } from "@/features/admin/catalog/composite";
+import { readComposite } from "@/lib/composite";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";

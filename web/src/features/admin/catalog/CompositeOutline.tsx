@@ -3,7 +3,7 @@
 // run, use and undo, and what the server will refuse.
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { readComposite, type CompositeStepView } from "./composite";
+import { readComposite, type CompositeStepView } from "@/lib/composite";
 import { fromYaml, problemsOnLines } from "./definitionYaml";
 
 const kindLabel: Record<CompositeStepView["kind"], string> = {

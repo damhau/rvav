@@ -1,0 +1,51 @@
+/*
+  React Flow's look in the app's tokens (ADR-0032): its variables point at
+  ours, so the canvas follows the light and dark themes with them. Only
+  base.css is imported from React Flow; nodes and controls are our own.
+*/
+.rvav-canvas .react-flow {
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-dots-color: var(--line-strong);
+  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-handle-background-color: transparent;
+  --xy-attribution-background-color: transparent;
+}
+
+/* Edges only join nodes here: nothing is connected by hand. */
+.rvav-canvas .react-flow__handle {
+  opacity: 0;
+  border: 0;
+  min-width: 1px;
+  min-height: 1px;
+}
+
+.rvav-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.rvav-canvas .react-flow__edge-text {
+  fill: var(--fg-muted);
+  font-size: 11px;
+  font-family: var(--font-code);
+}
+
+.rvav-canvas .react-flow__edge-textbg {
+  fill: var(--surface);
+}
+
+.rvav-canvas .rvav-edge-member .react-flow__edge-path,
+.rvav-canvas .rvav-edge-conditional .react-flow__edge-path {
+  stroke-dasharray: 5 4;
+}
+
+.rvav-canvas .rvav-edge-deny .react-flow__edge-path {
+  stroke: var(--bad);
+}
+
+.rvav-canvas .react-flow__attribution a {
+  color: var(--fg-faint);
+}

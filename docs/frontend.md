@@ -21,6 +21,7 @@ typed end to end, tested, fast, accessible, and consistent.
 | Command palette | `cmdk` (through the shadcn `Command` component) |
 | Toasts | sonner |
 | Charts | Recharts (through shadcn charts) |
+| Graphs (topology, composite designer, runs) | React Flow (`@xyflow/react`), laid out by dagre ([ADR-0032](adr/0032-one-canvas.md)) |
 | Code editor (YAML views) | Monaco or CodeMirror 6, loaded lazily |
 | API client | Generated from `api/openapi.yaml` with `openapi-typescript` + `openapi-fetch` |
 | Realtime | SSE (`EventSource`), bridged into the TanStack Query cache |
@@ -64,8 +65,9 @@ web/
 │  │  └─ admin/catalog/        # catalog administration; designer/ is the form designer
 │  ├─ components/
 │  │  ├─ ui/                   # shadcn/ui primitives (generated, then owned)
-│  │  └─ common/               # app-level building blocks: DataTable, PageHeader,
-│  │                           # EmptyState, StatusBadge, CopyButton, Timeline…
+│  │  ├─ common/               # app-level building blocks: DataTable, PageHeader,
+│  │  │                        # EmptyState, StatusBadge, CopyButton, Timeline…
+│  │  └─ canvas/               # a blueprint as a graph (React Flow, dagre; ADR-0032)
 │  ├─ forms/                   # JSON Schema form renderer + widgets
 │  ├─ lib/
 │  │  ├─ api/                  # generated types, fetch client, error handling
@@ -370,13 +372,61 @@ them.
   others. Under the YAML, `CompositeOutline` shows the steps as they will
   run: groups, parallel steps, what each runs, uses and undoes. It also
   shows the server's structural checks while typing
-  (`catalog/composite.ts`; the mock reuses them, CEL included). Saving
+  (`lib/composite.ts`; the mock and the canvas reuse them, CEL included). Saving
   puts the server's problems on their lines.
 
 The mock backend (`mocks/extensibility.ts`) seeds a blocking CMDB check, a
 ServiceNow subscription with a failed run, the `webhook-signing` secret and
 the decommission workflow. It checks webhook hosts against
 `cmdb.corp.example`, `hooks.corp.example` and `servicenow.corp.example`.
+
+## The canvas
+
+`components/canvas` ([ADR-0032](adr/0032-one-canvas.md)) draws a
+blueprint as a graph: an item's topology, the composite designer and a
+request's run use the same component. The YAML stays the source of
+truth: the graph is built from the blueprint every time it changes, and
+nothing about it (positions, layout) is stored.
+
+- **Model** (`graph.ts`, `blueprint.ts`): `blueprintGraph(blueprint)`
+  returns a `CanvasGraph`, or null for a kind it doesn't draw (AWX,
+  workflow). `compositeGraph` draws a composite top to bottom: `inputs`
+  (the request), `step:<key>` per step (`step@<pointer>` when the key is
+  missing or used twice), `end`; a parallel group is a `CanvasGroup`
+  `parallel:<index>` its steps sit in, and sequence edges join groups, not
+  their steps. A `when` makes the edge into its step `conditional`. What
+  a step runs, uses (`steps.<key>` in its bindings) and undoes are its
+  `lines`. `vmGraph` draws a VM item left to right: `network:auto`,
+  `network:<CEL>` and `segment:<key>`, then `component:<key>` (or
+  `component:vm` without components), then `sg:<key>`, `nsx:<ID>`,
+  `groups:<CEL>` and `any`; edges are `network` (an adapter, labelled with
+  its key), `member` (dashed) and `rule` (labelled with its services,
+  `deny` for drop or reject). Every node has `relations` (how it relates
+  to the others, in words) and `problems` (the structural checks, at
+  their `pointer`); `nodeForPointer` finds the node a JSON pointer falls
+  in, for the server's problems.
+- **Layout** (`layout.ts`): dagre, in the graph's direction. A node's size
+  is fixed by what it shows (`nodeHeight`), so tests and browsers agree.
+  A parallel group is laid out as one node holding its steps. Rules
+  between a VM item's groups are left out of the layout and drawn as
+  brackets on their right, so the groups stay in one column.
+- **`Canvas`**: `graph` and `label` (names the region and its list), and
+  optionally `status` (by node ID: a run's step status, or `undone`),
+  `selected` and `onSelect` (controlled, or left to the canvas),
+  `renderDetails` (what shows under the canvas for the selected node; by
+  default `NodeDetails`, all the node shows), `actions` (the caller's
+  buttons beside the view switch), `defaultView` and `height`. Read only:
+  the designer edits the blueprint and passes the new graph.
+- **Keyboard:** the graph is one Tab stop, on the node last visited. The
+  arrow keys move to the nearest node that way, Home and End to the first
+  and last, Enter or Space selects, Escape clears. Each node is a button
+  whose name says all it shows, its relations and its status.
+- **List view:** the same model as an ordered list of steps (a parallel
+  group a list within it) or a VM item's nodes with their relations, for
+  screen readers and anyone who would rather read. It shares the
+  selection.
+- **Themes:** only React Flow's `base.css` is imported; `canvas.css` points
+  its variables at the app's tokens, and the nodes are our own components.
 
 ## Request options
 

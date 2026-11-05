@@ -15,6 +15,8 @@ Element.prototype.scrollIntoView ??= function scrollIntoView() {};
 window.scrollTo = () => {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
+// React Flow measures its edges' labels.
+(SVGElement.prototype as unknown as { getBBox?: () => DOMRect }).getBBox ??= () => new DOMRect(0, 0, 0, 0);
 window.matchMedia ??= (query: string) =>
   ({
     matches: false,

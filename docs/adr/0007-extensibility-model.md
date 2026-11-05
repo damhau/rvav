@@ -1,6 +1,7 @@
 # ADR-0007: Extensibility model (what replaces vRO)
 
-- Status: accepted
+- Status: accepted; "no visual workflow designer" revised by
+  [ADR-0032](0032-one-canvas.md)
 - Date: 2026-10-26
 
 ## Context
@@ -34,6 +35,9 @@ replacement that fits it best.
 
 There is no visual workflow designer. Simple chains are composite items
 (level 1); everything else is a playbook or code with review and tests.
+*(Revised by [ADR-0032](0032-one-canvas.md): composite items get a designer
+on a canvas, whose source of truth stays the YAML, with no scripting
+language; everything else is still a playbook or code.)*
 
 ### Contract for custom Temporal workflows (level 3)
 
@@ -102,4 +106,4 @@ which catalog items and subscriptions use it, and the last run date.
   workflows written by the platform team.
 - Without a visual designer, people who built vRO workflows in its GUI must
   move to YAML composites, playbooks or code. Training and examples are part
-  of the plan.
+  of the plan. *(Since ADR-0032, composites have a designer on a canvas.)*
