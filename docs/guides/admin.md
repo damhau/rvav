@@ -324,8 +324,11 @@ An item's tabs:
   shows one's details. Requesters see the same graph on the request form
   of an item with more than one VM or step, without what only you see:
   no guest settings (domain, join credential, administrator password,
-  cloud-init), sizes, naming, tags or placement, and of a composite
-  step's bindings only the earlier steps they use.
+  cloud-init), sizes, naming, tags or placement, of a composite step's
+  bindings only the earlier steps they use, and in a condition or a
+  binding the graph shows, its quoted values as `'…'`
+  (`inputs.token == '…'`). A binding that is only a value, such as a
+  network's name, shows whole.
 - **Designing a composite:** in a composite's draft, the graph edits the
   YAML beside it, and the YAML the graph. Your comments in the YAML stay
   through the graph's edits, but not through a save: rvav stores the

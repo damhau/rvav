@@ -51,8 +51,22 @@ composite designer (D1.3) and a request's run (D1.4).
   canvas draws (`blueprint.Topology`), without guest settings, sizes,
   naming, tags, placement or AWX variables, and of a composite step's
   bindings only the `steps.<key>` they use, since a binding's literal may
-  be anything. Its lists keep their positions, so a pointer means the
-  same in both. AWX and workflow items have none.
+  be anything. The CEL it keeps (a step's `when`, a component's `count`,
+  a disk's `size_gb`, an adapter's `network`, and the `network`,
+  `groups`, `template` and `post_config` bindings) has its string
+  literals masked (`policy.MaskLiterals`): each literal's text becomes
+  `…` in its own quotes and comments go, so `inputs.token ==
+  'tok_live_x'` reads `inputs.token == '…'` and a map picking a network
+  by environment reads `{'…':'…'}[inputs.env]`, while what it reads and
+  how (identifiers, operators, numbers, booleans) stay as written. An
+  empty literal stays. A binding that is only a literal, or a list of
+  them, stays whole: it is the network, template or post-configuration
+  the item uses, which the canvas draws by name. One that doesn't parse
+  is `…`. The literals are found by cel-go's parser and masked where
+  they are written, so the rest is the author's text; the mocks'
+  `topologyOf` does the same with a scanner. Its lists keep their
+  positions, so a pointer means the same in both. AWX and workflow items
+  have none.
 - **No scripting language.** Conditions and bindings stay CEL, as in
   ADR-0022; there is no code node. Work that needs a language is an AWX
   playbook or a custom workflow: ADR-0007's levels 2 and 3 are unchanged,
@@ -289,4 +303,11 @@ differ, and none fits rvav's design system).
   zoom are the fallback; ELK is the next step if layouts need it.
 - The model is the contract between the three uses: a new blueprint field
   that should show on the canvas is a change to `blueprintGraph` and its
-  tests.
+  tests, and, for requesters to see it, to `blueprint.Topology` and the
+  mocks' `topologyOf`, which keep only what they list. Both are checked
+  against one fixture, `internal/seed/testdata/topology.json` (the seeded
+  VM and composite items' blueprints, and probes of what a requester must
+  not read, with their topology): `TestTopologyFixture` keeps it what
+  `blueprint.Topology` gives (rewritten with `-update`, the change read in
+  review), and `web/src/mocks/topology.test.ts` checks `topologyOf`
+  against it.

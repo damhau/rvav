@@ -171,6 +171,28 @@ func TestRequestTopology(t *testing.T) {
 			t.Fatalf("the VM item's request's topology = %s, its form's %s", got, want)
 		}
 
+		// An AWX item's request has none, and an approver who isn't a member
+		// of its project reads that as whoever else may read the request:
+		// afavre, a network engineer in core only, approves web's firewall
+		// flows (pol_fw); sbrunner, neither, can't read it.
+		var fwForm api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/firewall-flow/form?project_id=prj_web", "tnguyen", nil, 200, &fwForm)
+		var fw api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: fwForm.ItemId, VersionId: fwForm.VersionId,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"source": "web-dev-app001", "destination": "10.22.30.10",
+				"port": 5432, "protocol": "tcp"}}, 202, &fw, "Idempotency-Key", uuid.NewString())
+		if fw.Status != api.RequestStatusPendingApproval {
+			t.Fatalf("the firewall flow is %s, not waiting for approval", fw.Status)
+		}
+		for _, user := range []string{"tnguyen", "afavre"} {
+			if got := topologyOf(fw.Id, user); got != "" {
+				t.Fatalf("an AWX item's request's topology, as %s = %s", user, got)
+			}
+		}
+		h.json("GET", "/api/v1/requests/"+fw.Id+"/topology", "sbrunner", nil, 404, nil)
+		// Approving web's flows lets afavre read those, not data's cluster.
+		h.json("GET", "/api/v1/requests/"+req.Id+"/topology", "afavre", nil, 404, nil)
+
 		// A day-2 request runs an action, not the item: it has none.
 		h.runWorkflow(vm.Id, nil)
 		h.waitStatus(vm.Id, "tnguyen", api.RequestStatusSucceeded)

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"github.com/damhau/rvav/internal/policy"
 )
 
 // Topology is what a requester sees of a blueprint: the part the canvas
@@ -14,7 +16,10 @@ import (
 // its bindings use. Nothing else: no guest settings (domain, join
 // credential, administrator password, cloud-init), sizes, naming, tags,
 // placement or AWX variables, and a step's bindings only as the
-// `steps.<key>` they name. Lists keep their positions, so a pointer into
+// `steps.<key>` they name. The CEL it keeps (a condition, a count, a disk's
+// size, the adapters', groups', template and post-configuration bindings)
+// has its string literals masked (policy.MaskLiterals): what it reads, not
+// what it compares it to. Lists keep their positions, so a pointer into
 // the blueprint points at the same thing in its topology. Nil for the
 // kinds the canvas doesn't draw (AWX, workflow) and for a blueprint that
 // isn't JSON.
@@ -93,6 +98,30 @@ func (s values) keep(v any) any {
 	return out
 }
 
+// cel keeps a CEL expression with its string literals masked
+// (policy.MaskLiterals); lone keeps an expression that is only literals,
+// the value the canvas draws by name. A number or a boolean is kept, as a
+// list of strings is where lone (a value rather than CEL); anything else
+// goes.
+type cel struct{ lone bool }
+
+func (c cel) keep(v any) any {
+	switch x := v.(type) {
+	case string:
+		return policy.MaskLiterals(x, c.lone)
+	case float64, bool:
+		return x
+	case []any:
+		for _, e := range x {
+			if _, ok := e.(string); !ok || !c.lone {
+				return nil
+			}
+		}
+		return x
+	}
+	return nil
+}
+
 var stepRef = regexp.MustCompile(`\bsteps\.[a-z][a-z0-9_]*`)
 
 // stepRefs keeps of a step's bindings only the earlier steps they use:
@@ -119,10 +148,11 @@ func (stepRefs) keep(v any) any {
 var (
 	// The bindings the canvas draws: adapters, groups chosen in the
 	// request, the template and post-configuration.
-	topologyBindings = fields{"network": asIs{}, "groups": asIs{}, "template": asIs{}, "post_config": asIs{}}
-	topologyGuest    = fields{"os_family": asIs{}}
-	topologyDisks    = each{fields{"size_gb": asIs{}, "storage_policy": asIs{}}}
-	topologyNICs     = each{fields{"key": asIs{}, "network": asIs{}, "ipam": asIs{}}}
+	topologyBindings = fields{"network": cel{lone: true}, "groups": cel{lone: true}, "template": cel{lone: true},
+		"post_config": cel{lone: true}}
+	topologyGuest = fields{"os_family": asIs{}}
+	topologyDisks = each{fields{"size_gb": cel{}, "storage_policy": asIs{}}}
+	topologyNICs  = each{fields{"key": asIs{}, "network": cel{lone: true}, "ipam": asIs{}}}
 
 	vmTopology = fields{
 		"kind":          asIs{},
@@ -143,7 +173,7 @@ var (
 		"components": each{fields{
 			"key":           asIs{},
 			"title":         asIs{},
-			"count":         asIs{},
+			"count":         cel{},
 			"template":      asIs{},
 			"library":       asIs{},
 			"guest":         topologyGuest,
@@ -161,7 +191,7 @@ var (
 		"item":     asIs{},
 		"awx":      fields{"job_template": asIs{}, "title": asIs{}},
 		"workflow": asIs{},
-		"when":     asIs{},
+		"when":     cel{},
 		"with":     stepRefs{},
 		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "with": stepRefs{}},
 	}

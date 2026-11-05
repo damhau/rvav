@@ -143,3 +143,43 @@ func TestTopologyKeepsPositions(t *testing.T) {
 		t.Fatalf("components = %#v", got["components"])
 	}
 }
+
+// The CEL a requester sees reads what it reads, not the values it compares
+// or maps to (review of D1): its string literals are masked, but for a
+// binding that is only a literal, the network or keys the canvas draws.
+func TestTopologyMasksCELLiterals(t *testing.T) {
+	vm := topologyOf(t, `{"kind": "vm",
+	  "bindings": {"network": "{'prod':'vlan-pci-secret'}[inputs.env]", "template": "\"rhel9-gold\"",
+	               "groups": "inputs.env == 'prod' ? ['grp-pci'] : []", "post_config": "['linux-baseline', 'idm-join']"},
+	  "components": [{"key": "web", "count": "inputs.tier == 'gold-secret' ? 3 : 1",
+	    "disks": [{"size_gb": "inputs.env == 'prod' ? 500 : 50"}],
+	    "nics": [{"key": "pci", "network": "\"dvpg-pci\""}, {"key": "b", "network": "project.code in ['fin', 'hr'] ? 'vl1' : 'vl2'"}]}]}`)
+	composite := topologyOf(t, `{"kind": "composite", "steps": [
+	  {"key": "a", "item": "rhel9-server", "when": "inputs.token == 'tok_live_SECRET'"},
+	  {"key": "b", "workflow": "x", "when": "inputs.token == 'tok_live_SECRET"}]}`)
+	b, _ := json.Marshal(map[string]any{"vm": vm, "composite": composite})
+	for _, secret := range []string{"tok_live", "vlan-pci-secret", "gold-secret", "'fin'", "grp-pci", "'prod'", "vl1"} {
+		if strings.Contains(string(b), secret) {
+			t.Fatalf("%s is in the topology: %s", secret, b)
+		}
+	}
+	bindings := vm["bindings"].(map[string]any)
+	web := vm["components"].([]any)[0].(map[string]any)
+	steps := composite["steps"].([]any)
+	for got, want := range map[any]string{
+		bindings["network"]:     "{'…':'…'}[inputs.env]",
+		bindings["template"]:    `"rhel9-gold"`,
+		bindings["groups"]:      "inputs.env == '…' ? ['…'] : []",
+		bindings["post_config"]: "['linux-baseline', 'idm-join']",
+		web["count"]:            "inputs.tier == '…' ? 3 : 1",
+		web["disks"].([]any)[0].(map[string]any)["size_gb"]: "inputs.env == '…' ? 500 : 50",
+		web["nics"].([]any)[0].(map[string]any)["network"]:  `"dvpg-pci"`,
+		web["nics"].([]any)[1].(map[string]any)["network"]:  "project.code in ['…', '…'] ? '…' : '…'",
+		steps[0].(map[string]any)["when"]:                   "inputs.token == '…'",
+		steps[1].(map[string]any)["when"]:                   "…", // not CEL: nothing of it
+	} {
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+}

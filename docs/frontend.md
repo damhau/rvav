@@ -541,8 +541,9 @@ A blueprint with components builds one deployment
   builds on the canvas. It is drawn from the form's `topology`
   (`RequestForm.topology`: the part of the blueprint the canvas draws,
   without guest settings, sizes, naming or a step's binding literals,
-  which a requester doesn't see; `blueprint.Topology` on the server,
-  `topologyOf` in the mocks) and `withPreview` puts the preview's counts
+  which a requester doesn't see, its CEL's string literals masked;
+  `blueprint.Topology` on the server, `topologyOf` in the mocks, checked
+  against one fixture, `internal/seed/testdata/topology.json`) and `withPreview` puts the preview's counts
   and names on the components (a composite's step: what the item it
   requests builds), so it follows the values. Only when there is more
   than one VM on a network to draw: a single-VM item's summary says it

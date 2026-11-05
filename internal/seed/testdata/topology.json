@@ -1,0 +1,818 @@
+[
+  {
+    "name": "rhel9-server",
+    "blueprint": {
+      "awx_templates": {
+        "idm-join": {
+          "job_template": "idm-join",
+          "title": "Join IdM"
+        },
+        "linux-baseline": {
+          "job_template": "linux-baseline",
+          "title": "Corporate baseline"
+        },
+        "monitoring-agent": {
+          "job_template": "monitoring-agent",
+          "title": "Monitoring agent"
+        },
+        "role-nginx": {
+          "job_template": "role-nginx",
+          "title": "nginx"
+        }
+      },
+      "bindings": {
+        "cluster": "inputs.cluster",
+        "datastore": "inputs.datastore",
+        "disk_gb": "sizes[inputs.size].disk_gb",
+        "memory_gb": "sizes[inputs.size].memory_gb",
+        "network": "inputs.network",
+        "post_config": "inputs.post_config",
+        "vcpu": "sizes[inputs.size].vcpu"
+      },
+      "guest": {
+        "domain": "corp.example",
+        "os_family": "linux",
+        "time_zone": "Europe/Zurich"
+      },
+      "kind": "vm",
+      "naming": "{project}-{environment}-{inputs.role}{seq:03}",
+      "sizes": {
+        "L": {
+          "disk_gb": 120,
+          "label": "Large",
+          "memory_gb": 32,
+          "vcpu": 8
+        },
+        "M": {
+          "disk_gb": 80,
+          "label": "Medium",
+          "memory_gb": 16,
+          "vcpu": 4
+        },
+        "S": {
+          "disk_gb": 60,
+          "label": "Small",
+          "memory_gb": 4,
+          "vcpu": 2
+        },
+        "XL": {
+          "disk_gb": 120,
+          "label": "X-Large",
+          "memory_gb": 48,
+          "vcpu": 8
+        }
+      },
+      "template": "tpl-rhel9.4-2026.10"
+    },
+    "topology": {
+      "awx_templates": {
+        "idm-join": {
+          "title": "Join IdM"
+        },
+        "linux-baseline": {
+          "title": "Corporate baseline"
+        },
+        "monitoring-agent": {
+          "title": "Monitoring agent"
+        },
+        "role-nginx": {
+          "title": "nginx"
+        }
+      },
+      "bindings": {
+        "network": "inputs.network",
+        "post_config": "inputs.post_config"
+      },
+      "guest": {
+        "os_family": "linux"
+      },
+      "kind": "vm",
+      "template": "tpl-rhel9.4-2026.10"
+    }
+  },
+  {
+    "name": "ubuntu-server",
+    "blueprint": {
+      "awx_templates": {
+        "idm-join": {
+          "job_template": "idm-join",
+          "title": "Join IdM"
+        },
+        "linux-baseline": {
+          "job_template": "linux-baseline",
+          "title": "Corporate baseline"
+        },
+        "monitoring-agent": {
+          "job_template": "monitoring-agent",
+          "title": "Monitoring agent"
+        },
+        "role-nginx": {
+          "job_template": "role-nginx",
+          "title": "nginx"
+        }
+      },
+      "bindings": {
+        "cluster": "inputs.cluster",
+        "datastore": "inputs.datastore",
+        "disk_gb": "sizes[inputs.size].disk_gb",
+        "memory_gb": "sizes[inputs.size].memory_gb",
+        "network": "inputs.network",
+        "post_config": "inputs.post_config",
+        "vcpu": "sizes[inputs.size].vcpu"
+      },
+      "guest": {
+        "domain": "corp.example",
+        "os_family": "linux",
+        "time_zone": "Europe/Zurich"
+      },
+      "kind": "vm",
+      "naming": "{project}-{environment}-{inputs.role}{seq:03}",
+      "sizes": {
+        "L": {
+          "disk_gb": 120,
+          "label": "Large",
+          "memory_gb": 32,
+          "vcpu": 8
+        },
+        "M": {
+          "disk_gb": 80,
+          "label": "Medium",
+          "memory_gb": 16,
+          "vcpu": 4
+        },
+        "S": {
+          "disk_gb": 60,
+          "label": "Small",
+          "memory_gb": 4,
+          "vcpu": 2
+        },
+        "XL": {
+          "disk_gb": 120,
+          "label": "X-Large",
+          "memory_gb": 48,
+          "vcpu": 8
+        }
+      },
+      "template": "tpl-ubuntu24.04-2026.10"
+    },
+    "topology": {
+      "awx_templates": {
+        "idm-join": {
+          "title": "Join IdM"
+        },
+        "linux-baseline": {
+          "title": "Corporate baseline"
+        },
+        "monitoring-agent": {
+          "title": "Monitoring agent"
+        },
+        "role-nginx": {
+          "title": "nginx"
+        }
+      },
+      "bindings": {
+        "network": "inputs.network",
+        "post_config": "inputs.post_config"
+      },
+      "guest": {
+        "os_family": "linux"
+      },
+      "kind": "vm",
+      "template": "tpl-ubuntu24.04-2026.10"
+    }
+  },
+  {
+    "name": "windows-server",
+    "blueprint": {
+      "awx_templates": {
+        "monitoring-agent": {
+          "job_template": "monitoring-agent",
+          "title": "Monitoring agent"
+        },
+        "win-baseline": {
+          "job_template": "win-baseline",
+          "title": "Corporate baseline"
+        }
+      },
+      "bindings": {
+        "cluster": "inputs.cluster",
+        "datastore": "inputs.datastore",
+        "disk_gb": "sizes[inputs.size].disk_gb",
+        "memory_gb": "sizes[inputs.size].memory_gb",
+        "network": "inputs.network",
+        "post_config": "inputs.post_config",
+        "vcpu": "sizes[inputs.size].vcpu"
+      },
+      "guest": {
+        "domain": "corp.example",
+        "os_family": "windows",
+        "time_zone": "Europe/Zurich"
+      },
+      "kind": "vm",
+      "naming": "{project}-{environment}-{inputs.role}{seq:03}",
+      "sizes": {
+        "L": {
+          "disk_gb": 120,
+          "label": "Large",
+          "memory_gb": 32,
+          "vcpu": 8
+        },
+        "M": {
+          "disk_gb": 80,
+          "label": "Medium",
+          "memory_gb": 16,
+          "vcpu": 4
+        },
+        "S": {
+          "disk_gb": 60,
+          "label": "Small",
+          "memory_gb": 4,
+          "vcpu": 2
+        },
+        "XL": {
+          "disk_gb": 120,
+          "label": "X-Large",
+          "memory_gb": 48,
+          "vcpu": 8
+        }
+      },
+      "template": "tpl-win2025-std-2026.09"
+    },
+    "topology": {
+      "awx_templates": {
+        "monitoring-agent": {
+          "title": "Monitoring agent"
+        },
+        "win-baseline": {
+          "title": "Corporate baseline"
+        }
+      },
+      "bindings": {
+        "network": "inputs.network",
+        "post_config": "inputs.post_config"
+      },
+      "guest": {
+        "os_family": "windows"
+      },
+      "kind": "vm",
+      "template": "tpl-win2025-std-2026.09"
+    }
+  },
+  {
+    "name": "three-tier",
+    "blueprint": {
+      "awx_templates": {
+        "linux-baseline": {
+          "job_template": "linux-baseline",
+          "title": "Corporate baseline"
+        }
+      },
+      "bindings": {
+        "cluster": "inputs.cluster",
+        "datastore": "inputs.datastore",
+        "disk_gb": "80",
+        "memory_gb": "16",
+        "network": "segments.app",
+        "vcpu": "4"
+      },
+      "components": [
+        {
+          "anti_affinity": true,
+          "bindings": {
+            "post_config": "[\"linux-baseline\"]"
+          },
+          "count": "inputs.web_nodes",
+          "groups": [
+            "web"
+          ],
+          "key": "web",
+          "title": "Web"
+        },
+        {
+          "count": 1,
+          "groups": [
+            "app"
+          ],
+          "key": "app",
+          "title": "Application"
+        },
+        {
+          "bindings": {
+            "disk_gb": "120",
+            "memory_gb": "32",
+            "vcpu": "8"
+          },
+          "count": 1,
+          "disks": [
+            {
+              "size_gb": 200
+            }
+          ],
+          "groups": [
+            "db",
+            "nsx:grp-backup-clients"
+          ],
+          "key": "db",
+          "title": "Database"
+        }
+      ],
+      "deployment_name": "{project}-{environment}-threetier",
+      "guest": {
+        "domain": "corp.example",
+        "os_family": "linux",
+        "time_zone": "Europe/Zurich"
+      },
+      "kind": "vm",
+      "naming": "{project}-{environment}-tt{component}{seq:02}",
+      "rollback_on_failure": true,
+      "security_groups": [
+        {
+          "key": "web",
+          "rules": [
+            {
+              "from": [
+                "any"
+              ],
+              "services": [
+                "HTTPS"
+              ]
+            }
+          ],
+          "title": "Web"
+        },
+        {
+          "key": "app",
+          "rules": [
+            {
+              "from": [
+                "web"
+              ],
+              "services": [
+                "HTTP"
+              ]
+            }
+          ],
+          "title": "Application"
+        },
+        {
+          "key": "db",
+          "rules": [
+            {
+              "from": [
+                "app"
+              ],
+              "services": [
+                "PostgreSQL"
+              ]
+            },
+            {
+              "action": "drop",
+              "from": [
+                "any"
+              ],
+              "services": [
+                "any"
+              ]
+            }
+          ],
+          "title": "Database"
+        }
+      ],
+      "segments": [
+        {
+          "key": "app",
+          "title": "Application"
+        }
+      ],
+      "template": "tpl-rhel9.4-2026.10"
+    },
+    "topology": {
+      "awx_templates": {
+        "linux-baseline": {
+          "title": "Corporate baseline"
+        }
+      },
+      "bindings": {
+        "network": "segments.app"
+      },
+      "components": [
+        {
+          "anti_affinity": true,
+          "bindings": {
+            "post_config": "[\"linux-baseline\"]"
+          },
+          "count": "inputs.web_nodes",
+          "groups": [
+            "web"
+          ],
+          "key": "web",
+          "title": "Web"
+        },
+        {
+          "count": 1,
+          "groups": [
+            "app"
+          ],
+          "key": "app",
+          "title": "Application"
+        },
+        {
+          "bindings": {},
+          "count": 1,
+          "disks": [
+            {
+              "size_gb": 200
+            }
+          ],
+          "groups": [
+            "db",
+            "nsx:grp-backup-clients"
+          ],
+          "key": "db",
+          "title": "Database"
+        }
+      ],
+      "guest": {
+        "os_family": "linux"
+      },
+      "kind": "vm",
+      "security_groups": [
+        {
+          "key": "web",
+          "rules": [
+            {
+              "from": [
+                "any"
+              ],
+              "services": [
+                "HTTPS"
+              ]
+            }
+          ],
+          "title": "Web"
+        },
+        {
+          "key": "app",
+          "rules": [
+            {
+              "from": [
+                "web"
+              ],
+              "services": [
+                "HTTP"
+              ]
+            }
+          ],
+          "title": "Application"
+        },
+        {
+          "key": "db",
+          "rules": [
+            {
+              "from": [
+                "app"
+              ],
+              "services": [
+                "PostgreSQL"
+              ]
+            },
+            {
+              "action": "drop",
+              "from": [
+                "any"
+              ],
+              "services": [
+                "any"
+              ]
+            }
+          ],
+          "title": "Database"
+        }
+      ],
+      "segments": [
+        {
+          "key": "app",
+          "title": "Application"
+        }
+      ],
+      "template": "tpl-rhel9.4-2026.10"
+    }
+  },
+  {
+    "name": "pg-node",
+    "blueprint": {
+      "awx_templates": {
+        "linux-baseline": {
+          "job_template": "linux-baseline",
+          "title": "Corporate baseline"
+        },
+        "patroni-cluster": {
+          "job_template": "patroni-cluster",
+          "title": "Patroni cluster"
+        },
+        "postgresql-install": {
+          "job_template": "postgresql-install",
+          "title": "PostgreSQL"
+        }
+      },
+      "bindings": {
+        "cluster": "inputs.cluster",
+        "datastore": "inputs.datastore",
+        "disk_gb": "sizes[inputs.size].disk_gb",
+        "memory_gb": "sizes[inputs.size].memory_gb",
+        "network": "inputs.network",
+        "vcpu": "sizes[inputs.size].vcpu"
+      },
+      "components": [
+        {
+          "anti_affinity": true,
+          "bindings": {
+            "post_config": "[\"linux-baseline\", \"postgresql-install\", \"patroni-cluster\"]"
+          },
+          "count": "inputs.nodes",
+          "disks": [
+            {
+              "size_gb": "inputs.data_gb"
+            }
+          ],
+          "key": "db",
+          "title": "Database nodes"
+        }
+      ],
+      "deployment_name": "{project}-{environment}-pg-{inputs.name}",
+      "guest": {
+        "domain": "corp.example",
+        "os_family": "linux",
+        "time_zone": "Europe/Zurich"
+      },
+      "kind": "vm",
+      "naming": "{project}-{environment}-pg{inputs.name}{seq:02}",
+      "rollback_on_failure": true,
+      "sizes": {
+        "L": {
+          "disk_gb": 120,
+          "label": "Large",
+          "memory_gb": 32,
+          "vcpu": 8
+        },
+        "M": {
+          "disk_gb": 80,
+          "label": "Medium",
+          "memory_gb": 16,
+          "vcpu": 4
+        },
+        "S": {
+          "disk_gb": 60,
+          "label": "Small",
+          "memory_gb": 4,
+          "vcpu": 2
+        },
+        "XL": {
+          "disk_gb": 120,
+          "label": "X-Large",
+          "memory_gb": 48,
+          "vcpu": 8
+        }
+      },
+      "template": "tpl-rhel9.4-2026.10"
+    },
+    "topology": {
+      "awx_templates": {
+        "linux-baseline": {
+          "title": "Corporate baseline"
+        },
+        "patroni-cluster": {
+          "title": "Patroni cluster"
+        },
+        "postgresql-install": {
+          "title": "PostgreSQL"
+        }
+      },
+      "bindings": {
+        "network": "inputs.network"
+      },
+      "components": [
+        {
+          "anti_affinity": true,
+          "bindings": {
+            "post_config": "[\"linux-baseline\", \"postgresql-install\", \"patroni-cluster\"]"
+          },
+          "count": "inputs.nodes",
+          "disks": [
+            {
+              "size_gb": "inputs.data_gb"
+            }
+          ],
+          "key": "db",
+          "title": "Database nodes"
+        }
+      ],
+      "guest": {
+        "os_family": "linux"
+      },
+      "kind": "vm",
+      "template": "tpl-rhel9.4-2026.10"
+    }
+  },
+  {
+    "name": "postgres-cluster",
+    "blueprint": {
+      "kind": "composite",
+      "rollback_on_failure": true,
+      "steps": [
+        {
+          "item": "pg-node",
+          "key": "nodes",
+          "title": "Database nodes",
+          "with": {
+            "cluster": "inputs.cluster",
+            "data_gb": "inputs.data_gb",
+            "datastore": "inputs.datastore",
+            "name": "inputs.name",
+            "network": "inputs.network",
+            "nodes": 3,
+            "pg_version": "inputs.pg_version",
+            "size": "inputs.size"
+          }
+        },
+        {
+          "item": "db-user",
+          "key": "owner",
+          "title": "The database's owner",
+          "with": {
+            "database": "inputs.name",
+            "privileges": "\"owner\"",
+            "role_name": "inputs.name + \"_owner\""
+          }
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "rollback_on_failure": true,
+      "steps": [
+        {
+          "item": "pg-node",
+          "key": "nodes",
+          "title": "Database nodes",
+          "with": {}
+        },
+        {
+          "item": "db-user",
+          "key": "owner",
+          "title": "The database's owner",
+          "with": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "probe-vm-literals",
+    "blueprint": {
+      "bindings": {
+        "groups": "inputs.env == 'prod' ? ['grp-pci'] : []",
+        "network": "{'prod':'vlan-pci-secret'}[inputs.env]",
+        "post_config": "['linux-baseline', 'idm-join']",
+        "template": "\"rhel9-gold\"",
+        "vcpu": "4"
+      },
+      "components": [
+        {
+          "count": "inputs.tier == 'gold-secret' ? 3 : 1",
+          "disks": [
+            {
+              "datastore": "\"vsan-secret\"",
+              "size_gb": "inputs.env == 'prod' ? 500 : 50"
+            }
+          ],
+          "key": "web",
+          "nics": [
+            {
+              "key": "pci",
+              "network": "\"dvpg-pci\""
+            },
+            {
+              "key": "b",
+              "network": "project.code in ['fin', 'hr'] ? 'vl1' : 'vl2' // the PCI VLANs"
+            }
+          ]
+        }
+      ],
+      "guest": {
+        "admin_password": "hunter2",
+        "os_family": "linux"
+      },
+      "kind": "vm",
+      "naming": "{project}-x{seq:02}"
+    },
+    "topology": {
+      "bindings": {
+        "groups": "inputs.env == '…' ? ['…'] : []",
+        "network": "{'…':'…'}[inputs.env]",
+        "post_config": "['linux-baseline', 'idm-join']",
+        "template": "\"rhel9-gold\""
+      },
+      "components": [
+        {
+          "count": "inputs.tier == '…' ? 3 : 1",
+          "disks": [
+            {
+              "size_gb": "inputs.env == '…' ? 500 : 50"
+            }
+          ],
+          "key": "web",
+          "nics": [
+            {
+              "key": "pci",
+              "network": "\"dvpg-pci\""
+            },
+            {
+              "key": "b",
+              "network": "project.code in ['…', '…'] ? '…' : '…'"
+            }
+          ]
+        }
+      ],
+      "guest": {
+        "os_family": "linux"
+      },
+      "kind": "vm"
+    }
+  },
+  {
+    "name": "probe-composite-literals",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "item": "rhel9-server",
+          "key": "a",
+          "when": "inputs.token == 'tok_live_SECRET'",
+          "with": {
+            "host": "steps.x.fqdn + '.secret'",
+            "password": "'hunter2'"
+          }
+        },
+        {
+          "parallel": [
+            {
+              "key": "b",
+              "when": "inputs.token == 'open",
+              "workflow": "x"
+            },
+            {
+              "awx": {
+                "inventory": "inv",
+                "job_template": "t",
+                "template_id": 4,
+                "title": "T"
+              },
+              "key": "c",
+              "undo": {
+                "job_template": "u",
+                "with": {
+                  "k": "'v'"
+                }
+              },
+              "when": "r\"é\\d\" in inputs.tags"
+            }
+          ]
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "item": "rhel9-server",
+          "key": "a",
+          "when": "inputs.token == '…'",
+          "with": {
+            "host": "steps.x"
+          }
+        },
+        {
+          "parallel": [
+            {
+              "key": "b",
+              "when": "…",
+              "workflow": "x"
+            },
+            {
+              "awx": {
+                "job_template": "t",
+                "title": "T"
+              },
+              "key": "c",
+              "undo": {
+                "job_template": "u",
+                "with": {}
+              },
+              "when": "r\"…\" in inputs.tags"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

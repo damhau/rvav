@@ -230,6 +230,99 @@ const values =
   (keep: Keep): Keep =>
   (v) =>
     isObject(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, keep(x)])) : null;
+/** What a string literal reads as once masked, and a whole expression that isn't CEL. */
+const masked = "…";
+
+/** The string or bytes literal written at src[i] (policy.literalAt): its text from open to end, where it stops. */
+function literalAt(src: string[], i: number): { open: number; end: number; stop: number; bytes: boolean } | null {
+  let j = i;
+  let raw = false;
+  let bytes = false;
+  while (j < src.length && j - i < 2 && /[rRbB]/.test(src[j]!)) {
+    raw ||= /[rR]/.test(src[j]!);
+    bytes ||= /[bB]/.test(src[j]!);
+    j++;
+  }
+  if (src[j] !== "'" && src[j] !== '"') return null;
+  let q = src[j]!;
+  if (src.slice(j, j + 3).join("") === q.repeat(3)) q = q.repeat(3);
+  const open = j + q.length;
+  for (let k = open; k < src.length; k++) {
+    if (!raw && src[k] === "\\") {
+      k++;
+      continue;
+    }
+    if (src.slice(k, k + q.length).join("") === q) return { open, end: k, stop: k + q.length, bytes };
+  }
+  return null;
+}
+
+/**
+ * A CEL expression as a requester reads it, as the server's
+ * policy.MaskLiterals gives it (ADR-0032): each string literal's text
+ * replaced by "…" in its own quotes, comments removed, the rest as written;
+ * an empty literal kept. With lone, an expression that is only a string
+ * literal, or a list of them, is kept: the value the canvas draws by name.
+ * The server finds the literals with cel-go's parser; this scanner finds
+ * the same in CEL that parses, and says "…" for a literal left open.
+ */
+export function maskLiterals(expr: string, lone: boolean): string {
+  const src = [...expr];
+  const literals: { from: number; open: number; end: number; stop: number; bytes: boolean }[] = [];
+  const kept: string[] = []; // the text without comments, a literal as one placeholder
+  for (let i = 0; i < src.length;) {
+    const c = src[i]!;
+    const word = /[A-Za-z_]/.test(c) && !/[A-Za-z0-9_]/.test(src[i - 1] ?? " ");
+    const lit = c === "'" || c === '"' || (word && /[rRbB]/.test(c)) ? literalAt(src, i) : null;
+    if (lit) {
+      literals.push({ from: i, ...lit });
+      kept.push("\uE000");
+      i = lit.stop;
+    } else if (c === "'" || c === '"') return masked;
+    else if (c === "/" && src[i + 1] === "/") {
+      kept.push("\n");
+      while (i < src.length && src[i] !== "\n") i++;
+    } else if (word) {
+      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i).join(""))!;
+      kept.push(m[0]);
+      i += [...m[0]].length;
+    } else {
+      kept.push(c);
+      i++;
+    }
+  }
+  const shape = kept.join("").replace(/\s+/g, "");
+  const only = (shape === "\uE000" && !literals[0]?.bytes) || /^\[\uE000(,\uE000)*,?\]$/.test(shape) || shape === "[]";
+  const mask = !(lone && only);
+  let out = "";
+  let next = 0;
+  for (let i = 0; i < src.length;) {
+    const lit = literals[next];
+    if (lit && lit.from === i) {
+      next++;
+      out +=
+        mask && lit.end > lit.open
+          ? src.slice(i, lit.open).join("") + masked + src.slice(lit.end, lit.stop).join("")
+          : src.slice(i, lit.stop).join("");
+      i = lit.stop;
+    } else if (src[i] === "/" && src[i + 1] === "/") {
+      out = out.replace(/[ \t]+$/, "");
+      while (i < src.length && src[i] !== "\n") i++;
+    } else out += src[i++];
+  }
+  return out;
+}
+
+/** A CEL expression, its string literals masked; a number or a boolean as it is, a list of strings where lone. */
+const cel =
+  (lone = false): Keep =>
+  (v) => {
+    if (typeof v === "string") return maskLiterals(v, lone);
+    if (typeof v === "number" || typeof v === "boolean") return v;
+    if (Array.isArray(v) && lone && v.every((x) => typeof x === "string")) return v;
+    return null;
+  };
+
 const stepRefs: Keep = (v) =>
   isObject(v)
     ? Object.fromEntries(
@@ -240,10 +333,10 @@ const stepRefs: Keep = (v) =>
       )
     : null;
 
-const bindings = fields({ network: asIs, groups: asIs, template: asIs, post_config: asIs });
+const bindings = fields({ network: cel(true), groups: cel(true), template: cel(true), post_config: cel(true) });
 const guestOS = fields({ os_family: asIs });
-const disks = each(fields({ size_gb: asIs, storage_policy: asIs }));
-const nics = each(fields({ key: asIs, network: asIs, ipam: asIs }));
+const disks = each(fields({ size_gb: cel(), storage_policy: asIs }));
+const nics = each(fields({ key: asIs, network: cel(true), ipam: asIs }));
 const vmTopology = fields({
   kind: asIs,
   template: asIs,
@@ -262,7 +355,7 @@ const vmTopology = fields({
     fields({
       key: asIs,
       title: asIs,
-      count: asIs,
+      count: cel(),
       template: asIs,
       library: asIs,
       guest: guestOS,
@@ -280,7 +373,7 @@ const stepKeys: Record<string, Keep> = {
   item: asIs,
   awx: fields({ job_template: asIs, title: asIs }),
   workflow: asIs,
-  when: asIs,
+  when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, with: stepRefs }),
 };
@@ -291,7 +384,9 @@ const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps:
 /**
  * What a request form gets of a blueprint to draw what the item builds, as
  * the server's blueprint.Topology gives it (ADR-0032): the part the canvas
- * draws, without guest settings, sizes, naming or a step's binding literals.
+ * draws, without guest settings, sizes, naming or a step's binding literals,
+ * the string literals of its CEL masked. Checked against the server's on the
+ * same blueprints (internal/seed/testdata/topology.json, topology.test.ts).
  * Undefined for the kinds the canvas doesn't draw.
  */
 export function topologyOf(bp: Blueprint | undefined): Blueprint | undefined {
