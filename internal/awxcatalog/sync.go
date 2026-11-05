@@ -198,8 +198,10 @@ func (s *Sync) syncActions(ctx context.Context, res *Result) error {
 	return err
 }
 
-// displayName makes a template's name readable: "install-monitoring-agent"
+// DisplayName is a template's name made readable: "install-monitoring-agent"
 // is "Install monitoring agent".
+func DisplayName(template string) string { return displayName(template) }
+
 func displayName(template string) string {
 	name := []rune(strings.ReplaceAll(strings.ReplaceAll(template, "-", " "), "_", " "))
 	if len(name) == 0 {

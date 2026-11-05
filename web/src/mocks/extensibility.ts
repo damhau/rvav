@@ -195,6 +195,29 @@ function state(db: Db): ExtState {
       used_by: [],
       created_at: ago(60 * 24 * 5),
     },
+    // A step of composite items only (ADR-0022): what the composite designer offers.
+    {
+      key: "register-monitoring",
+      title: "Register in monitoring",
+      description: "Adds a host to the monitoring team's inventory and returns its dashboard.",
+      workflow_type: "monitoring.register.v1",
+      task_queue: "platform-workflows",
+      input_schema: {
+        type: "object",
+        required: ["fqdn"],
+        properties: {
+          fqdn: { type: "string", title: "Host" },
+          team: { type: "string", title: "Team" },
+        },
+      },
+      timeout_seconds: 3600,
+      project_ids: [],
+      usages: ["composite_step"],
+      enabled: true,
+      running: 0,
+      used_by: [],
+      created_at: ago(60 * 24 * 2),
+    },
   ];
   d.extensibility = { subs, runs, workflows, seq: 0 };
   return d.extensibility;
@@ -264,6 +287,9 @@ function checkWorkflow(w: S["WorkflowRegistrationWrite"], create: boolean, taken
   }
   return errors;
 }
+
+/** The custom workflows registered. */
+export const workflowRegistrations = (db: Db) => state(db).workflows;
 
 export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const findSub = (id: string) => state(db).subs.find((s) => s.id === id);

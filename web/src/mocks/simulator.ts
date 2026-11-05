@@ -14,6 +14,8 @@ import type {
   VmResource,
 } from "@/lib/api/types";
 import { completeDay2Step, day2Finished } from "./day2";
+import { publishedBlueprint } from "./catalogAdmin";
+import { celBool } from "./cel";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
 import { multiName, multiParts } from "./components";
@@ -78,6 +80,54 @@ function awxJob(template: string, host: string, jobId: number): Step {
     children: (awxTasks[template] ?? ["Gathering Facts", `${template} : run`]).map((t) => step("awx.task", t, "awx")),
   });
 }
+
+type Rec = Record<string, unknown>;
+
+/**
+ * A composite item's steps, as its published blueprint lists them (ADR-0022):
+ * one step:<key> each, the key the canvas gives its node (ADR-0032); one whose
+ * condition is false is skipped. Parallel groups run one after the other here.
+ */
+function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey, inputs: Rec, jobBase: number): Step[] {
+  const bp = publishedBlueprint(db, item);
+  const groups = (Array.isArray(bp?.steps) ? bp.steps : []) as Rec[];
+  const vars = {
+    inputs,
+    environment: env,
+    project: { id: project.id, code: project.code, name: project.name },
+    steps: {},
+  };
+  const out: Step[] = [];
+  for (const st of groups.flatMap((g) => (Array.isArray(g.parallel) ? (g.parallel as Rec[]) : [g]))) {
+    const key = `step:${text(st.key)}`;
+    const awx = st.awx as Rec | undefined;
+    const target = db.items.find((i) => i.slug === st.item);
+    const title =
+      text(st.title) ||
+      target?.name ||
+      text(awx?.title) ||
+      text(awx?.job_template) ||
+      text(st.workflow) ||
+      text(st.key);
+    const when = text(st.when);
+    if (when && !celBool(when, vars, true)) {
+      out.push(step(key, title, "rvav", { status: "skipped", detail: `Skipped: ${when} is false` }));
+      continue;
+    }
+    if (target?.type === "vm_blueprint") {
+      out.push(step(key, title, "vcenter", { detail: `${target.name}: its VMs` }));
+    } else if (awx || target?.source.kind === "awx") {
+      const template = text(awx?.job_template) || target?.source.awx_template_name || target?.slug || "job";
+      out.push({ ...awxJob(template, "localhost", jobBase + out.length), key, title: `${title} · ${template}` });
+    } else {
+      out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
+    }
+  }
+  return out;
+}
+
+/** An AWX job's step: a template's own, or a composite's AWX step (step:<key>). */
+const isJob = (s: Step) => s.key === "awx.job" || (s.key.startsWith("step:") && s.system === "awx");
 
 /** Build the step plan for a new request, and the name its VM will get. */
 export function planSteps(
@@ -177,6 +227,8 @@ export function planSteps(
       `${template} : verify`,
     ].map((t) => step("awx.task", t, "awx"));
     steps.push(job);
+  } else if (item.type === "composite") {
+    steps.push(...compositeSteps(item, project, env, inputs, jobBase));
   } else {
     steps.push(step("vsphere.clone", "Provision 3 VMs", "vcenter"), awxJob("patroni-cluster", "pg nodes", jobBase));
   }
@@ -270,8 +322,11 @@ function completeStep(r: StoredRequest, s: Step) {
     }
     return;
   }
-  // A multi-VM deployment's steps name their VM (or component) after "@".
-  const [key, at] = s.key.split("@") as [string, string | undefined];
+  // A multi-VM deployment's steps name their VM (or component) after "@";
+  // a composite's VM step clones its VM.
+  const [own, at] = s.key.split("@") as [string, string | undefined];
+  const key = own.startsWith("step:") && s.system === "vcenter" ? "vsphere.clone" : own;
+  const title = s.title;
   const host = at ?? hosts.get(r.request.id) ?? `${d.name}001`;
   const multi = at !== undefined;
   switch (key) {
@@ -410,6 +465,7 @@ function completeStep(r: StoredRequest, s: Step) {
       publishDeployment(r, d);
       break;
   }
+  if (own.startsWith("step:")) s.title = title;
 }
 
 /** One tick: finish the running unit of work and start the next one. */
@@ -425,7 +481,7 @@ function tick(requestId: string) {
   if (s.status === "pending") {
     s.status = "running";
     s.started_at = now();
-    if (s.key === "awx.job") {
+    if (isJob(s)) {
       s.children[0]!.status = "running";
       s.children[0]!.started_at = now();
       log(r, s, [
@@ -433,7 +489,7 @@ function tick(requestId: string) {
         ["plain", ""],
       ]);
     }
-  } else if (s.key === "awx.job") {
+  } else if (isJob(s)) {
     const i = s.children.findIndex((c) => c.status === "running");
     const c = s.children[i]!;
     c.status = "done";
@@ -472,7 +528,7 @@ function tick(requestId: string) {
       }
       next.status = "running";
       next.started_at = now();
-      if (next.key === "awx.job") {
+      if (isJob(next)) {
         next.children[0]!.status = "running";
         next.children[0]!.started_at = now();
         log(r, next, [

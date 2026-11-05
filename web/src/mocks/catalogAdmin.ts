@@ -8,6 +8,7 @@ import { readComposite } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
+import { workflowRegistrations } from "./extensibility";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -432,8 +433,148 @@ export function draftFromRepository(db: Db, item: StoredItem): string {
   return v.id;
 }
 
+/** The blueprint of the item's published version. */
+export function publishedBlueprint(db: Db, item: StoredItem): Record<string, unknown> | undefined {
+  const published = (state(db).versions[item.id] ?? []).find((v) => v.state === "published");
+  return published?.definition.blueprint ?? seededBlueprint(item.slug);
+}
+
 /** The item as catalog admins see it. */
 export const adminItemOf = (db: Db, item: StoredItem) => adminItem(db, item);
+
+// ---- What a composite's steps can run (ADR-0022, ADR-0032) -------------------
+
+type Target = S["CompositeStepTarget"];
+
+/** What a step gives later steps, by what it runs (core.stepOutputs). */
+const stepOutputs: Record<Target["runs"], S["CompositeStepOutput"][]> = {
+  vm: [
+    { name: "name", type: "string", description: "The first VM's name" },
+    { name: "fqdn", type: "string", description: "The first VM's FQDN" },
+    { name: "ip", type: "string", description: "The first VM's IP address" },
+    { name: "moref", type: "string", description: "The first VM's ID in vCenter" },
+    { name: "deployment_id", type: "string", description: "The deployment its VMs are in" },
+    { name: "vms", type: "array", description: "Every VM it built: a list of name, fqdn, ip, moref and deployment_id" },
+  ],
+  awx: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }],
+  workflow: [],
+};
+
+const target = (t: Omit<Target, "planned" | "outputs" | "open_outputs">): Target => ({
+  ...t,
+  planned: t.runs === "vm",
+  outputs: [...stepOutputs[t.runs]],
+  open_outputs: t.runs === "workflow",
+});
+
+/** A form's inputs a step binds, in the order its sections show them (core.formInputs). */
+function formInputs(schema: Record<string, unknown>, ui?: S["UiSchema"]): S["CompositeStepInput"][] {
+  type Prop = {
+    type?: unknown;
+    title?: string;
+    description?: string;
+    readOnly?: boolean;
+    enum?: unknown[];
+    items?: { enum?: unknown[] };
+  };
+  const props = (schema.properties ?? {}) as Record<string, Prop>;
+  const required = (schema.required ?? []) as string[];
+  const rest = Object.keys(props).sort((a, b) =>
+    required.includes(a) === required.includes(b) ? a.localeCompare(b) : required.includes(a) ? -1 : 1,
+  );
+  const order = [...new Set([...(ui?.layout.sections ?? []).flatMap((x) => x.fields), ...rest])];
+  return order.flatMap((name) => {
+    const p = props[name];
+    if (!p || p.readOnly) return [];
+    const types: unknown[] = Array.isArray(p.type) ? p.type : [p.type];
+    const type = types.find((t): t is string => typeof t === "string" && t !== "null") ?? "";
+    const description = p.description || ui?.fields[name]?.help;
+    const values = p.enum ?? p.items?.enum;
+    return [
+      {
+        name,
+        title: ui?.fields[name]?.label || p.title || name,
+        type,
+        required: required.includes(name),
+        ...(description ? { description } : {}),
+        ...(values?.length ? { enum: values } : {}),
+      },
+    ];
+  });
+}
+
+/** AWX templates imported but not made items, with their surveys' questions. */
+const otherTemplates: { name: string; workflow?: boolean; schema: Record<string, unknown> }[] = [
+  {
+    name: "monitoring-agent",
+    schema: {
+      required: ["monitoring_agent", "listen_port"],
+      properties: {
+        monitoring_agent: { type: "string", title: "Agent", enum: ["node_exporter", "telegraf"] },
+        listen_port: { type: "integer", title: "Port" },
+      },
+    },
+  },
+  {
+    name: "pgbackrest-stanza",
+    schema: {
+      required: ["retention_days"],
+      properties: { retention_days: { type: "integer", title: "Retention (days)" }, hosts: { type: "string", title: "Hosts" } },
+    },
+  },
+  { name: "pgbackrest-stanza-delete", schema: { properties: { hosts: { type: "string", title: "Hosts" } } } },
+  { name: "pg-drop-role", schema: { required: ["role_name"], properties: { role_name: { type: "string", title: "Role name" } } } },
+  { name: "linux-baseline", schema: { properties: {} } },
+  { name: "patroni-cluster", schema: { properties: {} } },
+  { name: "postgresql-install", schema: { properties: {} } },
+]; // prettier-ignore
+
+const displayName = (template: string) => {
+  const s = template.replace(/[-_]/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+export function compositeStepTargets(db: Db, workflows: S["WorkflowRegistration"][]): Target[] {
+  const st = state(db);
+  const byTitle = (a: Target, b: Target) =>
+    a.title.toLowerCase().localeCompare(b.title.toLowerCase()) || a.ref.localeCompare(b.ref);
+  const items: Target[] = [];
+  const templates: Target[] = [];
+  for (const item of db.items) {
+    const published = (st.versions[item.id] ?? []).find((v) => v.state === "published");
+    const kind = published?.definition.blueprint.kind;
+    if (!published || item.type === "composite" || (kind !== "vm" && kind !== "awx" && kind !== "workflow")) continue;
+    const inputs = formInputs(published.definition.form_schema, published.definition.ui_schema);
+    items.push({
+      ...target({ kind: "item", ref: item.slug, title: item.name, runs: kind, inputs }),
+      item_type: item.type,
+      summary: item.summary,
+    });
+    if (item.source.kind === "awx" && item.source.awx_template_name)
+      templates.push({
+        ...target({ kind: "awx", ref: item.source.awx_template_name, title: item.name, runs: "awx", inputs }),
+        ...(item.type === "awx_workflow" ? { awx_workflow: true } : {}),
+      });
+  }
+  for (const t of otherTemplates)
+    templates.push({
+      ...target({ kind: "awx", ref: t.name, title: displayName(t.name), runs: "awx", inputs: formInputs(t.schema) }),
+      ...(t.workflow ? { awx_workflow: true } : {}),
+    });
+  const flows = workflows
+    .filter((w) => w.enabled && w.usages.includes("composite_step"))
+    .map((w) => ({
+      ...target({
+        kind: "workflow",
+        ref: w.key ?? "",
+        title: w.title,
+        runs: "workflow",
+        inputs: formInputs(w.input_schema ?? {}),
+      }),
+      ...(w.description ? { summary: w.description } : {}),
+    }));
+  return [...items.sort(byTitle), ...templates.sort(byTitle), ...flows.sort(byTitle)];
+}
 
 export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const find = (id: string) => db.items.find((i) => i.id === id || i.slug === id);
@@ -804,6 +945,10 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/catalog/icons`, () => HttpResponse.json({ items: iconSet })),
+    http.get(`${base}/admin/catalog/composite-steps`, async () => {
+      await wait();
+      return HttpResponse.json({ items: compositeStepTargets(db, workflowRegistrations(db)) });
+    }),
     http.get(`${base}/admin/secrets`, async () => {
       await wait();
       const st = state(db);

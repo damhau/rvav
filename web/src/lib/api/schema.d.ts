@@ -1487,6 +1487,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/catalog/composite-steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a composite item's steps can run, with their inputs and outputs
+         * @description For the composite designer (ADR-0022, ADR-0032): the published items
+         *     a step may request (VM, AWX and custom workflow items: composites
+         *     don't nest), the AWX templates imported from AWX, and the custom
+         *     workflows registered for composite steps. Each says the inputs its
+         *     step's `with` binds (from the item's form, the template's survey or
+         *     the workflow's input schema) and the outputs later steps read as
+         *     `steps.<key>.<name>`. A step may also name an AWX template not
+         *     listed (any template AWX has): its inputs are then the author's.
+         *     Catalog admins and administrators.
+         */
+        get: operations["listCompositeStepTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/secrets": {
         parameters: {
             query?: never;
@@ -3031,6 +3059,68 @@ export interface components {
             blueprint: {
                 [key: string]: unknown;
             };
+        };
+        CompositeStepTargetList: {
+            /** @description Items first, then AWX templates, then custom workflows, each by title. */
+            items: components["schemas"]["CompositeStepTarget"][];
+        };
+        /** @description Something a composite's step can run (ADR-0022). */
+        CompositeStepTarget: {
+            /**
+             * @description How a step names it: `item` (another item, by slug), `awx`
+             *     (`awx.job_template`, a template's name) or `workflow` (a custom
+             *     workflow registered for composite steps, by key).
+             * @enum {string}
+             */
+            kind: "item" | "awx" | "workflow";
+            /**
+             * @description The name a step gives it, under `kind`.
+             * @example db-user
+             */
+            ref: string;
+            /** @example Create database user */
+            title: string;
+            summary?: string;
+            item_type?: components["schemas"]["CatalogItemType"];
+            /** @description An AWX workflow template, named `awx.job_template` with `awx.workflow` true. */
+            awx_workflow?: boolean;
+            /**
+             * @description What it runs, which says its outputs and whether it is planned.
+             * @enum {string}
+             */
+            runs: "vm" | "awx" | "workflow";
+            /**
+             * @description It builds VMs, planned with the request when it is submitted: its
+             *     inputs come from the form only, not from earlier steps, and it
+             *     has no condition or undo.
+             */
+            planned: boolean;
+            /** @description What `with` binds, in its form's order; read-only fields left out. */
+            inputs: components["schemas"]["CompositeStepInput"][];
+            /** @description What later steps read as `steps.<key>.<name>`. */
+            outputs: components["schemas"]["CompositeStepOutput"][];
+            /** @description Its outputs are whatever it returns (a custom workflow's result): fields not listed may be read too. */
+            open_outputs: boolean;
+        };
+        CompositeStepInput: {
+            /** @example role_name */
+            name: string;
+            /** @example Role name */
+            title: string;
+            /** @description Its JSON Schema type (string, integer, number, boolean, array, object), empty when it has none. */
+            type: string;
+            required: boolean;
+            description?: string;
+            /** @description The values it takes, when it has a list. */
+            enum?: unknown[];
+        };
+        CompositeStepOutput: {
+            /** @example fqdn */
+            name: string;
+            /** @example string */
+            type: string;
+            /** @example The first VM's FQDN */
+            description: string;
         };
         CatalogItemCreate: {
             slug: string;
@@ -8437,6 +8527,28 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listCompositeStepTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompositeStepTargetList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listSecrets: {

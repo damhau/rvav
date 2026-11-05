@@ -66,6 +66,7 @@ export const keys = {
     compare: (itemId: string, from: string, to: string) => ["admin", "catalog", "compare", itemId, from, to] as const,
     categories: ["admin", "catalog", "categories"] as const,
     icons: ["admin", "catalog", "icons"] as const,
+    compositeSteps: ["admin", "catalog", "composite-steps"] as const,
     git: ["admin", "catalog", "git"] as const,
     itemGit: (id: string) => ["admin", "catalog", "item-git", id] as const,
   },
@@ -303,6 +304,11 @@ export const q = {
     queryOptions({
       queryKey: keys.catalogAdmin.categories,
       queryFn: ({ signal }) => call(api.GET("/admin/catalog/categories", { signal })),
+    }),
+  compositeStepTargets: () =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.compositeSteps,
+      queryFn: ({ signal }) => call(api.GET("/admin/catalog/composite-steps", { signal })),
     }),
   catalogIcons: () =>
     queryOptions({

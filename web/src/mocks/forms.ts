@@ -305,6 +305,40 @@ export function formFor(slug: string, itemId: string, versionId: string): Reques
         },
         initial: { role: "", size: "L", pg_version: "16.6", backup_retention_days: 35 },
       });
+    case "pg-node":
+      return build(itemId, versionId, {
+        properties: {
+          name: { type: "string", pattern: "^[a-z]{2,12}$" },
+          nodes: { type: "integer", minimum: 3, maximum: 5 },
+          pg_version: { type: "string", enum: ["16.6", "15.10"] },
+          size: { type: "string", enum: Object.keys(sizes) },
+          network: { type: "string" },
+        },
+        required: ["name", "nodes", "pg_version", "size", "network"],
+        sections: [
+          { key: "db", title: "Database", columns: 2, fields: ["name", "pg_version", "nodes"] },
+          { key: "size", title: "Nodes", columns: 1, fields: ["size", "network"] },
+        ],
+        fields: {
+          name: { widget: "text", label: "Database", help: "Lower case letters. Used in the node names." },
+          nodes: { widget: "number", label: "Nodes" },
+          pg_version: {
+            widget: "select",
+            label: "PostgreSQL version",
+            options: [
+              { value: "16.6", label: "16.6" },
+              { value: "15.10", label: "15.10" },
+            ],
+          },
+          size: { widget: "radio_cards", label: "Node size", options: sizeOptions },
+          network: {
+            widget: "vsphere_network",
+            label: "Network",
+            value_source: { kind: "builtin", name: "vsphere.networks" },
+          },
+        },
+        initial: { nodes: 3, pg_version: "16.6", size: "M" },
+      });
     case "db-user":
       return build(itemId, versionId, {
         properties: {

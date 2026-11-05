@@ -136,6 +136,31 @@ const seeded: Record<string, Blueprint> = {
       },
     ],
   },
+  // The cluster's nodes, kept on separate hosts: an item only the cluster requests.
+  "pg-node": {
+    kind: "vm",
+    naming: "{project}-{environment}-pg{inputs.name}{seq:02}",
+    deployment_name: "{project}-{environment}-pg-{inputs.name}",
+    template: templates.rhel9.name,
+    rollback_on_failure: true,
+    guest: guest("linux"),
+    sizes,
+    bindings: { ...bySize, network: "inputs.network" },
+    awx_templates: awxTemplates([
+      ["linux-baseline", "Corporate baseline"],
+      ["postgresql-install", "PostgreSQL"],
+      ["patroni-cluster", "Patroni cluster"],
+    ]),
+    components: [
+      {
+        key: "db",
+        title: "Database nodes",
+        count: "inputs.nodes",
+        anti_affinity: true,
+        bindings: { post_config: '["linux-baseline", "postgresql-install", "patroni-cluster"]' },
+      },
+    ],
+  },
   // Its nodes, then the database's owner and its backups at the same time (ADR-0022).
   "postgres-cluster": {
     kind: "composite",

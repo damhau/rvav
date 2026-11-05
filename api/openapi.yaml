@@ -1840,6 +1840,30 @@ paths:
                     items: { type: string, examples: [server] }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /admin/catalog/composite-steps:
+    get:
+      tags: [catalog-admin]
+      operationId: listCompositeStepTargets
+      summary: What a composite item's steps can run, with their inputs and outputs
+      description: |
+        For the composite designer (ADR-0022, ADR-0032): the published items
+        a step may request (VM, AWX and custom workflow items: composites
+        don't nest), the AWX templates imported from AWX, and the custom
+        workflows registered for composite steps. Each says the inputs its
+        step's `with` binds (from the item's form, the template's survey or
+        the workflow's input schema) and the outputs later steps read as
+        `steps.<key>.<name>`. A step may also name an AWX template not
+        listed (any template AWX has): its inputs are then the author's.
+        Catalog admins and administrators.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompositeStepTargetList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/secrets:
     get:
       tags: [catalog-admin]
@@ -4112,6 +4136,81 @@ components:
           type: object
           description: What the request builds or runs, for the item's type (docs/service-catalog.md).
           additionalProperties: true
+    CompositeStepTargetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: Items first, then AWX templates, then custom workflows, each by title.
+          items: { $ref: "#/components/schemas/CompositeStepTarget" }
+    CompositeStepTarget:
+      type: object
+      description: Something a composite's step can run (ADR-0022).
+      required: [kind, ref, title, runs, planned, inputs, outputs, open_outputs]
+      properties:
+        kind:
+          type: string
+          enum: [item, awx, workflow]
+          x-enum-varnames: [StepTargetItem, StepTargetAwx, StepTargetWorkflow]
+          description: |
+            How a step names it: `item` (another item, by slug), `awx`
+            (`awx.job_template`, a template's name) or `workflow` (a custom
+            workflow registered for composite steps, by key).
+        ref:
+          type: string
+          description: The name a step gives it, under `kind`.
+          examples: [db-user]
+        title: { type: string, examples: [Create database user] }
+        summary: { type: string }
+        item_type: { $ref: "#/components/schemas/CatalogItemType" }
+        awx_workflow:
+          type: boolean
+          description: An AWX workflow template, named `awx.job_template` with `awx.workflow` true.
+        runs:
+          type: string
+          enum: [vm, awx, workflow]
+          x-enum-varnames: [StepRunsVm, StepRunsAwx, StepRunsWorkflow]
+          description: What it runs, which says its outputs and whether it is planned.
+        planned:
+          type: boolean
+          description: |
+            It builds VMs, planned with the request when it is submitted: its
+            inputs come from the form only, not from earlier steps, and it
+            has no condition or undo.
+        inputs:
+          type: array
+          description: What `with` binds, in its form's order; read-only fields left out.
+          items: { $ref: "#/components/schemas/CompositeStepInput" }
+        outputs:
+          type: array
+          description: What later steps read as `steps.<key>.<name>`.
+          items: { $ref: "#/components/schemas/CompositeStepOutput" }
+        open_outputs:
+          type: boolean
+          description: "Its outputs are whatever it returns (a custom workflow's result): fields not listed may be read too."
+    CompositeStepInput:
+      type: object
+      required: [name, title, type, required]
+      properties:
+        name: { type: string, examples: [role_name] }
+        title: { type: string, examples: [Role name] }
+        type:
+          type: string
+          description: Its JSON Schema type (string, integer, number, boolean, array, object), empty when it has none.
+        required: { type: boolean }
+        description: { type: string }
+        enum:
+          type: array
+          description: The values it takes, when it has a list.
+          items: {}
+    CompositeStepOutput:
+      type: object
+      required: [name, type, description]
+      properties:
+        name: { type: string, examples: [fqdn] }
+        type: { type: string, examples: [string] }
+        description: { type: string, examples: ["The first VM's FQDN"] }
     CatalogItemCreate:
       type: object
       required: [slug, name, summary, category, type]

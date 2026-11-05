@@ -63,3 +63,8 @@ func (s *Server) UpdateAwxAction(w http.ResponseWriter, r *http.Request, key str
 	}
 	writeJSON(w, http.StatusOK, a)
 }
+
+func (s *Server) ListCompositeStepTargets(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Core.CompositeStepTargets(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, list, err)
+}

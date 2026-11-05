@@ -247,6 +247,22 @@ export function createDb(now = Date.now()): Db {
       source: { kind: "native" },
       projectIds: both,
     }),
+    // Requested through the cluster only: open to no project (as the server's seed).
+    item({
+      key: "pgnode",
+      slug: "pg-node",
+      name: "PostgreSQL nodes",
+      summary: "Database nodes for the PostgreSQL cluster: requested through it.",
+      category: "databases",
+      type: "vm_blueprint",
+      icon: "database",
+      version: "1.0",
+      typical_duration_seconds: 1200,
+      approval: "never",
+      requests_last_30_days: 0,
+      source: { kind: "native" },
+      projectIds: [],
+    }),
     item({
       key: "dbuser",
       slug: "db-user",
