@@ -244,7 +244,9 @@ Catalog admins and administrators build items under **Catalog items**
   out again. The text
   is the editor's state, which starts from the designer's unsaved working
   copy when there is one, so the graph follows the draft as typed and as
-  designed. When the text doesn't parse, or has no blueprint the canvas
+  designed. A newer copy or draft replaces the text only while it is
+  unedited: the form designer's save, which goes on after its tab is
+  left, answering or refused, doesn't take what is being typed. When the text doesn't parse, or has no blueprint the canvas
   draws, the last graph stays (zoom, selection and focus with it) under a
   line saying why; the graph's own problems are listed with their lines
   (`problemsOnLines`). The Form designer tab has no graph: its edits

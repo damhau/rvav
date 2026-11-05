@@ -309,11 +309,23 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
     () => (pending ? toYaml(pending.def) : version.data ? toYaml(version.data.definition) : ""),
     [pending, version.data],
   );
+  // The editor shows the original anew only while what it shows is the last
+  // one given: the form designer's copy, saved or refused while the author
+  // types here (its save goes on after the tab is left), or the draft
+  // fetched again, doesn't take their typing and its history away.
+  const typed = useRef(text);
   useEffect(() => {
+    typed.current = text;
+  }, [text]);
+  const given = useRef<{ id?: string; text: string } | null>(null);
+  useEffect(() => {
+    const edited = given.current?.id === shown?.id && given.current?.text !== typed.current;
+    given.current = { id: shown?.id, text: original };
+    if (edited) return;
     setText(original);
     setProblems(pending ? problemsOnLines(original, pending.problems) : []);
     setRefused(pending?.problems.length ? { text: original, errors: pending.problems } : undefined);
-  }, [original, pending]);
+  }, [original, pending, shown?.id]);
   const dirty = text !== original || Boolean(pending);
   useEffect(() => onDirty(text !== original), [text, original, onDirty]);
   useEffect(() => {
@@ -354,7 +366,13 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
         setRefused({ text, errors: e.fieldErrors });
       } else if (isApiError(e) && e.status === 409) {
         toastError(e, "Saving failed");
-        void version.refetch();
+        // The draft as it now is, in place of the text refused.
+        void version.refetch().then((r) => {
+          if (pending || !r.data) return;
+          setText(toYaml(r.data.definition));
+          setProblems([]);
+          setRefused(undefined);
+        });
       } else toastError(e, "Saving failed");
     },
   });
