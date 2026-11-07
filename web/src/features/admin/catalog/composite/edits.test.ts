@@ -10,6 +10,7 @@ import {
   readStep,
   removeStep,
   setBinding,
+  setRestField,
   setRollback,
   setStepField,
   setTarget,
@@ -316,5 +317,79 @@ describe("the edits of steps that share an anchor", () => {
     const renamed = setStepField(anchored, "step:vm", "key", "server");
     for (const k of ["a", "b", "c"]) expect(data(renamed)[k]!.with).toEqual({ ...common, cpu: "steps.server.fqdn" });
     expect(renamed).toContain("with: *common");
+  });
+});
+
+describe("a step's REST call", () => {
+  const stepsOf = (text: string) => blueprint(text).steps as Record<string, unknown>[];
+  const withRest = definition({
+    kind: "composite",
+    steps: [
+      { key: "vm", item: "x", with: { a: "inputs.a" } },
+      {
+        key: "cmdb",
+        rest: { method: "POST", url: "https://h.example/steps.vm/${steps.vm.name}", body: "{'n': steps.vm.name}" },
+        undo: { rest: { method: "DELETE", url: "https://h.example/${steps.vm.id}/${steps.cmdb.json.id}" } },
+      },
+    ],
+  });
+
+  it("is what a step runs: its bindings go, and another target takes its place", () => {
+    const made = setTarget(withRest, "step:vm", { kind: "rest", ref: "" });
+    expect(stepsOf(made)[0]).toEqual({ key: "vm", rest: { method: "GET", url: "" } });
+    expect(stepsOf(setTarget(withRest, "step:cmdb", { kind: "item", ref: "y" }))[1]).toEqual({
+      key: "cmdb",
+      item: "y",
+      undo: stepsOf(withRest)[1]!.undo,
+    });
+    // Chosen again, it stays as written.
+    expect(setTarget(withRest, "step:cmdb", { kind: "rest", ref: "" })).toBe(withRest);
+  });
+
+  it("sets its fields in their order, an empty one removed, the method and URL kept", () => {
+    let text = setRestField(withRest, "step:cmdb", "keep", "$.result");
+    text = setRestField(text, "step:cmdb", "secret", "cmdb-token");
+    text = setRestField(text, "step:cmdb", "accept", [200, 201]);
+    expect(Object.keys(stepsOf(text)[1]!.rest as object)).toEqual([
+      "method",
+      "url",
+      "body",
+      "secret",
+      "accept",
+      "keep",
+    ]);
+    expect(text).toContain("accept: [200, 201]");
+    expect(stepsOf(setRestField(text, "step:cmdb", "keep", " "))[1]!.rest).not.toHaveProperty("keep");
+    expect(stepsOf(setRestField(text, "step:cmdb", "accept", []))[1]!.rest).not.toHaveProperty("accept");
+    expect(stepsOf(setRestField(text, "step:cmdb", "url", ""))[1]!.rest).toHaveProperty("url", "");
+    expect(() => setRestField(withRest, "step:vm", "url", "x")).toThrow(EditError);
+  });
+
+  it("undoes a step, in place of what did, and its fields are set there", () => {
+    const u = (t: string, key = 0) => stepsOf(t)[key]!.undo;
+    const made = setUndo(withRest, "step:vm", { kind: "rest" });
+    expect(u(made)).toEqual({ rest: { method: "DELETE", url: "" } });
+    const url = setRestField(made, "step:vm", "url", "https://h.example/x", "undo");
+    expect(u(url)).toEqual({ rest: { method: "DELETE", url: "https://h.example/x" } });
+    expect(u(setUndo(url, "step:vm", { kind: "awx", ref: "t" }))).toEqual({ job_template: "t" });
+    const fromAwx = setUndo(
+      setBinding(setUndo(withRest, "step:vm", { kind: "awx", ref: "t" }), "step:vm", "a", "1", "undo"),
+      "step:vm",
+      { kind: "rest" },
+    );
+    expect(u(fromAwx)).toEqual({ rest: { method: "DELETE", url: "" } });
+    expect(() => setRestField(withRest, "step:vm", "url", "x", "undo")).toThrow(EditError);
+  });
+
+  it("follows a step's new key in its URLs' expressions and body, not in the URL's text", () => {
+    const steps = stepsOf(setStepField(withRest, "step:vm", "key", "server"));
+    expect(steps[1]!.rest).toEqual({
+      method: "POST",
+      url: "https://h.example/steps.vm/${steps.server.name}",
+      body: "{'n': steps.server.name}",
+    });
+    expect(steps[1]!.undo).toEqual({
+      rest: { method: "DELETE", url: "https://h.example/${steps.server.id}/${steps.cmdb.json.id}" },
+    });
   });
 });

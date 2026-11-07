@@ -32,6 +32,12 @@ describe("celEval", () => {
     expect(celEval('environment == "prd" ? "No expiry" : "30 days"', ctx)).toBe("No expiry");
   });
 
+  it("reads maps, as a REST call's body has them", () => {
+    expect(celEval("{'a': x, 'b': {'c': [1, x]}}", { x: 2 })).toEqual({ a: 2, b: { c: [1, 2] } });
+    expect(celEval("{}", {})).toEqual({});
+    expect(celEval("{'a': 1}.a == 1", {})).toBe(true);
+  });
+
   it("rejects broken rules", () => {
     expect(() => celEval("inputs.size ==", ctx)).toThrow();
     expect(() => celEval("unknownFn(1)", ctx)).toThrow(/Unknown function/);

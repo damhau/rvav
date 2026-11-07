@@ -170,6 +170,91 @@ describe("the composite designer", () => {
     expect(step("monitor").when).toBe("inputs.size == 'L'");
   });
 
+  it("adds a REST call and its undo, field by field, and later steps read what it gives", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    fireEvent.click(await waitFor(() => node(/^Item Database nodes/)));
+    await user.click(screen.getByRole("button", { name: "Add a step" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+    await pick(user, within(dialog).getByRole("combobox", { name: "What it runs" }), "A REST call");
+    expect(within(dialog).getByRole("textbox", { name: "Key" })).toHaveValue("rest_call");
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+    expect(step("rest_call")).toEqual({ key: "rest_call", rest: { method: "GET", url: "" } });
+
+    // It has no inputs: its fields, and what is missing said on the step.
+    const details = await screen.findByRole("region", { name: "Selected: rest_call" });
+    expect(within(details).queryByRole("group", { name: "Inputs" })).toBeNull();
+    const problems = within(details).getByRole("list", { name: "Problems with this step" });
+    expect(problems).toHaveTextContent("Give the URL to call.");
+    const rest = within(within(details).getByRole("group", { name: "REST call" }));
+    expect(rest.getByRole("textbox", { name: "Body" })).toBeDisabled();
+    await pick(user, rest.getByRole("combobox", { name: "Method" }), "POST");
+    await user.type(rest.getByRole("textbox", { name: "URL" }), "https://h.example/ci/${{steps.nodes.name}{Enter}");
+    await user.type(rest.getByRole("textbox", { name: "Body" }), "{{'n': inputs.role}{Enter}");
+    await pick(user, rest.getByRole("combobox", { name: "Secret" }), /^webhook-signing/);
+    await user.type(rest.getByRole("textbox", { name: "Keep" }), "$.result{Enter}");
+    // What isn't a status isn't written.
+    await user.type(rest.getByRole("textbox", { name: "Accepted statuses" }), "two{Enter}");
+    expect(step("rest_call").rest).not.toHaveProperty("accept");
+    await user.clear(rest.getByRole("textbox", { name: "Accepted statuses" }));
+    await user.type(rest.getByRole("textbox", { name: "Accepted statuses" }), "200, 201{Enter}");
+    expect(step("rest_call").rest).toEqual({
+      method: "POST",
+      url: "https://h.example/ci/${steps.nodes.name}",
+      body: "{'n': inputs.role}",
+      secret: "webhook-signing",
+      accept: [200, 201],
+      keep: "$.result",
+    });
+    expect(yaml()).toContain("accept: [200, 201]");
+    // It says what it can read there: earlier steps, not itself or later ones.
+    expect(rest.getByText("steps.nodes.fqdn")).toBeInTheDocument();
+    expect(rest.queryByText("steps.rest_call.status")).toBeNull();
+    await waitFor(() => expect(within(details).queryByRole("list", { name: "Problems with this step" })).toBeNull());
+
+    // Its undo is another call, which may read this one's answer.
+    await pick(user, within(details).getByRole("combobox", { name: "Undone by" }), "A REST call");
+    expect(step("rest_call").undo).toEqual({ rest: { method: "DELETE", url: "" } });
+    await user.type(
+      within(details).getByRole("textbox", { name: "Undo's URL" }),
+      "https://h.example/ci/${{steps.rest_call.json.id}{Enter}",
+    );
+    expect(step("rest_call").undo).toEqual({
+      rest: { method: "DELETE", url: "https://h.example/ci/${steps.rest_call.json.id}" },
+    });
+    expect(
+      within(within(details).getByRole("group", { name: "Undo" })).getByText("steps.rest_call.json"),
+    ).toBeInTheDocument();
+    expect(within(details).queryByRole("textbox", { name: "Add a variable to the undo" })).toBeNull();
+
+    // On the canvas, with the node's name saying what it calls and undoes.
+    const drawn = await waitFor(() => node(/^REST rest_call\. Calls: POST https:\/\/h\.example/));
+    expect(drawn.getAttribute("aria-label")).toContain("Undo: DELETE https://h.example/ci/");
+
+    // A step after it reads what it gave.
+    await user.click(screen.getByRole("button", { name: "Add a step" }));
+    const next = await screen.findByRole("dialog", { name: "Add a step" });
+    await pick(user, within(next).getByRole("combobox", { name: "What it runs" }), /^Monitoring agent/);
+    await user.click(within(next).getByRole("radio", { name: "At the end" }));
+    await user.click(within(next).getByRole("button", { name: "Add step" }));
+    const later = await screen.findByRole("region", { name: "Selected: Monitoring agent" });
+    await user.click(within(later).getByRole("combobox", { name: /^Agent/ }));
+    expect(screen.getByRole("option", { name: "rest_call: The status it answered" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "rest_call: What it keeps of its JSON answer" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // Another target replaces it, its undo kept.
+    fireEvent.click(node(/^REST rest_call/));
+    const again = await screen.findByRole("region", { name: "Selected: rest_call" });
+    await pick(user, within(again).getByRole("combobox", { name: "Runs" }), "Another AWX template, by its name");
+    const named = await within(again).findByRole("textbox", { name: "AWX template's name" });
+    await user.type(named, "register-ci{Enter}");
+    expect(step("rest_call").rest).toBeUndefined();
+    expect(step("rest_call").awx).toEqual({ job_template: "register-ci" });
+    expect(step("rest_call").undo).toBeDefined();
+  });
+
   it("moves, joins and removes steps from the selected step's details", async () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness initial={pg} />);

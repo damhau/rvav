@@ -28,6 +28,7 @@ import {
   YAMLMap,
   YAMLSeq,
 } from "yaml";
+import { parseUrl } from "@/lib/composite";
 import { parseText } from "../definitionYaml";
 
 type Raw = Record<string, unknown>;
@@ -36,8 +37,9 @@ type Raw = Record<string, unknown>;
 export const yamlOutput = { indent: 2, lineWidth: 0, flowCollectionPadding: false } as const;
 
 /** The order a step's keys are written in, so a key added lands where a reader expects it. */
-const stepOrder = ["key", "title", "item", "awx", "workflow", "when", "with", "undo"];
-const undoOrder = ["job_template", "workflow", "with"];
+const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "when", "with", "undo"];
+const undoOrder = ["job_template", "workflow", "rest", "with"];
+const restOrder = ["method", "url", "body", "secret", "accept", "keep"];
 const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
 
 export const blueprintPrefix = "/definition/blueprint";
@@ -259,7 +261,7 @@ function put(doc: Document, map: YAMLMap, key: string, value: unknown, order: st
   else map.items.splice(at, 0, pair);
 }
 
-/** Every CEL string of a step: its condition and bindings, its undo's bindings. */
+/** Every CEL string of a step: its condition and bindings, its undo's bindings, the bodies of its REST calls. */
 function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   const out: { holder: YAMLMap; key: string }[] = [];
   if (isScalar(step.get("when", true))) out.push({ holder: step, key: "when" });
@@ -268,7 +270,22 @@ function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   if (isMap(undo)) maps.push(undo.get("with", true));
   for (const m of maps)
     if (isMap(m)) for (const p of m.items) if (isScalar(p.value)) out.push({ holder: m, key: scalarText(p.key) });
+  for (const call of restCallsOf(step)) if (isScalar(call.get("body", true))) out.push({ holder: call, key: "body" });
   return out;
+}
+
+/** A step's REST call and its undo's. */
+function restCallsOf(step: YAMLMap): YAMLMap[] {
+  const undo = step.get("undo", true);
+  const calls: unknown[] = [step.get("rest", true), isMap(undo) ? undo.get("rest", true) : undefined];
+  return calls.filter((c): c is YAMLMap => isMap(c));
+}
+
+/** A URL template with a step's key renamed in its expressions; its text isn't CEL, and stays. */
+function renameInUrl(template: string, old: RegExp, next: string): string {
+  const { parts, error } = parseUrl(template);
+  if (error) return template;
+  return parts.map((p) => ("expr" in p ? `\${${p.expr.replace(old, next)}}` : p.text)).join("");
 }
 
 function escape(s: string) {
@@ -386,6 +403,11 @@ export function setStepField(text: string, id: string, field: "key" | "title" | 
         const n = holder.get(key, true);
         if (isScalar(n) && typeof n.value === "string") n.value = n.value.replace(old, `steps.${v}`);
       }
+    for (const s of locateAll(doc))
+      for (const call of restCallsOf(s.node)) {
+        const n = call.get("url", true);
+        if (isScalar(n) && typeof n.value === "string") n.value = renameInUrl(n.value, old, `steps.${v}`);
+      }
     // Every step's are renamed, an alias's with its anchor's: what they name now is kept.
     remember(doc);
   }
@@ -398,19 +420,28 @@ export type Target =
   | { kind: "item"; ref: string }
   /** An AWX template: its name, whether it is a workflow template, its ID in AWX when known. */
   | { kind: "awx"; ref: string; workflow?: boolean; templateId?: number }
-  | { kind: "workflow"; ref: string };
+  | { kind: "workflow"; ref: string }
+  /** A REST call: what it names is in its own fields. */
+  | { kind: "rest"; ref: "" };
+
+/** A REST call just added: it says what is missing until its URL is written. */
+export const newRestCall = (method: string) => ({ method, url: "" });
 
 /**
- * What a step runs: one of an item, an AWX template or a custom workflow;
- * the others are removed. An AWX template is written by its name and, when
- * known, its ID (awx.template_id: it is launched by it); another template's
- * ID and title go with it, its inputs' bindings stay.
+ * What a step runs: one of an item, an AWX template, a custom workflow or a
+ * REST call; the others are removed. An AWX template is written by its name
+ * and, when known, its ID (awx.template_id: it is launched by it); another
+ * template's ID and title go with it, its inputs' bindings stay. A REST call
+ * has no inputs: its URL and body read them, so its bindings go.
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node } = locate(doc, id);
-  for (const k of ["item", "awx", "workflow"]) if (k !== t.kind) node.delete(k);
-  if (t.kind === "awx") {
+  for (const k of ["item", "awx", "workflow", "rest"]) if (k !== t.kind) node.delete(k);
+  if (t.kind === "rest") {
+    node.delete("with");
+    if (!isMap(own(doc, node, "rest"))) put(doc, node, "rest", newRestCall("GET"), stepOrder);
+  } else if (t.kind === "awx") {
     const awx = own(doc, node, "awx");
     if (isMap(awx)) {
       const was = awx.toJS(doc) as Raw;
@@ -472,9 +503,13 @@ export function setBinding(
   return save(doc);
 }
 
-export type Undo = { kind: "awx" | "workflow"; ref: string } | null;
+export type Undo = { kind: "awx" | "workflow"; ref: string } | { kind: "rest" } | null;
 
-/** What undoes a step when a later one fails: an AWX template or a custom workflow; null for nothing. Its bindings stay. */
+/**
+ * What undoes a step when a later one fails: an AWX template, a custom
+ * workflow or a REST call; null for nothing. An AWX template's or a
+ * workflow's bindings stay; a REST call has none.
+ */
 export function setUndo(text: string, id: string, undo: Undo): string {
   const doc = load(text);
   const { node } = locate(doc, id);
@@ -482,12 +517,57 @@ export function setUndo(text: string, id: string, undo: Undo): string {
     node.delete("undo");
     return save(doc);
   }
-  const key = undo.kind === "awx" ? "job_template" : "workflow";
   const current = own(doc, node, "undo");
+  if (undo.kind === "rest") {
+    if (isMap(current)) {
+      for (const k of ["job_template", "workflow", "with"]) current.delete(k);
+      if (!isMap(own(doc, current, "rest"))) put(doc, current, "rest", newRestCall("DELETE"), undoOrder);
+    } else put(doc, node, "undo", { rest: newRestCall("DELETE") }, stepOrder);
+    return save(doc);
+  }
+  const key = undo.kind === "awx" ? "job_template" : "workflow";
   if (isMap(current)) {
+    current.delete("rest");
     current.delete(undo.kind === "awx" ? "workflow" : "job_template");
     put(doc, current, key, undo.ref, undoOrder);
   } else put(doc, node, "undo", { [key]: undo.ref }, stepOrder);
+  return save(doc);
+}
+
+export type RestField = "method" | "url" | "body" | "secret" | "accept" | "keep";
+
+/**
+ * One field of a step's REST call (scope step) or of its undo's (scope undo).
+ * Empty removes it, but for the method and the URL, which stay for the step
+ * to say what is missing. The statuses it accepts are written on one line.
+ */
+export function setRestField(
+  text: string,
+  id: string,
+  field: RestField,
+  value: string | number[],
+  scope: "step" | "undo" = "step",
+): string {
+  const doc = load(text);
+  const { node } = locate(doc, id);
+  let holder: YAMLMap = node;
+  if (scope === "undo") {
+    const undo = own(doc, node, "undo");
+    if (!isMap(undo)) throw new EditError("The step has no undo.");
+    holder = undo;
+  }
+  const call = own(doc, holder, "rest");
+  if (!isMap(call)) throw new EditError("It makes no REST call.");
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (!v && field !== "method" && field !== "url") call.delete(field);
+    else put(doc, call, field, v, restOrder);
+  } else if (value.length === 0) call.delete(field);
+  else {
+    const list = doc.createNode(value) as YAMLSeq;
+    list.flow = true;
+    put(doc, call, field, list, restOrder);
+  }
   return save(doc);
 }
 

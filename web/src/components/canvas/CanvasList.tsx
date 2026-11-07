@@ -38,7 +38,7 @@ export function NodeFacts({ node }: { node: CanvasNode }) {
     <>
       {subtitleOf(node) && <div className="font-mono text-faint">{node.subtitle}</div>}
       {labelled.length > 0 && (
-        <dl className="mt-0.5 grid grid-cols-[auto_1fr] gap-x-2">
+        <dl className="mt-0.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
           {labelled.map((l, i) => (
             <div key={i} className="contents">
               <dt className="text-faint">{l.label}</dt>

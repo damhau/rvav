@@ -141,6 +141,29 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/admin/catalog-items/postgres-cluster › Definition (a step selected)");
     });
 
+    // A REST call and its undo (D2.2), their fields and a problem on the step.
+    test("axe: a composite draft's REST call step selected", async ({ page }) => {
+      await page.goto("/admin/catalog-items");
+      await loaded(page);
+      await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "PostgreSQL 16 cluster" }).click();
+      await page.getByRole("button", { name: "New draft" }).click();
+      await page.getByRole("tab", { name: "Definition" }).click();
+      await loaded(page);
+      await page
+        .getByRole("region", { name: "Steps of PostgreSQL 16 cluster" })
+        .getByRole("button", { name: /^AWX Backups\./ })
+        .click();
+      const details = page.getByRole("region", { name: "Selected: Backups" });
+      await details.getByRole("combobox", { name: "Runs" }).click();
+      await page.getByRole("option", { name: "A REST call" }).click();
+      await expect(details.getByRole("group", { name: "REST call" })).toBeVisible();
+      await details.getByRole("combobox", { name: "Undone by" }).click();
+      await page.getByRole("option", { name: "A REST call" }).click();
+      await expect(details.getByRole("textbox", { name: "Undo's URL" })).toBeVisible();
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/postgres-cluster › Definition (a REST call selected)");
+    });
+
     test("axe: a composite request's run, failed then running", async ({ page }) => {
       await page.goto("/requests/REQ-10484");
       await expect(page.getByRole("region", { name: "Selected: The database's owner" })).toBeVisible();

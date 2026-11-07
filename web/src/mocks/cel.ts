@@ -1,6 +1,6 @@
 // A small subset of CEL (https://cel.dev) for form rules, evaluated in the
 // browser for instant feedback. The server evaluates the same rules on preview
-// and submit. Supported: literals, lists, member and index access, ! - * / % +
+// and submit. Supported: literals, lists, maps, member and index access, ! - * / % +
 // < <= > >= == != in && || ?:, size(), and string startsWith/endsWith/contains.
 // Unlike full CEL, a missing field evaluates to null instead of an error.
 import { toText } from "@/lib/utils";
@@ -9,6 +9,7 @@ type Node =
   | { k: "lit"; v: unknown }
   | { k: "id"; name: string }
   | { k: "list"; items: Node[] }
+  | { k: "map"; entries: [Node, Node][] }
   | { k: "member"; obj: Node; name: string }
   | { k: "index"; obj: Node; index: Node }
   | { k: "call"; fn: string; target: Node | null; args: Node[] }
@@ -39,6 +40,8 @@ const OPS = [
   ")",
   "[",
   "]",
+  "{",
+  "}",
   ".",
   ",",
 ];
@@ -183,6 +186,23 @@ function parse(src: string): Node {
       eat("]");
       return { k: "list", items };
     }
+    if (tok.v === "{") {
+      const entries: [Node, Node][] = [];
+      const entry = () => {
+        const key = expr();
+        eat(":");
+        entries.push([key, expr()]);
+      };
+      if (!isOp("}")) {
+        entry();
+        while (isOp(",")) {
+          pos++;
+          entry();
+        }
+      }
+      eat("}");
+      return { k: "map", entries };
+    }
     throw new Error(`Unexpected “${tok.v}”`);
   };
   const mul = binary(unary, ["*", "/", "%"]);
@@ -217,6 +237,8 @@ function evaluate(n: Node, ctx: Record<string, unknown>): unknown {
       return ctx[n.name] ?? null;
     case "list":
       return n.items.map((i) => evaluate(i, ctx));
+    case "map":
+      return Object.fromEntries(n.entries.map(([k, v]) => [String(evaluate(k, ctx)), evaluate(v, ctx)]));
     case "member":
       return get(evaluate(n.obj, ctx), n.name);
     case "index": {

@@ -232,3 +232,21 @@ describe("the editor's and the designer's helpers", () => {
     expect(writtenBinding("  ")).toBeUndefined();
   });
 });
+
+describe("a REST call step", () => {
+  const call = { key: "cmdb", title: "The CMDB", rest: { method: "POST", url: "https://h.example/x" } };
+
+  it("is what the step names, and gives its status and what it keeps", () => {
+    expect(targetOf(call)).toEqual({ kind: "rest", ref: "" });
+    expect(targetValue(targetOf(call)!)).toBe("rest:");
+    expect(findTarget(targets, targetOf(call))).toBeUndefined();
+    expect(outputsOf(call, targets)).toMatchObject({ open: false, outputs: [{ name: "status" }, { name: "json" }] });
+    const sources = bindingSources(
+      { blueprint: { steps: [call, { key: "next", item: "x" }] } },
+      { g: 1, planned: false },
+      targets,
+    );
+    expect(sources.map((s) => s.value)).toEqual(expect.arrayContaining(["steps.cmdb.status", "steps.cmdb.json"]));
+    expect(designerProblems({ blueprint: { steps: [call] } }, targets)).toEqual([]);
+  });
+});

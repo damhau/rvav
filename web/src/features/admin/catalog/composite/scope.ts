@@ -15,7 +15,7 @@ const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v
 export const stepRef = /\bsteps\.([a-z][a-z0-9_]*)/;
 
 export interface StepTarget {
-  kind: CompositeStepTarget["kind"];
+  kind: CompositeStepTarget["kind"] | "rest";
   ref: string;
   /** An AWX workflow template (awx.workflow). */
   workflow?: boolean;
@@ -23,7 +23,7 @@ export interface StepTarget {
   templateId?: number;
 }
 
-/** What a step names: an item, an AWX template or a custom workflow (the first, when it names several). */
+/** What a step names: an item, an AWX template, a custom workflow or a REST call (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
@@ -37,6 +37,7 @@ export function targetOf(step: Raw): StepTarget | undefined {
     };
   }
   if (str(step.workflow)) return { kind: "workflow", ref: str(step.workflow) };
+  if (step.rest !== undefined) return { kind: "rest", ref: "" };
   return undefined;
 }
 
@@ -82,7 +83,13 @@ export function notOfferedTo(t: CompositeStepTarget | undefined, offered: Catalo
     .sort();
 }
 
-/** What a step gives the steps after it: its target's outputs, or an AWX job's ID for a template not listed. */
+/** What a REST call gives the steps after it (its answer's headers never). */
+export const restOutputs: CompositeStepOutput[] = [
+  { name: "status", type: "integer", description: "The status it answered" },
+  { name: "json", type: "object", description: "What it keeps of its JSON answer" },
+];
+
+/** What a step gives the steps after it: its target's outputs, a REST call's, or an AWX job's ID for a template not listed. */
 export function outputsOf(
   step: Raw,
   targets: CompositeStepTarget[],
@@ -90,6 +97,7 @@ export function outputsOf(
   const t = targetOf(step);
   const found = findTarget(targets, t);
   if (found) return { outputs: found.outputs, open: found.open_outputs };
+  if (t?.kind === "rest") return { outputs: restOutputs, open: false };
   if (t?.kind === "awx")
     return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
   return { outputs: [], open: t?.kind === "workflow" };

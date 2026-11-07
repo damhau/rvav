@@ -14,7 +14,8 @@
 // the form's inputs, the request's environment and project, and the outputs
 // of the steps before it (not those running at the same time; none for a
 // VM step, planned from the form when the request is submitted), or a
-// value or CEL expression written out.
+// value or CEL expression written out. A REST call has no inputs: its URL and
+// body read them, and it says what it can read (ADR-0033).
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,7 +27,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { type Option, Select } from "@/components/ui/select";
 import type { CatalogEntitlements, CompositeStepInput, CompositeStepTarget, FieldError } from "@/lib/api/types";
-import { q } from "@/lib/query";
+import { adm, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
 import { parseText } from "../definitionYaml";
@@ -41,6 +42,7 @@ import {
   formInputsOf,
   listedTarget,
   openEarlier,
+  restOutputs,
   type Source,
   type StepTarget,
   targetOf,
@@ -85,12 +87,15 @@ export interface Design {
   serverProblems?: { text: string; errors: FieldError[] };
 }
 
-const kindGroup: Record<CompositeStepTarget["kind"], string> = {
+const kindGroup: Record<StepTarget["kind"], string> = {
   item: "Items",
   awx: "AWX templates",
   workflow: "Custom workflows",
+  rest: "REST APIs",
 };
 const byName = "awx-by-name";
+const restValue = targetValue({ kind: "rest", ref: "" });
+const restMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 /** What a step can run, for a picker: grouped, the step's own first if it isn't listed. */
 function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Option[] {
@@ -108,6 +113,7 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Op
       group: kindGroup[current.kind],
     });
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
+  out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
   return out;
 }
 
@@ -121,6 +127,7 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
     const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
     return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
+  if (kind === "rest") return { kind, ref: "" };
   if (kind !== "item" && kind !== "workflow") return undefined;
   return { kind, ref };
 }
@@ -135,6 +142,7 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
       ...(target.templateId ? { template_id: target.templateId } : {}),
       ...(target.workflow ? { workflow: true } : {}),
     };
+  else if (target.kind === "rest") step.rest = edits.newRestCall("GET");
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -430,6 +438,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const sources = bindingSources(def, { g, planned }, targets);
   const open = planned ? [] : openEarlier(def, g, targets);
   const withMap = obj(step.with);
+  const rest = target?.kind === "rest";
   const inputs = listed?.inputs ?? [];
   const others = [...new Set([...Object.keys(withMap), ...extra])].filter((k) => !inputs.some((i) => i.name === k));
   const undo = step.undo === undefined ? undefined : obj(step.undo);
@@ -602,59 +611,74 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </Field>
       </div>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Inputs</legend>
-        {target?.kind === "item" && !listed && (
-          <p className="text-muted">Its inputs are known once the item it runs is published.</p>
-        )}
-        {inputs.length === 0 && others.length === 0 && listed && <p className="text-muted">It takes no inputs.</p>}
-        {inputs.map((input) => (
-          <BindingRow
-            key={input.name}
-            id={`cd-in-${input.name}`}
-            input={input}
-            value={withMap[input.name]}
-            sources={sources}
-            onChange={bind(input.name, "with")}
+      {rest && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className={legend}>REST call</legend>
+          <RestCallFields
+            prefix="cd-rest"
+            call={obj(step.rest)}
+            stepKey={key}
+            reads={sources.map((s) => s.value)}
+            onChange={(field, v) => apply(() => edits.setRestField(text, id, field, v))}
           />
-        ))}
-        {others.map((name) => (
-          <BindingRow
-            key={name}
-            id={`cd-in-${name}`}
-            input={{ name, title: name, type: "", required: false }}
-            value={withMap[name]}
-            sources={sources}
-            onChange={bind(name, "with")}
-            onRemove={() => {
-              setExtra((x) => x.filter((n) => n !== name));
-              if (name in withMap) bind(name, "with")(undefined);
-            }}
-            note={target?.kind === "item" && listed ? "Not an input of its form." : undefined}
-          />
-        ))}
-        {open.length > 0 && (
-          <p className="text-muted">
-            A custom workflow gives what it returns: write{" "}
-            {open.map((k, i) => (
-              <span key={k}>
-                {i > 0 && ", "}
-                <code className="font-mono">steps.{k}.&lt;name&gt;</code>
-              </span>
-            ))}{" "}
-            as a CEL expression.
-          </p>
-        )}
-        {(target?.kind !== "item" || !listed) && (
-          <AddVariable
-            id="cd-add-input"
-            rowId={(n) => `cd-in-${n}`}
-            label={target?.kind === "awx" ? "Add a variable" : "Add an input"}
-            taken={[...inputs.map((i) => i.name), ...others]}
-            onAdd={(n) => setExtra((x) => [...x, n])}
-          />
-        )}
-      </fieldset>
+        </fieldset>
+      )}
+
+      {!rest && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className={legend}>Inputs</legend>
+          {target?.kind === "item" && !listed && (
+            <p className="text-muted">Its inputs are known once the item it runs is published.</p>
+          )}
+          {inputs.length === 0 && others.length === 0 && listed && <p className="text-muted">It takes no inputs.</p>}
+          {inputs.map((input) => (
+            <BindingRow
+              key={input.name}
+              id={`cd-in-${input.name}`}
+              input={input}
+              value={withMap[input.name]}
+              sources={sources}
+              onChange={bind(input.name, "with")}
+            />
+          ))}
+          {others.map((name) => (
+            <BindingRow
+              key={name}
+              id={`cd-in-${name}`}
+              input={{ name, title: name, type: "", required: false }}
+              value={withMap[name]}
+              sources={sources}
+              onChange={bind(name, "with")}
+              onRemove={() => {
+                setExtra((x) => x.filter((n) => n !== name));
+                if (name in withMap) bind(name, "with")(undefined);
+              }}
+              note={target?.kind === "item" && listed ? "Not an input of its form." : undefined}
+            />
+          ))}
+          {open.length > 0 && (
+            <p className="text-muted">
+              A custom workflow gives what it returns: write{" "}
+              {open.map((k, i) => (
+                <span key={k}>
+                  {i > 0 && ", "}
+                  <code className="font-mono">steps.{k}.&lt;name&gt;</code>
+                </span>
+              ))}{" "}
+              as a CEL expression.
+            </p>
+          )}
+          {(target?.kind !== "item" || !listed) && (
+            <AddVariable
+              id="cd-add-input"
+              rowId={(n) => `cd-in-${n}`}
+              label={target?.kind === "awx" ? "Add a variable" : "Add an input"}
+              taken={[...inputs.map((i) => i.name), ...others]}
+              onAdd={(n) => setExtra((x) => [...x, n])}
+            />
+          )}
+        </fieldset>
+      )}
 
       {!planned && (
         <fieldset className="flex flex-col gap-2">
@@ -668,6 +692,8 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             onRemoveExtra={(n) => setUndoExtra((x) => x.filter((m) => m !== n))}
             onChange={(u) => apply(() => edits.setUndo(text, id, u))}
             bind={(name) => bind(name, "undo")}
+            onRest={(field, v) => apply(() => edits.setRestField(text, id, field, v, "undo"))}
+            reads={[...sources.map((s) => s.value), ...(key ? restOutputs.map((o) => `steps.${key}.${o.name}`) : [])]}
           />
         </fieldset>
       )}
@@ -684,6 +710,8 @@ function UndoEditor({
   onRemoveExtra,
   onChange,
   bind,
+  onRest,
+  reads,
 }: {
   undo: Raw | undefined;
   targets: CompositeStepTarget[];
@@ -693,13 +721,17 @@ function UndoEditor({
   onRemoveExtra: (name: string) => void;
   onChange: (u: edits.Undo) => void;
   bind: (name: string) => (v: edits.Binding) => void;
+  onRest: (field: edits.RestField, value: string | number[]) => void;
+  reads: string[];
 }) {
   const [byNameOpen, setByNameOpen] = useState(false);
   const focus = useFocusAfterSelect();
   const current = undo
-    ? str(undo.workflow)
-      ? ({ kind: "workflow", ref: str(undo.workflow) } as const)
-      : ({ kind: "awx", ref: str(undo.job_template) } as const)
+    ? undo.rest !== undefined
+      ? ({ kind: "rest", ref: "" } as const)
+      : str(undo.workflow)
+        ? ({ kind: "workflow", ref: str(undo.workflow) } as const)
+        : ({ kind: "awx", ref: str(undo.job_template) } as const)
     : undefined;
   const options: Option[] = [
     { value: "none", label: "Nothing" },
@@ -732,6 +764,7 @@ function UndoEditor({
             if (v === "none") return onChange(null);
             const i = v.indexOf(":");
             const kind = v.slice(0, i);
+            if (kind === "rest") onChange({ kind });
             if (kind === "awx" || kind === "workflow") onChange({ kind, ref: v.slice(i + 1) });
           }}
         />
@@ -750,7 +783,10 @@ function UndoEditor({
           />
         </Field>
       )}
-      {undo && (
+      {undo && current?.kind === "rest" && (
+        <RestCallFields prefix="cd-undo-rest" call={obj(undo.rest)} undo reads={reads} onChange={onRest} />
+      )}
+      {undo && current?.kind !== "rest" && (
         <>
           {names.map((name) => (
             <BindingRow
@@ -775,6 +811,154 @@ function UndoEditor({
           />
         </>
       )}
+    </>
+  );
+}
+
+/** What the statuses written read as: the numbers in the text; undefined when something else is there. */
+export function writtenStatuses(text: string): number[] | undefined {
+  const words = text.split(/[\s,]+/).filter(Boolean);
+  if (!words.every((w) => /^\d+$/.test(w))) return undefined;
+  return words.map(Number);
+}
+
+/** A REST call's fields: a step's, or an undo's, whose answer nothing reads. */
+function RestCallFields({
+  prefix,
+  call,
+  stepKey,
+  undo,
+  reads,
+  onChange,
+}: {
+  prefix: string;
+  call: Raw;
+  stepKey?: string;
+  undo?: boolean;
+  /** What its URL and body can read at that point. */
+  reads: string[];
+  onChange: (field: edits.RestField, value: string | number[]) => void;
+}) {
+  const secrets = useQuery(adm.secrets());
+  const method = str(call.method);
+  const secret = str(call.secret);
+  const accept = Array.isArray(call.accept) ? call.accept.join(", ") : "";
+  const stored = secrets.data?.items ?? [];
+  const secretOptions: Option[] = [
+    { value: "none", label: "No secret" },
+    ...stored.map((s) => ({ value: s.name, label: s.name, meta: s.kind })),
+    ...(secret && !stored.some((s) => s.name === secret)
+      ? [{ value: secret, label: secret, meta: secrets.isPending ? undefined : "not stored" }]
+      : []),
+  ];
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
+        <Field label={undo ? "Undo's method" : "Method"} htmlFor={`${prefix}-method`}>
+          <Select
+            id={`${prefix}-method`}
+            value={method}
+            placeholder="Choose"
+            options={restMethods.map((m) => ({ value: m, label: m }))}
+            onChange={(v) => onChange("method", v)}
+          />
+        </Field>
+        <Field
+          label={undo ? "Undo's URL" : "URL"}
+          htmlFor={`${prefix}-url`}
+          hint="The host is fixed, and on the allowed hosts. ${...} fills its path or query, escaped."
+        >
+          <CommitInput
+            id={`${prefix}-url`}
+            value={str(call.url)}
+            className="font-mono text-xs"
+            placeholder="https://cmdb.corp.example/api/ci/${steps.vm.name}"
+            onCommit={(v) => onChange("url", v)}
+          />
+        </Field>
+        <Field
+          label={undo ? "Undo's body" : "Body"}
+          htmlFor={`${prefix}-body`}
+          className="md:col-span-2"
+          hint={method === "GET" ? "A GET has no body." : "A CEL expression, sent as JSON. Empty: no body."}
+        >
+          <CommitInput
+            id={`${prefix}-body`}
+            value={str(call.body)}
+            className="font-mono text-xs"
+            placeholder={method === "GET" ? undefined : "{'name': steps.vm.fqdn, 'owner': inputs.owner}"}
+            disabled={method === "GET" && !str(call.body)}
+            onCommit={(v) => onChange("body", v)}
+          />
+        </Field>
+        <Field
+          label={undo ? "Undo's secret" : "Secret"}
+          htmlFor={`${prefix}-secret`}
+          className="md:col-span-2"
+          hint={
+            secrets.isError
+              ? "The stored secrets couldn't be loaded."
+              : "Sent as a bearer token, basic credentials or a header, as stored."
+          }
+        >
+          <Select
+            id={`${prefix}-secret`}
+            value={secret || "none"}
+            loading={secrets.isPending}
+            options={secretOptions}
+            onChange={(v) => onChange("secret", v === "none" ? "" : v)}
+          />
+        </Field>
+        <Field
+          label={undo ? "Undo's accepted statuses" : "Accepted statuses"}
+          htmlFor={`${prefix}-accept`}
+          className={undo ? "md:col-span-2" : undefined}
+          hint="Others fail the step. Empty: any 2xx."
+        >
+          <CommitInput
+            id={`${prefix}-accept`}
+            value={accept}
+            className="font-mono text-xs"
+            placeholder={undo ? "200, 204, 404" : "200, 201"}
+            onCommit={(v) => {
+              const statuses = writtenStatuses(v);
+              if (statuses) onChange("accept", statuses);
+              else toast.error("HTTP statuses, as numbers: 200, 201.");
+            }}
+          />
+        </Field>
+        {!undo && (
+          <Field
+            label="Keep"
+            htmlFor={`${prefix}-keep`}
+            hint={
+              <>
+                A JSONPath into the answer. Empty: all of it. Later steps read{" "}
+                <code className="font-mono">steps.{stepKey || "<key>"}.json</code> and{" "}
+                <code className="font-mono">.status</code>.
+              </>
+            }
+          >
+            <CommitInput
+              id={`${prefix}-keep`}
+              value={str(call.keep)}
+              className="font-mono text-xs"
+              placeholder="$.result"
+              onCommit={(v) => onChange("keep", v)}
+            />
+          </Field>
+        )}
+      </div>
+      <p className="text-muted">
+        It can read{" "}
+        {reads.map((r, i) => (
+          <span key={r}>
+            {i > 0 && ", "}
+            <code className="font-mono">{r}</code>
+          </span>
+        ))}
+        .
+      </p>
     </>
   );
 }
@@ -966,7 +1150,8 @@ function AddStepDialog({
     setErrors({});
   };
   const suggest = (t: edits.Target | undefined) => {
-    if (!keyTouched && t) setKey(edits.uniqueKey(text, findTarget(targets, t)?.title ?? t.ref));
+    if (!keyTouched && t)
+      setKey(edits.uniqueKey(text, findTarget(targets, t)?.title ?? (t.kind === "rest" ? "rest_call" : t.ref)));
   };
   const submit = () => {
     const e: Record<string, string> = {};
@@ -991,7 +1176,7 @@ function AddStepDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="Add a step"
-        description="It runs one of the catalog's items, an AWX template or a custom workflow. Its inputs named as the form's are bound to them."
+        description="It runs one of the catalog's items, an AWX template or a custom workflow, or calls a REST API. Inputs named as the form's are bound to them."
         onOpenAutoFocus={(e) => {
           reset();
           // What it runs first, rather than the close button.
