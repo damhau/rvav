@@ -17,9 +17,11 @@ people or needs compensation. Most glue is simpler:
 | One REST request to a CMDB or a ticket system | A REST call step in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
 | Someone's answer or OK in the middle of a run, read by later steps | A step that waits for a person in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
 | A pause for a time, or an API checked until a condition holds | A step that waits or polls in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
+| Steps that depend on a condition, or the cases of a switch | A branch in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
+| Tell the requester, the owner, a group or people something during a run | A step that sends a message in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
 | Call AD, DNS or backup tools, or an API with loops or paging | An AWX job template |
 | React to requests, provisioning, day-2 actions, deletions, leases | A subscription: webhook or AWX template ([ADR-0021](adr/0021-event-subscriptions.md)) |
-| Waiting for an event, days of back and forth, compensation, many systems | A custom workflow |
+| Waiting for an event, days of back and forth, compensation, decisions that nest, many systems | A custom workflow |
 
 ## 1. Write it
 

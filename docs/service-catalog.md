@@ -41,7 +41,7 @@ its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
 job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
 person's `answered`, `by`, `comment` and `answer`, a wait's `until`, a poll's
-`status`, `json` and `met`.
+`status`, `json` and `met`, a branch's `case`, a message's `told`.
 
 #### A REST call step
 A step can call a REST API instead of running something
@@ -190,6 +190,88 @@ Cancelling the request stops it at once. **Retry** starts it again if it failed 
 was stopped: the whole duration, or the whole deadline. A requester's form shows
 that it waits and for how long, and a poll's method and how often: its URL, body and
 conditions masked, its secret, `accept` and `keep` left out.
+
+#### A branch
+Steps that run on one side of a condition, or the cases of a switch
+([ADR-0033](adr/0033-composite-step-kinds.md)). A step's `when` stays the way to skip
+one step:
+
+```yaml
+  - key: change
+    title: Is the change approved
+    branch:
+      cases:
+        - title: Refused
+          when: "steps.ask.answer.ok == false"
+          steps:
+            - key: refused
+              notify: {requester: true, message: "Your change was refused."}
+        - title: A big disk
+          when: "inputs.disk_gb > 500"
+          steps:
+            - key: manager
+              ask: {group: managers}
+      else:
+        - key: open
+          rest: {method: POST, url: "https://itsm.corp.example/changes"}
+```
+
+| Field | What it is |
+|---|---|
+| `branch.cases` | At least one, in order. The first whose condition holds is taken |
+| `cases[].title` | Optional: what the graph and the timeline call it |
+| `cases[].when` | CEL giving true or false, over `inputs`, `steps` before the branch, `environment` and `project` |
+| `cases[].steps` | What runs on that side, in order. Empty: it goes on |
+| `branch.else` | Optional: what runs when no case holds |
+
+A branch has no `when`, `with` or `undo`. Nothing nests: a branch can't be in a
+parallel group or on a side, nor a parallel group on a side, and a VM step can't be
+on a side, since its VMs are planned when the request is submitted. Keys are unique
+across the composite.
+
+Later steps read `steps.<key>.case`: 1 for the first case, 0 for otherwise or none.
+They read a side's step as one `when` skipped, there only if it ran:
+`has(steps.open) && steps.open.status == 201`. A side reads its branch and the steps
+before it on that side, not another side's, which is refused on save.
+
+It chooses once. A Retry keeps its choice and runs only what failed or was undone on
+its side, unless a rollback that finished deleted what was built. A condition it
+can't read fails the branch, masked. Steps on the sides not taken are skipped, and
+never undone. A requester's form shows its cases' titles and their conditions masked,
+and its steps as any step.
+
+#### A step that sends a message
+Through rvav's notifications ([ADR-0033](adr/0033-composite-step-kinds.md)): the
+notification centre, then mail, Teams and Slack as each person chose:
+
+```yaml
+  - key: told
+    title: Tell the owner
+    notify:
+      owner: true
+      groups: [dba]
+      message: "${inputs.name} is ready at ${steps.vm.fqdn}."
+```
+
+| Field | What it is |
+|---|---|
+| `notify.requester`, `notify.owner` | True to tell them |
+| `notify.groups` | OIDC groups: their members rvav has seen sign in |
+| `notify.users` | User IDs: one unknown is refused on save |
+| `notify.message` | At most 2000 characters, with `${...}` as a REST call's URL has it. Required |
+
+At least one person or group is required. It has no `with` or `undo`, and may have a
+`when`. Each `${...}` must give one value, a text, a number, true or false, and null
+is empty. A secret input is refused on save, and fails the step if reached some other
+way. What it fills in is data: each channel escapes it, and the filled text is scrubbed
+of the request's secret inputs.
+
+It is sent once, whatever is retried: a **Retry** doesn't send it again, unless a
+rollback that finished deleted what was built. A template it can't fill fails the step,
+masked, with nobody told. A channel that fails doesn't: the notifier retries it. If
+there's nobody to tell when it runs, it goes on and says so. Later steps read
+`steps.<key>.told`, how many it told, never what it said. The timeline says `Message
+sent.`, and a requester's form only whether the requester or the owner is told.
 
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).

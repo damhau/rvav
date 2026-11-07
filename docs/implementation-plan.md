@@ -496,9 +496,10 @@ a branch in 2, a notification in 1, wait for an event in none. The vRO
 triage of the organisation's vRA (#85) confirms or reorders them.
 - New steps: wait for a person (a form or an approval mid-run, with its
   notification), wait for a time or until a condition (a REST call polled,
-  with a deadline), a REST call (allowed hosts, a stored secret), all built, in
-  [ADR-0033](adr/0033-composite-step-kinds.md); a notification, a branch;
-  the logic between them in CEL.
+  with a deadline), a REST call (allowed hosts, a stored secret), a branch (cases
+  over CEL, first match wins, with nothing nested), a message (through rvav's
+  notifications, its text a template), all built, in
+  [ADR-0033](adr/0033-composite-step-kinds.md); the logic between them in CEL.
 - No scripting language: work that needs one is an AWX playbook or a
   custom workflow.
 

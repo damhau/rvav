@@ -37,14 +37,16 @@ activity's run key for an outcome.
 | `lease_expiring` | the owner | 7 days and 1 day before the lease ends |
 | `lease_expired` | the owner | the lease ended: the deployment is powered off |
 | `owner_changed` | the new owner | a deployment was handed over to them |
+| `step_message` | those a composite's message step names ([ADR-0033](0033-composite-step-kinds.md)) | that step ran: its dedupe key is the request and the step |
 
 ### Preferences
 Each user chooses, per kind, the channels besides the app: email, Teams,
 Slack. In the app is always on. Without a choice of their own:
 
 - **Email:** `approval_needed`, `request_succeeded`, `request_failed`,
-  `request_rejected`, `lease_expiring` and `lease_expired`.
-- **Teams or Slack:** `approval_needed`, when that channel is set up.
+  `request_rejected`, `lease_expiring`, `lease_expired` and `step_message`.
+- **Teams or Slack:** `approval_needed` and `step_message`, when that channel is
+  set up: an author wrote it to be read.
 
 A user also chooses a **locale** (`en`, `fr`) for what is sent.
 Preferences say which channels can reach the user and why not: no email

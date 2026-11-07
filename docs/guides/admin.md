@@ -409,6 +409,27 @@ An item's tabs:
     and `met`; on a deadline that goes on, `met` is false, with the last answer or
     null. See
     [the catalog's reference](../service-catalog.md#a-step-that-waits-for-a-time-or-a-condition).
+  - **A branch** runs the steps of one side of a condition, or of a switch's
+    cases. **Its cases:** each has a **Title**, shown on the graph and the timeline,
+    a **When**, a CEL condition, and its steps: **Add a step to...** adds one, and
+    selecting it edits it as any other. **Add a case** adds another, and the first
+    whose condition holds is taken, so their order matters: **Earlier** and **Later**
+    move them. **Otherwise** has what runs when no case holds. A case with no steps
+    goes on. It chooses once, and a Retry keeps its choice. Nothing nests: a branch
+    isn't offered on a side or in a parallel group, a side's steps move within it and
+    don't run together, and a VM item can't go on a side. Later steps read
+    `steps.<key>.case`, and a side's step only if it ran: `has(steps.x)`. A side's
+    step can't read another side's. See
+    [the catalog's reference](../service-catalog.md#a-branch).
+  - **A message to people** tells **The requester**, **The owner**, **OIDC groups**
+    or **People**, through the notification centre and the channels each of them
+    keeps on. It has no inputs or undo. Its **Message** is text with `${...}`, on the
+    form's inputs and earlier steps. What a requester typed reaches those people, and
+    each channel escapes it. A secret input is refused. It is sent once: a Retry
+    doesn't send it again. A channel that fails doesn't fail the step, and neither
+    does nobody to tell; a text it can't fill does. Later steps read
+    `steps.<key>.told`, never what it said. See
+    [the catalog's reference](../service-catalog.md#a-step-that-sends-a-message).
   - A VM item's step is planned when the request is submitted: its inputs
     come from the form only, and it has no condition or undo (a failure
     deletes its VMs).
@@ -420,7 +441,8 @@ An item's tabs:
   composite steps, a workflow (a step's, an undo's or a workflow item's)
   not offered to every project the composite is offered to (a request
   from one of the others is refused), a VM step with a condition, an
-  undo or an input from a step, a step using a later one, a REST call whose
+  undo or an input from a step, or on a side of a branch, a step using a later
+  one or another side's, a message showing a secret input, a REST call whose
   host isn't allowed or whose secret is gone. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.

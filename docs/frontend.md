@@ -281,7 +281,11 @@ Catalog admins and administrators build items under **Catalog items**
   outputs, one per question. Its only refusal on request depends on who requests, so the
   Approvers field's hint says it. A wait for a time and a poll are others (`WaitFields`, `PollFields`,
   a poll's call being `RestCallFields` with `poll`, edited by `setWaitField`, `setPollField` and
-  `setRestField`), with no inputs or undo, and `waitOutputs` and `pollOutputs` give their outputs. Those problems,
+  `setRestField`), with no inputs or undo, and `waitOutputs` and `pollOutputs` give their outputs. A branch has
+  `BranchFields` (`addBranchCase`, `moveBranchCase`, `setBranchCase`, `removeBranchCase`), and its sides' steps are
+  selected and edited as any other: `edits.ts` and `scope.ts` flatten them right after the branch with their own
+  pointers, a step's `side` says where it moves, and `earlierSteps` says what it can read. A message has `NotifyFields`
+  (`setNotifyField`), its text a textarea that commits on blur, as Enter is a new line. Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from
@@ -525,13 +529,23 @@ nothing about it (positions, layout) is stored.
   (`simulator.ts`: `openWait`, `waitTick`, `checkPoll`) a tick is a minute of a wait, and a poll's
   condition holds at its third check: `for: 72h` and `every: 6h` stay until cancelled, `for: 2m` and
   `every: 1m` run on, and a `timeout: 1m` reaches its deadline first, so a spec picks what it needs.
+- **A branch on the graph:** a side's steps are nodes with `onSideOf`, in a lane from the branch to what
+  comes next, and two sides with no steps merge into one edge. Its edges are `routed` (`nodes.tsx`), drawn
+  on dagre's points, since a smooth step would run a long edge over a side's steps and hide its label. `layout.ts`
+  keeps room for `taken` or `not taken` on their labels whether or not there is a run, so nothing moves. A run
+  passes `taken` (`branchTaken`, from `Step.branch_case`) and each edge says its word and is drawn as chosen
+  (`rvav-edge-taken`, `rvav-edge-not-taken`). The list view nests a side's steps in a dashed box under the branch. In
+  the mocks' run (`simulator.ts`), a branch chooses when planned from the form, as its steps have no outputs, so a
+  spec's case reads the inputs; a message reaches the mocks' me only if it tells the requester.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
   (the designer, to a request), `composite-rest.spec.ts` (a REST call and
   its undo from the keyboard, masked on the form and the run), `composite-ask.spec.ts`
   (a wait from the keyboard, masked on the form, answered, rejected, retried, cancelled,
   and someone else's), `composite-wait.spec.ts` (a wait for a time and a poll from the keyboard,
-  masked on the form, waiting, cancelled, run to their end, at a deadline, retried), `request-run.spec.ts` (a failed run
+  masked on the form, waiting, cancelled, run to their end, at a deadline, retried), `composite-branch.spec.ts` (a branch
+  and a message from the keyboard, masked on the form, its side followed, otherwise, nothing held, a failed message and a
+  Retry, what's refused on a side), `request-run.spec.ts` (a failed run
   retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
   same with the keyboard only; `accessibility.spec.ts` scans the
   designer and a run. The mocks can't approve as someone else, so a
@@ -580,7 +594,8 @@ A blueprint with components builds one deployment
   without guest settings, sizes, naming or a step's binding literals,
   which a requester doesn't see, its CEL's string literals masked, and a
   REST call's URL and body with them, its secret, statuses and `keep` left out, a
-  poll's the same, a wait's group, users, message, labels and options too, and no problems on any step, since a
+  poll's the same, a wait's group, users, message, labels and options too, a message's all but whether the requester or
+  owner is told, a branch's cases masked and its steps as any step, and no problems on any step, since a
   mask reads as a mistake;
   `blueprint.Topology` on the server, `topologyOf` in the mocks, checked
   against one fixture, `internal/seed/testdata/topology.json`) and `withPreview` puts the preview's counts

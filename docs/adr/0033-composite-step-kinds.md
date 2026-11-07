@@ -17,7 +17,7 @@ a workflow calling a CMDB needed a playbook for one HTTP request.
 
 ### What a step kind is
 - **One key per kind.** A step runs one of `item`, `awx`, `workflow`, `rest`,
-  `ask`, `wait`, `poll`, each with its own fields, beside what every step has (`key`, `title`,
+  `ask`, `wait`, `poll`, `branch`, `notify`, each with its own fields, beside what every step has (`key`, `title`,
   `when`, and `undo` when it has something to undo). A later kind adds a key:
   nothing moves in existing definitions. A step with none of them, or more
   than one, is refused when saved.
@@ -260,6 +260,111 @@ a secret either.
   check is its step's detail: `Checks every 10m. Last check: GET answered 200, not
   yet.`
 
+### A branch (D2.5)
+```yaml
+- key: change
+  title: Is the change approved
+  branch:
+    cases:
+      - title: Refused        # said on the graph and the timeline
+        when: "steps.ask.answer.ok == false"
+        steps:                # may be empty: it goes on
+          - key: told
+            notify: {requester: true, message: "Refused."}
+      - when: "inputs.disk_gb > 500"
+        steps:
+          - key: manager
+            ask: {group: managers}
+    else:                     # optional, what runs when no case holds
+      - key: open
+        rest: {method: POST, url: "https://itsm.corp.example/changes"}
+```
+
+- **One key for an if and a switch.** Its cases are read in order and the first
+  whose condition holds is taken. A case is CEL, as a `when` is: no comparison to a
+  bare value, which would be a new literal for a topology to mask. A step's `when`
+  stays as it is, for one step. A branch has none itself, nor `with` or `undo`.
+- **Nothing nests.** A branch can't be in a parallel group, a parallel group can't
+  be on a side, and a branch can't be on a side: all refused on save. The canvas
+  draws a side as a lane, a plain sequence, and a frame as steps with no edge between
+  them: neither holds the other well. Cases already say what a nested condition
+  would, and a refusal can be relaxed later, where an accepted shape can't be taken
+  back. A VM step can't be on a side either: its VMs are planned when the request is
+  submitted, before a branch chooses (refused on request, and said in the designer).
+- **Keys.** Keys stay unique across the composite, whichever side they are on. A
+  side's steps are `request_steps` rows like any step's, `step:<key>`, in order: the
+  branch's row (`system: branch`), each side's rows, then what comes next. So the
+  graph, the timeline and `earlierOutputs` find them as they do others. A key has no
+  `/`, which keeps meaning a child of a step.
+- **What a step can read.** A later step reads a side's step as one `when` skipped:
+  it is there only if it ran, so `has(steps.x) && steps.x.ok`. A side reads its
+  branch's outputs and the earlier steps of its own side. Another side's steps are
+  refused on save, by the server and by `composite/scope.ts`, and aren't offered. A
+  case reads what came before the branch, not the branch or its sides.
+- **The decision stays decided.** `DecideBranch` stores the side once, in the row's
+  outputs, with a coalesce: `{case: n}`, 1 for the first case, 0 for otherwise or
+  none. An activity retried finds it, and a run that continues as new, or a worker
+  back after a restart, reads it from the done row and evaluates nothing, even if
+  what the condition reads has changed since. **A Retry keeps it:** a done branch
+  stays done, and only its side's failed and undone steps run again. A rollback
+  that finished deleted what was built, and everything runs again, so only then does
+  it choose again. That needs a VM to delete: with nothing to delete there is no
+  rollback row, so the branch keeps its choice. A condition it can't read fails the
+  branch, its literals masked, and a Retry reads it again.
+- **The sides not taken** are skipped, not failed: `Its side of the branch wasn't
+  taken.` The branch says `Took: <title>`, `Took: case 2` or `Took: otherwise`, and
+  `No case held: nothing ran here.` when nothing did. A run's graph marks each way
+  `taken` or `not taken`, in words as well as a line, and the size of a node or the
+  room of a label doesn't depend on the run, so nothing moves.
+- **Undo.** Only steps that ran are undone, in reverse, as anywhere: a side not taken
+  has none. A branch has nothing of its own to undo.
+- **Runs in flight** take the code they took: a definition with no branch makes the
+  same Temporal commands, and `replay_test.go` holds to that.
+
+### A step that sends a message (D2.5)
+```yaml
+- key: told
+  title: Tell the owner
+  notify:
+    owner: true             # requester, owner, groups and users, at least one
+    groups: [dba]
+    message: "${inputs.name} is ready at ${steps.vm.fqdn}."
+```
+
+- **Through the notifications' channels** (ADR-0023): the notification centre,
+  then mail, Teams and Slack as each person chose, under a kind of its own,
+  `step_message`. Everyone gets the channels of their choice, and only them.
+- **Its text** has the `${...}` of a REST call's URL over `inputs`, `steps`,
+  `environment` and `project`: no new template language. It is at most 2000
+  characters as written and 4000 once filled, cut with an ellipsis. Each `${...}`
+  must give one value (a text, a number, true or false; null is empty). A list or a
+  map fails the step, its expression masked: `The message wasn't sent: its
+  ${steps.x.items}: it isn't a single value.`
+- **No secret.** A template reads inputs and outputs, and never a stored secret. A
+  `secret` input it names, by name or index, is refused on save. One reached another
+  way (`inputs['a' + 'b']`) reads as a marker, not its value, and fails the step with
+  nobody told. A REST answer is already scrubbed, a person's form can't ask for a
+  secret, and the filled text is scrubbed of the request's secret inputs all the
+  same, since an API or a person may repeat one.
+- **Values from a requester reach other people,** so they are data. Mail is
+  `html/template`, with its subject on one line. A Teams card's markdown is escaped.
+  Slack gets this kind as `plain_text`, with no mention or link, and other kinds
+  keep their markup. `TestStepMessageEscapes` holds them to it.
+- **Sent once.** A dedupe key, `step_message:<request>:<step>`, makes a retried
+  activity or a run continued as new tell nobody twice. **A Retry doesn't send it
+  again:** a done step stays done. After a rollback that finished, everything runs
+  again, this message too, and the keys are freed for it.
+- **What fails it.** A template it can't fill, masked, with nobody told, and the
+  database failing (the activity retries). A channel that fails doesn't: the notifier
+  retries it, as for any notification (ADR-0023). Nobody to tell doesn't either. An
+  unknown user is refused on save, but a group may have no known member yet, or
+  someone may have left, so at run time it goes on and says `Nobody to tell: it
+  went on.`, without naming them. Cancelling the request tells nobody.
+- **What it leaves.** No `undo`: a message can't be unsent. Its one output is
+  `steps.<key>.told`, how many it told, so that its text stays out of later steps,
+  of Temporal's history and of the timeline, which says `Message sent.` The text is
+  in the notifications of those it told. A requester reads it only if they are one.
+
 ### What a requester sees
 `blueprint.Topology` keeps a REST call's method, and its URL and body masked
 as CEL literals are (`policy.MaskLiterals`, ADR-0032), for the step and its
@@ -279,6 +384,11 @@ REST call's, its condition masked, how often it checks, its deadline and what
 that does: `Calls: GET …${steps.change.json.sys_id}`, `Until: steps.change_ok.json
 == '…'`, `Every: 10m`, `Timeout: 72h, then the step fails`. Its secret, accepted
 statuses and `keep` stay out.
+
+A branch keeps each case's title and its condition masked, and its sides' steps get
+the same projection as any step: `Refused: steps.ask.answer.ok == '…'`. A message
+keeps only whether the requester or the owner is told: `Tells: the requester`, or
+`Tells: other people`. Who else it names and what it says stay out.
 
 A topology is masked, so it carries no problems: a step's masked URL read as a
 mistake, and a requester saw "1 problem" on a REST step.
@@ -304,6 +414,13 @@ waiting and asking through `rvav.RequestApproval`: one that also waits for an
 event, until its step kind exists, and one a subscription or a day-2 action runs,
 for the reason above.
 
+Mail no longer needs a playbook: a workflow whose only other system is mail, with
+or without REST calls, is group A, a composite item with a step that sends a message
+(the standard `Tell the owner the VM is ready`), unless a subscription or a day-2
+action runs it. Mail to an address that isn't a user stays a playbook's, so the note
+says so. A decision no longer moves a workflow on its own: a branch covers it, and the
+note warns only of decisions that nest beyond what cases say, or that compensate.
+
 ### How this sits with ADR-0007, ADR-0011, ADR-0022 and ADR-0032
 - **ADR-0007:** the integration library stays AWX and Ansible, and level 2
   stays the default for anything with logic. A REST call is a level-1 step
@@ -314,10 +431,15 @@ for the reason above.
   run, a wait asks something in the middle of its run. So it has no approval
   rules, delegation, editable inputs or all-of, and stays out of the approval
   reports (the backlog metric keeps it: someone is waiting).
-- **ADR-0022:** a custom workflow stays the way for branching on answers, days
-  of back and forth or compensation. `rvav.RequestApproval` is unchanged. A wait
-  for an event, or a condition that takes more than one call and CEL on its
-  answer, is one too.
+- **ADR-0022:** a custom workflow stays the way for days of back and forth,
+  compensation, or decisions that nest beyond what a branch's cases say. A step
+  reading an answer and a branch now cover plain branching on answers.
+  `rvav.RequestApproval` is unchanged. A wait for an event, or a condition that takes
+  more than one call and CEL on its answer, is one too.
+- **ADR-0023:** a message is a notification like any other, with its dedupe key, its
+  deliveries and each person's channels. Its own kind lets someone turn it down
+  without losing the rest. It differs in that an author writes it, so its values are
+  escaped harder (Slack's plain text).
 - **ADR-0032:** the YAML stays the source of truth, and the canvas draws these
   steps as it draws others. Topology masking extends to URLs and bodies. The
   "no scripting language" rule is the one above.
@@ -349,3 +471,11 @@ for the reason above.
   long history, waits for its siblings' next round or end before it goes on. A
   sibling long at work (a VM build) can make it late, never early. One that must
   keep its pace has a group of its own.
+- A branch can't hold a VM step, as a VM is planned at submission: an item that
+  builds a VM on one side only is two items, or a custom workflow.
+- A side can't run steps at the same time, nor hold a branch. Where that is really
+  needed, a custom workflow does it.
+- Retry keeps a branch's choice, even when what it read has changed since, so
+  correcting that means a new request. Only a rollback that finished chooses again.
+- A message to a group reaches the members rvav has seen sign in: someone who never
+  has isn't told. Mail to a list beyond those is a playbook's.

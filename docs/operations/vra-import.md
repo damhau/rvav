@@ -190,14 +190,14 @@ actions vRA runs are listed, but their code isn't read.
 
 | Suggested group | When |
 |---|---|
-| **A. Native** | A workflow that only drives vCenter: rvav's built-in steps, or a composite item. One that also calls REST APIs, or only them, unless a subscription or day-2 action runs it: a composite item with REST call steps ([ADR-0033](../adr/0033-composite-step-kinds.md)). One with a user interaction or a timer and no wait for an event, under the same condition: a composite item with steps that wait for a person or a time, or poll (a timer around a REST call). An action that fills a form field: a value source on the field (REST when it calls REST, CEL otherwise). |
-| **B. AWX** | A workflow that calls other systems (Active Directory, SQL, PowerShell, SSH, mail, NSX...), or REST APIs when a subscription or day-2 action runs it, which can't run a composite: a playbook, with the Ansible collections the report names. ABX actions. |
+| **A. Native** | A workflow that only drives vCenter: rvav's built-in steps, or a composite item. One that also calls REST APIs, or only them, unless a subscription or day-2 action runs it: a composite item with REST call steps ([ADR-0033](../adr/0033-composite-step-kinds.md)). One that sends mail, a step that sends a message, under the same condition. A decision is a branch's, one nesting too deep a custom workflow's. One with a user interaction or a timer and no wait for an event, under the same condition: a composite item with steps that wait for a person or a time, or poll (a timer around a REST call). An action that fills a form field: a value source on the field (REST when it calls REST, CEL otherwise). |
+| **B. AWX** | A workflow that calls other systems (Active Directory, SQL, PowerShell, SSH, NSX...), mail when a subscription or day-2 action runs it or alongside those, or REST APIs when a subscription or day-2 action runs it, which can't run a composite: a playbook, with the Ansible collections the report names. ABX actions. |
 | **C. Custom Temporal workflow** | A workflow that waits for events, until a step can. One with a user interaction or a timer that also does, or that a subscription or day-2 action runs: it waits durably, and asks with rvav's approvals. |
 | **D. Retire** | Nothing in vRA runs it (or only disabled subscriptions), and it hasn't run for six months or is a copy of another that never ran. An action nothing calls. |
 
 The report ends with each workflow to keep **as a composite item**: its
 steps (rvav's, an AWX job), and the step kinds rvav may add for vRO's
-patterns (wait for an event, a notification, a branch), with how many workflows need each. That sizes
+patterns (wait for an event), with how many workflows need each. That sizes
 which step kinds rvav builds ([implementation plan, D2](../implementation-plan.md#d2-composite-step-kinds-after-n1)).
 `-standard` runs it on twelve typical enterprise workflows instead of a
 vRA's.

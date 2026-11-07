@@ -77,6 +77,14 @@ their times and tasks.
   approved. The graph shows it **Waiting**. Select it, or open **Timeline**, to
   see what it waits for and until when, and what its last check found. There is
   nothing for you to do, and Cancel request stops it at once.
+- **A branch:** a composite can take one way or another, depending on what you
+  asked for or what an earlier step found. On the graph each way says **taken** or
+  **not taken** once it has chosen, and the steps of the others show **Skipped**,
+  which isn't a failure. On a form the graph shows the ways there are, not the values
+  they compare. A Retry keeps the way it chose.
+- **A message:** a composite's step can tell you, the owner or others something. It
+  arrives as a notification like any other, on the channels you keep on for **A
+  request's message** in your preferences, and it isn't sent again by a Retry.
 - **Failed:** the error names the step and the system. On a composite's
   graph, the step that failed is selected.
   - **Retry from the failed step** once the cause is fixed: done steps
