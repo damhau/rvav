@@ -1,14 +1,17 @@
 // A composite blueprint's steps, read from the definition (ADR-0022): the
 // groups they run in, what each runs and which earlier steps it uses, with
 // the server's structural checks (CEL itself is checked when saved; a REST
-// call's host and secret too, with the lists only the server has).
+// call's host and secret, and the users a wait names, too, with the lists only
+// the server has).
 import type { FieldError } from "@/lib/api/types";
 
 export interface CompositeStepView {
   key: string;
   title?: string;
-  kind: "item" | "awx" | "workflow" | "rest" | "?";
+  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "?";
   target: string;
+  /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
+  ask?: { who: string; wants: string; timeout?: string };
   when?: string;
   uses: string[];
   undo?: string;
@@ -110,6 +113,108 @@ function checkRest(call: Raw, ptr: string, err: (field: string, code: string, me
   });
 }
 
+/** A Go duration's length in milliseconds, or null if it isn't one (time.ParseDuration). */
+export function goDuration(v: string): number | null {
+  const unit: Record<string, number> = { ns: 1e-6, us: 1e-3, µs: 1e-3, ms: 1, s: 1e3, m: 6e4, h: 36e5 };
+  if (!/^[+-]?(\d+(\.\d*)?(ns|us|µs|ms|s|m|h)|\.\d+(ns|us|µs|ms|s|m|h))+$/.test(v)) return null;
+  let total = 0;
+  for (const m of v.matchAll(/([\d.]+)(ns|us|µs|ms|s|m|h)/g)) total += Number(m[1]) * unit[m[2]!]!;
+  return v.startsWith("-") ? -total : total;
+}
+
+/** A question's value: what is wrong with it, if anything (core.askValueProblem). */
+function askValueProblem(f: Raw, v: unknown): string {
+  const options = Array.isArray(f.options) ? (f.options as unknown[]).map(String) : [];
+  switch (f.type) {
+    case "string":
+      return typeof v === "string" ? "" : "Give text.";
+    case "number":
+      return typeof v === "number" ? "" : "Give a number.";
+    case "boolean":
+      return typeof v === "boolean" ? "" : "Give true or false.";
+    case "choice":
+      return typeof v === "string" && options.includes(v) ? "" : `Choose one of: ${options.join(", ")}.`;
+    default:
+      return "";
+  }
+}
+
+/** What the server checks of a wait for a person on its own (core.checkAsk). */
+function checkAsk(ask: Raw, ptr: string, err: (field: string, code: string, message: string) => void) {
+  const named = Array.isArray(ask.approvers) ? ask.approvers : [];
+  if (!str(ask.group) && named.length === 0 && !ask.requester && !ask.owner)
+    err(ptr, "required", "Say who is asked: an OIDC group, approvers, the requester or the owner.");
+  if (str(ask.message).length > 2000) err(`${ptr}/message`, "too_long", "At most 2000 characters.");
+  if (str(ask.timeout)) {
+    const d = goDuration(str(ask.timeout));
+    if (d === null || d < 1000) err(`${ptr}/timeout`, "invalid", "A duration such as 48h.");
+  }
+  if (str(ask.on_timeout)) {
+    if (!["fail", "continue", "escalate"].includes(str(ask.on_timeout)))
+      err(`${ptr}/on_timeout`, "enum", "fail, continue or escalate.");
+    if (!str(ask.timeout)) err(`${ptr}/on_timeout`, "required", "What happens on time-out needs a timeout.");
+  }
+  const to = (ask.escalate_to ?? {}) as Raw;
+  if (ask.on_timeout === "escalate" && !str(to.group) && !(Array.isArray(to.approvers) && to.approvers.length > 0))
+    err(`${ptr}/escalate_to`, "required", "Say whom to escalate to: an OIDC group or approvers.");
+  const form = Array.isArray(ask.form) ? (ask.form as Raw[]) : [];
+  if (form.length > 20) err(`${ptr}/form`, "too_many", "At most 20 questions.");
+  const seen = new Set<string>();
+  form.forEach((f, i) => {
+    const at = `${ptr}/form/${i}`;
+    const key = str(f.key);
+    if (!keyPattern.test(key)) err(`${at}/key`, "pattern", "A key of lower-case letters, digits and underscores.");
+    else if (seen.has(key)) err(`${at}/key`, "duplicate", `Another question has the key ${key}.`);
+    seen.add(key);
+    if (!str(f.label).trim()) err(`${at}/label`, "required", "Say what it asks.");
+    // The answer goes through Temporal's history to every later step.
+    if (f.secret || f.type === "secret" || f.type === "password") {
+      err(
+        at,
+        "secret",
+        "A step's form can't ask for a secret: its answer travels through Temporal's history to every later step. Keep secrets in the request's form or a stored secret.",
+      );
+      return;
+    }
+    if (!["string", "number", "boolean", "choice"].includes(str(f.type))) {
+      err(`${at}/type`, "enum", "string, number, boolean or choice.");
+      return;
+    }
+    const options = Array.isArray(f.options) ? f.options : [];
+    if (f.type === "choice" && options.length === 0) err(`${at}/options`, "required", "List what it may be.");
+    if (f.type !== "choice" && options.length > 0) err(`${at}/options`, "invalid", "Only a choice has options.");
+    if (f.default !== undefined && f.default !== null) {
+      const why = askValueProblem(f, f.default);
+      if (why) err(`${at}/default`, "invalid", why);
+    }
+  });
+}
+
+const timeoutWords: Record<string, string> = {
+  fail: "then the step fails",
+  continue: "then it goes on",
+  escalate: "then it escalates",
+};
+
+/** A wait for a person in words, from what a definition or a requester's topology has of it. */
+function askWords(ask: Raw): NonNullable<CompositeStepView["ask"]> {
+  const named = Array.isArray(ask.approvers) ? ask.approvers.length : 0;
+  const who = [
+    ask.requester ? "the requester" : "",
+    ask.owner ? "the owner" : "",
+    str(ask.group),
+    named === 0 ? "" : named === 1 ? "1 person" : `${named} people`,
+  ].filter(Boolean);
+  const questions = Array.isArray(ask.form) ? ask.form.length : 0;
+  return {
+    who: who.join(", ") || "a person",
+    wants: questions === 0 ? "to approve or reject" : questions === 1 ? "1 answer" : `${questions} answers`,
+    timeout: str(ask.timeout)
+      ? `${str(ask.timeout)}, ${timeoutWords[str(ask.on_timeout)] ?? timeoutWords.fail}`
+      : undefined,
+  };
+}
+
 /** A REST call on one line. */
 const restLine = (call: Raw) => `${str(call.method)} ${str(call.url)}`.trim();
 
@@ -140,7 +245,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
   steps.forEach((st, g) => {
     const at = `${prefix}/steps/${g}`;
     const parallel = Array.isArray(st.parallel) ? (st.parallel as Raw[]) : null;
-    if (parallel && (st.key || st.item || st.awx || st.workflow || st.rest))
+    if (parallel && (st.key || st.item || st.awx || st.workflow || st.rest || st.ask))
       err(at, "invalid", "A parallel group only lists steps.");
     const list = parallel ?? [st];
     const group: CompositeStepView[] = [];
@@ -155,17 +260,25 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
       else if (seen.has(key)) err(`${sp}/key`, "duplicate", `Another step has the key ${key}.`);
       const awx = s.awx as Raw | undefined;
       const rest = s.rest as Raw | undefined;
-      const kinds = [Boolean(s.item), Boolean(awx), Boolean(s.workflow), Boolean(rest)].filter(Boolean).length;
-      if (kinds !== 1) err(sp, "one_of", "A step is one of: item, awx, workflow or rest.");
+      const ask = s.ask as Raw | undefined;
+      const kinds = [Boolean(s.item), Boolean(awx), Boolean(s.workflow), Boolean(rest), Boolean(ask)].filter(
+        Boolean,
+      ).length;
+      if (kinds !== 1) err(sp, "one_of", "A step is one of: item, awx, workflow, rest or ask.");
       if (awx && !str(awx.job_template)) err(`${sp}/awx/job_template`, "required", "Name the AWX template.");
       if (rest) {
         checkRest(rest, `${sp}/rest`, err);
         if (s.with !== undefined)
           err(`${sp}/with`, "invalid", "A REST call has no inputs: its URL and body read inputs and steps themselves.");
       }
+      if (ask) {
+        checkAsk(ask, `${sp}/ask`, err);
+        if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a person has no inputs.");
+        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a person has nothing to undo.");
+      }
       const undo = s.undo as Raw | undefined;
       const undoRest = undo?.rest as Raw | undefined;
-      if (undo && [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1)
+      if (undo && !ask && [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1)
         err(`${sp}/undo`, "one_of", "Undo with a job_template, a workflow or a rest call.");
       if (undoRest) {
         checkRest(undoRest, `${sp}/undo/rest`, err);
@@ -191,8 +304,9 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
       group.push({
         key,
         title: str(s.title) || str(awx?.title) || undefined,
-        kind: s.item ? "item" : awx ? "awx" : s.workflow ? "workflow" : rest ? "rest" : "?",
+        kind: s.item ? "item" : awx ? "awx" : s.workflow ? "workflow" : rest ? "rest" : ask ? "ask" : "?",
         target: str(s.item) || str(awx?.job_template) || str(s.workflow) || (rest ? restLine(rest) : ""),
+        ask: ask ? askWords(ask) : undefined,
         when: str(s.when) || undefined,
         uses: [...uses],
         undo: undo ? str(undo.job_template) || str(undo.workflow) || (undoRest ? restLine(undoRest) : "") : undefined,

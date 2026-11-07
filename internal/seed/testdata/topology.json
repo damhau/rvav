@@ -912,5 +912,100 @@
         }
       ]
     }
+  },
+  {
+    "name": "probe-composite-ask",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "ask": {
+            "approvers": [
+              "usr_ask_secret"
+            ],
+            "escalate_to": {
+              "approvers": [
+                "usr_esc_secret"
+              ],
+              "group": "grp-esc-secret"
+            },
+            "form": [
+              {
+                "default": "opt-secret",
+                "key": "size",
+                "label": "Label-secret",
+                "options": [
+                  "opt-secret"
+                ],
+                "required": true,
+                "type": "choice"
+              }
+            ],
+            "group": "grp-ask-secret",
+            "message": "Why so big, secret-text?",
+            "on_timeout": "escalate",
+            "timeout": "48h"
+          },
+          "key": "manager",
+          "title": "Manager's answer",
+          "when": "inputs.size == 'huge-secret'"
+        },
+        {
+          "parallel": [
+            {
+              "ask": {
+                "owner": true
+              },
+              "key": "owner_ok"
+            },
+            {
+              "ask": {
+                "on_timeout": "continue",
+                "requester": true,
+                "timeout": "1h"
+              },
+              "key": "mine"
+            }
+          ]
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "ask": {
+            "form": [
+              {
+                "key": "size"
+              }
+            ],
+            "on_timeout": "escalate",
+            "timeout": "48h"
+          },
+          "key": "manager",
+          "title": "Manager's answer",
+          "when": "inputs.size == '…'"
+        },
+        {
+          "parallel": [
+            {
+              "ask": {
+                "owner": true
+              },
+              "key": "owner_ok"
+            },
+            {
+              "ask": {
+                "on_timeout": "continue",
+                "requester": true,
+                "timeout": "1h"
+              },
+              "key": "mine"
+            }
+          ]
+        }
+      ]
+    }
   }
 ]

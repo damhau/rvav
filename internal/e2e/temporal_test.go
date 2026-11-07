@@ -133,7 +133,7 @@ func TestThroughTemporal(t *testing.T) {
 }
 
 // startTemporal starts a Temporal dev server for the test.
-func startTemporal(t *testing.T) *testsuite.DevServer {
+func startTemporal(t *testing.T, extraArgs ...string) *testsuite.DevServer {
 	t.Helper()
 	cache, err := os.UserCacheDir()
 	if err != nil {
@@ -153,6 +153,7 @@ func startTemporal(t *testing.T) *testsuite.DevServer {
 		CachedDownload: testsuite.CachedDownload{DestDir: dir},
 		ClientOptions:  &client.Options{Logger: sdklog.NewStructuredLogger(slog.New(slog.NewTextHandler(out, nil)))},
 		LogLevel:       "error",
+		ExtraArgs:      extraArgs,
 		Stdout:         out,
 		Stderr:         out,
 	})

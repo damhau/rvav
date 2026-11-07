@@ -47,8 +47,14 @@ func (l loadedLevel) isApprover(p *auth.Principal) bool {
 }
 
 func (l loadedLevel) canDecide(p *auth.Principal, votes []store.ApprovalVote) bool {
-	return l.lv.Status == "pending" && l.isApprover(p) && l.req.RequesterID != p.User.ID &&
+	return l.lv.Status == "pending" && l.isApprover(p) && !l.ownRequest(p) &&
 		!slices.ContainsFunc(votes, func(v store.ApprovalVote) bool { return v.UserID == p.User.ID })
+}
+
+// ownRequest says whether this is the requester, who doesn't decide their own
+// request, unless a step that waits for a person names them (ADR-0033).
+func (l loadedLevel) ownRequest(p *auth.Principal) bool {
+	return l.req.RequesterID == p.User.ID && !l.lv.AllowsRequester(p.User.ID)
 }
 
 // load finds a level the principal may see: approvers, people who can see
@@ -204,7 +210,7 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	if !l.isApprover(p) {
 		return api.Approval{}, fmt.Errorf("%w: you are not an approver of this level", ErrForbidden)
 	}
-	if l.req.RequesterID == p.User.ID {
+	if l.ownRequest(p) {
 		return api.Approval{}, fmt.Errorf("%w: you can't approve your own request", ErrForbidden)
 	}
 	if l.lv.Status != "pending" {
@@ -213,6 +219,27 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	approve := d.Decision == api.ApprovalDecisionDecisionApprove
 	if !approve && d.Decision != api.ApprovalDecisionDecisionReject {
 		return api.Approval{}, &BadRequestError{Msg: "decision must be approve or reject."}
+	}
+	// What a step's form asks: its answer, checked here, and nothing else.
+	form := stepForm(l.lv)
+	var answer json.RawMessage
+	switch {
+	case d.Answer != nil && len(form) == 0:
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/answer", "not_allowed", "This asks to approve or reject: it has no form.")}}
+	case len(form) > 0 && !approve:
+		return api.Approval{}, &ValidationError{Errors: []api.FieldError{fieldErr("/decision", "not_allowed", "This asks a form: answer it.")}}
+	case len(form) > 0:
+		var given map[string]any
+		if d.Answer != nil {
+			given = *d.Answer
+		}
+		clean, errs := checkAskAnswer(form, given)
+		if len(errs) > 0 {
+			return api.Approval{}, &ValidationError{Errors: errs}
+		}
+		if answer, err = json.Marshal(clean); err != nil {
+			return api.Approval{}, err
+		}
 	}
 	comment := ""
 	if d.Comment != nil {
@@ -254,6 +281,11 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		req, err := s.Store.GetRequestIn(ctx, tx, l.req.ID)
 		if err != nil {
 			return err
+		}
+		if answer != nil {
+			if err := s.Store.SetApprovalAnswer(ctx, tx, id, answer); err != nil {
+				return err
+			}
 		}
 		var newInputs, newPlan json.RawMessage
 		var newSteps []store.Step
@@ -301,6 +333,8 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 				}
 				decided, status, outcome = true, "approved", "Approved by "+joinNames(names)
 			}
+		case len(form) > 0:
+			decided, status, outcome = true, "approved", "Answered by "+p.User.Name
 		default:
 			decided, status, outcome = true, "approved", "Approved by "+p.User.Name
 		}
@@ -330,7 +364,7 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 	if decided && l.lv.WorkflowID != nil {
 		// An approval a custom workflow asked for (ADR-0022) goes to it.
 		// One that fails is sent again by the worker (ResendApprovalSignals).
-		if err := s.Workflows.Signal(ctx, *l.lv.WorkflowID, provision.SignalWorkflowApproval,
+		if err := s.Workflows.Signal(ctx, *l.lv.WorkflowID, approvalSignal(id, l.lv.StepKey),
 			provision.WorkflowApprovalSignal{ApprovalID: id, Outcome: status, Comment: comment}); err != nil {
 			s.Log.Warn("signal workflow approval", "request", l.req.Number, "approval", id, "err", err)
 		} else if err := s.Store.MarkApprovalSignalled(ctx, id); err != nil {
@@ -348,6 +382,15 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		s.publishRequest(ctx, l.req.ID)
 	}
 	return s.GetApproval(ctx, p, id)
+}
+
+// approvalSignal is the signal that tells a workflow of a decision: a custom
+// workflow's, or a composite step's own (ADR-0033).
+func approvalSignal(id string, stepKey *string) string {
+	if stepKey != nil {
+		return provision.SignalAsk(id)
+	}
+	return provision.SignalWorkflowApproval
 }
 
 // allApproved reports whether every named approver (not the requester) has
@@ -489,6 +532,9 @@ func (s *Service) DelegateApproval(ctx context.Context, p *auth.Principal, id st
 	if !l.isApprover(p) {
 		return api.Approval{}, fmt.Errorf("%w: only an approver of this level can delegate it", ErrForbidden)
 	}
+	if l.lv.StepKey != nil {
+		return api.Approval{}, fmt.Errorf("%w: only those a step names may answer it, and it can't be handed on", ErrForbidden)
+	}
 	if l.req.RequesterID == p.User.ID {
 		return api.Approval{}, fmt.Errorf("%w: you can't hand on the approval of your own request", ErrForbidden)
 	}
@@ -541,7 +587,7 @@ func (s *Service) approverIDs(ctx context.Context, l loadedLevel) []string {
 	}
 	var out []string
 	for _, id := range ids {
-		if id != l.req.RequesterID && !slices.Contains(out, id) {
+		if (id != l.req.RequesterID || l.lv.AllowsRequester(id)) && !slices.Contains(out, id) {
 			out = append(out, id)
 		}
 	}
@@ -568,6 +614,10 @@ func summary(l loadedLevel, canDecide bool) api.ApprovalSummary {
 		CanDecide: canDecide}
 	out.Request.Id, out.Request.Number, out.Request.Title, out.Request.Status = r.ID, r.Number, r.Title, api.RequestStatus(r.Status)
 	out.Level.Index, out.Level.Count, out.Level.Name = lv.Seq, l.count, lv.Name
+	if lv.StepKey != nil {
+		// Not one of the request's levels.
+		out.StepKey, out.Level.Index, out.Level.Count = lv.StepKey, 1, 1
+	}
 	return out
 }
 
@@ -580,7 +630,7 @@ func (s *Service) detail(ctx context.Context, p *auth.Principal, l loadedLevel) 
 	sum := summary(l, canDecide)
 	a := api.Approval{Id: sum.Id, Request: sum.Request, Project: sum.Project, Environment: sum.Environment,
 		Requester: sum.Requester, SubmittedAt: sum.SubmittedAt, Level: sum.Level, Reasons: sum.Reasons,
-		Status: sum.Status, DueAt: sum.DueAt, Overdue: sum.Overdue, Escalated: sum.Escalated, CanDecide: canDecide,
+		Status: sum.Status, DueAt: sum.DueAt, Overdue: sum.Overdue, Escalated: sum.Escalated, CanDecide: canDecide, StepKey: sum.StepKey,
 		Rules: nonNilSlice(l.lv.Rules), Mode: api.ApprovalMode(l.lv.Mode), Group: l.lv.GroupName,
 		DecidedAt: l.lv.DecidedAt, Outcome: l.lv.Outcome, Votes: []api.ApprovalVote{}, Delegates: []api.UserRef{},
 		Approvers: []api.UserRef{}, EditableFields: []api.ApprovalEditableField{}}
@@ -632,7 +682,8 @@ func (s *Service) detail(ctx context.Context, p *auth.Principal, l loadedLevel) 
 	if err != nil {
 		return a, err
 	}
-	if canDecide {
+	a.Question = question(l, p)
+	if canDecide && l.lv.WorkflowID == nil {
 		if a.EditableFields, err = s.editableFields(ctx, l); err != nil {
 			return a, err
 		}
@@ -798,7 +849,7 @@ func (s *Service) ResendApprovalSignals(ctx context.Context) (int, error) {
 	}
 	n := 0
 	for _, a := range list {
-		if err := s.Workflows.Signal(ctx, a.WorkflowID, provision.SignalWorkflowApproval,
+		if err := s.Workflows.Signal(ctx, a.WorkflowID, approvalSignal(a.ID, a.StepKey),
 			provision.WorkflowApprovalSignal{ApprovalID: a.ID, Outcome: a.Status, Comment: a.Comment}); err != nil {
 			s.Log.Warn("signal workflow approval again", "approval", a.ID, "err", err)
 			continue

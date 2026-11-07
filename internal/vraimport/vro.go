@@ -71,8 +71,8 @@ const (
 )
 
 // NewSteps are the step kinds D2 may add, in the order the report gives them.
-// A kind D2 has built leaves the list (REST call: ADR-0033).
-var NewSteps = []string{StepPerson, StepTime, StepEvent, StepNotify, StepBranch}
+// A kind D2 has built leaves the list (REST call, wait for a person: ADR-0033).
+var NewSteps = []string{StepTime, StepEvent, StepNotify, StepBranch}
 
 // compositeSteps are the steps a workflow of these item types, reaching
 // these systems, would be rebuilt with.
@@ -418,10 +418,22 @@ func TriageVRO(e *vra.Estate) Triage {
 				it.Reasons = append(it.Reasons, "Its content is the same as "+names[copyOf]+"'s.")
 			}
 			it.Reasons = append(it.Reasons, runReason(w.Runs, w.LastRun))
+		case human && !waits && !runsAlone(it.UsedBy):
+			it.Group = GroupNative
+			it.Becomes = "A composite item with a step that waits for a person"
+			it.Reasons = append(it.Reasons, "It waits for people (a user interaction): a composite step does (ADR-0033), for a group or named users, with a form or approve and reject, and a timeout.")
+			if slices.Contains(it.Systems, "REST") {
+				it.Reasons = append(it.Reasons, "Its REST calls are REST call steps.")
+			}
+			if others := without(it.Systems, "vCenter", "REST"); len(others) > 0 {
+				it.Reasons = append(it.Reasons, "It also reaches "+strings.Join(others, ", ")+": an AWX step does, with "+ansibleFor(it.Systems)+".")
+			}
 		case human || waits:
 			it.Group = GroupTemporal
-			if human {
-				it.Reasons = append(it.Reasons, "It waits for people (a user interaction): a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
+			if human && waits {
+				it.Reasons = append(it.Reasons, "It waits for people (a user interaction): as a composite item, a step would; until it can also wait for a time, a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
+			} else if human {
+				it.Reasons = append(it.Reasons, "It waits for people (a user interaction), and a subscription or a day-2 action runs it, not a composite: a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
 			}
 			if waits {
 				it.Reasons = append(it.Reasons, "It waits for a timer or an event: a custom workflow waits as long as it needs, durably.")

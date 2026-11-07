@@ -17,8 +17,9 @@ import (
 // its bindings use. Nothing else: no guest settings (domain, join
 // credential, administrator password, cloud-init), sizes, naming, tags,
 // placement or AWX variables, a step's bindings only as the `steps.<key>`
-// they name, and a REST call only as its method and what its URL and body
-// read. The CEL it keeps (a condition, a count, a disk's size, the
+// they name, a REST call only as its method and what its URL and body read,
+// and a wait for a person without who it names (a group, people) or what it
+// says or offers. The CEL it keeps (a condition, a count, a disk's size, the
 // adapters', groups', template and post-configuration bindings, a REST
 // call's) has its string literals masked (policy.MaskLiterals): what it
 // reads, not what it compares it to. Lists keep their positions, so a pointer into
@@ -215,6 +216,12 @@ var (
 	// secret's name, the statuses it accepts or what it keeps of the answer.
 	topologyREST = fields{"method": asIs{}, "url": restURL{}, "body": cel{}}
 
+	// A wait for a person: that it waits, whether the requester or owner is
+	// asked, for how long and its form's keys, which later steps read anyway.
+	// Who else it names, what it says and its form's texts stay out.
+	topologyAsk = fields{"requester": asIs{}, "owner": asIs{}, "timeout": asIs{}, "on_timeout": asIs{},
+		"form": each{fields{"key": asIs{}}}}
+
 	topologyStep = fields{
 		"key":      asIs{},
 		"title":    asIs{},
@@ -222,6 +229,7 @@ var (
 		"awx":      fields{"job_template": asIs{}, "title": asIs{}},
 		"workflow": asIs{},
 		"rest":     topologyREST,
+		"ask":      topologyAsk,
 		"when":     cel{},
 		"with":     stepRefs{},
 		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs{}},

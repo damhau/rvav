@@ -120,11 +120,11 @@ func TestStandardVRO(t *testing.T) {
 		"std-backup":        {GroupNative, []string{StepREST, StepRvav}},
 		"std-notify":        {GroupAWX, []string{StepNotify}},
 		"std-patch-window":  {GroupTemporal, []string{StepAWX, StepRvav, StepTime}},
-		"std-big-disk":      {GroupTemporal, []string{StepRvav, StepPerson, StepBranch}},
+		"std-big-disk":      {GroupNative, []string{StepRvav, StepPerson, StepBranch}},
 		"std-ad-computer":   {GroupAWX, []string{StepAWX}},
 		"std-guest-script":  {GroupAWX, []string{StepAWX, StepRvav}},
 		"std-rename":        {GroupNative, []string{StepRvav}},
-		"std-ask-requester": {GroupTemporal, []string{StepREST, StepPerson}},
+		"std-ask-requester": {GroupNative, []string{StepREST, StepPerson}},
 	} {
 		it := items[id]
 		if it.Group != want.group || !slices.Equal(it.Steps, want.steps) {
@@ -135,17 +135,26 @@ func TestStandardVRO(t *testing.T) {
 	if it := items["std-cmdb"]; it.Becomes != "A composite item with REST call steps" || !strings.Contains(strings.Join(it.Reasons, " "), "ADR-0033") {
 		t.Errorf("cmdb = %+v", it)
 	}
+	// A user interaction with no timer: a composite item with a step that waits for a person.
+	if it := items["std-ask-requester"]; it.Becomes != "A composite item with a step that waits for a person" || !strings.Contains(strings.Join(it.Reasons, " "), "ADR-0033") {
+		t.Errorf("ask-requester = %+v", it)
+	}
+	// With a timer too it stays a custom workflow, until a step can wait for a time.
+	if it := items["std-decommission"]; !strings.Contains(strings.Join(it.Reasons, " "), "until it can also wait for a time") {
+		t.Errorf("decommission = %+v", it)
+	}
 	// The form's datastore choice: a value source.
 	if it := items["std-act-datastore"]; it.Group != GroupNative || it.Becomes != "A value source on the field" {
 		t.Errorf("datastore action = %+v", it)
 	}
-	// D2's sizing: no workflow waits for an event. A REST call is built: the
-	// five workflows that make one say so, and it is no longer to be added.
-	want := map[string]int{StepPerson: 3, StepTime: 3, StepNotify: 1, StepBranch: 2}
+	// D2's sizing: no workflow waits for an event. A REST call and a wait for a
+	// person are built: the workflows that have one say so, and they are no
+	// longer to be added.
+	want := map[string]int{StepTime: 3, StepNotify: 1, StepBranch: 2}
 	if !maps.Equal(tr.Steps, want) {
 		t.Fatalf("step kinds = %v, want %v", tr.Steps, want)
 	}
-	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || !strings.Contains(md, "| wait for an event | 0 |") {
+	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || strings.Contains(md, "| wait for a person |") || !strings.Contains(md, "| wait for an event | 0 |") {
 		t.Fatalf("report:\n%s", md)
 	}
 }

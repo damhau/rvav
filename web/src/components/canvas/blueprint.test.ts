@@ -148,6 +148,44 @@ describe("compositeGraph", () => {
     expect(nodeForPointer(g, "/definition/blueprint/steps/10")).toBeUndefined();
   });
 
+  it("draws a wait for a person: who it asks, what for, and for how long", () => {
+    const graph = blueprintGraph({
+      kind: "composite",
+      steps: [
+        {
+          key: "manager",
+          title: "Manager's answer",
+          ask: { group: "managers", form: [{ key: "ok", label: "OK?", type: "boolean" }], timeout: "48h" },
+        },
+      ],
+    })!;
+    const n = graph.nodes.find((x) => x.id === "step:manager")!;
+    expect(n.badge).toBe("Person");
+    expect(n.lines).toEqual([
+      { label: "Asks", text: "managers" },
+      { label: "Wants", text: "1 answer" },
+      { label: "Timeout", text: "48h, then the step fails" },
+    ]);
+    expect(describeNode(n)).toContain("Person Manager's answer. manager. Asks: managers");
+  });
+
+  it("finds nothing wrong in a requester's masked topology, whose holes aren't mistakes", () => {
+    const steps = [
+      { key: "cmdb", rest: { method: "POST", url: "…${inputs.role}…${environment}" } },
+      // Who it asks is left out.
+      { key: "manager", ask: { form: [{ key: "ok" }] } },
+    ];
+    const graph = blueprintGraph({ kind: "composite", steps }, "/topology")!;
+    expect(graph.problems).toEqual([]);
+    expect(graph.nodes.flatMap((n) => n.problems)).toEqual([]);
+    expect(graph.nodes.find((n) => n.id === "step:manager")!.lines).toEqual([
+      { label: "Asks", text: "a person" },
+      { label: "Wants", text: "1 answer" },
+    ]);
+    // A definition is checked.
+    expect(blueprintGraph({ kind: "composite", steps })!.problems.length).toBeGreaterThan(0);
+  });
+
   it("draws a REST call, what it calls and its undo, in the order its name says them", () => {
     const g = compositeGraph({
       kind: "composite",

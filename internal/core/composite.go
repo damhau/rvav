@@ -35,6 +35,7 @@ type compositePart struct {
 	job   *provision.Job
 	call  *provision.WorkflowCall
 	rest  *blueprint.RESTCall
+	ask   *blueprint.Ask
 	undo  *provision.CompositeUndo
 }
 
@@ -73,7 +74,7 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 		list, at := []blueprint.CompositeStep{st}, fmt.Sprintf("%s/steps/%d", ptr, g)
 		if len(st.Parallel) > 0 {
 			list = st.Parallel
-			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil {
+			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil || st.Ask != nil {
 				errs = append(errs, fieldErr(at, "invalid", "A parallel group only lists steps."))
 			}
 		}
@@ -92,13 +93,13 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				errs = append(errs, fieldErr(sp+"/key", "duplicate", "Another step has the key "+s.Key+"."))
 			}
 			kinds := 0
-			for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil} {
+			for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil} {
 				if set {
 					kinds++
 				}
 			}
 			if kinds != 1 {
-				errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow or rest."))
+				errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest or ask."))
 			}
 			if s.AWX != nil && s.AWX.JobTemplate == "" {
 				errs = append(errs, fieldErr(sp+"/awx/job_template", "required", "Name the AWX template."))
@@ -118,6 +119,15 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				}
 				callErrs, callExprs := checkRESTCall(*s.REST, sp+"/rest")
 				errs, exprs = append(errs, callErrs...), append(exprs, callExprs...)
+			}
+			if s.Ask != nil {
+				if len(s.With) > 0 {
+					errs = append(errs, fieldErr(sp+"/with", "invalid", "A wait for a person has no inputs."))
+				}
+				if s.Undo != nil {
+					errs = append(errs, fieldErr(sp+"/undo", "invalid", "A wait for a person has nothing to undo."))
+				}
+				errs = append(errs, checkAsk(*s.Ask, sp+"/ask")...)
 			}
 			if s.Undo != nil {
 				undoKinds := 0
@@ -387,6 +397,12 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 				continue
 			}
 			part.rest = st.REST
+		case st.Ask != nil:
+			if asksNobodyElse(st.Ask, p.User.ID) {
+				add("", "not_available", label+" asks only you, and you don't answer your own request. Ask a catalog admin to check this item.")
+				continue
+			}
+			part.ask = st.Ask
 		}
 		if u := st.Undo; u != nil {
 			part.undo = &provision.CompositeUndo{With: u.With}

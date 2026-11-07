@@ -377,6 +377,15 @@ const restUrl: Keep = (v) => {
 };
 // A REST call's method and what it reads: not its secret's name, the statuses it accepts or what it keeps.
 const restCall = fields({ method: asIs, url: restUrl, body: cel() });
+// A wait for a person: that it asks the requester or the owner, not which group
+// or people, nor what it says or offers; how long, and what happens then.
+const askTopology = fields({
+  requester: asIs,
+  owner: asIs,
+  timeout: asIs,
+  on_timeout: asIs,
+  form: each(fields({ key: asIs })),
+});
 const stepKeys: Record<string, Keep> = {
   key: asIs,
   title: asIs,
@@ -384,6 +393,7 @@ const stepKeys: Record<string, Keep> = {
   awx: fields({ job_template: asIs, title: asIs }),
   workflow: asIs,
   rest: restCall,
+  ask: askTopology,
   when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),

@@ -49,6 +49,7 @@ function ListItem({ a, selected, onSelect }: { a: ApprovalSummary; selected: boo
           )}
         </span>
         <span className="text-[13px] font-medium">{a.request.title}</span>
+        {a.step_key && <span className="text-xs text-muted">A step asks: {a.level.name}</span>}
         <span className="text-xs text-muted">{who(a)}</span>
       </button>
     </li>
@@ -251,13 +252,24 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
         </span>
       </div>
 
-      <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[13px]">
-        <span className="font-medium">{a.can_decide ? "Why this needs you" : "Why it needs approval"}: </span>
-        {a.reasons.join("; ")}
-        {a.rules.length > 0 && (
-          <span className="mt-0.5 block font-mono text-[11px] break-words text-muted">{a.rules.join("  ·  ")}</span>
-        )}
-      </div>
+      {a.step_key ? (
+        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[13px]">
+          <span className="font-medium">
+            {a.can_decide
+              ? "A step of this request waits for your answer"
+              : "A step of this request waits for a person"}
+          </span>
+          {a.question?.message && <p className="mt-0.5 whitespace-pre-wrap">{a.question.message}</p>}
+        </div>
+      ) : (
+        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[13px]">
+          <span className="font-medium">{a.can_decide ? "Why this needs you" : "Why it needs approval"}: </span>
+          {a.reasons.join("; ")}
+          {a.rules.length > 0 && (
+            <span className="mt-0.5 block font-mono text-[11px] break-words text-muted">{a.rules.join("  ·  ")}</span>
+          )}
+        </div>
+      )}
 
       {a.facts.length > 0 && <KeyValues items={a.facts.map((f) => ({ label: f.label, value: f.value }))} />}
 
@@ -268,7 +280,15 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
         </div>
       )}
 
-      {a.can_decide ? (
+      {a.can_decide && a.step_key ? (
+        <div className="border-t border-line pt-3.5">
+          <Button size="sm" variant="primary" asChild>
+            <Link to="/requests/$requestId" params={{ requestId: a.request.number }}>
+              Answer on the request's page
+            </Link>
+          </Button>
+        </div>
+      ) : a.can_decide ? (
         <DecisionForm key={a.id} approval={a} onDecided={onDecided} />
       ) : (
         <div className="border-t border-line pt-3.5">

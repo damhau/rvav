@@ -341,6 +341,14 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 			}
 		}
 	}
+	// The people a composite's waits name (ADR-0033).
+	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindComposite {
+		named, err := s.checkAskUsers(ctx, b, prefix+"/blueprint")
+		if err != nil {
+			return nil, err
+		}
+		errs = append(errs, named...)
+	}
 	// Secrets a VM blueprint names (ADR-0024).
 	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {
 		refs := blueprintSecrets(b, prefix+"/blueprint")

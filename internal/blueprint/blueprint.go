@@ -561,6 +561,7 @@ type CompositeStep struct {
 	AWX      *AWXTemplate `json:"awx,omitempty"`
 	Workflow string       `json:"workflow,omitempty"`
 	REST     *RESTCall    `json:"rest,omitempty"`
+	Ask      *Ask         `json:"ask,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`
@@ -577,6 +578,45 @@ type CompositeUndo struct {
 	Workflow    string         `json:"workflow,omitempty"`
 	REST        *RESTCall      `json:"rest,omitempty"`
 	With        map[string]any `json:"with,omitempty"`
+}
+
+// Ask waits for a person (ADR-0033): who is written as an approval level names
+// them, and they answer a form or approve and reject on the request's page.
+type Ask struct {
+	// Group and Approvers name who may answer; Requester and Owner add the
+	// request's own, who an approval would leave out.
+	Group     string   `json:"group,omitempty"`
+	Approvers []string `json:"approvers,omitempty"`
+	Requester bool     `json:"requester,omitempty"`
+	Owner     bool     `json:"owner,omitempty"`
+	// Message is fixed text: nothing of the request is filled in.
+	Message string `json:"message,omitempty"`
+	// Form is what they answer; none: they approve or reject.
+	Form []AskField `json:"form,omitempty"`
+	// Timeout, a Go duration, and what it does: fail, continue or escalate
+	// (to EscalateTo, for one more timeout, then fail).
+	Timeout    string       `json:"timeout,omitempty"`
+	OnTimeout  string       `json:"on_timeout,omitempty"`
+	EscalateTo *AskEscalate `json:"escalate_to,omitempty"`
+}
+
+// AskEscalate is who else may answer once a wait has escalated.
+type AskEscalate struct {
+	Group     string   `json:"group,omitempty"`
+	Approvers []string `json:"approvers,omitempty"`
+}
+
+// AskField is one question of a step's form. Its answer travels through
+// Temporal's history to every later step, so it can't be a secret: Secret is
+// read only to refuse it.
+type AskField struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"` // string, number, boolean or choice
+	Required bool     `json:"required,omitempty"`
+	Options  []string `json:"options,omitempty"`
+	Default  any      `json:"default,omitempty"`
+	Secret   bool     `json:"secret,omitempty"`
 }
 
 // RESTCall is a call to a REST API (ADR-0033): to a host allowed for REST

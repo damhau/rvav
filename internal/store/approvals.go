@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -35,6 +36,20 @@ type Approval struct {
 	// WorkflowID is the custom workflow that asked for it (ADR-0022): its
 	// decision goes to that workflow, and it is not a policy level.
 	WorkflowID *string `db:"workflow_id"`
+	// StepKey is the composite step that waits for a person (ADR-0033), in
+	// the composite's own workflow; its Message and Form are what it asks,
+	// Answer what it got. Retired: a person's Retry asks again.
+	StepKey *string         `db:"step_key"`
+	Message string          `db:"message"`
+	Form    json.RawMessage `db:"form"`
+	Answer  json.RawMessage `db:"answer"`
+	Retired bool            `db:"retired"`
+}
+
+// AllowsRequester says whether the requester may answer this: a step that
+// names them, never a policy level or a group they happen to be in.
+func (a Approval) AllowsRequester(requesterID string) bool {
+	return a.StepKey != nil && slices.Contains(a.ApproverIDs, requesterID)
 }
 
 // Groups returns the groups whose members may decide: the level's, and the
@@ -83,7 +98,8 @@ type ApprovalDelegate struct {
 
 const approvalCols = `a.id, a.request_id, a.seq, a.name, a.group_name, a.approver_ids, a.mode, a.policy_ids,
 	a.reasons, a.rules, a.status, a.timeout_seconds, a.on_timeout, a.escalate_group, a.escalate_ids,
-	a.escalated, a.created_at, a.opened_at, a.due_at, a.decided_at, a.outcome, a.workflow_id`
+	a.escalated, a.created_at, a.opened_at, a.due_at, a.decided_at, a.outcome, a.workflow_id,
+	a.step_key, a.message, a.form, a.answer, a.retired`
 
 func (s *Store) InsertApprovals(ctx context.Context, db DB, list []Approval) error {
 	for _, a := range list {
@@ -139,6 +155,65 @@ func (s *Store) InsertWorkflowApproval(ctx context.Context, a Approval) error {
 	return err
 }
 
+// OpenStepApproval opens what a composite step asks, after the request's
+// other levels, and reports whether it did: one this step of this run has
+// already asked (an activity retried, a workflow continued as new) is
+// returned as it is, open or answered.
+func (s *Store) OpenStepApproval(ctx context.Context, a Approval) (Approval, bool, error) {
+	var out Approval
+	var opened bool
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		// Two steps of a group opening together take turns for their seq.
+		if _, err := tx.Exec(ctx, `select 1 from requests where id = $1 for update`, a.RequestID); err != nil {
+			return err
+		}
+		rows, _ := tx.Query(ctx, `select `+approvalCols+` from approvals a where a.request_id = $1 and a.step_key = $2
+			and not a.retired and a.status <> 'cancelled'`, a.RequestID, a.StepKey)
+		var err error
+		out, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Approval])
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		rows, _ = tx.Query(ctx, `insert into approvals as a (id, request_id, seq, name, group_name, approver_ids, mode, status,
+				timeout_seconds, on_timeout, escalate_group, escalate_ids, opened_at, due_at, workflow_id, step_key, message, form)
+			values ($1, $2, (select coalesce(max(seq), 0) + 1 from approvals where request_id = $2), $3, $4, $5, 'any', 'pending',
+				$6::int, $7, $8, $9, now(), case when $6::int is null then null else now() + make_interval(secs => $6::int) end,
+				$10, $11, $12, $13)
+			returning `+approvalCols, a.ID, a.RequestID, a.Name, a.GroupName, nonNil(a.ApproverIDs), a.TimeoutSeconds, a.OnTimeout,
+			a.EscalateGroup, nonNil(a.EscalateIDs), a.WorkflowID, a.StepKey, a.Message, jsonOr(a.Form, "[]"))
+		out, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Approval])
+		opened = err == nil
+		return err
+	})
+	return out, opened, err
+}
+
+// SetApprovalAnswer records what a step's form was answered.
+func (s *Store) SetApprovalAnswer(ctx context.Context, db DB, id string, answer json.RawMessage) error {
+	_, err := db.Exec(ctx, `update approvals set answer = $2 where id = $1`, id, answer)
+	return err
+}
+
+// StopStepApproval ends a question nobody needs any more.
+func (s *Store) StopStepApproval(ctx context.Context, id string) error {
+	_, err := s.Pool.Exec(ctx, `update approvals set status = 'cancelled', due_at = null where id = $1 and status = 'pending'`, id)
+	return err
+}
+
+// RetireStepApprovals is a retry: the steps that run again ask again, with the
+// earlier questions and their answers kept as history.
+func (s *Store) RetireStepApprovals(ctx context.Context, db DB, requestID string) error {
+	_, err := db.Exec(ctx, `update approvals a set retired = true where a.request_id = $1 and a.step_key is not null and not a.retired
+		and a.step_key in (select st.key from request_steps st where st.request_id = $1 and st.status = 'pending')`, requestID)
+	return err
+}
+
+// MarkTimedOutSignalled says a timeout needs no signal: the workflow applied it.
+func (s *Store) MarkTimedOutSignalled(ctx context.Context, db DB, id string) error {
+	_, err := db.Exec(ctx, `update approvals set signalled_at = now() where id = $1 and step_key is not null`, id)
+	return err
+}
+
 // ApprovalFilter selects approvals for the inbox.
 type ApprovalFilter struct {
 	// All lists every approval; otherwise the open levels ViewerID may decide
@@ -156,7 +231,7 @@ type ApprovalFilter struct {
 // levels come oldest first, the most urgent on top; others newest first.
 func (s *Store) ListApprovals(ctx context.Context, f ApprovalFilter) (Page[Approval], int, error) {
 	voted := `exists (select 1 from approval_votes v where v.approval_id = a.id and v.user_id = $2)`
-	where := `($1 or (r.requester_id <> $2 and (
+	where := `($1 or ((r.requester_id <> $2 or (a.step_key is not null and $2 = any(a.approver_ids))) and (
 			-- open levels you may decide (with mode all, not once you voted)
 			(a.status in ('waiting', 'pending') and not ` + voted + ` and ($2 = any(a.approver_ids) or a.group_name = any($3)
 				or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
@@ -346,17 +421,19 @@ func (s *Store) IsRequestApprover(ctx context.Context, requestID, userID string,
 // UnsignalledApproval is a decided approval a custom workflow asked for
 // whose decision hasn't reached it yet (#81).
 type UnsignalledApproval struct {
-	ID         string `db:"id"`
-	RequestID  string `db:"request_id"`
-	WorkflowID string `db:"workflow_id"`
-	Status     string `db:"status"`
-	Comment    string `db:"comment"`
+	ID         string  `db:"id"`
+	RequestID  string  `db:"request_id"`
+	WorkflowID string  `db:"workflow_id"`
+	Status     string  `db:"status"`
+	Comment    string  `db:"comment"`
+	StepKey    *string `db:"step_key"`
 }
 
 // UnsignalledApprovals lists them, decided before a moment.
 func (s *Store) UnsignalledApprovals(ctx context.Context, before time.Time) ([]UnsignalledApproval, error) {
 	rows, _ := s.Pool.Query(ctx, `select a.id, a.request_id, a.workflow_id, a.status,
-		coalesce((select v.comment from approval_votes v where v.approval_id = a.id order by v.decided_at desc limit 1), '') as comment
+		coalesce((select v.comment from approval_votes v where v.approval_id = a.id order by v.decided_at desc limit 1), '') as comment,
+		a.step_key
 		from approvals a where a.workflow_id is not null and a.status in ('approved', 'rejected') and a.signalled_at is null
 		and a.decided_at < $1 order by a.decided_at limit 100`, before)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[UnsignalledApproval])

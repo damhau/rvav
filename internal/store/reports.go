@@ -136,7 +136,7 @@ func (s *Store) ApprovalStats(ctx context.Context, f ReportFilter) (ApprovalStat
 		`+durationCols("a.decided_at - a.opened_at", decidedInRange+" and a.opened_at is not null")+`,
 		count(*) filter (where a.status = 'pending')::int as pending,
 		min(a.opened_at) filter (where a.status = 'pending') as oldest_pending
-		from approvals a join requests r on r.id = a.request_id where `+scope("r"), f.args()...)
+		from approvals a join requests r on r.id = a.request_id where a.step_key is null and `+scope("r"), f.args()...)
 	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[ApprovalStats])
 }
 
@@ -205,7 +205,7 @@ type ReportApprovalRow struct {
 func (s *Store) ReportApprovals(ctx context.Context, f ReportFilter, limit int) ([]ReportApprovalRow, error) {
 	rows, _ := s.Pool.Query(ctx, `select r.number, a.seq, a.name, a.status, a.opened_at, a.decided_at, a.outcome
 		from approvals a join requests r on r.id = a.request_id
-		where `+scope("r")+` and (`+decidedInRange+` or a.status = 'pending')
+		where a.step_key is null and `+scope("r")+` and (`+decidedInRange+` or a.status = 'pending')
 		order by coalesce(a.decided_at, a.opened_at), r.number, a.seq limit $7`, f.args(limit)...)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[ReportApprovalRow])
 }

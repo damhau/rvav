@@ -47,12 +47,17 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   awx: "AWX",
   workflow: "Workflow",
   rest: "REST",
+  ask: "Person",
   "?": "Step",
 };
 
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
   if (s.target) lines.push({ label: s.kind === "rest" ? "Calls" : "Runs", text: s.target, mono: true });
+  if (s.ask) {
+    lines.push({ label: "Asks", text: s.ask.who }, { label: "Wants", text: s.ask.wants });
+    if (s.ask.timeout) lines.push({ label: "Timeout", text: s.ask.timeout });
+  }
   if (s.when) lines.push({ label: "When", text: s.when, mono: true });
   if (s.uses.length > 0) lines.push({ label: "Uses", text: s.uses.join(", "), mono: true });
   if (s.undo) lines.push({ label: "Undo", text: s.undo, mono: true });
@@ -61,7 +66,10 @@ function stepLines(s: CompositeStepView): CanvasLine[] {
 
 /** A composite's steps: `step:<key>` for each (by pointer when its key is missing or taken twice). */
 export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph {
-  const view = readComposite(bp, prefix);
+  const read = readComposite(bp, prefix);
+  // A requester's topology is masked, so the checks read holes (a REST call's
+  // URL, who a wait asks) as mistakes. What was published was checked in full.
+  const view = prefix === "/topology" ? { ...read, problems: [] } : read;
   const keys = new Map<string, number>();
   for (const g of view.groups) for (const s of g) if (s.key) keys.set(s.key, (keys.get(s.key) ?? 0) + 1);
   const stepId = (s: CompositeStepView) => (s.key && keys.get(s.key) === 1 ? `step:${s.key}` : `step@${s.pointer}`);

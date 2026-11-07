@@ -3606,8 +3606,10 @@ export interface components {
              *     `template`, `post_config` only) and `components` with the same
              *     and their `key`, `title`, `count` and `anti_affinity`; a
              *     composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-             *     `title`, `item`, `awx`, `workflow`, `when`, `undo`, `parallel`),
-             *     each binding in `with` reduced to the `steps.<key>` it names.
+             *     `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `when`, `undo`,
+             *     `parallel`), each binding in `with` reduced to the `steps.<key>` it
+             *     names, and of an `ask` only whether the requester or owner is
+             *     asked, its timeout and its form's keys: no names, groups or texts.
              *     Nothing else of the blueprint (guest settings, secrets, sizes,
              *     naming, placement, tags, variables). Absent for AWX and workflow
              *     items.
@@ -4018,6 +4020,12 @@ export interface components {
             reasons: string[];
             status: components["schemas"]["ApprovalStatus"];
             /**
+             * @description The composite step that waits for a person (ADR-0033), when this is
+             *     one rather than an approval of the request: it is answered on the
+             *     request's page.
+             */
+            step_key?: string;
+            /**
              * Format: date-time
              * @description When the level times out. Null when it has no timeout or is decided.
              */
@@ -4057,6 +4065,35 @@ export interface components {
             decided_at?: string | null;
             /** @description How the level ended, for example `Approved by Marc Keller`, or `Approved automatically: no answer within 48 h`. */
             outcome?: string | null;
+            question?: components["schemas"]["ApprovalQuestion"];
+        };
+        /**
+         * @description What a composite step that waits for a person asks (ADR-0033). Given
+         *     to those it names and to those who see everything; absent for others,
+         *     who only see that it waits for a person.
+         */
+        ApprovalQuestion: {
+            /** @description The step's fixed text. */
+            message?: string;
+            /** @description Its questions; empty, it asks to approve or reject. */
+            form: components["schemas"]["ApprovalQuestionField"][];
+            /** @description The answer it got. Null until then. */
+            answer?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        ApprovalQuestionField: {
+            /** @example reason */
+            key: string;
+            /** @example Why this size? */
+            label: string;
+            /** @enum {string} */
+            type: "string" | "number" | "boolean" | "choice";
+            required?: boolean;
+            /** @description What a `choice` may be. */
+            options?: string[];
+            /** @description Its value when left blank, or when the wait timed out and went on. */
+            default?: unknown;
         };
         ApprovalEditableField: {
             /** @example size */
@@ -4093,6 +4130,13 @@ export interface components {
             comment?: string;
             /** @description New values for `approver_editable` fields only. */
             inputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description A composite step's form, answered (ADR-0033), with `decision`
+             *     `approve`: checked against the step's form. Refused anywhere else.
+             */
+            answer?: {
                 [key: string]: unknown;
             };
         };
@@ -4183,7 +4227,7 @@ export interface components {
              * @description Who does the step; `rest` is a composite's REST call to another system (ADR-0033).
              * @enum {string}
              */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest";
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;

@@ -25,7 +25,12 @@ export function ApprovalStatusBadge({ status }: { status: ApprovalStatus }) {
 }
 
 /** What happens when a pending level gets no answer in time. */
-export function dueText(a: Pick<Approval, "on_timeout" | "escalate_to" | "escalated">): string {
+export function dueText(a: Pick<Approval, "on_timeout" | "escalate_to" | "escalated" | "step_key">): string {
+  // A step's wait fails its step or goes on with no answer (ADR-0033).
+  if (a.step_key) {
+    if (a.on_timeout === "approve") return "then it goes on with no answer";
+    if (a.on_timeout === "reject" || (a.on_timeout === "escalate" && a.escalated)) return "then the step fails";
+  }
   switch (a.on_timeout) {
     case "approve":
       return "then it is approved automatically";
@@ -40,13 +45,13 @@ export function dueText(a: Pick<Approval, "on_timeout" | "escalate_to" | "escala
   }
 }
 
-function Vote({ v }: { v: ApprovalVote }) {
+function Vote({ v, step }: { v: ApprovalVote; step: boolean }) {
   return (
     <li className="flex flex-col gap-0.5">
       <span>
         <span className="font-medium">{v.user.name}</span>{" "}
         <span className={v.decision === "approve" ? "text-ok" : "text-bad"}>
-          {v.decision === "approve" ? "approved" : "rejected"}
+          {v.decision === "reject" ? "rejected" : step ? "answered" : "approved"}
         </span>{" "}
         <Time iso={v.decided_at} className="text-faint" />
       </span>
@@ -96,7 +101,7 @@ export function ApprovalHistory({ levels }: { levels: Approval[] }) {
           {a.votes.length > 0 && (
             <ul className="flex flex-col gap-1.5 text-xs">
               {a.votes.map((v) => (
-                <Vote key={v.user.id} v={v} />
+                <Vote key={v.user.id} v={v} step={Boolean(a.step_key)} />
               ))}
             </ul>
           )}

@@ -195,7 +195,9 @@ type CompositeStep struct {
 	// REST is a REST call (ADR-0033): only a secret's name and CEL, both
 	// resolved when it runs, so nothing plain enters Temporal's history.
 	REST *blueprint.RESTCall `json:"rest,omitempty"`
-	Undo *CompositeUndo      `json:"undo,omitempty"`
+	// Ask waits for a person (ADR-0033).
+	Ask  *blueprint.Ask `json:"ask,omitempty"`
+	Undo *CompositeUndo `json:"undo,omitempty"`
 }
 
 // SegmentKey is the step key of one of its segments, under its own.
@@ -681,6 +683,8 @@ func (p Plan) Steps(environment string) []StepDef {
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Workflow.Type, System: "rvav", Status: "pending"})
 			case c.REST != nil:
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "REST call · " + c.REST.Method, System: "rest", Status: "pending"})
+			case c.Ask != nil:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Waits for a person", System: "person", Status: "pending"})
 			}
 		}
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})

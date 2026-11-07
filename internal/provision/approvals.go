@@ -98,10 +98,21 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 		if lv.OnTimeout != nil {
 			action = *lv.OnTimeout
 		}
+		// A step's wait reads as what it does (ADR-0033): nobody approved.
+		approved, rejected := "Approved automatically: "+after, "Rejected automatically: "+after
+		if lv.StepKey != nil {
+			approved, rejected = capitalize(after)+": it went on", capitalize(after)
+			// Ended here, it needs no signal; escalated, a later answer does.
+			if action != "escalate" || lv.Escalated {
+				if err := a.Store.MarkTimedOutSignalled(ctx, tx, lv.ID); err != nil {
+					return err
+				}
+			}
+		}
 		switch {
 		case action == "approve":
 			st.Status = "approved"
-			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "approved", "Approved automatically: "+after)
+			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "approved", approved)
 		case action == "escalate" && !lv.Escalated:
 			if lv, err = a.Store.EscalateApproval(ctx, tx, lv.ID); err != nil {
 				return err
@@ -117,10 +128,10 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 			}
 		case action == "escalate":
 			st.Status = "rejected"
-			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", "Rejected automatically: "+after+", even after escalation")
+			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", rejected+", even after escalation")
 		default:
 			st.Status = "rejected"
-			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", "Rejected automatically: "+after)
+			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", rejected)
 		}
 		if err != nil {
 			return err
@@ -141,9 +152,14 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 	}
 	for _, id := range dedupe(notify) {
 		if id != r.RequesterID {
-			a.Events.Notify(ctx, store.NewNotification{UserID: id, Kind: "approval_needed", Title: "Approval escalated to you: " + r.Title,
+			n := store.NewNotification{UserID: id, Kind: "approval_needed", Title: "Approval escalated to you: " + r.Title,
 				Body: "No decision from " + lv.Name + " in time.", Level: "warning", Link: "/approvals/" + lv.ID, RequestID: &r.ID,
-				ApprovalID: &lv.ID, Data: map[string]any{"why": "escalated"}, DedupeKey: "approval_needed:" + lv.ID + ":escalated"})
+				ApprovalID: &lv.ID, Data: map[string]any{"why": "escalated"}, DedupeKey: "approval_needed:" + lv.ID + ":escalated"}
+			if lv.StepKey != nil {
+				n.Title, n.Body, n.Link, n.ApprovalID = "Your answer is needed: "+lv.Name, "No answer in time from those first asked. "+lv.Message,
+					"/requests/"+r.Number, askCardID(lv)
+			}
+			a.Events.Notify(ctx, n)
 		}
 	}
 	a.Events.Approval(ctx, append(a.approvers(ctx, lv, r.RequesterID), r.RequesterID), lv.ID, r.ID, st.Status)
@@ -290,7 +306,7 @@ func (a *Activities) approvers(ctx context.Context, lv store.Approval, requester
 			ids = append(ids, d.UserID)
 		}
 	}
-	return slices.DeleteFunc(dedupe(ids), func(id string) bool { return id == requesterID })
+	return slices.DeleteFunc(dedupe(ids), func(id string) bool { return id == requesterID && !lv.AllowsRequester(requesterID) })
 }
 
 func dedupe(ids []string) []string {

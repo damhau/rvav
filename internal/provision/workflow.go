@@ -55,8 +55,15 @@ func Provision(ctx workflow.Context, requestID string) error {
 		}
 		return err
 	}
+	continued := workflow.GetInfo(ctx).ContinuedExecutionRunID != ""
 	switch info.Status {
 	case "pending_approval", "scheduled", "queued", "running":
+	case "cancelling":
+		// Cancelled as a step's long wait continued as new: the cancel is on
+		// its way to this run, which undoes what was done.
+		if !continued {
+			return nil
+		}
 	default:
 		return nil // cancelled before the workflow started
 	}
@@ -91,20 +98,25 @@ func Provision(ctx workflow.Context, requestID string) error {
 		}
 	}
 
-	var running bool
-	if err := workflow.ExecuteActivity(ctx, a.MarkRunning, requestID).Get(ctx, &running); err != nil {
-		if temporal.IsCanceledError(err) {
-			return finishCancelled(ctx, info, false)
+	// A run continued as new from a step's long wait (ADR-0033) is the same
+	// run to everyone else: no second pre event, no second checks.
+	resumed := continued && (info.Status == "running" || info.Status == "cancelling")
+	if !resumed {
+		var running bool
+		if err := workflow.ExecuteActivity(ctx, a.MarkRunning, requestID).Get(ctx, &running); err != nil {
+			if temporal.IsCanceledError(err) {
+				return finishCancelled(ctx, info, false)
+			}
+			return err
 		}
-		return err
-	}
-	if !running {
-		return nil
+		if !running {
+			return nil
+		}
 	}
 
 	// Blocking subscriptions (ADR-0021) may stop the request before it
 	// builds anything; versioned for workflows that started without them.
-	if workflow.GetVersion(ctx, "blocking-subscriptions", workflow.DefaultVersion, 1) == 1 && !info.done(KeyChecks) {
+	if workflow.GetVersion(ctx, "blocking-subscriptions", workflow.DefaultVersion, 1) == 1 && !resumed && !info.done(KeyChecks) {
 		stepKey, reason, err := runChecks(ctx, info)
 		switch {
 		case temporal.IsCanceledError(err) || errors.Is(ctx.Err(), workflow.ErrCanceled):
@@ -124,6 +136,9 @@ func Provision(ctx workflow.Context, requestID string) error {
 		return workflow.ExecuteActivity(ctx, a.Finish, FinishInput{RequestID: requestID, ProjectID: info.ProjectID, Outcome: "succeeded"}).Get(ctx, nil)
 	case temporal.IsCanceledError(err) || errors.Is(ctx.Err(), workflow.ErrCanceled):
 		return finishCancelled(ctx, info, true)
+	case errors.Is(err, errContinueAsNew):
+		// A step's long wait: its answer and what is done are in the database.
+		return workflow.NewContinueAsNewError(ctx, Provision, requestID)
 	default:
 		if info.Plan.Rollback {
 			if rbErr := workflow.ExecuteActivity(ctx, a.Rollback, requestID, info.ProjectID).Get(ctx, nil); rbErr != nil {
@@ -142,6 +157,76 @@ const approvalRecheck = time.Hour
 
 var errContinueAsNew = errors.New("continue as new")
 
+// waitEnd says why a round of a durable wait ended.
+type waitEnd int
+
+const (
+	waitSignalled waitEnd = iota // a signal came
+	waitStopped                  // its context was cancelled
+	waitRecheck                  // time to read the database again, in case a signal was lost
+	waitDue                      // its due time came
+)
+
+// waitRound is one round of a durable wait, for as long as it takes: the
+// workflow holds a signal channel and a timer, and nothing else, through
+// restarts of the API and the worker. onSignal reads the signal that came.
+// The caller decides what each end means, and continues as new when Temporal
+// suggests it, its state being in the database.
+func waitRound(ctx, stop workflow.Context, signals workflow.ReceiveChannel, onSignal func(workflow.ReceiveChannel), dueAt *time.Time) waitEnd {
+	tctx, cancelTimer := workflow.WithCancel(ctx)
+	defer cancelTimer()
+	wait, due := approvalRecheck, false
+	if dueAt != nil {
+		if d := dueAt.Sub(workflow.Now(ctx)); d <= wait {
+			wait, due = max(d, time.Millisecond), true
+		}
+	}
+	end := waitSignalled
+	sel := workflow.NewSelector(ctx)
+	sel.AddReceive(signals, func(c workflow.ReceiveChannel, _ bool) { onSignal(c) })
+	sel.AddReceive(stop.Done(), func(workflow.ReceiveChannel, bool) { end = waitStopped })
+	sel.AddFuture(workflow.NewTimer(tctx, wait), func(workflow.Future) {
+		end = waitRecheck
+		if due {
+			end = waitDue
+		}
+	})
+	sel.Select(ctx)
+	return end
+}
+
+// awaitLevel waits until an open level is decided: its signal, or its row read
+// again (a lost signal), or its timeout applied. It says stopped when stop was
+// cancelled first, and gives errContinueAsNew on a wait that has gone on long.
+func awaitLevel(ctx, stop workflow.Context, signals workflow.ReceiveChannel, id string, st LevelState) (LevelState, bool, error) {
+	var a *Activities
+	for st.Status == "pending" {
+		end := waitRound(ctx, stop, signals, func(c workflow.ReceiveChannel) {
+			var sig ApprovalSignal
+			c.Receive(ctx, &sig)
+			if sig.ApprovalID == id {
+				st.Status = sig.Outcome
+			}
+		}, st.DueAt)
+		switch end {
+		case waitStopped:
+			return st, true, nil
+		case waitRecheck:
+			if err := workflow.ExecuteActivity(ctx, a.ApprovalState, id).Get(ctx, &st); err != nil {
+				return st, false, err
+			}
+		case waitDue:
+			if err := workflow.ExecuteActivity(ctx, a.ApprovalTimedOut, id).Get(ctx, &st); err != nil {
+				return st, false, err
+			}
+		}
+		if st.Status == "pending" && workflow.GetInfo(ctx).GetContinueAsNewSuggested() {
+			return st, false, errContinueAsNew
+		}
+	}
+	return st, false, nil
+}
+
 // awaitApprovals runs the approval levels in order. Each waits for its
 // decision signal or its timeout; the database holds the decisions, and
 // FinishApprovals records the outcome on the request.
@@ -153,41 +238,9 @@ func awaitApprovals(ctx workflow.Context, info Info) (approved, cancelled bool, 
 		if err := workflow.ExecuteActivity(ctx, a.OpenApproval, id).Get(ctx, &st); err != nil {
 			return false, false, err
 		}
-		for st.Status == "pending" {
-			tctx, cancelTimer := workflow.WithCancel(ctx)
-			wait, due, fired := approvalRecheck, false, false
-			if st.DueAt != nil {
-				if d := st.DueAt.Sub(workflow.Now(ctx)); d <= wait {
-					wait, due = max(d, time.Millisecond), true
-				}
-			}
-			sel := workflow.NewSelector(ctx)
-			sel.AddReceive(signals, func(c workflow.ReceiveChannel, _ bool) {
-				var sig ApprovalSignal
-				c.Receive(ctx, &sig)
-				if sig.ApprovalID == id {
-					st.Status = sig.Outcome
-				}
-			})
-			sel.AddReceive(ctx.Done(), func(workflow.ReceiveChannel, bool) { cancelled = true })
-			sel.AddFuture(workflow.NewTimer(tctx, wait), func(workflow.Future) { fired = true })
-			sel.Select(ctx)
-			cancelTimer()
-			if cancelled {
-				return false, true, nil
-			}
-			if fired {
-				next := a.ApprovalState
-				if due {
-					next = a.ApprovalTimedOut
-				}
-				if err := workflow.ExecuteActivity(ctx, next, id).Get(ctx, &st); err != nil {
-					return false, false, err
-				}
-			}
-			if st.Status == "pending" && workflow.GetInfo(ctx).GetContinueAsNewSuggested() {
-				return false, false, errContinueAsNew
-			}
+		st, cancelled, err = awaitLevel(ctx, ctx, signals, id, st)
+		if cancelled || err != nil {
+			return false, cancelled, err
 		}
 		if st.Status != "approved" {
 			break

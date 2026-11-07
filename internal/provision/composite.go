@@ -3,9 +3,11 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/damhau/rvav/internal/policy"
@@ -42,25 +44,37 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 		}
 		results := make([]stepResult, len(group))
 		if len(group) == 1 {
-			results[0] = runCompositeStep(ctx, info, group[0], outputs)
+			results[0] = runCompositeStep(ctx, ctx, info, group[0], outputs)
 		} else {
 			// Read only while the group runs.
 			before := make(map[string]any, len(outputs))
 			for k, v := range outputs {
 				before[k] = v
 			}
+			// A step that fails doesn't stop its siblings, but nobody should be
+			// asked any more about a run that has failed: it stops their waits.
+			stop, stopWaits := workflow.WithCancel(ctx)
 			wg := workflow.NewWaitGroup(ctx)
 			for i, c := range group {
 				wg.Add(1)
 				workflow.Go(ctx, func(gctx workflow.Context) {
 					defer wg.Done()
-					results[i] = runCompositeStep(gctx, info, c, before)
+					results[i] = runCompositeStep(gctx, stop, info, c, before)
+					if err := results[i].err; err != nil && !errors.Is(err, errContinueAsNew) {
+						stopWaits()
+					}
 				})
 			}
 			wg.Wait(ctx)
+			stopWaits()
 		}
 		var failed *stepResult
+		var again []CompositeStep
 		for i, c := range group {
+			if errors.Is(results[i].err, errContinueAsNew) {
+				again = append(again, c)
+				continue
+			}
 			if results[i].err != nil {
 				if failed == nil {
 					failed = &results[i]
@@ -76,17 +90,26 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 			done = append(done, c)
 		}
 		if failed != nil {
+			// A wait that had left to continue as new when a sibling failed.
+			for _, c := range again {
+				var a *Activities
+				_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", stoppedBySibling).Get(ctx, nil)
+			}
 			if p.Rollback {
 				undoComposite(ctx, info, done, outputs)
 			}
 			return failed.failed, failed.err
 		}
+		if len(again) > 0 {
+			return "", errContinueAsNew
+		}
 	}
 	return "", nil
 }
 
-// runCompositeStep runs one step and returns its outputs.
-func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
+// runCompositeStep runs one step and returns its outputs. A step that waits
+// for a person stops waiting when stop is cancelled.
+func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
 	var a *Activities
 	key := c.StepKey()
 	if info.done(key) {
@@ -166,6 +189,18 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
 			return stepResult{failed: key, err: err}
 		}
+	case c.Ask != nil:
+		result, stopped, err := runAsk(ctx, stop, info, c)
+		switch {
+		case errors.Is(err, errContinueAsNew), temporal.IsCanceledError(err):
+			return stepResult{failed: key, err: err}
+		case err != nil:
+			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
+			return stepResult{failed: key, err: err}
+		case stopped:
+			return stepResult{skipped: true}
+		}
+		out = result
 	}
 	var recorded map[string]any
 	if err := workflow.ExecuteActivity(ctx, a.FinishStep, info.RequestID, info.ProjectID, key, out).Get(ctx, &recorded); err != nil {

@@ -117,7 +117,82 @@ describe("readComposite", () => {
     expect(fields(rest({ url }, { undo: { rest: { method: "GET", url: "" } } }))).toEqual(["undo/rest/url"]);
     // A step is one kind.
     const both = readComposite({ steps: [{ key: "x", item: "a", rest: { method: "GET", url } }] });
-    expect(both.problems.map((p) => p.message)).toEqual(["A step is one of: item, awx, workflow or rest."]);
+    expect(both.problems.map((p) => p.message)).toEqual(["A step is one of: item, awx, workflow, rest or ask."]);
+  });
+
+  describe("a wait for a person", () => {
+    const problems = (ask: Record<string, unknown>, more: Record<string, unknown> = {}) =>
+      readComposite({ steps: [{ key: "a", ask, ...more }] }, "").problems.map((p) => [p.field, p.message]);
+    const secret = expect.stringContaining("can't ask for a secret") as string;
+
+    it("says who is asked, how long, and for what, as the server does", () => {
+      const v = readComposite({
+        steps: [
+          { key: "a", ask: { group: "managers", approvers: ["u1", "u2"], timeout: "48h", on_timeout: "continue" } },
+          { key: "b", ask: { requester: true, owner: true, form: [{ key: "x", label: "X", type: "string" }] } },
+          { key: "c", ask: {} },
+        ],
+      });
+      expect(v.groups.flat().map((s) => [s.kind, s.ask])).toEqual([
+        ["ask", { who: "managers, 2 people", wants: "to approve or reject", timeout: "48h, then it goes on" }],
+        ["ask", { who: "the requester, the owner", wants: "1 answer", timeout: undefined }],
+        ["ask", { who: "a person", wants: "to approve or reject", timeout: undefined }],
+      ]);
+    });
+
+    it("refuses what the server refuses", () => {
+      const asks = { requester: true };
+      expect(problems({})).toEqual([["/steps/0/ask", expect.stringContaining("Say who is asked")]]);
+      expect(problems({ ...asks, message: "x".repeat(2001) })).toEqual([
+        ["/steps/0/ask/message", "At most 2000 characters."],
+      ]);
+      expect(problems({ ...asks, timeout: "soon" })).toEqual([["/steps/0/ask/timeout", "A duration such as 48h."]]);
+      expect(problems({ ...asks, timeout: "1ms" })).toEqual([["/steps/0/ask/timeout", "A duration such as 48h."]]);
+      expect(problems({ ...asks, on_timeout: "fail" })).toEqual([
+        ["/steps/0/ask/on_timeout", "What happens on time-out needs a timeout."],
+      ]);
+      expect(problems({ ...asks, timeout: "1h", on_timeout: "later" })).toEqual([
+        ["/steps/0/ask/on_timeout", "fail, continue or escalate."],
+      ]);
+      expect(problems({ ...asks, timeout: "1h", on_timeout: "escalate" })).toEqual([
+        ["/steps/0/ask/escalate_to", expect.stringContaining("Say whom to escalate to")],
+      ]);
+      expect(problems(asks, { with: { a: "1" }, undo: { job_template: "t" } })).toEqual([
+        ["/steps/0/with", "A wait for a person has no inputs."],
+        ["/steps/0/undo", "A wait for a person has nothing to undo."],
+      ]);
+    });
+
+    it("refuses a form's secrets and what its questions get wrong", () => {
+      const form = (...f: Record<string, unknown>[]) => problems({ requester: true, form: f });
+      const base = { key: "q", label: "Q", type: "string" };
+      expect(form({ ...base, secret: true })).toEqual([["/steps/0/ask/form/0", secret]]);
+      expect(form({ ...base, type: "password" })).toEqual([["/steps/0/ask/form/0", secret]]);
+      expect(form(base, base)).toEqual([["/steps/0/ask/form/1/key", "Another question has the key q."]]);
+      expect(form({ ...base, label: " " })).toEqual([["/steps/0/ask/form/0/label", "Say what it asks."]]);
+      expect(form({ ...base, type: "date" })).toEqual([
+        ["/steps/0/ask/form/0/type", "string, number, boolean or choice."],
+      ]);
+      expect(form({ ...base, type: "choice" })).toEqual([["/steps/0/ask/form/0/options", "List what it may be."]]);
+      expect(form({ ...base, options: ["a"] })).toEqual([
+        ["/steps/0/ask/form/0/options", "Only a choice has options."],
+      ]);
+      expect(form({ ...base, default: 3 })).toEqual([["/steps/0/ask/form/0/default", "Give text."]]);
+      expect(form({ ...base, type: "choice", options: ["a", "b"], default: "c" })).toEqual([
+        ["/steps/0/ask/form/0/default", "Choose one of: a, b."],
+      ]);
+    });
+
+    it("reads a step's outputs as any other's", () => {
+      const v = readComposite({
+        steps: [
+          { key: "a", ask: { requester: true } },
+          { key: "b", item: "x", with: { size: "steps.a.answer.size" } },
+        ],
+      });
+      expect(v.problems).toEqual([]);
+      expect(v.groups[1]![0]!.uses).toEqual(["a"]);
+    });
   });
 });
 

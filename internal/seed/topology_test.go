@@ -39,6 +39,13 @@ var probes = []struct {
 	   "undo": {"rest": {"method": "DELETE", "url": "https://cmdb-secret.corp.example/api/ci/${steps.cmdb.json.id}", "secret": "cmdb-token-name"}}},
 	  {"parallel": [{"key": "bad", "rest": {"method": "GET", "url": "https://cmdb-secret.corp.example/${'tok_live_open"}},
 	                {"key": "awx", "awx": {"job_template": "t"}, "undo": {"rest": {"method": "POST", "url": "https://cmdb-secret.corp.example/undo", "body": "'tok_live_c'"}}}]}]}`},
+	{"probe-composite-ask", `{"kind": "composite", "steps": [
+	  {"key": "manager", "title": "Manager's answer", "when": "inputs.size == 'huge-secret'", "ask": {"group": "grp-ask-secret",
+	   "approvers": ["usr_ask_secret"], "message": "Why so big, secret-text?", "timeout": "48h", "on_timeout": "escalate",
+	   "escalate_to": {"group": "grp-esc-secret", "approvers": ["usr_esc_secret"]},
+	   "form": [{"key": "size", "label": "Label-secret", "type": "choice", "required": true, "options": ["opt-secret"], "default": "opt-secret"}]}},
+	  {"parallel": [{"key": "owner_ok", "ask": {"owner": true}},
+	                {"key": "mine", "ask": {"requester": true, "timeout": "1h", "on_timeout": "continue"}}]}]}`},
 }
 
 type fixtureCase struct {
@@ -97,7 +104,8 @@ func TestTopologyFixture(t *testing.T) {
 	}
 	// The probes give nothing of what they hide.
 	for _, secret := range []string{"hunter2", "vlan-pci-secret", "grp-pci", "gold-secret", "vsan-secret", "'fin'",
-		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é", "cmdb-secret", "p-secret", "cmdb-token-name", "418", "result_secret", "api_key", "/api/"} {
+		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é", "cmdb-secret", "p-secret", "cmdb-token-name", "418", "result_secret", "api_key", "/api/",
+		"huge-secret", "grp-ask-secret", "usr_ask_secret", "secret-text", "grp-esc-secret", "usr_esc_secret", "Label-secret", "opt-secret"} {
 		for _, c := range cases[len(cases)-len(probes):] {
 			if b, _ := json.Marshal(c.Topology); bytes.Contains(b, []byte(secret)) {
 				t.Errorf("%s's topology has %q: %s", c.Name, secret, b)

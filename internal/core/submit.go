@@ -132,6 +132,8 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					c.Workflow, c.With = part.call, part.step.With
 				case part.rest != nil:
 					c.REST = part.rest
+				case part.ask != nil:
+					c.Ask = part.ask
 				}
 				plan.Composite = append(plan.Composite, c)
 			}
@@ -283,7 +285,14 @@ func (s *Service) Cancel(ctx context.Context, p *auth.Principal, idOrNumber stri
 			return r, err
 		}
 	case "running":
-		if err := s.Store.SetRequestStatus(ctx, s.Store.Pool, r.ID, "cancelling"); err != nil {
+		// A question it is waiting on leaves people's view at once.
+		err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+			if err := s.Store.SetRequestStatus(ctx, tx, r.ID, "cancelling"); err != nil {
+				return err
+			}
+			return s.Store.CancelApprovals(ctx, tx, r.ID)
+		})
+		if err != nil {
 			return r, err
 		}
 	case "cancelling":

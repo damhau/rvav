@@ -1330,10 +1330,17 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "failed"); err != nil {
 				return err
 			}
+			// Nobody is asked any more about a run that has ended.
+			if err := a.Store.CancelApprovals(ctx, db, in.RequestID); err != nil {
+				return err
+			}
 			if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "failed"); err != nil {
 				return err
 			}
 		case "cancelled":
+			if err := a.Store.CancelApprovals(ctx, db, in.RequestID); err != nil {
+				return err
+			}
 			if err := a.Store.MarkRemainingSteps(ctx, db, in.RequestID, "cancelled"); err != nil {
 				return err
 			}

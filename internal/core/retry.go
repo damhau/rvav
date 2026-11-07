@@ -258,6 +258,10 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 		if err := s.Store.ResetForRetry(ctx, tx, r.ID, rolledBack, keep); err != nil {
 			return err
 		}
+		// A step that waits for a person and runs again asks again (ADR-0033).
+		if err := s.Store.RetireStepApprovals(ctx, tx, r.ID); err != nil {
+			return err
+		}
 		if err := s.Store.RestoreChildSteps(ctx, tx, r.ID, children); err != nil {
 			return err
 		}
