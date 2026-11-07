@@ -341,6 +341,95 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/requests/REQ › Timeline (a run that waits)");
     });
 
+    // A branch and a message: selected, the list view, a requester's masked form,
+    // then a run whose side taken is drawn, and its timeline.
+    test("axe: a composite draft's branch and message, and the run that took a side", async ({ page }) => {
+      test.slow();
+      await page.goto("/admin/catalog-items");
+      await loaded(page);
+      await page.getByRole("button", { name: "New item" }).click();
+      const dialog = page.getByRole("dialog", { name: "New item" });
+      await dialog.getByRole("textbox", { name: "Name" }).fill("Which way");
+      await dialog.getByRole("textbox", { name: "Slug" }).fill("which-way");
+      await dialog.getByRole("textbox", { name: "Summary" }).fill("Branches.");
+      await dialog.getByRole("combobox", { name: "Type" }).click();
+      await page.getByRole("option", { name: /composite/i }).click();
+      await dialog.getByRole("button", { name: "Create" }).click();
+      await page.getByRole("tab", { name: "Definition" }).click();
+      const inDialog = async (runs: string | RegExp, key: string, title: string) => {
+        const add = page.getByRole("dialog", { name: "Add a step" });
+        await add.getByRole("combobox", { name: "What it runs" }).click();
+        await page.getByRole("option", { name: runs }).click();
+        await add.getByRole("textbox", { name: "Key" }).fill(key);
+        await add.getByRole("textbox", { name: "Title" }).fill(title);
+        await add.getByRole("button", { name: "Add step" }).click();
+        return page.getByRole("region", { name: `Selected: ${title}` });
+      };
+      const commit = async (where: ReturnType<Page["getByRole"]>, label: string, value: string) => {
+        const field = where.getByRole("textbox", { name: label, exact: true });
+        await field.fill(value);
+        await field.press("Tab");
+      };
+      await page.getByRole("button", { name: "Add a step", exact: true }).click();
+      const branch = await inDialog(/^A branch/, "way", "The way");
+      await expect(branch.getByRole("list", { name: "Problems with this step" })).toContainText("Say when");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/which-way › Definition (a branch selected)");
+      const first = branch.getByRole("group", { name: "Case 1" });
+      await commit(first, "Title", "Named");
+      await commit(first, "When", "inputs.name == 'web-01'");
+      await first.getByRole("button", { name: "Add a step to Named" }).click();
+      const message = await inDialog("A message to people", "told", "Tell them");
+      await expect(message.getByRole("list", { name: "Problems with this step" })).toContainText("Say who is told");
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/which-way › Definition (a message selected)");
+      await message.getByRole("checkbox", { name: "The requester" }).click();
+      await commit(message, "OIDC groups", "dba");
+      await commit(message, "Message", "Ready: ${inputs.name}");
+      await message.getByRole("button", { name: "Select the branch way" }).click();
+      await branch.getByRole("button", { name: "Add a step to Otherwise" }).click();
+      const log = await inDialog("A REST call", "log", "Log it");
+      await commit(log, "URL", "https://cmdb.corp.example/log");
+      await expect(log.getByRole("list", { name: "Problems with this step" })).toHaveCount(0);
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/which-way › Definition (a branch on the graph)");
+      const shownAs = page.getByRole("region", { name: "Steps of Which way" }).getByRole("group", { name: "Show as" });
+      await shownAs.getByRole("button", { name: "List" }).click();
+      await expect(shownAs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+      await scan(page, "/admin/catalog-items/which-way › Definition (a branch, as a list)");
+      await shownAs.getByRole("button", { name: "Graph" }).click();
+
+      await page.getByRole("button", { name: "Save draft" }).click();
+      await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
+      await page.getByRole("tab", { name: "Entitlements" }).click();
+      await page.getByRole("radio", { name: /Chosen projects/ }).check();
+      await page.getByRole("checkbox", { name: "Web Platform" }).click();
+      await page.getByRole("button", { name: "Save entitlements" }).click();
+      await expect(page.getByText("Entitlements saved")).toBeVisible();
+      await page.getByRole("tab", { name: "Versions" }).click();
+      await page.getByRole("button", { name: "Publish" }).click();
+      await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
+      await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("link", { name: /^Which way/ }).click();
+      await page.getByRole("textbox", { name: "Name" }).fill("web-01");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/catalog/which-way (a branch and a message, masked)");
+      await page.getByRole("button", { name: "Submit request" }).click();
+
+      const run = page.getByRole("application", { name: /^Run of REQ-\d+$/ });
+      await expect(run.getByRole("button", { name: /^REST Log it\. Skipped\./ })).toBeVisible({ timeout: 30_000 });
+      await expect(run.getByRole("button", { name: /^Message Tell them\. Done\./ })).toBeVisible({ timeout: 30_000 });
+      await expect(run.getByText("Named: taken")).toBeVisible();
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/requests/REQ (a run that took a side)");
+      await page.getByRole("button", { name: "Timeline" }).click();
+      await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText("Took: Named");
+      await scan(page, "/requests/REQ › Timeline (a run that took a side)");
+    });
+
     test("axe: a composite request's run, failed then running", async ({ page }) => {
       await page.goto("/requests/REQ-10484");
       await expect(page.getByRole("region", { name: "Selected: The database's owner" })).toBeVisible();

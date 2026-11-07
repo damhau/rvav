@@ -4,17 +4,22 @@ import { seededBlueprint } from "@/mocks/blueprints";
 import { toYaml } from "../definitionYaml";
 import {
   addAskQuestion,
+  addBranchCase,
   addStep,
   EditError,
   joinPrevious,
+  moveBranchCase,
   moveStep,
   readStep,
   removeAskQuestion,
+  removeBranchCase,
   removeStep,
   setAskEscalate,
   setAskField,
   setAskQuestion,
   setBinding,
+  setBranchCase,
+  setNotifyField,
   setPollField,
   setRestField,
   setRollback,
@@ -580,5 +585,151 @@ describe("a wait for a time and a poll", () => {
       "first",
     );
     expect(stepsOf(wait)[1]!.wait).toEqual({ until: "steps.first.at" });
+  });
+});
+
+describe("a branch and its sides", () => {
+  const base = () =>
+    definition({
+      kind: "composite",
+      steps: [
+        { key: "first", awx: { job_template: "a" } },
+        { key: "b", branch: { cases: [{ when: "inputs.a", steps: [{ key: "x", awx: { job_template: "x" } }] }] } },
+        { key: "last", awx: { job_template: "z" } },
+      ],
+    });
+  const b = "step:b";
+  const branchOf = (text: string) => (blueprint(text).steps as { branch?: Record<string, unknown> }[])[1]!.branch!;
+  const caseKeys = (text: string, c = 0) =>
+    (branchOf(text).cases as { steps?: { key: string }[] }[])[c]!.steps!.map((s) => s.key);
+  const other = (key: string) => ({ key, awx: { job_template: key } });
+
+  it("turns a step into a branch, whose condition, inputs and undo go", () => {
+    const text = definition({
+      kind: "composite",
+      steps: [{ key: "a", awx: { job_template: "t" }, when: "inputs.x", with: { y: 1 }, undo: { job_template: "u" } }],
+    });
+    const next = blueprint(setTarget(text, "step:a", { kind: "branch", ref: "" })).steps as Record<string, unknown>[];
+    expect(next[0]).toEqual({ key: "a", branch: { cases: [{ when: "", steps: [] }] } });
+  });
+
+  it("turns a step into a message, whose inputs and undo go", () => {
+    const text = definition({
+      kind: "composite",
+      steps: [{ key: "a", awx: { job_template: "t" }, when: "inputs.x", with: { y: 1 }, undo: { job_template: "u" } }],
+    });
+    const next = blueprint(setTarget(text, "step:a", { kind: "notify", ref: "" })).steps as Record<string, unknown>[];
+    expect(next[0]).toEqual({ key: "a", notify: {}, when: "inputs.x" });
+  });
+
+  it("adds, moves and removes its cases, one edit each", () => {
+    let text = addBranchCase(base(), b);
+    expect(branchOf(text).cases).toHaveLength(2);
+    text = setBranchCase(text, b, 1, "when", " inputs.b ");
+    text = setBranchCase(text, b, 1, "title", "Big");
+    expect((branchOf(text).cases as unknown[])[1]).toEqual({ title: "Big", when: "inputs.b", steps: [] });
+    text = moveBranchCase(text, b, 1, -1);
+    expect((branchOf(text).cases as { when: string }[]).map((c) => c.when)).toEqual(["inputs.b", "inputs.a"]);
+    expect(() => moveBranchCase(text, b, 0, -1)).toThrow("It comes first.");
+    expect(() => moveBranchCase(text, b, 1, 1)).toThrow("It comes last.");
+    expect((branchOf(setBranchCase(text, b, 0, "title", "")).cases as unknown[])[0]).toEqual({
+      when: "inputs.b",
+      steps: [],
+    });
+    // A case's condition stays empty, for the step to say what is missing.
+    expect((branchOf(setBranchCase(text, b, 0, "when", "")).cases as { when: string }[])[0]!.when).toBe("");
+    text = removeBranchCase(text, b, 0);
+    expect((branchOf(text).cases as { when: string }[]).map((c) => c.when)).toEqual(["inputs.a"]);
+    expect(caseKeys(text)).toEqual(["x"]);
+    expect(() => setBranchCase(text, b, 4, "when", "x")).toThrow(EditError);
+    expect(() => addBranchCase(text, "step:first")).toThrow("It isn't a branch.");
+  });
+
+  it("adds a step to a side, makes otherwise when it adds to it, and removes it when it empties", () => {
+    let text = addStep(base(), other("y"), { side: b, taken: 1 });
+    expect(caseKeys(text)).toEqual(["x", "y"]);
+    text = addStep(text, other("z"), { after: "step:x" });
+    expect(caseKeys(text)).toEqual(["x", "z", "y"]);
+    text = addStep(text, other("o"), { side: b, taken: 0 });
+    expect(branchOf(text).else).toEqual([other("o")]);
+    expect(stepKeys(text)).toEqual(["first", "b", "x", "z", "y", "o", "last"]);
+    text = removeStep(text, "step:o");
+    expect(branchOf(text)).not.toHaveProperty("else");
+    // A case keeps its list, empty: it goes on.
+    for (const k of ["x", "y", "z"]) text = removeStep(text, `step:${k}`);
+    expect(caseKeys(text)).toEqual([]);
+    expect(shape(text)).toEqual(["first", "b", "last"]);
+  });
+
+  it("moves a side's steps within their side", () => {
+    let text = addStep(base(), other("y"), { side: b, taken: 1 });
+    text = moveStep(text, "step:y", -1);
+    expect(caseKeys(text)).toEqual(["y", "x"]);
+    expect(() => moveStep(text, "step:y", -1)).toThrow("It runs first on its side.");
+    expect(() => moveStep(text, "step:x", 1)).toThrow("It runs last on its side.");
+    expect(shape(text)).toEqual(["first", "b", "last"]);
+  });
+
+  it("nests nothing, and has nothing on a side run with another", () => {
+    const branch = { key: "inner", branch: { cases: [{ when: "x", steps: [] }] } };
+    expect(() => addStep(base(), branch, { side: b, taken: 1 })).toThrow(/can't be on a side/);
+    expect(() => addStep(base(), branch, { after: "step:x" })).toThrow(/can't be on a side/);
+    expect(() => addStep(base(), other("y"), { with: "step:x" })).toThrow(/parallel group/);
+    expect(() => addStep(base(), other("y"), { with: b })).toThrow(/parallel group/);
+    expect(() => addStep(base(), branch, { with: "step:first" })).toThrow(/parallel group/);
+    expect(() => setTarget(base(), "step:x", { kind: "branch", ref: "" })).toThrow(/can't be on a side/);
+    expect(() => joinPrevious(base(), b)).toThrow(/parallel group/);
+    expect(() => joinPrevious(base(), "step:last")).toThrow(/parallel group/);
+    expect(() => joinPrevious(base(), "step:x")).toThrow(/parallel group/);
+  });
+
+  it("follows a key renamed into its cases, a side's conditions and a message", () => {
+    let text = definition({
+      kind: "composite",
+      steps: [
+        { key: "first", awx: { job_template: "a" } },
+        {
+          key: "b",
+          branch: {
+            cases: [
+              { when: "steps.first.ok", steps: [{ key: "x", awx: { job_template: "x" }, when: "steps.first.ok" }] },
+            ],
+          },
+        },
+        { key: "n", notify: { owner: true, message: "It is ${steps.first.ok}, steps.first stays" } },
+      ],
+    });
+    text = setStepField(text, "step:first", "key", "renamed");
+    const [, br, n] = blueprint(text).steps as Record<string, Record<string, unknown>>[];
+    const c = (br!.branch!.cases as { when: string; steps: { when: string }[] }[])[0]!;
+    expect(c.when).toBe("steps.renamed.ok");
+    expect(c.steps[0]!.when).toBe("steps.renamed.ok");
+    expect(n!.notify!.message).toBe("It is ${steps.renamed.ok}, steps.first stays");
+  });
+
+  it("says where a side's step is", () => {
+    const text = addStep(base(), other("y"), { side: b, taken: 1 });
+    expect(readStep(text, "step:y")).toMatchObject({
+      pointer: "/definition/blueprint/steps/1/branch/cases/0/steps/1",
+      side: { branch: "b", taken: 1, i: 1, length: 2 },
+    });
+    expect(readStep(text, "step:first")?.side).toBeUndefined();
+  });
+
+  it("sets a message's fields, one edit each, and leaves out what is empty", () => {
+    let text = addStep(base(), { key: "n", notify: {} }, "end");
+    const notify = (t: string) => (blueprint(t).steps as Record<string, unknown>[]).at(-1)!.notify;
+    text = setNotifyField(text, "step:n", "message", " Ready ");
+    text = setNotifyField(text, "step:n", "users", ["usr_1"]);
+    text = setNotifyField(text, "step:n", "groups", ["dba", "ops"]);
+    text = setNotifyField(text, "step:n", "owner", true);
+    text = setNotifyField(text, "step:n", "requester", true);
+    expect(text).toContain("groups: [dba, ops]");
+    expect(Object.keys(notify(text) as object)).toEqual(["requester", "owner", "groups", "users", "message"]);
+    text = setNotifyField(text, "step:n", "owner", false);
+    text = setNotifyField(text, "step:n", "users", []);
+    text = setNotifyField(text, "step:n", "message", "");
+    expect(notify(text)).toEqual({ requester: true, groups: ["dba", "ops"] });
+    expect(() => setNotifyField(base(), "step:first", "owner", true)).toThrow("It sends no message.");
   });
 });

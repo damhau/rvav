@@ -16,7 +16,10 @@
 // VM step, planned from the form when the request is submitted), or a
 // value or CEL expression written out. A REST call has no inputs: its URL and
 // body read them, and it says what it can read. A wait for a person has neither
-// inputs nor an undo: who it asks, what, and for how long (ADR-0033).
+// inputs nor an undo: who it asks, what, and for how long. A branch has its cases
+// and the steps on each side, added from its details; those steps are selected
+// and edited as any other, and move within their side. A message says who it
+// tells and what (ADR-0033).
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,9 +28,10 @@ import { type CanvasNode, NodeDetails, within } from "@/components/canvas";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Textarea } from "@/components/ui/input";
 import { type Option, Select } from "@/components/ui/select";
 import type { CatalogEntitlements, CompositeStepInput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import { maxStepMessage } from "@/lib/composite";
 import { adm, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
@@ -96,18 +100,22 @@ const kindGroup: Record<StepTarget["kind"], string> = {
   ask: "People",
   wait: "Waits",
   poll: "Waits",
+  branch: "The way it goes",
+  notify: "People",
 };
 const byName = "awx-by-name";
 const restValue = targetValue({ kind: "rest", ref: "" });
 const askValue = targetValue({ kind: "ask", ref: "" });
 const waitValue = targetValue({ kind: "wait", ref: "" });
 const pollValue = targetValue({ kind: "poll", ref: "" });
+const branchValue = targetValue({ kind: "branch", ref: "" });
+const notifyValue = targetValue({ kind: "notify", ref: "" });
 const restMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // A poll repeats its call: only these may be repeated (ADR-0033).
 const pollMethods = ["GET", "PUT", "DELETE"];
 
-/** What a step can run, for a picker: grouped, the step's own first if it isn't listed. */
-function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Option[] {
+/** What a step can run, for a picker: grouped, the step's own first if it isn't listed. A branch only where it can go. */
+function targetOptions(targets: CompositeStepTarget[], current?: StepTarget, branchHere = false): Option[] {
   const out: Option[] = targets.map((t) => ({
     value: targetValue(listedTarget(t)),
     label: t.title,
@@ -124,8 +132,11 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Op
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
   out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
   out.push({ value: askValue, label: "A person", group: kindGroup.ask });
+  out.push({ value: notifyValue, label: "A message to people", group: kindGroup.notify });
   out.push({ value: waitValue, label: "A wait for a time", group: kindGroup.wait });
   out.push({ value: pollValue, label: "A wait for a condition, polling a REST API", group: kindGroup.poll });
+  if (branchHere)
+    out.push({ value: branchValue, label: "A branch: cases, each with its steps", group: kindGroup.branch });
   return out;
 }
 
@@ -139,7 +150,8 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
     const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
     return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
-  if (kind === "rest" || kind === "ask" || kind === "wait" || kind === "poll") return { kind, ref: "" };
+  if (kind === "rest" || kind === "ask" || kind === "wait" || kind === "poll" || kind === "branch" || kind === "notify")
+    return { kind, ref: "" };
   if (kind !== "item" && kind !== "workflow") return undefined;
   return { kind, ref };
 }
@@ -158,6 +170,8 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
   else if (target.kind === "ask") step.ask = {};
   else if (target.kind === "wait") step.wait = {};
   else if (target.kind === "poll") step.poll = edits.newPoll();
+  else if (target.kind === "branch") step.branch = edits.newBranch();
+  else if (target.kind === "notify") step.notify = {};
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -181,6 +195,12 @@ export default function CompositeDesigner({
   const def = useMemo(() => parseDefinition(text), [text]);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  /** The side of a branch the step being added goes on. */
+  const [addingTo, setAddingTo] = useState<SideRef | null>(null);
+  const addOnSide = useCallback((side: SideRef) => {
+    setAddingTo(side);
+    setAdding(true);
+  }, []);
   /** What to focus once the selected node's details are drawn: they come with the graph, which follows the text a moment later. */
   const focusNext = useRef<string | null>(null);
 
@@ -260,7 +280,7 @@ export default function CompositeDesigner({
     };
   }, []);
 
-  const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected };
+  const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected, addOnSide };
   const renderDetails = (node: CanvasNode): ReactNode => {
     if (!def)
       return (
@@ -280,7 +300,14 @@ export default function CompositeDesigner({
   const selectedStep = selected?.startsWith("step") ? selected : undefined;
   const actions = (
     <>
-      <Button size="sm" disabled={!def} onClick={() => setAdding(true)}>
+      <Button
+        size="sm"
+        disabled={!def}
+        onClick={() => {
+          setAddingTo(null);
+          setAdding(true);
+        }}
+      >
         <Plus aria-hidden />
         Add a step
       </Button>
@@ -318,6 +345,7 @@ export default function CompositeDesigner({
           def={def}
           targets={targets}
           loading={targetsQuery.isPending}
+          side={addingTo}
           selected={
             selectedStep
               ? flatten(obj(def.blueprint)).find((s) => s.key && edits.stepId(s.key) === selectedStep)
@@ -343,6 +371,14 @@ interface PanelContext {
   apply: (make: () => string, then?: { select?: string | null; focus?: string }) => void;
   focusNext: RefObject<string | null>;
   setSelected: (id: string | null) => void;
+  addOnSide: (side: SideRef) => void;
+}
+
+/** A side of a branch: its node's ID, which it is (1 for the first case, 0 for otherwise), and what it is called. */
+interface SideRef {
+  id: string;
+  taken: number;
+  label: string;
 }
 
 /** Focuses what an edit asked for, once its details are drawn. */
@@ -435,7 +471,7 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
 }
 
 function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
-  const { text, def, targets, apply } = ctx;
+  const { text, def, targets, apply, focusNext, setSelected } = ctx;
   useFocusNext(ctx.focusNext);
   const [byNameOpen, setByNameOpen] = useState(false);
   const runsFocus = useFocusAfterSelect();
@@ -443,26 +479,30 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const [undoExtra, setUndoExtra] = useState<string[]>([]);
   const found = edits.readStep(text, node.id);
   if (!found) return <NodeDetails node={node} />;
-  const { step, g, j } = found;
+  const { step, g, j, side, pointer } = found;
   const id = node.id;
   const key = str(step.key);
   const target = targetOf(step);
   const listed = findTarget(targets, target);
   const planned = listed?.planned ?? false;
   const slots = Array.isArray(obj(def.blueprint).steps) ? (obj(def.blueprint).steps as unknown[]).length : 0;
-  const sources = bindingSources(def, { g, planned }, targets);
-  const open = planned ? [] : openEarlier(def, g, targets);
+  const place = side ? { g, side: { taken: side.taken, i: side.i } } : { g };
+  const sources = bindingSources(def, { ...place, planned }, targets);
+  const open = planned ? [] : openEarlier(def, place, targets);
   const withMap = obj(step.with);
   const rest = target?.kind === "rest";
   const ask = target?.kind === "ask";
   const wait = target?.kind === "wait";
   const poll = target?.kind === "poll";
+  const branch = target?.kind === "branch";
+  const notify = target?.kind === "notify";
   const inputs = listed?.inputs ?? [];
   const others = [...new Set([...Object.keys(withMap), ...extra])].filter((k) => !inputs.some((i) => i.name === k));
   const undo = step.undo === undefined ? undefined : obj(step.undo);
   const title = node.title;
   const flat = flatten(obj(def.blueprint));
-  const at = flat.findIndex((s) => s.g === g && s.j === j);
+  const at = flat.findIndex((s) => s.pointer === pointer);
+  const slotBefore = g > 0 ? obj((obj(def.blueprint).steps as unknown[])[g - 1]) : {};
 
   const bind = (name: string, scope: "with" | "undo") => (v: edits.Binding) =>
     apply(() => edits.setBinding(text, id, name, v, scope));
@@ -498,7 +538,13 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
       <div className="flex flex-wrap items-center gap-2">
         <PanelHeading badge={node.badge}>{title}</PanelHeading>
         <div className="ml-auto flex flex-wrap gap-1">
-          <Button id="cd-earlier" size="sm" variant="ghost" disabled={j === null && g === 0} onClick={() => move(-1)}>
+          <Button
+            id="cd-earlier"
+            size="sm"
+            variant="ghost"
+            disabled={side ? side.i === 0 : j === null && g === 0}
+            onClick={() => move(-1)}
+          >
             <ArrowUp aria-hidden />
             {j === null ? "Move earlier" : "Run before the others"}
           </Button>
@@ -506,13 +552,13 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             id="cd-later"
             size="sm"
             variant="ghost"
-            disabled={j === null && g === slots - 1}
+            disabled={side ? side.i === side.length - 1 : j === null && g === slots - 1}
             onClick={() => move(1)}
           >
             <ArrowDown aria-hidden />
             {j === null ? "Move later" : "Run after the others"}
           </Button>
-          {j === null && g > 0 && (
+          {j === null && g > 0 && !side && !branch && slotBefore.branch === undefined && (
             <Button
               id="cd-join"
               size="sm"
@@ -534,6 +580,23 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             <li key={i}>{p}</li>
           ))}
         </ul>
+      )}
+      {side && (
+        <p className="text-muted">
+          On a side of{" "}
+          <button
+            type="button"
+            aria-label={`Select the branch ${side.branch}`}
+            className="font-mono text-accent hover:underline"
+            onClick={() => {
+              focusNext.current = "cd-heading";
+              setSelected(edits.stepId(side.branch));
+            }}
+          >
+            {side.branch}
+          </button>
+          : it runs only when that side is taken, and is skipped otherwise.
+        </p>
       )}
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Key" htmlFor="cd-key" hint={key ? `Later steps read its outputs as steps.${key}.` : undefined}>
@@ -580,7 +643,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             value={runsValue}
             loading={ctx.targetsQuery.isPending}
             placeholder="Choose what it runs"
-            options={targetOptions(targets, target)}
+            options={targetOptions(targets, target, !side && j === null)}
             onCloseAutoFocus={runsFocus.onCloseAutoFocus}
             onChange={(v) => {
               if (v === byName) {
@@ -608,25 +671,29 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             />
           </Field>
         )}
-        <Field
-          label="When"
-          htmlFor="cd-when"
-          className="md:col-span-2"
-          hint={
-            planned
-              ? "A VM step has no condition: its VMs are planned when the request is submitted."
-              : "A CEL condition: the step is skipped when it is false. Empty: it always runs."
-          }
-        >
-          <CommitInput
-            id="cd-when"
-            value={str(step.when)}
-            className="font-mono text-xs"
-            placeholder={planned ? undefined : 'inputs.environment == "prd"'}
-            disabled={planned && !str(step.when)}
-            onCommit={(v) => apply(() => edits.setStepField(text, id, "when", v))}
-          />
-        </Field>
+        {(!branch || str(step.when)) && (
+          <Field
+            label="When"
+            htmlFor="cd-when"
+            className="md:col-span-2"
+            hint={
+              planned
+                ? "A VM step has no condition: its VMs are planned when the request is submitted."
+                : branch
+                  ? "A branch has no condition of its own: empty this, and use its cases."
+                  : "A CEL condition: the step is skipped when it is false. Empty: it always runs."
+            }
+          >
+            <CommitInput
+              id="cd-when"
+              value={str(step.when)}
+              className="font-mono text-xs"
+              placeholder={planned ? undefined : 'inputs.environment == "prd"'}
+              disabled={planned && !str(step.when)}
+              onCommit={(v) => apply(() => edits.setStepField(text, id, "when", v))}
+            />
+          </Field>
+        )}
       </div>
 
       {rest && (
@@ -648,7 +715,15 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {poll && <PollFields poll={obj(step.poll)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />}
 
-      {!rest && !ask && !wait && !poll && (
+      {branch && (
+        <BranchFields branch={obj(step.branch)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />
+      )}
+
+      {notify && (
+        <NotifyFields notify={obj(step.notify)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />
+      )}
+
+      {!rest && !ask && !wait && !poll && !branch && !notify && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Inputs</legend>
           {target?.kind === "item" && !listed && (
@@ -704,7 +779,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {!planned && !ask && !wait && !poll && (
+      {!planned && !ask && !wait && !poll && !branch && !notify && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Undo</legend>
           <UndoEditor
@@ -1152,6 +1227,276 @@ function PollFields({
   );
 }
 
+/** The steps on a side of a branch: each a button that selects it, and the way to add another. */
+function SideSteps({ steps, side, ctx }: { steps: Raw[]; side: SideRef; ctx: PanelContext }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {steps.length > 0 ? (
+        <ol aria-label={`Steps of ${side.label}`} className="flex flex-col gap-0.5">
+          {steps.map((s, i) => {
+            const key = str(s.key);
+            return (
+              <li key={key || i}>
+                <button
+                  type="button"
+                  disabled={!key}
+                  className="text-left font-medium text-accent hover:underline"
+                  onClick={() => {
+                    ctx.focusNext.current = "cd-heading";
+                    ctx.setSelected(edits.stepId(key));
+                  }}
+                >
+                  {str(s.title) || key || "(no key)"}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="text-muted">No steps yet: it goes on to what comes after the branch.</p>
+      )}
+      <div>
+        <Button size="sm" variant="secondary" onClick={() => ctx.addOnSide(side)}>
+          <Plus aria-hidden />
+          Add a step to {side.label}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A branch: its cases, the first whose condition holds being taken, each with its steps, and what runs otherwise. */
+function BranchFields({
+  branch,
+  id,
+  stepKey,
+  reads,
+  ctx,
+}: {
+  branch: Raw;
+  id: string;
+  stepKey: string;
+  reads: string[];
+  ctx: PanelContext;
+}) {
+  const { text, apply } = ctx;
+  const cases = Array.isArray(branch.cases) ? (branch.cases as unknown[]).map(obj) : [];
+  const otherwise = Array.isArray(branch.else) ? (branch.else as unknown[]).map(obj) : [];
+  const moveCase = (i: number, dir: -1 | 1) => {
+    const to = i + dir;
+    const own = `cd-case${to}-${dir < 0 ? "earlier" : "later"}`;
+    const other = `cd-case${to}-${dir < 0 ? "later" : "earlier"}`;
+    apply(() => edits.moveBranchCase(text, id, i, dir), { focus: own });
+    // The button may be disabled now (it comes first or last): the other one, then.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(own) as HTMLButtonElement | null;
+      if (el?.disabled) document.getElementById(other)?.focus();
+    });
+  };
+  return (
+    <>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>Its cases</legend>
+        <p className="text-muted">
+          The first whose condition holds is taken, once: its steps run, and the steps of the other sides are skipped.
+        </p>
+        {cases.map((c, i) => {
+          const prefix = `cd-case${i}`;
+          const label = str(c.title) || `Case ${i + 1}`;
+          return (
+            <fieldset key={i} className="flex flex-col gap-2 rounded-md border border-line p-2">
+              <legend className="px-1 text-xs font-medium">Case {i + 1}</legend>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label="Title"
+                  htmlFor={`${prefix}-title`}
+                  hint="Said on the graph and in the request's timeline."
+                >
+                  <CommitInput
+                    id={`${prefix}-title`}
+                    value={str(c.title)}
+                    placeholder={`Case ${i + 1}`}
+                    onCommit={(v) => apply(() => edits.setBranchCase(text, id, i, "title", v))}
+                  />
+                </Field>
+                <Field label="When" htmlFor={`${prefix}-when`} hint="A CEL condition: true or false.">
+                  <CommitInput
+                    id={`${prefix}-when`}
+                    value={str(c.when)}
+                    className="font-mono text-xs"
+                    placeholder="inputs.size == 'L'"
+                    onCommit={(v) => apply(() => edits.setBranchCase(text, id, i, "when", v))}
+                  />
+                </Field>
+              </div>
+              <SideSteps
+                steps={Array.isArray(c.steps) ? (c.steps as unknown[]).map(obj) : []}
+                side={{ id, taken: i + 1, label }}
+                ctx={ctx}
+              />
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  id={`${prefix}-earlier`}
+                  size="sm"
+                  variant="ghost"
+                  disabled={i === 0}
+                  aria-label={`Move case ${i + 1} earlier`}
+                  onClick={() => moveCase(i, -1)}
+                >
+                  <ArrowUp aria-hidden />
+                  Earlier
+                </Button>
+                <Button
+                  id={`${prefix}-later`}
+                  size="sm"
+                  variant="ghost"
+                  disabled={i === cases.length - 1}
+                  aria-label={`Move case ${i + 1} later`}
+                  onClick={() => moveCase(i, 1)}
+                >
+                  <ArrowDown aria-hidden />
+                  Later
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Remove case ${i + 1}, with its steps`}
+                  onClick={() => apply(() => edits.removeBranchCase(text, id, i), { focus: "cd-case-add" })}
+                >
+                  <Trash2 aria-hidden />
+                  Remove
+                </Button>
+              </div>
+            </fieldset>
+          );
+        })}
+        <div>
+          <Button
+            id="cd-case-add"
+            size="sm"
+            variant="secondary"
+            onClick={() => apply(() => edits.addBranchCase(text, id), { focus: `cd-case${cases.length}-title` })}
+          >
+            <Plus aria-hidden />
+            Add a case
+          </Button>
+        </div>
+        <Reads reads={reads} />
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>Otherwise</legend>
+        <p className="text-muted">What runs when no case holds.</p>
+        <SideSteps steps={otherwise} side={{ id, taken: 0, label: "Otherwise" }} ctx={ctx} />
+      </fieldset>
+      <p className="text-muted">
+        Later steps read <code className="font-mono">steps.{stepKey || "<key>"}.case</code>: 1 for the first case, 0 if
+        none held. They read a step on a side as one <code className="font-mono">when</code> skipped: it is there only
+        if it ran, so ask <code className="font-mono">has(steps.&lt;key&gt;)</code> first.
+      </p>
+    </>
+  );
+}
+
+/** A text that commits when it loses the focus; Enter is a new line. */
+function CommitText({ id, value, onCommit }: { id: string; value: string; onCommit: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const [shownValue, setShownValue] = useState(value);
+  if (shownValue !== value) {
+    setShownValue(value);
+    setDraft(value);
+  }
+  return (
+    <Textarea
+      id={id}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft !== value && onCommit(draft)}
+    />
+  );
+}
+
+/** A message: who it tells and what it says. Nothing to undo, and no inputs: its text reads them. */
+function NotifyFields({
+  notify,
+  id,
+  stepKey,
+  reads,
+  ctx,
+}: {
+  notify: Raw;
+  id: string;
+  stepKey: string;
+  reads: string[];
+  ctx: PanelContext;
+}) {
+  const { text, apply } = ctx;
+  const set = (field: edits.NotifyField, v: string | string[] | boolean) =>
+    apply(() => edits.setNotifyField(text, id, field, v));
+  return (
+    <>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>Who is told</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="cd-notify-requester"
+              checked={notify.requester === true}
+              onChange={(v) => set("requester", v)}
+            />
+            <label htmlFor="cd-notify-requester">The requester</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="cd-notify-owner" checked={notify.owner === true} onChange={(v) => set("owner", v)} />
+            <label htmlFor="cd-notify-owner">The owner</label>
+          </div>
+          <Field label="OIDC groups" htmlFor="cd-notify-groups" hint="Separated by commas. Its known members.">
+            <CommitInput
+              id="cd-notify-groups"
+              value={listText(notify.groups)}
+              onCommit={(v) =>
+                set(
+                  "groups",
+                  v
+                    .split(",")
+                    .map((g) => g.trim())
+                    .filter(Boolean),
+                )
+              }
+            />
+          </Field>
+          <Field label="People" htmlFor="cd-notify-users" hint="User IDs, separated by commas.">
+            <CommitInput
+              id="cd-notify-users"
+              value={listText(notify.users)}
+              className="font-mono text-xs"
+              onCommit={(v) => set("users", writtenUsers(v))}
+            />
+          </Field>
+        </div>
+        <p className="text-muted">
+          On the channels each of them keeps on: the app, email, Teams and Slack, those set up. If nobody is there to
+          tell when it runs, it goes on and says so.
+        </p>
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>What it says</legend>
+        <Field
+          label="Message"
+          htmlFor="cd-notify-message"
+          hint={`At most ${maxStepMessage} characters. \${...} fills in a value: text, a number or true or false. It can't show a secret input.`}
+        >
+          <CommitText id="cd-notify-message" value={str(notify.message)} onCommit={(v) => set("message", v)} />
+        </Field>
+        <Reads reads={reads} />
+        <p className="text-muted">
+          It is sent once. Later steps read <code className="font-mono">steps.{stepKey || "<key>"}.told</code>, how many
+          it told, never what it said.
+        </p>
+      </fieldset>
+    </>
+  );
+}
+
 /** A question's default as written: of the question's type, or as text for the step to say what is wrong. */
 export function writtenDefault(type: string, text: string): string | number | boolean | undefined {
   const t = text.trim();
@@ -1533,6 +1878,7 @@ function AddStepDialog({
   def,
   targets,
   loading,
+  side,
   selected,
   onAdd,
 }: {
@@ -1542,7 +1888,9 @@ function AddStepDialog({
   def: Raw;
   targets: CompositeStepTarget[];
   loading: boolean;
-  selected?: { key: string; name: string };
+  /** The side of a branch it goes on, when it was added from there. */
+  side?: SideRef | null;
+  selected?: { key: string; name: string; j: number | null; step: Raw; side?: { taken: number; i: number } };
   onAdd: (step: Raw, where: edits.Where) => void;
 }) {
   const [choice, setChoice] = useState("");
@@ -1570,6 +1918,17 @@ function AddStepDialog({
         : undefined
       : parseTarget(choice, targets);
   const listed = findTarget(targets, target);
+  // A branch runs in no parallel group and on no side, and a side lists its steps in order.
+  const places = selected
+    ? ([
+        ...(target?.kind === "branch" && selected.side ? [] : [["after", `After ${selected.name}`] as const]),
+        ...(target?.kind === "branch" || selected.side || selected.step.branch !== undefined
+          ? []
+          : [["with", `At the same time as ${selected.name}`] as const]),
+        ["end", "At the end"] as const,
+      ] as const)
+    : [];
+  const place = places.some(([v]) => v === where) ? where : (places[0]?.[0] ?? "end");
 
   const reset = () => {
     setChoice("");
@@ -1590,9 +1949,11 @@ function AddStepDialog({
               ? "rest_call"
               : t.kind === "ask"
                 ? "person"
-                : t.kind === "wait" || t.kind === "poll"
-                  ? t.kind
-                  : t.ref),
+                : t.kind === "notify"
+                  ? "message"
+                  : t.kind === "wait" || t.kind === "poll" || t.kind === "branch"
+                    ? t.kind
+                    : t.ref),
         ),
       );
   };
@@ -1604,10 +1965,11 @@ function AddStepDialog({
     setErrors(e);
     if (Object.keys(e).length > 0 || !target) return;
     const step = newStep(key, title.trim() || listed?.title || "", target, listed?.inputs ?? [], def);
-    const at: edits.Where =
-      selected && where === "after"
+    const at: edits.Where = side
+      ? { side: side.id, taken: side.taken }
+      : selected && place === "after"
         ? { after: edits.stepId(selected.key) }
-        : selected && where === "with"
+        : selected && place === "with"
           ? { with: edits.stepId(selected.key) }
           : "end";
     added.current = true;
@@ -1619,7 +1981,7 @@ function AddStepDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="Add a step"
-        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, or waits for a person. Inputs named as the form's are bound to them."
+        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, waits, sends a message, or branches. Inputs named as the form's are bound to them."
         onOpenAutoFocus={(e) => {
           reset();
           // What it runs first, rather than the close button.
@@ -1647,7 +2009,7 @@ function AddStepDialog({
               value={choice}
               loading={loading}
               placeholder="Choose what it runs"
-              options={targetOptions(targets)}
+              options={targetOptions(targets, undefined, !side)}
               onCloseAutoFocus={focus.onCloseAutoFocus}
               onChange={(v) => {
                 if (v === byName) focus.later("cd-new-awx");
@@ -1695,28 +2057,24 @@ function AddStepDialog({
               />
             </Field>
           </div>
-          {selected ? (
+          {side ? (
+            <p className="text-xs text-muted">It runs on the side {side.label}, after the steps there.</p>
+          ) : selected ? (
             <fieldset className="flex flex-col gap-1.5 text-[13px]">
               <legend className="mb-1 text-xs font-medium">When it runs</legend>
-              {(
-                [
-                  ["after", `After ${selected.name}`],
-                  ["with", `At the same time as ${selected.name}`],
-                  ["end", "At the end"],
-                ] as const
-              ).map(([v, label]) => (
+              {places.map(([v, label]) => (
                 <label
                   key={v}
                   className={cn(
                     "flex cursor-pointer items-center gap-2 rounded-md border border-line px-2.5 py-2 hover:bg-sunken",
-                    where === v && "border-accent bg-accent-soft hover:bg-accent-soft",
+                    place === v && "border-accent bg-accent-soft hover:bg-accent-soft",
                   )}
                 >
                   <input
                     type="radio"
                     name="cd-new-where"
                     value={v}
-                    checked={where === v}
+                    checked={place === v}
                     onChange={() => setWhere(v)}
                     className="accent-[var(--accent)]"
                   />

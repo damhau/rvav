@@ -246,6 +246,85 @@ describe("the composite designer", longTests, () => {
     expect(within(poll).queryByRole("list", { name: "Problems with this step" })).toBeNull();
   });
 
+  it("adds a branch, a case and a message on its side, each one edit, and goes back to it", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    await user.click(await screen.findByRole("button", { name: "Add a step" }));
+    let dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+    await pick(user, within(dialog).getByRole("combobox", { name: "What it runs" }), /^A branch/);
+    await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Key" }), "way");
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+
+    const branch = await screen.findByRole("region", { name: "Selected: way" });
+    expect(step("way").branch).toEqual({ cases: [{ when: "", steps: [] }] });
+    expect(within(branch).queryByRole("group", { name: "Inputs" })).toBeNull();
+    expect(within(branch).queryByRole("group", { name: "Undo" })).toBeNull();
+    expect(within(branch).queryByRole("button", { name: "Run with the step before" })).toBeNull();
+    expect(within(branch).getByRole("list", { name: "Problems with this step" })).toHaveTextContent(
+      "Say when this case is taken",
+    );
+    expect(branch).toHaveTextContent("steps.way.case");
+    const one = within(within(branch).getByRole("group", { name: "Case 1" }));
+    await user.type(one.getByRole("textbox", { name: "When" }), "inputs.size == 'L'{Enter}");
+    await user.type(one.getByRole("textbox", { name: "Title" }), "Large{Enter}");
+    expect(step("way").branch).toEqual({ cases: [{ title: "Large", when: "inputs.size == 'L'", steps: [] }] });
+    expect(within(branch).queryByRole("list", { name: "Problems with this step" })).toBeNull();
+
+    // A new case takes the focus, and the first may go after it.
+    await user.click(within(branch).getByRole("button", { name: "Add a case" }));
+    const two = within(within(branch).getByRole("group", { name: "Case 2" }));
+    await waitFor(() => expect(two.getByRole("textbox", { name: "Title" })).toHaveFocus());
+    await user.type(two.getByRole("textbox", { name: "When" }), "inputs.size == 'M'{Enter}");
+    await user.click(within(branch).getByRole("button", { name: "Move case 1 later" }));
+    const whens = () => (step("way").branch as { cases: { when: string }[] }).cases.map((c) => c.when);
+    expect(whens()).toEqual(["inputs.size == 'M'", "inputs.size == 'L'"]);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(whens()).toEqual(["inputs.size == 'L'", "inputs.size == 'M'"]);
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    expect(whens()).toEqual(["inputs.size == 'M'", "inputs.size == 'L'"]);
+    await user.click(within(branch).getByRole("button", { name: "Remove case 1, with its steps" }));
+    expect(whens()).toEqual(["inputs.size == 'L'"]);
+
+    // On a side: no branch to choose, no place to choose, and a message's fields.
+    await user.click(within(branch).getByRole("button", { name: "Add a step to Large" }));
+    dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    expect(dialog).toHaveTextContent("It runs on the side Large");
+    await user.click(within(dialog).getByRole("combobox", { name: "What it runs" }));
+    expect(screen.queryByRole("option", { name: /^A branch/ })).toBeNull();
+    await user.click(screen.getByRole("option", { name: "A message to people" }));
+    await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Key" }), "told");
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+
+    const message = await screen.findByRole("region", { name: "Selected: told" });
+    const sides = () => (step("way").branch as { cases: { steps: Record<string, unknown>[] }[] }).cases[0]!.steps;
+    expect(sides()).toEqual([{ key: "told", notify: {} }]);
+    expect(within(message).queryByRole("group", { name: "Undo" })).toBeNull();
+    expect(within(message).queryByRole("button", { name: "Run with the step before" })).toBeNull();
+    expect(within(message).getByRole("list", { name: "Problems with this step" })).toHaveTextContent("Say who is told");
+    await user.click(within(message).getByRole("checkbox", { name: "The requester" }));
+    await user.type(within(message).getByRole("textbox", { name: "OIDC groups" }), "dba, ops{Enter}");
+    // A new line stays: Enter doesn't commit a message, leaving it does.
+    await user.type(within(message).getByRole("textbox", { name: "Message" }), "Ready{Enter}${{inputs.role}");
+    expect(sides()[0]!.notify).toEqual({ requester: true, groups: ["dba", "ops"] });
+    await user.tab();
+    expect(sides()[0]!.notify).toEqual({
+      requester: true,
+      groups: ["dba", "ops"],
+      message: "Ready\n${inputs.role}",
+    });
+    expect(within(message).queryByRole("list", { name: "Problems with this step" })).toBeNull();
+
+    await user.click(within(message).getByRole("button", { name: "Select the branch way" }));
+    const back = await screen.findByRole("region", { name: "Selected: way" });
+    await waitFor(() => expect(within(back).getByRole("heading", { name: /way/ })).toHaveFocus());
+    await user.click(within(back).getByRole("button", { name: "told" }));
+    await screen.findByRole("region", { name: "Selected: told" });
+  });
+
   it("adds a REST call and its undo, field by field, and later steps read what it gives", async () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness initial={pg} />);

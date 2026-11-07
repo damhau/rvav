@@ -6,6 +6,7 @@
 // when the request is submitted); and what the server would refuse when the
 // item is requested, said on the step before then.
 import type { CatalogEntitlements, CompositeStepOutput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import { secretInMessages } from "@/lib/composite";
 
 type Raw = Record<string, unknown>;
 
@@ -15,7 +16,7 @@ const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v
 export const stepRef = /\bsteps\.([a-z][a-z0-9_]*)/;
 
 export interface StepTarget {
-  kind: CompositeStepTarget["kind"] | "rest" | "ask" | "wait" | "poll";
+  kind: CompositeStepTarget["kind"] | "rest" | "ask" | "wait" | "poll" | "branch" | "notify";
   ref: string;
   /** An AWX workflow template (awx.workflow). */
   workflow?: boolean;
@@ -23,7 +24,7 @@ export interface StepTarget {
   templateId?: number;
 }
 
-/** What a step names: an item, an AWX template, a custom workflow, a REST call, or a wait for a person, a time or a condition (the first, when it names several). */
+/** What a step names: an item, an AWX template, a custom workflow, a REST call, a wait for a person, a time or a condition, a branch or a message (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
@@ -41,6 +42,8 @@ export function targetOf(step: Raw): StepTarget | undefined {
   if (step.ask !== undefined) return { kind: "ask", ref: "" };
   if (step.wait !== undefined) return { kind: "wait", ref: "" };
   if (step.poll !== undefined) return { kind: "poll", ref: "" };
+  if (step.branch !== undefined) return { kind: "branch", ref: "" };
+  if (step.notify !== undefined) return { kind: "notify", ref: "" };
   return undefined;
 }
 
@@ -104,6 +107,16 @@ export const pollOutputs: CompositeStepOutput[] = [
   { name: "met", type: "boolean", description: "Whether its condition held: false if its deadline went on" },
 ];
 
+/** What a branch gives the steps after it: which side it took (ADR-0033). */
+export const branchOutputs: CompositeStepOutput[] = [
+  { name: "case", type: "integer", description: "Which case it took: 1 for the first, 0 if none" },
+];
+
+/** What a message gives the steps after it: never what it said (ADR-0033). */
+export const notifyOutputs: CompositeStepOutput[] = [
+  { name: "told", type: "integer", description: "How many people it told" },
+];
+
 const answerType: Record<string, string> = { number: "number", boolean: "boolean" };
 
 /** What a wait for a person gives the steps after it: each of its form's answers by its key (ADR-0033). */
@@ -135,12 +148,14 @@ export function outputsOf(
   if (t?.kind === "ask") return { outputs: askOutputs(obj(step.ask)), open: false };
   if (t?.kind === "wait") return { outputs: waitOutputs, open: false };
   if (t?.kind === "poll") return { outputs: pollOutputs, open: false };
+  if (t?.kind === "branch") return { outputs: branchOutputs, open: false };
+  if (t?.kind === "notify") return { outputs: notifyOutputs, open: false };
   if (t?.kind === "awx")
     return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
   return { outputs: [], open: t?.kind === "workflow" };
 }
 
-/** A step of the blueprint, flattened: its slot, its place in a parallel group, its pointer. */
+/** A step of the blueprint, flattened: its slot, its place in a parallel group or on a side of a branch, its pointer. */
 export interface FlatStep {
   step: Raw;
   key: string;
@@ -151,6 +166,14 @@ export interface FlatStep {
   g: number;
   j: number | null;
   pointer: string;
+  /** The side of a branch it is on: 1 for the first case, 0 for otherwise, and its place there. */
+  side?: { taken: number; i: number };
+}
+
+/** Where a step is, for what it can read. */
+export interface StepPlace {
+  g: number;
+  side?: { taken: number; i: number };
 }
 
 export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatStep[] {
@@ -159,7 +182,7 @@ export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatS
   steps.forEach((raw, g) => {
     const slot = obj(raw);
     const list = Array.isArray(slot.parallel) ? (slot.parallel as unknown[]) : null;
-    (list ?? [slot]).forEach((s, j) => {
+    const flat = (s: unknown, j: number | null, pointer: string, side?: FlatStep["side"]) => {
       const step = obj(s);
       const key = str(step.key);
       const awx = obj(step.awx);
@@ -169,12 +192,37 @@ export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatS
         label: str(step.title) || key || "(no key)",
         name: str(step.title) || str(awx.title) || key || "(no key)",
         g,
-        j: list ? j : null,
-        pointer: list ? `${prefix}/steps/${g}/parallel/${j}` : `${prefix}/steps/${g}`,
+        j,
+        pointer,
+        ...(side ? { side } : {}),
       });
-    });
+    };
+    (list ?? [slot]).forEach((s, j) =>
+      flat(s, list ? j : null, list ? `${prefix}/steps/${g}/parallel/${j}` : `${prefix}/steps/${g}`),
+    );
+    if (list || slot.branch === undefined) return;
+    const branch = obj(slot.branch);
+    const onSide = (steps: unknown, taken: number, at: string) => {
+      if (Array.isArray(steps)) steps.forEach((s, i) => flat(s, null, `${at}/${i}`, { taken, i }));
+    };
+    if (Array.isArray(branch.cases))
+      branch.cases.forEach((c, i) => onSide(obj(c).steps, i + 1, `${prefix}/steps/${g}/branch/cases/${i}/steps`));
+    onSide(branch.else, 0, `${prefix}/steps/${g}/branch/else`);
   });
   return out;
+}
+
+/**
+ * The steps that one at a place can read. Those of the slots before its own
+ * (a step on a side of a branch among them: it reads as one `when` skipped);
+ * on a side, also its branch and the steps before it there, not another side's.
+ */
+export function earlierSteps(blueprint: Raw, at: StepPlace): FlatStep[] {
+  return flatten(blueprint).filter((x) => {
+    if (x.g < at.g) return true;
+    if (x.g !== at.g || !at.side) return false;
+    return x.side ? x.side.taken === at.side.taken && x.side.i < at.side.i : x.j === null;
+  });
 }
 
 /** The inputs of the composite's own form, in the order its sections show them. */
@@ -201,13 +249,13 @@ export interface Source {
 
 /**
  * Where an input of the step at `at` can come from: the form's inputs, the
- * request's environment and project, and the outputs of the steps in the
- * slots before its own (none for a planned step: its VMs are planned from
- * the form when the request is submitted).
+ * request's environment and project, and the outputs of the steps before it
+ * (earlierSteps; none for a planned step: its VMs are planned from the form
+ * when the request is submitted).
  */
 export function bindingSources(
   def: Raw,
-  at: { g: number; planned: boolean },
+  at: StepPlace & { planned: boolean },
   targets: CompositeStepTarget[],
 ): Source[] {
   const out: Source[] = formInputsOf(def).map((i) => ({
@@ -216,7 +264,7 @@ export function bindingSources(
     group: "The form",
   }));
   if (!at.planned)
-    for (const s of flatten(obj(def.blueprint)).filter((x) => x.g < at.g && x.key))
+    for (const s of earlierSteps(obj(def.blueprint), at).filter((x) => x.key))
       for (const o of outputsOf(s.step, targets).outputs)
         out.push({ value: `steps.${s.key}.${o.name}`, label: `${s.name}: ${o.description}`, group: "Earlier steps" });
   out.push(
@@ -229,9 +277,9 @@ export function bindingSources(
 }
 
 /** The steps before the step at `at` whose outputs are open (custom workflows): a binding to them is written as CEL. */
-export function openEarlier(def: Raw, g: number, targets: CompositeStepTarget[]): string[] {
-  return flatten(obj(def.blueprint))
-    .filter((s) => s.g < g && s.key && outputsOf(s.step, targets).open)
+export function openEarlier(def: Raw, at: StepPlace, targets: CompositeStepTarget[]): string[] {
+  return earlierSteps(obj(def.blueprint), at)
+    .filter((s) => s.key && outputsOf(s.step, targets).open)
     .map((s) => s.key);
 }
 
@@ -248,15 +296,16 @@ function listing(codes: string[]) {
  * workflow can't start), a custom workflow not registered for composite
  * steps, one not offered to a project the composite is offered to (its
  * entitlements, `offered`: a request from that project is refused), and a
- * VM step with a condition, an undo or an input from a step. Known only
- * once the targets are loaded.
+ * VM step with a condition, an undo or an input from a step, or on a side of
+ * a branch. Known only once the targets are loaded. A message's secret input
+ * is the form's business too: the server refuses it on save.
  */
 export function designerProblems(
   def: Raw,
   targets: CompositeStepTarget[],
   offered?: CatalogEntitlements,
 ): FieldError[] {
-  const out: FieldError[] = [];
+  const out: FieldError[] = secretInMessages(def);
   const add = (field: string, code: string, message: string) => out.push({ field, code, message });
   const notOffered = (field: string, what: string, t: CompositeStepTarget | undefined) => {
     const missing = notOfferedTo(t, offered);
@@ -288,6 +337,12 @@ export function designerProblems(
     if (undoFlow)
       notOffered(`${s.pointer}/undo/workflow`, `${s.label} (undo): the custom workflow ${undoFlow}`, undoTarget);
     if (!found?.planned) continue;
+    if (s.side)
+      add(
+        `${s.pointer}/item`,
+        "invalid",
+        `${s.label}: a VM is planned when the request is submitted, before a branch chooses, so it can't be on a side of one.`,
+      );
     if (s.step.undo !== undefined)
       add(`${s.pointer}/undo`, "invalid", `${s.label}: a VM isn't undone by a job or workflow; a failure deletes it.`);
     if (str(s.step.when))

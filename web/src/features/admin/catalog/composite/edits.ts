@@ -37,7 +37,22 @@ type Raw = Record<string, unknown>;
 export const yamlOutput = { indent: 2, lineWidth: 0, flowCollectionPadding: false } as const;
 
 /** The order a step's keys are written in, so a key added lands where a reader expects it. */
-const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "ask", "wait", "poll", "when", "with", "undo"];
+const stepOrder = [
+  "key",
+  "title",
+  "item",
+  "awx",
+  "workflow",
+  "rest",
+  "ask",
+  "wait",
+  "poll",
+  "branch",
+  "notify",
+  "when",
+  "with",
+  "undo",
+];
 const undoOrder = ["job_template", "workflow", "rest", "with"];
 const restOrder = ["method", "url", "body", "secret", "accept", "keep"];
 const askOrder = [
@@ -54,6 +69,9 @@ const askOrder = [
 const waitOrder = ["for", "until"];
 const pollOrder = ["rest", "until", "every", "timeout", "on_timeout"];
 const questionOrder = ["key", "label", "type", "required", "options", "default"];
+const branchOrder = ["cases", "else"];
+const caseOrder = ["title", "when", "steps"];
+const notifyOrder = ["requester", "owner", "groups", "users", "message"];
 const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
 
 export const blueprintPrefix = "/definition/blueprint";
@@ -66,6 +84,8 @@ interface Located {
   node: YAMLMap;
   key: string;
   pointer: string;
+  /** The side of a branch it is on. */
+  side?: { branch: YAMLMap; key: string; list: YAMLSeq; index: number; taken: number };
 }
 
 /** Thrown when an edit can't be made: the YAML doesn't parse, or the step isn't there. */
@@ -202,13 +222,31 @@ function locateAll(doc: Document): Located[] {
       });
       return;
     }
-    out.push({
-      g,
-      j: null,
-      node: item,
-      key: scalarText(item.get("key", true)),
-      pointer: `${blueprintPrefix}/steps/${g}`,
-    });
+    const key = scalarText(item.get("key", true));
+    const pointer = `${blueprintPrefix}/steps/${g}`;
+    out.push({ g, j: null, node: item, key, pointer });
+    const branch = item.get("branch", true);
+    if (!isMap(branch)) return;
+    const onSide = (list: unknown, taken: number, at: string) => {
+      if (!isSeq(list)) return;
+      list.items.forEach((s, index) => {
+        if (isMap(s))
+          out.push({
+            g,
+            j: null,
+            node: s,
+            key: scalarText(s.get("key", true)),
+            pointer: `${at}/${index}`,
+            side: { branch, key, list, index, taken },
+          });
+      });
+    };
+    const cases = branch.get("cases", true);
+    if (isSeq(cases))
+      cases.items.forEach((c, i) => {
+        if (isMap(c)) onSide(c.get("steps", true), i + 1, `${pointer}/branch/cases/${i}/steps`);
+      });
+    onSide(branch.get("else", true), 0, `${pointer}/branch/else`);
   });
   return out;
 }
@@ -275,7 +313,7 @@ function put(doc: Document, map: YAMLMap, key: string, value: unknown, order: st
   else map.items.splice(at, 0, pair);
 }
 
-/** Every CEL string of a step: its condition and bindings, its undo's bindings, the bodies of its REST calls, what a wait or a poll waits for. */
+/** Every CEL string of a step: its condition and bindings, its undo's bindings, the bodies of its REST calls, what a wait or a poll waits for, a branch's cases. */
 function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   const out: { holder: YAMLMap; key: string }[] = [];
   if (isScalar(step.get("when", true))) out.push({ holder: step, key: "when" });
@@ -287,6 +325,10 @@ function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   for (const call of restCallsOf(step)) if (isScalar(call.get("body", true))) out.push({ holder: call, key: "body" });
   for (const part of [step.get("wait", true), step.get("poll", true)])
     if (isMap(part) && isScalar(part.get("until", true))) out.push({ holder: part, key: "until" });
+  const branch = step.get("branch", true);
+  const cases = isMap(branch) ? branch.get("cases", true) : undefined;
+  if (isSeq(cases))
+    for (const c of cases.items) if (isMap(c) && isScalar(c.get("when", true))) out.push({ holder: c, key: "when" });
   return out;
 }
 
@@ -315,19 +357,51 @@ function escape(s: string) {
 
 // ---- Adding, removing and moving steps --------------------------------------
 
-export type Where = { after: string } | { with: string } | "end";
+export type Where = { after: string } | { with: string } | { side: string; taken: number } | "end";
 
-/** Adds a step: at the end, after a step (after its group, if it is in one), or at the same time as one. */
+/** A branch's list of steps for a side (1 for its first case, 0 for otherwise), made if it has none. */
+function sideList(doc: Document, id: string, taken: number): YAMLSeq {
+  const branch = branchOf(doc, id);
+  let holder = branch;
+  const key = taken === 0 ? "else" : "steps";
+  if (taken > 0) {
+    const c = casesOf(doc, branch).items[taken - 1];
+    if (!isMap(c)) throw new EditError("That case isn't there.");
+    holder = c;
+  }
+  let list = own(doc, holder, key);
+  if (!isSeq(list)) {
+    put(doc, holder, key, new YAMLSeq(), taken === 0 ? branchOrder : caseOrder);
+    list = holder.get(key, true);
+  }
+  const seq = list as YAMLSeq;
+  seq.flow = false;
+  return seq;
+}
+
+const noBranchOnSide = "A branch can't be on a side of a branch: give it more cases instead, each with its conditions.";
+const noBranchInGroup = "A branch can't run in a parallel group: put it before or after the group.";
+
+/** Adds a step: at the end, after a step (after its group, if it is in one, on its side, if it is on one), at the same time as one, or on a side of a branch. */
 export function addStep(text: string, step: Raw, where: Where): string {
   const doc = load(text);
   const steps = stepsOf(doc, true);
   const node = doc.createNode(step) as YAMLMap;
   if (where === "end") steps.items.push(node);
-  else if ("after" in where) {
+  else if ("side" in where) {
+    if (step.branch !== undefined) throw new EditError(noBranchOnSide);
+    sideList(doc, where.side, where.taken).items.push(node);
+  } else if ("after" in where) {
     const at = locate(doc, where.after);
-    steps.items.splice(at.g + 1, 0, node);
+    if (at.side) {
+      if (step.branch !== undefined) throw new EditError(noBranchOnSide);
+      at.side.list.flow = false;
+      at.side.list.items.splice(at.side.index + 1, 0, node);
+    } else steps.items.splice(at.g + 1, 0, node);
   } else {
     const at = locate(doc, where.with);
+    if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
+    if (step.branch !== undefined || at.node.has("branch")) throw new EditError(noBranchInGroup);
     if (at.j === null) {
       // On its own: it and the new one become a parallel group in its place.
       const group = doc.createNode({ parallel: [] }) as YAMLMap;
@@ -354,7 +428,11 @@ function unwrap(steps: YAMLSeq, g: number) {
 /** Takes a step out of where it is, and gives its node. */
 function detach(doc: Document, at: Located): YAMLMap {
   const steps = stepsOf(doc);
-  if (at.j === null) steps.items.splice(at.g, 1);
+  if (at.side) {
+    at.side.list.items.splice(at.side.index, 1);
+    // Otherwise, with nothing left to run, is no list at all; a case keeps its own, empty.
+    if (at.side.taken === 0 && at.side.list.items.length === 0) at.side.branch.delete("else");
+  } else if (at.j === null) steps.items.splice(at.g, 1);
   else {
     parallelOf(steps.items[at.g]).items.splice(at.j, 1);
     unwrap(steps, at.g);
@@ -371,13 +449,20 @@ export function removeStep(text: string, id: string): string {
 /**
  * Moves a step one place earlier (-1) or later (1). On its own, it trades
  * places with the step or group before or after it; in a parallel group, it
- * leaves the group, to run just before or just after it.
+ * leaves the group, to run just before or just after it; on a side of a branch,
+ * it stays on that side.
  */
 export function moveStep(text: string, id: string, dir: -1 | 1): string {
   const doc = load(text);
   const at = locate(doc, id);
   const steps = stepsOf(doc);
-  if (at.j === null) {
+  if (at.side) {
+    const to = at.side.index + dir;
+    if (to < 0 || to >= at.side.list.items.length)
+      throw new EditError(dir < 0 ? "It runs first on its side." : "It runs last on its side.");
+    at.side.list.items.splice(at.side.index, 1);
+    at.side.list.items.splice(to, 0, at.node);
+  } else if (at.j === null) {
     const to = at.g + dir;
     if (to < 0 || to >= steps.items.length) throw new EditError(dir < 0 ? "It runs first." : "It runs last.");
     const [slot] = steps.items.splice(at.g, 1);
@@ -395,10 +480,12 @@ export function moveStep(text: string, id: string, dir: -1 | 1): string {
 export function joinPrevious(text: string, id: string): string {
   const doc = load(text);
   const at = locate(doc, id);
+  if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
   if (at.j !== null) throw new EditError("It already runs at the same time as others.");
   if (at.g === 0) throw new EditError("It runs first.");
   const steps = stepsOf(doc);
   const before = steps.items[at.g - 1];
+  if (at.node.has("branch") || (isMap(before) && before.has("branch"))) throw new EditError(noBranchInGroup);
   steps.items.splice(at.g, 1);
   const list = isMap(before) ? before.get("parallel", true) : undefined;
   if (isSeq(list)) list.items.push(at.node);
@@ -429,6 +516,12 @@ export function setStepField(text: string, id: string, field: "key" | "title" | 
         const n = call.get("url", true);
         if (isScalar(n) && typeof n.value === "string") n.value = renameInUrl(n.value, old, `steps.${v}`);
       }
+    // A message's text isn't CEL either, but what it fills in is.
+    for (const s of locateAll(doc)) {
+      const notify = s.node.get("notify", true);
+      const n = isMap(notify) ? notify.get("message", true) : undefined;
+      if (isScalar(n) && typeof n.value === "string") n.value = renameInUrl(n.value, old, `steps.${v}`);
+    }
     // Every step's are renamed, an alias's with its anchor's: what they name now is kept.
     remember(doc);
   }
@@ -449,13 +542,20 @@ export type Target =
   /** A wait for a time: how long, in its own fields. */
   | { kind: "wait"; ref: "" }
   /** A poll: what it calls and waits for, in its own fields. */
-  | { kind: "poll"; ref: "" };
+  | { kind: "poll"; ref: "" }
+  /** A branch: its cases and what runs otherwise, in its own fields. */
+  | { kind: "branch"; ref: "" }
+  /** A message: who it tells and what it says, in its own fields. */
+  | { kind: "notify"; ref: "" };
 
 /** A REST call just added: it says what is missing until its URL is written. */
 export const newRestCall = (method: string) => ({ method, url: "" });
 
 /** A poll just added: every 10 minutes for three days, unless said otherwise; it says what is missing until its URL and condition are written. */
 export const newPoll = () => ({ rest: newRestCall("GET"), until: "", every: "10m", timeout: "72h" });
+
+/** A branch just added: one case with no steps, which says what is missing until its condition is written. */
+export const newBranch = () => ({ cases: [{ when: "", steps: [] }] });
 
 /**
  * What a step runs: one of an item, an AWX template, a custom workflow, a
@@ -464,12 +564,26 @@ export const newPoll = () => ({ rest: newRestCall("GET"), until: "", every: "10m
  * (awx.template_id: it is launched by it); another template's ID and title go
  * with it, its inputs' bindings stay. A REST call has no inputs: its URL and
  * body read them, so its bindings go. A wait has no inputs, and nothing to undo.
+ * Nor has a message, or a branch, whose cases have the conditions; a branch runs
+ * neither in a parallel group nor on a side of another (ADR-0033).
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
-  const { node } = locate(doc, id);
-  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll"]) if (k !== t.kind) node.delete(k);
-  if (t.kind === "rest") {
+  const { node, side, j } = locate(doc, id);
+  if (t.kind === "branch" && side) throw new EditError(noBranchOnSide);
+  if (t.kind === "branch" && j !== null) throw new EditError(noBranchInGroup);
+  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "branch", "notify"])
+    if (k !== t.kind) node.delete(k);
+  if (t.kind === "branch") {
+    node.delete("with");
+    node.delete("undo");
+    node.delete("when");
+    if (!isMap(own(doc, node, "branch"))) put(doc, node, "branch", newBranch(), stepOrder);
+  } else if (t.kind === "notify") {
+    node.delete("with");
+    node.delete("undo");
+    if (!isMap(own(doc, node, "notify"))) put(doc, node, "notify", {}, stepOrder);
+  } else if (t.kind === "rest") {
     node.delete("with");
     if (!isMap(own(doc, node, "rest"))) put(doc, node, "rest", newRestCall("GET"), stepOrder);
   } else if (t.kind === "ask") {
@@ -762,6 +876,84 @@ export function setAskQuestion(
   return save(doc);
 }
 
+/** A step's branch, from a document. */
+function branchOf(doc: Document, id: string): YAMLMap {
+  const branch = own(doc, locate(doc, id).node, "branch");
+  if (!isMap(branch)) throw new EditError("It isn't a branch.");
+  branch.flow = false;
+  return branch;
+}
+
+function casesOf(doc: Document, branch: YAMLMap): YAMLSeq {
+  let cases = own(doc, branch, "cases");
+  if (!isSeq(cases)) {
+    put(doc, branch, "cases", new YAMLSeq(), branchOrder);
+    cases = branch.get("cases", true);
+  }
+  const seq = cases as YAMLSeq;
+  seq.flow = false;
+  return seq;
+}
+
+/** Adds a case to a branch, last: it says what is missing until its condition is written. */
+export function addBranchCase(text: string, id: string): string {
+  const doc = load(text);
+  casesOf(doc, branchOf(doc, id)).items.push(doc.createNode({ when: "", steps: [] }));
+  return save(doc);
+}
+
+/** Removes a case, and the steps on its side. */
+export function removeBranchCase(text: string, id: string, index: number): string {
+  const doc = load(text);
+  const cases = casesOf(doc, branchOf(doc, id));
+  if (index < 0 || index >= cases.items.length) throw new EditError("That case isn't there.");
+  cases.items.splice(index, 1);
+  return save(doc);
+}
+
+/** Moves a case one place earlier or later: the first whose condition holds is taken. */
+export function moveBranchCase(text: string, id: string, index: number, dir: -1 | 1): string {
+  const doc = load(text);
+  const cases = casesOf(doc, branchOf(doc, id));
+  const to = index + dir;
+  if (index < 0 || index >= cases.items.length) throw new EditError("That case isn't there.");
+  if (to < 0 || to >= cases.items.length) throw new EditError(dir < 0 ? "It comes first." : "It comes last.");
+  const [c] = cases.items.splice(index, 1);
+  cases.items.splice(to, 0, c);
+  return save(doc);
+}
+
+/** A case's title or condition. An empty title goes; an empty condition stays, for the step to say what is missing. */
+export function setBranchCase(text: string, id: string, index: number, field: "title" | "when", value: string): string {
+  const doc = load(text);
+  const c = casesOf(doc, branchOf(doc, id)).items[index];
+  if (!isMap(c)) throw new EditError("That case isn't there.");
+  const v = value.trim();
+  if (!v && field === "title") c.delete(field);
+  else put(doc, c, field, v, caseOrder);
+  return save(doc);
+}
+
+export type NotifyField = "requester" | "owner" | "groups" | "users" | "message";
+
+/** One field of a message. Empty or false removes it, for the step to say what is missing. */
+export function setNotifyField(
+  text: string,
+  id: string,
+  field: NotifyField,
+  value: string | string[] | boolean,
+): string {
+  const doc = load(text);
+  const notify = own(doc, locate(doc, id).node, "notify");
+  if (!isMap(notify)) throw new EditError("It sends no message.");
+  // `notify: {}` as just added opens up as it fills.
+  notify.flow = false;
+  const v = typeof value === "string" ? value.trim() : value;
+  if (v === "" || v === false || (Array.isArray(v) && v.length === 0)) notify.delete(field);
+  else put(doc, notify, field, Array.isArray(v) ? flowList(doc, v) : v, notifyOrder);
+  return save(doc);
+}
+
 /** Whether a failure undoes what the earlier steps built. */
 export function setRollback(text: string, on: boolean): string {
   const doc = load(text);
@@ -773,13 +965,37 @@ export function setRollback(text: string, on: boolean): string {
 export function readStep(
   text: string,
   id: string,
-): { step: Raw; g: number; j: number | null; pointer: string } | undefined {
+):
+  | {
+      step: Raw;
+      g: number;
+      j: number | null;
+      pointer: string;
+      /** The side of a branch it is on: the branch's key, its place in it, and how many steps are there. */
+      side?: { branch: string; taken: number; i: number; length: number };
+    }
+  | undefined {
   // The text the graph and the designer parsed, read only.
   const { doc, error } = parseText(text);
   if (error) return undefined;
   try {
     const at = locate(doc, id);
-    return { step: (at.node.toJS(doc) as Raw) ?? {}, g: at.g, j: at.j, pointer: at.pointer };
+    return {
+      step: (at.node.toJS(doc) as Raw) ?? {},
+      g: at.g,
+      j: at.j,
+      pointer: at.pointer,
+      ...(at.side
+        ? {
+            side: {
+              branch: at.side.key,
+              taken: at.side.taken,
+              i: at.side.index,
+              length: at.side.list.items.length,
+            },
+          }
+        : {}),
+    };
   } catch {
     return undefined;
   }

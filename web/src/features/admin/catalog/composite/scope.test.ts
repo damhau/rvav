@@ -12,6 +12,7 @@ import type { CatalogEntitlements, CompositeStepTarget } from "@/lib/api/types";
 import {
   bindingSources,
   designerProblems,
+  earlierSteps,
   findTarget,
   flatten,
   formInputsOf,
@@ -83,7 +84,7 @@ describe("what a step can bind to", () => {
 
   it("a custom workflow's outputs are what it returns, written as CEL", () => {
     const wf = addStep(pg, { key: "register", workflow: "register-monitoring" }, { after: "step:nodes" });
-    expect(openEarlier(def(wf), 2, targets)).toEqual(["register"]);
+    expect(openEarlier(def(wf), { g: 2 }, targets)).toEqual(["register"]);
     expect(values(wf, 2).some((v) => v.startsWith("steps.register."))).toBe(false);
   });
 });
@@ -327,5 +328,100 @@ describe("a wait for a time and a poll, in the designer", () => {
     expect(later).toEqual(expect.arrayContaining(["steps.keep.until", "steps.change.json", "steps.change.met"]));
     expect(bindingSources(def, { g: 0, planned: false }, []).map((s) => s.value)).not.toContain("steps.keep.until");
     expect(designerProblems({ blueprint: { kind: "composite", steps: steps.slice(0, 2) } }, [])).toEqual([]);
+  });
+});
+
+describe("a branch's sides and a message", () => {
+  const blueprint = {
+    kind: "composite",
+    steps: [
+      { key: "first", awx: { job_template: "a" } },
+      {
+        key: "b",
+        branch: {
+          cases: [
+            {
+              when: "inputs.a",
+              steps: [
+                { key: "x", awx: { job_template: "x" } },
+                { key: "y", awx: { job_template: "y" } },
+              ],
+            },
+            { when: "inputs.b", steps: [{ key: "z", awx: { job_template: "z" } }] },
+          ],
+          else: [{ key: "o", notify: { owner: true, message: "Hi" } }],
+        },
+      },
+      { key: "last", awx: { job_template: "l" } },
+    ],
+  };
+  const keys = (at: Parameters<typeof earlierSteps>[1]) => earlierSteps(blueprint, at).map((s) => s.key);
+
+  it("flattens a side's steps right after their branch, with their own pointers", () => {
+    const flat = flatten(blueprint);
+    expect(flat.map((s) => s.key)).toEqual(["first", "b", "x", "y", "z", "o", "last"]);
+    expect(flat.find((s) => s.key === "y")).toMatchObject({
+      pointer: "/definition/blueprint/steps/1/branch/cases/0/steps/1",
+      side: { taken: 1, i: 1 },
+    });
+    expect(flat.find((s) => s.key === "o")).toMatchObject({
+      pointer: "/definition/blueprint/steps/1/branch/else/0",
+      side: { taken: 0, i: 0 },
+    });
+  });
+
+  it("reads its branch and the steps before it on its side, not another side's", () => {
+    expect(keys({ g: 1, side: { taken: 1, i: 0 } })).toEqual(["first", "b"]);
+    expect(keys({ g: 1, side: { taken: 1, i: 1 } })).toEqual(["first", "b", "x"]);
+    expect(keys({ g: 1, side: { taken: 2, i: 0 } })).toEqual(["first", "b"]);
+    expect(keys({ g: 1, side: { taken: 0, i: 0 } })).toEqual(["first", "b"]);
+    // A branch reads neither its own sides nor itself.
+    expect(keys({ g: 1 })).toEqual(["first"]);
+    // A later step reads every side: each as a step `when` skipped.
+    expect(keys({ g: 2 })).toEqual(["first", "b", "x", "y", "z", "o"]);
+  });
+
+  it("offers what a branch and a message give, as bindings", () => {
+    const def = { blueprint };
+    const values = (at: Parameters<typeof bindingSources>[1]) => bindingSources(def, at, targets).map((s) => s.value);
+    expect(values({ g: 2, planned: false })).toEqual(
+      expect.arrayContaining(["steps.b.case", "steps.o.told", "steps.first.job_id"]),
+    );
+    expect(values({ g: 1, planned: false, side: { taken: 2, i: 0 } })).not.toContain("steps.x.job_id");
+    expect(outputsOf({ branch: {} }, targets).outputs.map((o) => o.name)).toEqual(["case"]);
+    expect(outputsOf({ notify: {} }, targets).outputs.map((o) => o.name)).toEqual(["told"]);
+    expect(targetOf({ branch: {} })).toEqual({ kind: "branch", ref: "" });
+    expect(targetOf({ notify: {} })).toEqual({ kind: "notify", ref: "" });
+  });
+
+  it("refuses a VM on a side and a secret in a message, on the step", () => {
+    const vm = targets.find((t) => t.planned)!;
+    const def = {
+      ui_schema: { fields: { token: { widget: "secret" } } },
+      blueprint: {
+        kind: "composite",
+        steps: [
+          {
+            key: "b",
+            branch: {
+              cases: [
+                {
+                  when: "inputs.a",
+                  steps: [
+                    { key: "vm", item: vm.ref },
+                    { key: "n", notify: { owner: true, message: "It is ${inputs.token}" } },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const at = "/definition/blueprint/steps/0/branch/cases/0/steps";
+    const found = designerProblems(def, targets);
+    expect(found.map((p) => p.field)).toEqual(expect.arrayContaining([`${at}/0/item`, `${at}/1/notify/message`]));
+    expect(found.find((p) => p.field === `${at}/0/item`)!.message).toContain("can't be on a side");
+    expect(found.find((p) => p.field === `${at}/1/notify/message`)!.message).toContain("the secret input token");
   });
 });
