@@ -183,3 +183,25 @@ func TestTopologyMasksCELLiterals(t *testing.T) {
 		}
 	}
 }
+
+// A REST call's URL is masked as CEL's literals are: its text goes, each
+// expression stays with its own literals masked; one left open says nothing.
+func TestTopologyMasksRESTCalls(t *testing.T) {
+	raw := json.RawMessage(`{"kind": "composite", "steps": [
+	  {"key": "a", "rest": {"method": "POST", "url": "https://h.example/ci/${steps.vm.name}/x?e=${inputs.e == 'p' ? 'q' : ''}#f",
+	    "body": "{'k': inputs.v}", "secret": "s", "accept": [201], "keep": "$.a"},
+	   "undo": {"rest": {"method": "DELETE", "url": "${steps.a.json.id}", "secret": "s"}}},
+	  {"key": "b", "rest": {"method": "GET", "url": "https://h.example/${inputs.a"}}]}`)
+	steps := Topology(raw)["steps"].([]any)
+	got := steps[0].(map[string]any)
+	rest := got["rest"].(map[string]any)
+	if rest["url"] != "…${steps.vm.name}…${inputs.e == '…' ? '…' : ''}…" || rest["body"] != "{'…': inputs.v}" || rest["method"] != "POST" || len(rest) != 3 {
+		t.Fatalf("rest = %v", rest)
+	}
+	if undo := got["undo"].(map[string]any)["rest"].(map[string]any); undo["url"] != "${steps.a.json.id}" || undo["method"] != "DELETE" || len(undo) != 2 {
+		t.Fatalf("undo = %v", undo)
+	}
+	if rest := steps[1].(map[string]any)["rest"].(map[string]any); rest["url"] != "…" {
+		t.Fatalf("a URL that doesn't parse = %v", rest)
+	}
+}

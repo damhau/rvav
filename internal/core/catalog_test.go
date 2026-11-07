@@ -11,25 +11,6 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// From the review of S8: what inputs may change in a REST source's URL.
-func TestFixedOrigin(t *testing.T) {
-	for tpl, want := range map[string]bool{
-		"https://cmdb.corp.example/apps":                   true,
-		"https://cmdb.corp.example/apps?app=${inputs.app}": true,
-		"https://cmdb.corp.example/${inputs.path}/x":       true,
-		"https://cmdb.corp.example#${inputs.x}":            true,
-		"https://${inputs.h}.corp.example/api":             false,
-		"https://cmdb.corp.example:${inputs.port}/api":     false,
-		"https://cmdb.corp.example${inputs.rest}":          false,
-		"${inputs.scheme}://cmdb.corp.example/api":         false,
-		"https://user:${inputs.pw}@cmdb.corp.example/api":  false,
-	} {
-		if got := fixedOrigin(tpl); got != want {
-			t.Errorf("fixedOrigin(%q) = %v, want %v", tpl, got, want)
-		}
-	}
-}
-
 func TestRESTAllowedSchemes(t *testing.T) {
 	r := NewRESTSources([]string{"cmdb.corp.example", "*.svc.corp.example", "http://stand-in:8080"})
 	for raw, want := range map[string]bool{

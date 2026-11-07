@@ -63,12 +63,13 @@ func (s *Store) DeleteSecret(ctx context.Context, name string) error {
 	return err
 }
 
-// SecretUsers lists the slugs of items whose versions have a `rest` value
-// source using the secret.
+// SecretUsers lists the slugs of items whose versions use the secret: in a
+// `rest` value source or a composite's REST call, or that call's undo.
 func (s *Store) SecretUsers(ctx context.Context, name string) ([]string, error) {
 	rows, _ := s.Pool.Query(ctx, `select distinct i.slug from catalog_item_versions v join catalog_items i on i.id = v.item_id
 		where jsonb_path_exists(v.ui_schema, '$.fields.* ? (@.value_source.kind == "rest" && @.value_source.params.secret == $name)',
 			jsonb_build_object('name', $1::text))
+		   or jsonb_path_exists(v.blueprint, '$.steps.**.rest ? (@.secret == $name)', jsonb_build_object('name', $1::text))
 		order by i.slug`, name)
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

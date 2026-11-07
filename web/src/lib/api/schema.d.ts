@@ -4179,8 +4179,11 @@ export interface components {
             key: string;
             title: string;
             detail?: string;
-            /** @enum {string} */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx";
+            /**
+             * @description Who does the step; `rest` is a composite's REST call to another system (ADR-0033).
+             * @enum {string}
+             */
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;
@@ -4678,7 +4681,7 @@ export interface components {
             };
             /** @description vRO's own workflows and actions, left out. */
             library: number;
-            /** @description For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, REST call, notification, branch), the workflows to keep that would use it. */
+            /** @description For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, notification, branch), the workflows to keep that would use it. */
             steps?: {
                 [key: string]: number;
             };

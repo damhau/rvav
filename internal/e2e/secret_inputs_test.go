@@ -69,13 +69,15 @@ func TestSecretInputs(t *testing.T) {
 		leaks := func(id string) {
 			t.Helper()
 			var n int
-			_ = h.store.Pool.QueryRow(ctx, `select (select count(*) from requests where id = $1 and (inputs::text like $2 or plan::text like $2))
+			if err := h.store.Pool.QueryRow(ctx, `select (select count(*) from requests where id = $1 and (inputs::text like $2 or plan::text like $2))
 				+ (select count(*) from request_steps where request_id = $1 and (detail like $2 or title like $2 or coalesce(error, '') like $2))
 				+ (select count(*) from step_log_lines where text like $2)
 				+ (select count(*) from integration_events where payload::text like $2)
-				+ (select count(*) from audit_log where detail::text like $2)
-				+ (select count(*) from request_secrets where request_id = $1 and position(convert_to($3, 'UTF8') in ciphertext) > 0)`,
-				id, "%"+password+"%", password).Scan(&n)
+				+ (select count(*) from audit_events where detail::text like $2)
+				+ (select count(*) from request_secrets where request_id = $1 and position(convert_to($3::text, 'UTF8') in ciphertext) > 0)`,
+				id, "%"+password+"%", password).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
 			if n != 0 {
 				t.Fatalf("the password is in %d rows", n)
 			}

@@ -130,6 +130,8 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					c.AWX, c.With = part.job, part.step.With
 				case part.call != nil:
 					c.Workflow, c.With = part.call, part.step.With
+				case part.rest != nil:
+					c.REST = part.rest
 				}
 				plan.Composite = append(plan.Composite, c)
 			}

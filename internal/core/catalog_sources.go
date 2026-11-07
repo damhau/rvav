@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -21,11 +20,10 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
-	"github.com/damhau/rvav/internal/hosts"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/store"
-	"github.com/damhau/rvav/internal/trust"
 )
 
 // CatalogIcons are the icons an item may have; the web app draws the same
@@ -46,9 +44,9 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 	case api.Rest:
 		if str("url") == "" {
 			errs = append(errs, fieldErr(ptr+"/params/url", "required", "Give the URL the options come from."))
-		} else if u, err := url.Parse(fill(str("url"), nil, urlEscape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		} else if u, err := url.Parse(fill(str("url"), nil, restcall.Escape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Give an http or https URL."))
-		} else if !fixedOrigin(str("url")) {
+		} else if !restcall.FixedOrigin(str("url")) {
 			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Inputs may fill the URL's path and query, not its scheme, host or port."))
 		}
 		if m := strings.ToUpper(str("method")); m != "" && m != http.MethodGet && m != http.MethodPost {
@@ -133,15 +131,11 @@ func str(v any) string {
 	return fmt.Sprint(v)
 }
 
-// RESTSources calls the URLs of `rest` value sources (ADR-0019): only
-// allowed hosts, no redirects, 5 seconds and 1 MB at most, answers cached.
+// RESTSources calls the URLs of `rest` value sources (ADR-0019), as
+// restcall does: only allowed hosts, no redirects, 5 seconds and 1 MB at
+// most; answers cached.
 type RESTSources struct {
-	// Hosts are the allowed hosts: "cmdb.corp.example", "*.corp.example"
-	// (subdomains), "host:8443".
-	Hosts []string
-	// HostsNow, when set, gives them as saved now (ADR-0030).
-	HostsNow func(context.Context) []string
-	Client   *http.Client
+	restcall.Caller
 
 	mu    sync.Mutex
 	cache map[string]restEntry
@@ -163,38 +157,15 @@ func (r *RESTSources) Forget() {
 }
 
 func NewRESTSources(hosts []string) *RESTSources {
-	return &RESTSources{Hosts: hosts, Client: &http.Client{Timeout: 5 * time.Second, Transport: trust.Transport(trust.Options{}),
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &RESTSources{Caller: restcall.Caller{Hosts: hosts, Client: restcall.NewClient(5 * time.Second)}}
 }
 
 // Allowed says whether a URL's host may be called (package hosts).
 func (r *RESTSources) Allowed(ctx context.Context, u *url.URL) bool {
-	if r == nil {
-		return false
-	}
-	if r.HostsNow != nil {
-		return hosts.Allowed(r.HostsNow(ctx), u)
-	}
-	return hosts.Allowed(r.Hosts, u)
+	return r != nil && r.Caller.Allowed(ctx, u)
 }
 
 var inputRef = regexp.MustCompile(`\$\{inputs\.([a-zA-Z0-9_]+)\}`)
-
-// fixedOrigin says whether inputs leave a URL template's scheme, host and
-// port alone: they may fill its path and query only, so a form can't send
-// a request, or a secret, anywhere else.
-func fixedOrigin(tpl string) bool {
-	ref := strings.Index(tpl, "${")
-	if ref < 0 {
-		return true
-	}
-	scheme := strings.Index(tpl, "://")
-	if scheme < 0 || ref < scheme+3 {
-		return false
-	}
-	end := strings.IndexAny(tpl[scheme+3:], "/?#")
-	return end >= 0 && ref >= scheme+3+end
-}
 
 // fill puts inputs into a template, each escaped by esc (empty when absent).
 func fill(tpl string, inputs map[string]any, esc func(string) string) string {
@@ -207,8 +178,6 @@ func fill(tpl string, inputs map[string]any, esc func(string) string) string {
 	})
 }
 
-func urlEscape(s string) string { return strings.ReplaceAll(url.QueryEscape(s), "+", "%20") }
-
 func jsonEscape(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b[1 : len(b)-1])
@@ -218,7 +187,7 @@ func jsonEscape(s string) string {
 func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any,
 	secret func(name string) (store.Secret, string, error)) ([]api.Option, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
-	if !fixedOrigin(p("url")) {
+	if !restcall.FixedOrigin(p("url")) {
 		return nil, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
 	}
 	for _, m := range inputRef.FindAllStringSubmatch(p("url"), -1) {
@@ -226,7 +195,7 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 			return nil, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", m[1], v)}
 		}
 	}
-	target := fill(p("url"), inputs, urlEscape)
+	target := fill(p("url"), inputs, restcall.Escape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(ctx, u) {
 		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
@@ -246,47 +215,25 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	}
 	r.mu.Unlock()
 
-	var rd io.Reader
+	call := restcall.Request{Method: method, URL: target}
 	if method == http.MethodPost {
-		rd = strings.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, target, rd)
-	if err != nil {
-		return nil, 0, err
-	}
-	req.Header.Set("Accept", "application/json")
-	if rd != nil {
-		req.Header.Set("Content-Type", "application/json")
+		call.Body = []byte(body)
 	}
 	if name := p("secret"); name != "" {
 		sec, value, err := secret(name)
 		if err != nil {
 			return nil, 0, fmt.Errorf("secret %s: %w", name, err)
 		}
-		switch sec.Kind {
-		case "token":
-			req.Header.Set("Authorization", "Bearer "+value)
-		case "basic":
-			req.SetBasicAuth(sec.Username, value)
-		case "header":
-			req.Header.Set(sec.Header, value)
-		}
+		call.Credential = &restcall.Credential{Kind: sec.Kind, Username: sec.Username, Header: sec.Header, Value: value}
 	}
-	resp, err := r.Client.Do(req)
-	if err != nil {
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: err}
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20+1))
+	answer, err := r.Do(ctx, call)
 	switch {
 	case err != nil:
 		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: err}
-	case resp.StatusCode >= 300:
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("it answered %s", resp.Status)}
-	case len(raw) > 1<<20:
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: errors.New("its answer is over 1 MB")}
+	case answer.Status >= 300:
+		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("it answered %s", restcall.StatusText(answer.Status))}
 	}
-	data, err := oj.Parse(raw)
+	data, err := oj.Parse(answer.Body)
 	if err != nil {
 		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("its answer is not JSON: %w", err)}
 	}
@@ -365,7 +312,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		params := *src.Params
 		ptr := prefix + "/ui_schema/fields/" + name + "/value_source/params"
 		target, _ := params["url"].(string)
-		if u, err := url.Parse(fill(target, nil, urlEscape)); err == nil && !s.REST.Allowed(ctx, u) {
+		if u, err := url.Parse(fill(target, nil, restcall.Escape)); err == nil && !s.REST.Allowed(ctx, u) {
 			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", u.Host)))
 		}
 		if secret, _ := params["secret"].(string); secret != "" {
@@ -376,8 +323,25 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 			}
 		}
 	}
-	// Secrets a VM blueprint names (ADR-0024).
 	raw, _ := json.Marshal(d.Blueprint)
+	// A composite's REST calls (ADR-0033).
+	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindComposite {
+		calls := restCalls(b, prefix+"/blueprint")
+		for _, at := range sortedKeys(calls) {
+			c := calls[at]
+			if u, err := url.Parse(restcall.Skeleton(c.URL)); err == nil && u.Host != "" && !s.REST.Allowed(ctx, u) {
+				errs = append(errs, fieldErr(at+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST calls may reach (Administration › Integrations › Allowed hosts).", u.Host)))
+			}
+			if c.Secret != "" {
+				if _, err := s.Store.GetSecret(ctx, c.Secret); errors.Is(err, store.ErrNotFound) {
+					errs = append(errs, fieldErr(at+"/secret", "unknown", fmt.Sprintf("There is no secret %q.", c.Secret)))
+				} else if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	// Secrets a VM blueprint names (ADR-0024).
 	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {
 		refs := blueprintSecrets(b, prefix+"/blueprint")
 		for _, at := range sortedKeys(refs) {

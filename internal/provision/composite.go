@@ -159,6 +159,13 @@ func runCompositeStep(ctx workflow.Context, info Info, c CompositeStep, outputs 
 			return stepResult{failed: key, err: err}
 		}
 		out = result
+	case c.REST != nil:
+		in := RESTInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Call: *c.REST, Steps: outputs}
+		if err := workflow.ExecuteActivity(restCtx(ctx, c.REST.Method), a.RunREST, in).Get(ctx, &out); err != nil {
+			// A timeout never reached the activity's own record of it.
+			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
+			return stepResult{failed: key, err: err}
+		}
 	}
 	var recorded map[string]any
 	if err := workflow.ExecuteActivity(ctx, a.FinishStep, info.RequestID, info.ProjectID, key, out).Get(ctx, &recorded); err != nil {
@@ -198,6 +205,20 @@ func undoComposite(ctx workflow.Context, info Info, done []CompositeStep, output
 		key := c.StepKey() + "/undo"
 		if err := workflow.ExecuteActivity(dctx, a.AddUndoStep, info.RequestID, info.ProjectID, c.StepKey(), key).Get(dctx, nil); err != nil {
 			workflow.GetLogger(ctx).Error("undo step", "key", key, "err", err)
+			continue
+		}
+		if call := c.Undo.REST; call != nil {
+			in := RESTInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Call: *call, Steps: outputs}
+			err := workflow.ExecuteActivity(restCtx(dctx, call.Method), a.RunREST, in).Get(dctx, nil)
+			if err != nil {
+				_ = workflow.ExecuteActivity(dctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(dctx, nil)
+				workflow.GetLogger(ctx).Error("undo", "key", key, "err", err)
+				continue
+			}
+			_ = workflow.ExecuteActivity(dctx, a.MarkStep, info.RequestID, info.ProjectID, key, "done", "").Get(dctx, nil)
+			if err := workflow.ExecuteActivity(dctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", "Undone.").Get(dctx, nil); err != nil {
+				workflow.GetLogger(ctx).Error("mark undone", "key", c.StepKey(), "err", err)
+			}
 			continue
 		}
 		var r Resolved
@@ -243,18 +264,10 @@ type Resolved struct {
 // ResolveStep evaluates a step's condition and bindings over the request's
 // inputs and the outputs of earlier steps.
 func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved, error) {
-	r, err := a.Store.GetRequest(ctx, in.RequestID)
+	vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
 	if err != nil {
 		return Resolved{}, err
 	}
-	var inputs map[string]any
-	_ = json.Unmarshal(r.Inputs, &inputs)
-	steps := in.Steps
-	if steps == nil {
-		steps = map[string]any{}
-	}
-	vars := policy.Vars{"inputs": inputs, "steps": steps, "environment": r.Environment,
-		"project": map[string]any{"id": r.ProjectID, "code": r.ProjectCode, "name": r.ProjectName}}
 	out := Resolved{Values: map[string]any{}}
 	if in.When != "" {
 		ok, err := policy.CompositeBool(in.When, vars)
@@ -279,6 +292,22 @@ func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved
 		out.Values[k] = val
 	}
 	return out, nil
+}
+
+// stepVars are the CEL variables of a composite's steps: the request's
+// inputs (a secret input as its marker) and the outputs of earlier steps.
+func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[string]any) (policy.Vars, error) {
+	r, err := a.Store.GetRequest(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+	var inputs map[string]any
+	_ = json.Unmarshal(r.Inputs, &inputs)
+	if steps == nil {
+		steps = map[string]any{}
+	}
+	return policy.Vars{"inputs": inputs, "steps": steps, "environment": r.Environment,
+		"project": map[string]any{"id": r.ProjectID, "code": r.ProjectCode, "name": r.ProjectName}}, nil
 }
 
 // MarkStep sets a composite step's status, with why when it failed or was

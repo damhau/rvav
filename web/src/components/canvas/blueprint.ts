@@ -46,12 +46,13 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   item: "Item",
   awx: "AWX",
   workflow: "Workflow",
+  rest: "REST",
   "?": "Step",
 };
 
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
-  if (s.target) lines.push({ label: "Runs", text: s.target, mono: true });
+  if (s.target) lines.push({ label: s.kind === "rest" ? "Calls" : "Runs", text: s.target, mono: true });
   if (s.when) lines.push({ label: "When", text: s.when, mono: true });
   if (s.uses.length > 0) lines.push({ label: "Uses", text: s.uses.join(", "), mono: true });
   if (s.undo) lines.push({ label: "Undo", text: s.undo, mono: true });

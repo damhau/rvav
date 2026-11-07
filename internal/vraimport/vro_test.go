@@ -40,7 +40,10 @@ func TestTriageVRO(t *testing.T) {
 	}
 	// It reaches REST through its own script, and ciPayload through vRO's
 	// module call.
-	if it := items["wf-cmdb-register"]; it.Group != GroupAWX || !slices.Equal(it.Systems, []string{"REST"}) || !reason(it, "ansible.builtin.uri") {
+	// A subscription runs it, and a subscription doesn't run a composite item:
+	// a playbook, though its REST calls would make REST call steps.
+	if it := items["wf-cmdb-register"]; it.Group != GroupAWX || !slices.Equal(it.Systems, []string{"REST"}) || !reason(it, "ansible.builtin.uri") ||
+		!reason(it, "REST call steps") || !slices.Contains(it.Steps, StepREST) || reason(it, "may add") {
 		t.Fatalf("cmdb = %+v", it)
 	}
 	// Waits for people and days, and reaches vCenter through the workflow it
@@ -113,8 +116,8 @@ func TestStandardVRO(t *testing.T) {
 	}{
 		"std-decommission":  {GroupTemporal, []string{StepREST, StepRvav, StepPerson, StepTime}},
 		"std-change-wait":   {GroupTemporal, []string{StepREST, StepTime, StepBranch}},
-		"std-cmdb":          {GroupAWX, []string{StepREST, StepRvav}},
-		"std-backup":        {GroupAWX, []string{StepREST, StepRvav}},
+		"std-cmdb":          {GroupNative, []string{StepREST, StepRvav}},
+		"std-backup":        {GroupNative, []string{StepREST, StepRvav}},
 		"std-notify":        {GroupAWX, []string{StepNotify}},
 		"std-patch-window":  {GroupTemporal, []string{StepAWX, StepRvav, StepTime}},
 		"std-big-disk":      {GroupTemporal, []string{StepRvav, StepPerson, StepBranch}},
@@ -128,16 +131,21 @@ func TestStandardVRO(t *testing.T) {
 			t.Errorf("%s: group %s, steps %v; want %s, %v", id, it.Group, it.Steps, want.group, want.steps)
 		}
 	}
+	// REST calls and nothing else, that nothing runs alone: a composite item with REST call steps.
+	if it := items["std-cmdb"]; it.Becomes != "A composite item with REST call steps" || !strings.Contains(strings.Join(it.Reasons, " "), "ADR-0033") {
+		t.Errorf("cmdb = %+v", it)
+	}
 	// The form's datastore choice: a value source.
 	if it := items["std-act-datastore"]; it.Group != GroupNative || it.Becomes != "A value source on the field" {
 		t.Errorf("datastore action = %+v", it)
 	}
-	// D2's sizing: no workflow waits for an event.
-	want := map[string]int{StepPerson: 3, StepTime: 3, StepREST: 5, StepNotify: 1, StepBranch: 2}
+	// D2's sizing: no workflow waits for an event. A REST call is built: the
+	// five workflows that make one say so, and it is no longer to be added.
+	want := map[string]int{StepPerson: 3, StepTime: 3, StepNotify: 1, StepBranch: 2}
 	if !maps.Equal(tr.Steps, want) {
 		t.Fatalf("step kinds = %v, want %v", tr.Steps, want)
 	}
-	if md := tr.Markdown(); !strings.Contains(md, "| REST call | 5: ") || !strings.Contains(md, "| wait for an event | 0 |") {
+	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || !strings.Contains(md, "| wait for an event | 0 |") {
 		t.Fatalf("report:\n%s", md)
 	}
 }

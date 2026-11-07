@@ -4,6 +4,7 @@
 // acceptance item (ADR-0028): its tiers on a segment made for the
 // deployment, each in a security group of its own, with the rules between
 // them.
+import { parseUrl } from "@/lib/composite";
 import { sizes as inventorySizes, templates } from "./inventory";
 
 type Blueprint = Record<string, unknown>;
@@ -367,15 +368,25 @@ const vmTopology = fields({
     }),
   ),
 });
+/** A REST call's URL: its text goes (the host, the path), each ${expr} stays with its literals masked. */
+const restUrl: Keep = (v) => {
+  if (typeof v !== "string") return null;
+  const { parts, error } = parseUrl(v);
+  if (error) return masked;
+  return parts.map((p) => ("expr" in p ? `\${${maskLiterals(p.expr, false)}}` : masked)).join("");
+};
+// A REST call's method and what it reads: not its secret's name, the statuses it accepts or what it keeps.
+const restCall = fields({ method: asIs, url: restUrl, body: cel() });
 const stepKeys: Record<string, Keep> = {
   key: asIs,
   title: asIs,
   item: asIs,
   awx: fields({ job_template: asIs, title: asIs }),
   workflow: asIs,
+  rest: restCall,
   when: cel(),
   with: stepRefs,
-  undo: fields({ job_template: asIs, workflow: asIs, with: stepRefs }),
+  undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),
 };
 const step = fields(stepKeys);
 stepKeys.parallel = each(step);

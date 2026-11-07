@@ -550,8 +550,9 @@ func (b Blueprint) OrderedPostConfig(chosen []string, order []string) []string {
 	return out
 }
 
-// CompositeStep is one step of a composite item (ADR-0022): another item,
-// an AWX template or a custom workflow; or, with Parallel, a group of them.
+// CompositeStep is one step of a composite item (ADR-0022): what it runs is
+// one of its kinds (ADR-0033), another item, an AWX template, a custom
+// workflow or a REST call; or, with Parallel, it is a group of steps.
 type CompositeStep struct {
 	Key   string `json:"key,omitempty"`
 	Title string `json:"title,omitempty"`
@@ -559,6 +560,7 @@ type CompositeStep struct {
 	Item     string       `json:"item,omitempty"`
 	AWX      *AWXTemplate `json:"awx,omitempty"`
 	Workflow string       `json:"workflow,omitempty"`
+	REST     *RESTCall    `json:"rest,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`
@@ -568,9 +570,29 @@ type CompositeStep struct {
 	Parallel []CompositeStep `json:"parallel,omitempty"`
 }
 
-// CompositeUndo undoes an AWX or workflow step when a later one fails.
+// CompositeUndo undoes a step when a later one fails: an AWX template, a
+// custom workflow or a REST call.
 type CompositeUndo struct {
 	JobTemplate string         `json:"job_template,omitempty"`
 	Workflow    string         `json:"workflow,omitempty"`
+	REST        *RESTCall      `json:"rest,omitempty"`
 	With        map[string]any `json:"with,omitempty"`
+}
+
+// RESTCall is a call to a REST API (ADR-0033): to a host allowed for REST
+// calls, without redirects, with a timeout and a size limit.
+type RESTCall struct {
+	// Method is GET, POST, PUT, PATCH or DELETE.
+	Method string `json:"method"`
+	// URL is a template: each ${expr}, CEL over inputs and steps.<key>, is
+	// replaced by its value, escaped, in the path and the query only.
+	URL string `json:"url"`
+	// Body, CEL over the same, is sent as JSON.
+	Body string `json:"body,omitempty"`
+	// Secret names a stored secret: a bearer token, basic or a header.
+	Secret string `json:"secret,omitempty"`
+	// Accept lists the statuses that are a success; by default any 2xx.
+	Accept []int `json:"accept,omitempty"`
+	// Keep, a JSONPath, picks what is kept of a JSON answer; by default all.
+	Keep string `json:"keep,omitempty"`
 }

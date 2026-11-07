@@ -59,8 +59,9 @@ type Service struct {
 	// awx.credentials pickers.
 	AWX             awx.Client
 	AWXOrganization string
-	// Secrets seals the secrets value sources use; REST calls the URLs of
-	// `rest` value sources (ADR-0019).
+	// Secrets seals the secrets value sources and a composite's REST calls
+	// use; REST calls the URLs of `rest` value sources (ADR-0019), and says
+	// which hosts a composite's REST calls may reach (ADR-0033).
 	Secrets *secrets.Box
 	REST    *RESTSources
 	// Config is the configuration this process started with, saved

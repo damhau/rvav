@@ -9,6 +9,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/common/types/traits"
 )
 
 // Vars are the values an expression can read. Missing keys are bound to
@@ -185,6 +186,16 @@ func native(v ref.Val) any {
 			out[i] = native(l.Get(types.Int(i)))
 		}
 		return out
+	case types.MapType:
+		m := v.(traits.Mapper)
+		out := make(map[string]any)
+		for it := m.Iterator(); it.HasNext() == types.True; {
+			k := it.Next()
+			out[fmt.Sprint(native(k))] = native(m.Get(k))
+		}
+		return out
+	case types.NullType:
+		return nil
 	}
 	return v.Value()
 }

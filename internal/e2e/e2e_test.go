@@ -53,6 +53,7 @@ import (
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/pgtest"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
@@ -320,7 +321,10 @@ func setupWith(t *testing.T, ctx context.Context, c *vim25.Client, seeded bool) 
 	t.Cleanup(srv.Close)
 
 	acts := &provision.Activities{Store: st, VSphere: vc, IPAM: ipam, AWX: fakeAWX, Events: pub, Log: log,
-		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test", Secrets: box}
+		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test", Secrets: box,
+		// The hosts REST value sources may call, as in the app.
+		REST: &restcall.Caller{Client: restcall.NewClient(provision.RESTTimeout),
+			HostsNow: func(context.Context) []string { return svc.REST.Hosts }}}
 	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
 	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},

@@ -33,6 +33,12 @@ var probes = []struct {
 	  {"parallel": [{"key": "b", "workflow": "x", "when": "inputs.token == 'open"},
 	                {"key": "c", "awx": {"job_template": "t", "title": "T", "template_id": 4, "inventory": "inv"},
 	                 "when": "r\"é\\d\" in inputs.tags", "undo": {"job_template": "u", "with": {"k": "'v'"}}}]}]}`},
+	{"probe-composite-rest", `{"kind": "composite", "steps": [
+	  {"key": "cmdb", "title": "CMDB", "rest": {"method": "POST", "url": "https://cmdb-secret.corp.example/api/ci/${steps.vm.name}?token=tok_live_q&env=${environment == 'prod' ? 'p-secret' : ''}",
+	   "body": "{'owner': inputs.owner, 'api_key': 'tok_live_b'}", "secret": "cmdb-token-name", "accept": [201, 418], "keep": "$.result_secret"},
+	   "undo": {"rest": {"method": "DELETE", "url": "https://cmdb-secret.corp.example/api/ci/${steps.cmdb.json.id}", "secret": "cmdb-token-name"}}},
+	  {"parallel": [{"key": "bad", "rest": {"method": "GET", "url": "https://cmdb-secret.corp.example/${'tok_live_open"}},
+	                {"key": "awx", "awx": {"job_template": "t"}, "undo": {"rest": {"method": "POST", "url": "https://cmdb-secret.corp.example/undo", "body": "'tok_live_c'"}}}]}]}`},
 }
 
 type fixtureCase struct {
@@ -91,7 +97,7 @@ func TestTopologyFixture(t *testing.T) {
 	}
 	// The probes give nothing of what they hide.
 	for _, secret := range []string{"hunter2", "vlan-pci-secret", "grp-pci", "gold-secret", "vsan-secret", "'fin'",
-		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é"} {
+		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é", "cmdb-secret", "p-secret", "cmdb-token-name", "418", "result_secret", "api_key", "/api/"} {
 		for _, c := range cases[len(cases)-len(probes):] {
 			if b, _ := json.Marshal(c.Topology); bytes.Contains(b, []byte(secret)) {
 				t.Errorf("%s's topology has %q: %s", c.Name, secret, b)

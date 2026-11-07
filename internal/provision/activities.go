@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
@@ -73,6 +74,9 @@ type Activities struct {
 	NSX        *nsx.Client
 	Instance   string
 	NSXTimeout time.Duration
+	// REST makes a composite's REST calls (ADR-0033): to the hosts allowed
+	// for REST value sources.
+	REST *restcall.Caller
 }
 
 // VCenterSet is the vCenters rvav manages, by name ("" for the first).
@@ -704,21 +708,27 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 // secret opens a stored secret: its user name and value. The value never
 // goes into a step, a log or an error.
 func (a *Activities) secret(ctx context.Context, name string) (username, value string, err error) {
+	v, value, err := a.openSecret(ctx, name)
+	return v.Username, value, err
+}
+
+// openSecret gives a stored secret and its value.
+func (a *Activities) openSecret(ctx context.Context, name string) (store.Secret, string, error) {
 	if a.Secrets == nil {
-		return "", "", permanent("rvav has no secrets key (RVAV_SECRETS_KEY), so it can't open the secret %s", name)
+		return store.Secret{}, "", permanent("rvav has no secrets key (RVAV_SECRETS_KEY), so it can't open the secret %s", name)
 	}
 	v, err := a.Store.GetSecret(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", "", permanent("There is no secret %s any more. Ask a catalog admin to check this item.", name)
+		return store.Secret{}, "", permanent("There is no secret %s any more. Ask a catalog admin to check this item.", name)
 	}
 	if err != nil {
-		return "", "", err
+		return store.Secret{}, "", err
 	}
 	plain, err := a.Secrets.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext)
 	if err != nil {
-		return "", "", permanent("The secret %s can't be opened with rvav's key", name)
+		return store.Secret{}, "", permanent("The secret %s can't be opened with rvav's key", name)
 	}
-	return v.Username, string(plain), nil
+	return v, string(plain), nil
 }
 
 // cloudInit gives a Linux VM its host name, addresses and user data

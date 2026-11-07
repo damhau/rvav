@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -52,7 +53,7 @@ type TriageItem struct {
 	Becomes string   `json:"becomes"`
 	Reasons []string `json:"reasons"`
 	// Steps are the composite steps a workflow would be rebuilt with (D2):
-	// rvav's and AWX's, and the step kinds D2 may add.
+	// rvav's, AWX's and REST calls, and the step kinds D2 may add.
 	Steps []string `json:"steps,omitempty"`
 }
 
@@ -70,7 +71,8 @@ const (
 )
 
 // NewSteps are the step kinds D2 may add, in the order the report gives them.
-var NewSteps = []string{StepPerson, StepTime, StepEvent, StepREST, StepNotify, StepBranch}
+// A kind D2 has built leaves the list (REST call: ADR-0033).
+var NewSteps = []string{StepPerson, StepTime, StepEvent, StepNotify, StepBranch}
 
 // compositeSteps are the steps a workflow of these item types, reaching
 // these systems, would be rebuilt with.
@@ -434,6 +436,10 @@ func TriageVRO(e *vra.Estate) Triage {
 			} else {
 				it.Reasons = append(it.Reasons, "It only drives vCenter: rvav's built-in steps (or a composite item chaining them) do the same.")
 			}
+		case len(without(it.Systems, "vCenter", "REST")) == 0 && !runsAlone(it.UsedBy):
+			it.Group = GroupNative
+			it.Becomes = "A composite item with REST call steps"
+			it.Reasons = append(it.Reasons, "It calls REST APIs: a composite item's REST call steps do (ADR-0033), each with its URL, its body in CEL and a stored secret. What its scripts work out goes in CEL, or in a playbook where CEL can't.")
 		default:
 			it.Group = GroupAWX
 			it.Reasons = append(it.Reasons, "It calls "+strings.Join(without(it.Systems, "vCenter"), ", ")+": a playbook does, with "+ansibleFor(it.Systems)+".")
@@ -447,6 +453,10 @@ func TriageVRO(e *vra.Estate) Triage {
 					t.Steps[s]++
 				}
 			}
+			// In another group, it says what its REST calls would be all the same.
+			if it.Group != GroupNative && slices.Contains(it.Steps, StepREST) {
+				it.Reasons = append(it.Reasons, "As a composite item, its REST calls would be REST call steps (ADR-0033).")
+			}
 			it.Reasons = append(it.Reasons, useReasons(it.UsedBy)...)
 			if in.decision > 3 && it.Group != GroupTemporal {
 				it.Reasons = append(it.Reasons, fmt.Sprintf("It branches %d times: if it compensates or runs for long, it may be C.", in.decision))
@@ -455,7 +465,7 @@ func TriageVRO(e *vra.Estate) Triage {
 				it.Reasons = append(it.Reasons, r)
 			}
 		}
-		it.Becomes = becomes[it.Group]
+		it.Becomes = cmp.Or(it.Becomes, becomes[it.Group])
 		t.Items = append(t.Items, it)
 	}
 
@@ -579,6 +589,15 @@ func rvavEvent(topic string) string {
 	return ""
 }
 
+// runsAlone says that a subscription or a day-2 action runs a workflow: what
+// replaces it is what they can run, a job template or a custom workflow, not
+// a composite item.
+func runsAlone(used []Use) bool {
+	return slices.ContainsFunc(used, func(u Use) bool {
+		return !u.Disabled && (u.Kind == "subscription" || u.Kind == "day2_action")
+	})
+}
+
 func useReasons(used []Use) []string {
 	var out []string
 	for _, u := range used {
@@ -663,8 +682,8 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-func without(list []string, x string) []string {
-	return slices.DeleteFunc(slices.Clone(list), func(s string) bool { return s == x })
+func without(list []string, x ...string) []string {
+	return slices.DeleteFunc(slices.Clone(list), func(s string) bool { return slices.Contains(x, s) })
 }
 
 func orEmpty(u []Use) []Use {

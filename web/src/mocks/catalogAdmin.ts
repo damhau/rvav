@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
-import { readComposite } from "@/lib/composite";
+import { parseUrl, readComposite } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
@@ -167,6 +167,16 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
 }
 
 /** The server's structural checks, enough for the UI: labels, sections, inputs. */
+/** The CEL of a REST call, with where each is: its URL's expressions and its body. */
+function restCel(call: unknown, at: string): [string, unknown][] {
+  const c = (call ?? {}) as Record<string, unknown>;
+  const url = typeof c.url === "string" ? c.url : "";
+  return [
+    ...parseUrl(url).parts.flatMap((p): [string, unknown][] => ("expr" in p ? [[`${at}/url`, p.expr]] : [])),
+    [`${at}/body`, c.body],
+  ];
+}
+
 function check(def: Definition, prefix: string): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};
@@ -288,6 +298,8 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
             `${at}/with/${k}`,
             v,
           ]),
+          ...restCel(x.rest, `${at}/rest`),
+          ...restCel((x.undo as Record<string, unknown> | undefined)?.rest, `${at}/undo/rest`),
         ];
         for (const [field, e] of exprs) {
           const problem = typeof e === "string" && e ? celCheck(e) : null;
@@ -981,8 +993,11 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const usedBy = (name: string) =>
         db.items
           .filter((i) =>
-            (st.versions[i.id] ?? []).some((v) =>
-              Object.values(v.definition.ui_schema.fields).some((f) => f.value_source?.params?.secret === name),
+            (st.versions[i.id] ?? []).some(
+              (v) =>
+                Object.values(v.definition.ui_schema.fields).some((f) => f.value_source?.params?.secret === name) ||
+                // A composite's REST calls, at any depth.
+                JSON.stringify(v.definition.blueprint).includes(`"secret":${JSON.stringify(name)}`),
             ),
           )
           .map((i) => i.slug);

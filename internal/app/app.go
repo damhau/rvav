@@ -34,6 +34,7 @@ import (
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/notify"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
@@ -514,7 +515,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	acts := &provision.Activities{Store: a.Store, VSphere: vc, IPAM: a.IPAM, AWX: a.AWX,
 		AWXInventorySource: a.Cfg.AWX.InventorySourceID, AWXInventoryRequired: !a.Cfg.AWX.Fake, Events: a.Events, Log: a.Log,
 		Subscriptions: a.Dispatcher(), TaskQueue: a.Cfg.Temporal.TaskQueue, Secrets: a.Secrets, VCenters: a.VCenters(),
-		Instance: a.Cfg.IPAM.Instance}
+		Instance: a.Cfg.IPAM.Instance, REST: a.restCalls()}
 	// NSX makes deployments' segments and security groups (ADR-0028), when
 	// rvav has a Manager.
 	client, err := a.NSX()
@@ -653,6 +654,12 @@ func (a *App) restSources() *core.RESTSources {
 	r := core.NewRESTSources(a.Cfg.RESTSourceHosts)
 	r.HostsNow = func(ctx context.Context) []string { return a.live(ctx).RESTSourceHosts }
 	return r
+}
+
+// restCalls make a composite's REST calls (ADR-0033), on the same hosts.
+func (a *App) restCalls() *restcall.Caller {
+	return &restcall.Caller{Hosts: a.Cfg.RESTSourceHosts, Client: restcall.NewClient(provision.RESTTimeout),
+		HostsNow: func(ctx context.Context) []string { return a.live(ctx).RESTSourceHosts }}
 }
 
 // Dispatcher delivers integration events to subscriptions.

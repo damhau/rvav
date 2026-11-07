@@ -814,5 +814,103 @@
         }
       ]
     }
+  },
+  {
+    "name": "probe-composite-rest",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "key": "cmdb",
+          "rest": {
+            "accept": [
+              201,
+              418
+            ],
+            "body": "{'owner': inputs.owner, 'api_key': 'tok_live_b'}",
+            "keep": "$.result_secret",
+            "method": "POST",
+            "secret": "cmdb-token-name",
+            "url": "https://cmdb-secret.corp.example/api/ci/${steps.vm.name}?token=tok_live_q&env=${environment == 'prod' ? 'p-secret' : ''}"
+          },
+          "title": "CMDB",
+          "undo": {
+            "rest": {
+              "method": "DELETE",
+              "secret": "cmdb-token-name",
+              "url": "https://cmdb-secret.corp.example/api/ci/${steps.cmdb.json.id}"
+            }
+          }
+        },
+        {
+          "parallel": [
+            {
+              "key": "bad",
+              "rest": {
+                "method": "GET",
+                "url": "https://cmdb-secret.corp.example/${'tok_live_open"
+              }
+            },
+            {
+              "awx": {
+                "job_template": "t"
+              },
+              "key": "awx",
+              "undo": {
+                "rest": {
+                  "body": "'tok_live_c'",
+                  "method": "POST",
+                  "url": "https://cmdb-secret.corp.example/undo"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "key": "cmdb",
+          "rest": {
+            "body": "{'…': inputs.owner, '…': '…'}",
+            "method": "POST",
+            "url": "…${steps.vm.name}…${environment == '…' ? '…' : ''}"
+          },
+          "title": "CMDB",
+          "undo": {
+            "rest": {
+              "method": "DELETE",
+              "url": "…${steps.cmdb.json.id}"
+            }
+          }
+        },
+        {
+          "parallel": [
+            {
+              "key": "bad",
+              "rest": {
+                "method": "GET",
+                "url": "…"
+              }
+            },
+            {
+              "awx": {
+                "job_template": "t"
+              },
+              "key": "awx",
+              "undo": {
+                "rest": {
+                  "body": "'…'",
+                  "method": "POST",
+                  "url": "…"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 ]

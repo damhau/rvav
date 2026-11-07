@@ -5664,7 +5664,9 @@ components:
         detail: { type: string }
         system:
           type: string
-          enum: [rvav, policy, vcenter, efficientip, awx, nsx]
+          description: Who does the step; `rest` is a composite's REST call to another system (ADR-0033).
+          enum: [rvav, policy, vcenter, efficientip, awx, nsx, rest]
+          x-enum-varnames: [StepSystemRvav, StepSystemPolicy, StepSystemVcenter, StepSystemEfficientip, StepSystemAwx, StepSystemNsx, StepSystemRest]
         status: { $ref: "#/components/schemas/StepStatus" }
         started_at: { type: [string, "null"], format: date-time }
         finished_at: { type: [string, "null"], format: date-time }
@@ -6289,7 +6291,7 @@ components:
         steps:
           type: object
           additionalProperties: { type: integer }
-          description: "For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, REST call, notification, branch), the workflows to keep that would use it."
+          description: "For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, notification, branch), the workflows to keep that would use it."
         items:
           type: array
           items: { $ref: "#/components/schemas/VroTriageItem" }

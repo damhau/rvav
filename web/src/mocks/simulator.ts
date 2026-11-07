@@ -119,6 +119,8 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     } else if (awx || target?.source.kind === "awx") {
       const template = text(awx?.job_template) || target?.source.awx_template_name || target?.slug || "job";
       out.push({ ...awxJob(template, "localhost", jobBase + out.length), key, title: `${title} · ${template}` });
+    } else if (st.rest) {
+      out.push(step(key, title, "rest", { detail: `REST call · ${text((st.rest as Rec).method)}` }));
     } else {
       out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
     }
@@ -305,6 +307,11 @@ function vmOf(d: DeploymentDetail) {
 /** Finish a step; one of several VMs' steps keeps saying which VM it was for. */
 function complete(r: StoredRequest, s: Step) {
   completeStep(r, s);
+  // A REST call says what it answered.
+  if (s.system === "rest" && s.detail?.startsWith("REST call · ")) {
+    const method = s.detail.slice("REST call · ".length);
+    s.detail = `${method} answered ${method === "POST" ? 201 : 200}`;
+  }
   // A step that isn't a job is done with what it did (a composite's VM step run again).
   for (const c of s.children)
     if (c.status === "pending" || c.status === "running") Object.assign(c, { status: "done", finished_at: now() });

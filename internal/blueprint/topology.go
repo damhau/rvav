@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/restcall"
 )
 
 // Topology is what a requester sees of a blueprint: the part the canvas
@@ -15,11 +16,12 @@ import (
 // steps, what each runs, its condition and undo, and which earlier steps
 // its bindings use. Nothing else: no guest settings (domain, join
 // credential, administrator password, cloud-init), sizes, naming, tags,
-// placement or AWX variables, and a step's bindings only as the
-// `steps.<key>` they name. The CEL it keeps (a condition, a count, a disk's
-// size, the adapters', groups', template and post-configuration bindings)
-// has its string literals masked (policy.MaskLiterals): what it reads, not
-// what it compares it to. Lists keep their positions, so a pointer into
+// placement or AWX variables, a step's bindings only as the `steps.<key>`
+// they name, and a REST call only as its method and what its URL and body
+// read. The CEL it keeps (a condition, a count, a disk's size, the
+// adapters', groups', template and post-configuration bindings, a REST
+// call's) has its string literals masked (policy.MaskLiterals): what it
+// reads, not what it compares it to. Lists keep their positions, so a pointer into
 // the blueprint points at the same thing in its topology. Nil for the
 // kinds the canvas doesn't draw (AWX, workflow) and for a blueprint that
 // isn't JSON.
@@ -122,6 +124,30 @@ func (c cel) keep(v any) any {
 	return nil
 }
 
+// restURL keeps a REST call's URL as CEL's literals are kept: its text goes
+// (the host, the path), and each ${expr} stays, its string literals masked.
+type restURL struct{}
+
+func (restURL) keep(v any) any {
+	tpl, ok := v.(string)
+	if !ok {
+		return nil
+	}
+	parts, err := restcall.ParseURL(tpl)
+	if err != nil {
+		return policy.Masked
+	}
+	var b strings.Builder
+	for _, p := range parts {
+		if p.Expr == "" {
+			b.WriteString(policy.Masked)
+			continue
+		}
+		b.WriteString("${" + policy.MaskLiterals(p.Expr, false) + "}")
+	}
+	return b.String()
+}
+
 var stepRef = regexp.MustCompile(`\bsteps\.[a-z][a-z0-9_]*`)
 
 // stepRefs keeps of a step's bindings only the earlier steps they use:
@@ -185,15 +211,20 @@ var (
 		}},
 	}
 
+	// A REST call: its method, and what its URL and body read. Not its
+	// secret's name, the statuses it accepts or what it keeps of the answer.
+	topologyREST = fields{"method": asIs{}, "url": restURL{}, "body": cel{}}
+
 	topologyStep = fields{
 		"key":      asIs{},
 		"title":    asIs{},
 		"item":     asIs{},
 		"awx":      fields{"job_template": asIs{}, "title": asIs{}},
 		"workflow": asIs{},
+		"rest":     topologyREST,
 		"when":     cel{},
 		"with":     stepRefs{},
-		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "with": stepRefs{}},
+		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs{}},
 	}
 	compositeTopology = fields{
 		"kind":                asIs{},

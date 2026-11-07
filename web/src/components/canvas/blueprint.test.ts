@@ -148,6 +148,32 @@ describe("compositeGraph", () => {
     expect(nodeForPointer(g, "/definition/blueprint/steps/10")).toBeUndefined();
   });
 
+  it("draws a REST call, what it calls and its undo, in the order its name says them", () => {
+    const g = compositeGraph({
+      kind: "composite",
+      steps: [
+        { key: "vm", title: "The VM", item: "x" },
+        {
+          key: "cmdb",
+          title: "Register in the CMDB",
+          rest: { method: "POST", url: "https://h.example/ci/${steps.vm.name}" },
+          when: "inputs.register",
+          undo: { rest: { method: "DELETE", url: "https://h.example/ci/${steps.cmdb.json.id}" } },
+        },
+      ],
+    });
+    const n = node(g, "step:cmdb");
+    expect(n.badge).toBe("REST");
+    expect(n.lines).toEqual([
+      { label: "Calls", text: "POST https://h.example/ci/${steps.vm.name}", mono: true },
+      { label: "When", text: "inputs.register", mono: true },
+      { label: "Uses", text: "vm", mono: true },
+      { label: "Undo", text: "DELETE https://h.example/ci/${steps.cmdb.json.id}", mono: true },
+    ]);
+    expect(describeNode(n)).toContain("REST Register in the CMDB. cmdb. Calls: POST https://h.example");
+    expect(g.problems).toEqual([]);
+  });
+
   it("has the request and done when there is no step yet", () => {
     const g = compositeGraph({ kind: "composite", steps: [] });
     expect(ids(g)).toEqual(["inputs", "end"]);
