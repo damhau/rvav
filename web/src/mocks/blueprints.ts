@@ -394,6 +394,8 @@ const stepKeys: Record<string, Keep> = {
   workflow: asIs,
   rest: restCall,
   ask: askTopology,
+  wait: fields({ for: asIs, until: cel() }),
+  poll: fields({ rest: restCall, until: cel(), every: asIs, timeout: asIs, on_timeout: asIs }),
   when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),

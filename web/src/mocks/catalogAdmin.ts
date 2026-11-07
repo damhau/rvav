@@ -300,6 +300,9 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
           ]),
           ...restCel(x.rest, `${at}/rest`),
           ...restCel((x.undo as Record<string, unknown> | undefined)?.rest, `${at}/undo/rest`),
+          [`${at}/wait/until`, (x.wait as Record<string, unknown> | undefined)?.until],
+          ...restCel((x.poll as Record<string, unknown> | undefined)?.rest, `${at}/poll/rest`),
+          [`${at}/poll/until`, (x.poll as Record<string, unknown> | undefined)?.until],
         ];
         for (const [field, e] of exprs) {
           const problem = typeof e === "string" && e ? celCheck(e) : null;

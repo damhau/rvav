@@ -234,6 +234,8 @@ type Step struct {
 	HasLog       bool       `db:"has_log"`
 	// Outputs are what a composite step gave (ADR-0022).
 	Outputs json.RawMessage `db:"outputs"`
+	// DueAt is until when a composite step's wait waits (ADR-0033).
+	DueAt *time.Time `db:"due_at"`
 }
 
 type LogLine struct {

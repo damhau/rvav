@@ -17,12 +17,13 @@ import (
 // its bindings use. Nothing else: no guest settings (domain, join
 // credential, administrator password, cloud-init), sizes, naming, tags,
 // placement or AWX variables, a step's bindings only as the `steps.<key>`
-// they name, a REST call only as its method and what its URL and body read,
-// and a wait for a person without who it names (a group, people) or what it
-// says or offers. The CEL it keeps (a condition, a count, a disk's size, the
-// adapters', groups', template and post-configuration bindings, a REST
-// call's) has its string literals masked (policy.MaskLiterals): what it
-// reads, not what it compares it to. Lists keep their positions, so a pointer into
+// they name, a REST call (a poll's too) only as its method and what its URL
+// and body read, and a wait for a person without who it names (a group,
+// people) or what it says or offers. The CEL it keeps (a condition, a count, a
+// disk's size, the adapters', groups', template and post-configuration
+// bindings, a REST call's, a wait's time, a poll's condition) has its string
+// literals masked (policy.MaskLiterals): what it reads, not what it compares
+// it to. Lists keep their positions, so a pointer into
 // the blueprint points at the same thing in its topology. Nil for the
 // kinds the canvas doesn't draw (AWX, workflow) and for a blueprint that
 // isn't JSON.
@@ -222,6 +223,13 @@ var (
 	topologyAsk = fields{"requester": asIs{}, "owner": asIs{}, "timeout": asIs{}, "on_timeout": asIs{},
 		"form": each{fields{"key": asIs{}}}}
 
+	// A wait for a time: how long, or what its time reads.
+	topologyWait = fields{"for": asIs{}, "until": cel{}}
+
+	// A poll: its call as a REST call's, what its condition reads, how often,
+	// for how long and what then.
+	topologyPoll = fields{"rest": topologyREST, "until": cel{}, "every": asIs{}, "timeout": asIs{}, "on_timeout": asIs{}}
+
 	topologyStep = fields{
 		"key":      asIs{},
 		"title":    asIs{},
@@ -230,6 +238,8 @@ var (
 		"workflow": asIs{},
 		"rest":     topologyREST,
 		"ask":      topologyAsk,
+		"wait":     topologyWait,
+		"poll":     topologyPoll,
 		"when":     cel{},
 		"with":     stepRefs{},
 		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs{}},

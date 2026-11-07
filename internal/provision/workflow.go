@@ -150,10 +150,12 @@ func Provision(ctx workflow.Context, requestID string) error {
 	}
 }
 
-// approvalRecheck is how often a waiting level is read again from the
-// database, in case a decision signal was lost. Each check adds to the
-// workflow history, so it stays rare; continue-as-new keeps long waits small.
-const approvalRecheck = time.Hour
+// WaitRecheck is how often a durable wait wakes: to read a waiting level again
+// from the database, in case a decision signal was lost, and to see whether to
+// continue as new. Each round adds to the workflow history, so it stays rare;
+// continue-as-new keeps long waits small. Only a test that can't wait an hour
+// changes it, before its worker starts.
+var WaitRecheck = time.Hour
 
 var errContinueAsNew = errors.New("continue as new")
 
@@ -175,7 +177,7 @@ const (
 func waitRound(ctx, stop workflow.Context, signals workflow.ReceiveChannel, onSignal func(workflow.ReceiveChannel), dueAt *time.Time) waitEnd {
 	tctx, cancelTimer := workflow.WithCancel(ctx)
 	defer cancelTimer()
-	wait, due := approvalRecheck, false
+	wait, due := WaitRecheck, false
 	if dueAt != nil {
 		if d := dueAt.Sub(workflow.Now(ctx)); d <= wait {
 			wait, due = max(d, time.Millisecond), true

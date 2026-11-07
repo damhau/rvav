@@ -187,7 +187,7 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 func Step(s store.Step) api.Step {
 	out := api.Step{
 		Id: s.ID, Key: s.Key, Title: s.Title, Status: api.StepStatus(s.Status),
-		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, HasLog: s.HasLog,
+		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, DueAt: s.DueAt, HasLog: s.HasLog,
 		Detail: strPtr(s.Detail), Error: s.Error, Children: []api.Step{},
 	}
 	if s.System != nil {

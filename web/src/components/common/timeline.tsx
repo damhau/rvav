@@ -11,6 +11,7 @@ const systemLabel: Record<NonNullable<Step["system"]>, string> = {
   nsx: "NSX",
   rest: "REST",
   person: "Person",
+  wait: "Wait",
 };
 
 const systemTone: Record<NonNullable<Step["system"]>, string> = {
@@ -22,6 +23,7 @@ const systemTone: Record<NonNullable<Step["system"]>, string> = {
   nsx: "text-run",
   rest: "text-accent",
   person: "text-accent",
+  wait: "text-accent",
 };
 
 const statusText: Record<StepStatus, string> = {

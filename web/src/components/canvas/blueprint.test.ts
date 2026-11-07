@@ -169,11 +169,50 @@ describe("compositeGraph", () => {
     expect(describeNode(n)).toContain("Person Manager's answer. manager. Asks: managers");
   });
 
+  it("draws a wait for a time and a poll, what they wait for and until when, from the definition alone", () => {
+    const graph = blueprintGraph({
+      kind: "composite",
+      steps: [
+        { key: "keep", title: "Keep it", wait: { for: "72h" } },
+        { key: "window", wait: { until: "inputs.window" } },
+        {
+          key: "change",
+          title: "The change",
+          poll: {
+            rest: { method: "GET", url: "https://itsm.example/x" },
+            until: "steps.change.json == 'approved'",
+            every: "10m",
+            timeout: "72h",
+            on_timeout: "continue",
+          },
+        },
+      ],
+    })!;
+    const node = (id: string) => graph.nodes.find((x) => x.id === id)!;
+    expect(graph.problems).toEqual([]);
+    expect(node("step:keep").badge).toBe("Wait");
+    expect(node("step:keep").lines).toEqual([{ label: "For", text: "72h" }]);
+    expect(node("step:window").lines).toEqual([{ label: "Until", text: "inputs.window", mono: true }]);
+    expect(node("step:change").badge).toBe("Poll");
+    expect(node("step:change").lines).toEqual([
+      { label: "Calls", text: "GET https://itsm.example/x", mono: true },
+      { label: "Until", text: "steps.change.json == 'approved'", mono: true },
+      { label: "Every", text: "10m" },
+      { label: "Timeout", text: "72h, then it goes on" },
+    ]);
+    expect(describeNode(node("step:keep"))).toContain("Wait Keep it. keep. For: 72h");
+  });
+
   it("finds nothing wrong in a requester's masked topology, whose holes aren't mistakes", () => {
     const steps = [
       { key: "cmdb", rest: { method: "POST", url: "…${inputs.role}…${environment}" } },
       // Who it asks is left out.
       { key: "manager", ask: { form: [{ key: "ok" }] } },
+      // A poll's URL is masked, and its condition's literals.
+      {
+        key: "change",
+        poll: { rest: { method: "GET", url: "…" }, until: "steps.change.json == '…'", every: "10m", timeout: "72h" },
+      },
     ];
     const graph = blueprintGraph({ kind: "composite", steps }, "/topology")!;
     expect(graph.problems).toEqual([]);

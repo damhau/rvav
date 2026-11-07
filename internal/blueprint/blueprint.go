@@ -9,6 +9,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/damhau/rvav/internal/policy"
 )
@@ -552,7 +553,8 @@ func (b Blueprint) OrderedPostConfig(chosen []string, order []string) []string {
 
 // CompositeStep is one step of a composite item (ADR-0022): what it runs is
 // one of its kinds (ADR-0033), another item, an AWX template, a custom
-// workflow or a REST call; or, with Parallel, it is a group of steps.
+// workflow, a REST call, or a wait for a person, a time or a condition; or,
+// with Parallel, it is a group of steps.
 type CompositeStep struct {
 	Key   string `json:"key,omitempty"`
 	Title string `json:"title,omitempty"`
@@ -562,6 +564,8 @@ type CompositeStep struct {
 	Workflow string       `json:"workflow,omitempty"`
 	REST     *RESTCall    `json:"rest,omitempty"`
 	Ask      *Ask         `json:"ask,omitempty"`
+	Wait     *Wait        `json:"wait,omitempty"`
+	Poll     *Poll        `json:"poll,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`
@@ -618,6 +622,36 @@ type AskField struct {
 	Default  any      `json:"default,omitempty"`
 	Secret   bool     `json:"secret,omitempty"`
 }
+
+// Wait waits for a time (ADR-0033): for a duration, or until the time an
+// expression gives; one of the two.
+type Wait struct {
+	// For is a Go duration.
+	For string `json:"for,omitempty"`
+	// Until, CEL over inputs and steps.<key>, gives a CEL timestamp or a text:
+	// RFC 3339, or a date or date and time with no zone, read as UTC.
+	Until string `json:"until,omitempty"`
+}
+
+// Poll waits until a condition holds (ADR-0033), making a REST call every
+// interval, with a deadline.
+type Poll struct {
+	// REST is the call: a method that can be repeated (GET, PUT, DELETE).
+	REST *RESTCall `json:"rest,omitempty"`
+	// Until, a CEL condition over inputs and steps.<key>, reads the call's
+	// last answer as this step's own outputs.
+	Until string `json:"until,omitempty"`
+	// Every and Timeout are Go durations: how often it checks, at least
+	// MinPollEvery, and how long it goes on, at least Every.
+	Every   string `json:"every,omitempty"`
+	Timeout string `json:"timeout,omitempty"`
+	// OnTimeout is what the deadline does: fail (the default) or continue.
+	OnTimeout string `json:"on_timeout,omitempty"`
+}
+
+// MinPollEvery is how often a poll may check at most, so that nobody's API
+// is hammered and Temporal's history grows slowly.
+const MinPollEvery = time.Minute
 
 // RESTCall is a call to a REST API (ADR-0033): to a host allowed for REST
 // calls, without redirects, with a timeout and a size limit.

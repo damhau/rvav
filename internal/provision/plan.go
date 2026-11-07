@@ -195,9 +195,11 @@ type CompositeStep struct {
 	// REST is a REST call (ADR-0033): only a secret's name and CEL, both
 	// resolved when it runs, so nothing plain enters Temporal's history.
 	REST *blueprint.RESTCall `json:"rest,omitempty"`
-	// Ask waits for a person (ADR-0033).
-	Ask  *blueprint.Ask `json:"ask,omitempty"`
-	Undo *CompositeUndo `json:"undo,omitempty"`
+	// Ask waits for a person, Wait for a time, Poll for a condition (ADR-0033).
+	Ask  *blueprint.Ask  `json:"ask,omitempty"`
+	Wait *blueprint.Wait `json:"wait,omitempty"`
+	Poll *blueprint.Poll `json:"poll,omitempty"`
+	Undo *CompositeUndo  `json:"undo,omitempty"`
 }
 
 // SegmentKey is the step key of one of its segments, under its own.
@@ -685,6 +687,10 @@ func (p Plan) Steps(environment string) []StepDef {
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "REST call · " + c.REST.Method, System: "rest", Status: "pending"})
 			case c.Ask != nil:
 				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Waits for a person", System: "person", Status: "pending"})
+			case c.Wait != nil:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: waitPlanned(c.Wait), System: "wait", Status: "pending"})
+			case c.Poll != nil:
+				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: pollPlanned(c.Poll), System: "wait", Status: "pending"})
 			}
 		}
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})

@@ -114,12 +114,12 @@ func TestStandardVRO(t *testing.T) {
 		group string
 		steps []string
 	}{
-		"std-decommission":  {GroupTemporal, []string{StepREST, StepRvav, StepPerson, StepTime}},
-		"std-change-wait":   {GroupTemporal, []string{StepREST, StepTime, StepBranch}},
+		"std-decommission":  {GroupNative, []string{StepREST, StepRvav, StepPerson, StepTime}},
+		"std-change-wait":   {GroupNative, []string{StepREST, StepTime, StepBranch}},
 		"std-cmdb":          {GroupNative, []string{StepREST, StepRvav}},
 		"std-backup":        {GroupNative, []string{StepREST, StepRvav}},
 		"std-notify":        {GroupAWX, []string{StepNotify}},
-		"std-patch-window":  {GroupTemporal, []string{StepAWX, StepRvav, StepTime}},
+		"std-patch-window":  {GroupNative, []string{StepAWX, StepRvav, StepTime}},
 		"std-big-disk":      {GroupNative, []string{StepRvav, StepPerson, StepBranch}},
 		"std-ad-computer":   {GroupAWX, []string{StepAWX}},
 		"std-guest-script":  {GroupAWX, []string{StepAWX, StepRvav}},
@@ -139,22 +139,28 @@ func TestStandardVRO(t *testing.T) {
 	if it := items["std-ask-requester"]; it.Becomes != "A composite item with a step that waits for a person" || !strings.Contains(strings.Join(it.Reasons, " "), "ADR-0033") {
 		t.Errorf("ask-requester = %+v", it)
 	}
-	// With a timer too it stays a custom workflow, until a step can wait for a time.
-	if it := items["std-decommission"]; !strings.Contains(strings.Join(it.Reasons, " "), "until it can also wait for a time") {
+	// With a timer too: steps that wait for both.
+	if it := items["std-decommission"]; it.Becomes != "A composite item with steps that wait for a person and for a time" {
 		t.Errorf("decommission = %+v", it)
+	}
+	// A timer, around a REST call or not: a step that waits, or polls it.
+	for _, id := range []string{"std-change-wait", "std-patch-window"} {
+		if it := items[id]; it.Becomes != "A composite item with a step that waits for a time" || !strings.Contains(strings.Join(it.Reasons, " "), "polls") {
+			t.Errorf("%s = %+v", id, it)
+		}
 	}
 	// The form's datastore choice: a value source.
 	if it := items["std-act-datastore"]; it.Group != GroupNative || it.Becomes != "A value source on the field" {
 		t.Errorf("datastore action = %+v", it)
 	}
 	// D2's sizing: no workflow waits for an event. A REST call and a wait for a
-	// person are built: the workflows that have one say so, and they are no
-	// longer to be added.
-	want := map[string]int{StepTime: 3, StepNotify: 1, StepBranch: 2}
+	// person or a time are built: the workflows that have one say so, and they
+	// are no longer to be added.
+	want := map[string]int{StepNotify: 1, StepBranch: 2}
 	if !maps.Equal(tr.Steps, want) {
 		t.Fatalf("step kinds = %v, want %v", tr.Steps, want)
 	}
-	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || strings.Contains(md, "| wait for a person |") || !strings.Contains(md, "| wait for an event | 0 |") {
+	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || strings.Contains(md, "| wait for a person |") || strings.Contains(md, "| wait for a time |") || !strings.Contains(md, "| wait for an event | 0 |") {
 		t.Fatalf("report:\n%s", md)
 	}
 }

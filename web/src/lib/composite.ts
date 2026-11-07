@@ -1,17 +1,21 @@
 // A composite blueprint's steps, read from the definition (ADR-0022): the
 // groups they run in, what each runs and which earlier steps it uses, with
 // the server's structural checks (CEL itself is checked when saved; a REST
-// call's host and secret, and the users a wait names, too, with the lists only
-// the server has).
+// call's host and secret, and the users a wait for a person names, too, with
+// the lists only the server has).
 import type { FieldError } from "@/lib/api/types";
 
 export interface CompositeStepView {
   key: string;
   title?: string;
-  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "?";
+  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "?";
   target: string;
   /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
   ask?: { who: string; wants: string; timeout?: string };
+  /** A wait for a time: how long, or the CEL that says until when. */
+  wait?: { for?: string; until?: string };
+  /** A wait for a condition: what it waits for, how often it checks and for how long. */
+  poll?: { until: string; every: string; timeout: string };
   when?: string;
   uses: string[];
   undo?: string;
@@ -190,6 +194,56 @@ function checkAsk(ask: Raw, ptr: string, err: (field: string, code: string, mess
   });
 }
 
+/** The shortest interval a poll may check at, in milliseconds (blueprint.MinPollEvery). */
+export const minPollEvery = 60_000;
+
+/** What the server checks of a wait for a time (core.checkWait). */
+function checkWait(w: Raw, ptr: string, err: (field: string, code: string, message: string) => void) {
+  const forText = str(w.for);
+  const until = str(w.until);
+  if (!forText && !until) err(ptr, "required", "Say how long it waits, or until when.");
+  if (forText && until) err(ptr, "one_of", "A wait is for a duration or until a time, not both.");
+  if (forText) {
+    const d = goDuration(forText);
+    if (d === null || d < 1000) err(`${ptr}/for`, "invalid", "A duration such as 72h.");
+  }
+}
+
+/** What the server checks of a wait for a condition (core.checkPoll). */
+function checkPoll(p: Raw, ptr: string, key: string, err: (field: string, code: string, message: string) => void) {
+  const call = p.rest as Raw | undefined;
+  if (!call) err(`${ptr}/rest`, "required", "Give the call it repeats.");
+  else {
+    checkRest(call, `${ptr}/rest`, err);
+    if (call.method === "POST" || call.method === "PATCH")
+      err(
+        `${ptr}/rest/method`,
+        "invalid",
+        "A poll repeats its call, so it may only GET, PUT or DELETE: a POST or a PATCH may do something each time.",
+      );
+  }
+  const until = str(p.until);
+  if (!until) err(`${ptr}/until`, "required", "Say what it waits for: a condition on the call's answer.");
+  else if (![...until.matchAll(stepRef)].some((m) => m[1] === key))
+    err(
+      `${ptr}/until`,
+      "invalid",
+      `Read the call's answer, as steps.${key}.json or .status: nothing else changes during the wait.`,
+    );
+  const every = goDuration(str(p.every));
+  if (!str(p.every)) err(`${ptr}/every`, "required", "Say how often it checks: a duration such as 10m.");
+  else if (every === null) err(`${ptr}/every`, "invalid", "A duration such as 10m.");
+  else if (every < minPollEvery)
+    err(`${ptr}/every`, "invalid", "At least 1m: each check calls that API and adds to the run's history.");
+  const timeout = goDuration(str(p.timeout));
+  if (!str(p.timeout)) err(`${ptr}/timeout`, "required", "Give it a deadline: a duration such as 72h.");
+  else if (timeout === null) err(`${ptr}/timeout`, "invalid", "A duration such as 72h.");
+  else if (every !== null && every > 0 && timeout < every)
+    err(`${ptr}/timeout`, "invalid", "At least as long as how often it checks.");
+  if (str(p.on_timeout) && !["fail", "continue"].includes(str(p.on_timeout)))
+    err(`${ptr}/on_timeout`, "enum", "fail or continue.");
+}
+
 const timeoutWords: Record<string, string> = {
   fail: "then the step fails",
   continue: "then it goes on",
@@ -223,6 +277,9 @@ function expressions(s: Raw): string[] {
   if (str(s.when)) out.push(str(s.when));
   for (const v of Object.values((s.with as Raw | undefined) ?? {})) if (typeof v === "string") out.push(v);
   out.push(...restExpressions(s.rest as Raw | undefined));
+  const wait = s.wait as Raw | undefined;
+  if (str(wait?.until)) out.push(str(wait?.until));
+  out.push(...restExpressions((s.poll as Raw | undefined)?.rest as Raw | undefined));
   return out;
 }
 
@@ -245,7 +302,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
   steps.forEach((st, g) => {
     const at = `${prefix}/steps/${g}`;
     const parallel = Array.isArray(st.parallel) ? (st.parallel as Raw[]) : null;
-    if (parallel && (st.key || st.item || st.awx || st.workflow || st.rest || st.ask))
+    if (parallel && (st.key || st.item || st.awx || st.workflow || st.rest || st.ask || st.wait || st.poll))
       err(at, "invalid", "A parallel group only lists steps.");
     const list = parallel ?? [st];
     const group: CompositeStepView[] = [];
@@ -261,10 +318,10 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
       const awx = s.awx as Raw | undefined;
       const rest = s.rest as Raw | undefined;
       const ask = s.ask as Raw | undefined;
-      const kinds = [Boolean(s.item), Boolean(awx), Boolean(s.workflow), Boolean(rest), Boolean(ask)].filter(
-        Boolean,
-      ).length;
-      if (kinds !== 1) err(sp, "one_of", "A step is one of: item, awx, workflow, rest or ask.");
+      const wait = s.wait as Raw | undefined;
+      const poll = s.poll as Raw | undefined;
+      const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll].filter(Boolean).length;
+      if (kinds !== 1) err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait or poll.");
       if (awx && !str(awx.job_template)) err(`${sp}/awx/job_template`, "required", "Name the AWX template.");
       if (rest) {
         checkRest(rest, `${sp}/rest`, err);
@@ -276,9 +333,30 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
         if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a person has no inputs.");
         if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a person has nothing to undo.");
       }
+      if (wait) {
+        checkWait(wait, `${sp}/wait`, err);
+        if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a time has no inputs.");
+        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a time has nothing to undo.");
+      }
+      if (poll) {
+        checkPoll(poll, `${sp}/poll`, key, err);
+        if (s.with !== undefined)
+          err(
+            `${sp}/with`,
+            "invalid",
+            "A poll has no inputs: its URL, body and condition read inputs and steps themselves.",
+          );
+        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A poll has nothing to undo.");
+      }
       const undo = s.undo as Raw | undefined;
       const undoRest = undo?.rest as Raw | undefined;
-      if (undo && !ask && [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1)
+      if (
+        undo &&
+        !ask &&
+        !wait &&
+        !poll &&
+        [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1
+      )
         err(`${sp}/undo`, "one_of", "Undo with a job_template, a workflow or a rest call.");
       if (undoRest) {
         checkRest(undoRest, `${sp}/undo/rest`, err);
@@ -301,12 +379,42 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
       };
       for (const e of expressions(s)) read(e, null);
       for (const e of undoExpressions(s)) read(e, key);
+      // A poll's condition reads its own answer.
+      if (str(poll?.until)) read(str(poll?.until), key);
       group.push({
         key,
         title: str(s.title) || str(awx?.title) || undefined,
-        kind: s.item ? "item" : awx ? "awx" : s.workflow ? "workflow" : rest ? "rest" : ask ? "ask" : "?",
-        target: str(s.item) || str(awx?.job_template) || str(s.workflow) || (rest ? restLine(rest) : ""),
+        kind: s.item
+          ? "item"
+          : awx
+            ? "awx"
+            : s.workflow
+              ? "workflow"
+              : rest
+                ? "rest"
+                : ask
+                  ? "ask"
+                  : wait
+                    ? "wait"
+                    : poll
+                      ? "poll"
+                      : "?",
+        target:
+          str(s.item) ||
+          str(awx?.job_template) ||
+          str(s.workflow) ||
+          (rest ? restLine(rest) : poll?.rest ? restLine(poll.rest as Raw) : ""),
         ask: ask ? askWords(ask) : undefined,
+        wait: wait ? { for: str(wait.for) || undefined, until: str(wait.until) || undefined } : undefined,
+        poll: poll
+          ? {
+              until: str(poll.until),
+              every: str(poll.every),
+              timeout: str(poll.timeout)
+                ? `${str(poll.timeout)}, ${timeoutWords[str(poll.on_timeout)] ?? timeoutWords.fail}`
+                : "",
+            }
+          : undefined,
         when: str(s.when) || undefined,
         uses: [...uses],
         undo: undo ? str(undo.job_template) || str(undo.workflow) || (undoRest ? restLine(undoRest) : "") : undefined,

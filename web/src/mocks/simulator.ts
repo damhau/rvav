@@ -130,6 +130,18 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       const s = step(key, title, "person", { detail: "Waits for a person" });
       asks.set(s.id, st.ask as Rec);
       out.push(s);
+    } else if (st.wait) {
+      const wait = st.wait as Rec;
+      out.push(
+        step(key, title, "wait", { detail: text(wait.for) ? `Waits for ${text(wait.for)}` : "Waits until a time" }),
+      );
+    } else if (st.poll) {
+      const poll = st.poll as Rec;
+      out.push(
+        step(key, title, "wait", {
+          detail: `Waits for a condition: ${text((poll.rest as Rec).method)} every ${text(poll.every)}`,
+        }),
+      );
     } else {
       out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
     }

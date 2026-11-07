@@ -117,7 +117,105 @@ describe("readComposite", () => {
     expect(fields(rest({ url }, { undo: { rest: { method: "GET", url: "" } } }))).toEqual(["undo/rest/url"]);
     // A step is one kind.
     const both = readComposite({ steps: [{ key: "x", item: "a", rest: { method: "GET", url } }] });
-    expect(both.problems.map((p) => p.message)).toEqual(["A step is one of: item, awx, workflow, rest or ask."]);
+    expect(both.problems.map((p) => p.message)).toEqual([
+      "A step is one of: item, awx, workflow, rest, ask, wait or poll.",
+    ]);
+  });
+
+  describe("a wait for a time", () => {
+    const problems = (wait: Record<string, unknown>, more: Record<string, unknown> = {}) =>
+      readComposite({ steps: [{ key: "a", wait, ...more }] }, "").problems.map((p) => [p.field, p.message]);
+
+    it("reads how long, or until when and what that reads", () => {
+      const v = readComposite({
+        steps: [
+          { key: "a", item: "x" },
+          { key: "b", wait: { for: "72h" } },
+          { key: "c", wait: { until: "steps.a.at" } },
+        ],
+      });
+      expect(v.problems).toEqual([]);
+      expect(v.groups.flat().map((s) => [s.kind, s.wait, s.uses])).toEqual([
+        ["item", undefined, []],
+        ["wait", { for: "72h", until: undefined }, []],
+        ["wait", { for: undefined, until: "steps.a.at" }, ["a"]],
+      ]);
+    });
+
+    it("refuses what the server refuses", () => {
+      expect(problems({})).toEqual([["/steps/0/wait", "Say how long it waits, or until when."]]);
+      expect(problems({ for: "1h", until: "inputs.x" })).toEqual([
+        ["/steps/0/wait", "A wait is for a duration or until a time, not both."],
+      ]);
+      expect(problems({ for: "soon" })).toEqual([["/steps/0/wait/for", "A duration such as 72h."]]);
+      expect(problems({ for: "1ms" })).toEqual([["/steps/0/wait/for", "A duration such as 72h."]]);
+      expect(problems({ for: "1h" }, { with: { a: "1" }, undo: { job_template: "t" } })).toEqual([
+        ["/steps/0/with", "A wait for a time has no inputs."],
+        ["/steps/0/undo", "A wait for a time has nothing to undo."],
+      ]);
+      expect(problems({ until: "steps.later.at" })).toEqual([["/steps/0", "steps.later is not an earlier step."]]);
+    });
+  });
+
+  describe("a poll", () => {
+    const rest = { method: "GET", url: "https://itsm.example/change/${inputs.name}" };
+    const good = { rest, until: "steps.a.json == 'approved'", every: "10m", timeout: "72h" };
+    const problems = (poll: Record<string, unknown>, more: Record<string, unknown> = {}) =>
+      readComposite({ steps: [{ key: "a", poll, ...more }] }, "").problems.map((p) => [p.field, p.message]);
+
+    it("reads what it calls and waits for, not itself as an earlier step", () => {
+      const v = readComposite({
+        steps: [
+          { key: "first", item: "x" },
+          { key: "a", poll: { ...good, rest: { method: "PUT", url: "https://itsm.example/${steps.first.id}" } } },
+        ],
+      });
+      expect(v.problems).toEqual([]);
+      const s = v.groups[1]![0]!;
+      expect([s.kind, s.target, s.uses]).toEqual(["poll", "PUT https://itsm.example/${steps.first.id}", ["first"]]);
+      expect(s.poll).toEqual({ until: good.until, every: "10m", timeout: "72h, then the step fails" });
+      const goesOn = readComposite({ steps: [{ key: "a", poll: { ...good, on_timeout: "continue" } }] });
+      expect(goesOn.groups[0]![0]!.poll!.timeout).toBe("72h, then it goes on");
+    });
+
+    it("refuses what the server refuses", () => {
+      const repeats = expect.stringContaining("may only GET, PUT or DELETE") as string;
+      expect(problems(good)).toEqual([]);
+      expect(problems({ ...good, rest: undefined })).toEqual([["/steps/0/poll/rest", "Give the call it repeats."]]);
+      expect(problems({ ...good, rest: { ...rest, method: "POST" } })).toEqual([
+        ["/steps/0/poll/rest/method", repeats],
+      ]);
+      expect(problems({ ...good, rest: { ...rest, method: "PATCH" } })).toEqual([
+        ["/steps/0/poll/rest/method", repeats],
+      ]);
+      expect(problems({ ...good, until: "" })).toEqual([
+        ["/steps/0/poll/until", "Say what it waits for: a condition on the call's answer."],
+      ]);
+      expect(problems({ ...good, until: "inputs.x == 'y'" })).toEqual([
+        ["/steps/0/poll/until", expect.stringContaining("Read the call's answer, as steps.a.json")],
+      ]);
+      expect(problems({ ...good, every: "" })).toEqual([
+        ["/steps/0/poll/every", "Say how often it checks: a duration such as 10m."],
+      ]);
+      expect(problems({ ...good, every: "often" })).toEqual([["/steps/0/poll/every", "A duration such as 10m."]]);
+      expect(problems({ ...good, every: "59s" })).toEqual([
+        ["/steps/0/poll/every", expect.stringContaining("At least 1m")],
+      ]);
+      expect(problems({ ...good, timeout: "" })).toEqual([
+        ["/steps/0/poll/timeout", "Give it a deadline: a duration such as 72h."],
+      ]);
+      expect(problems({ ...good, timeout: "soon" })).toEqual([["/steps/0/poll/timeout", "A duration such as 72h."]]);
+      expect(problems({ ...good, timeout: "5m" })).toEqual([
+        ["/steps/0/poll/timeout", "At least as long as how often it checks."],
+      ]);
+      expect(problems({ ...good, on_timeout: "escalate" })).toEqual([
+        ["/steps/0/poll/on_timeout", "fail or continue."],
+      ]);
+      expect(problems(good, { with: { a: "1" }, undo: { job_template: "t" } })).toEqual([
+        ["/steps/0/with", expect.stringContaining("A poll has no inputs")],
+        ["/steps/0/undo", "A poll has nothing to undo."],
+      ]);
+    });
   });
 
   describe("a wait for a person", () => {

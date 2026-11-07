@@ -4865,10 +4865,12 @@ components:
             `template`, `post_config` only) and `components` with the same
             and their `key`, `title`, `count` and `anti_affinity`; a
             composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-            `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `when`, `undo`,
-            `parallel`), each binding in `with` reduced to the `steps.<key>` it
-            names, and of an `ask` only whether the requester or owner is
-            asked, its timeout and its form's keys: no names, groups or texts.
+            `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
+            `when`, `undo`, `parallel`), each binding in `with` reduced to the
+            `steps.<key>` it names, of an `ask` only whether the requester or
+            owner is asked, its timeout and its form's keys: no names, groups
+            or texts, and of a `poll`'s call only what a `rest` keeps. CEL
+            keeps what it reads, its string literals masked.
             Nothing else of the blueprint (guest settings, secrets, sizes,
             naming, placement, tags, variables). Absent for AWX and workflow
             items.
@@ -5713,12 +5715,16 @@ components:
         detail: { type: string }
         system:
           type: string
-          description: Who does the step; `rest` is a composite's REST call to another system (ADR-0033).
-          enum: [rvav, policy, vcenter, efficientip, awx, nsx, rest, person]
-          x-enum-varnames: [StepSystemRvav, StepSystemPolicy, StepSystemVcenter, StepSystemEfficientip, StepSystemAwx, StepSystemNsx, StepSystemRest]
+          description: Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person and `wait` its wait for a time or a condition (ADR-0033).
+          enum: [rvav, policy, vcenter, efficientip, awx, nsx, rest, person, wait]
+          x-enum-varnames: [StepSystemRvav, StepSystemPolicy, StepSystemVcenter, StepSystemEfficientip, StepSystemAwx, StepSystemNsx, StepSystemRest, StepSystemPerson, StepSystemWait]
         status: { $ref: "#/components/schemas/StepStatus" }
         started_at: { type: [string, "null"], format: date-time }
         finished_at: { type: [string, "null"], format: date-time }
+        due_at:
+          type: [string, "null"]
+          format: date-time
+          description: Until when a composite's wait for a time or a condition waits, its deadline for a condition (ADR-0033). A condition that ended has none.
         error: { type: string, description: Present when `status` is `failed`. }
         external_ref:
           type: object

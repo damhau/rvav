@@ -3606,10 +3606,12 @@ export interface components {
              *     `template`, `post_config` only) and `components` with the same
              *     and their `key`, `title`, `count` and `anti_affinity`; a
              *     composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-             *     `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `when`, `undo`,
-             *     `parallel`), each binding in `with` reduced to the `steps.<key>` it
-             *     names, and of an `ask` only whether the requester or owner is
-             *     asked, its timeout and its form's keys: no names, groups or texts.
+             *     `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
+             *     `when`, `undo`, `parallel`), each binding in `with` reduced to the
+             *     `steps.<key>` it names, of an `ask` only whether the requester or
+             *     owner is asked, its timeout and its form's keys: no names, groups
+             *     or texts, and of a `poll`'s call only what a `rest` keeps. CEL
+             *     keeps what it reads, its string literals masked.
              *     Nothing else of the blueprint (guest settings, secrets, sizes,
              *     naming, placement, tags, variables). Absent for AWX and workflow
              *     items.
@@ -4224,15 +4226,20 @@ export interface components {
             title: string;
             detail?: string;
             /**
-             * @description Who does the step; `rest` is a composite's REST call to another system (ADR-0033).
+             * @description Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person and `wait` its wait for a time or a condition (ADR-0033).
              * @enum {string}
              */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person";
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person" | "wait";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;
             /** Format: date-time */
             finished_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Until when a composite's wait for a time or a condition waits, its deadline for a condition (ADR-0033). A condition that ended has none.
+             */
+            due_at?: string | null;
             /** @description Present when `status` is `failed`. */
             error?: string;
             /** @description The object in the external system, for linking out. */

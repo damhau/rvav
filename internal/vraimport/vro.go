@@ -71,8 +71,9 @@ const (
 )
 
 // NewSteps are the step kinds D2 may add, in the order the report gives them.
-// A kind D2 has built leaves the list (REST call, wait for a person: ADR-0033).
-var NewSteps = []string{StepTime, StepEvent, StepNotify, StepBranch}
+// A kind D2 has built leaves the list (REST call, wait for a person, wait for
+// a time: ADR-0033).
+var NewSteps = []string{StepEvent, StepNotify, StepBranch}
 
 // compositeSteps are the steps a workflow of these item types, reaching
 // these systems, would be rebuilt with.
@@ -401,6 +402,8 @@ func TriageVRO(e *vra.Estate) Triage {
 		}
 		in := infos[w.ID]
 		reached, human, waits := wfSystems(w.ID, map[string]bool{})
+		kinds := wfKinds(w.ID, map[string]bool{})
+		events := kinds["waiting-event"] || kinds["custom-event"] || kinds["waiting-signal"]
 		it := TriageItem{Kind: "workflow", ID: w.ID, Name: w.Name, Category: w.Category, Inputs: w.Inputs,
 			UsedBy: orEmpty(uses["workflow:"+w.ID]), Runs: w.Runs, LastRun: w.LastRun, Systems: sortedKeys(reached)}
 		var copyOf string
@@ -418,10 +421,22 @@ func TriageVRO(e *vra.Estate) Triage {
 				it.Reasons = append(it.Reasons, "Its content is the same as "+names[copyOf]+"'s.")
 			}
 			it.Reasons = append(it.Reasons, runReason(w.Runs, w.LastRun))
-		case human && !waits && !runsAlone(it.UsedBy):
+		case (human || waits) && !events && !runsAlone(it.UsedBy):
 			it.Group = GroupNative
-			it.Becomes = "A composite item with a step that waits for a person"
-			it.Reasons = append(it.Reasons, "It waits for people (a user interaction): a composite step does (ADR-0033), for a group or named users, with a form or approve and reject, and a timeout.")
+			switch {
+			case human && waits:
+				it.Becomes = "A composite item with steps that wait for a person and for a time"
+			case waits:
+				it.Becomes = "A composite item with a step that waits for a time"
+			default:
+				it.Becomes = "A composite item with a step that waits for a person"
+			}
+			if human {
+				it.Reasons = append(it.Reasons, "It waits for people (a user interaction): a composite step does (ADR-0033), for a group or named users, with a form or approve and reject, and a timeout.")
+			}
+			if waits {
+				it.Reasons = append(it.Reasons, "It waits for a timer: a composite step does (ADR-0033), for a duration or until a time; a timer around a REST call is a step that polls it until a condition holds.")
+			}
 			if slices.Contains(it.Systems, "REST") {
 				it.Reasons = append(it.Reasons, "Its REST calls are REST call steps.")
 			}
@@ -430,13 +445,15 @@ func TriageVRO(e *vra.Estate) Triage {
 			}
 		case human || waits:
 			it.Group = GroupTemporal
-			if human && waits {
-				it.Reasons = append(it.Reasons, "It waits for people (a user interaction): as a composite item, a step would; until it can also wait for a time, a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
+			if human && events {
+				it.Reasons = append(it.Reasons, "It waits for people (a user interaction): as a composite item, a step would; until it can also wait for an event, a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
 			} else if human {
 				it.Reasons = append(it.Reasons, "It waits for people (a user interaction), and a subscription or a day-2 action runs it, not a composite: a custom workflow asks with rvav's approvals (rvav.RequestApproval).")
 			}
-			if waits {
-				it.Reasons = append(it.Reasons, "It waits for a timer or an event: a custom workflow waits as long as it needs, durably.")
+			if events {
+				it.Reasons = append(it.Reasons, "It waits for an event: a custom workflow waits as long as it needs, durably.")
+			} else if waits {
+				it.Reasons = append(it.Reasons, "It waits for a timer, and a subscription or a day-2 action runs it, not a composite: a custom workflow waits as long as it needs, durably.")
 			}
 			if others := without(it.Systems, "vCenter"); len(others) > 0 {
 				it.Reasons = append(it.Reasons, "It also reaches "+strings.Join(others, ", ")+": the custom workflow's worker does, with its own credentials.")
@@ -458,7 +475,7 @@ func TriageVRO(e *vra.Estate) Triage {
 		}
 		if it.Group != GroupDrop {
 			// Rebuilt as a composite: with the step kinds D2 may add, if any.
-			it.Steps = compositeSteps(wfKinds(w.ID, map[string]bool{}), it.Systems)
+			it.Steps = compositeSteps(kinds, it.Systems)
 			if added := slices.DeleteFunc(slices.Clone(it.Steps), func(s string) bool { return !slices.Contains(NewSteps, s) }); len(added) > 0 {
 				it.Reasons = append(it.Reasons, "As a composite item, with step kinds rvav may add (D2): "+strings.Join(added, ", ")+".")
 				for _, s := range added {

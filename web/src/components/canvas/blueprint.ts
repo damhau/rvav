@@ -48,15 +48,25 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   workflow: "Workflow",
   rest: "REST",
   ask: "Person",
+  wait: "Wait",
+  poll: "Poll",
   "?": "Step",
 };
 
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
-  if (s.target) lines.push({ label: s.kind === "rest" ? "Calls" : "Runs", text: s.target, mono: true });
+  if (s.target)
+    lines.push({ label: s.kind === "rest" || s.kind === "poll" ? "Calls" : "Runs", text: s.target, mono: true });
   if (s.ask) {
     lines.push({ label: "Asks", text: s.ask.who }, { label: "Wants", text: s.ask.wants });
     if (s.ask.timeout) lines.push({ label: "Timeout", text: s.ask.timeout });
+  }
+  if (s.wait?.for) lines.push({ label: "For", text: s.wait.for });
+  if (s.wait?.until) lines.push({ label: "Until", text: s.wait.until, mono: true });
+  if (s.poll) {
+    if (s.poll.until) lines.push({ label: "Until", text: s.poll.until, mono: true });
+    if (s.poll.every) lines.push({ label: "Every", text: s.poll.every });
+    if (s.poll.timeout) lines.push({ label: "Timeout", text: s.poll.timeout });
   }
   if (s.when) lines.push({ label: "When", text: s.when, mono: true });
   if (s.uses.length > 0) lines.push({ label: "Uses", text: s.uses.join(", "), mono: true });

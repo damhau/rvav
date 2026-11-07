@@ -1007,5 +1007,126 @@
         }
       ]
     }
+  },
+  {
+    "name": "probe-composite-wait",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "key": "keep",
+          "title": "Keep it",
+          "wait": {
+            "for": "72h"
+          }
+        },
+        {
+          "key": "window",
+          "wait": {
+            "until": "timestamp(inputs.window + 'T22:00:00Z-secret')"
+          },
+          "when": "inputs.size == 'huge-secret'"
+        },
+        {
+          "key": "change",
+          "poll": {
+            "every": "10m",
+            "on_timeout": "continue",
+            "rest": {
+              "accept": [
+                200,
+                418
+              ],
+              "keep": "$.result_secret",
+              "method": "GET",
+              "secret": "snow-token-name",
+              "url": "https://snow-secret.corp.example/api/${steps.keep.until}?token=tok_live_q&env=${environment == 'prod' ? 'p-secret' : ''}"
+            },
+            "timeout": "72h",
+            "until": "steps.change.json == 'approved-secret'"
+          },
+          "title": "The change"
+        },
+        {
+          "parallel": [
+            {
+              "key": "soon",
+              "wait": {
+                "for": "1h"
+              }
+            },
+            {
+              "key": "put",
+              "poll": {
+                "every": "1m",
+                "rest": {
+                  "body": "{'token': 'tok_live_b'}",
+                  "method": "PUT",
+                  "url": "https://snow-secret.corp.example/x"
+                },
+                "timeout": "1h",
+                "until": "steps.put.status == 200"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "key": "keep",
+          "title": "Keep it",
+          "wait": {
+            "for": "72h"
+          }
+        },
+        {
+          "key": "window",
+          "wait": {
+            "until": "timestamp(inputs.window + '…')"
+          },
+          "when": "inputs.size == '…'"
+        },
+        {
+          "key": "change",
+          "poll": {
+            "every": "10m",
+            "on_timeout": "continue",
+            "rest": {
+              "method": "GET",
+              "url": "…${steps.keep.until}…${environment == '…' ? '…' : ''}"
+            },
+            "timeout": "72h",
+            "until": "steps.change.json == '…'"
+          },
+          "title": "The change"
+        },
+        {
+          "parallel": [
+            {
+              "key": "soon",
+              "wait": {
+                "for": "1h"
+              }
+            },
+            {
+              "key": "put",
+              "poll": {
+                "every": "1m",
+                "rest": {
+                  "body": "{'…': '…'}",
+                  "method": "PUT",
+                  "url": "…"
+                },
+                "timeout": "1h",
+                "until": "steps.put.status == 200"
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 ]

@@ -108,7 +108,7 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 }
 
 // runCompositeStep runs one step and returns its outputs. A step that waits
-// for a person stops waiting when stop is cancelled.
+// (for a person, a time or a condition) stops waiting when stop is cancelled.
 func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
 	var a *Activities
 	key := c.StepKey()
@@ -189,8 +189,18 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
 			return stepResult{failed: key, err: err}
 		}
-	case c.Ask != nil:
-		result, stopped, err := runAsk(ctx, stop, info, c)
+	case c.Ask != nil, c.Wait != nil, c.Poll != nil:
+		var result map[string]any
+		var stopped bool
+		var err error
+		switch {
+		case c.Ask != nil:
+			result, stopped, err = runAsk(ctx, stop, info, c)
+		case c.Wait != nil:
+			result, stopped, err = runWait(ctx, stop, info, c)
+		default:
+			result, stopped, err = runPoll(ctx, stop, info, c)
+		}
 		switch {
 		case errors.Is(err, errContinueAsNew), temporal.IsCanceledError(err):
 			return stepResult{failed: key, err: err}

@@ -26,7 +26,7 @@ import (
 // Composite items (ADR-0022).
 
 // compositePart is one step of a composite item, evaluated: a VM item's
-// evaluation, an AWX job, a custom workflow or a REST call.
+// evaluation, an AWX job, a custom workflow, a REST call or a wait.
 type compositePart struct {
 	step  blueprint.CompositeStep
 	group int
@@ -36,6 +36,8 @@ type compositePart struct {
 	call  *provision.WorkflowCall
 	rest  *blueprint.RESTCall
 	ask   *blueprint.Ask
+	wait  *blueprint.Wait
+	poll  *blueprint.Poll
 	undo  *provision.CompositeUndo
 }
 
@@ -74,7 +76,7 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 		list, at := []blueprint.CompositeStep{st}, fmt.Sprintf("%s/steps/%d", ptr, g)
 		if len(st.Parallel) > 0 {
 			list = st.Parallel
-			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil || st.Ask != nil {
+			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil || st.Ask != nil || st.Wait != nil || st.Poll != nil {
 				errs = append(errs, fieldErr(at, "invalid", "A parallel group only lists steps."))
 			}
 		}
@@ -93,13 +95,13 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				errs = append(errs, fieldErr(sp+"/key", "duplicate", "Another step has the key "+s.Key+"."))
 			}
 			kinds := 0
-			for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil} {
+			for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil, s.Wait != nil, s.Poll != nil} {
 				if set {
 					kinds++
 				}
 			}
 			if kinds != 1 {
-				errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest or ask."))
+				errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait or poll."))
 			}
 			if s.AWX != nil && s.AWX.JobTemplate == "" {
 				errs = append(errs, fieldErr(sp+"/awx/job_template", "required", "Name the AWX template."))
@@ -128,6 +130,30 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 					errs = append(errs, fieldErr(sp+"/undo", "invalid", "A wait for a person has nothing to undo."))
 				}
 				errs = append(errs, checkAsk(*s.Ask, sp+"/ask")...)
+			}
+			if s.Wait != nil {
+				if len(s.With) > 0 {
+					errs = append(errs, fieldErr(sp+"/with", "invalid", "A wait for a time has no inputs."))
+				}
+				if s.Undo != nil {
+					errs = append(errs, fieldErr(sp+"/undo", "invalid", "A wait for a time has nothing to undo."))
+				}
+				waitErrs, waitExprs := checkWait(*s.Wait, sp+"/wait")
+				errs, exprs = append(errs, waitErrs...), append(exprs, waitExprs...)
+			}
+			var ownExprs []stepExpr
+			if s.Poll != nil {
+				if len(s.With) > 0 {
+					errs = append(errs, fieldErr(sp+"/with", "invalid", "A poll has no inputs: its URL, body and condition read inputs and steps themselves."))
+				}
+				if s.Undo != nil {
+					errs = append(errs, fieldErr(sp+"/undo", "invalid", "A poll has nothing to undo."))
+				}
+				pollErrs, pollExprs, until := checkPoll(*s.Poll, sp+"/poll")
+				errs, exprs, ownExprs = append(errs, pollErrs...), append(exprs, pollExprs...), until
+				if s.Poll.Until != "" && !readsOwnAnswer(s.Poll.Until, s.Key) {
+					errs = append(errs, fieldErr(sp+"/poll/until", "invalid", "Read the call's answer, as steps."+s.Key+".json or .status: nothing else changes during the wait."))
+				}
 			}
 			if s.Undo != nil {
 				undoKinds := 0
@@ -166,8 +192,9 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 			for _, x := range exprs {
 				check(x, "")
 			}
-			// An undo runs after its step: it reads that step's outputs too.
-			for _, x := range undoExprs {
+			// An undo runs after its step, and a poll's condition after each of
+			// its calls: they read that step's outputs too.
+			for _, x := range append(undoExprs, ownExprs...) {
 				check(x, s.Key)
 			}
 			if s.Key != "" {
@@ -231,6 +258,9 @@ func restCalls(b blueprint.Blueprint, ptr string) map[string]*blueprint.RESTCall
 	add := func(s blueprint.CompositeStep, at string) {
 		if s.REST != nil {
 			out[at+"/rest"] = s.REST
+		}
+		if s.Poll != nil && s.Poll.REST != nil {
+			out[at+"/poll/rest"] = s.Poll.REST
 		}
 		if s.Undo != nil && s.Undo.REST != nil {
 			out[at+"/undo/rest"] = s.Undo.REST
@@ -403,6 +433,20 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 				continue
 			}
 			part.ask = st.Ask
+		case st.Wait != nil:
+			part.wait = st.Wait
+		case st.Poll != nil:
+			if st.Poll.REST != nil {
+				why, err := s.restUnavailable(ctx, st.Poll.REST)
+				if err != nil {
+					return err
+				}
+				if why != "" {
+					add("", "not_available", label+" "+why)
+					continue
+				}
+			}
+			part.poll = st.Poll
 		}
 		if u := st.Undo; u != nil {
 			part.undo = &provision.CompositeUndo{With: u.With}

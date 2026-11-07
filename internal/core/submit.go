@@ -134,6 +134,10 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					c.REST = part.rest
 				case part.ask != nil:
 					c.Ask = part.ask
+				case part.wait != nil:
+					c.Wait = part.wait
+				case part.poll != nil:
+					c.Poll = part.poll
 				}
 				plan.Composite = append(plan.Composite, c)
 			}

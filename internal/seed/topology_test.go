@@ -46,6 +46,14 @@ var probes = []struct {
 	   "form": [{"key": "size", "label": "Label-secret", "type": "choice", "required": true, "options": ["opt-secret"], "default": "opt-secret"}]}},
 	  {"parallel": [{"key": "owner_ok", "ask": {"owner": true}},
 	                {"key": "mine", "ask": {"requester": true, "timeout": "1h", "on_timeout": "continue"}}]}]}`},
+	{"probe-composite-wait", `{"kind": "composite", "steps": [
+	  {"key": "keep", "title": "Keep it", "wait": {"for": "72h"}},
+	  {"key": "window", "when": "inputs.size == 'huge-secret'", "wait": {"until": "timestamp(inputs.window + 'T22:00:00Z-secret')"}},
+	  {"key": "change", "title": "The change", "poll": {"rest": {"method": "GET", "url": "https://snow-secret.corp.example/api/${steps.keep.until}?token=tok_live_q&env=${environment == 'prod' ? 'p-secret' : ''}",
+	   "secret": "snow-token-name", "accept": [200, 418], "keep": "$.result_secret"},
+	   "until": "steps.change.json == 'approved-secret'", "every": "10m", "timeout": "72h", "on_timeout": "continue"}},
+	  {"parallel": [{"key": "soon", "wait": {"for": "1h"}},
+	                {"key": "put", "poll": {"rest": {"method": "PUT", "url": "https://snow-secret.corp.example/x", "body": "{'token': 'tok_live_b'}"}, "until": "steps.put.status == 200", "every": "1m", "timeout": "1h"}}]}]}`},
 }
 
 type fixtureCase struct {

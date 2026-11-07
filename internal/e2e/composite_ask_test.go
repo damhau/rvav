@@ -66,7 +66,11 @@ type askRig struct {
 
 func (r askRig) publish(slug string, rollback bool, steps ...any) api.RequestDraft {
 	r.t.Helper()
-	def := askDefinition(rollback, steps...)
+	return r.publishDefinition(slug, askDefinition(rollback, steps...))
+}
+
+func (r askRig) publishDefinition(slug string, def api.CatalogVersionDefinition) api.RequestDraft {
+	r.t.Helper()
 	var item api.AdminCatalogItem
 	r.h.json("POST", "/api/v1/admin/catalog/items", r.admin, api.CatalogItemCreate{Slug: slug, Name: slug, Summary: "A wait.",
 		Category: "compute", Type: api.Composite, Definition: &def}, 201, &item)
@@ -297,7 +301,7 @@ func TestCompositeAsk(t *testing.T) {
 		req := rig.submit(requester, form)
 		rig.run(req.Id, moment{30 * time.Minute, func(env *testsuite.TestWorkflowEnvironment) {
 			step := rig.steps(req.Id, requester)["step:who"]
-			if step.Status != api.StepStatusRunning || deref(step.Detail) != "Waiting for a person" || step.System == nil || *step.System != api.Person {
+			if step.Status != api.StepStatusRunning || deref(step.Detail) != "Waiting for a person" || step.System == nil || *step.System != api.StepSystemPerson {
 				t.Errorf("the waiting step = %+v", step)
 			}
 			row := rig.open(req.Id, "sbrunner")
