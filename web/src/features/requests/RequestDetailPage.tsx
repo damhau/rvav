@@ -19,6 +19,7 @@ import { useRequestStream } from "@/lib/live/LiveProvider";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { duration, toText } from "@/lib/utils";
+import { AskPanel } from "./AskPanel";
 import { FailureActions } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
 import { failedNode, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
@@ -89,7 +90,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
     me.projects.some((p) => p.project.id === pid && (p.role === "member" || p.role === "project-admin"));
   const steps = useQuery({ ...q.steps(id ?? ""), enabled: Boolean(id) });
   const approvals = useQuery({ ...q.requestApprovals(id ?? ""), enabled: Boolean(id) });
-  const levels = approvals.data?.items ?? [];
+  const levels = (approvals.data?.items ?? []).filter((a) => !a.step_key);
+  // A composite step's wait for a person (ADR-0033) has its own panel.
+  const asked = (approvals.data?.items ?? []).filter((a) => a.step_key);
   const mine = levels.find((a) => a.can_decide);
   const [chosenLog, setChosenLog] = useState<string | null>(null);
   // A composite's run is drawn on what its version builds (ADR-0032).
@@ -270,6 +273,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               </div>
             )}
           </section>
+
+          {asked.length > 0 && <AskPanel rows={asked} />}
 
           {levels.length > 0 && (
             <Panel

@@ -4,8 +4,10 @@ import type {
   Approval,
   ApprovalEditableField,
   ApprovalPreview,
+  ApprovalQuestionField,
   ApprovalSummary,
   ApprovalVote,
+  FieldError,
   RequestForm,
   ServiceRequest,
   UserRef,
@@ -22,13 +24,13 @@ interface Ctx {
   forms: Record<string, RequestForm>;
 }
 
-/** Whether the viewer may decide: an approver or delegate, not the requester, no vote yet. */
+/** Whether the viewer may decide: an approver or delegate, no vote yet; the requester only if a step asks them. */
 export function canDecide(ctx: Ctx, a: StoredApproval): boolean {
   const named = a.approvers.some((u) => u.id === ctx.me.user.id) || a.delegates.some((u) => u.id === ctx.me.user.id);
   return (
     a.status === "pending" &&
     named &&
-    a.requester.id !== ctx.me.user.id &&
+    (Boolean(a.step_key) || a.requester.id !== ctx.me.user.id) &&
     !a.votes.some((v) => v.user.id === ctx.me.user.id)
   );
 }
@@ -54,6 +56,7 @@ export function summaryOf(ctx: Ctx, a: StoredApproval): ApprovalSummary {
     overdue: overdue(a),
     escalated: a.escalated ?? false,
     can_decide: canDecide(ctx, a),
+    ...(a.step_key ? { step_key: a.step_key } : {}),
   };
 }
 
@@ -72,12 +75,51 @@ export function editableFields(ctx: Ctx, r: ServiceRequest): ApprovalEditableFie
 
 export function viewOf(ctx: Ctx, a: StoredApproval, r: ServiceRequest | undefined): Approval {
   const decide = canDecide(ctx, a);
+  const { question, ...rest } = a;
   return {
-    ...a,
+    ...rest,
+    // What a step asks is for those it names.
+    ...(question && isApproverOf(ctx, a) ? { question } : {}),
     overdue: overdue(a),
     can_decide: decide,
-    editable_fields: decide && r ? editableFields(ctx, r) : [],
+    editable_fields: decide && r && !a.step_key ? editableFields(ctx, r) : [],
   };
+}
+
+/**
+ * What is wrong with an answer to a step's form, and the answer without what
+ * was left blank, as the server's checkAskAnswer.
+ */
+export function checkAnswer(
+  form: ApprovalQuestionField[],
+  answer: Record<string, unknown>,
+): { clean: Record<string, unknown>; errors: FieldError[] } {
+  const errors: FieldError[] = [];
+  const clean: Record<string, unknown> = {};
+  for (const k of Object.keys(answer))
+    if (!form.some((f) => f.key === k))
+      errors.push({ field: `/answer/${k}`, code: "unknown", message: "This form doesn't ask this." });
+  for (const f of form) {
+    const v = answer[f.key];
+    const field = `/answer/${f.key}`;
+    if (v === undefined || v === null || v === "") {
+      if (f.required) errors.push({ field, code: "required", message: "Answer this." });
+      continue;
+    }
+    const why =
+      f.type === "string" && typeof v !== "string"
+        ? "Give text."
+        : f.type === "number" && typeof v !== "number"
+          ? "Give a number."
+          : f.type === "boolean" && typeof v !== "boolean"
+            ? "Give true or false."
+            : f.type === "choice" && !(typeof v === "string" && (f.options ?? []).includes(v))
+              ? `Choose one of: ${(f.options ?? []).join(", ")}.`
+              : "";
+    if (why) errors.push({ field, code: "invalid", message: why });
+    else clean[f.key] = v;
+  }
+  return { clean, errors };
 }
 
 /** A few lines on what the request creates, as the API derives them from the plan. */

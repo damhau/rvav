@@ -37,9 +37,21 @@ type Raw = Record<string, unknown>;
 export const yamlOutput = { indent: 2, lineWidth: 0, flowCollectionPadding: false } as const;
 
 /** The order a step's keys are written in, so a key added lands where a reader expects it. */
-const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "when", "with", "undo"];
+const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "ask", "when", "with", "undo"];
 const undoOrder = ["job_template", "workflow", "rest", "with"];
 const restOrder = ["method", "url", "body", "secret", "accept", "keep"];
+const askOrder = [
+  "group",
+  "approvers",
+  "requester",
+  "owner",
+  "message",
+  "form",
+  "timeout",
+  "on_timeout",
+  "escalate_to",
+];
+const questionOrder = ["key", "label", "type", "required", "options", "default"];
 const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
 
 export const blueprintPrefix = "/definition/blueprint";
@@ -422,25 +434,32 @@ export type Target =
   | { kind: "awx"; ref: string; workflow?: boolean; templateId?: number }
   | { kind: "workflow"; ref: string }
   /** A REST call: what it names is in its own fields. */
-  | { kind: "rest"; ref: "" };
+  | { kind: "rest"; ref: "" }
+  /** A wait for a person: who, in its own fields. */
+  | { kind: "ask"; ref: "" };
 
 /** A REST call just added: it says what is missing until its URL is written. */
 export const newRestCall = (method: string) => ({ method, url: "" });
 
 /**
- * What a step runs: one of an item, an AWX template, a custom workflow or a
- * REST call; the others are removed. An AWX template is written by its name
- * and, when known, its ID (awx.template_id: it is launched by it); another
- * template's ID and title go with it, its inputs' bindings stay. A REST call
- * has no inputs: its URL and body read them, so its bindings go.
+ * What a step runs: one of an item, an AWX template, a custom workflow, a
+ * REST call or a wait for a person; the others are removed. An AWX template is
+ * written by its name and, when known, its ID (awx.template_id: it is launched
+ * by it); another template's ID and title go with it, its inputs' bindings
+ * stay. A REST call has no inputs: its URL and body read them, so its bindings
+ * go. A wait has no inputs, and nothing to undo.
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node } = locate(doc, id);
-  for (const k of ["item", "awx", "workflow", "rest"]) if (k !== t.kind) node.delete(k);
+  for (const k of ["item", "awx", "workflow", "rest", "ask"]) if (k !== t.kind) node.delete(k);
   if (t.kind === "rest") {
     node.delete("with");
     if (!isMap(own(doc, node, "rest"))) put(doc, node, "rest", newRestCall("GET"), stepOrder);
+  } else if (t.kind === "ask") {
+    node.delete("with");
+    node.delete("undo");
+    if (!isMap(own(doc, node, "ask"))) put(doc, node, "ask", {}, stepOrder);
   } else if (t.kind === "awx") {
     const awx = own(doc, node, "awx");
     if (isMap(awx)) {
@@ -567,6 +586,123 @@ export function setRestField(
     const list = doc.createNode(value) as YAMLSeq;
     list.flow = true;
     put(doc, call, field, list, restOrder);
+  }
+  return save(doc);
+}
+
+export type AskField = "group" | "approvers" | "requester" | "owner" | "message" | "timeout" | "on_timeout";
+
+/** A flow list on one line: approvers, a question's options. */
+function flowList(doc: Document, value: string[]): YAMLSeq {
+  const list = doc.createNode(value) as YAMLSeq;
+  list.flow = true;
+  return list;
+}
+
+/** A step's wait for a person, from a document. */
+function askOf(doc: Document, id: string): YAMLMap {
+  const ask = own(doc, locate(doc, id).node, "ask");
+  if (!isMap(ask)) throw new EditError("It doesn't wait for a person.");
+  // `ask: {}` as just added opens up as it fills.
+  ask.flow = false;
+  return ask;
+}
+
+/**
+ * One field of a step's wait for a person. Empty or false removes it; without
+ * a timeout, what it does and whom it escalates to go, and whom it escalates
+ * to when it no longer does.
+ */
+export function setAskField(text: string, id: string, field: AskField, value: string | string[] | boolean): string {
+  const doc = load(text);
+  const ask = askOf(doc, id);
+  const v = typeof value === "string" ? value.trim() : value;
+  if (v === "" || v === false || (Array.isArray(v) && v.length === 0)) ask.delete(field);
+  else put(doc, ask, field, Array.isArray(v) ? flowList(doc, v) : v, askOrder);
+  if (field === "timeout" && !v) {
+    ask.delete("on_timeout");
+    ask.delete("escalate_to");
+  }
+  if (field === "on_timeout" && v !== "escalate") ask.delete("escalate_to");
+  return save(doc);
+}
+
+/** Whom a wait escalates to: a group or people. Neither removes it. */
+export function setAskEscalate(
+  text: string,
+  id: string,
+  field: "group" | "approvers",
+  value: string | string[],
+): string {
+  const doc = load(text);
+  const ask = askOf(doc, id);
+  if (!isMap(own(doc, ask, "escalate_to"))) put(doc, ask, "escalate_to", {}, askOrder);
+  const to = own(doc, ask, "escalate_to") as YAMLMap;
+  to.flow = false;
+  const v = typeof value === "string" ? value.trim() : value;
+  if (v.length === 0) to.delete(field);
+  else put(doc, to, field, Array.isArray(v) ? flowList(doc, v) : v, ["group", "approvers"]);
+  if (to.items.length === 0) ask.delete("escalate_to");
+  return save(doc);
+}
+
+/** The next free key for a question of a form. */
+function questionKey(form: YAMLSeq | undefined): string {
+  const taken = new Set((form?.items ?? []).map((q) => (isMap(q) ? scalarText(q.get("key", true)) : "")));
+  let n = 1;
+  while (taken.has(`question_${n}`)) n++;
+  return `question_${n}`;
+}
+
+/** Adds a question to a wait's form: text, until told otherwise. */
+export function addAskQuestion(text: string, id: string): string {
+  const doc = load(text);
+  const ask = askOf(doc, id);
+  const form = own(doc, ask, "form");
+  const q = doc.createNode({ key: questionKey(isSeq(form) ? form : undefined), label: "", type: "string" });
+  if (isSeq(form)) {
+    form.flow = false;
+    form.items.push(q);
+  } else put(doc, ask, "form", doc.createNode([q]), askOrder);
+  return save(doc);
+}
+
+/** Removes a question from a wait's form, and the form with its last question. */
+export function removeAskQuestion(text: string, id: string, index: number): string {
+  const doc = load(text);
+  const ask = askOf(doc, id);
+  const form = own(doc, ask, "form");
+  if (!isSeq(form) || index < 0 || index >= form.items.length) throw new EditError("That question isn't there.");
+  form.items.splice(index, 1);
+  if (form.items.length === 0) ask.delete("form");
+  return save(doc);
+}
+
+export type QuestionField = "key" | "label" | "type" | "required" | "options" | "default";
+
+/**
+ * One field of a question. Its key, text and type stay, for the step to say
+ * what is missing; another type takes what the old one offered with it.
+ */
+export function setAskQuestion(
+  text: string,
+  id: string,
+  index: number,
+  field: QuestionField,
+  value: string | number | boolean | string[] | undefined,
+): string {
+  const doc = load(text);
+  const ask = askOf(doc, id);
+  const form = own(doc, ask, "form");
+  const q = isSeq(form) ? form.items[index] : undefined;
+  if (!isMap(q)) throw new EditError("That question isn't there.");
+  const v = typeof value === "string" ? value.trim() : value;
+  if (field === "key" || field === "label" || field === "type") put(doc, q, field, v ?? "", questionOrder);
+  else if (v === undefined || v === "" || v === false || (Array.isArray(v) && v.length === 0)) q.delete(field);
+  else put(doc, q, field, Array.isArray(v) ? flowList(doc, v) : v, questionOrder);
+  if (field === "type") {
+    q.delete("default");
+    if (v !== "choice") q.delete("options");
   }
   return save(doc);
 }

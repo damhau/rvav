@@ -3,12 +3,17 @@ import { describe, expect, it } from "vitest";
 import { seededBlueprint } from "@/mocks/blueprints";
 import { toYaml } from "../definitionYaml";
 import {
+  addAskQuestion,
   addStep,
   EditError,
   joinPrevious,
   moveStep,
   readStep,
+  removeAskQuestion,
   removeStep,
+  setAskEscalate,
+  setAskField,
+  setAskQuestion,
   setBinding,
   setRestField,
   setRollback,
@@ -391,5 +396,109 @@ describe("a step's REST call", () => {
     expect(steps[1]!.undo).toEqual({
       rest: { method: "DELETE", url: "https://h.example/${steps.server.id}/${steps.cmdb.json.id}" },
     });
+  });
+});
+
+describe("a step's wait for a person", () => {
+  const stepsOf = (text: string) =>
+    (parse(text) as { blueprint: { steps: Record<string, unknown>[] } }).blueprint.steps;
+  const made = () =>
+    setTarget(
+      definition({
+        kind: "composite",
+        steps: [
+          { key: "vm", awx: { job_template: "t" }, with: { a: "inputs.a" }, undo: { job_template: "u" } },
+          { key: "later", item: "x", with: { b: "steps.vm.answer.ok" } },
+        ],
+      }),
+      "step:vm",
+      { kind: "ask", ref: "" },
+    );
+  const ask = (text: string) => stepsOf(text)[0]!.ask as Record<string, unknown>;
+
+  it("replaces what the step ran, its inputs and its undo", () => {
+    expect(stepsOf(made())[0]).toEqual({ key: "vm", ask: {} });
+    // Asked again, it keeps what it has.
+    const filled = setAskField(made(), "step:vm", "requester", true);
+    expect(setTarget(filled, "step:vm", { kind: "ask", ref: "" })).toBe(filled);
+    // Back to a template: the wait goes.
+    expect(stepsOf(setTarget(filled, "step:vm", { kind: "awx", ref: "t" }))[0]).toEqual({
+      key: "vm",
+      awx: { job_template: "t" },
+    });
+  });
+
+  it("writes its fields in order, and removes what is emptied", () => {
+    let text = made();
+    text = setAskField(text, "step:vm", "timeout", " 48h ");
+    text = setAskField(text, "step:vm", "message", "Why?");
+    text = setAskField(text, "step:vm", "requester", true);
+    text = setAskField(text, "step:vm", "approvers", ["u1", "u2"]);
+    text = setAskField(text, "step:vm", "group", "managers");
+    expect(Object.keys(ask(text))).toEqual(["group", "approvers", "requester", "message", "timeout"]);
+    expect(text).toContain("approvers: [u1, u2]");
+    expect(ask(text).timeout).toBe("48h");
+    expect(ask(setAskField(text, "step:vm", "requester", false))).not.toHaveProperty("requester");
+    expect(ask(setAskField(text, "step:vm", "approvers", []))).not.toHaveProperty("approvers");
+    expect(ask(setAskField(text, "step:vm", "group", " "))).not.toHaveProperty("group");
+  });
+
+  it("drops what depends on a timeout with it, and whom it escalates to with its escalation", () => {
+    let text = setAskField(made(), "step:vm", "timeout", "1h");
+    text = setAskField(text, "step:vm", "on_timeout", "escalate");
+    text = setAskEscalate(text, "step:vm", "approvers", ["u9"]);
+    text = setAskEscalate(text, "step:vm", "group", "chiefs");
+    expect(ask(text).escalate_to).toEqual({ group: "chiefs", approvers: ["u9"] });
+    const back = setAskField(text, "step:vm", "on_timeout", "continue");
+    expect(ask(back).on_timeout).toBe("continue");
+    expect(ask(back)).not.toHaveProperty("escalate_to");
+    const none = setAskField(text, "step:vm", "timeout", "");
+    expect(Object.keys(ask(none))).toEqual([]);
+    // Nobody left: it goes.
+    const gone = setAskEscalate(setAskEscalate(text, "step:vm", "group", ""), "step:vm", "approvers", []);
+    expect(ask(gone)).not.toHaveProperty("escalate_to");
+  });
+
+  it("adds, changes and removes the questions of its form", () => {
+    let text = addAskQuestion(addAskQuestion(made(), "step:vm"), "step:vm");
+    const form = () => ask(text).form as Record<string, unknown>[];
+    expect(form().map((q) => q.key)).toEqual(["question_1", "question_2"]);
+    text = setAskQuestion(text, "step:vm", 1, "key", "size");
+    text = setAskQuestion(text, "step:vm", 1, "label", "How big?");
+    text = setAskQuestion(text, "step:vm", 1, "type", "choice");
+    text = setAskQuestion(text, "step:vm", 1, "options", ["S", "L"]);
+    text = setAskQuestion(text, "step:vm", 1, "default", "S");
+    text = setAskQuestion(text, "step:vm", 1, "required", true);
+    expect(form()[1]).toEqual({
+      key: "size",
+      label: "How big?",
+      type: "choice",
+      required: true,
+      options: ["S", "L"],
+      default: "S",
+    });
+    // A key taken back is free again; another type takes what the old one offered.
+    expect(addAskQuestion(setAskQuestion(text, "step:vm", 0, "key", "x"), "step:vm")).toContain("question_1");
+    text = setAskQuestion(text, "step:vm", 1, "type", "number");
+    expect(form()[1]).toEqual({ key: "size", label: "How big?", type: "number", required: true });
+    text = setAskQuestion(text, "step:vm", 1, "required", false);
+    expect(form()[1]).not.toHaveProperty("required");
+    // Emptied, a key stays for the step to say what is missing.
+    expect((ask(setAskQuestion(text, "step:vm", 1, "key", "")).form as { key: string }[])[1]!.key).toBe("");
+    text = removeAskQuestion(text, "step:vm", 0);
+    expect(form().map((q) => q.key)).toEqual(["size"]);
+    expect(ask(removeAskQuestion(text, "step:vm", 0))).not.toHaveProperty("form");
+    expect(() => removeAskQuestion(text, "step:vm", 5)).toThrow(EditError);
+  });
+
+  it("refuses a step that doesn't wait", () => {
+    expect(() => setAskField(made(), "step:later", "requester", true)).toThrow(EditError);
+  });
+
+  it("leaves its message alone when a step's key is renamed", () => {
+    const text = setAskField(made(), "step:vm", "message", "See steps.vm in the runbook");
+    const renamed = setStepField(text, "step:vm", "key", "manager");
+    expect(ask(renamed).message).toBe("See steps.vm in the runbook");
+    expect(stepsOf(renamed)[1]!.with).toEqual({ b: "steps.manager.answer.ok" });
   });
 });

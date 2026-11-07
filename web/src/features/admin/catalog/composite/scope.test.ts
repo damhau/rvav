@@ -250,3 +250,51 @@ describe("a REST call step", () => {
     expect(designerProblems({ blueprint: { steps: [call] } }, targets)).toEqual([]);
   });
 });
+
+describe("a wait for a person", () => {
+  const step = {
+    key: "manager",
+    ask: {
+      group: "managers",
+      form: [
+        { key: "size", label: "How big?", type: "number" },
+        { key: "ok", label: "OK?", type: "boolean" },
+        { key: "why", label: "Why?", type: "string" },
+      ],
+    },
+  };
+
+  it("is a target of its own", () => {
+    expect(targetOf(step)).toEqual({ kind: "ask", ref: "" });
+    expect(targetValue(targetOf(step)!)).toBe("ask:");
+  });
+
+  it("gives later steps who answered and each of its form's answers", () => {
+    const { outputs, open } = outputsOf(step, []);
+    expect(open).toBe(false);
+    expect(outputs.map((o) => [o.name, o.type])).toEqual([
+      ["answered", "boolean"],
+      ["by", "string"],
+      ["comment", "string"],
+      ["answer.size", "number"],
+      ["answer.ok", "boolean"],
+      ["answer.why", "string"],
+    ]);
+    expect(outputsOf({ key: "m", ask: {} }, []).outputs.map((o) => o.name)).toEqual(["answered", "by", "comment"]);
+  });
+
+  it("is offered to the steps after it, not to those beside it", () => {
+    const def = { blueprint: { kind: "composite", steps: [step, { key: "next", item: "x" }] } };
+    expect(bindingSources(def, { g: 1, planned: false }, []).map((s) => s.value)).toContain(
+      "steps.manager.answer.size",
+    );
+    expect(bindingSources(def, { g: 0, planned: false }, []).map((s) => s.value)).not.toContain(
+      "steps.manager.answered",
+    );
+  });
+
+  it("has nothing to say when it is requested: who asks is known then", () => {
+    const def = { blueprint: { kind: "composite", steps: [{ key: "m", ask: { approvers: ["u1"] } }] } };
+    expect(designerProblems(def, [])).toEqual([]);
+  });
+});

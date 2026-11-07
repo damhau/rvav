@@ -1,6 +1,7 @@
 // Simulates the Temporal provisioning workflow: steps advance on a timer,
 // resources appear in the deployment, and every change is published as an event.
 import type {
+  ApprovalQuestionField,
   DeploymentDetail,
   DnsRecordResource,
   DrsRuleResource,
@@ -13,6 +14,8 @@ import type {
   Step,
   VmResource,
 } from "@/lib/api/types";
+import { goDuration } from "@/lib/composite";
+import type { StoredApproval } from "./approvals";
 import { completeDay2Step, day2Finished } from "./day2";
 import { publishedBlueprint } from "./catalogAdmin";
 import { celBool } from "./cel";
@@ -28,6 +31,8 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const hosts = new Map<string, string>();
 /** The address reserved for each VM of a multi-VM deployment, by name. */
 const ips = new Map<string, string>();
+/** What each step that waits for a person asks, by step ID. */
+const asks = new Map<string, Rec>();
 
 const now = () => new Date().toISOString();
 const text = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -121,6 +126,10 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       out.push({ ...awxJob(template, "localhost", jobBase + out.length), key, title: `${title} · ${template}` });
     } else if (st.rest) {
       out.push(step(key, title, "rest", { detail: `REST call · ${text((st.rest as Rec).method)}` }));
+    } else if (st.ask) {
+      const s = step(key, title, "person", { detail: "Waits for a person" });
+      asks.set(s.id, st.ask as Rec);
+      out.push(s);
     } else {
       out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
     }
@@ -478,6 +487,105 @@ function completeStep(r: StoredRequest, s: Step) {
   if (own.startsWith("step:")) s.title = title;
 }
 
+export function publishApproval(a: StoredApproval) {
+  bus.publish({
+    event: {
+      id: bus.nextId(),
+      type: "approval.updated",
+      at: now(),
+      data: { approval_id: a.id, request_id: a.request.id, status: a.status },
+    },
+    projectId: a.project.id,
+    requestId: a.request.id,
+    userIds: [...a.approvers, ...a.delegates].map((u) => u.id),
+  });
+}
+
+const stepTimeoutAction: Record<string, StoredApproval["on_timeout"]> = {
+  continue: "approve",
+  escalate: "escalate",
+};
+
+/**
+ * A step starts waiting for a person: it asks those it names, as an approval
+ * row with its form (provision.OpenAsk). A group stands for everyone but the
+ * requester here: the mocks have no groups, and nobody answers their own request.
+ */
+function openAsk(r: StoredRequest, s: Step) {
+  const ask = asks.get(s.id) ?? {};
+  const requester = r.request.requester;
+  const named = (Array.isArray(ask.approvers) ? ask.approvers : []).map(String);
+  const approvers = db.users.filter(
+    (u) =>
+      (ask.group && u.id !== requester.id) ||
+      (named.includes(u.id) && u.id !== requester.id) ||
+      ((ask.requester || ask.owner) && u.id === requester.id),
+  );
+  const form = (Array.isArray(ask.form) ? ask.form : []) as ApprovalQuestionField[];
+  const ms = goDuration(text(ask.timeout));
+  const row: StoredApproval = {
+    id: newId("apr"),
+    request: { id: r.request.id, number: r.request.number, title: r.request.title, status: r.request.status },
+    project: r.request.project,
+    environment: r.request.environment,
+    requester,
+    submitted_at: r.request.submitted_at,
+    level: { index: 1, count: 1, name: s.title },
+    reasons: [],
+    rules: [],
+    status: "pending",
+    due_at: ms ? new Date(Date.now() + ms).toISOString() : null,
+    escalated: false,
+    facts: [],
+    group: text(ask.group) || null,
+    approvers,
+    mode: "any",
+    votes: [],
+    delegates: [],
+    on_timeout: ms ? (stepTimeoutAction[text(ask.on_timeout)] ?? "reject") : null,
+    escalate_to: null,
+    decided_at: null,
+    outcome: null,
+    step_key: s.key,
+    question: { ...(text(ask.message) ? { message: text(ask.message) } : {}), form },
+  };
+  db.approvals.push(row);
+  s.detail = "Waiting for a person";
+  publishApproval(row);
+  if (approvers.some((u) => u.id === db.me.user.id))
+    publish(r, {
+      type: "notification",
+      data: {
+        id: newId("ntf"),
+        title: `Your answer is needed: ${s.title}`,
+        body: text(ask.message) || `${r.request.number} · ${r.request.title}`,
+        level: "warning",
+        link: `/requests/${r.request.number}`,
+      },
+    } as Omit<LiveEvent, "id" | "at">);
+}
+
+/** A step's wait was answered: it says so, and the run goes on. */
+export function stepAnswered(r: StoredRequest, key: string, outcome: string) {
+  const s = r.steps.find((x) => x.key === key && x.status === "running");
+  if (!s) return;
+  complete(r, s);
+  s.detail = outcome;
+  publishStep(r, s);
+  schedule(r.request.id);
+}
+
+/** A step's wait was rejected: the step fails, and with it the request. A Retry asks again. */
+export function stepRejected(r: StoredRequest, key: string, error: string) {
+  const s = r.steps.find((x) => x.key === key && x.status === "running");
+  if (!s) return;
+  Object.assign(s, { status: "failed", finished_at: now(), error });
+  publishStep(r, s);
+  Object.assign(r.request, { status: "failed", finished_at: now(), error: { step_id: s.id, message: error } });
+  publishRequest(r);
+  timers.delete(r.request.id);
+}
+
 /** One tick: finish the running unit of work and start the next one. */
 function tick(requestId: string) {
   const r = db.requests.find((x) => x.request.id === requestId);
@@ -487,10 +595,13 @@ function tick(requestId: string) {
 
   const s = r.steps.find((x) => x.status === "running") ?? r.steps.find((x) => x.status === "pending");
   if (!s) return finish(r);
+  // It waits for a person: the answer starts it again, as a cancel does.
+  if (s.status === "running" && s.system === "person") return;
 
   if (s.status === "pending") {
     s.status = "running";
     s.started_at = now();
+    if (s.system === "person") openAsk(r, s);
     if (isJob(s)) {
       s.children[0]!.status = "running";
       s.children[0]!.started_at = now();
@@ -538,6 +649,7 @@ function tick(requestId: string) {
       }
       next.status = "running";
       next.started_at = now();
+      if (next.system === "person") openAsk(r, next);
       if (isJob(next)) {
         next.children[0]!.status = "running";
         next.children[0]!.started_at = now();

@@ -15,7 +15,8 @@
 // of the steps before it (not those running at the same time; none for a
 // VM step, planned from the form when the request is submitted), or a
 // value or CEL expression written out. A REST call has no inputs: its URL and
-// body read them, and it says what it can read (ADR-0033).
+// body read them, and it says what it can read. A wait for a person has neither
+// inputs nor an undo: who it asks, what, and for how long (ADR-0033).
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -92,9 +93,11 @@ const kindGroup: Record<StepTarget["kind"], string> = {
   awx: "AWX templates",
   workflow: "Custom workflows",
   rest: "REST APIs",
+  ask: "People",
 };
 const byName = "awx-by-name";
 const restValue = targetValue({ kind: "rest", ref: "" });
+const askValue = targetValue({ kind: "ask", ref: "" });
 const restMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 /** What a step can run, for a picker: grouped, the step's own first if it isn't listed. */
@@ -114,6 +117,7 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Op
     });
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
   out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
+  out.push({ value: askValue, label: "A person", group: kindGroup.ask });
   return out;
 }
 
@@ -127,7 +131,7 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
     const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
     return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
-  if (kind === "rest") return { kind, ref: "" };
+  if (kind === "rest" || kind === "ask") return { kind, ref: "" };
   if (kind !== "item" && kind !== "workflow") return undefined;
   return { kind, ref };
 }
@@ -143,6 +147,7 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
       ...(target.workflow ? { workflow: true } : {}),
     };
   else if (target.kind === "rest") step.rest = edits.newRestCall("GET");
+  else if (target.kind === "ask") step.ask = {};
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -439,6 +444,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const open = planned ? [] : openEarlier(def, g, targets);
   const withMap = obj(step.with);
   const rest = target?.kind === "rest";
+  const ask = target?.kind === "ask";
   const inputs = listed?.inputs ?? [];
   const others = [...new Set([...Object.keys(withMap), ...extra])].filter((k) => !inputs.some((i) => i.name === k));
   const undo = step.undo === undefined ? undefined : obj(step.undo);
@@ -624,7 +630,9 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {!rest && (
+      {ask && <AskFields ask={obj(step.ask)} id={id} stepKey={key} ctx={ctx} />}
+
+      {!rest && !ask && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Inputs</legend>
           {target?.kind === "item" && !listed && (
@@ -680,7 +688,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {!planned && (
+      {!planned && !ask && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Undo</legend>
           <UndoEditor
@@ -963,6 +971,255 @@ function RestCallFields({
   );
 }
 
+/** People, written as user IDs on one line. */
+const writtenUsers = (text: string) => text.split(/[\s,]+/).filter(Boolean);
+const listText = (v: unknown) => (Array.isArray(v) ? v.map(String).join(", ") : "");
+
+const questionTypes: Option[] = [
+  { value: "string", label: "Text" },
+  { value: "number", label: "A number" },
+  { value: "boolean", label: "Yes or no" },
+  { value: "choice", label: "A choice" },
+];
+const onTimeoutOptions: Option[] = [
+  { value: "fail", label: "The step fails" },
+  { value: "continue", label: "It goes on with no answer" },
+  { value: "escalate", label: "It escalates" },
+];
+
+/** A question's default as written: of the question's type, or as text for the step to say what is wrong. */
+export function writtenDefault(type: string, text: string): string | number | boolean | undefined {
+  const t = text.trim();
+  if (!t) return undefined;
+  if (type === "number" && /^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+  if (type === "boolean" && (t === "true" || t === "false")) return t === "true";
+  return t;
+}
+
+/** A wait for a person: who it asks, what it says and asks, how long it waits and what happens then. */
+function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: string; ctx: PanelContext }) {
+  const { text, apply } = ctx;
+  const set = (field: edits.AskField, v: string | string[] | boolean) =>
+    apply(() => edits.setAskField(text, id, field, v));
+  const form = Array.isArray(ask.form) ? (ask.form as unknown[]).map(obj) : [];
+  const timeout = str(ask.timeout);
+  const onTimeout = str(ask.on_timeout);
+  const escalate = obj(ask.escalate_to);
+  const reads = `steps.${stepKey || "<key>"}`;
+  return (
+    <>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>Who is asked</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="OIDC group" htmlFor="cd-ask-group" hint="Its members, but for the requester.">
+            <CommitInput id="cd-ask-group" value={str(ask.group)} onCommit={(v) => set("group", v)} />
+          </Field>
+          <Field
+            label="Approvers"
+            htmlFor="cd-ask-approvers"
+            hint="User IDs, separated by commas. Nobody answers their own request unless it asks the requester."
+          >
+            <CommitInput
+              id="cd-ask-approvers"
+              value={listText(ask.approvers)}
+              className="font-mono text-xs"
+              onCommit={(v) => set("approvers", writtenUsers(v))}
+            />
+          </Field>
+          <div className="flex items-center gap-2">
+            <Checkbox id="cd-ask-requester" checked={ask.requester === true} onChange={(v) => set("requester", v)} />
+            <label htmlFor="cd-ask-requester">The requester</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="cd-ask-owner" checked={ask.owner === true} onChange={(v) => set("owner", v)} />
+            <label htmlFor="cd-ask-owner">The owner</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>What they answer</legend>
+        <Field
+          label="Message"
+          htmlFor="cd-ask-message"
+          hint="Fixed text, for those asked: nothing of the request is filled in."
+        >
+          <CommitInput id="cd-ask-message" value={str(ask.message)} onCommit={(v) => set("message", v)} />
+        </Field>
+        {form.length === 0 && (
+          <p className="text-muted">No questions: they approve or reject, and a reject fails it.</p>
+        )}
+        {form.map((f, i) => (
+          <AskQuestion key={i} index={i} question={f} id={id} stepKey={stepKey} ctx={ctx} />
+        ))}
+        <div>
+          <Button
+            id="cd-ask-add"
+            size="sm"
+            variant="secondary"
+            onClick={() => apply(() => edits.addAskQuestion(text, id), { focus: `cd-ask-q${form.length}-key` })}
+          >
+            <Plus aria-hidden />
+            Add a question
+          </Button>
+        </div>
+        <p className="text-muted">
+          Later steps read <code className="font-mono">{reads}.answered</code>,{" "}
+          <code className="font-mono">{reads}.by</code>, <code className="font-mono">{reads}.comment</code>
+          {form.length > 0 && (
+            <>
+              {" "}
+              and <code className="font-mono">{reads}.answer.&lt;key&gt;</code>
+            </>
+          )}
+          .
+        </p>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>If nobody answers</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field
+            label="Timeout"
+            htmlFor="cd-ask-timeout"
+            hint="A duration such as 48h. Empty: it waits until answered."
+          >
+            <CommitInput
+              id="cd-ask-timeout"
+              value={timeout}
+              className="font-mono text-xs"
+              placeholder="48h"
+              onCommit={(v) => set("timeout", v)}
+            />
+          </Field>
+          <Field label="Then" htmlFor="cd-ask-on-timeout">
+            <Select
+              id="cd-ask-on-timeout"
+              value={onTimeout || "fail"}
+              options={onTimeoutOptions}
+              onChange={(v) => set("on_timeout", v)}
+            />
+          </Field>
+          {onTimeout === "escalate" && (
+            <>
+              <Field label="Escalate to OIDC group" htmlFor="cd-ask-esc-group">
+                <CommitInput
+                  id="cd-ask-esc-group"
+                  value={str(escalate.group)}
+                  onCommit={(v) => apply(() => edits.setAskEscalate(text, id, "group", v))}
+                />
+              </Field>
+              <Field
+                label="Escalate to approvers"
+                htmlFor="cd-ask-esc-approvers"
+                hint="They get one more timeout; then the step fails."
+              >
+                <CommitInput
+                  id="cd-ask-esc-approvers"
+                  value={listText(escalate.approvers)}
+                  className="font-mono text-xs"
+                  onCommit={(v) => apply(() => edits.setAskEscalate(text, id, "approvers", writtenUsers(v)))}
+                />
+              </Field>
+            </>
+          )}
+        </div>
+      </fieldset>
+    </>
+  );
+}
+
+/** One question of a wait's form. No secrets: an answer goes through Temporal's history. */
+function AskQuestion({
+  index,
+  question,
+  id,
+  stepKey,
+  ctx,
+}: {
+  index: number;
+  question: Raw;
+  id: string;
+  stepKey: string;
+  ctx: PanelContext;
+}) {
+  const { text, apply } = ctx;
+  const prefix = `cd-ask-q${index}`;
+  const type = str(question.type);
+  const set = (field: edits.QuestionField, v: string | number | boolean | string[] | undefined) =>
+    apply(() => edits.setAskQuestion(text, id, index, field, v));
+  const key = str(question.key);
+  return (
+    <fieldset className="flex flex-col gap-2 rounded-md border border-line p-2">
+      <legend className="px-1 text-xs font-medium">Question {index + 1}</legend>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field
+          label="Key"
+          htmlFor={`${prefix}-key`}
+          hint={key ? `Later steps read steps.${stepKey || "<key>"}.answer.${key}.` : undefined}
+        >
+          <CommitInput id={`${prefix}-key`} value={key} className="font-mono text-xs" onCommit={(v) => set("key", v)} />
+        </Field>
+        <Field label="Question" htmlFor={`${prefix}-label`}>
+          <CommitInput id={`${prefix}-label`} value={str(question.label)} onCommit={(v) => set("label", v)} />
+        </Field>
+        <Field label="Type" htmlFor={`${prefix}-type`}>
+          <Select
+            id={`${prefix}-type`}
+            value={type}
+            placeholder="Choose"
+            options={questionTypes}
+            onChange={(v) => v !== type && set("type", v)}
+          />
+        </Field>
+        {type === "choice" && (
+          <Field label="Options" htmlFor={`${prefix}-options`} hint="What it may be, separated by commas.">
+            <CommitInput
+              id={`${prefix}-options`}
+              value={listText(question.options)}
+              onCommit={(v) =>
+                set(
+                  "options",
+                  v
+                    .split(",")
+                    .map((o) => o.trim())
+                    .filter(Boolean),
+                )
+              }
+            />
+          </Field>
+        )}
+        <Field label="Default" htmlFor={`${prefix}-default`} hint="What it reads if left blank, or if nobody answers.">
+          <CommitInput
+            id={`${prefix}-default`}
+            value={shown(question.default)}
+            onCommit={(v) => set("default", writtenDefault(type, v))}
+          />
+        </Field>
+        <div className="flex items-center gap-2 self-center">
+          <Checkbox
+            id={`${prefix}-required`}
+            checked={question.required === true}
+            onChange={(v) => set("required", v)}
+          />
+          <label htmlFor={`${prefix}-required`}>An answer is required</label>
+        </div>
+      </div>
+      <div>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`Remove question ${index + 1}`}
+          onClick={() => apply(() => edits.removeAskQuestion(text, id, index), { focus: "cd-ask-add" })}
+        >
+          <Trash2 aria-hidden />
+          Remove
+        </Button>
+      </div>
+    </fieldset>
+  );
+}
+
 /** A name to add to a step's inputs or its undo's; the row added for it (rowId) is focused. */
 function AddVariable({
   id,
@@ -1132,6 +1389,15 @@ function AddStepDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const added = useRef(false);
   const focus = useFocusAfterSelect();
+  // What it runs can't take the focus while it loads: it takes it then, unless the dialog has it.
+  const wasLoading = useRef(loading);
+  useEffect(() => {
+    if (open && wasLoading.current && !loading) {
+      const runs = document.getElementById("cd-new-runs");
+      if (runs && !runs.closest('[role="dialog"]')?.contains(document.activeElement)) runs.focus();
+    }
+    wasLoading.current = loading;
+  }, [open, loading]);
   const target =
     choice === byName
       ? awxName.trim()
@@ -1151,7 +1417,12 @@ function AddStepDialog({
   };
   const suggest = (t: edits.Target | undefined) => {
     if (!keyTouched && t)
-      setKey(edits.uniqueKey(text, findTarget(targets, t)?.title ?? (t.kind === "rest" ? "rest_call" : t.ref)));
+      setKey(
+        edits.uniqueKey(
+          text,
+          findTarget(targets, t)?.title ?? (t.kind === "rest" ? "rest_call" : t.kind === "ask" ? "person" : t.ref),
+        ),
+      );
   };
   const submit = () => {
     const e: Record<string, string> = {};
@@ -1176,7 +1447,7 @@ function AddStepDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="Add a step"
-        description="It runs one of the catalog's items, an AWX template or a custom workflow, or calls a REST API. Inputs named as the form's are bound to them."
+        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, or waits for a person. Inputs named as the form's are bound to them."
         onOpenAutoFocus={(e) => {
           reset();
           // What it runs first, rather than the close button.

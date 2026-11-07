@@ -18,6 +18,7 @@ import type {
 import {
   canDecide,
   factsFor,
+  checkAnswer,
   isApproverOf,
   openLevels,
   summaryOf,
@@ -48,7 +49,17 @@ import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
-import { cancel, newRequestNumber, planSteps, publishRequest, rememberHost, start } from "./simulator";
+import {
+  cancel,
+  newRequestNumber,
+  planSteps,
+  publishApproval,
+  publishRequest,
+  rememberHost,
+  start,
+  stepAnswered,
+  stepRejected,
+} from "./simulator";
 
 type S = components["schemas"];
 type Ok<P extends keyof paths, M extends "get" | "post"> = paths[P][M] extends {
@@ -182,20 +193,6 @@ function createDeployment(
   return dep;
 }
 
-function publishApproval(a: StoredApproval) {
-  bus.publish({
-    event: {
-      id: bus.nextId(),
-      type: "approval.updated",
-      at: new Date().toISOString(),
-      data: { approval_id: a.id, request_id: a.request.id, status: a.status },
-    },
-    projectId: a.project.id,
-    requestId: a.request.id,
-    userIds: [...a.approvers, ...a.delegates].map((u) => u.id),
-  });
-}
-
 /** Every level approved: the request is planned again with its inputs and starts. */
 function provisionApproved(stored: StoredRequest, outcome: string, detail: string) {
   const r = stored.request;
@@ -242,7 +239,38 @@ function rejectRequest(stored: StoredRequest, outcome: string, comment: string) 
 }
 
 const levelsOf = (requestId: string) =>
-  db.approvals.filter((a) => a.request.id === requestId).sort((a, b) => a.level.index - b.level.index);
+  db.approvals.filter((a) => a.request.id === requestId && !a.step_key).sort((a, b) => a.level.index - b.level.index);
+
+/** The answer to a composite step's wait, as core.DecideApproval takes it: it goes on the step, not a level. */
+function answerStep(a: StoredApproval, stored: StoredRequest, body: S["ApprovalDecision"]) {
+  const form = a.question?.form ?? [];
+  const refuse = (field: string, code: string, message: string) =>
+    problem(422, "validation", "Some inputs need attention", message, [{ field, code, message }]);
+  const comment = (body.comment ?? "").trim();
+  if (body.answer && form.length === 0)
+    return refuse("/answer", "not_allowed", "This asks to approve or reject: it has no form.");
+  if (form.length > 0 && body.decision === "reject")
+    return refuse("/decision", "not_allowed", "This asks a form: answer it.");
+  if (body.decision === "reject" && !comment)
+    return refuse("/comment", "required", "Say why you reject it: the requester sees this comment.");
+  const { clean, errors } = checkAnswer(form, body.answer ?? {});
+  if (errors.length > 0) return problem(422, "validation", "Some inputs need attention", errors[0]!.message, errors);
+  const name = db.me.user.name;
+  const rejected = body.decision === "reject";
+  const outcome = rejected ? `Rejected by ${name}` : form.length > 0 ? `Answered by ${name}` : `Approved by ${name}`;
+  a.votes.push(vote(db.me.user, body.decision, comment, []));
+  Object.assign(a, {
+    status: rejected ? "rejected" : "approved",
+    outcome,
+    decided_at: new Date().toISOString(),
+    due_at: null,
+  });
+  if (a.question && form.length > 0) a.question.answer = clean;
+  if (rejected) stepRejected(stored, a.step_key!, `${outcome}: ${comment}`);
+  else stepAnswered(stored, a.step_key!, outcome);
+  publishApproval(a);
+  return json<S["Approval"]>(viewOf(db, a, stored.request));
+}
 
 const visibleApproval = (a: StoredApproval) => isApproverOf(db, a) || myProjectIds().has(a.project.id);
 
@@ -796,7 +824,7 @@ export const handlers = [
     const mine = db.approvals.filter(
       (a) =>
         wanted.includes(a.status) &&
-        a.requester.id !== db.me.user.id &&
+        (a.requester.id !== db.me.user.id || Boolean(a.step_key)) &&
         (open(a) ? isApproverOf(db, a) && !voted(a) && (a.status !== "pending" || canDecide(db, a)) : voted(a)),
     );
     const pendingOnly = wanted.length === 1 && wanted[0] === "pending";
@@ -824,11 +852,12 @@ export const handlers = [
     if (!stored) return notFound("Request");
     if (a.status !== "pending") return problem(409, "conflict", "Not possible right now", `This level is ${a.status}.`);
     if (!isApproverOf(db, a)) return problem(403, "forbidden", "Not allowed", "You are not an approver of this level.");
-    if (a.requester.id === db.me.user.id)
+    if (a.requester.id === db.me.user.id && !a.step_key)
       return problem(403, "forbidden", "Not allowed", "You can't approve your own request.");
     if (a.votes.some((v) => v.user.id === db.me.user.id))
       return problem(409, "conflict", "Not possible right now", "You have already decided on this level.");
     const body = (await request.json()) as S["ApprovalDecision"];
+    if (a.step_key) return answerStep(a, stored, body);
     const comment = (body.comment ?? "").trim();
     if (body.decision === "reject" && !comment) {
       return problem(422, "validation", "Some inputs need attention", "Say why you reject it.", [
@@ -906,6 +935,13 @@ export const handlers = [
     const a = db.approvals.find((x) => x.id === params.approvalId);
     if (!a || !visibleApproval(a)) return notFound("Approval");
     if (a.status !== "pending") return problem(409, "conflict", "Not possible right now", `This level is ${a.status}.`);
+    if (a.step_key)
+      return problem(
+        403,
+        "forbidden",
+        "Not allowed",
+        "Only those a step names may answer it, and it can't be handed on.",
+      );
     if (!isApproverOf(db, a)) return problem(403, "forbidden", "Not allowed", "Only an approver can delegate.");
     const body = (await request.json()) as S["ApprovalDelegation"];
     const to = db.users.find((u) => u.id === body.user_id);
@@ -927,7 +963,9 @@ export const handlers = [
     await wait();
     const r = requestByKey(params.requestId);
     if (!r || !visibleRequest(r.request)) return notFound("Request");
-    return json({ items: levelsOf(r.request.id).map((a) => viewOf(db, a, r.request)) });
+    // Its levels, then what its composite's steps asked (ADR-0033).
+    const asked = db.approvals.filter((a) => a.request.id === r.request.id && a.step_key);
+    return json({ items: [...levelsOf(r.request.id), ...asked].map((a) => viewOf(db, a, r.request)) });
   }),
 
   http.get(`${base}/deployments`, async ({ request }) => {

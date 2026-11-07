@@ -67,6 +67,7 @@ export type ApprovalStatus = S["ApprovalStatus"];
 export type ApprovalSummary = S["ApprovalSummary"];
 export type Approval = S["Approval"];
 export type ApprovalVote = S["ApprovalVote"];
+export type ApprovalQuestionField = S["ApprovalQuestionField"];
 export type ApprovalEditableField = S["ApprovalEditableField"];
 export type ApprovalDecision = S["ApprovalDecision"];
 export type ApprovalPage = S["ApprovalPage"];

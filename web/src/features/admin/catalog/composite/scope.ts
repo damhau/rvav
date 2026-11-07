@@ -15,7 +15,7 @@ const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v
 export const stepRef = /\bsteps\.([a-z][a-z0-9_]*)/;
 
 export interface StepTarget {
-  kind: CompositeStepTarget["kind"] | "rest";
+  kind: CompositeStepTarget["kind"] | "rest" | "ask";
   ref: string;
   /** An AWX workflow template (awx.workflow). */
   workflow?: boolean;
@@ -23,7 +23,7 @@ export interface StepTarget {
   templateId?: number;
 }
 
-/** What a step names: an item, an AWX template, a custom workflow or a REST call (the first, when it names several). */
+/** What a step names: an item, an AWX template, a custom workflow, a REST call or a wait for a person (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
@@ -38,6 +38,7 @@ export function targetOf(step: Raw): StepTarget | undefined {
   }
   if (str(step.workflow)) return { kind: "workflow", ref: str(step.workflow) };
   if (step.rest !== undefined) return { kind: "rest", ref: "" };
+  if (step.ask !== undefined) return { kind: "ask", ref: "" };
   return undefined;
 }
 
@@ -89,7 +90,26 @@ export const restOutputs: CompositeStepOutput[] = [
   { name: "json", type: "object", description: "What it keeps of its JSON answer" },
 ];
 
-/** What a step gives the steps after it: its target's outputs, a REST call's, or an AWX job's ID for a template not listed. */
+const answerType: Record<string, string> = { number: "number", boolean: "boolean" };
+
+/** What a wait for a person gives the steps after it: each of its form's answers by its key (ADR-0033). */
+export function askOutputs(ask: Raw): CompositeStepOutput[] {
+  const form = Array.isArray(ask.form) ? (ask.form as Raw[]) : [];
+  return [
+    { name: "answered", type: "boolean", description: "Whether someone answered: false if its timeout went on" },
+    { name: "by", type: "string", description: "Who answered, by their email" },
+    { name: "comment", type: "string", description: "The comment they left" },
+    ...form
+      .filter((f) => str(f.key))
+      .map((f) => ({
+        name: `answer.${str(f.key)}`,
+        type: answerType[str(f.type)] ?? "string",
+        description: str(f.label) || str(f.key),
+      })),
+  ];
+}
+
+/** What a step gives the steps after it: its target's outputs, a REST call's, a wait's, or an AWX job's ID for a template not listed. */
 export function outputsOf(
   step: Raw,
   targets: CompositeStepTarget[],
@@ -98,6 +118,7 @@ export function outputsOf(
   const found = findTarget(targets, t);
   if (found) return { outputs: found.outputs, open: found.open_outputs };
   if (t?.kind === "rest") return { outputs: restOutputs, open: false };
+  if (t?.kind === "ask") return { outputs: askOutputs(obj(step.ask)), open: false };
   if (t?.kind === "awx")
     return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
   return { outputs: [], open: t?.kind === "workflow" };
