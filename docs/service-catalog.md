@@ -9,7 +9,7 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 | `vm_blueprint` | Authored in the app | Provisions one or more VMs natively, with optional AWX post-config steps |
 | `awx_job_template` | Imported from AWX | Launches a job template with inputs from the form |
 | `awx_workflow` | Imported from AWX | Launches a workflow job template |
-| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows and REST calls, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
+| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows, REST calls and waits for a person, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
 | `workflow` | Authored in the app | Starts a registered custom Temporal workflow with the form's inputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
 
 A composite's blueprint, in its Definition tab:
@@ -39,7 +39,8 @@ steps:
 `'"read"'`); a VM step's come from the form only (and it has no `when`:
 its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
-job's `job_id`, a workflow's result, a REST call's `status` and `json`.
+job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
+person's `answered`, `by`, `comment` and `answer`.
 
 #### A REST call step
 A step can call a REST API instead of running something
@@ -82,6 +83,58 @@ A call has 30 s and 1 MB, and more than 256 KiB kept fails the step. GET, PUT
 and DELETE are retried on network errors, 5xx, 429 and 408; a POST or a PATCH
 is made once, and if it fails a person decides. **Retry** makes any call
 again. An undo that might find nothing left should accept 404.
+
+#### A step that waits for a person
+A step can stop and ask someone, with a form or to approve or reject, and go on
+with their answer ([ADR-0033](adr/0033-composite-step-kinds.md)). It has no
+`with` and no `undo`:
+
+```yaml
+  - key: owner_ok
+    title: The owner's decision
+    ask:
+      group: vm-owners
+      approvers: [usr_mkeller]
+      owner: true
+      message: Check it is unused first.
+      form:
+        - key: decision
+          label: Keep or delete?
+          type: choice
+          options: [keep, delete]
+          required: true
+          default: keep
+      timeout: 48h
+      on_timeout: escalate
+      escalate_to:
+        group: vm-managers
+```
+
+| Field | What it is |
+|---|---|
+| `group`, `approvers` | An OIDC group and users by ID, as for an approval level. Nobody answers their own request through these. At least one of these, `requester` or `owner` |
+| `requester`, `owner` | `true`: the request's requester or owner is asked too, and may answer even though it is their request |
+| `message` | Fixed text for those asked, up to 2000 characters. It is not an expression |
+| `form` | Up to 20 questions. With none, they approve or reject, and a reject fails the step |
+| `form[].key`, `label` | What later steps read, and what the question says |
+| `form[].type` | `string`, `number`, `boolean` or `choice`, which needs `options`. A secret is refused: an answer travels through Temporal's history to every later step |
+| `form[].required`, `default` | A required field must be answered. A default is what it reads if left blank or if nobody answers |
+| `timeout` | A duration such as `48h`; with none, it waits until answered or cancelled |
+| `on_timeout` | `fail`, the default; `continue`, which goes on with no answer; `escalate`, which adds `escalate_to` for one more timeout and then fails |
+| `escalate_to` | `group` and `approvers`, for `escalate` |
+
+Later steps read `steps.<key>.answered`, `by` (an email), `comment` and
+`answer.<field>`: as given, or left blank its default, or else null. When a
+timeout goes on, `answered` is false, `by` and `comment` are empty, and each
+field is its default or null. A reject fails the step, with the undos of the
+steps before it, so nothing later reads it.
+
+Those it names are told as for an approval (the notification centre, mail,
+Teams, Slack) and answer on the request's page. A step that asks only the person
+requesting it is refused when requested: nobody could answer. Cancelling the
+request closes the question, and **Retry** asks again if the step failed or was
+stopped. A requester's form shows that it waits, whether for them or the owner,
+its timeout and how many answers: not who else, or what it asks.
 
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).

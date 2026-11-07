@@ -198,6 +198,13 @@ for (const theme of ["light", "dark"] as const) {
       await expect(details.getByRole("list", { name: "Problems with this step" })).toContainText("Say who is asked");
       await loaded(page);
       await scan(page, "/admin/catalog-items/owner-check › Definition (a wait for a person selected)");
+      const shownAs = page
+        .getByRole("region", { name: "Steps of Owner check" })
+        .getByRole("group", { name: "Show as" });
+      await shownAs.getByRole("button", { name: "List" }).click();
+      await expect(shownAs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+      await scan(page, "/admin/catalog-items/owner-check › Definition (a wait for a person, as a list)");
+      await shownAs.getByRole("button", { name: "Graph" }).click();
 
       // Filled in, it can be published, requested and answered.
       await details.getByRole("checkbox", { name: "The requester" }).click();
@@ -228,6 +235,10 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: /^Owner check/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
+      // What a requester's form says of it. A toast that is fading reads as too faint.
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/catalog/owner-check (a wait for a person, masked)");
       await page.getByRole("button", { name: "Submit request" }).click();
       const answer = page.getByRole("form", { name: "Your answer: Owner's answer" });
       await expect(answer).toBeVisible({ timeout: 20_000 });
@@ -244,6 +255,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
       await loaded(page);
       await scan(page, "/requests/REQ (a wait answered)");
+      await page.getByRole("button", { name: "Timeline" }).click();
+      await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText("Answered by");
+      await scan(page, "/requests/REQ › Timeline (a wait answered)");
     });
 
     test("axe: a composite request's run, failed then running", async ({ page }) => {

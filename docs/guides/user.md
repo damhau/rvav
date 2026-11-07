@@ -68,11 +68,16 @@ their times and tasks.
 
 - **Waiting for approval:** the approvers and their deadline are shown.
   Cancel request still works.
+- **Waiting for a person:** a composite's step can stop and ask someone, in
+  **Waits for a person** beside the graph. If it asks you, its form is there
+  (or **Approve** and **Reject**). Otherwise you see who it waits for and until
+  when, not what it asks. Cancel request closes the question.
 - **Failed:** the error names the step and the system. On a composite's
   graph, the step that failed is selected.
   - **Retry from the failed step** once the cause is fixed: done steps
     aren't repeated. A failed REST call is made again, even a POST that
-    may have reached its service: when in doubt, check there first.
+    may have reached its service: when in doubt, check there first. A step
+    that was rejected asks again, and its first answer stays on the page.
   - **Roll back:** removes the VMs, addresses and DNS records it made. A
     composite's AWX, workflow and REST call steps aren't undone by it.
   - Once rolled back (by you, or by a composite that undoes what it built
@@ -133,6 +138,14 @@ quota.
   requester told.
 - **Reject:** with a reason, which the requester reads.
 - **Delegate:** hand the decision on.
+
+A composite's step can ask you something in the middle of a run. You are told as
+for an approval, and it is in **Approvals** as `A step asks: <its name>`, with a
+link to the request's page, where you answer. If it has a form, **Send answer**
+sends it, and what you answer goes to the steps after it: leave secrets out. If
+it hasn't, **Approve** lets it go on and **Reject**, with a reason the requester
+reads, fails it. You answer once, and can't hand it on. A Teams or Slack card can
+approve or reject; a form is answered on the page.
 - **From Teams or Slack:** when the notification arrives there, Approve
   and Reject work from the message.
 

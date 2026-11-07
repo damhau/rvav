@@ -302,7 +302,7 @@ them. An item is a form and a blueprint
 - **a VM blueprint:** one VM or several, with their guest settings;
 - **an AWX job or workflow:** imported from AWX's templates with the
   catalog label, their survey becoming the form;
-- **a composite:** VMs, jobs, custom workflows and REST calls in steps;
+- **a composite:** VMs, jobs, custom workflows, REST calls and waits for a person in steps;
 - **a custom workflow**, run by your own worker.
 
 An item's tabs:
@@ -342,8 +342,8 @@ An item's tabs:
   Enter) and its editor opens under the graph:
   - **Add a step** runs a published item (not another composite), an AWX
     template imported from AWX (or any template, by its name), a
-    custom workflow registered for composite steps, or a REST call. It
-    goes after the
+    custom workflow registered for composite steps, a REST call, or a
+    person. It goes after the
     selected step, at the same time as it, or at the end. Its inputs
     named as the form's are bound to them. An AWX template picked from
     the list is written with its ID in AWX (`template_id`) beside its
@@ -375,6 +375,23 @@ An item's tabs:
     errors, 5xx, 429 and 408. Its undo is another call, which can read this
     step's outputs (`steps.cmdb.json.id`). See
     [the catalog's reference](../service-catalog.md#a-rest-call-step).
+  - **A person** stops the run until someone answers, and has no inputs or
+    undo. **Who is asked:** an **OIDC group**, **Approvers** (user IDs),
+    **The requester** and **The owner**, told as for an approval. Nobody
+    answers their own request unless the step asks the requester, or the
+    owner when that is them; a request that would leave nobody is refused.
+    An administrator answers only if named. **What they answer:** a
+    **Message**, fixed text, and **Add a question** for each thing to ask:
+    its **Key**, its **Question**, a **Type** (text, a number, yes or no, or
+    a choice with its **Options**), a **Default** and whether **An answer
+    is required**. No questions means they approve or reject, and a reject
+    fails the step. A form can't ask for a secret. **If nobody answers:** a
+    **Timeout**, and **Then** the step fails, it goes on with no answer, or
+    it escalates to a group or users for one more timeout and then fails.
+    Later steps read `steps.<key>.answered`, `by`, `comment` and
+    `answer.<key>`; on a timeout that goes on, `answered` is false and each
+    answer its default or null. See
+    [the catalog's reference](../service-catalog.md#a-step-that-waits-for-a-person).
   - A VM item's step is planned when the request is submitted: its inputs
     come from the form only, and it has no condition or undo (a failure
     deletes its VMs).

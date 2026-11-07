@@ -495,9 +495,10 @@ in 3, wait for a time in 3 (one polls a ticket until it is approved),
 a branch in 2, a notification in 1, wait for an event in none. The vRO
 triage of the organisation's vRA (#85) confirms or reorders them.
 - New steps: wait for a person (a form or an approval mid-run, with its
-  notification), wait for a time, a REST call (allowed hosts, a stored
-  secret; built, [ADR-0033](adr/0033-composite-step-kinds.md)), a
-  notification, a branch; the logic between them in CEL.
+  notification; built), wait for a time, a REST call (allowed hosts, a
+  stored secret; built, both in
+  [ADR-0033](adr/0033-composite-step-kinds.md)), a notification, a branch;
+  the logic between them in CEL.
 - No scripting language: work that needs one is an AWX playbook or a
   custom workflow.
 

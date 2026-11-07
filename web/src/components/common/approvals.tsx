@@ -30,7 +30,7 @@ const stepLabel = (a: Approval) =>
 
 /** What a step's wait said and was answered, for those who may read it. */
 /** An answer as a person reads it: a yes or no question was answered in words. */
-function answerText(value: unknown): string {
+export function answerText(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return toText(value);
 }

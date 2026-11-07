@@ -273,7 +273,10 @@ Catalog admins and administrators build items under **Catalog items**
   ([ADR-0033](adr/0033-composite-step-kinds.md)) is a target with no ref: its fields
   (`RestCallFields`) replace the inputs, on a step and on an undo, edited by `setRestField`;
   a key renamed follows into a URL's `${...}` only (`renameInUrl`), and `scope.ts` gives
-  its outputs (`restOutputs`). Those problems,
+  its outputs (`restOutputs`). A wait for a person is another (`AskFields`, `AskQuestion`, edited by
+  `setAskField`, `setAskEscalate` and `setAskQuestion`), with no inputs or undo, and `askOutputs` gives its
+  outputs, one per question. Its only refusal on request depends on who requests, so the
+  Approvers field's hint says it. Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from
@@ -442,7 +445,7 @@ nothing about it (positions, layout) is stored.
   `parallel:<index>` its steps sit in, and sequence edges join groups, not
   their steps. A `when` makes the edge into its step `conditional`. What
   a step runs, uses (`steps.<key>` in its bindings) and undoes are its
-  `lines` (a REST call: badge `REST`, `Calls: POST <url>`, `Undo: DELETE <url>`). `vmGraph` draws a VM item left to right: `network:auto`,
+  `lines` (a REST call: badge `REST`, `Calls: POST <url>`, `Undo: DELETE <url>`; a wait: badge `Person`, `Asks`, `Wants`, `Timeout`, from the definition only, so a node's size doesn't follow its run). `vmGraph` draws a VM item left to right: `network:auto`,
   `network:<CEL>` and `segment:<key>`, then `component:<key>` (or
   `component:vm` without components), then `sg:<key>`, `nsx:<ID>`,
   `groups:<CEL>` and `any`; edges are `network` (an adapter, labelled with
@@ -504,10 +507,19 @@ nothing about it (positions, layout) is stored.
   status out of what sizes a node.
 - **Themes:** only React Flow's `base.css` is imported; `canvas.css` points
   its variables at the app's tokens, and the nodes are our own components.
+- **A wait on the request's page:** `features/requests/AskPanel.tsx` shows a composite's waits
+  for a person from the request's approvals with a `step_key`, apart from its approval levels: the
+  form or Approve and Reject for those named (the row has `can_decide`), a problem on the question
+  it is about, with the focus there, and `ApprovalHistory` for the rest. The mock run stays on the
+  step until it is answered (`simulator.ts`: `openAsk`, `stepAnswered`, `stepRejected`), so a new
+  item with a wait must be answered to reach its end. The mocks' me is both the requester and,
+  with `requester: true`, the one asked; someone else's question can't be answered in the mocks.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
   (the designer, to a request), `composite-rest.spec.ts` (a REST call and
-  its undo from the keyboard, masked on the form and the run), `request-run.spec.ts` (a failed run
+  its undo from the keyboard, masked on the form and the run), `composite-ask.spec.ts`
+  (a wait from the keyboard, masked on the form, answered, rejected, retried, cancelled,
+  and someone else's), `request-run.spec.ts` (a failed run
   retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
   same with the keyboard only; `accessibility.spec.ts` scans the
   designer and a run. The mocks can't approve as someone else, so a
@@ -555,7 +567,9 @@ A blueprint with components builds one deployment
   (`RequestForm.topology`: the part of the blueprint the canvas draws,
   without guest settings, sizes, naming or a step's binding literals,
   which a requester doesn't see, its CEL's string literals masked, and a
-  REST call's URL and body with them, its secret, statuses and `keep` left out;
+  REST call's URL and body with them, its secret, statuses and `keep` left out, a
+  wait's group, users, message, labels and options too, and no problems on any step, since a
+  mask reads as a mistake;
   `blueprint.Topology` on the server, `topologyOf` in the mocks, checked
   against one fixture, `internal/seed/testdata/topology.json`) and `withPreview` puts the preview's counts
   and names on the components (a composite's step: what the item it
