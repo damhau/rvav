@@ -109,7 +109,12 @@ async function pick(user: ReturnType<typeof userEvent.setup>, select: HTMLElemen
   await user.click(await screen.findByRole("option", { name: option }));
 }
 
-describe("the composite designer", () => {
+// These type field by field into a large page: the two longest take 2 s alone and
+// up to 12.5 s under load (40 runs of this file at once), so the default 5 s fails
+// on a busy CI runner, with nothing wrong.
+const longTests = { timeout: 30_000 };
+
+describe("the composite designer", longTests, () => {
   it("adds a step after the selected one, binds its inputs and sets its condition, all undone and redone", async () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness initial={pg} />);
@@ -368,7 +373,7 @@ describe("the composite designer", () => {
   });
 });
 
-describe("the composite designer beside the editor", () => {
+describe("the composite designer beside the editor", longTests, () => {
   it("undoes and redoes typed and designed edits in the order they were made", async () => {
     const user = userEvent.setup();
     renderWithQuery(<EditorHarness initial={pg} />);
