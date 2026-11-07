@@ -48,7 +48,9 @@ describe("integration settings", () => {
   it("lists the allowed hosts, with no secret, and checks them", async () => {
     const user = await tab("Allowed hosts");
     const hosts = await screen.findByRole("region", { name: "Allowed hosts" });
-    expect(within(hosts).getByRole("textbox", { name: "REST value sources" })).toHaveValue("cmdb.corp.example");
+    expect(within(hosts).getByRole("textbox", { name: "REST value sources and calls" })).toHaveValue(
+      "cmdb.corp.example",
+    );
     expect(within(hosts).queryByLabelText(/password|token|secret/i)).not.toBeInTheDocument();
     const hooks = within(hosts).getByRole("textbox", { name: "Webhooks" });
     await user.clear(hooks);
@@ -56,7 +58,7 @@ describe("integration settings", () => {
     await user.click(within(hosts).getByRole("button", { name: "Check" }));
     expect(
       await within(hosts).findByText(
-        "REST value sources may call cmdb.corp.example; webhooks hooks.corp.example, *.svc.corp.example.",
+        "REST value sources and calls may reach cmdb.corp.example; webhooks hooks.corp.example, *.svc.corp.example.",
       ),
     ).toBeInTheDocument();
     await user.click(within(hosts).getByRole("button", { name: "Save settings" }));

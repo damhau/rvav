@@ -1,7 +1,8 @@
 # ADR-0007: Extensibility model (what replaces vRO)
 
 - Status: accepted; "no visual workflow designer" revised by
-  [ADR-0032](0032-one-canvas.md)
+  [ADR-0032](0032-one-canvas.md); composites' step kinds, a single REST call
+  among them, in [ADR-0033](0033-composite-step-kinds.md)
 - Date: 2026-10-26
 
 ## Context

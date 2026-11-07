@@ -1644,7 +1644,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             {
               name: "Hosts",
               ok: true,
-              message: `REST value sources may call ${list(ps.rest_source_hosts)}; webhooks ${list(ps.webhook_hosts)}.`,
+              message: `REST value sources and calls may reach ${list(ps.rest_source_hosts)}; webhooks ${list(ps.webhook_hosts)}.`,
             },
           ],
         });

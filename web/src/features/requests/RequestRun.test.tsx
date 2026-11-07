@@ -19,6 +19,8 @@ async function openRun() {
   const app = renderApp("/requests/REQ-10484");
   // The first render loads the page's code and React Flow's: slower on CI runners.
   const run = await screen.findByRole("application", { name: "Run of REQ-10484" }, { timeout: 5000 });
+  // The region shows before React Flow has drawn its nodes.
+  await waitFor(() => expect(cards(run).length).toBeGreaterThan(0), { timeout: 5000 });
   return { ...app, run };
 }
 

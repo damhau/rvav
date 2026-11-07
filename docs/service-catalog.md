@@ -9,7 +9,7 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 | `vm_blueprint` | Authored in the app | Provisions one or more VMs natively, with optional AWX post-config steps |
 | `awx_job_template` | Imported from AWX | Launches a job template with inputs from the form |
 | `awx_workflow` | Imported from AWX | Launches a workflow job template |
-| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates and custom workflows, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
+| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows and REST calls, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
 | `workflow` | Authored in the app | Starts a registered custom Temporal workflow with the form's inputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
 
 A composite's blueprint, in its Definition tab:
@@ -39,7 +39,49 @@ steps:
 `'"read"'`); a VM step's come from the form only (and it has no `when`:
 its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
-job's `job_id`, a workflow's result.
+job's `job_id`, a workflow's result, a REST call's `status` and `json`.
+
+#### A REST call step
+A step can call a REST API instead of running something
+([ADR-0033](adr/0033-composite-step-kinds.md)). Any step with an undo can
+have a call as its undo (a VM step has none):
+
+```yaml
+  - key: cmdb
+    title: Register in the CMDB
+    rest:
+      method: POST
+      url: https://cmdb.corp.example/api/ci/${steps.vm.name}?env=${environment}
+      body: "{'name': steps.vm.fqdn, 'ip': steps.vm.ip, 'owner': inputs.owner}"
+      secret: cmdb-token
+      accept: [200, 201]
+      keep: $.result
+    undo:
+      rest:
+        method: DELETE
+        url: https://cmdb.corp.example/api/ci/${steps.cmdb.json.id}
+        secret: cmdb-token
+        accept: [200, 204, 404]
+```
+
+| Field | What it is |
+|---|---|
+| `method` | GET, POST, PUT, PATCH or DELETE |
+| `url` | On a host in Administration › Integrations › Allowed hosts (or `RVAV_REST_SOURCE_HOSTS`). `${...}` is CEL over `inputs`, `steps`, `environment` and `project`, URL-escaped, in the path and query only. An empty value, `.`, `..`, a map or a list fails the step without calling |
+| `body` | A CEL expression, sent as JSON; a GET has none. It may hold a secret input; a URL may not |
+| `secret` | A stored secret, sent as a bearer token, basic credentials or a header, as stored |
+| `accept` | The statuses that count as success; any 2xx by default. Others fail the step. A redirect isn't followed: it is an answer like any other |
+| `keep` | A JSONPath into the answer; all of it by default. A path naming one thing gives it or null; a wildcard or a filter always gives a list |
+
+A step has no `with`: its URL and body read what they need. Later steps read
+`steps.<key>.status` and `steps.<key>.json`; an undo may read its own step's.
+An answer that isn't JSON gives null, and its headers are never kept. An ID
+over 2^53 loses precision as a JSON number: have the API send a string.
+
+A call has 30 s and 1 MB, and more than 256 KiB kept fails the step. GET, PUT
+and DELETE are retried on network errors, 5xx, 429 and 408; a POST or a PATCH
+is made once, and if it fails a person decides. **Retry** makes any call
+again. An undo that might find nothing left should accept 404.
 
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
@@ -192,7 +234,7 @@ Markdown or info block, and resource pickers:
 - Value sources: the built-in ones, `rest` (a URL template with escaped
   inputs, GET or POST, a stored secret as bearer, basic or header, JSONPath
   mapping, cached; only the hosts listed for REST value sources, in
-  Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`; no redirects,
+  Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`, the list a composite's REST calls share; no redirects,
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
   project, user and environment). Dependencies re-resolve a field when the
   inputs it depends on change.

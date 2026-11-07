@@ -221,7 +221,7 @@ Catalog admins and administrators build items under **Catalog items**
 
 - The list page: items with filters, **New item** (it starts as a draft
   1.0) and **Import YAML**; categories; stored secrets for REST value
-  sources (values are write-only); the templates imported from AWX.
+  sources and calls (values are write-only); the templates imported from AWX.
 - An item's page, in tabs: **Versions** (publish a draft, roll back to a
   deprecated version, withdraw the published one, discard, export as YAML,
   compare two versions), **Form designer**, **Definition** (the version as
@@ -269,7 +269,11 @@ Catalog admins and administrators build items under **Catalog items**
   would refuse when the item is requested, in its words (with the item's
   entitlements, a workflow not offered to all its projects). A picker's
   value names an AWX template as a job or workflow template
-  (`targetValue`), and a step is found by its `template_id` when it has one. Those problems,
+  (`targetValue`), and a step is found by its `template_id` when it has one. A REST call
+  ([ADR-0033](adr/0033-composite-step-kinds.md)) is a target with no ref: its fields
+  (`RestCallFields`) replace the inputs, on a step and on an undo, edited by `setRestField`;
+  a key renamed follows into a URL's `${...}` only (`renameInUrl`), and `scope.ts` gives
+  its outputs (`restOutputs`). Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from
@@ -438,7 +442,7 @@ nothing about it (positions, layout) is stored.
   `parallel:<index>` its steps sit in, and sequence edges join groups, not
   their steps. A `when` makes the edge into its step `conditional`. What
   a step runs, uses (`steps.<key>` in its bindings) and undoes are its
-  `lines`. `vmGraph` draws a VM item left to right: `network:auto`,
+  `lines` (a REST call: badge `REST`, `Calls: POST <url>`, `Undo: DELETE <url>`). `vmGraph` draws a VM item left to right: `network:auto`,
   `network:<CEL>` and `segment:<key>`, then `component:<key>` (or
   `component:vm` without components), then `sg:<key>`, `nsx:<ID>`,
   `groups:<CEL>` and `any`; edges are `network` (an adapter, labelled with
@@ -502,12 +506,14 @@ nothing about it (positions, layout) is stored.
   its variables at the app's tokens, and the nodes are our own components.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
-  (the designer, to a request), `request-run.spec.ts` (a failed run
+  (the designer, to a request), `composite-rest.spec.ts` (a REST call and
+  its undo from the keyboard, masked on the form and the run), `request-run.spec.ts` (a failed run
   retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
   same with the keyboard only; `accessibility.spec.ts` scans the
   designer and a run. The mocks can't approve as someone else, so a
-  spec's own composite request is followed as far as its approval, and
-  the seeded REQ-10484 is retried to follow a run to its end
+  spec's own request of a seeded composite is followed as far as its
+  approval; a new composite item needs none, so `composite-rest.spec.ts`
+  follows one to its end, and the seeded REQ-10484 is retried to follow a run with its failure
   (`TestD1Acceptance` follows one through the API). `page.goto` resets
   the mocks: a spec that publishes, then requests, gets there through
   the app.
@@ -548,7 +554,8 @@ A blueprint with components builds one deployment
   builds on the canvas. It is drawn from the form's `topology`
   (`RequestForm.topology`: the part of the blueprint the canvas draws,
   without guest settings, sizes, naming or a step's binding literals,
-  which a requester doesn't see, its CEL's string literals masked;
+  which a requester doesn't see, its CEL's string literals masked, and a
+  REST call's URL and body with them, its secret, statuses and `keep` left out;
   `blueprint.Topology` on the server, `topologyOf` in the mocks, checked
   against one fixture, `internal/seed/testdata/topology.json`) and `withPreview` puts the preview's counts
   and names on the components (a composite's step: what the item it

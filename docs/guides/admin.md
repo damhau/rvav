@@ -97,7 +97,8 @@ setting is set):
   it again after changing vCenter's address.
 - **vRA:** the vRA the importer reads, with a user and its password, or a
   refresh token.
-- **Allowed hosts:** the hosts REST value sources and webhooks may call.
+- **Allowed hosts:** the hosts REST value sources, a composite's REST
+  calls and webhooks may call.
   None listed, none is called.
 - **Sync intervals:** in each connection's tab, how often rvav reads it.
 - **Trusted certificates:** see [below](#trusted-certificates).
@@ -301,7 +302,7 @@ them. An item is a form and a blueprint
 - **a VM blueprint:** one VM or several, with their guest settings;
 - **an AWX job or workflow:** imported from AWX's templates with the
   catalog label, their survey becoming the form;
-- **a composite:** VMs, jobs and custom workflows in steps;
+- **a composite:** VMs, jobs, custom workflows and REST calls in steps;
 - **a custom workflow**, run by your own worker.
 
 An item's tabs:
@@ -340,8 +341,9 @@ An item's tabs:
   step holding the anchor. Select a step (click it, or the arrow keys and
   Enter) and its editor opens under the graph:
   - **Add a step** runs a published item (not another composite), an AWX
-    template imported from AWX (or any template, by its name) or a
-    custom workflow registered for composite steps. It goes after the
+    template imported from AWX (or any template, by its name), a
+    custom workflow registered for composite steps, or a REST call. It
+    goes after the
     selected step, at the same time as it, or at the end. Its inputs
     named as the form's are bound to them. An AWX template picked from
     the list is written with its ID in AWX (`template_id`) beside its
@@ -351,15 +353,28 @@ An item's tabs:
     **Remove step** change the order; a step in a group of steps that run
     at the same time is moved out of it, before or after.
   - **Runs**, **When** (a CEL condition: the step is skipped when it is
-    false) and **Undone by** (an AWX template or custom workflow run when
-    a later step fails and **Undo what was built when a step fails** is
-    on, on the Done node).
+    false) and **Undone by** (an AWX template, custom workflow or REST
+    call run when a later step fails and **Undo what was built when a step
+    fails** is on, on the Done node).
   - Each **input** is bound to the form's inputs, the request's
     environment or project, or an output of a step that runs before it
     (`steps.nodes.fqdn`, `steps.monitor.job_id`), picked from what exists
     there, or written: a number, `true`, a quoted string, or a CEL
     expression. Steps that run at the same time can't use each other's
     outputs.
+  - A **REST call** has no inputs: its **Method**, **URL** and **Body**
+    read the form and earlier steps themselves. In the URL, `${...}` fills
+    the path or query, escaped; the host is fixed, and must be in
+    Integrations › Allowed hosts. The body is a CEL expression, sent as
+    JSON. **Secret** picks a stored secret, sent as it is stored (bearer,
+    basic or a header). **Accepted statuses** are those that don't fail the
+    step (any 2xx if empty), and **Keep** is a JSONPath picking what later
+    steps read as `steps.<key>.json` (all of it if empty), beside
+    `steps.<key>.status`. A POST or a PATCH that fails isn't tried again
+    by itself, as it may have done its work; the others are, on network
+    errors, 5xx, 429 and 408. Its undo is another call, which can read this
+    step's outputs (`steps.cmdb.json.id`). See
+    [the catalog's reference](../service-catalog.md#a-rest-call-step).
   - A VM item's step is planned when the request is submitted: its inputs
     come from the form only, and it has no condition or undo (a failure
     deletes its VMs).
@@ -371,7 +386,8 @@ An item's tabs:
   composite steps, a workflow (a step's, an undo's or a workflow item's)
   not offered to every project the composite is offered to (a request
   from one of the others is refused), a VM step with a condition, an
-  undo or an input from a step, a step using a later one. Save the draft, publish it, and
+  undo or an input from a step, a step using a later one, a REST call whose
+  host isn't allowed or whose secret is gone. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.
 - **Versions:**

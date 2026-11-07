@@ -35,7 +35,8 @@ shows under your name.
    rules between them (a composite: its steps, in the order they run,
    those that run at the same time side by side). The counts and names
    follow what you fill in. **List** gives the same as a list; select a
-   node to read all it says.
+   node to read all it says. A step that calls a REST API shows its method
+   and the values it reads, not the address.
 3. **Lease and reason:** how long you need it, within what the environment
    allows. In production the reason is what approvers read.
 4. **Options:**
@@ -61,7 +62,8 @@ graph, in the order they run, each with its status: not started, running,
 done, failed, skipped, or undone (what a failure took back). It updates
 live and stays where you put it. Select a step, with the mouse or with the
 arrow keys and Enter, to see what it did under the graph and its AWX
-job's output beside it. **Timeline** shows the same steps as a list, with
+job's output beside it, or, for a REST call, what it answered
+(`POST answered 201`). **Timeline** shows the same steps as a list, with
 their times and tasks.
 
 - **Waiting for approval:** the approvers and their deadline are shown.
@@ -69,9 +71,10 @@ their times and tasks.
 - **Failed:** the error names the step and the system. On a composite's
   graph, the step that failed is selected.
   - **Retry from the failed step** once the cause is fixed: done steps
-    aren't repeated.
+    aren't repeated. A failed REST call is made again, even a POST that
+    may have reached its service: when in doubt, check there first.
   - **Roll back:** removes the VMs, addresses and DNS records it made. A
-    composite's AWX and workflow steps aren't undone by it.
+    composite's AWX, workflow and REST call steps aren't undone by it.
   - Once rolled back (by you, or by a composite that undoes what it built
     when it fails), there is nothing left to roll back: **Retry** runs it
     all again, without a new approval.

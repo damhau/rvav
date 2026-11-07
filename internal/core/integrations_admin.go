@@ -390,7 +390,7 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 	case "trust":
 		testTrust(cfg.CABundle, check)
 	case "hosts":
-		check("Hosts", nil, fmt.Sprintf("REST value sources may call %s; webhooks %s.",
+		check("Hosts", nil, fmt.Sprintf("REST value sources and calls may reach %s; webhooks %s.",
 			hostList(cfg.RESTSourceHosts), hostList(cfg.WebhookHosts)))
 	case "awx":
 		s.testAWX(ctx, cfg.AWX, roots, check)

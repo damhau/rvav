@@ -102,7 +102,8 @@ line. Exporting and importing again changes nothing.
   - Only hosts listed in `RVAV_REST_SOURCE_HOSTS` (`*.corp.example`
     style) are called, over https, so a form can't make rvav reach
     arbitrary or internal addresses. A host listed as `http://host` may be
-    called over plain http (development stand-ins only).
+    called over plain http (development stand-ins only). A composite's REST
+    calls share this list ([ADR-0033](0033-composite-step-kinds.md)).
   - Inputs fill the URL's path and query, never its scheme, host or port,
     and an input of `.` or `..` is refused: a requester can't send the
     request, or its secret, anywhere the admin didn't write.

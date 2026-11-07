@@ -345,7 +345,7 @@ const fields: Record<
     settings: [
       {
         name: "rest_source_hosts",
-        label: "REST value sources",
+        label: "REST value sources and calls",
         env: "RVAV_REST_SOURCE_HOSTS",
         type: "list",
         hint: "Comma-separated: cmdb.corp.example, *.corp.example, http://host:port for plain http",

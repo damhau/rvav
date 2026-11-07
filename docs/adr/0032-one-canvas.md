@@ -70,7 +70,8 @@ composite designer (D1.3) and a request's run (D1.4).
 - **No scripting language.** Conditions and bindings stay CEL, as in
   ADR-0022; there is no code node. Work that needs a language is an AWX
   playbook or a custom workflow: ADR-0007's levels 2 and 3 are unchanged,
-  and D2's new step kinds keep to this.
+  and D2's new step kinds keep to this
+  ([ADR-0033](0033-composite-step-kinds.md)).
 
 ### Borrowed ideas, no code
 - **Windmill:** typed step inputs, each bound to the form's values or an

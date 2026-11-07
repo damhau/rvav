@@ -1,5 +1,5 @@
-// Stored secrets for REST value sources (ADR-0019): catalog admins add and
-// replace them; their values are never shown again.
+// Stored secrets for REST value sources and calls (ADR-0019, ADR-0033):
+// catalog admins add and replace them; their values are never shown again.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -158,7 +158,10 @@ export function SecretsPanel() {
       {secrets.isPending && <SkeletonRows rows={2} cols={4} />}
       {secrets.isError && <ErrorState error={secrets.error} onRetry={() => void secrets.refetch()} />}
       {secrets.data && list.length === 0 && (
-        <EmptyState title="No secrets" body="REST value sources sign in to their service with a stored secret." />
+        <EmptyState
+          title="No secrets"
+          body="REST value sources and calls sign in to their service with a stored secret."
+        />
       )}
       {list.length > 0 && (
         <div className="overflow-x-auto">

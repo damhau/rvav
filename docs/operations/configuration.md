@@ -99,7 +99,7 @@ still sign in and correct a wrong one.
 
 rvav checks the certificate of every server it connects to (vCenter, AWX,
 EfficientIP, NSX, Git over HTTPS, vRA, the identity provider, the mail
-server, Teams, Slack, webhooks and REST value sources) against the
+server, Teams, Slack, webhooks, REST value sources and REST call steps) against the
 system's CAs and those of a CA bundle, set in **Administration ›
 Integrations › Trusted certificates**. A connection's test shows the
 certificate its server presents; from there it can be pinned for that
@@ -254,7 +254,7 @@ token. Saved there, it is used from the next read.
 |---|---|---|---|---|
 | `RVAV_SECRETS_KEY` | none | yes | install | The 32-byte key (base64) that seals stored secrets, vCenter passwords and integration settings (ADR-0019). Required to use them. |
 | `RVAV_SECRETS_OLD_KEYS` | none | yes | install | Earlier keys, to open what they sealed while rotating. |
-| `RVAV_REST_SOURCE_HOSTS` | none | | Integrations › Allowed hosts | Hosts REST value sources may call over HTTPS (`cmdb.corp.example`, `cmdb.corp.example:8443`, `*.corp.example` for its subdomains), or `http://host` for plain HTTP. |
+| `RVAV_REST_SOURCE_HOSTS` | none | | Integrations › Allowed hosts | Hosts REST value sources and a composite's REST calls may call over HTTPS (`cmdb.corp.example`, `cmdb.corp.example:8443`, `*.corp.example` for its subdomains), or `http://host` for plain HTTP. |
 | `RVAV_WEBHOOK_HOSTS` | none | | Integrations › Allowed hosts | Hosts webhook subscriptions may post to, listed in the same way. |
 
 ## Notifications
