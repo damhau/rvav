@@ -1,4 +1,4 @@
-import { QueryClient, type InfiniteData } from "@tanstack/react-query";
+import { QueryClient, QueryObserver, type InfiniteData } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type { DeploymentDetail, DeploymentPage, RequestPage, ServiceRequest, Step } from "@/lib/api/types";
 import { keys } from "@/lib/query";
@@ -157,6 +157,33 @@ describe("events that arrive during a fetch", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: key, exact: true });
     resolve({ items: [step("clone", "running")] });
     await first.catch(() => {});
+  });
+
+  it("read again after a first read, which an invalidate can't restart", async () => {
+    const qc = new QueryClient();
+    const key = keys.requests.steps("req_9");
+    const answers = [
+      { items: [step("clone", "running")] }, // Read before the event below.
+      { items: [step("clone", "done")] },
+    ];
+    let resolve: (v: { items: Step[] }) => void = () => {};
+    const read = vi.fn(() => new Promise<{ items: Step[] }>((r) => (resolve = r)));
+    const stop = new QueryObserver(qc, { queryKey: key, queryFn: read }).subscribe(() => {});
+    expect(read).toHaveBeenCalledTimes(1);
+
+    applyEvent(qc, {
+      id: "e9",
+      at,
+      type: "request.step",
+      data: { request_id: "req_9", parent_step_id: null, step: step("clone", "done") },
+    });
+    resolve(answers[0]!);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    resolve(answers[1]!);
+    await vi.waitFor(() =>
+      expect(qc.getQueryData<{ items: Step[] }>(key)!.items.map((s) => s.status)).toEqual(["done"]),
+    );
+    stop();
   });
 });
 

@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Flag,
   Globe,
+  Hourglass,
   LoaderCircle,
   Network,
   Package,
@@ -18,6 +19,7 @@ import {
   Shield,
   ShieldCheck,
   SquareTerminal,
+  Timer,
   TriangleAlert,
   Undo2,
   Waypoints,
@@ -35,7 +37,9 @@ export function NodeIcon({ node, className }: { node: CanvasNode; className?: st
         ? SquareTerminal
         : node.badge === "Workflow"
           ? Workflow
-          : Package
+          : node.badge === "Wait" || node.badge === "Poll"
+            ? Timer
+            : Package
       : {
           inputs: ClipboardList,
           end: Flag,
@@ -52,6 +56,7 @@ export function NodeIcon({ node, className }: { node: CanvasNode; className?: st
 const statusIcon: Record<CanvasStatus, { icon: React.ElementType; tone: string; spin?: boolean }> = {
   pending: { icon: CircleDashed, tone: "text-faint" },
   running: { icon: LoaderCircle, tone: "text-run", spin: true },
+  waiting: { icon: Hourglass, tone: "text-run" },
   done: { icon: CircleCheck, tone: "text-ok" },
   failed: { icon: CircleX, tone: "text-bad" },
   skipped: { icon: CircleMinus, tone: "text-faint" },
@@ -72,6 +77,7 @@ export function StatusIcon({ status, className }: { status: CanvasStatus; classN
 
 const statusBorder: Partial<Record<CanvasStatus, string>> = {
   running: "border-run",
+  waiting: "border-run",
   done: "border-ok",
   failed: "border-bad",
   undone: "border-warn",

@@ -175,6 +175,77 @@ describe("the composite designer", longTests, () => {
     expect(step("monitor").when).toBe("inputs.size == 'L'");
   });
 
+  it("adds a wait for a time and a poll, field by field, with no inputs or undo", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    const add = async (runs: string | RegExp, key: string) => {
+      await user.click(await screen.findByRole("button", { name: "Add a step" }));
+      const dialog = await screen.findByRole("dialog", { name: "Add a step" });
+      await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+      await pick(user, within(dialog).getByRole("combobox", { name: "What it runs" }), runs);
+      await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+      await user.type(within(dialog).getByRole("textbox", { name: "Key" }), key);
+      await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+      return screen.findByRole("region", { name: `Selected: ${key}` });
+    };
+
+    const wait = await add("A wait for a time", "keep");
+    expect(step("keep")).toEqual({ key: "keep", wait: {} });
+    expect(within(wait).getByRole("list", { name: "Problems with this step" })).toHaveTextContent(
+      "Say how long it waits, or until when.",
+    );
+    expect(within(wait).queryByRole("group", { name: "Inputs" })).toBeNull();
+    expect(within(wait).queryByRole("group", { name: "Undo" })).toBeNull();
+    const how = within(within(wait).getByRole("group", { name: "How long it waits" }));
+    await user.type(how.getByRole("textbox", { name: "For" }), "soon{Enter}");
+    expect(within(wait).getByRole("list", { name: "Problems with this step" })).toHaveTextContent(
+      "A duration such as 72h.",
+    );
+    await user.clear(how.getByRole("textbox", { name: "For" }));
+    await user.type(how.getByRole("textbox", { name: "For" }), "72h{Enter}");
+    expect(step("keep").wait).toEqual({ for: "72h" });
+    expect(within(wait).queryByRole("list", { name: "Problems with this step" })).toBeNull();
+    await user.type(how.getByRole("textbox", { name: "Or until" }), "inputs.role{Enter}");
+    expect(step("keep").wait).toEqual({ until: "inputs.role" });
+    expect(how.getByRole("textbox", { name: "For" })).toHaveValue("");
+
+    const poll = await add(/^A wait for a condition/, "change");
+    expect(step("change").poll).toEqual({ rest: { method: "GET", url: "" }, until: "", every: "10m", timeout: "72h" });
+    expect(within(poll).queryByRole("group", { name: "Inputs" })).toBeNull();
+    expect(within(poll).queryByRole("group", { name: "Undo" })).toBeNull();
+    const call = within(within(poll).getByRole("group", { name: "The call it repeats" }));
+    await user.click(call.getByRole("combobox", { name: "Method" }));
+    // It may not repeat what may do something each time.
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["GET", "PUT", "DELETE"]);
+    await user.keyboard("{Escape}");
+    await user.type(call.getByRole("textbox", { name: "URL" }), "https://h.example/change/${{inputs.role}{Enter}");
+    await user.type(call.getByRole("textbox", { name: "Keep" }), "$.state{Enter}");
+    const waits = within(within(poll).getByRole("group", { name: "What it waits for" }));
+    await user.clear(waits.getByRole("textbox", { name: "Every" }));
+    await user.type(waits.getByRole("textbox", { name: "Every" }), "30s{Enter}");
+    expect(within(poll).getByRole("list", { name: "Problems with this step" })).toHaveTextContent("At least 1m");
+    await user.clear(waits.getByRole("textbox", { name: "Every" }));
+    await user.type(waits.getByRole("textbox", { name: "Every" }), "5m{Enter}");
+    await user.type(waits.getByRole("textbox", { name: "Until" }), "steps.change.json == 'ok'{Enter}");
+    const then = within(within(poll).getByRole("group", { name: "If it never holds" }));
+    await user.clear(then.getByRole("textbox", { name: "Deadline" }));
+    await user.type(then.getByRole("textbox", { name: "Deadline" }), "1m{Enter}");
+    expect(within(poll).getByRole("list", { name: "Problems with this step" })).toHaveTextContent(
+      "At least as long as how often it checks.",
+    );
+    await user.clear(then.getByRole("textbox", { name: "Deadline" }));
+    await user.type(then.getByRole("textbox", { name: "Deadline" }), "24h{Enter}");
+    await pick(user, then.getByRole("combobox", { name: "Then" }), "It goes on");
+    expect(step("change").poll).toEqual({
+      rest: { method: "GET", url: "https://h.example/change/${inputs.role}", keep: "$.state" },
+      until: "steps.change.json == 'ok'",
+      every: "5m",
+      timeout: "24h",
+      on_timeout: "continue",
+    });
+    expect(within(poll).queryByRole("list", { name: "Problems with this step" })).toBeNull();
+  });
+
   it("adds a REST call and its undo, field by field, and later steps read what it gives", async () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness initial={pg} />);

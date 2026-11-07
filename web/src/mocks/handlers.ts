@@ -747,7 +747,7 @@ export const handlers = [
         // A composite step undone runs again: its undo goes (ADR-0022).
         step.children = step.children.filter((c) => !c.key.endsWith("/undo"));
         if (step.detail === "Undone.") step.detail = undefined;
-        Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined });
+        Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined, due_at: null });
         step.children.forEach((c) => Object.assign(c, { status: "pending", started_at: null, finished_at: null }));
       }
     }

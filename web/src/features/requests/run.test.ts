@@ -43,6 +43,12 @@ describe("a composite's run on its graph", () => {
     expect(stepStatus(step("step:x", "done", { system: "awx" }), true)).toBe("done");
   });
 
+  it("says a step waits for a time or a condition, and only while it does", () => {
+    expect(stepStatus(step("step:x", "running", { system: "wait" }))).toBe("waiting");
+    expect(stepStatus(step("step:x", "done", { system: "wait" }))).toBe("done");
+    expect(stepStatus(step("step:x", "running", { system: "rest" }))).toBe("running");
+  });
+
   it("follows the steps as they run, and waits on the approval", () => {
     const steps = [
       step("submit", "done"),

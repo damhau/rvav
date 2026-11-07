@@ -22,19 +22,33 @@ const fetching = (qc: QueryClient, key: QueryKey) =>
     .some((q) => q.state.fetchStatus === "fetching");
 
 /**
- * Patch a cached query. While its fetch is in flight the response would
- * overwrite the patch with an older snapshot, so refetch instead.
+ * Read a query again because of an event that arrived during a read, whose
+ * answer would overwrite it with an older snapshot. An invalidate restarts only
+ * a read with data to fall back on: a first read goes on, and answers, so that
+ * one is read again after its answer.
  */
+function readAgain(qc: QueryClient, key: QueryKey) {
+  const filters = { queryKey: key, exact: true };
+  const query = qc.getQueryCache().find(filters);
+  if (query && query.state.data === undefined)
+    void query.promise?.then(
+      () => qc.invalidateQueries(filters),
+      () => {},
+    );
+  void qc.invalidateQueries(filters);
+}
+
+/** Patch a cached query, or read it again if a read is under way. */
 function patch<T>(qc: QueryClient, key: QueryKey, fn: (old: T) => T) {
   if (fetching(qc, key)) {
-    void qc.invalidateQueries({ queryKey: key, exact: true });
+    readAgain(qc, key);
     return;
   }
   qc.setQueryData<T>(key, (old) => (old === undefined ? old : fn(old)));
 }
 
 function replace<T>(qc: QueryClient, key: QueryKey, data: T) {
-  if (fetching(qc, key)) void qc.invalidateQueries({ queryKey: key, exact: true });
+  if (fetching(qc, key)) readAgain(qc, key);
   else qc.setQueryData<T>(key, data);
 }
 

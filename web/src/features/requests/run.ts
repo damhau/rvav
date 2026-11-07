@@ -33,9 +33,11 @@ export const rollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollba
 /**
  * A step's status on the graph. Undone, where the request said so: a step
  * whose undo ran (cancelled, with its `/undo` step done), or the VMs of a
- * request rolled back.
+ * request rolled back. Waiting: a running step that waits for a time or a
+ * condition.
  */
 export function stepStatus(s: Step, rolledBack = false): CanvasStatus {
+  if (s.status === "running" && s.system === "wait") return "waiting";
   if (s.status === "cancelled" && s.children.some((c) => c.key.endsWith("/undo") && c.status === "done"))
     return "undone";
   if (rolledBack && s.status === "done" && s.system === "vcenter" && s.key.startsWith("step:")) return "undone";
@@ -43,7 +45,7 @@ export function stepStatus(s: Step, rolledBack = false): CanvasStatus {
 }
 
 // The status of several steps: the one that says most of where they are.
-const weight: CanvasStatus[] = ["failed", "running", "pending", "cancelled", "undone", "skipped", "done"];
+const weight: CanvasStatus[] = ["failed", "running", "waiting", "pending", "cancelled", "undone", "skipped", "done"];
 
 /** Each node's status: its steps', or not started while it has none. The end is the ready step's. */
 export function runStatus(graph: CanvasGraph, byNode: Map<string, Step[]>): Record<string, CanvasStatus> {

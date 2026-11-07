@@ -94,11 +94,17 @@ const kindGroup: Record<StepTarget["kind"], string> = {
   workflow: "Custom workflows",
   rest: "REST APIs",
   ask: "People",
+  wait: "Waits",
+  poll: "Waits",
 };
 const byName = "awx-by-name";
 const restValue = targetValue({ kind: "rest", ref: "" });
 const askValue = targetValue({ kind: "ask", ref: "" });
+const waitValue = targetValue({ kind: "wait", ref: "" });
+const pollValue = targetValue({ kind: "poll", ref: "" });
 const restMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+// A poll repeats its call: only these may be repeated (ADR-0033).
+const pollMethods = ["GET", "PUT", "DELETE"];
 
 /** What a step can run, for a picker: grouped, the step's own first if it isn't listed. */
 function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Option[] {
@@ -118,6 +124,8 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget): Op
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
   out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
   out.push({ value: askValue, label: "A person", group: kindGroup.ask });
+  out.push({ value: waitValue, label: "A wait for a time", group: kindGroup.wait });
+  out.push({ value: pollValue, label: "A wait for a condition, polling a REST API", group: kindGroup.poll });
   return out;
 }
 
@@ -131,7 +139,7 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
     const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
     return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
-  if (kind === "rest" || kind === "ask") return { kind, ref: "" };
+  if (kind === "rest" || kind === "ask" || kind === "wait" || kind === "poll") return { kind, ref: "" };
   if (kind !== "item" && kind !== "workflow") return undefined;
   return { kind, ref };
 }
@@ -148,6 +156,8 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
     };
   else if (target.kind === "rest") step.rest = edits.newRestCall("GET");
   else if (target.kind === "ask") step.ask = {};
+  else if (target.kind === "wait") step.wait = {};
+  else if (target.kind === "poll") step.poll = edits.newPoll();
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -445,6 +455,8 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const withMap = obj(step.with);
   const rest = target?.kind === "rest";
   const ask = target?.kind === "ask";
+  const wait = target?.kind === "wait";
+  const poll = target?.kind === "poll";
   const inputs = listed?.inputs ?? [];
   const others = [...new Set([...Object.keys(withMap), ...extra])].filter((k) => !inputs.some((i) => i.name === k));
   const undo = step.undo === undefined ? undefined : obj(step.undo);
@@ -632,7 +644,11 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {ask && <AskFields ask={obj(step.ask)} id={id} stepKey={key} ctx={ctx} />}
 
-      {!rest && !ask && (
+      {wait && <WaitFields wait={obj(step.wait)} id={id} reads={sources.map((s) => s.value)} ctx={ctx} />}
+
+      {poll && <PollFields poll={obj(step.poll)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />}
+
+      {!rest && !ask && !wait && !poll && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Inputs</legend>
           {target?.kind === "item" && !listed && (
@@ -688,7 +704,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {!planned && !ask && (
+      {!planned && !ask && !wait && !poll && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Undo</legend>
           <UndoEditor
@@ -830,12 +846,29 @@ export function writtenStatuses(text: string): number[] | undefined {
   return words.map(Number);
 }
 
-/** A REST call's fields: a step's, or an undo's, whose answer nothing reads. */
+/** What a field's CEL can read at that point. */
+function Reads({ reads }: { reads: string[] }) {
+  return (
+    <p className="text-muted">
+      It can read{" "}
+      {reads.map((r, i) => (
+        <span key={r}>
+          {i > 0 && ", "}
+          <code className="font-mono">{r}</code>
+        </span>
+      ))}
+      .
+    </p>
+  );
+}
+
+/** A REST call's fields: a step's, a poll's, or an undo's, whose answer nothing reads. */
 function RestCallFields({
   prefix,
   call,
   stepKey,
   undo,
+  poll,
   reads,
   onChange,
 }: {
@@ -843,6 +876,8 @@ function RestCallFields({
   call: Raw;
   stepKey?: string;
   undo?: boolean;
+  /** A poll's call, which it repeats. */
+  poll?: boolean;
   /** What its URL and body can read at that point. */
   reads: string[];
   onChange: (field: edits.RestField, value: string | number[]) => void;
@@ -867,7 +902,11 @@ function RestCallFields({
             id={`${prefix}-method`}
             value={method}
             placeholder="Choose"
-            options={restMethods.map((m) => ({ value: m, label: m }))}
+            // A method written in the YAML that it may not use shows, and the step says why.
+            options={[...new Set([...(poll ? pollMethods : restMethods), ...(method ? [method] : [])])].map((m) => ({
+              value: m,
+              label: m,
+            }))}
             onChange={(v) => onChange("method", v)}
           />
         </Field>
@@ -921,7 +960,7 @@ function RestCallFields({
           label={undo ? "Undo's accepted statuses" : "Accepted statuses"}
           htmlFor={`${prefix}-accept`}
           className={undo ? "md:col-span-2" : undefined}
-          hint="Others fail the step. Empty: any 2xx."
+          hint={poll ? "Empty: any 2xx." : "Others fail the step. Empty: any 2xx."}
         >
           <CommitInput
             id={`${prefix}-accept`}
@@ -957,16 +996,13 @@ function RestCallFields({
           </Field>
         )}
       </div>
-      <p className="text-muted">
-        It can read{" "}
-        {reads.map((r, i) => (
-          <span key={r}>
-            {i > 0 && ", "}
-            <code className="font-mono">{r}</code>
-          </span>
-        ))}
-        .
-      </p>
+      {poll && (
+        <p className="text-muted">
+          No answer, a 5xx, a 429 or a 408 only waits for the next check. Another status it doesn't accept fails the
+          step: list a 404 to mean not yet.
+        </p>
+      )}
+      <Reads reads={reads} />
     </>
   );
 }
@@ -986,6 +1022,135 @@ const onTimeoutOptions: Option[] = [
   { value: "continue", label: "It goes on with no answer" },
   { value: "escalate", label: "It escalates" },
 ];
+
+/** A wait for a time: how long, or until when. Writing one removes the other. */
+function WaitFields({ wait, id, reads, ctx }: { wait: Raw; id: string; reads: string[]; ctx: PanelContext }) {
+  const { text, apply } = ctx;
+  const set = (field: "for" | "until", v: string) => apply(() => edits.setWaitField(text, id, field, v));
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className={legend}>How long it waits</legend>
+      <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
+        <Field label="For" htmlFor="cd-wait-for" hint="A duration such as 72h.">
+          <CommitInput
+            id="cd-wait-for"
+            value={str(wait.for)}
+            className="font-mono text-xs"
+            placeholder="72h"
+            onCommit={(v) => set("for", v)}
+          />
+        </Field>
+        <Field
+          label="Or until"
+          htmlFor="cd-wait-until"
+          hint="A CEL expression giving a time: a timestamp, or text such as 2027-03-01T22:00:00Z, read as UTC if it has no zone. A time already passed goes on at once."
+        >
+          <CommitInput
+            id="cd-wait-until"
+            value={str(wait.until)}
+            className="font-mono text-xs"
+            placeholder="inputs.window"
+            onCommit={(v) => set("until", v)}
+          />
+        </Field>
+      </div>
+      <Reads reads={reads} />
+    </fieldset>
+  );
+}
+
+const pollThenOptions: Option[] = [
+  { value: "fail", label: "The step fails" },
+  { value: "continue", label: "It goes on" },
+];
+
+/** A poll: the call it repeats, what it waits for, how often and how long. */
+function PollFields({
+  poll,
+  id,
+  stepKey,
+  reads,
+  ctx,
+}: {
+  poll: Raw;
+  id: string;
+  stepKey: string;
+  reads: string[];
+  ctx: PanelContext;
+}) {
+  const { text, apply } = ctx;
+  const set = (field: edits.PollField, v: string) => apply(() => edits.setPollField(text, id, field, v));
+  const own = `steps.${stepKey || "<key>"}`;
+  return (
+    <>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>The call it repeats</legend>
+        <RestCallFields
+          prefix="cd-poll-rest"
+          call={obj(poll.rest)}
+          stepKey={stepKey}
+          poll
+          reads={reads}
+          onChange={(field, v) => apply(() => edits.setRestField(text, id, field, v, "poll"))}
+        />
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>What it waits for</legend>
+        <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
+          <Field label="Every" htmlFor="cd-poll-every" hint="How often it checks: at least 1m.">
+            <CommitInput
+              id="cd-poll-every"
+              value={str(poll.every)}
+              className="font-mono text-xs"
+              placeholder="10m"
+              onCommit={(v) => set("every", v)}
+            />
+          </Field>
+          <Field
+            label="Until"
+            htmlFor="cd-poll-until"
+            hint={
+              <>
+                A CEL condition on the last answer: <code className="font-mono">{own}.json</code> and{" "}
+                <code className="font-mono">{own}.status</code>.
+              </>
+            }
+          >
+            <CommitInput
+              id="cd-poll-until"
+              value={str(poll.until)}
+              className="font-mono text-xs"
+              placeholder={`${own}.json == 'approved'`}
+              onCommit={(v) => set("until", v)}
+            />
+          </Field>
+        </div>
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>If it never holds</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Deadline" htmlFor="cd-poll-timeout" hint="A duration such as 72h, from when it begins.">
+            <CommitInput
+              id="cd-poll-timeout"
+              value={str(poll.timeout)}
+              className="font-mono text-xs"
+              placeholder="72h"
+              onCommit={(v) => set("timeout", v)}
+            />
+          </Field>
+          <Field label="Then" htmlFor="cd-poll-on-timeout">
+            <Select
+              id="cd-poll-on-timeout"
+              value={str(poll.on_timeout) || "fail"}
+              options={pollThenOptions}
+              onChange={(v) => set("on_timeout", v)}
+            />
+          </Field>
+        </div>
+      </fieldset>
+    </>
+  );
+}
 
 /** A question's default as written: of the question's type, or as text for the step to say what is wrong. */
 export function writtenDefault(type: string, text: string): string | number | boolean | undefined {
@@ -1420,7 +1585,14 @@ function AddStepDialog({
       setKey(
         edits.uniqueKey(
           text,
-          findTarget(targets, t)?.title ?? (t.kind === "rest" ? "rest_call" : t.kind === "ask" ? "person" : t.ref),
+          findTarget(targets, t)?.title ??
+            (t.kind === "rest"
+              ? "rest_call"
+              : t.kind === "ask"
+                ? "person"
+                : t.kind === "wait" || t.kind === "poll"
+                  ? t.kind
+                  : t.ref),
         ),
       );
   };

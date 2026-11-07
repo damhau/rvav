@@ -1,6 +1,6 @@
-import { CircleCheck, CircleDashed, CircleMinus, CircleSlash, CircleX, LoaderCircle } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleMinus, CircleSlash, CircleX, Hourglass, LoaderCircle } from "lucide-react";
 import type { Step, StepStatus } from "@/lib/api/types";
-import { clock, cn, duration } from "@/lib/utils";
+import { clock, cn, duration, fullDate } from "@/lib/utils";
 
 const systemLabel: Record<NonNullable<Step["system"]>, string> = {
   rvav: "",
@@ -35,9 +35,10 @@ const statusText: Record<StepStatus, string> = {
   pending: "Not started",
 };
 
-function StepIcon({ status, small }: { status: StepStatus; small?: boolean }) {
+function StepIcon({ status, small, waits }: { status: StepStatus; small?: boolean; waits?: boolean }) {
   const c = small ? "size-3.5" : "size-4";
   const label = statusText[status];
+  if (waits && status === "running") return <Hourglass className={cn(c, "text-run")} aria-label="Waiting" />;
   switch (status) {
     case "done":
       return <CircleCheck className={cn(c, "text-ok")} aria-label={label} />;
@@ -80,7 +81,7 @@ export function Timeline({
               />
             )}
             <span className="pt-0.5">
-              <StepIcon status={s.status} />
+              <StepIcon status={s.status} waits={s.system === "wait"} />
             </span>
             {/* Not started reads quieter, in colours that keep their contrast (no opacity). */}
             <div className="flex min-w-0 flex-col pb-4">
@@ -109,12 +110,20 @@ export function Timeline({
                   {s.started_at && s.status !== "pending" && <span>{clock(s.started_at)}</span>}
                   {s.started_at && (s.status === "running" || s.finished_at) && (
                     <span className="w-14 text-right">
-                      {s.status === "running" ? "running" : duration(s.started_at, s.finished_at)}
+                      {s.status === "running"
+                        ? s.system === "wait"
+                          ? "waiting"
+                          : "running"
+                        : duration(s.started_at, s.finished_at)}
                     </span>
                   )}
                 </span>
               </div>
               {s.detail && <span className="text-xs text-muted">{s.detail}</span>}
+              {/* A wait for a time, or a poll's deadline: in the viewer's own time. */}
+              {s.due_at && (s.status === "running" || s.status === "done") && (
+                <span className="text-xs text-muted">Until {fullDate(s.due_at)}</span>
+              )}
               {s.error && <span className="text-xs text-bad">{s.error}</span>}
               {s.children.length > 0 && s.status !== "pending" && (
                 <div className="mt-2 rounded-md border border-line bg-sunken/60 px-3 py-2">

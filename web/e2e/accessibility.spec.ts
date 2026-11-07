@@ -260,6 +260,87 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/requests/REQ › Timeline (a wait answered)");
     });
 
+    // A wait for a time and a poll (D2.4): their fields with problems on the step,
+    // the list view, a requester's masked form, then a run that waits.
+    test("axe: a composite draft's wait for a time and poll, and the run waiting", async ({ page }) => {
+      test.slow();
+      await page.goto("/admin/catalog-items");
+      await loaded(page);
+      await page.getByRole("button", { name: "New item" }).click();
+      const dialog = page.getByRole("dialog", { name: "New item" });
+      await dialog.getByRole("textbox", { name: "Name" }).fill("Keep check");
+      await dialog.getByRole("textbox", { name: "Slug" }).fill("keep-check");
+      await dialog.getByRole("textbox", { name: "Summary" }).fill("Waits.");
+      await dialog.getByRole("combobox", { name: "Type" }).click();
+      await page.getByRole("option", { name: /composite/i }).click();
+      await dialog.getByRole("button", { name: "Create" }).click();
+      await page.getByRole("tab", { name: "Definition" }).click();
+      const addStep = async (runs: string | RegExp, key: string, title: string) => {
+        await page.getByRole("button", { name: "Add a step" }).click();
+        const add = page.getByRole("dialog", { name: "Add a step" });
+        await add.getByRole("combobox", { name: "What it runs" }).click();
+        await page.getByRole("option", { name: runs }).click();
+        await add.getByRole("textbox", { name: "Key" }).fill(key);
+        await add.getByRole("textbox", { name: "Title" }).fill(title);
+        await add.getByRole("button", { name: "Add step" }).click();
+        return page.getByRole("region", { name: `Selected: ${title}` });
+      };
+      const commit = async (where: ReturnType<Page["getByRole"]>, label: string, value: string) => {
+        const field = where.getByRole("textbox", { name: label, exact: true });
+        await field.fill(value);
+        await field.press("Tab");
+      };
+      const wait = await addStep("A wait for a time", "keep", "Keep it");
+      await expect(wait.getByRole("list", { name: "Problems with this step" })).toContainText("Say how long");
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/keep-check › Definition (a wait for a time selected)");
+      await commit(wait, "For", "72h");
+      await expect(wait.getByRole("list", { name: "Problems with this step" })).toHaveCount(0);
+
+      const poll = await addStep(/^A wait for a condition/, "change", "The change");
+      await expect(poll.getByRole("list", { name: "Problems with this step" })).toContainText("Say what it waits for");
+      await loaded(page);
+      await scan(page, "/admin/catalog-items/keep-check › Definition (a poll selected)");
+      await commit(poll, "URL", "https://cmdb.corp.example/change");
+      await commit(poll, "Until", "steps.change.json == 'approved'");
+      await expect(poll.getByRole("list", { name: "Problems with this step" })).toHaveCount(0);
+      const shownAs = page.getByRole("region", { name: "Steps of Keep check" }).getByRole("group", { name: "Show as" });
+      await shownAs.getByRole("button", { name: "List" }).click();
+      await expect(shownAs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+      await scan(page, "/admin/catalog-items/keep-check › Definition (a wait and a poll, as a list)");
+      await shownAs.getByRole("button", { name: "Graph" }).click();
+
+      await page.getByRole("button", { name: "Save draft" }).click();
+      await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
+      await page.getByRole("tab", { name: "Entitlements" }).click();
+      await page.getByRole("radio", { name: /Chosen projects/ }).check();
+      await page.getByRole("checkbox", { name: "Web Platform" }).click();
+      await page.getByRole("button", { name: "Save entitlements" }).click();
+      await expect(page.getByText("Entitlements saved")).toBeVisible();
+      await page.getByRole("tab", { name: "Versions" }).click();
+      await page.getByRole("button", { name: "Publish" }).click();
+      await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
+      await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("link", { name: /^Keep check/ }).click();
+      await page.getByRole("textbox", { name: "Name" }).fill("web-01");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/catalog/keep-check (a wait and a poll, masked)");
+      await page.getByRole("button", { name: "Submit request" }).click();
+
+      const run = page.getByRole("application", { name: /^Run of REQ-\d+$/ });
+      const waiting = run.getByRole("button", { name: /^Wait Keep it\. Waiting\./ });
+      await expect(waiting).toBeVisible({ timeout: 20_000 });
+      await waiting.click();
+      await expect(page.getByRole("region", { name: "Selected: Keep it" })).toContainText("Until ");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
+      await loaded(page);
+      await scan(page, "/requests/REQ (a run that waits)");
+      await page.getByRole("button", { name: "Timeline" }).click();
+      await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText("Waiting for 72h");
+      await scan(page, "/requests/REQ › Timeline (a run that waits)");
+    });
+
     test("axe: a composite request's run, failed then running", async ({ page }) => {
       await page.goto("/requests/REQ-10484");
       await expect(page.getByRole("region", { name: "Selected: The database's owner" })).toBeVisible();

@@ -15,10 +15,11 @@ import type {
   VmResource,
 } from "@/lib/api/types";
 import { goDuration } from "@/lib/composite";
+import { maskLiterals } from "./blueprints";
 import type { StoredApproval } from "./approvals";
 import { completeDay2Step, day2Finished } from "./day2";
 import { publishedBlueprint } from "./catalogAdmin";
-import { celBool } from "./cel";
+import { celBool, celEval } from "./cel";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
 import { multiName, multiParts } from "./components";
@@ -33,6 +34,17 @@ const hosts = new Map<string, string>();
 const ips = new Map<string, string>();
 /** What each step that waits for a person asks, by step ID. */
 const asks = new Map<string, Rec>();
+/**
+ * What each step that waits for a time or a condition says, by step ID, and how
+ * far it has got. A tick counts as a minute of its wait: `for: 72h` stays until
+ * cancelled, `for: 2m` is over in two ticks. A poll's condition holds at its
+ * third check: `every: 1m` gets there in two ticks, `every: 6h` stays a good
+ * while, and a `timeout` of 1m gets to its deadline first.
+ */
+const waits = new Map<
+  string,
+  { wait?: Rec; poll?: Rec; minutes: number; last: number; checks: number; left: number }
+>();
 
 const now = () => new Date().toISOString();
 const text = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -132,16 +144,18 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       out.push(s);
     } else if (st.wait) {
       const wait = st.wait as Rec;
-      out.push(
-        step(key, title, "wait", { detail: text(wait.for) ? `Waits for ${text(wait.for)}` : "Waits until a time" }),
-      );
+      const s = step(key, title, "wait", {
+        detail: text(wait.for) ? `Waits for ${text(wait.for)}` : "Waits until a time",
+      });
+      waits.set(s.id, { wait, minutes: 0, last: 0, checks: 0, left: 0 });
+      out.push(s);
     } else if (st.poll) {
       const poll = st.poll as Rec;
-      out.push(
-        step(key, title, "wait", {
-          detail: `Waits for a condition: ${text((poll.rest as Rec).method)} every ${text(poll.every)}`,
-        }),
-      );
+      const s = step(key, title, "wait", {
+        detail: `Waits for a condition: ${text((poll.rest as Rec).method)} every ${text(poll.every)}`,
+      });
+      waits.set(s.id, { poll, minutes: 0, last: 0, checks: 0, left: 0 });
+      out.push(s);
     } else {
       out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
     }
@@ -590,12 +604,101 @@ export function stepAnswered(r: StoredRequest, key: string, outcome: string) {
 /** A step's wait was rejected: the step fails, and with it the request. A Retry asks again. */
 export function stepRejected(r: StoredRequest, key: string, error: string) {
   const s = r.steps.find((x) => x.key === key && x.status === "running");
-  if (!s) return;
+  if (s) failStep(r, s, error);
+}
+
+function failStep(r: StoredRequest, s: Step, error: string) {
   Object.assign(s, { status: "failed", finished_at: now(), error });
   publishStep(r, s);
   Object.assign(r.request, { status: "failed", finished_at: now(), error: { step_id: s.id, message: error } });
   publishRequest(r);
   timers.delete(r.request.id);
+}
+
+// What the server reads as a time (provision.timeOf): this has a zone or a date alone, read as UTC in JavaScript too.
+const timeText = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+const inMinutes = (ms: number | null) => Math.max(1, Math.ceil((ms ?? 60_000) / 60_000));
+
+/** A step starts to wait for a time or a condition (provision.OpenWait, OpenPoll, with its first CheckPoll). */
+function openWait(r: StoredRequest, s: Step) {
+  const w = waits.get(s.id);
+  if (!w) return;
+  Object.assign(w, { minutes: 0, last: 0, checks: 0 });
+  if (w.poll) {
+    s.due_at = new Date(Date.now() + (goDuration(text(w.poll.timeout)) ?? 0)).toISOString();
+    w.left = inMinutes(goDuration(text(w.poll.timeout)));
+    checkPoll(s, w);
+    return;
+  }
+  const forMs = goDuration(text(w.wait?.for));
+  if (forMs !== null) {
+    s.due_at = new Date(Date.now() + forMs).toISOString();
+    s.detail = `Waiting for ${text(w.wait?.for)}`;
+    w.left = inMinutes(forMs);
+    return;
+  }
+  // Until a time: the one its expression gives, if the mocks can read it (their
+  // steps have no outputs, their CEL no timestamps); else in an hour.
+  const until = text(w.wait?.until);
+  let value: unknown = new Date(Date.now() + 3_600_000).toISOString();
+  if (!/\bsteps\./.test(until))
+    try {
+      value = celEval(until, { inputs: r.request.inputs ?? {} });
+    } catch {
+      // In an hour.
+    }
+  const due = typeof value === "string" && timeText.test(value) ? new Date(value) : null;
+  if (!due) {
+    failStep(
+      r,
+      s,
+      `Its time can't be read: ${maskLiterals(until, false)} doesn't give a time. Ask a catalog admin to check this item.`,
+    );
+    return;
+  }
+  s.due_at = due.toISOString();
+  const left = due.getTime() - Date.now();
+  s.detail = left > 0 ? "Waiting until the time it was given" : "That time had already passed, so it went on at once.";
+  w.left = left > 0 ? inMinutes(left) : 0;
+}
+
+/** One check of a poll: true when its condition holds, at its third. */
+function checkPoll(s: Step, w: NonNullable<ReturnType<typeof waits.get>>) {
+  const method = text((w.poll?.rest as Rec | undefined)?.method);
+  w.checks++;
+  w.last = w.minutes;
+  if (w.checks >= 3) {
+    s.detail = `Its condition holds: ${method} answered 200.`;
+    return true;
+  }
+  s.detail = `Checks every ${text(w.poll?.every)}. Last check: ${method} answered 200, not yet.`;
+  return false;
+}
+
+/** A wait's tick: it says whether the step is over. A poll that fails at its deadline ends the request. */
+function waitTick(r: StoredRequest, s: Step): boolean {
+  const w = waits.get(s.id);
+  if (!w) return true;
+  w.minutes++;
+  if (!w.poll) return w.minutes >= w.left;
+  const due = w.minutes >= w.left;
+  const every = inMinutes(goDuration(text(w.poll.every)));
+  let met = false;
+  if (due || w.minutes - w.last >= every) met = checkPoll(s, w);
+  if (met) {
+    s.due_at = null;
+    return true;
+  }
+  if (!due) return false;
+  s.due_at = null;
+  const timeout = text(w.poll.timeout);
+  if (text(w.poll.on_timeout) !== "continue") {
+    failStep(r, s, `Its condition wasn't met within ${timeout}.`);
+    return false;
+  }
+  s.detail = `Its condition wasn't met within ${timeout}, so it went on.`;
+  return true;
 }
 
 /** One tick: finish the running unit of work and start the next one. */
@@ -609,11 +712,21 @@ function tick(requestId: string) {
   if (!s) return finish(r);
   // It waits for a person: the answer starts it again, as a cancel does.
   if (s.status === "running" && s.system === "person") return;
+  // It waits for a time or a condition: a tick is a minute of its wait.
+  if (s.status === "running" && s.system === "wait" && !waitTick(r, s)) {
+    if (s.status !== "running") return;
+    publishStep(r, s);
+    return schedule(requestId);
+  }
 
   if (s.status === "pending") {
     s.status = "running";
     s.started_at = now();
     if (s.system === "person") openAsk(r, s);
+    if (s.system === "wait") {
+      openWait(r, s);
+      if (s.status !== "running") return;
+    }
     if (isJob(s)) {
       s.children[0]!.status = "running";
       s.children[0]!.started_at = now();
@@ -662,6 +775,10 @@ function tick(requestId: string) {
       next.status = "running";
       next.started_at = now();
       if (next.system === "person") openAsk(r, next);
+      if (next.system === "wait") {
+        openWait(r, next);
+        if (next.status !== "running") return;
+      }
       if (isJob(next)) {
         next.children[0]!.status = "running";
         next.children[0]!.started_at = now();

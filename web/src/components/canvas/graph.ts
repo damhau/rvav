@@ -8,7 +8,7 @@ import type { FieldError, StepStatus } from "@/lib/api/types";
 export type CanvasDirection = "TB" | "LR";
 
 /** A node's live status in a run: a step's, plus undone (rolled back after a failure). */
-export type CanvasStatus = StepStatus | "undone";
+export type CanvasStatus = StepStatus | "undone" | "waiting";
 
 export type CanvasNodeKind =
   | "inputs" // a composite's form: where bindings to `inputs.` come from
@@ -128,6 +128,7 @@ export function within(pointer: string, prefix: string): boolean {
 const statusWords: Record<CanvasStatus, string> = {
   pending: "Not started",
   running: "Running",
+  waiting: "Waiting",
   done: "Done",
   failed: "Failed",
   skipped: "Skipped",

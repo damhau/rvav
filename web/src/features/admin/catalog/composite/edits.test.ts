@@ -15,11 +15,13 @@ import {
   setAskField,
   setAskQuestion,
   setBinding,
+  setPollField,
   setRestField,
   setRollback,
   setStepField,
   setTarget,
   setUndo,
+  setWaitField,
   stepKeys,
   uniqueKey,
   yamlOutput,
@@ -500,5 +502,83 @@ describe("a step's wait for a person", () => {
     const renamed = setStepField(text, "step:vm", "key", "manager");
     expect(ask(renamed).message).toBe("See steps.vm in the runbook");
     expect(stepsOf(renamed)[1]!.with).toEqual({ b: "steps.manager.answer.ok" });
+  });
+});
+
+describe("a wait for a time and a poll", () => {
+  const stepsOf = (text: string) => blueprint(text).steps as Record<string, unknown>[];
+  const base = () =>
+    definition({
+      kind: "composite",
+      steps: [
+        { key: "vm", awx: { job_template: "t" }, with: { a: "inputs.a" }, undo: { job_template: "u" } },
+        { key: "later", item: "x", with: { b: "steps.vm.until" }, when: "steps.vm.met" },
+      ],
+    });
+  const asWait = () => setTarget(base(), "step:vm", { kind: "wait", ref: "" });
+  const asPoll = () => setTarget(base(), "step:vm", { kind: "poll", ref: "" });
+
+  it("replaces what the step ran, its inputs and its undo, and keeps what it has when asked again", () => {
+    expect(stepsOf(asWait())[0]).toEqual({ key: "vm", wait: {} });
+    expect(stepsOf(asPoll())[0]).toEqual({
+      key: "vm",
+      poll: { rest: { method: "GET", url: "" }, until: "", every: "10m", timeout: "72h" },
+    });
+    const filled = setWaitField(asWait(), "step:vm", "for", "72h");
+    expect(setTarget(filled, "step:vm", { kind: "wait", ref: "" })).toBe(filled);
+    // One kind for another: the wait goes.
+    expect(stepsOf(setTarget(filled, "step:vm", { kind: "poll", ref: "" }))[0]).not.toHaveProperty("wait");
+    expect(stepsOf(setTarget(asPoll(), "step:vm", { kind: "rest", ref: "" }))[0]).not.toHaveProperty("poll");
+  });
+
+  it("writes how long or until when, one taking the other's place", () => {
+    let text = setWaitField(asWait(), "step:vm", "for", " 72h ");
+    expect(stepsOf(text)[0]!.wait).toEqual({ for: "72h" });
+    text = setWaitField(text, "step:vm", "until", "inputs.window");
+    expect(stepsOf(text)[0]!.wait).toEqual({ until: "inputs.window" });
+    text = setWaitField(text, "step:vm", "until", " ");
+    expect(stepsOf(text)[0]!.wait).toEqual({});
+  });
+
+  it("writes a poll's fields and its call's in order, and removes what is emptied", () => {
+    let text = setPollField(asPoll(), "step:vm", "on_timeout", "continue");
+    text = setPollField(text, "step:vm", "until", " steps.vm.status == 200 ");
+    text = setRestField(text, "step:vm", "url", "https://h.example/x", "poll");
+    text = setRestField(text, "step:vm", "method", "PUT", "poll");
+    text = setRestField(text, "step:vm", "accept", [200, 404], "poll");
+    text = setRestField(text, "step:vm", "keep", "$.state", "poll");
+    const poll = stepsOf(text)[0]!.poll as Record<string, unknown>;
+    expect(Object.keys(poll)).toEqual(["rest", "until", "every", "timeout", "on_timeout"]);
+    expect(poll.until).toBe("steps.vm.status == 200");
+    expect(poll.rest).toEqual({ method: "PUT", url: "https://h.example/x", accept: [200, 404], keep: "$.state" });
+    expect(stepsOf(setPollField(text, "step:vm", "every", ""))[0]!.poll).not.toHaveProperty("every");
+    expect(() => setPollField(base(), "step:vm", "every", "1m")).toThrow(EditError);
+    expect(() => setWaitField(base(), "step:vm", "for", "1m")).toThrow(EditError);
+    expect(() => setRestField(base(), "step:vm", "url", "u", "poll")).toThrow(EditError);
+  });
+
+  it("writes a new key into what they read, its own too", () => {
+    let text = setPollField(asPoll(), "step:vm", "until", "steps.vm.json == 'x'");
+    text = setRestField(text, "step:vm", "url", "https://h.example/${steps.vm.id}", "poll");
+    text = setStepField(text, "step:vm", "key", "change");
+    const [change, later] = stepsOf(text);
+    const poll = change!.poll as Record<string, Record<string, string>>;
+    expect(poll.until).toBe("steps.change.json == 'x'");
+    expect(poll.rest!.url).toBe("https://h.example/${steps.change.id}");
+    expect(later).toEqual({ key: "later", item: "x", with: { b: "steps.change.until" }, when: "steps.change.met" });
+
+    const wait = setStepField(
+      definition({
+        kind: "composite",
+        steps: [
+          { key: "a", item: "x" },
+          { key: "b", wait: { until: "steps.a.at" } },
+        ],
+      }),
+      "step:a",
+      "key",
+      "first",
+    );
+    expect(stepsOf(wait)[1]!.wait).toEqual({ until: "steps.first.at" });
   });
 });

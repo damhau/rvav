@@ -298,3 +298,34 @@ describe("a wait for a person", () => {
     expect(designerProblems(def, [])).toEqual([]);
   });
 });
+
+describe("a wait for a time and a poll, in the designer", () => {
+  const steps = [
+    { key: "keep", wait: { for: "72h" } },
+    {
+      key: "change",
+      poll: {
+        rest: { method: "GET", url: "https://h.example" },
+        until: "steps.change.met",
+        every: "1m",
+        timeout: "1h",
+      },
+    },
+    { key: "next", item: "x" },
+  ];
+  const def = { blueprint: { kind: "composite", steps } };
+
+  it("names what they are, and what they give the steps after them", () => {
+    expect(targetOf(steps[0]!)).toEqual({ kind: "wait", ref: "" });
+    expect(targetOf(steps[1]!)).toEqual({ kind: "poll", ref: "" });
+    expect(outputsOf(steps[0]!, []).outputs.map((o) => o.name)).toEqual(["until"]);
+    expect(outputsOf(steps[1]!, []).outputs.map((o) => o.name)).toEqual(["status", "json", "met"]);
+  });
+
+  it("offers them to the steps after them, and has nothing to say when it is requested", () => {
+    const later = bindingSources(def, { g: 2, planned: false }, []).map((s) => s.value);
+    expect(later).toEqual(expect.arrayContaining(["steps.keep.until", "steps.change.json", "steps.change.met"]));
+    expect(bindingSources(def, { g: 0, planned: false }, []).map((s) => s.value)).not.toContain("steps.keep.until");
+    expect(designerProblems({ blueprint: { kind: "composite", steps: steps.slice(0, 2) } }, [])).toEqual([]);
+  });
+});

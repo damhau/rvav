@@ -37,7 +37,7 @@ type Raw = Record<string, unknown>;
 export const yamlOutput = { indent: 2, lineWidth: 0, flowCollectionPadding: false } as const;
 
 /** The order a step's keys are written in, so a key added lands where a reader expects it. */
-const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "ask", "when", "with", "undo"];
+const stepOrder = ["key", "title", "item", "awx", "workflow", "rest", "ask", "wait", "poll", "when", "with", "undo"];
 const undoOrder = ["job_template", "workflow", "rest", "with"];
 const restOrder = ["method", "url", "body", "secret", "accept", "keep"];
 const askOrder = [
@@ -51,6 +51,8 @@ const askOrder = [
   "on_timeout",
   "escalate_to",
 ];
+const waitOrder = ["for", "until"];
+const pollOrder = ["rest", "until", "every", "timeout", "on_timeout"];
 const questionOrder = ["key", "label", "type", "required", "options", "default"];
 const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
 
@@ -273,7 +275,7 @@ function put(doc: Document, map: YAMLMap, key: string, value: unknown, order: st
   else map.items.splice(at, 0, pair);
 }
 
-/** Every CEL string of a step: its condition and bindings, its undo's bindings, the bodies of its REST calls. */
+/** Every CEL string of a step: its condition and bindings, its undo's bindings, the bodies of its REST calls, what a wait or a poll waits for. */
 function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   const out: { holder: YAMLMap; key: string }[] = [];
   if (isScalar(step.get("when", true))) out.push({ holder: step, key: "when" });
@@ -283,13 +285,20 @@ function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   for (const m of maps)
     if (isMap(m)) for (const p of m.items) if (isScalar(p.value)) out.push({ holder: m, key: scalarText(p.key) });
   for (const call of restCallsOf(step)) if (isScalar(call.get("body", true))) out.push({ holder: call, key: "body" });
+  for (const part of [step.get("wait", true), step.get("poll", true)])
+    if (isMap(part) && isScalar(part.get("until", true))) out.push({ holder: part, key: "until" });
   return out;
 }
 
-/** A step's REST call and its undo's. */
+/** A step's REST call, its undo's and a poll's. */
 function restCallsOf(step: YAMLMap): YAMLMap[] {
   const undo = step.get("undo", true);
-  const calls: unknown[] = [step.get("rest", true), isMap(undo) ? undo.get("rest", true) : undefined];
+  const poll = step.get("poll", true);
+  const calls: unknown[] = [
+    step.get("rest", true),
+    isMap(undo) ? undo.get("rest", true) : undefined,
+    isMap(poll) ? poll.get("rest", true) : undefined,
+  ];
   return calls.filter((c): c is YAMLMap => isMap(c));
 }
 
@@ -436,23 +445,30 @@ export type Target =
   /** A REST call: what it names is in its own fields. */
   | { kind: "rest"; ref: "" }
   /** A wait for a person: who, in its own fields. */
-  | { kind: "ask"; ref: "" };
+  | { kind: "ask"; ref: "" }
+  /** A wait for a time: how long, in its own fields. */
+  | { kind: "wait"; ref: "" }
+  /** A poll: what it calls and waits for, in its own fields. */
+  | { kind: "poll"; ref: "" };
 
 /** A REST call just added: it says what is missing until its URL is written. */
 export const newRestCall = (method: string) => ({ method, url: "" });
 
+/** A poll just added: every 10 minutes for three days, unless said otherwise; it says what is missing until its URL and condition are written. */
+export const newPoll = () => ({ rest: newRestCall("GET"), until: "", every: "10m", timeout: "72h" });
+
 /**
  * What a step runs: one of an item, an AWX template, a custom workflow, a
- * REST call or a wait for a person; the others are removed. An AWX template is
- * written by its name and, when known, its ID (awx.template_id: it is launched
- * by it); another template's ID and title go with it, its inputs' bindings
- * stay. A REST call has no inputs: its URL and body read them, so its bindings
- * go. A wait has no inputs, and nothing to undo.
+ * REST call or a wait for a person, a time or a condition; the others are
+ * removed. An AWX template is written by its name and, when known, its ID
+ * (awx.template_id: it is launched by it); another template's ID and title go
+ * with it, its inputs' bindings stay. A REST call has no inputs: its URL and
+ * body read them, so its bindings go. A wait has no inputs, and nothing to undo.
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node } = locate(doc, id);
-  for (const k of ["item", "awx", "workflow", "rest", "ask"]) if (k !== t.kind) node.delete(k);
+  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll"]) if (k !== t.kind) node.delete(k);
   if (t.kind === "rest") {
     node.delete("with");
     if (!isMap(own(doc, node, "rest"))) put(doc, node, "rest", newRestCall("GET"), stepOrder);
@@ -460,6 +476,10 @@ export function setTarget(text: string, id: string, t: Target): string {
     node.delete("with");
     node.delete("undo");
     if (!isMap(own(doc, node, "ask"))) put(doc, node, "ask", {}, stepOrder);
+  } else if (t.kind === "wait" || t.kind === "poll") {
+    node.delete("with");
+    node.delete("undo");
+    if (!isMap(own(doc, node, t.kind))) put(doc, node, t.kind, t.kind === "poll" ? newPoll() : {}, stepOrder);
   } else if (t.kind === "awx") {
     const awx = own(doc, node, "awx");
     if (isMap(awx)) {
@@ -556,16 +576,17 @@ export function setUndo(text: string, id: string, undo: Undo): string {
 export type RestField = "method" | "url" | "body" | "secret" | "accept" | "keep";
 
 /**
- * One field of a step's REST call (scope step) or of its undo's (scope undo).
- * Empty removes it, but for the method and the URL, which stay for the step
- * to say what is missing. The statuses it accepts are written on one line.
+ * One field of a step's REST call (scope step), its undo's (scope undo) or a
+ * poll's (scope poll). Empty removes it, but for the method and the URL, which
+ * stay for the step to say what is missing. The statuses it accepts are written
+ * on one line.
  */
 export function setRestField(
   text: string,
   id: string,
   field: RestField,
   value: string | number[],
-  scope: "step" | "undo" = "step",
+  scope: "step" | "undo" | "poll" = "step",
 ): string {
   const doc = load(text);
   const { node } = locate(doc, id);
@@ -575,6 +596,7 @@ export function setRestField(
     if (!isMap(undo)) throw new EditError("The step has no undo.");
     holder = undo;
   }
+  if (scope === "poll") holder = partOf(doc, id, "poll");
   const call = own(doc, holder, "rest");
   if (!isMap(call)) throw new EditError("It makes no REST call.");
   if (typeof value === "string") {
@@ -587,6 +609,39 @@ export function setRestField(
     list.flow = true;
     put(doc, call, field, list, restOrder);
   }
+  return save(doc);
+}
+
+/** A step's wait for a time or poll, from a document; `{}` as just added opens up as it fills. */
+function partOf(doc: Document, id: string, kind: "wait" | "poll"): YAMLMap {
+  const part = own(doc, locate(doc, id).node, kind);
+  if (!isMap(part)) throw new EditError(kind === "wait" ? "It doesn't wait for a time." : "It doesn't poll.");
+  part.flow = false;
+  return part;
+}
+
+/** How long a step waits, or until when: one or the other, so that writing one removes the other. */
+export function setWaitField(text: string, id: string, field: "for" | "until", value: string): string {
+  const doc = load(text);
+  const wait = partOf(doc, id, "wait");
+  const v = value.trim();
+  if (!v) wait.delete(field);
+  else {
+    put(doc, wait, field, v, waitOrder);
+    wait.delete(field === "for" ? "until" : "for");
+  }
+  return save(doc);
+}
+
+export type PollField = "until" | "every" | "timeout" | "on_timeout";
+
+/** One field of a step's poll. Empty removes it, for the step to say what is missing. */
+export function setPollField(text: string, id: string, field: PollField, value: string): string {
+  const doc = load(text);
+  const poll = partOf(doc, id, "poll");
+  const v = value.trim();
+  if (!v) poll.delete(field);
+  else put(doc, poll, field, v, pollOrder);
   return save(doc);
 }
 
