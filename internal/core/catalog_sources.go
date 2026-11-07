@@ -348,6 +348,12 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 			return nil, err
 		}
 		errs = append(errs, named...)
+		// And its messages (ADR-0033): whom they name, what they may not show.
+		told, err := s.checkNotifyRefs(ctx, b, d.UiSchema, prefix+"/blueprint")
+		if err != nil {
+			return nil, err
+		}
+		errs = append(errs, told...)
 	}
 	// Secrets a VM blueprint names (ADR-0024).
 	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {

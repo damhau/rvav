@@ -199,7 +199,66 @@ type CompositeStep struct {
 	Ask  *blueprint.Ask  `json:"ask,omitempty"`
 	Wait *blueprint.Wait `json:"wait,omitempty"`
 	Poll *blueprint.Poll `json:"poll,omitempty"`
-	Undo *CompositeUndo  `json:"undo,omitempty"`
+	// Branch runs one side of a choice, Notify sends a message (ADR-0033).
+	Branch *BranchPlan       `json:"branch,omitempty"`
+	Notify *blueprint.Notify `json:"notify,omitempty"`
+	Undo   *CompositeUndo    `json:"undo,omitempty"`
+}
+
+// stepDefs are the steps of a composite step in the timeline, in order.
+func (c CompositeStep) stepDefs() []StepDef {
+	var steps []StepDef
+	parent := c.StepKey()
+	switch {
+	case len(c.Components) > 0:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
+		steps = append(steps, c.nsxSteps(parent)...)
+		steps = append(steps, componentSteps(c.VMs, c.Components, c.keys(), parent)...)
+	case len(c.VMs) > 0:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
+		steps = append(steps, c.nsxSteps(parent)...)
+		for _, vm := range c.VMs {
+			steps = append(steps,
+				StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
+			)
+			steps = append(steps, tagStep(c.VMKey(KeyNSXTags, vm), vmTitle(c.VMs, "Join NSX security groups", vm), vm, parent)...)
+		}
+		if len(c.PostConfig) > 0 {
+			steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})
+			for _, j := range c.PostConfig {
+				steps = append(steps, StepDef{Key: parent + "/" + KeyJob + j.Key, Title: "AWX job · " + j.Template,
+					Detail: "limit=" + c.Limit(), System: "awx", Status: "pending", Parent: parent})
+			}
+		}
+	case c.AWX != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "AWX job · " + c.AWX.Template, System: "awx", Status: "pending"})
+	case c.Workflow != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Workflow.Type, System: "rvav", Status: "pending"})
+	case c.REST != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "REST call · " + c.REST.Method, System: "rest", Status: "pending"})
+	case c.Ask != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Waits for a person", System: "person", Status: "pending"})
+	case c.Wait != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: waitPlanned(c.Wait), System: "wait", Status: "pending"})
+	case c.Poll != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: pollPlanned(c.Poll), System: "wait", Status: "pending"})
+	case c.Branch != nil:
+		// Its sides' steps follow it, flat: each is a step:<key> as any other,
+		// which later steps read and a run's graph draws.
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Chooses which side runs", System: "branch", Status: "pending"})
+		for _, side := range c.Branch.Sides() {
+			for _, s := range side {
+				steps = append(steps, s.stepDefs()...)
+			}
+		}
+	case c.Notify != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Sends a message", System: "rvav", Status: "pending"})
+	}
+	return steps
 }
 
 // SegmentKey is the step key of one of its segments, under its own.
@@ -653,45 +712,7 @@ func (p Plan) Steps(environment string) []StepDef {
 	}
 	if len(p.Composite) > 0 {
 		for _, c := range p.Composite {
-			parent := c.StepKey()
-			switch {
-			case len(c.Components) > 0:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
-				steps = append(steps, c.nsxSteps(parent)...)
-				steps = append(steps, componentSteps(c.VMs, c.Components, c.keys(), parent)...)
-			case len(c.VMs) > 0:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
-				steps = append(steps, c.nsxSteps(parent)...)
-				for _, vm := range c.VMs {
-					steps = append(steps,
-						StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
-						StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
-						StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
-						StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
-						StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
-					)
-					steps = append(steps, tagStep(c.VMKey(KeyNSXTags, vm), vmTitle(c.VMs, "Join NSX security groups", vm), vm, parent)...)
-				}
-				if len(c.PostConfig) > 0 {
-					steps = append(steps, StepDef{Key: parent + "/" + KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending", Parent: parent})
-					for _, j := range c.PostConfig {
-						steps = append(steps, StepDef{Key: parent + "/" + KeyJob + j.Key, Title: "AWX job · " + j.Template,
-							Detail: "limit=" + c.Limit(), System: "awx", Status: "pending", Parent: parent})
-					}
-				}
-			case c.AWX != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "AWX job · " + c.AWX.Template, System: "awx", Status: "pending"})
-			case c.Workflow != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: c.Workflow.Type, System: "rvav", Status: "pending"})
-			case c.REST != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "REST call · " + c.REST.Method, System: "rest", Status: "pending"})
-			case c.Ask != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Waits for a person", System: "person", Status: "pending"})
-			case c.Wait != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: waitPlanned(c.Wait), System: "wait", Status: "pending"})
-			case c.Poll != nil:
-				steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: pollPlanned(c.Poll), System: "wait", Status: "pending"})
-			}
+			steps = append(steps, c.stepDefs()...)
 		}
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}

@@ -147,17 +147,11 @@ func checkAskAnswer(form []blueprint.AskField, answer map[string]any) (map[strin
 // asks are a composite's waits for a person, by pointer.
 func asks(b blueprint.Blueprint, ptr string) map[string]*blueprint.Ask {
 	out := map[string]*blueprint.Ask{}
-	for g, st := range b.Steps {
-		at := fmt.Sprintf("%s/steps/%d", ptr, g)
-		if st.Ask != nil {
-			out[at+"/ask"] = st.Ask
+	eachStep(b, ptr, func(s blueprint.CompositeStep, at string) {
+		if s.Ask != nil {
+			out[at+"/ask"] = s.Ask
 		}
-		for j, p := range st.Parallel {
-			if p.Ask != nil {
-				out[fmt.Sprintf("%s/parallel/%d/ask", at, j)] = p.Ask
-			}
-		}
-	}
+	})
 	return out
 }
 

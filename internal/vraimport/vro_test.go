@@ -1,7 +1,6 @@
 package vraimport
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -118,7 +117,7 @@ func TestStandardVRO(t *testing.T) {
 		"std-change-wait":   {GroupNative, []string{StepREST, StepTime, StepBranch}},
 		"std-cmdb":          {GroupNative, []string{StepREST, StepRvav}},
 		"std-backup":        {GroupNative, []string{StepREST, StepRvav}},
-		"std-notify":        {GroupAWX, []string{StepNotify}},
+		"std-notify":        {GroupNative, []string{StepNotify}},
 		"std-patch-window":  {GroupNative, []string{StepAWX, StepRvav, StepTime}},
 		"std-big-disk":      {GroupNative, []string{StepRvav, StepPerson, StepBranch}},
 		"std-ad-computer":   {GroupAWX, []string{StepAWX}},
@@ -153,14 +152,25 @@ func TestStandardVRO(t *testing.T) {
 	if it := items["std-act-datastore"]; it.Group != GroupNative || it.Becomes != "A value source on the field" {
 		t.Errorf("datastore action = %+v", it)
 	}
-	// D2's sizing: no workflow waits for an event. A REST call and a wait for a
-	// person or a time are built: the workflows that have one say so, and they
-	// are no longer to be added.
-	want := map[string]int{StepNotify: 1, StepBranch: 2}
-	if !maps.Equal(tr.Steps, want) {
-		t.Fatalf("step kinds = %v, want %v", tr.Steps, want)
+	// Mail and nothing else: a composite item with a step that sends a message.
+	if it := items["std-notify"]; it.Becomes != "A composite item with a step that sends a message" || !strings.Contains(strings.Join(it.Reasons, " "), "ADR-0033") {
+		t.Errorf("notify = %+v", it)
 	}
-	if md := tr.Markdown(); strings.Contains(md, "| REST call |") || strings.Contains(md, "| wait for a person |") || strings.Contains(md, "| wait for a time |") || !strings.Contains(md, "| wait for an event | 0 |") {
+	// D2's sizing: no workflow waits for an event. A REST call, a wait for a
+	// person or a time, a message and a branch are built: the workflows that
+	// have one say so, and they are no longer to be added.
+	if len(tr.Steps) != 0 {
+		t.Fatalf("step kinds = %v, want none", tr.Steps)
+	}
+	md := tr.Markdown()
+	_, toAdd, _ := strings.Cut(md, "| Step kind rvav may add |")
+	toAdd, _, _ = strings.Cut(toAdd, "| Workflow | Group |")
+	for _, built := range []string{"| REST call |", "| wait for a person |", "| wait for a time |", "| notification |", "| branch |"} {
+		if strings.Contains(toAdd, built) {
+			t.Fatalf("%s is built, so it isn't to be added:\n%s", built, md)
+		}
+	}
+	if !strings.Contains(toAdd, "| wait for an event | 0 |") {
 		t.Fatalf("report:\n%s", md)
 	}
 }

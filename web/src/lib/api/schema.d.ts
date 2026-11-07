@@ -3607,11 +3607,14 @@ export interface components {
              *     and their `key`, `title`, `count` and `anti_affinity`; a
              *     composite's `kind`, `rollback_on_failure` and `steps` (`key`,
              *     `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
-             *     `when`, `undo`, `parallel`), each binding in `with` reduced to the
-             *     `steps.<key>` it names, of an `ask` only whether the requester or
-             *     owner is asked, its timeout and its form's keys: no names, groups
-             *     or texts, and of a `poll`'s call only what a `rest` keeps. CEL
-             *     keeps what it reads, its string literals masked.
+             *     `branch`, `notify`, `when`, `undo`, `parallel`), each binding in
+             *     `with` reduced to the `steps.<key>` it names, of an `ask` only
+             *     whether the requester or owner is asked, its timeout and its form's
+             *     keys: no names, groups or texts, of a `poll`'s call only what a
+             *     `rest` keeps, of a `branch` its `cases` (`title`, `when`, `steps`)
+             *     and `else`, its steps as any step's, and of a `notify` only whether
+             *     the requester or owner is told. CEL keeps what it reads, its string
+             *     literals masked.
              *     Nothing else of the blueprint (guest settings, secrets, sizes,
              *     naming, placement, tags, variables). Absent for AWX and workflow
              *     items.
@@ -4226,10 +4229,10 @@ export interface components {
             title: string;
             detail?: string;
             /**
-             * @description Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person and `wait` its wait for a time or a condition (ADR-0033).
+             * @description Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
              * @enum {string}
              */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person" | "wait";
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person" | "wait" | "branch";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;
@@ -4240,6 +4243,8 @@ export interface components {
              * @description Until when a composite's wait for a time or a condition waits, its deadline for a condition (ADR-0033). A condition that ended has none.
              */
             due_at?: string | null;
+            /** @description The side a composite's branch took (ADR-0033), once it has chosen; 1 is its first case, 0 its `else` or, with no `else`, none of them. */
+            branch_case?: number | null;
             /** @description Present when `status` is `failed`. */
             error?: string;
             /** @description The object in the external system, for linking out. */
@@ -5590,7 +5595,7 @@ export interface components {
          * @description What a notification is about (ADR-0023).
          * @enum {string}
          */
-        NotificationKind: "request_submitted" | "approval_needed" | "request_approved" | "request_rejected" | "request_succeeded" | "request_failed" | "request_rolled_back" | "lease_expiring" | "lease_expired" | "owner_changed";
+        NotificationKind: "request_submitted" | "approval_needed" | "request_approved" | "request_rejected" | "request_succeeded" | "request_failed" | "request_rolled_back" | "lease_expiring" | "lease_expired" | "owner_changed" | "step_message";
         /**
          * @description In the app is always on; the others are chosen per kind.
          * @enum {string}

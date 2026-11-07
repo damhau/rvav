@@ -72,8 +72,8 @@ const (
 
 // NewSteps are the step kinds D2 may add, in the order the report gives them.
 // A kind D2 has built leaves the list (REST call, wait for a person, wait for
-// a time: ADR-0033).
-var NewSteps = []string{StepEvent, StepNotify, StepBranch}
+// a time, a message, a branch: ADR-0033).
+var NewSteps = []string{StepEvent}
 
 // compositeSteps are the steps a workflow of these item types, reaching
 // these systems, would be rebuilt with.
@@ -440,7 +440,10 @@ func TriageVRO(e *vra.Estate) Triage {
 			if slices.Contains(it.Systems, "REST") {
 				it.Reasons = append(it.Reasons, "Its REST calls are REST call steps.")
 			}
-			if others := without(it.Systems, "vCenter", "REST"); len(others) > 0 {
+			if slices.Contains(it.Systems, "Mail") {
+				it.Reasons = append(it.Reasons, "Its mail is a step that sends a message.")
+			}
+			if others := without(it.Systems, "vCenter", "REST", "Mail"); len(others) > 0 {
 				it.Reasons = append(it.Reasons, "It also reaches "+strings.Join(others, ", ")+": an AWX step does, with "+ansibleFor(it.Systems)+".")
 			}
 		case human || waits:
@@ -465,10 +468,21 @@ func TriageVRO(e *vra.Estate) Triage {
 			} else {
 				it.Reasons = append(it.Reasons, "It only drives vCenter: rvav's built-in steps (or a composite item chaining them) do the same.")
 			}
-		case len(without(it.Systems, "vCenter", "REST")) == 0 && !runsAlone(it.UsedBy):
+		case len(without(it.Systems, "vCenter", "REST", "Mail")) == 0 && !runsAlone(it.UsedBy):
 			it.Group = GroupNative
-			it.Becomes = "A composite item with REST call steps"
-			it.Reasons = append(it.Reasons, "It calls REST APIs: a composite item's REST call steps do (ADR-0033), each with its URL, its body in CEL and a stored secret. What its scripts work out goes in CEL, or in a playbook where CEL can't.")
+			mail := slices.Contains(it.Systems, "Mail")
+			if rest := slices.Contains(it.Systems, "REST"); rest {
+				it.Becomes = "A composite item with REST call steps"
+				it.Reasons = append(it.Reasons, "It calls REST APIs: a composite item's REST call steps do (ADR-0033), each with its URL, its body in CEL and a stored secret. What its scripts work out goes in CEL, or in a playbook where CEL can't.")
+				if mail {
+					it.Becomes += " and a step that sends a message"
+				}
+			} else {
+				it.Becomes = "A composite item with a step that sends a message"
+			}
+			if mail {
+				it.Reasons = append(it.Reasons, "It sends mail: a composite step sends a message (ADR-0033) through rvav's notifications, to the requester, the owner, groups or people, its text a template over inputs and outputs. Mail to an address rvav doesn't know stays a playbook's.")
+			}
 		default:
 			it.Group = GroupAWX
 			it.Reasons = append(it.Reasons, "It calls "+strings.Join(without(it.Systems, "vCenter"), ", ")+": a playbook does, with "+ansibleFor(it.Systems)+".")
@@ -488,7 +502,7 @@ func TriageVRO(e *vra.Estate) Triage {
 			}
 			it.Reasons = append(it.Reasons, useReasons(it.UsedBy)...)
 			if in.decision > 3 && it.Group != GroupTemporal {
-				it.Reasons = append(it.Reasons, fmt.Sprintf("It branches %d times: if it compensates or runs for long, it may be C.", in.decision))
+				it.Reasons = append(it.Reasons, fmt.Sprintf("It branches %d times: a composite step's branch chooses between sides (ADR-0033), but one doesn't go in another. If its decisions nest beyond what cases say, or it compensates, it may be C.", in.decision))
 			}
 			if r := runReason(w.Runs, w.LastRun); w.Runs == 0 || stale(w.LastRun, now) {
 				it.Reasons = append(it.Reasons, r)

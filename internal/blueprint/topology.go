@@ -18,12 +18,14 @@ import (
 // credential, administrator password, cloud-init), sizes, naming, tags,
 // placement or AWX variables, a step's bindings only as the `steps.<key>`
 // they name, a REST call (a poll's too) only as its method and what its URL
-// and body read, and a wait for a person without who it names (a group,
-// people) or what it says or offers. The CEL it keeps (a condition, a count, a
-// disk's size, the adapters', groups', template and post-configuration
-// bindings, a REST call's, a wait's time, a poll's condition) has its string
-// literals masked (policy.MaskLiterals): what it reads, not what it compares
-// it to. Lists keep their positions, so a pointer into
+// and body read, a wait for a person without who it names (a group, people) or
+// what it says or offers, a branch's sides as their titles, conditions and
+// steps, and a message as only whether the requester or owner is told. The CEL
+// it keeps (a condition, a count, a disk's size, the adapters', groups',
+// template and post-configuration bindings, a REST call's, a wait's time, a
+// poll's condition, a branch's cases) has its string literals masked
+// (policy.MaskLiterals): what it reads, not what it compares it to. Lists keep
+// their positions, so a pointer into
 // the blueprint points at the same thing in its topology. Nil for the
 // kinds the canvas doesn't draw (AWX, workflow) and for a blueprint that
 // isn't JSON.
@@ -223,6 +225,10 @@ var (
 	topologyAsk = fields{"requester": asIs{}, "owner": asIs{}, "timeout": asIs{}, "on_timeout": asIs{},
 		"form": each{fields{"key": asIs{}}}}
 
+	// A message: only whether the requester or the owner is told, as a wait
+	// for a person: not who else, nor what it says.
+	topologyNotify = fields{"requester": asIs{}, "owner": asIs{}}
+
 	// A wait for a time: how long, or what its time reads.
 	topologyWait = fields{"for": asIs{}, "until": cel{}}
 
@@ -240,6 +246,7 @@ var (
 		"ask":      topologyAsk,
 		"wait":     topologyWait,
 		"poll":     topologyPoll,
+		"notify":   topologyNotify,
 		"when":     cel{},
 		"with":     stepRefs{},
 		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs{}},
@@ -254,4 +261,9 @@ var (
 func init() {
 	// A parallel group lists steps (and the canvas says so of one that nests).
 	topologyStep["parallel"] = each{topologyStep}
+	// A branch's sides: what is drawn of each, its steps as any step's.
+	topologyStep["branch"] = fields{
+		"cases": each{fields{"title": asIs{}, "when": cel{}, "steps": each{topologyStep}}},
+		"else":  each{topologyStep},
+	}
 }

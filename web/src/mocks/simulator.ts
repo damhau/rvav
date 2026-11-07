@@ -14,11 +14,11 @@ import type {
   Step,
   VmResource,
 } from "@/lib/api/types";
-import { goDuration } from "@/lib/composite";
+import { goDuration, parseUrl } from "@/lib/composite";
 import { maskLiterals } from "./blueprints";
 import type { StoredApproval } from "./approvals";
 import { completeDay2Step, day2Finished } from "./day2";
-import { publishedBlueprint } from "./catalogAdmin";
+import { publishedBlueprint, secretInputsOf } from "./catalogAdmin";
 import { celBool, celEval } from "./cel";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
@@ -101,9 +101,49 @@ function awxJob(template: string, host: string, jobId: number): Step {
 type Rec = Record<string, unknown>;
 
 /**
+ * What a branch takes when its step ends, and the steps it leaves out. Chosen
+ * from the form's values when planned: the mocks' steps have no outputs, so a
+ * case on one of them doesn't hold.
+ */
+const branches = new Map<string, { taken: number; detail: string; left: string[] }>();
+/** What a message says when its step ends, or why it can't be sent. */
+const messages = new Map<string, { text?: string; error?: string; requester: boolean }>();
+
+/** A message's text with its values, or why it can't have them (provision.fillMessage). */
+function fillMessage(template: string, vars: Rec): { text?: string; error?: string } {
+  const { parts, error } = parseUrl(template);
+  if (error) return { error: `The message wasn't sent: ${error}.` };
+  let filled = "";
+  for (const p of parts) {
+    if ("text" in p) {
+      filled += p.text;
+      continue;
+    }
+    const why = (reason: string) => ({
+      error: `The message wasn't sent: its \${${maskLiterals(p.expr, false)}}: ${reason}.`,
+    });
+    let v: unknown;
+    try {
+      v = celEval(p.expr, vars);
+    } catch {
+      return why("it can't be read");
+    }
+    if (v === null || v === undefined) continue;
+    if (v === secretMark) return why("it is a secret input, which a message can't show");
+    if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") return why("it isn't a single value");
+    filled += String(v);
+  }
+  return { text: filled };
+}
+
+// A secret input, as a message reads it: not its value.
+const secretMark = Object.freeze({ secret: true });
+
+/**
  * A composite item's steps, as its published blueprint lists them (ADR-0022):
  * one step:<key> each, the key the canvas gives its node (ADR-0032); one whose
- * condition is false is skipped. Parallel groups run one after the other here.
+ * condition is false is skipped. Parallel groups run one after the other here;
+ * a branch's sides come after it, flat, as the server's do (ADR-0033).
  */
 function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey, inputs: Rec, jobBase: number): Step[] {
   const bp = publishedBlueprint(db, item);
@@ -114,8 +154,13 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     project: { id: project.id, code: project.code, name: project.name },
     steps: {},
   };
+  const secrets = secretInputsOf(db, item);
+  const messageVars = {
+    ...vars,
+    inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, secrets.has(k) ? secretMark : v])),
+  };
   const out: Step[] = [];
-  for (const st of groups.flatMap((g) => (Array.isArray(g.parallel) ? (g.parallel as Rec[]) : [g]))) {
+  const plan = (st: Rec) => {
     const key = `step:${text(st.key)}`;
     const awx = st.awx as Rec | undefined;
     const target = db.items.find((i) => i.slug === st.item);
@@ -129,7 +174,39 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     const when = text(st.when);
     if (when && !celBool(when, vars, true)) {
       out.push(step(key, title, "rvav", { status: "skipped", detail: `Skipped: ${when} is false` }));
-      continue;
+      return;
+    }
+    if (st.branch) {
+      const b = st.branch as Rec;
+      const cases = (Array.isArray(b.cases) ? b.cases : []) as Rec[];
+      const i = cases.findIndex((c) => celBool(text(c.when), vars, false));
+      const s = step(key, title, "branch", { detail: "Chooses which side runs", branch_case: null });
+      out.push(s);
+      const left: string[] = [];
+      [...cases.map((c) => (c.steps ?? []) as Rec[]), (b.else ?? []) as Rec[]].forEach((side, k) => {
+        const from = out.length;
+        side.forEach(plan);
+        // The side chosen, or the last when none was: what runs otherwise.
+        if (k !== (i < 0 ? cases.length : i)) left.push(...out.slice(from).map((x) => x.id));
+      });
+      branches.set(s.id, {
+        taken: i + 1,
+        left,
+        detail:
+          i >= 0
+            ? `Took: ${text(cases[i]!.title) || `case ${i + 1}`}`
+            : Array.isArray(b.else) && b.else.length > 0
+              ? "Took: otherwise"
+              : "No case held: nothing ran here.",
+      });
+      return;
+    }
+    if (st.notify) {
+      const n = st.notify as Rec;
+      const s = step(key, title, "rvav", { detail: "Sends a message" });
+      messages.set(s.id, { ...fillMessage(text(n.message), messageVars), requester: n.requester === true });
+      out.push(s);
+      return;
     }
     if (target?.type === "vm_blueprint") {
       out.push(step(key, title, "vcenter", { detail: `${target.name}: its VMs` }));
@@ -159,7 +236,8 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     } else {
       out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
     }
-  }
+  };
+  groups.flatMap((g) => (Array.isArray(g.parallel) ? (g.parallel as Rec[]) : [g])).forEach(plan);
   return out;
 }
 
@@ -341,7 +419,34 @@ function vmOf(d: DeploymentDetail) {
 
 /** Finish a step; one of several VMs' steps keeps saying which VM it was for. */
 function complete(r: StoredRequest, s: Step) {
+  const message = messages.get(s.id);
+  if (message?.error) return failStep(r, s, message.error);
   completeStep(r, s);
+  if (message) {
+    s.detail = "Message sent.";
+    if (message.requester)
+      publish(r, {
+        type: "notification",
+        data: {
+          id: newId("ntf"),
+          title: `${r.request.number} · ${r.request.title}`,
+          body: message.text ?? "",
+          level: "info",
+          link: `/requests/${r.request.number}`,
+        },
+      } as Omit<LiveEvent, "id" | "at">);
+  }
+  // A branch chooses once: the steps of the sides it left out are skipped.
+  const branch = branches.get(s.id);
+  if (branch) {
+    s.branch_case = branch.taken;
+    s.detail = branch.detail;
+    for (const other of r.steps)
+      if (branch.left.includes(other.id) && other.status !== "skipped") {
+        Object.assign(other, { status: "skipped", detail: "Its side of the branch wasn't taken." });
+        publishStep(r, other);
+      }
+  }
   // A REST call says what it answered.
   if (s.system === "rest" && s.detail?.startsWith("REST call · ")) {
     const method = s.detail.slice("REST call · ".length);
@@ -760,6 +865,8 @@ function tick(requestId: string) {
     }
   } else {
     complete(r, s);
+    // A message that can't be sent has ended the request.
+    if (s.status === "failed") return;
   }
   publishStep(r, s);
 

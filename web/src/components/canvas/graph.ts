@@ -44,8 +44,23 @@ export interface CanvasNode {
   problems: string[];
   /** The parallel group it runs in. */
   group?: string;
+  /** The branch whose side it is on: the list view draws it there. */
+  onSideOf?: string;
+  /** A branch's sides, in order: the list view draws them under it. */
+  sides?: CanvasSide[];
   /** Where it is in the definition (a JSON pointer, as the server's problems give them). */
   pointer?: string;
+}
+
+/** One side of a branch, in the list view. */
+export interface CanvasSide {
+  label: string;
+  /** A case's condition; none for what runs otherwise. */
+  when?: string;
+  /** What a run says when it takes this side: 1 for the first case, 0 for otherwise. */
+  taken: number;
+  /** Its steps' nodes, in order. */
+  nodes: string[];
 }
 
 /** A composite's parallel group: a frame around steps that run at the same time. */
@@ -77,6 +92,8 @@ export interface CanvasEdge {
   conditional?: boolean;
   /** A rule that drops or rejects. */
   deny?: boolean;
+  /** Part of the way through a side of a branch: the branch's node, and which of what it takes lead here. */
+  branch?: { node: string; cases: number[] };
 }
 
 export interface CanvasGraph {

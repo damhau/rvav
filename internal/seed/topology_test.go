@@ -54,6 +54,17 @@ var probes = []struct {
 	   "until": "steps.change.json == 'approved-secret'", "every": "10m", "timeout": "72h", "on_timeout": "continue"}},
 	  {"parallel": [{"key": "soon", "wait": {"for": "1h"}},
 	                {"key": "put", "poll": {"rest": {"method": "PUT", "url": "https://snow-secret.corp.example/x", "body": "{'token': 'tok_live_b'}"}, "until": "steps.put.status == 200", "every": "1m", "timeout": "1h"}}]}]}`},
+	{"probe-composite-branch", `{"kind": "composite", "steps": [
+	  {"key": "choose", "title": "Which way", "when": "inputs.size == 'huge-secret'", "branch": {"unknown": "dropped-secret", "cases": [
+	    {"title": "Big", "when": "inputs.size == 'big-secret'", "steps": [
+	      {"key": "ask_big", "title": "Ask", "ask": {"group": "grp-ask-secret", "message": "Why, secret-text?", "owner": true}},
+	      {"key": "call_big", "rest": {"method": "POST", "url": "https://cmdb-secret.corp.example/${inputs.name}", "body": "'tok_live_b'", "secret": "cmdb-token-name"},
+	       "when": "steps.ask_big.answered == 'lit-secret'"}]},
+	    {"when": "inputs.size == 'open"}],
+	   "else": [{"key": "call_else", "awx": {"job_template": "t"}, "with": {"password": "'hunter2'", "host": "steps.choose.case"}}]}},
+	  {"key": "tell", "title": "Tell them", "when": "inputs.size == 'huge-secret'", "notify": {"requester": true, "owner": false, "groups": ["grp-told-secret"],
+	   "users": ["usr_told_secret"], "message": "Secret-text for ${inputs.name + 'lit-secret'}"}},
+	  {"key": "tell_owner", "notify": {"owner": true, "message": "Secret-text"}}]}`},
 }
 
 type fixtureCase struct {
@@ -113,7 +124,8 @@ func TestTopologyFixture(t *testing.T) {
 	// The probes give nothing of what they hide.
 	for _, secret := range []string{"hunter2", "vlan-pci-secret", "grp-pci", "gold-secret", "vsan-secret", "'fin'",
 		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é", "cmdb-secret", "p-secret", "cmdb-token-name", "418", "result_secret", "api_key", "/api/",
-		"huge-secret", "grp-ask-secret", "usr_ask_secret", "secret-text", "grp-esc-secret", "usr_esc_secret", "Label-secret", "opt-secret"} {
+		"huge-secret", "grp-ask-secret", "usr_ask_secret", "secret-text", "grp-esc-secret", "usr_esc_secret", "Label-secret", "opt-secret",
+		"big-secret", "lit-secret", "dropped-secret", "grp-told-secret", "usr_told_secret", "Secret-text"} {
 		for _, c := range cases[len(cases)-len(probes):] {
 			if b, _ := json.Marshal(c.Topology); bytes.Contains(b, []byte(secret)) {
 				t.Errorf("%s's topology has %q: %s", c.Name, secret, b)

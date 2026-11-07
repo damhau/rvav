@@ -17,11 +17,12 @@ export const kindLabel: Record<S["NotificationKind"], { label: string; hint: str
   lease_expiring: { label: "Lease ending", hint: "A week, then a day, before a deployment's lease ends" },
   lease_expired: { label: "Lease ended", hint: "A deployment's lease ended" },
   owner_changed: { label: "Deployment handed over", hint: "A deployment is now yours" },
+  step_message: { label: "A request's message", hint: "A step of a composite item tells you something" },
 };
 
 /** The channels besides the app a kind goes on by default, as the server's (ADR-0023). */
 export function defaultChannels(kind: S["NotificationKind"]): ("email" | "teams" | "slack")[] {
-  if (kind === "approval_needed") return ["email", "teams", "slack"];
+  if (kind === "approval_needed" || kind === "step_message") return ["email", "teams", "slack"];
   if (["request_succeeded", "request_failed", "request_rejected", "lease_expiring", "lease_expired"].includes(kind))
     return ["email"];
   return [];

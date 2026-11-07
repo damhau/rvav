@@ -1,9 +1,10 @@
 // The canvas as a list (ADR-0032): the same model in reading order, for
 // screen readers and anyone who would rather read than look. A composite's
-// steps are an ordered list, a parallel group a list within it; each node is
-// a button, as on the graph, followed by everything the graph shows of it.
+// steps are an ordered list, a parallel group a list within it, and each side
+// of a branch one under it; each node is a button, as on the graph, followed
+// by everything the graph shows of it.
 import { TriangleAlert } from "lucide-react";
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { cn } from "@/lib/utils";
 import type { CanvasGraph, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
 import { statusLabel, subtitleOf } from "./graph";
@@ -71,11 +72,13 @@ function Item({
   status,
   selected,
   onSelect,
+  children,
 }: {
   node: CanvasNode;
   status?: CanvasStatus;
   selected: boolean;
   onSelect: (id: string) => void;
+  children?: ReactNode;
 }) {
   return (
     <li
@@ -106,6 +109,7 @@ function Item({
         )}
       </button>
       <NodeFacts node={node} />
+      {children}
     </li>
   );
 }
@@ -117,6 +121,7 @@ export function CanvasList({ graph, label, status, selected, onSelect }: ListPro
   const slots: ({ group: CanvasGroup } | { node: CanvasNode })[] = [];
   const seen = new Set<string>();
   for (const n of graph.nodes) {
+    if (n.onSideOf) continue;
     const group = n.group ? groups.get(n.group) : undefined;
     if (!group) slots.push({ node: n });
     else if (!seen.has(group.id)) {
@@ -125,7 +130,33 @@ export function CanvasList({ graph, label, status, selected, onSelect }: ListPro
     }
   }
   const item = (n: CanvasNode) => (
-    <Item key={n.id} node={n} status={status?.[n.id]} selected={selected === n.id} onSelect={onSelect} />
+    <Item key={n.id} node={n} status={status?.[n.id]} selected={selected === n.id} onSelect={onSelect}>
+      {n.sides?.map((side) => {
+        const id = `${uid}-${n.id}-${side.taken}`;
+        return (
+          <div key={side.taken} className="mt-1.5 rounded-md border border-dashed border-line-strong p-2">
+            <span id={id} className="text-[11px] break-words text-muted">
+              {side.label}
+              {side.when !== undefined && (
+                <>
+                  : <code className="font-mono">{side.when}</code>
+                </>
+              )}
+            </span>
+            {side.nodes.length > 0 ? (
+              <ol aria-labelledby={id} className="mt-1 flex flex-col gap-1.5">
+                {side.nodes.flatMap((sid) => {
+                  const s = byId.get(sid);
+                  return s ? [item(s)] : [];
+                })}
+              </ol>
+            ) : (
+              <p className="mt-0.5 text-muted">No steps: it goes on.</p>
+            )}
+          </div>
+        );
+      })}
+    </Item>
   );
   const Outer = graph.kind === "composite" ? "ol" : "ul";
   return (

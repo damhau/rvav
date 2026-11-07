@@ -12,7 +12,7 @@ import (
 
 var kinds = []api.NotificationKind{api.KindRequestSubmitted, api.KindApprovalNeeded, api.KindRequestApproved,
 	api.KindRequestRejected, api.KindRequestSucceeded, api.KindRequestFailed, api.KindRequestRolledBack,
-	api.KindLeaseExpiring, api.KindLeaseExpired, api.KindOwnerChanged}
+	api.KindLeaseExpiring, api.KindLeaseExpired, api.KindOwnerChanged, api.KindStepMessage}
 
 // Every kind renders in every language, with what it is about and nothing
 // missing.
@@ -62,6 +62,65 @@ func TestRenderEveryKind(t *testing.T) {
 }
 
 // A card's text can't turn a request's title into a link.
+// A step's message holds what a requester typed, and it reaches other people
+// (ADR-0033): to each channel it is data, not markup.
+func TestStepMessageEscapes(t *testing.T) {
+	const typed = `<img src=x onerror=alert(1)> <script>x</script> *bold* <@U123> <!channel> <https://evil.example|click> [x](https://evil.example) & done`
+	for _, locale := range Locales {
+		m, err := render(string(api.KindStepMessage), locale, Data{Kind: string(api.KindStepMessage), Locale: locale, Body: typed, Link: "https://rvav.corp.example/requests/REQ-1",
+			Subject: store.NotificationSubject{RequestNumber: "REQ-1", RequestTitle: "Web\nBcc: x@evil.example"}, Extra: map[string]any{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Mail: its text as it is, its HTML escaped; a subject of one line.
+		if !strings.Contains(m.Text, typed) {
+			t.Errorf("%s: the text = %s", locale, m.Text)
+		}
+		for _, raw := range []string{"<img", "<script>x", "<@U123>", "<!channel>"} {
+			if strings.Contains(m.HTML, raw) {
+				t.Errorf("%s: %s in the HTML: %s", locale, raw, m.HTML)
+			}
+		}
+		if !strings.Contains(m.HTML, "&lt;img") {
+			t.Errorf("%s: the HTML = %s", locale, m.HTML)
+		}
+		if strings.ContainsAny(m.Subject, "\r\n") {
+			t.Errorf("%s: the subject = %q", locale, m.Subject)
+		}
+		// Teams: its markdown is shown, not followed.
+		card, _ := json.Marshal(Card(m))
+		if strings.Contains(string(card), "[x](https") || strings.Contains(string(card), "*bold*") || !strings.Contains(string(card), `\\[x\\]`) {
+			t.Errorf("%s: the card = %s", locale, card)
+		}
+		// Slack: plain text, in which nothing is a mention or a link.
+		blocks, _ := json.Marshal(Blocks(m))
+		var parsed []struct {
+			Type string
+			Text *struct{ Type, Text string }
+		}
+		if err := json.Unmarshal(blocks, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed[1].Type != "section" || parsed[1].Text == nil || parsed[1].Text.Type != "plain_text" {
+			t.Errorf("%s: the Slack section = %s", locale, blocks)
+		}
+		for _, raw := range []string{"<@U123>", "<!channel>", "<https://evil", "<img"} {
+			if strings.Contains(parsed[1].Text.Text, raw) {
+				t.Errorf("%s: %s in Slack: %s", locale, raw, parsed[1].Text.Text)
+			}
+		}
+	}
+	// Other kinds keep Slack's markup, their text being rvav's own.
+	m, err := render(string(api.KindRequestFailed), "en", Data{Kind: string(api.KindRequestFailed), Locale: "en", Body: "x",
+		Subject: store.NotificationSubject{RequestNumber: "REQ-1", RequestTitle: "t"}, Extra: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(Blocks(m)); !strings.Contains(string(b), `"mrkdwn"`) {
+		t.Fatalf("a failure's blocks = %s", b)
+	}
+}
+
 func TestCardEscapesMarkdown(t *testing.T) {
 	m, err := render(string(api.KindRequestFailed), "en", Data{Locale: "en", Body: "see [here](https://evil.example)",
 		Subject: store.NotificationSubject{RequestNumber: "REQ-1", RequestTitle: "**big** [x](https://evil.example)"}, Extra: map[string]any{}})

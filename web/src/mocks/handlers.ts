@@ -746,8 +746,12 @@ export const handlers = [
       if (reset) {
         // A composite step undone runs again: its undo goes (ADR-0022).
         step.children = step.children.filter((c) => !c.key.endsWith("/undo"));
-        if (step.detail === "Undone.") step.detail = undefined;
+        if (step.detail === "Undone." || step.detail === "Its side of the branch wasn't taken.")
+          step.detail = undefined;
         Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined, due_at: null });
+        // Rolled back, a branch chooses again and a message is sent again (ADR-0033).
+        if (step.system === "branch") Object.assign(step, { branch_case: null, detail: "Chooses which side runs" });
+        if (step.detail === "Message sent.") step.detail = "Sends a message";
         step.children.forEach((c) => Object.assign(c, { status: "pending", started_at: null, finished_at: null }));
       }
     }

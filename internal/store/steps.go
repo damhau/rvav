@@ -200,6 +200,10 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 	children := `parent_id in (select id from request_steps where ` + reset + `)`
 	if all {
 		keep = nil
+		// Everything runs again: a step's message is sent again (ADR-0033).
+		if _, err := db.Exec(ctx, `update notifications set dedupe_key = null where request_id = $1 and kind = 'step_message'`, requestID); err != nil {
+			return err
+		}
 	}
 	if _, err := db.Exec(ctx, `delete from request_steps where `+children+`
 		and not (status = 'done' and key = any($2::text[]))`, requestID, keep); err != nil {
@@ -214,6 +218,12 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 	}
 	_, err := db.Exec(ctx, `update requests set status = 'queued', error_step_id = null, error_message = null, finished_at = null
 		where id = $1`, requestID)
+	return err
+}
+
+// SetPlannedDetail gives a step back what its plan says of it.
+func (s *Store) SetPlannedDetail(ctx context.Context, db DB, requestID, key, detail string) error {
+	_, err := db.Exec(ctx, `update request_steps set detail = $3 where request_id = $1 and key = $2`, requestID, key, detail)
 	return err
 }
 
@@ -263,6 +273,15 @@ func (s *Store) InsertStepBeforePending(ctx context.Context, db DB, requestID, k
 func (s *Store) SetStepOutputs(ctx context.Context, requestID, key string, outputs json.RawMessage) error {
 	_, err := s.Pool.Exec(ctx, `update request_steps set outputs = $3 where request_id = $1 and key = $2`, requestID, key, outputs)
 	return err
+}
+
+// KeepStepOutputs keeps what a step gave unless it already gave something, and
+// returns what it holds: a branch's choice, which only the first attempt makes.
+func (s *Store) KeepStepOutputs(ctx context.Context, requestID, key string, outputs json.RawMessage) (json.RawMessage, error) {
+	var kept json.RawMessage
+	err := s.Pool.QueryRow(ctx, `update request_steps set outputs = coalesce(outputs, $3) where request_id = $1 and key = $2
+		returning outputs`, requestID, key, outputs).Scan(&kept)
+	return kept, notFound(err)
 }
 
 // ClearStepDue says a step no longer waits until any time.

@@ -79,7 +79,7 @@ func (s *Service) DecideFromChannel(ctx context.Context, channel, externalID, ap
 // meet them.
 var NotificationKinds = []api.NotificationKind{api.KindRequestSubmitted, api.KindApprovalNeeded, api.KindRequestApproved,
 	api.KindRequestRejected, api.KindRequestSucceeded, api.KindRequestFailed, api.KindRequestRolledBack,
-	api.KindLeaseExpiring, api.KindLeaseExpired, api.KindOwnerChanged}
+	api.KindLeaseExpiring, api.KindLeaseExpired, api.KindOwnerChanged, api.KindStepMessage}
 
 // notificationChannels are the channels besides the app.
 var notificationChannels = []string{"email", "teams", "slack"}

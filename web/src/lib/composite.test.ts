@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUrl, readComposite } from "./composite";
+import { allSteps, parseUrl, readComposite, secretInMessages } from "./composite";
 
 describe("readComposite", () => {
   it("groups the steps and says what each uses", () => {
@@ -118,7 +118,7 @@ describe("readComposite", () => {
     // A step is one kind.
     const both = readComposite({ steps: [{ key: "x", item: "a", rest: { method: "GET", url } }] });
     expect(both.problems.map((p) => p.message)).toEqual([
-      "A step is one of: item, awx, workflow, rest, ask, wait or poll.",
+      "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch or notify.",
     ]);
   });
 
@@ -306,5 +306,176 @@ describe("parseUrl", () => {
     ]);
     for (const bad of ["https://h/${inputs.a", "https://h/${'}", "https://h/${}"])
       expect(parseUrl(bad).error).toBeTruthy();
+  });
+});
+
+describe("a branch", () => {
+  const problems = (branch: Record<string, unknown>, more: Record<string, unknown> = {}, before: unknown[] = []) =>
+    readComposite({ steps: [...before, { key: "b", branch, ...more }] }, "").problems.map((p) => [p.field, p.message]);
+  const leaf = (key: string, more: Record<string, unknown> = {}) => ({
+    key,
+    awx: { job_template: "t" },
+    ...more,
+  });
+
+  it("reads its sides, each with its steps, and what it reads", () => {
+    const view = readComposite({
+      steps: [
+        {
+          key: "b",
+          title: "Which way",
+          branch: {
+            cases: [
+              { title: "Refused", when: "inputs.ok == false", steps: [leaf("no")] },
+              { when: "inputs.size > 500", steps: [] },
+            ],
+            else: [leaf("yes"), leaf("then", { when: "steps.yes.status == 200" })],
+          },
+        },
+      ],
+    });
+    expect(view.problems).toEqual([]);
+    const s = view.groups[0]![0]!;
+    expect(s.kind).toBe("branch");
+    expect(s.sides!.map((x) => [x.label, x.when, x.taken, x.steps.map((y) => y.key)])).toEqual([
+      ["Refused", "inputs.ok == false", 1, ["no"]],
+      ["Case 2", "inputs.size > 500", 2, []],
+      ["Otherwise", undefined, 0, ["yes", "then"]],
+    ]);
+    expect(allSteps(view).map((x) => x.key)).toEqual(["b", "no", "yes", "then"]);
+    expect(view.groups.flat().map((x) => x.key)).toEqual(["b"]);
+  });
+
+  it("has an empty otherwise that goes on, when it writes none", () => {
+    const s = readComposite({ steps: [{ key: "b", branch: { cases: [{ when: "inputs.a" }] } }] }).groups[0]![0]!;
+    expect(s.sides!.map((x) => [x.label, x.steps.length])).toEqual([
+      ["Case 1", 0],
+      ["Otherwise", 0],
+    ]);
+  });
+
+  it("refuses what the server refuses", () => {
+    expect(problems({ cases: [] })).toEqual([
+      ["/steps/0/branch/cases", "Give it at least one case: a condition and the steps it runs."],
+    ]);
+    expect(problems({ cases: [{ when: "" }] })).toEqual([
+      ["/steps/0/branch/cases/0/when", "Say when this case is taken: a CEL condition."],
+    ]);
+    expect(problems({ cases: [{ when: "inputs.a" }] }, { when: "inputs.b" }).map((p) => p[1])).toEqual([
+      "A branch has no condition of its own: its cases have.",
+    ]);
+    expect(problems({ cases: [{ when: "inputs.a" }] }, { undo: { job_template: "x" } }).map((p) => p[1])).toEqual([
+      "A branch has nothing to undo: only the steps that ran on its side are undone.",
+    ]);
+    // Nothing nests in a branch, and it nests in nothing.
+    expect(
+      problems({ cases: [{ when: "inputs.a", steps: [{ key: "inner", branch: { cases: [{ when: "inputs.b" }] } }] }] }),
+    ).toEqual([["/steps/0/branch/cases/0/steps/0", expect.stringContaining("can't be on a side of a branch")]]);
+    expect(problems({ cases: [{ when: "inputs.a", steps: [{ parallel: [leaf("p")] }] }] })).toEqual([
+      ["/steps/0/branch/cases/0/steps/0", expect.stringContaining("parallel")],
+    ]);
+    expect(
+      readComposite({
+        steps: [{ parallel: [leaf("a"), { key: "b", branch: { cases: [{ when: "inputs.a" }] } }] }],
+      }).problems.map((p) => p.message),
+    ).toEqual([expect.stringContaining("parallel group")]);
+    // A key is the composite's, on whichever side.
+    expect(
+      problems({
+        cases: [
+          { when: "inputs.a", steps: [leaf("x")] },
+          { when: "inputs.b", steps: [leaf("x")] },
+        ],
+      }).map((p) => p[0]),
+    ).toEqual(["/steps/0/branch/cases/1/steps/0/key"]);
+  });
+
+  it("refuses a step reading another side, and a case reading its own branch", () => {
+    expect(
+      problems({
+        cases: [
+          { when: "inputs.a", steps: [leaf("x")] },
+          { when: "inputs.b", steps: [leaf("y", { when: "steps.x.status == 200" })] },
+        ],
+      }).map((p) => p[0]),
+    ).toEqual(["/steps/0/branch/cases/1/steps/0"]);
+    expect(problems({ cases: [{ when: "steps.b.case == 1" }] }).map((p) => p[0])).toEqual(["/steps/0"]);
+  });
+
+  it("lets a side read its branch and its earlier steps, and a later step any of them", () => {
+    const view = readComposite({
+      steps: [
+        {
+          key: "b",
+          branch: {
+            cases: [
+              {
+                when: "inputs.a",
+                steps: [leaf("x", { when: "steps.b.case == 1" }), leaf("y", { when: "steps.x.ok" })],
+              },
+            ],
+          },
+        },
+        leaf("after", { when: "has(steps.x) && steps.x.ok" }),
+      ],
+    });
+    expect(view.problems).toEqual([]);
+    expect(allSteps(view).find((s) => s.key === "after")!.uses).toEqual(["x"]);
+  });
+});
+
+describe("a message", () => {
+  const read = (notify: Record<string, unknown>) => readComposite({ steps: [{ key: "n", notify }] }, "");
+  const problems = (notify: Record<string, unknown>) => read(notify).problems.map((p) => [p.field, p.message]);
+
+  it("says who it tells and what it says", () => {
+    const s = read({ requester: true, groups: ["dba"], users: ["usr_1"], message: "Ready: ${inputs.role}" })
+      .groups[0]![0]!;
+    expect(s.kind).toBe("notify");
+    expect(s.notify).toEqual({ who: "the requester, dba, 1 person", message: "Ready: ${inputs.role}" });
+  });
+
+  it("refuses what the server refuses", () => {
+    expect(problems({ message: "Hello" })).toEqual([
+      ["/steps/0/notify", "Say who is told: the requester, the owner, groups or people."],
+    ]);
+    expect(problems({ requester: true })).toEqual([["/steps/0/notify/message", "Say what it says."]]);
+    expect(problems({ requester: true, message: "x".repeat(2001) })).toEqual([
+      ["/steps/0/notify/message", "At most 2000 characters."],
+    ]);
+    expect(problems({ requester: true, message: "Bad ${" })[0]![0]).toBe("/steps/0/notify/message");
+    expect(
+      readComposite({ steps: [{ key: "n", notify: { requester: true, message: "x" }, undo: { job_template: "t" } }] })
+        .problems[0]!.message,
+    ).toContain("nothing to undo");
+  });
+
+  it("reads what it fills in", () => {
+    const view = readComposite({
+      steps: [
+        { key: "first", awx: { job_template: "t" } },
+        { key: "n", notify: { owner: true, message: "Ready: ${steps.first.fqdn}" } },
+      ],
+    });
+    expect(view.groups[1]![0]!.uses).toEqual(["first"]);
+  });
+
+  it("refuses a secret input, however it is reached", () => {
+    const def = (message: string) => ({
+      ui_schema: { fields: { token: { widget: "secret" }, name: {} } },
+      blueprint: {
+        kind: "composite",
+        steps: [
+          {
+            key: "b",
+            branch: { cases: [{ when: "inputs.a", steps: [{ key: "n", notify: { owner: true, message } }] }] },
+          },
+        ],
+      },
+    });
+    const at = "/definition/blueprint/steps/0/branch/cases/0/steps/0/notify/message";
+    expect(secretInMessages(def("Fine: ${inputs.name}"))).toEqual([]);
+    for (const m of ["Yours: ${inputs.token}", "${inputs['token']}", "${size(inputs.token)}"])
+      expect(secretInMessages(def(m)).map((p) => p.field)).toEqual([at]);
   });
 });

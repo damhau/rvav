@@ -553,8 +553,9 @@ func (b Blueprint) OrderedPostConfig(chosen []string, order []string) []string {
 
 // CompositeStep is one step of a composite item (ADR-0022): what it runs is
 // one of its kinds (ADR-0033), another item, an AWX template, a custom
-// workflow, a REST call, or a wait for a person, a time or a condition; or,
-// with Parallel, it is a group of steps.
+// workflow, a REST call, a wait for a person, a time or a condition, a branch
+// between sides or a message to people; or, with Parallel, it is a group of
+// steps.
 type CompositeStep struct {
 	Key   string `json:"key,omitempty"`
 	Title string `json:"title,omitempty"`
@@ -566,6 +567,8 @@ type CompositeStep struct {
 	Ask      *Ask         `json:"ask,omitempty"`
 	Wait     *Wait        `json:"wait,omitempty"`
 	Poll     *Poll        `json:"poll,omitempty"`
+	Branch   *Branch      `json:"branch,omitempty"`
+	Notify   *Notify      `json:"notify,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`
@@ -573,6 +576,34 @@ type CompositeStep struct {
 	When     string          `json:"when,omitempty"`
 	Undo     *CompositeUndo  `json:"undo,omitempty"`
 	Parallel []CompositeStep `json:"parallel,omitempty"`
+}
+
+// Branch runs one side of a choice (ADR-0033): the first case whose condition
+// holds, or Else when none does. It is chosen once, and each side is a list of
+// steps in order, none of them a parallel group or another branch.
+type Branch struct {
+	Cases []BranchCase    `json:"cases,omitempty"`
+	Else  []CompositeStep `json:"else,omitempty"`
+}
+
+// BranchCase is one side of a branch and when it is the one taken.
+type BranchCase struct {
+	// Title names the side on the canvas and on the request's timeline.
+	Title string `json:"title,omitempty"`
+	// When is a CEL condition over inputs and earlier steps.
+	When  string          `json:"when,omitempty"`
+	Steps []CompositeStep `json:"steps,omitempty"`
+}
+
+// Notify sends a message through rvav's notifications (ADR-0033): who is
+// told, and what, its Message a template whose ${...} are CEL over inputs and
+// earlier steps.
+type Notify struct {
+	Requester bool     `json:"requester,omitempty"`
+	Owner     bool     `json:"owner,omitempty"`
+	Groups    []string `json:"groups,omitempty"`
+	Users     []string `json:"users,omitempty"`
+	Message   string   `json:"message,omitempty"`
 }
 
 // CompositeUndo undoes a step when a later one fails: an AWX template, a

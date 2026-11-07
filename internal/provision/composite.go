@@ -27,7 +27,9 @@ type stepResult struct {
 
 // runComposite runs a composite item's steps. On a failure with rollback,
 // the AWX and workflow steps done are undone in reverse order first (the
-// request's VMs, addresses and records are deleted after, as for others).
+// request's VMs, addresses and records are deleted after, as for others). A
+// branch chooses its side once; that side's steps then run one by one, as the
+// groups that follow it would.
 func runComposite(ctx workflow.Context, info Info) (string, error) {
 	p := info.Plan
 	outputs := map[string]any{}
@@ -42,67 +44,95 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 		if len(group) == 0 {
 			break
 		}
-		results := make([]stepResult, len(group))
-		if len(group) == 1 {
-			results[0] = runCompositeStep(ctx, ctx, info, group[0], outputs)
-		} else {
-			// Read only while the group runs.
-			before := make(map[string]any, len(outputs))
-			for k, v := range outputs {
-				before[k] = v
-			}
-			// A step that fails doesn't stop its siblings, but nobody should be
-			// asked any more about a run that has failed: it stops their waits.
-			stop, stopWaits := workflow.WithCancel(ctx)
-			wg := workflow.NewWaitGroup(ctx)
-			for i, c := range group {
-				wg.Add(1)
-				workflow.Go(ctx, func(gctx workflow.Context) {
-					defer wg.Done()
-					results[i] = runCompositeStep(gctx, stop, info, c, before)
-					if err := results[i].err; err != nil && !errors.Is(err, errContinueAsNew) {
-						stopWaits()
-					}
-				})
-			}
-			wg.Wait(ctx)
-			stopWaits()
-		}
-		var failed *stepResult
-		var again []CompositeStep
-		for i, c := range group {
-			if errors.Is(results[i].err, errContinueAsNew) {
-				again = append(again, c)
-				continue
-			}
-			if results[i].err != nil {
-				if failed == nil {
-					failed = &results[i]
+		// On save, a branch is never in a parallel group.
+		if c := group[0]; c.Branch != nil {
+			side, out, err := takeBranch(ctx, info, c, outputs)
+			if err != nil {
+				if p.Rollback {
+					undoComposite(ctx, info, done, outputs)
 				}
-				continue
+				return c.StepKey(), err
 			}
-			if results[i].skipped {
-				continue
+			outputs[c.Key] = out
+			for _, s := range side {
+				if failed, err := runGroup(ctx, info, []CompositeStep{s}, outputs, &done); err != nil {
+					return failed, err
+				}
 			}
-			if results[i].out != nil {
-				outputs[c.Key] = results[i].out
-			}
-			done = append(done, c)
+			continue
 		}
-		if failed != nil {
-			// A wait that had left to continue as new when a sibling failed.
-			for _, c := range again {
-				var a *Activities
-				_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", stoppedBySibling).Get(ctx, nil)
-			}
-			if p.Rollback {
-				undoComposite(ctx, info, done, outputs)
-			}
-			return failed.failed, failed.err
+		if failed, err := runGroup(ctx, info, group, outputs, &done); err != nil {
+			return failed, err
 		}
-		if len(again) > 0 {
-			return "", errContinueAsNew
+	}
+	return "", nil
+}
+
+// runGroup runs steps at the same time, adding what they give to outputs and
+// those done to done. When one fails, what is done so far is undone if the
+// request says so, and it says which failed; errContinueAsNew says a step left
+// to wait in a new run.
+func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs map[string]any, done *[]CompositeStep) (string, error) {
+	results := make([]stepResult, len(group))
+	if len(group) == 1 {
+		results[0] = runCompositeStep(ctx, ctx, info, group[0], outputs)
+	} else {
+		// Read only while the group runs.
+		before := make(map[string]any, len(outputs))
+		for k, v := range outputs {
+			before[k] = v
 		}
+		// A step that fails doesn't stop its siblings, but nobody should be
+		// asked any more about a run that has failed: it stops their waits.
+		stop, stopWaits := workflow.WithCancel(ctx)
+		wg := workflow.NewWaitGroup(ctx)
+		for i, c := range group {
+			wg.Add(1)
+			workflow.Go(ctx, func(gctx workflow.Context) {
+				defer wg.Done()
+				results[i] = runCompositeStep(gctx, stop, info, c, before)
+				if err := results[i].err; err != nil && !errors.Is(err, errContinueAsNew) {
+					stopWaits()
+				}
+			})
+		}
+		wg.Wait(ctx)
+		stopWaits()
+	}
+	var failed *stepResult
+	var again []CompositeStep
+	for i, c := range group {
+		if errors.Is(results[i].err, errContinueAsNew) {
+			again = append(again, c)
+			continue
+		}
+		if results[i].err != nil {
+			if failed == nil {
+				failed = &results[i]
+			}
+			continue
+		}
+		if results[i].skipped {
+			continue
+		}
+		if results[i].out != nil {
+			outputs[c.Key] = results[i].out
+		}
+		*done = append(*done, c)
+	}
+	if failed != nil {
+		// A wait that had left to continue as new when a sibling failed.
+		for _, c := range again {
+			var a *Activities
+			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", stoppedBySibling).Get(ctx, nil)
+		}
+		if info.Plan.Rollback {
+			undoComposite(ctx, info, *done, outputs)
+		}
+		return failed.failed, failed.err
+	}
+	if len(again) > 0 {
+		return "", errContinueAsNew
 	}
 	return "", nil
 }
@@ -211,6 +241,13 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			return stepResult{skipped: true}
 		}
 		out = result
+	case c.Notify != nil:
+		in := NotifyInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Notify: *c.Notify, Steps: outputs}
+		if err := workflow.ExecuteActivity(ctx, a.SendStepMessage, in).Get(ctx, &out); err != nil {
+			// A timeout never reached the activity's own record of it.
+			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
+			return stepResult{failed: key, err: err}
+		}
 	}
 	var recorded map[string]any
 	if err := workflow.ExecuteActivity(ctx, a.FinishStep, info.RequestID, info.ProjectID, key, out).Get(ctx, &recorded); err != nil {
@@ -317,7 +354,7 @@ func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved
 	if in.When != "" {
 		ok, err := policy.CompositeBool(in.When, vars)
 		if err != nil {
-			return out, permanent("the step's condition %s: %v", in.When, err)
+			return out, permanent("the step's condition %s: %v", policy.MaskLiterals(in.When, false), err)
 		}
 		if !ok {
 			out.Skip = true

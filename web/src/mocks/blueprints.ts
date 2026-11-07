@@ -396,12 +396,19 @@ const stepKeys: Record<string, Keep> = {
   ask: askTopology,
   wait: fields({ for: asIs, until: cel() }),
   poll: fields({ rest: restCall, until: cel(), every: asIs, timeout: asIs, on_timeout: asIs }),
+  // A message: that it tells the requester or the owner, not which group or people, nor what it says.
+  notify: fields({ requester: asIs, owner: asIs }),
   when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),
 };
 const step = fields(stepKeys);
 stepKeys.parallel = each(step);
+// A branch: its conditions masked, its sides' steps as any step, nothing else.
+stepKeys.branch = fields({
+  cases: each(fields({ title: asIs, when: cel(), steps: each(step) })),
+  else: each(step),
+});
 const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps: each(step) });
 
 /**

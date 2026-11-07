@@ -18,7 +18,13 @@ const fixture = JSON.parse(readFileSync(resolve(process.cwd(), "../internal/seed
 describe("what a requester sees of a blueprint", () => {
   it("lists the seeded items and the probes", () => {
     expect(fixture.map((c) => c.name)).toEqual(
-      expect.arrayContaining(["rhel9-server", "three-tier", "postgres-cluster", "probe-composite-literals"]),
+      expect.arrayContaining([
+        "rhel9-server",
+        "three-tier",
+        "postgres-cluster",
+        "probe-composite-literals",
+        "probe-composite-branch",
+      ]),
     );
   });
 

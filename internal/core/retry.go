@@ -258,6 +258,15 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 		if err := s.Store.ResetForRetry(ctx, tx, r.ID, rolledBack, keep); err != nil {
 			return err
 		}
+		// Everything runs again and may go another way: no step keeps saying
+		// what happened in the run before, as a branch's sides do.
+		if rolledBack {
+			for _, d := range plan.Steps(r.Environment) {
+				if err := s.Store.SetPlannedDetail(ctx, tx, r.ID, d.Key, d.Detail); err != nil {
+					return err
+				}
+			}
+		}
 		// A step that waits for a person and runs again asks again (ADR-0033).
 		if err := s.Store.RetireStepApprovals(ctx, tx, r.ID); err != nil {
 			return err

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compositeGraph, vmGraph } from "./blueprint";
-import { FRAME, layoutGraph, nearest, nodeHeight, type Box } from "./layout";
+import { FRAME, layoutGraph, nearest, nodeHeight, takenWords, type Box } from "./layout";
 
 const composite = compositeGraph({
   kind: "composite",
@@ -55,6 +55,43 @@ describe("layoutGraph", () => {
     expect(nodeHeight(vm)).toBe(18 + 20 + 16); // its target
     expect(nodeHeight(db)).toBe(18 + 20 + 16 * 2); // its target and undo
     expect(layoutGraph(composite).nodes.get("step:db_user")?.height).toBe(nodeHeight(db));
+  });
+
+  it("lays a branch's sides side by side, and gives its edges dagre's way, with room for what a run adds", () => {
+    const graph = compositeGraph({
+      kind: "composite",
+      steps: [
+        {
+          key: "b",
+          branch: {
+            cases: [
+              { title: "One", when: "inputs.a", steps: [{ key: "x", awx: { job_template: "x" } }] },
+              { title: "Two", when: "inputs.b", steps: [{ key: "y", awx: { job_template: "y" } }] },
+            ],
+          },
+        },
+        { key: "last", awx: { job_template: "z" } },
+      ],
+    });
+    const l = layoutGraph(graph);
+    const box = (id: string) => l.boxes.get(id)!;
+    expect(box("step:x").y).toBe(box("step:y").y);
+    expect(box("step:x").x).not.toBe(box("step:y").x);
+    expect(box("step:b").y).toBeLessThan(box("step:x").y);
+    expect(box("step:x").y).toBeLessThan(box("step:last").y);
+    // The way past the sides keeps off their steps, and so does its label.
+    const past = graph.edges.find((e) => e.source === "step:b" && e.target === "step:last")!;
+    const route = l.routes.get(past.id)!;
+    const at = route.label!;
+    for (const id of ["step:x", "step:y"]) {
+      const b = box(id);
+      expect(at.x > b.x && at.x < b.x + b.width && at.y > b.y && at.y < b.y + b.height).toBe(false);
+      for (const p of route.points)
+        expect(p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height).toBe(false);
+    }
+    // Only a branch's edges have one.
+    expect(l.routes.has(graph.edges.find((e) => e.target === "step:b")!.id)).toBe(false);
+    expect(takenWords["not-taken"]).toBe("not taken");
   });
 
   it("lays a VM item out in columns: networks, components, then groups", () => {

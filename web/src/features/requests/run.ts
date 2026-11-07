@@ -27,6 +27,13 @@ export function runSteps(graph: CanvasGraph, steps: Step[]): Map<string, Step[]>
   return out;
 }
 
+/** What each branch of a run took, by its node's ID: its step's key (`Step.branch_case`). */
+export function branchTaken(steps: Step[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of steps) if (s.system === "branch" && typeof s.branch_case === "number") out[s.key] = s.branch_case;
+  return out;
+}
+
 /** The step of a rollback that finished: what the request built is deleted. */
 export const rollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollback" && s.status === "done");
 

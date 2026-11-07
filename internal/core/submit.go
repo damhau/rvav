@@ -106,10 +106,8 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		case blueprint.KindComposite:
 			for _, part := range ev.Composite {
-				c := provision.CompositeStep{Key: part.step.Key, Title: part.title, Group: part.group, When: part.step.When,
-					Undo: part.undo}
-				switch {
-				case part.sub != nil:
+				c := part.planned()
+				if part.sub != nil {
 					// The composite's lease is its VMs'.
 					part.sub.Lease = ev.Lease
 					deps, vms, comps, err := s.reserveVMs(ctx, tx, part.sub, req.ID, owner, req.Number)
@@ -126,18 +124,6 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 							return err
 						}
 					}
-				case part.job != nil:
-					c.AWX, c.With = part.job, part.step.With
-				case part.call != nil:
-					c.Workflow, c.With = part.call, part.step.With
-				case part.rest != nil:
-					c.REST = part.rest
-				case part.ask != nil:
-					c.Ask = part.ask
-				case part.wait != nil:
-					c.Wait = part.wait
-				case part.poll != nil:
-					c.Poll = part.poll
 				}
 				plan.Composite = append(plan.Composite, c)
 			}

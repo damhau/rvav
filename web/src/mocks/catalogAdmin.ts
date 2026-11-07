@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
-import { parseUrl, readComposite } from "@/lib/composite";
+import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
@@ -286,13 +286,43 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
       });
   if (def.blueprint.kind === "composite") {
     errors.push(...readComposite(def.blueprint, `${prefix}/blueprint`).problems);
+    errors.push(...secretInMessages(def, prefix));
     // CEL, as the server checks it.
-    const steps = (Array.isArray(def.blueprint.steps) ? def.blueprint.steps : []) as Record<string, unknown>[];
+    type Rec = Record<string, unknown>;
+    const steps = (Array.isArray(def.blueprint.steps) ? def.blueprint.steps : []) as Rec[];
     steps.forEach((st, g) => {
-      const list = Array.isArray(st.parallel) ? (st.parallel as Record<string, unknown>[]) : [st];
-      list.forEach((x, j) => {
-        const at = `${prefix}/blueprint/steps/${g}${Array.isArray(st.parallel) ? `/parallel/${j}` : ""}`;
+      const list = Array.isArray(st.parallel) ? (st.parallel as Rec[]) : [st];
+      const top = list.map((x, j) => ({
+        x,
+        at: `${prefix}/blueprint/steps/${g}${Array.isArray(st.parallel) ? `/parallel/${j}` : ""}`,
+      }));
+      const branch = st.branch as Rec | undefined;
+      const cases = Array.isArray(branch?.cases) ? (branch.cases as Rec[]) : [];
+      const onSides = [
+        ...cases.flatMap((c, i) =>
+          (Array.isArray(c.steps) ? (c.steps as Rec[]) : []).map((x, j) => ({
+            x,
+            at: `${prefix}/blueprint/steps/${g}/branch/cases/${i}/steps/${j}`,
+          })),
+        ),
+        ...(Array.isArray(branch?.else) ? (branch.else as Rec[]) : []).map((x, j) => ({
+          x,
+          at: `${prefix}/blueprint/steps/${g}/branch/else/${j}`,
+        })),
+      ];
+      [...top, ...onSides].forEach(({ x, at }) => {
+        const inCases = (x.branch as Rec | undefined)?.cases;
+        const whens = Array.isArray(inCases)
+          ? (inCases as Rec[]).map((c, i): [string, unknown] => [`${at}/branch/cases/${i}/when`, c.when])
+          : [];
+        const message = (x.notify as Rec | undefined)?.message;
         const exprs: [string, unknown][] = [
+          ...whens,
+          ...(typeof message === "string"
+            ? parseUrl(message).parts.flatMap((part): [string, unknown][] =>
+                "expr" in part ? [[`${at}/notify/message`, part.expr]] : [],
+              )
+            : []),
           [`${at}/when`, x.when],
           ...Object.entries((x.with as Record<string, unknown> | undefined) ?? {}).map(([k, v]): [string, unknown] => [
             `${at}/with/${k}`,
@@ -446,6 +476,17 @@ export function draftFromRepository(db: Db, item: StoredItem): string {
   };
   versions.unshift(v);
   return v.id;
+}
+
+/** The form's secret inputs in an item's published version: a message can't show them (ADR-0033). */
+export function secretInputsOf(db: Db, item: StoredItem): Set<string> {
+  const published = (state(db).versions[item.id] ?? []).find((v) => v.state === "published");
+  const fields = published?.definition.ui_schema?.fields ?? {};
+  return new Set(
+    Object.entries(fields)
+      .filter(([, f]) => f.secret === true || f.widget === "secret")
+      .map(([k]) => k),
+  );
 }
 
 /** The blueprint of the item's published version. */

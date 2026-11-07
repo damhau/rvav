@@ -14,7 +14,7 @@ import { NodeIcon, StatusIcon } from "@/components/canvas/nodes";
 import { Timeline } from "@/components/common/timeline";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 import { FailureActions } from "./FailureActions";
-import { failedNode, flatten, rollbackOf, runStatus, runSteps } from "./run";
+import { branchTaken, failedNode, flatten, rollbackOf, runStatus, runSteps } from "./run";
 
 export interface RequestRunProps {
   request: ServiceRequest;
@@ -32,6 +32,7 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
   const [view, setView] = useState<CanvasView>("graph");
   const byNode = useMemo(() => runSteps(graph, steps), [graph, steps]);
   const status = useMemo(() => runStatus(graph, byNode), [graph, byNode]);
+  const taken = useMemo(() => branchTaken(steps), [steps]);
   const failed = failedNode(request, byNode);
   // The failure's box is drawn where the selection is (the failed node's
   // details, or under the graph) or in the timeline: it is an alert where it
@@ -52,6 +53,7 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
         graph={graph}
         label={`Run of ${request.number}`}
         status={status}
+        taken={taken}
         selected={selected}
         onSelect={onSelect}
         view={view}

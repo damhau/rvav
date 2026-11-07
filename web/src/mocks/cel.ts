@@ -1,7 +1,7 @@
 // A small subset of CEL (https://cel.dev) for form rules, evaluated in the
 // browser for instant feedback. The server evaluates the same rules on preview
 // and submit. Supported: literals, lists, maps, member and index access, ! - * / % +
-// < <= > >= == != in && || ?:, size(), and string startsWith/endsWith/contains.
+// < <= > >= == != in && || ?:, size(), has(), and string startsWith/endsWith/contains.
 // Unlike full CEL, a missing field evaluates to null instead of an error.
 import { toText } from "@/lib/utils";
 
@@ -254,6 +254,8 @@ function evaluate(n: Node, ctx: Record<string, unknown>): unknown {
     case "call": {
       const args = n.args.map((a) => evaluate(a, ctx));
       if (n.target === null) {
+        // A missing field is null here, so its presence is that it isn't.
+        if (n.fn === "has") return args[0] !== null && args[0] !== undefined;
         if (n.fn === "size") return size(args[0]);
         if (n.fn === "int") return Math.trunc(Number(args[0]));
         if (n.fn === "string") return toStr(args[0]);

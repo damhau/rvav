@@ -6,14 +6,17 @@
 //   in order, a parallel group as a frame around its steps, then Done. A
 //   sequence edge goes from one step (or frame) to the next; a step's
 //   `when` dashes the edge into it and shows on the step; its `undo` and
-//   the earlier steps it binds to show on it.
+//   the earlier steps it binds to show on it. A branch (ADR-0033) leads to
+//   each of its sides, a chain of steps, by a dashed edge labelled with the
+//   side; each side's last step leads on to what comes next, and a side
+//   with no steps goes there straight.
 // - A VM item (ADR-0024, ADR-0028), left to right: the networks and NSX
 //   segments, the components with their counts and disks, then the groups
 //   their VMs are in, the security groups' firewall rules arriving at them
 //   from Any, another group or an existing one.
-import { readComposite, type CompositeStepView } from "@/lib/composite";
+import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
 import type { FieldError } from "@/lib/api/types";
-import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode } from "./graph";
+import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode, CanvasSide } from "./graph";
 import { within } from "./graph";
 
 type Raw = Record<string, unknown>;
@@ -50,6 +53,8 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   ask: "Person",
   wait: "Wait",
   poll: "Poll",
+  branch: "Branch",
+  notify: "Message",
   "?": "Step",
 };
 
@@ -68,11 +73,37 @@ function stepLines(s: CompositeStepView): CanvasLine[] {
     if (s.poll.every) lines.push({ label: "Every", text: s.poll.every });
     if (s.poll.timeout) lines.push({ label: "Timeout", text: s.poll.timeout });
   }
+  for (const side of s.sides ?? [])
+    lines.push(
+      side.when === undefined
+        ? {
+            label: side.label,
+            text:
+              side.steps.length === 0 ? "goes on" : side.steps.length === 1 ? "1 step" : `${side.steps.length} steps`,
+          }
+        : { label: side.label, text: side.when, mono: true },
+    );
+  if (s.notify) {
+    lines.push({ label: "Tells", text: s.notify.who });
+    if (s.notify.message) lines.push({ label: "Says", text: s.notify.message });
+  }
   if (s.when) lines.push({ label: "When", text: s.when, mono: true });
   if (s.uses.length > 0) lines.push({ label: "Uses", text: s.uses.join(", "), mono: true });
   if (s.undo) lines.push({ label: "Undo", text: s.undo, mono: true });
   return lines;
 }
+
+/** Where the way goes on from: a step or a frame, with the side of a branch it is on. */
+interface Tail {
+  id: string;
+  names: string[];
+  /** Said on the edge from here: the side a branch's edge leads to. */
+  label?: string;
+  branch?: CanvasEdge["branch"];
+}
+
+// A side's title is what its author wrote: the card holds it in full, an edge doesn't have the room.
+const labelOf = (s: string) => (s.length > 24 ? `${s.slice(0, 23)}…` : s);
 
 /** A composite's steps: `step:<key>` for each (by pointer when its key is missing or taken twice). */
 export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph {
@@ -81,8 +112,9 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
   // URL, who a wait asks) as mistakes. What was published was checked in full.
   const view = prefix === "/topology" ? { ...read, problems: [] } : read;
   const keys = new Map<string, number>();
-  for (const g of view.groups) for (const s of g) if (s.key) keys.set(s.key, (keys.get(s.key) ?? 0) + 1);
+  for (const s of allSteps(view)) if (s.key) keys.set(s.key, (keys.get(s.key) ?? 0) + 1);
   const stepId = (s: CompositeStepView) => (s.key && keys.get(s.key) === 1 ? `step:${s.key}` : `step@${s.pointer}`);
+  const titleOf = (s: CompositeStepView) => s.title || s.key || "(no key)";
   const claimed = new Set<FieldError>();
   const problemsIn = (pointer: string) =>
     view.problems
@@ -91,6 +123,18 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
         claimed.add(p);
         return p.message;
       });
+  const stepNode = (s: CompositeStepView, relations: string[], extra: Partial<CanvasNode> = {}): CanvasNode => ({
+    id: stepId(s),
+    kind: "step",
+    title: titleOf(s),
+    subtitle: s.key && s.key !== titleOf(s) ? s.key : undefined,
+    badge: stepBadge[s.kind],
+    lines: stepLines(s),
+    relations,
+    problems: problemsIn(s.pointer),
+    pointer: s.pointer,
+    ...extra,
+  });
 
   const nodes: CanvasNode[] = [
     {
@@ -104,47 +148,86 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
   ];
   const groups: CanvasGroup[] = [];
   const edges: CanvasEdge[] = [];
-  let prev = { id: "inputs", names: ["the request"] };
+  // Where the way goes on from: one step or frame, or each side of a branch.
+  let tails: Tail[] = [{ id: "inputs", names: ["the request"] }];
+  const follow = (target: string, names: string[], when?: string) => {
+    for (const t of tails) {
+      const label = [t.label && labelOf(t.label), when ? "when" : ""].filter(Boolean).join(", ");
+      edges.push({
+        id: `seq:${t.id}>${target}`,
+        source: t.id,
+        target,
+        kind: "sequence",
+        label: label || undefined,
+        description: capital(
+          `${words(t.names)}${t.label ? ` (${t.label})` : ""}, then ${words(names)}${when ? ` when ${when}` : ""}`,
+        ),
+        conditional: Boolean(when) || Boolean(t.branch) || undefined,
+        ...(t.branch ? { branch: t.branch } : {}),
+      });
+    }
+  };
+  const after = () => tails.flatMap((t) => t.names);
+  const isFirst = () => tails.length === 1 && tails[0]!.id === "inputs";
 
   view.groups.forEach((group, g) => {
     if (group.length === 0) return;
     const at = `${prefix}/steps/${g}`;
     const ids = group.map(stepId);
-    const titles = group.map((s) => s.title || s.key || "(no key)");
+    const titles = group.map(titleOf);
     // A `parallel:` list is a frame, even of one step (the designer adds the next).
     const parallel = Array.isArray(obj(arr(bp.steps)[g]).parallel);
     const slot = parallel ? `parallel:${g}` : ids[0]!;
-    const stepNodes = group.map((s, j): CanvasNode => {
-      const others = titles.filter((_, k) => k !== j);
-      const relations = [prev.id === "inputs" ? "Runs first" : `Runs after ${words(prev.names)}`];
-      if (others.length > 0) relations.push(`At the same time as ${words(others)}`);
-      return {
-        id: ids[j]!,
-        kind: "step",
-        title: titles[j]!,
-        subtitle: s.key && s.key !== titles[j] ? s.key : undefined,
-        badge: stepBadge[s.kind],
-        lines: stepLines(s),
-        relations,
-        problems: problemsIn(s.pointer),
-        group: parallel ? slot : undefined,
-        pointer: s.pointer,
-      };
-    });
-    nodes.push(...stepNodes);
+    const runsAfter = isFirst() ? "Runs first" : `Runs after ${words(after())}`;
+    const when = !parallel ? group[0]!.when : undefined;
+    follow(slot, titles, when);
+    const branch = !parallel ? group[0]!.sides : undefined;
+    if (branch) {
+      // Its sides' problems are their steps': read before its own, which hold them by pointer.
+      const onSides: CanvasNode[] = [];
+      const sides: CanvasSide[] = [];
+      const next: Tail[] = [];
+      const straight: { label: string; taken: number }[] = [];
+      for (const side of branch) {
+        const way = { node: slot, cases: [side.taken] };
+        let tail: Tail = { id: slot, names: titles, label: side.label, branch: way };
+        const before = [`On the side ${side.label} of ${titles[0]!}`];
+        side.steps.forEach((s, i) => {
+          tails = [tail];
+          follow(stepId(s), [titleOf(s)], s.when);
+          onSides.push(
+            stepNode(s, i === 0 ? before : [...before, `Runs after ${titleOf(side.steps[i - 1]!)}`], {
+              onSideOf: slot,
+            }),
+          );
+          tail = { id: stepId(s), names: [titleOf(s)], branch: way };
+        });
+        sides.push({ label: side.label, when: side.when, taken: side.taken, nodes: side.steps.map(stepId) });
+        if (side.steps.length === 0) straight.push(side);
+        else next.push(tail);
+      }
+      if (straight.length > 0)
+        next.push({
+          id: slot,
+          names: titles,
+          label: straight.map((s) => s.label).join(", "),
+          branch: { node: slot, cases: straight.map((s) => s.taken) },
+        });
+      nodes.push(stepNode(group[0]!, [runsAfter], { sides }), ...onSides);
+      tails = next;
+      return;
+    }
+    nodes.push(
+      ...group.map((s, j) => {
+        const others = titles.filter((_, k) => k !== j);
+        const relations = [runsAfter];
+        if (others.length > 0) relations.push(`At the same time as ${words(others)}`);
+        return stepNode(s, relations, { group: parallel ? slot : undefined });
+      }),
+    );
     if (parallel)
       groups.push({ id: slot, label: "At the same time", nodes: ids, problems: problemsIn(at), pointer: at });
-    const when = !parallel ? group[0]!.when : undefined;
-    edges.push({
-      id: `seq:${prev.id}>${slot}`,
-      source: prev.id,
-      target: slot,
-      kind: "sequence",
-      label: when ? "when" : undefined,
-      description: capital(`${words(prev.names)}, then ${words(titles)}${when ? ` when ${when}` : ""}`),
-      conditional: Boolean(when),
-    });
-    prev = { id: slot, names: titles };
+    tails = [{ id: slot, names: titles }];
   });
 
   nodes.push({
@@ -154,16 +237,10 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     lines: [
       { label: "On a failure", text: bp.rollback_on_failure === true ? "undo what was built" : "keep what was built" },
     ],
-    relations: prev.id === "inputs" ? ["No step yet"] : [`After ${words(prev.names)}`],
+    relations: isFirst() ? ["No step yet"] : [`After ${words(after())}`],
     problems: [],
   });
-  edges.push({
-    id: `seq:${prev.id}>end`,
-    source: prev.id,
-    target: "end",
-    kind: "sequence",
-    description: capital(`${words(prev.names)}, then done`),
-  });
+  follow("end", ["done"]);
   return { kind: "composite", direction: "TB", nodes, edges, groups, problems: view.problems };
 }
 

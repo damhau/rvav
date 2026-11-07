@@ -192,6 +192,14 @@ func Step(s store.Step) api.Step {
 	}
 	if s.System != nil {
 		out.System = Ptr(api.StepSystem(*s.System))
+		if *s.System == string(api.StepSystemBranch) {
+			var chose struct {
+				Case *int `json:"case"`
+			}
+			if json.Unmarshal(s.Outputs, &chose) == nil {
+				out.BranchCase = chose.Case
+			}
+		}
 	}
 	if s.ExternalKind != nil && s.ExternalID != nil {
 		out.ExternalRef = &struct {

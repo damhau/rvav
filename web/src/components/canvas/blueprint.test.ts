@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blueprintGraph, compositeGraph, vmGraph, words } from "./blueprint";
+import { topologyOf } from "@/mocks/blueprints";
 import { describeNode, nodeForPointer, type CanvasGraph } from "./graph";
 
 const ids = (g: CanvasGraph) => g.nodes.map((n) => n.id);
@@ -201,6 +202,134 @@ describe("compositeGraph", () => {
       { label: "Timeout", text: "72h, then it goes on" },
     ]);
     expect(describeNode(node("step:keep"))).toContain("Wait Keep it. keep. For: 72h");
+  });
+
+  describe("a branch", () => {
+    const graph = blueprintGraph({
+      kind: "composite",
+      steps: [
+        { key: "first", awx: { job_template: "a" } },
+        {
+          key: "b",
+          title: "Which way",
+          branch: {
+            cases: [
+              {
+                title: "Refused",
+                when: "steps.first.ok == false",
+                steps: [
+                  { key: "x", title: "Tell them", notify: { requester: true, message: "No: ${steps.first.why}" } },
+                  { key: "y", awx: { job_template: "y" } },
+                ],
+              },
+              { when: "inputs.size > 500", steps: [] },
+            ],
+          },
+        },
+        { key: "last", awx: { job_template: "z" } },
+      ],
+    })!;
+    const edge = (source: string, target: string) =>
+      graph.edges.find((e) => e.source === source && e.target === target);
+
+    it("has a line for each side, and doesn't grow with its steps", () => {
+      const b = graph.nodes.find((n) => n.id === "step:b")!;
+      expect(b.badge).toBe("Branch");
+      expect(b.lines).toEqual([
+        { label: "Refused", text: "steps.first.ok == false", mono: true },
+        { label: "Case 2", text: "inputs.size > 500", mono: true },
+        { label: "Otherwise", text: "goes on" },
+        { label: "Uses", text: "first", mono: true },
+      ]);
+      expect(b.sides!.map((s) => [s.label, s.when, s.taken, s.nodes])).toEqual([
+        ["Refused", "steps.first.ok == false", 1, ["step:x", "step:y"]],
+        ["Case 2", "inputs.size > 500", 2, []],
+        ["Otherwise", undefined, 0, []],
+      ]);
+    });
+
+    it("draws the way through each side, labelled, back to what comes next", () => {
+      expect(edge("step:first", "step:b")).toMatchObject({ label: undefined });
+      expect(edge("step:first", "step:b")!.branch).toBeUndefined();
+      expect(edge("step:b", "step:x")).toMatchObject({
+        label: "Refused",
+        conditional: true,
+        branch: { node: "step:b", cases: [1] },
+      });
+      expect(edge("step:x", "step:y")!.branch).toEqual({ node: "step:b", cases: [1] });
+      expect(edge("step:y", "step:last")!.branch).toEqual({ node: "step:b", cases: [1] });
+      // Two sides with no steps are one way, not two edges on one another.
+      expect(edge("step:b", "step:last")).toMatchObject({
+        label: "Case 2, Otherwise",
+        branch: { node: "step:b", cases: [2, 0] },
+      });
+      expect(graph.edges.filter((e) => e.source === "step:b")).toHaveLength(2);
+      expect(new Set(graph.edges.map((e) => e.id)).size).toBe(graph.edges.length);
+    });
+
+    it("says where a side's step is, and what comes after a branch comes after each side", () => {
+      const relations = (id: string) => graph.nodes.find((n) => n.id === id)!.relations;
+      expect(graph.nodes.find((n) => n.id === "step:x")!.onSideOf).toBe("step:b");
+      expect(relations("step:x")).toEqual(["On the side Refused of Which way"]);
+      expect(relations("step:y")).toEqual(["On the side Refused of Which way", "Runs after Tell them"]);
+      expect(relations("step:last")).toEqual(["Runs after y and Which way"]);
+      const message = graph.nodes.find((n) => n.id === "step:x")!;
+      expect(message.badge).toBe("Message");
+      expect(message.lines).toEqual([
+        { label: "Tells", text: "the requester" },
+        { label: "Says", text: "No: ${steps.first.why}" },
+        { label: "Uses", text: "first", mono: true },
+      ]);
+      expect(describeNode(message)).toContain("Message Tell them. x. Tells: the requester");
+    });
+
+    it("puts a side's problems on its step, not on the branch", () => {
+      const g = blueprintGraph({
+        kind: "composite",
+        steps: [
+          { key: "b", branch: { cases: [{ when: "inputs.a", steps: [{ key: "x", notify: { message: "x" } }] }] } },
+        ],
+      })!;
+      expect(g.nodes.find((n) => n.id === "step:x")!.problems).toEqual([
+        "Say who is told: the requester, the owner, groups or people.",
+      ]);
+      expect(g.nodes.find((n) => n.id === "step:b")!.problems).toEqual([]);
+    });
+
+    it("draws the same from a requester's masked topology, who it tells left out", () => {
+      const def = {
+        kind: "composite",
+        steps: [
+          {
+            key: "b",
+            branch: {
+              cases: [
+                {
+                  title: "Big one",
+                  when: "inputs.size == 'big-secret'",
+                  steps: [
+                    {
+                      key: "n",
+                      notify: { requester: true, owner: true, groups: ["grp"], users: ["usr"], message: "lit" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      };
+      const masked = blueprintGraph(topologyOf(def), "/topology")!;
+      expect(masked.nodes.find((n) => n.id === "step:b")!.lines[0]).toEqual({
+        label: "Big one",
+        text: "inputs.size == '…'",
+        mono: true,
+      });
+      const n = masked.nodes.find((x) => x.id === "step:n")!;
+      expect(n.lines).toEqual([{ label: "Tells", text: "the requester, the owner" }]);
+      expect(masked.nodes.flatMap((x) => x.problems)).toEqual([]);
+      expect(JSON.stringify(masked)).not.toMatch(/big-secret|grp|usr|lit/);
+    });
   });
 
   it("finds nothing wrong in a requester's masked topology, whose holes aren't mistakes", () => {

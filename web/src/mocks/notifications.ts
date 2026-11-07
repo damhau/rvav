@@ -27,10 +27,11 @@ const kinds: Kind[] = [
   "lease_expiring",
   "lease_expired",
   "owner_changed",
+  "step_message",
 ];
 
 function defaults(kind: Kind): Channel[] {
-  if (kind === "approval_needed") return ["email", "teams", "slack"];
+  if (kind === "approval_needed" || kind === "step_message") return ["email", "teams", "slack"];
   if (["request_succeeded", "request_failed", "request_rejected", "lease_expiring", "lease_expired"].includes(kind))
     return ["email"];
   return [];

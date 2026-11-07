@@ -373,7 +373,7 @@ func TestNotificationCentre(t *testing.T) {
 			}
 			return "", false
 		}
-		if ch, def := rule(prefs, api.KindApprovalNeeded); ch != "[email teams slack]" || !def || len(prefs.Rules) != 10 || prefs.Locale != "en" {
+		if ch, def := rule(prefs, api.KindApprovalNeeded); ch != "[email teams slack]" || !def || len(prefs.Rules) != 11 || prefs.Locale != "en" {
 			t.Fatalf("the defaults = %+v", prefs)
 		}
 		reach := map[api.NotificationChannel]string{}

@@ -198,6 +198,39 @@ describe("Canvas", () => {
     expect(fitView).toHaveBeenCalledTimes(1);
   });
 
+  it("says which way of a branch a run took, in words, and nothing moves for it", () => {
+    const branch = compositeGraph({
+      kind: "composite",
+      steps: [
+        {
+          key: "b",
+          branch: {
+            cases: [
+              { title: "One", when: "inputs.a", steps: [{ key: "x", awx: { job_template: "x" } }] },
+              { title: "Two", when: "inputs.b" },
+            ],
+          },
+        },
+      ],
+    });
+    const place = () =>
+      Array.from(document.querySelectorAll<HTMLElement>(".react-flow__node")).map((n) => n.style.transform);
+    const { rerender } = render(<Canvas graph={branch} label="Run" status={{}} />);
+    const before = place();
+    const labels = () => Array.from(document.querySelectorAll(".react-flow__edge-text")).map((t) => t.textContent);
+    expect(labels()).toEqual(expect.arrayContaining(["One", "Two, Otherwise"]));
+    rerender(<Canvas graph={branch} label="Run" status={{}} taken={{ "step:b": 1 }} />);
+    expect(screen.getByText("One: taken")).toBeInTheDocument();
+    expect(screen.getByText("Two, Otherwise: not taken")).toBeInTheDocument();
+    expect(document.querySelector(".rvav-edge-taken")).not.toBeNull();
+    expect(document.querySelector(".rvav-edge-not-taken")).not.toBeNull();
+    expect(place()).toEqual(before);
+    // Two sides with nothing on them are one way: taken if either was.
+    rerender(<Canvas graph={branch} label="Run" status={{}} taken={{ "step:b": 0 }} />);
+    expect(screen.getByText("One: not taken")).toBeInTheDocument();
+    expect(screen.getByText("Two, Otherwise: taken")).toBeInTheDocument();
+  });
+
   it("announces its nodes as buttons, not as React Flow's nodes", () => {
     render(<Canvas graph={graph} label="Steps" />);
     const cards = screen.getAllByRole("button").filter((b) => b.classList.contains("react-flow__node"));
@@ -244,6 +277,35 @@ describe("the list view", () => {
     // Back to the graph, with the same node selected.
     await user.click(screen.getByRole("button", { name: "Graph" }));
     expect(node(/^Workflow Monitoring/)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("lists a branch's steps under their cases, and says when a side has none", () => {
+    render(
+      <Canvas
+        graph={compositeGraph({
+          kind: "composite",
+          steps: [
+            {
+              key: "b",
+              branch: {
+                cases: [
+                  { title: "One", when: "inputs.a", steps: [{ key: "x", title: "On it", awx: { job_template: "x" } }] },
+                ],
+              },
+            },
+            { key: "last", awx: { job_template: "z" } },
+          ],
+        })}
+        label="Steps"
+        defaultView="list"
+        onSelect={vi.fn()}
+      />,
+    );
+    const inOne = within(screen.getByRole("list", { name: /^One/ }));
+    expect(inOne.getByText("On it")).toBeInTheDocument();
+    expect(screen.getByText("No steps: it goes on.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Branch b" }).closest("li")).toHaveTextContent("Otherwise");
+    expect(screen.getByRole("button", { name: "AWX last" })).toBeInTheDocument();
   });
 
   it("lists a VM item's nodes with how they relate", async () => {

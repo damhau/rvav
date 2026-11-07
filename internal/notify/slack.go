@@ -11,6 +11,7 @@ import (
 
 	"github.com/slack-go/slack"
 
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
@@ -98,6 +99,17 @@ func (s *Slack) Send(ctx context.Context, m Message) (string, string, error) {
 func plain(s string) *slack.TextBlockObject {
 	return slack.NewTextBlockObject(slack.PlainTextType, s, false, false)
 }
+
+// A step's message holds what a requester typed (ADR-0033): plain text, which
+// nothing in it can turn into a link, a mention or emphasis.
+func body(m Message) *slack.TextBlockObject {
+	short := truncate(escape(m.Short), 2900)
+	if m.Data.Kind == string(api.KindStepMessage) {
+		return plain(short)
+	}
+	return md(short)
+}
+
 func md(s string) *slack.TextBlockObject {
 	return slack.NewTextBlockObject(slack.MarkdownType, s, false, false)
 }
@@ -119,7 +131,7 @@ func Blocks(m Message) []slack.Block {
 	l := labelsFor(m.Data.Locale)
 	// Within Slack's limits: 3000 characters a section, 2000 a field.
 	blocks := []slack.Block{slack.NewHeaderBlock(plain(truncate(m.Subject, 150))),
-		slack.NewSectionBlock(md(truncate(escape(m.Short), 2900)), nil, nil)}
+		slack.NewSectionBlock(body(m), nil, nil)}
 	var fields []*slack.TextBlockObject
 	for _, f := range m.Facts() {
 		fields = append(fields, md(truncate("*"+escape(f.Label)+"*\n"+escape(f.Value), 1900)))

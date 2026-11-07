@@ -26,8 +26,17 @@ import { cn } from "@/lib/utils";
 import { CanvasList, NodeFacts } from "./CanvasList";
 import type { CanvasGraph, CanvasNode, CanvasStatus } from "./graph";
 import { describeNode, statusLabel } from "./graph";
-import { arrowKeys, layoutGraph, nearest, type CanvasLayout } from "./layout";
-import { type CardNode, type FrameNode, handleSides, NodeIcon, nodeTypes, sideHandles, StatusIcon } from "./nodes";
+import { arrowKeys, layoutGraph, nearest, takenWords, type CanvasLayout } from "./layout";
+import {
+  type CardNode,
+  edgeTypes,
+  type FrameNode,
+  handleSides,
+  NodeIcon,
+  nodeTypes,
+  sideHandles,
+  StatusIcon,
+} from "./nodes";
 
 export type CanvasView = "graph" | "list";
 
@@ -37,6 +46,8 @@ export interface CanvasProps {
   label: string;
   /** A run's status of each node, by node ID (`step:<key>`, `end`...). */
   status?: Partial<Record<string, CanvasStatus>>;
+  /** What each branch of a run took, by its node's ID: 1 for its first case, 0 for otherwise. The way taken can be followed. */
+  taken?: Partial<Record<string, number>>;
   /** The selected node's ID; leave undefined to let the canvas keep it. */
   selected?: string | null;
   /** A node clicked, or Enter or Space on it; null when cleared (Escape). */
@@ -77,6 +88,7 @@ export function Canvas({
   graph,
   label,
   status,
+  taken,
   selected,
   onSelect,
   defaultView = "graph",
@@ -133,6 +145,7 @@ export function Canvas({
             graph={graph}
             label={label}
             status={status}
+            taken={taken}
             selected={selectedNode?.id ?? null}
             onSelect={select}
             height={height}
@@ -188,6 +201,7 @@ function toFlow(
   focusable: string | undefined,
   selected: string | null,
   status: Partial<Record<string, CanvasStatus>> | undefined,
+  taken: Partial<Record<string, number>> | undefined,
 ): { nodes: Node[]; edges: Edge[] } {
   const s = handleSides(graph.direction);
   // Where edges meet a node, before React Flow has measured its handles.
@@ -251,28 +265,41 @@ function toFlow(
     } satisfies CardNode);
   }
   let bracket = 0;
-  const edges: Edge[] = graph.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: "smoothstep",
-    // Within a column: a bracket on the right, each further out than the last.
-    ...(layout.side.has(e.id)
-      ? {
-          sourceHandle: sideHandles.source,
-          targetHandle: sideHandles.target,
-          pathOptions: { offset: 18 + 14 * bracket++ },
-        }
-      : {}),
-    ...(e.label ? { label: e.label, labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 3 } : {}),
-    ...(e.kind === "sequence" || e.kind === "rule"
-      ? { markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 } }
-      : {}),
-    className: cn(`rvav-edge-${e.kind}`, e.conditional && "rvav-edge-conditional", e.deny && "rvav-edge-deny"),
-    ariaLabel: e.description,
-    focusable: false,
-    selectable: false,
-  }));
+  const edges: Edge[] = graph.edges.map((e) => {
+    const route = layout.routes.get(e.id);
+    // A run's branch that has chosen: words as well as a line, colour not being the only signal.
+    const chosen = e.branch ? taken?.[e.branch.node] : undefined;
+    const way = chosen === undefined || !e.branch ? undefined : e.branch.cases.includes(chosen) ? "taken" : "not-taken";
+    const label = e.label && way ? `${e.label}: ${takenWords[way]}` : e.label;
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: route ? "routed" : "smoothstep",
+      ...(route ? { data: { route } } : {}),
+      // Within a column: a bracket on the right, each further out than the last.
+      ...(layout.side.has(e.id)
+        ? {
+            sourceHandle: sideHandles.source,
+            targetHandle: sideHandles.target,
+            pathOptions: { offset: 18 + 14 * bracket++ },
+          }
+        : {}),
+      ...(label ? { label, labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 3 } : {}),
+      ...(e.kind === "sequence" || e.kind === "rule"
+        ? { markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 } }
+        : {}),
+      className: cn(
+        `rvav-edge-${e.kind}`,
+        e.conditional && "rvav-edge-conditional",
+        e.deny && "rvav-edge-deny",
+        way && `rvav-edge-${way}`,
+      ),
+      ariaLabel: way ? `${e.description}: ${takenWords[way]}` : e.description,
+      focusable: false,
+      selectable: false,
+    };
+  });
   return { nodes, edges };
 }
 
@@ -280,6 +307,7 @@ function Graph({
   graph,
   label,
   status,
+  taken,
   selected,
   onSelect,
   height,
@@ -287,6 +315,7 @@ function Graph({
   graph: CanvasGraph;
   label: string;
   status?: Partial<Record<string, CanvasStatus>>;
+  taken?: Partial<Record<string, number>>;
   selected: string | null;
   onSelect: (id: string | null) => void;
   height?: number;
@@ -296,8 +325,8 @@ function Graph({
   const [visited, setVisited] = useState<string | undefined>(undefined);
   const active = visited && layout.nodes.has(visited) ? visited : order[0];
   const flow = useMemo(
-    () => toFlow(graph, layout, active, selected, status),
-    [graph, layout, active, selected, status],
+    () => toFlow(graph, layout, active, selected, status, taken),
+    [graph, layout, active, selected, status, taken],
   );
   const wrapper = useRef<HTMLDivElement>(null);
   const pending = useRef<string | null>(null);
@@ -373,6 +402,7 @@ function Graph({
         nodes={flow.nodes}
         edges={flow.edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodeClick={(_, n) => {
           if (n.type !== "card") return;
           setVisited(n.id);

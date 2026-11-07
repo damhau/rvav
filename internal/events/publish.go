@@ -109,8 +109,16 @@ func (p *Publisher) Resource(ctx context.Context, projectID string, r store.Reso
 // notification whose occasion was notified already (its dedupe key) does
 // nothing.
 func (p *Publisher) Notify(ctx context.Context, n store.NewNotification) {
+	if err := p.NotifyKept(ctx, n); err != nil {
+		p.Logger.Warn("keep notification", "kind", n.Kind, "user", n.UserID, "err", err)
+	}
+}
+
+// NotifyKept is Notify for a caller that must know it was kept: a step that
+// exists to send it fails rather than says it sent nothing.
+func (p *Publisher) NotifyKept(ctx context.Context, n store.NewNotification) error {
 	if n.UserID == "" {
-		return
+		return nil
 	}
 	channels := p.Channels
 	if p.ChannelsNow != nil {
@@ -118,11 +126,10 @@ func (p *Publisher) Notify(ctx context.Context, n store.NewNotification) {
 	}
 	kept, created, err := p.Store.InsertNotification(ctx, n, channels)
 	if err != nil {
-		p.Logger.Warn("keep notification", "kind", n.Kind, "user", n.UserID, "err", err)
-		return
+		return err
 	}
 	if !created {
-		return
+		return nil
 	}
 	data := map[string]any{"id": kept.ID, "kind": kept.Kind, "title": kept.Title, "level": kept.Level}
 	if kept.Body != "" {
@@ -132,6 +139,7 @@ func (p *Publisher) Notify(ctx context.Context, n store.NewNotification) {
 		data["link"] = kept.Link
 	}
 	p.insert(ctx, "notification", nil, []string{"notifications", "user:" + n.UserID}, data)
+	return nil
 }
 
 // Approval tells each of the given users that an approval they may decide

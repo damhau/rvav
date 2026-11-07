@@ -47,7 +47,7 @@ const notificationCols = `id, user_id, kind, title, body, level, link, request_i
 // user chose nothing (ADR-0023).
 func DefaultChannels(kind string) []string {
 	switch kind {
-	case "approval_needed":
+	case "approval_needed", "step_message":
 		return []string{"email", "teams", "slack"}
 	case "request_succeeded", "request_failed", "request_rejected", "lease_expiring", "lease_expired":
 		return []string{"email"}

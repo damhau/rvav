@@ -8,7 +8,7 @@ import type { FieldError } from "@/lib/api/types";
 export interface CompositeStepView {
   key: string;
   title?: string;
-  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "?";
+  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "branch" | "notify" | "?";
   target: string;
   /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
   ask?: { who: string; wants: string; timeout?: string };
@@ -16,10 +16,25 @@ export interface CompositeStepView {
   wait?: { for?: string; until?: string };
   /** A wait for a condition: what it waits for, how often it checks and for how long. */
   poll?: { until: string; every: string; timeout: string };
+  /** A branch's sides: its cases in order, then what runs otherwise. */
+  sides?: CompositeSideView[];
+  /** A message: who it tells, and what it says. A requester's topology names no group or person, and has no text. */
+  notify?: { who: string; message?: string };
   when?: string;
   uses: string[];
   undo?: string;
   pointer: string;
+}
+
+/** One side of a branch. */
+export interface CompositeSideView {
+  /** A case's title, "Case 2", or "Otherwise". */
+  label: string;
+  /** A case's condition; undefined for Otherwise. */
+  when?: string;
+  /** Which it is, as a run says which it took (`Step.branch_case`): 1 for the first case, 0 for Otherwise. */
+  taken: number;
+  steps: CompositeStepView[];
 }
 
 export interface CompositeView {
@@ -269,6 +284,51 @@ function askWords(ask: Raw): NonNullable<CompositeStepView["ask"]> {
   };
 }
 
+/** The longest a message's text may be (core.maxStepMessage). */
+export const maxStepMessage = 2000;
+
+/** What the server checks of a branch on its own (core.checkBranch). */
+function checkBranch(b: Raw, ptr: string, err: (field: string, code: string, message: string) => void) {
+  const cases = Array.isArray(b.cases) ? (b.cases as Raw[]) : [];
+  if (cases.length === 0)
+    err(`${ptr}/cases`, "required", "Give it at least one case: a condition and the steps it runs.");
+  cases.forEach((c, i) => {
+    if (!str(c.when)) err(`${ptr}/cases/${i}/when`, "required", "Say when this case is taken: a CEL condition.");
+  });
+}
+
+/** What the server checks of a message on its own (core.checkNotify). */
+function checkNotify(n: Raw, ptr: string, err: (field: string, code: string, message: string) => void) {
+  const groups = Array.isArray(n.groups) ? (n.groups as unknown[]) : [];
+  const users = Array.isArray(n.users) ? (n.users as unknown[]) : [];
+  if (!n.requester && !n.owner && groups.length === 0 && users.length === 0)
+    err(ptr, "required", "Say who is told: the requester, the owner, groups or people.");
+  groups.forEach((g, i) => {
+    if (!str(g).trim()) err(`${ptr}/groups/${i}`, "required", "Name the OIDC group.");
+  });
+  const message = str(n.message);
+  if (!message.trim()) {
+    err(`${ptr}/message`, "required", "Say what it says.");
+    return;
+  }
+  if (message.length > maxStepMessage) err(`${ptr}/message`, "too_long", `At most ${maxStepMessage} characters.`);
+  const { error } = parseUrl(message);
+  if (error) err(`${ptr}/message`, "invalid", `This message can't be read: ${error}.`);
+}
+
+/** A message in words, from what a definition or a requester's topology has of it. */
+function notifyWords(n: Raw): NonNullable<CompositeStepView["notify"]> {
+  const groups = Array.isArray(n.groups) ? (n.groups as unknown[]).map(str).filter(Boolean) : [];
+  const users = Array.isArray(n.users) ? n.users.length : 0;
+  const who = [
+    n.requester ? "the requester" : "",
+    n.owner ? "the owner" : "",
+    ...groups,
+    users === 0 ? "" : users === 1 ? "1 person" : `${users} people`,
+  ].filter(Boolean);
+  return { who: who.join(", ") || "other people", message: str(n.message) || undefined };
+}
+
 /** A REST call on one line. */
 const restLine = (call: Raw) => `${str(call.method)} ${str(call.url)}`.trim();
 
@@ -280,6 +340,10 @@ function expressions(s: Raw): string[] {
   const wait = s.wait as Raw | undefined;
   if (str(wait?.until)) out.push(str(wait?.until));
   out.push(...restExpressions((s.poll as Raw | undefined)?.rest as Raw | undefined));
+  const branch = s.branch as Raw | undefined;
+  for (const c of Array.isArray(branch?.cases) ? (branch.cases as Raw[]) : []) if (str(c.when)) out.push(str(c.when));
+  const notify = s.notify as Raw | undefined;
+  if (notify) out.push(...urlExpressions(str(notify.message)));
   return out;
 }
 
@@ -292,6 +356,12 @@ function undoExpressions(s: Raw): string[] {
   return out;
 }
 
+/** What a step on a side of a branch can read beyond the groups before it, and what it can't (core.sideScope). */
+interface SideScope {
+  open: Set<string>;
+  others: Set<string>;
+}
+
 /** The steps of a composite blueprint and what is wrong with them (pointers under prefix). */
 export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"): CompositeView {
   const problems: FieldError[] = [];
@@ -299,10 +369,203 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
   const steps = Array.isArray(blueprint.steps) ? (blueprint.steps as Raw[]) : [];
   const seen = new Map<string, number>();
   const groups: CompositeStepView[][] = [];
+
+  const readStep = (s: Raw, sp: string, g: number, side: SideScope | null): CompositeStepView => {
+    const key = str(s.key);
+    if (!keyPattern.test(key)) err(`${sp}/key`, "pattern", "A key of lower-case letters, digits and underscores.");
+    else if (seen.has(key)) err(`${sp}/key`, "duplicate", `Another step has the key ${key}.`);
+    const awx = s.awx as Raw | undefined;
+    const rest = s.rest as Raw | undefined;
+    const ask = s.ask as Raw | undefined;
+    const wait = s.wait as Raw | undefined;
+    const poll = s.poll as Raw | undefined;
+    const branch = s.branch as Raw | undefined;
+    const notify = s.notify as Raw | undefined;
+    const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll, branch, notify].filter(Boolean).length;
+    if (kinds !== 1)
+      err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch or notify.");
+    if (awx && !str(awx.job_template)) err(`${sp}/awx/job_template`, "required", "Name the AWX template.");
+    if (rest) {
+      checkRest(rest, `${sp}/rest`, err);
+      if (s.with !== undefined)
+        err(`${sp}/with`, "invalid", "A REST call has no inputs: its URL and body read inputs and steps themselves.");
+    }
+    if (ask) {
+      checkAsk(ask, `${sp}/ask`, err);
+      if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a person has no inputs.");
+      if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a person has nothing to undo.");
+    }
+    if (wait) {
+      checkWait(wait, `${sp}/wait`, err);
+      if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a time has no inputs.");
+      if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a time has nothing to undo.");
+    }
+    if (poll) {
+      checkPoll(poll, `${sp}/poll`, key, err);
+      if (s.with !== undefined)
+        err(
+          `${sp}/with`,
+          "invalid",
+          "A poll has no inputs: its URL, body and condition read inputs and steps themselves.",
+        );
+      if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A poll has nothing to undo.");
+    }
+    if (branch) {
+      if (str(s.when)) err(`${sp}/when`, "invalid", "A branch has no condition of its own: its cases have.");
+      if (s.with !== undefined)
+        err(`${sp}/with`, "invalid", "A branch has no inputs: its conditions read inputs and steps themselves.");
+      if (s.undo !== undefined)
+        err(`${sp}/undo`, "invalid", "A branch has nothing to undo: only the steps that ran on its side are undone.");
+      checkBranch(branch, `${sp}/branch`, err);
+    }
+    if (notify) {
+      if (s.with !== undefined)
+        err(`${sp}/with`, "invalid", "A message has no inputs: its text reads inputs and steps itself.");
+      if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A message can't be unsent: it has nothing to undo.");
+      checkNotify(notify, `${sp}/notify`, err);
+    }
+    const undo = s.undo as Raw | undefined;
+    const undoRest = undo?.rest as Raw | undefined;
+    if (
+      undo &&
+      !ask &&
+      !wait &&
+      !poll &&
+      !branch &&
+      !notify &&
+      [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1
+    )
+      err(`${sp}/undo`, "one_of", "Undo with a job_template, a workflow or a rest call.");
+    if (undoRest) {
+      checkRest(undoRest, `${sp}/undo/rest`, err);
+      if (undo?.with !== undefined)
+        err(
+          `${sp}/undo/with`,
+          "invalid",
+          "A REST call has no inputs: its URL and body read inputs and steps themselves.",
+        );
+    }
+    const uses = new Set<string>();
+    const read = (e: string, own: string | null) => {
+      for (const m of e.matchAll(stepRef)) {
+        const ref = m[1]!;
+        if (ref === own) continue;
+        uses.add(ref);
+        if (side?.open.has(ref)) continue;
+        if (side?.others.has(ref)) {
+          err(sp, "other_side", `steps.${ref} is on another side of this branch: only one side runs.`);
+          continue;
+        }
+        const gr = seen.get(ref);
+        if (gr === undefined || gr >= g) err(sp, "unknown_step", `steps.${ref} is not an earlier step.`);
+      }
+    };
+    for (const e of expressions(s)) read(e, null);
+    for (const e of undoExpressions(s)) read(e, key);
+    // A poll's condition reads its own answer.
+    if (str(poll?.until)) read(str(poll?.until), key);
+    if (key) seen.set(key, g);
+    return {
+      key,
+      title: str(s.title) || str(awx?.title) || undefined,
+      kind: s.item
+        ? "item"
+        : awx
+          ? "awx"
+          : s.workflow
+            ? "workflow"
+            : rest
+              ? "rest"
+              : ask
+                ? "ask"
+                : wait
+                  ? "wait"
+                  : poll
+                    ? "poll"
+                    : branch
+                      ? "branch"
+                      : notify
+                        ? "notify"
+                        : "?",
+      target:
+        str(s.item) ||
+        str(awx?.job_template) ||
+        str(s.workflow) ||
+        (rest ? restLine(rest) : poll?.rest ? restLine(poll.rest as Raw) : ""),
+      ask: ask ? askWords(ask) : undefined,
+      wait: wait ? { for: str(wait.for) || undefined, until: str(wait.until) || undefined } : undefined,
+      poll: poll
+        ? {
+            until: str(poll.until),
+            every: str(poll.every),
+            timeout: str(poll.timeout)
+              ? `${str(poll.timeout)}, ${timeoutWords[str(poll.on_timeout)] ?? timeoutWords.fail}`
+              : "",
+          }
+        : undefined,
+      notify: notify ? notifyWords(notify) : undefined,
+      sides: branch ? readSides(branch, key, `${sp}/branch`, g) : undefined,
+      when: str(s.when) || undefined,
+      uses: [...uses],
+      undo: undo ? str(undo.job_template) || str(undo.workflow) || (undoRest ? restLine(undoRest) : "") : undefined,
+      pointer: sp,
+    };
+  };
+
+  /**
+   * A branch's sides. Their steps come after it, which they read, and share its
+   * group: only later groups read them, as they read a step `when` skipped.
+   */
+  const readSides = (b: Raw, branchKey: string, ptr: string, g: number): CompositeSideView[] => {
+    const cases = Array.isArray(b.cases) ? (b.cases as Raw[]) : [];
+    const lists = [
+      ...cases.map((c, i) => ({
+        label: str(c.title) || `Case ${i + 1}`,
+        when: str(c.when),
+        taken: i + 1,
+        steps: Array.isArray(c.steps) ? (c.steps as Raw[]) : [],
+        at: `${ptr}/cases/${i}/steps`,
+      })),
+      {
+        label: "Otherwise",
+        when: undefined,
+        taken: 0,
+        steps: Array.isArray(b.else) ? (b.else as Raw[]) : [],
+        at: `${ptr}/else`,
+      },
+    ];
+    return lists.map((list, i) => {
+      const scope: SideScope = {
+        open: new Set([branchKey]),
+        others: new Set(lists.flatMap((o, k) => (k === i ? [] : o.steps.map((x) => str(x.key))))),
+      };
+      const views: CompositeStepView[] = [];
+      list.steps.forEach((x, j) => {
+        const xp = `${list.at}/${j}`;
+        if (Array.isArray(x.parallel))
+          err(xp, "invalid", "A side of a branch lists steps in order: a parallel group can't be one of them.");
+        else if (x.branch)
+          err(
+            xp,
+            "invalid",
+            "A branch can't be on a side of a branch: give it more cases instead, each with its conditions.",
+          );
+        else {
+          views.push(readStep(x, xp, g, scope));
+          scope.open.add(str(x.key));
+        }
+      });
+      return { label: list.label, when: list.when, taken: list.taken, steps: views };
+    });
+  };
+
   steps.forEach((st, g) => {
     const at = `${prefix}/steps/${g}`;
     const parallel = Array.isArray(st.parallel) ? (st.parallel as Raw[]) : null;
-    if (parallel && (st.key || st.item || st.awx || st.workflow || st.rest || st.ask || st.wait || st.poll))
+    if (
+      parallel &&
+      (st.key || st.item || st.awx || st.workflow || st.rest || st.ask || st.wait || st.poll || st.branch || st.notify)
+    )
       err(at, "invalid", "A parallel group only lists steps.");
     const list = parallel ?? [st];
     const group: CompositeStepView[] = [];
@@ -312,117 +575,63 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
         err(sp, "invalid", "Parallel groups don't nest.");
         return;
       }
-      const key = str(s.key);
-      if (!keyPattern.test(key)) err(`${sp}/key`, "pattern", "A key of lower-case letters, digits and underscores.");
-      else if (seen.has(key)) err(`${sp}/key`, "duplicate", `Another step has the key ${key}.`);
-      const awx = s.awx as Raw | undefined;
-      const rest = s.rest as Raw | undefined;
-      const ask = s.ask as Raw | undefined;
-      const wait = s.wait as Raw | undefined;
-      const poll = s.poll as Raw | undefined;
-      const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll].filter(Boolean).length;
-      if (kinds !== 1) err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait or poll.");
-      if (awx && !str(awx.job_template)) err(`${sp}/awx/job_template`, "required", "Name the AWX template.");
-      if (rest) {
-        checkRest(rest, `${sp}/rest`, err);
-        if (s.with !== undefined)
-          err(`${sp}/with`, "invalid", "A REST call has no inputs: its URL and body read inputs and steps themselves.");
+      if (parallel && s.branch) {
+        err(sp, "invalid", "A branch can't run in a parallel group: put it before or after the group.");
+        return;
       }
-      if (ask) {
-        checkAsk(ask, `${sp}/ask`, err);
-        if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a person has no inputs.");
-        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a person has nothing to undo.");
-      }
-      if (wait) {
-        checkWait(wait, `${sp}/wait`, err);
-        if (s.with !== undefined) err(`${sp}/with`, "invalid", "A wait for a time has no inputs.");
-        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a time has nothing to undo.");
-      }
-      if (poll) {
-        checkPoll(poll, `${sp}/poll`, key, err);
-        if (s.with !== undefined)
-          err(
-            `${sp}/with`,
-            "invalid",
-            "A poll has no inputs: its URL, body and condition read inputs and steps themselves.",
-          );
-        if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A poll has nothing to undo.");
-      }
-      const undo = s.undo as Raw | undefined;
-      const undoRest = undo?.rest as Raw | undefined;
-      if (
-        undo &&
-        !ask &&
-        !wait &&
-        !poll &&
-        [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1
-      )
-        err(`${sp}/undo`, "one_of", "Undo with a job_template, a workflow or a rest call.");
-      if (undoRest) {
-        checkRest(undoRest, `${sp}/undo/rest`, err);
-        if (undo?.with !== undefined)
-          err(
-            `${sp}/undo/with`,
-            "invalid",
-            "A REST call has no inputs: its URL and body read inputs and steps themselves.",
-          );
-      }
-      const uses = new Set<string>();
-      const read = (e: string, own: string | null) => {
-        for (const m of e.matchAll(stepRef)) {
-          const ref = m[1]!;
-          if (ref === own) continue;
-          uses.add(ref);
-          const gr = seen.get(ref);
-          if (gr === undefined || gr >= g) err(sp, "unknown_step", `steps.${ref} is not an earlier step.`);
-        }
-      };
-      for (const e of expressions(s)) read(e, null);
-      for (const e of undoExpressions(s)) read(e, key);
-      // A poll's condition reads its own answer.
-      if (str(poll?.until)) read(str(poll?.until), key);
-      group.push({
-        key,
-        title: str(s.title) || str(awx?.title) || undefined,
-        kind: s.item
-          ? "item"
-          : awx
-            ? "awx"
-            : s.workflow
-              ? "workflow"
-              : rest
-                ? "rest"
-                : ask
-                  ? "ask"
-                  : wait
-                    ? "wait"
-                    : poll
-                      ? "poll"
-                      : "?",
-        target:
-          str(s.item) ||
-          str(awx?.job_template) ||
-          str(s.workflow) ||
-          (rest ? restLine(rest) : poll?.rest ? restLine(poll.rest as Raw) : ""),
-        ask: ask ? askWords(ask) : undefined,
-        wait: wait ? { for: str(wait.for) || undefined, until: str(wait.until) || undefined } : undefined,
-        poll: poll
-          ? {
-              until: str(poll.until),
-              every: str(poll.every),
-              timeout: str(poll.timeout)
-                ? `${str(poll.timeout)}, ${timeoutWords[str(poll.on_timeout)] ?? timeoutWords.fail}`
-                : "",
-            }
-          : undefined,
-        when: str(s.when) || undefined,
-        uses: [...uses],
-        undo: undo ? str(undo.job_template) || str(undo.workflow) || (undoRest ? restLine(undoRest) : "") : undefined,
-        pointer: sp,
-      });
-      if (key) seen.set(key, g);
+      group.push(readStep(s, sp, g, null));
     });
     groups.push(group);
   });
   return { groups, problems };
+}
+
+/** A view's steps and those on its branches' sides, in reading order. */
+export function allSteps(view: CompositeView): CompositeStepView[] {
+  return view.groups.flat().flatMap((s) => [s, ...(s.sides ?? []).flatMap((side) => side.steps)]);
+}
+
+/**
+ * The form's secret inputs a composite's messages read (core.checkNotifyRefs),
+ * refused on save: they would reach other people and their mailboxes. One read
+ * some other way fails when it runs: its value is a marker.
+ */
+export function secretInMessages(def: Raw, prefix = "/definition"): FieldError[] {
+  const fields = (((def.ui_schema ?? {}) as Raw).fields ?? {}) as Record<string, Raw>;
+  const secret = new Set(
+    Object.entries(fields)
+      .filter(([, f]) => f?.secret === true || f?.widget === "secret")
+      .map(([k]) => k),
+  );
+  const inputRead = /\binputs\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([^"']+)["']\s*\])/g;
+  const out: FieldError[] = [];
+  const check = (s: Raw, at: string) => {
+    const n = s.notify as Raw | undefined;
+    if (!n) return;
+    for (const e of urlExpressions(str(n.message)))
+      for (const m of e.matchAll(inputRead)) {
+        const field = m[1] ?? m[2]!;
+        if (secret.has(field))
+          out.push({
+            field: `${at}/notify/message`,
+            code: "secret",
+            message: `A message can't show the secret input ${field}: it reaches other people and their mailboxes.`,
+          });
+      }
+  };
+  const bp = (def.blueprint ?? {}) as Raw;
+  (Array.isArray(bp.steps) ? (bp.steps as Raw[]) : []).forEach((st, g) => {
+    const at = `${prefix}/blueprint/steps/${g}`;
+    if (Array.isArray(st.parallel)) (st.parallel as Raw[]).forEach((s, j) => check(s, `${at}/parallel/${j}`));
+    else check(st, at);
+    const branch = st.branch as Raw | undefined;
+    if (!branch) return;
+    (Array.isArray(branch.cases) ? (branch.cases as Raw[]) : []).forEach((c, i) =>
+      (Array.isArray(c.steps) ? (c.steps as Raw[]) : []).forEach((s, j) =>
+        check(s, `${at}/branch/cases/${i}/steps/${j}`),
+      ),
+    );
+    (Array.isArray(branch.else) ? (branch.else as Raw[]) : []).forEach((s, j) => check(s, `${at}/branch/else/${j}`));
+  });
+  return out;
 }

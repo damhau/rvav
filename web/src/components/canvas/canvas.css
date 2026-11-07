@@ -46,6 +46,17 @@
   stroke: var(--bad);
 }
 
+/* A run's branch: the way it took can be followed, in a line as in words. */
+.rvav-canvas .rvav-edge-taken .react-flow__edge-path {
+  stroke: var(--ok);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+
+.rvav-canvas .rvav-edge-not-taken .react-flow__edge-path {
+  stroke: var(--line);
+}
+
 .rvav-canvas .react-flow__attribution a {
   color: var(--fg-faint);
 }

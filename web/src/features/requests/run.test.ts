@@ -3,7 +3,7 @@ import { blueprintGraph } from "@/components/canvas/blueprint";
 import type { Step } from "@/lib/api/types";
 import { seededBlueprint, topologyOf } from "@/mocks/blueprints";
 import { db } from "@/mocks/seed";
-import { failedNode, pickLogStep, runStatus, runSteps, stepStatus } from "./run";
+import { branchTaken, failedNode, pickLogStep, runStatus, runSteps, stepStatus } from "./run";
 
 const graph = blueprintGraph(topologyOf(seededBlueprint("postgres-cluster")), "/topology")!;
 const stored = () => db.requests.find((r) => r.request.number === "REQ-10484")!;
@@ -41,6 +41,17 @@ describe("a composite's run on its graph", () => {
     expect(stepStatus(step("step:x", "cancelled"))).toBe("cancelled");
     expect(stepStatus(step("step:x", "done", { system: "vcenter" }))).toBe("done");
     expect(stepStatus(step("step:x", "done", { system: "awx" }), true)).toBe("done");
+  });
+
+  it("says which side each branch took, once it has", () => {
+    expect(
+      branchTaken([
+        step("step:b", "done", { system: "branch", branch_case: 2 }),
+        step("step:none", "done", { system: "branch", branch_case: 0 }),
+        step("step:new", "running", { system: "branch", branch_case: null }),
+        step("step:x", "done", { system: "wait" }),
+      ]),
+    ).toEqual({ "step:b": 2, "step:none": 0 });
   });
 
   it("says a step waits for a time or a condition, and only while it does", () => {

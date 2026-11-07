@@ -1,7 +1,7 @@
 // How the canvas draws a node, a parallel group's frame and a status, in the
 // app's tokens (light and dark follow them). Shared by the graph and the
 // list views.
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { BaseEdge, type Edge, type EdgeProps, Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   CircleCheck,
   CircleDashed,
@@ -13,11 +13,13 @@ import {
   Globe,
   Hourglass,
   LoaderCircle,
+  Mail,
   Network,
   Package,
   Server,
   Shield,
   ShieldCheck,
+  Split,
   SquareTerminal,
   Timer,
   TriangleAlert,
@@ -28,7 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { CanvasDirection, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
 import { statusLabel, subtitleOf } from "./graph";
-import { sides } from "./layout";
+import { type EdgeRoute, sides } from "./layout";
 
 export function NodeIcon({ node, className }: { node: CanvasNode; className?: string }) {
   const Icon =
@@ -39,7 +41,11 @@ export function NodeIcon({ node, className }: { node: CanvasNode; className?: st
           ? Workflow
           : node.badge === "Wait" || node.badge === "Poll"
             ? Timer
-            : Package
+            : node.badge === "Branch"
+              ? Split
+              : node.badge === "Message"
+                ? Mail
+                : Package
       : {
           inputs: ClipboardList,
           end: Flag,
@@ -205,3 +211,48 @@ export function FrameView({ data }: NodeProps<FrameNode>) {
 }
 
 export const nodeTypes = { card: CardView, frame: FrameView };
+
+export type RoutedEdge = Edge<{ route: EdgeRoute }, "routed">;
+
+/** A path through dagre's points, its corners rounded. */
+function routedPath({ points }: EdgeRoute): string {
+  const radius = 10;
+  let d = `M ${points[0]!.x} ${points[0]!.y}`;
+  points.forEach((p, i) => {
+    if (i === 0) return;
+    const next = points[i + 1];
+    if (!next) {
+      d += ` L ${p.x} ${p.y}`;
+      return;
+    }
+    const prev = points[i - 1]!;
+    const along = (a: { x: number; y: number }) => {
+      const len = Math.hypot(a.x - p.x, a.y - p.y) || 1;
+      const r = Math.min(radius, len / 2);
+      return { x: p.x + ((a.x - p.x) / len) * r, y: p.y + ((a.y - p.y) / len) * r };
+    };
+    const from = along(prev);
+    const to = along(next);
+    d += ` L ${from.x} ${from.y} Q ${p.x} ${p.y} ${to.x} ${to.y}`;
+  });
+  return d;
+}
+
+/** An edge of a branch: it follows the layout's way, around the steps of a side it passes. */
+function RoutedEdgeView({ id, data, markerEnd, label, labelBgPadding, labelBgBorderRadius }: EdgeProps<RoutedEdge>) {
+  if (!data) return null;
+  return (
+    <BaseEdge
+      id={id}
+      path={routedPath(data.route)}
+      markerEnd={markerEnd}
+      label={label}
+      labelX={data.route.label?.x}
+      labelY={data.route.label?.y}
+      labelBgPadding={labelBgPadding}
+      labelBgBorderRadius={labelBgBorderRadius}
+    />
+  );
+}
+
+export const edgeTypes = { routed: RoutedEdgeView };

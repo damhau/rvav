@@ -1128,5 +1128,151 @@
         }
       ]
     }
+  },
+  {
+    "name": "probe-composite-branch",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "branch": {
+            "cases": [
+              {
+                "steps": [
+                  {
+                    "ask": {
+                      "group": "grp-ask-secret",
+                      "message": "Why, secret-text?",
+                      "owner": true
+                    },
+                    "key": "ask_big",
+                    "title": "Ask"
+                  },
+                  {
+                    "key": "call_big",
+                    "rest": {
+                      "body": "'tok_live_b'",
+                      "method": "POST",
+                      "secret": "cmdb-token-name",
+                      "url": "https://cmdb-secret.corp.example/${inputs.name}"
+                    },
+                    "when": "steps.ask_big.answered == 'lit-secret'"
+                  }
+                ],
+                "title": "Big",
+                "when": "inputs.size == 'big-secret'"
+              },
+              {
+                "when": "inputs.size == 'open"
+              }
+            ],
+            "else": [
+              {
+                "awx": {
+                  "job_template": "t"
+                },
+                "key": "call_else",
+                "with": {
+                  "host": "steps.choose.case",
+                  "password": "'hunter2'"
+                }
+              }
+            ],
+            "unknown": "dropped-secret"
+          },
+          "key": "choose",
+          "title": "Which way",
+          "when": "inputs.size == 'huge-secret'"
+        },
+        {
+          "key": "tell",
+          "notify": {
+            "groups": [
+              "grp-told-secret"
+            ],
+            "message": "Secret-text for ${inputs.name + 'lit-secret'}",
+            "owner": false,
+            "requester": true,
+            "users": [
+              "usr_told_secret"
+            ]
+          },
+          "title": "Tell them",
+          "when": "inputs.size == 'huge-secret'"
+        },
+        {
+          "key": "tell_owner",
+          "notify": {
+            "message": "Secret-text",
+            "owner": true
+          }
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "branch": {
+            "cases": [
+              {
+                "steps": [
+                  {
+                    "ask": {
+                      "owner": true
+                    },
+                    "key": "ask_big",
+                    "title": "Ask"
+                  },
+                  {
+                    "key": "call_big",
+                    "rest": {
+                      "body": "'…'",
+                      "method": "POST",
+                      "url": "…${inputs.name}"
+                    },
+                    "when": "steps.ask_big.answered == '…'"
+                  }
+                ],
+                "title": "Big",
+                "when": "inputs.size == '…'"
+              },
+              {
+                "when": "…"
+              }
+            ],
+            "else": [
+              {
+                "awx": {
+                  "job_template": "t"
+                },
+                "key": "call_else",
+                "with": {
+                  "host": "steps.choose"
+                }
+              }
+            ]
+          },
+          "key": "choose",
+          "title": "Which way",
+          "when": "inputs.size == '…'"
+        },
+        {
+          "key": "tell",
+          "notify": {
+            "owner": false,
+            "requester": true
+          },
+          "title": "Tell them",
+          "when": "inputs.size == '…'"
+        },
+        {
+          "key": "tell_owner",
+          "notify": {
+            "owner": true
+          }
+        }
+      ]
+    }
   }
 ]

@@ -22,9 +22,20 @@ export interface CanvasLayout {
   boxes: Map<string, Box>;
   /** Edges within a column (rules between a VM item's groups): drawn as a bracket on the nodes' right. */
   side: Set<string>;
+  /** The way of each edge through a branch: dagre's, so that one passing a side's steps goes around them. */
+  routes: Map<string, EdgeRoute>;
   width: number;
   height: number;
 }
+
+export interface EdgeRoute {
+  points: { x: number; y: number }[];
+  /** Where its label goes: room dagre kept for it. */
+  label?: { x: number; y: number };
+}
+
+/** What a run adds to a branch's edge's label: the room is kept, so that the layout doesn't follow the run. */
+export const takenWords = { taken: "taken", "not-taken": "not taken" } as const;
 
 export const nodeWidth: Record<CanvasNodeKind, number> = {
   inputs: 200,
@@ -104,7 +115,8 @@ export function layoutGraph(graph: CanvasGraph): CanvasLayout {
       continue;
     }
     // Room for the label, so it doesn't sit on a node.
-    const label = e.label ? { width: e.label.length * 6.5 + 12, height: 18, labelpos: "c" as const } : {};
+    const room = (e.label?.length ?? 0) + (e.branch ? takenWords["not-taken"].length + 2 : 0);
+    const label = e.label ? { width: room * 6.5 + 12, height: 18, labelpos: "c" as const } : {};
     g.setEdge(v, w, label, e.id);
   }
   dagre.layout(g);
@@ -130,9 +142,19 @@ export function layoutGraph(graph: CanvasGraph): CanvasLayout {
       boxes.set(n.id, box);
     }
   }
+  const routes = new Map<string, EdgeRoute>();
+  for (const e of graph.edges) {
+    if (!e.branch) continue;
+    const l = g.hasEdge(top(e.source), top(e.target), e.id) ? g.edge(top(e.source), top(e.target), e.id) : undefined;
+    if (l?.points?.length)
+      routes.set(e.id, {
+        points: l.points,
+        ...(e.label && l.x !== undefined && l.y !== undefined ? { label: { x: l.x, y: l.y } } : {}),
+      });
+  }
   const { width = 0, height = 0 } = g.graph();
   // Room on the right for the brackets.
-  return { nodes, groups, boxes, side, width: width + (side.size > 0 ? 24 + 14 * side.size : 0), height };
+  return { nodes, groups, boxes, side, routes, width: width + (side.size > 0 ? 24 + 14 * side.size : 0), height };
 }
 
 export type ArrowDirection = "up" | "down" | "left" | "right";
