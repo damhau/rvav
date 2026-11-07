@@ -72,12 +72,18 @@ their times and tasks.
   **Waits for a person** beside the graph. If it asks you, its form is there
   (or **Approve** and **Reject**). Otherwise you see who it waits for and until
   when, not what it asks. Cancel request closes the question.
+- **Waiting for a time or a condition:** a composite's step can wait for a
+  duration, for a date, or for another system to say yes, such as a change being
+  approved. The graph shows it **Waiting**. Select it, or open **Timeline**, to
+  see what it waits for and until when, and what its last check found. There is
+  nothing for you to do, and Cancel request stops it at once.
 - **Failed:** the error names the step and the system. On a composite's
   graph, the step that failed is selected.
   - **Retry from the failed step** once the cause is fixed: done steps
     aren't repeated. A failed REST call is made again, even a POST that
     may have reached its service: when in doubt, check there first. A step
-    that was rejected asks again, and its first answer stays on the page.
+    that was rejected asks again, and its first answer stays on the page. A
+    wait starts again, with its whole time.
   - **Roll back:** removes the VMs, addresses and DNS records it made. A
     composite's AWX, workflow and REST call steps aren't undone by it.
   - Once rolled back (by you, or by a composite that undoes what it built

@@ -146,7 +146,10 @@ managed by a small client. Incoming events update the cache directly:
 | `notification` | Toast plus the notification centre |
 
 Reconnection uses `Last-Event-ID`, so no events are lost. The connection state
-is shown subtly in the top bar.
+is shown subtly in the top bar. An event that arrives during a read would be
+overwritten by that read's older answer, so the query is read again (`readAgain`).
+An invalidate restarts only a read with data to fall back on, so a first read is
+read again after its answer.
 
 ## Design system
 
@@ -276,7 +279,9 @@ Catalog admins and administrators build items under **Catalog items**
   its outputs (`restOutputs`). A wait for a person is another (`AskFields`, `AskQuestion`, edited by
   `setAskField`, `setAskEscalate` and `setAskQuestion`), with no inputs or undo, and `askOutputs` gives its
   outputs, one per question. Its only refusal on request depends on who requests, so the
-  Approvers field's hint says it. Those problems,
+  Approvers field's hint says it. A wait for a time and a poll are others (`WaitFields`, `PollFields`,
+  a poll's call being `RestCallFields` with `poll`, edited by `setWaitField`, `setPollField` and
+  `setRestField`), with no inputs or undo, and `waitOutputs` and `pollOutputs` give their outputs. Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
 - The **form designer** has three panes: the fields by section (add from
@@ -514,12 +519,19 @@ nothing about it (positions, layout) is stored.
   step until it is answered (`simulator.ts`: `openAsk`, `stepAnswered`, `stepRejected`), so a new
   item with a wait must be answered to reach its end. The mocks' me is both the requester and,
   with `requester: true`, the one asked; someone else's question can't be answered in the mocks.
+- **A wait for a time or a condition on a run:** `stepStatus` (`features/requests/run.ts`) gives
+  `waiting` for a running step of system `wait`, whose node has an hourglass; a person's step stays
+  Running, with its panel. The timeline adds `Until <date>` from `due_at`. In the mocks
+  (`simulator.ts`: `openWait`, `waitTick`, `checkPoll`) a tick is a minute of a wait, and a poll's
+  condition holds at its third check: `for: 72h` and `every: 6h` stay until cancelled, `for: 2m` and
+  `every: 1m` run on, and a `timeout: 1m` reaches its deadline first, so a spec picks what it needs.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
   (the designer, to a request), `composite-rest.spec.ts` (a REST call and
   its undo from the keyboard, masked on the form and the run), `composite-ask.spec.ts`
   (a wait from the keyboard, masked on the form, answered, rejected, retried, cancelled,
-  and someone else's), `request-run.spec.ts` (a failed run
+  and someone else's), `composite-wait.spec.ts` (a wait for a time and a poll from the keyboard,
+  masked on the form, waiting, cancelled, run to their end, at a deadline, retried), `request-run.spec.ts` (a failed run
   retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
   same with the keyboard only; `accessibility.spec.ts` scans the
   designer and a run. The mocks can't approve as someone else, so a
@@ -568,7 +580,7 @@ A blueprint with components builds one deployment
   without guest settings, sizes, naming or a step's binding literals,
   which a requester doesn't see, its CEL's string literals masked, and a
   REST call's URL and body with them, its secret, statuses and `keep` left out, a
-  wait's group, users, message, labels and options too, and no problems on any step, since a
+  poll's the same, a wait's group, users, message, labels and options too, and no problems on any step, since a
   mask reads as a mistake;
   `blueprint.Topology` on the server, `topologyOf` in the mocks, checked
   against one fixture, `internal/seed/testdata/topology.json`) and `withPreview` puts the preview's counts

@@ -302,7 +302,7 @@ them. An item is a form and a blueprint
 - **a VM blueprint:** one VM or several, with their guest settings;
 - **an AWX job or workflow:** imported from AWX's templates with the
   catalog label, their survey becoming the form;
-- **a composite:** VMs, jobs, custom workflows, REST calls and waits for a person in steps;
+- **a composite:** VMs, jobs, custom workflows, REST calls and waits for a person, a time or a condition in steps;
 - **a custom workflow**, run by your own worker.
 
 An item's tabs:
@@ -342,8 +342,8 @@ An item's tabs:
   Enter) and its editor opens under the graph:
   - **Add a step** runs a published item (not another composite), an AWX
     template imported from AWX (or any template, by its name), a
-    custom workflow registered for composite steps, a REST call, or a
-    person. It goes after the
+    custom workflow registered for composite steps, a REST call, a
+    person, a wait for a time, or a wait for a condition. It goes after the
     selected step, at the same time as it, or at the end. Its inputs
     named as the form's are bound to them. An AWX template picked from
     the list is written with its ID in AWX (`template_id`) beside its
@@ -392,6 +392,23 @@ An item's tabs:
     `answer.<key>`; on a timeout that goes on, `answered` is false and each
     answer its default or null. See
     [the catalog's reference](../service-catalog.md#a-step-that-waits-for-a-person).
+  - **A wait for a time** stops the run for a while, and has no inputs or undo:
+    **For** a duration, or **Or until** a CEL expression giving a time (RFC 3339,
+    or a date; with no zone, UTC). Filling in one clears the other. A time already
+    passed goes on at once, and one that can't be read fails the step. Later steps
+    read `steps.<key>.until`.
+  - **A wait for a condition, polling a REST API** calls an API again and again
+    until a condition holds, and has no inputs or undo. **The call it repeats:** a
+    REST call's fields, with GET, PUT or DELETE only, since a POST or a PATCH may
+    do something each time. **What it waits for:** **Every**, how often it checks,
+    at least 1m, and **Until**, CEL on the call's answer, `steps.<key>.json` or
+    `.status`. **If it never holds:** a **Deadline**, required, and **Then** the
+    step fails or it goes on. No answer, a 5xx, a 429 or a 408 only waits for the
+    next check. Another status it doesn't accept fails the step, so list a 404 in
+    **Accepted statuses** if it means "not yet". Later steps read `status`, `json`
+    and `met`; on a deadline that goes on, `met` is false, with the last answer or
+    null. See
+    [the catalog's reference](../service-catalog.md#a-step-that-waits-for-a-time-or-a-condition).
   - A VM item's step is planned when the request is submitted: its inputs
     come from the form only, and it has no condition or undo (a failure
     deletes its VMs).

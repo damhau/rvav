@@ -9,7 +9,7 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 | `vm_blueprint` | Authored in the app | Provisions one or more VMs natively, with optional AWX post-config steps |
 | `awx_job_template` | Imported from AWX | Launches a job template with inputs from the form |
 | `awx_workflow` | Imported from AWX | Launches a workflow job template |
-| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows, REST calls and waits for a person, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
+| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows, REST calls and waits for a person, a time or a condition, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
 | `workflow` | Authored in the app | Starts a registered custom Temporal workflow with the form's inputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
 
 A composite's blueprint, in its Definition tab:
@@ -40,7 +40,8 @@ steps:
 its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
 job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
-person's `answered`, `by`, `comment` and `answer`.
+person's `answered`, `by`, `comment` and `answer`, a wait's `until`, a poll's
+`status`, `json` and `met`.
 
 #### A REST call step
 A step can call a REST API instead of running something
@@ -135,6 +136,60 @@ requesting it is refused when requested: nobody could answer. Cancelling the
 request closes the question, and **Retry** asks again if the step failed or was
 stopped. A requester's form shows that it waits, whether for them or the owner,
 its timeout and how many answers: not who else, or what it asks.
+
+#### A step that waits for a time or a condition
+A step can wait for a time, with `wait`, or call a REST API until a condition
+holds, with `poll` ([ADR-0033](adr/0033-composite-step-kinds.md)). Neither has a
+`with` or an `undo`:
+
+```yaml
+  - key: keep_snapshot
+    title: Keep the snapshot three days
+    wait:
+      for: 72h
+  - key: change_ok
+    title: The change is approved
+    poll:
+      rest:
+        method: GET
+        url: https://servicenow.corp.example/api/now/table/change_request/${steps.change.json.sys_id}
+        secret: servicenow-token
+        keep: $.result.state
+      until: "steps.change_ok.json == 'approved'"
+      every: 10m
+      timeout: 72h
+      on_timeout: fail
+```
+
+| Field | What it is |
+|---|---|
+| `wait.for` | A duration such as `72h`, at least 1 s |
+| `wait.until` | Instead of `for`: CEL over `inputs`, `steps`, `environment` and `project` giving a time: a timestamp, or a text in RFC 3339, a date and time or a date. With no zone it is UTC |
+| `poll.rest` | The call it repeats, as a [REST call step](#a-rest-call-step)'s, with its allowed hosts, secret, `accept` and `keep`. Only `GET`, `PUT` or `DELETE`: a POST or a PATCH may do something each time, so they are refused on save |
+| `poll.until` | CEL giving true or false, which must read the step's own answer, `steps.<key>.json` or `.status`: nothing else changes during the wait |
+| `poll.every` | How often it checks, a duration of at least `1m`. Required. The first check is at once |
+| `poll.timeout` | Its deadline from when it begins, at least `every`. Required. At the deadline, one last check |
+| `poll.on_timeout` | `fail`, the default, or `continue`, which goes on |
+
+Later steps read a wait's `steps.<key>.until`, the time it waited for, in UTC. They
+read a poll's `status` and `json`, from the last check that got an answer, scrubbed
+and picked by `keep` as a REST step's, and `met`, true when the condition held. When
+a deadline goes on, `met` is false and `status` and `json` are the last answer's,
+or null if no check got one.
+
+A time already passed goes on at once, and says so on the timeline. An expression
+that doesn't give a time fails the step.
+
+No answer, a 5xx, a 429 or a 408 only waits for the next check, and only the
+deadline ends those. Another status it doesn't accept fails the step, since a next
+check wouldn't change it: list a 404 in `accept` if it means "not yet". So does a
+host no longer allowed, a secret gone, and a condition it can't read, on a field the
+answer doesn't have, say (use `has()` if it may not).
+
+Cancelling the request stops it at once. **Retry** starts it again if it failed or
+was stopped: the whole duration, or the whole deadline. A requester's form shows
+that it waits and for how long, and a poll's method and how often: its URL, body and
+conditions masked, its secret, `accept` and `keep` left out.
 
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).

@@ -17,7 +17,7 @@ a workflow calling a CMDB needed a playbook for one HTTP request.
 
 ### What a step kind is
 - **One key per kind.** A step runs one of `item`, `awx`, `workflow`, `rest`,
-  `ask`, each with its own fields, beside what every step has (`key`, `title`,
+  `ask`, `wait`, `poll`, each with its own fields, beside what every step has (`key`, `title`,
   `when`, and `undo` when it has something to undo). A later kind adds a key:
   nothing moves in existing definitions. A step with none of them, or more
   than one, is refused when saved.
@@ -171,6 +171,95 @@ API serves. The audit, events and deliveries don't have it: they say a level was
 decided. A comment is free text, and read by the requester: it is no place for
 a secret either.
 
+### A wait for a time, and a poll (D2.4)
+```yaml
+- key: keep_snapshot
+  title: Keep the snapshot three days
+  wait:
+    for: 72h                # or until: a CEL expression giving a time
+- key: change_ok
+  title: The change is approved
+  poll:
+    rest:                   # as a REST call step's, with GET, PUT or DELETE
+      method: GET
+      url: https://servicenow.corp.example/api/now/table/change_request/${steps.change.json.sys_id}
+      secret: servicenow-token
+      keep: $.result.state
+    until: "steps.change_ok.json == 'approved'"
+    every: 10m              # required, at least 1m
+    timeout: 72h            # required, at least every
+    on_timeout: fail        # fail (the default) or continue
+```
+
+- **Two keys.** A wait for a time has one of two fields and needs no answer. A
+  poll has a call, a condition, an interval, a deadline and outputs. One key
+  would leave most of its fields' combinations to refuse. Both are `system: wait`
+  on a step's row, and both have a due time, so they read alike on a timeline.
+- **There is no condition without a call.** Nothing else can change during the
+  wait, so a condition that doesn't read `steps.<key>`, its own answer, is
+  refused on save.
+- **They wait as a person's wait does,** on `waitRound` (a timer and a stop),
+  continuing as new when Temporal suggests it. Their state is in the database,
+  not in the history: `request_steps.due_at` (`migrations/00052`), set once, and
+  a poll's last answer, as the step's outputs. So a run continued as new or a
+  worker back after a while finds them, and a time that came due with no worker
+  is acted on when one returns. A poll adds a few events to the history at each
+  check, and continues as new only when a check is due, so that continuing never
+  checks early and the new run's first act is that check.
+- **A time.** `for` is a duration of at least 1 s. `until` is CEL over `inputs`,
+  `steps`, `environment` and `project`, giving a CEL timestamp or a text: RFC
+  3339, a date and time, or a date; with no zone, it is read as UTC. A time
+  already passed goes on at once, and says so on the timeline. An expression
+  that doesn't give a time fails the step, its literals masked (`Its time can't
+  be read: inputs.window + '…' doesn't give a time`), and quotes no value.
+  Outputs: `steps.<key>.until`, the time it waited for, in UTC.
+- **A check.** The first is at once, the others each `every`, and one more at the
+  deadline. Its call is a REST call step's (`callREST`, `internal/restcall`):
+  the allowed hosts, a stored secret, a URL's fixed host, 1 MB, 30 s, an
+  answer scrubbed, resolved in the activity. So everything in "No secret stays
+  behind a call" holds, each check, and the history holds only names and
+  expressions. `every` is at least 1m, since each check calls that API, and a
+  deadline is required, since otherwise a change never approved holds its run for
+  ever.
+- **Only what can be repeated.** POST and PATCH are refused on save, in those
+  words: above they are made once, since they may do something each time, and a
+  poll repeats its call.
+- **What a failed check does.** It stays simple, along the line retries already
+  draw. Each check is tried once: the next check is its retry.
+
+  | A check gets | What happens |
+  |---|---|
+  | A status it accepts (`accept`; empty: any 2xx) | Its condition is read on the answer |
+  | No answer, a 5xx, a 429 or a 408, or the worker went away | The step says so, and waits for the next check: only the deadline ends these |
+  | Another status (a 401, a 403, a 404) | The step fails: a next check wouldn't change it. List it in `accept` to read it as an answer, a 404 for "not yet" |
+  | A host no longer allowed, a secret gone, a URL it can't fill, more than it may keep | The step fails |
+  | A condition it can't read, or that doesn't give true or false | The step fails, its literals masked. A field the answer may not have needs `has()` |
+
+- **Outputs,** for later steps' CEL:
+
+  | Output | What it is |
+  |---|---|
+  | `steps.<key>.status` | What the last check that got an answer answered; null if none did |
+  | `steps.<key>.json` | Its answer, what `keep` picks, scrubbed as a REST step's; null if none did |
+  | `steps.<key>.met` | True when the condition held |
+
+- **A deadline.** It counts from when the step begins. At it, one last check, then
+  `on_timeout`: `fail`, the default, fails the step (`Its condition wasn't met
+  within 72h.`); `continue` goes on, saying so. There is no `escalate`: nobody is
+  asked. **A later step reads, when it went on at the deadline,** `met: false`
+  with the last answer's `status` and `json`, each null if no check got one. It
+  tells that the condition never held by `met`, not by reading `json` again.
+- **A failure, a cancel, a Retry.** Like a person's wait, these have nothing to
+  undo themselves, so they have no `undo` and no `with`. Cancelling the request
+  stops them at once. A failing sibling stops them: the step is cancelled. **A
+  Retry starts again** any that failed or were stopped: `for` waits its whole
+  duration, `until` reads its expression again, a poll checks at once and has its
+  whole deadline. A wait that finished stays done, as an answer does.
+- **What it says.** The timeline says what it waits for and `Until <time>`, in the
+  viewer's time format; a run's graph shows the node Waiting. The poll's last
+  check is its step's detail: `Checks every 10m. Last check: GET answered 200, not
+  yet.`
+
 ### What a requester sees
 `blueprint.Topology` keeps a REST call's method, and its URL and body masked
 as CEL literals are (`policy.MaskLiterals`, ADR-0032), for the step and its
@@ -183,6 +272,13 @@ person`, `Wants: 2 answers`, `Timeout: 48h, then it goes on`. Its group, users,
 message, labels, options, defaults and escalation stay out: a form shows that it
 waits and for how long, not who decides or what they are asked. The keys stay
 because a later step's masked CEL names them anyway.
+
+A wait for a time keeps its duration, or its expression masked: `For: 72h`,
+`Until: inputs.window`. A poll keeps its method, its URL and body masked like a
+REST call's, its condition masked, how often it checks, its deadline and what
+that does: `Calls: GET …${steps.change.json.sys_id}`, `Until: steps.change_ok.json
+== '…'`, `Every: 10m`, `Timeout: 72h, then the step fails`. Its secret, accepted
+statuses and `keep` stay out.
 
 A topology is masked, so it carries no problems: a step's masked URL read as a
 mistake, and a requester saw "1 problem" on a REST step.
@@ -200,12 +296,13 @@ a custom workflow, not a composite, so it stays in group B. Others keep their
 group, with a note that as a composite their REST calls would be REST call
 steps.
 
-A workflow with a user interaction maps to a composite item with a step that
-waits for a person (group A), its REST calls being REST call steps and any other
-system an AWX step. Two stay in group C, with a custom workflow asking through
-`rvav.RequestApproval`: one that also waits for a time or an event, until its
-step kind exists, and one a subscription or a day-2 action runs, for the reason
-above. A workflow that waits only for a time stays in group C until then too.
+A workflow with a user interaction or a timer maps to a composite item with steps
+that wait for a person or for a time (group A), its REST calls being REST call
+steps and any other system an AWX step; a timer around a REST call is a step that
+polls it until a condition holds. Two stay in group C, with a custom workflow
+waiting and asking through `rvav.RequestApproval`: one that also waits for an
+event, until its step kind exists, and one a subscription or a day-2 action runs,
+for the reason above.
 
 ### How this sits with ADR-0007, ADR-0011, ADR-0022 and ADR-0032
 - **ADR-0007:** the integration library stays AWX and Ansible, and level 2
@@ -218,7 +315,9 @@ above. A workflow that waits only for a time stays in group C until then too.
   rules, delegation, editable inputs or all-of, and stays out of the approval
   reports (the backlog metric keeps it: someone is waiting).
 - **ADR-0022:** a custom workflow stays the way for branching on answers, days
-  of back and forth or compensation. `rvav.RequestApproval` is unchanged.
+  of back and forth or compensation. `rvav.RequestApproval` is unchanged. A wait
+  for an event, or a condition that takes more than one call and CEL on its
+  answer, is one too.
 - **ADR-0032:** the YAML stays the source of truth, and the canvas draws these
   steps as it draws others. Topology masking extends to URLs and bodies. The
   "no scripting language" rule is the one above.
@@ -240,3 +339,13 @@ above. A workflow that waits only for a time stays in group C until then too.
   again once the item is fixed. A timeout, or a group, avoids this.
 - A message can't quote the request, since it is fixed text. The page it is
   answered on shows the request beside it.
+- A wait or a poll holds its workflow open, and `until` has no limit: an item can
+  wait for a date a year away. It costs little, since it only wakes each hour to
+  look again, and continues as new when asked.
+- Each check calls the API it names, and nothing shares them between requests: a
+  thousand requests waiting on one ticket system at `every: 1m` are a thousand
+  calls a minute. An author picks a sensible interval, and 1m is only a floor.
+- In a parallel group, a wait or a poll that has left to continue as new, on a
+  long history, waits for its siblings' next round or end before it goes on. A
+  sibling long at work (a VM build) can make it late, never early. One that must
+  keep its pace has a group of its own.
