@@ -267,7 +267,14 @@ function answerStep(a: StoredApproval, stored: StoredRequest, body: S["ApprovalD
   });
   if (a.question && form.length > 0) a.question.answer = clean;
   if (rejected) stepRejected(stored, a.step_key!, `${outcome}: ${comment}`);
-  else stepAnswered(stored, a.step_key!, outcome);
+  else
+    // What later steps read of it (ADR-0033): a field left blank is its default, or null.
+    stepAnswered(stored, a.step_key!, outcome, {
+      answered: true,
+      by: db.me.user.email ?? "",
+      comment,
+      answer: Object.fromEntries(form.map((f) => [f.key, clean[f.key] ?? f.default ?? null])),
+    });
   publishApproval(a);
   return json<S["Approval"]>(viewOf(db, a, stored.request));
 }

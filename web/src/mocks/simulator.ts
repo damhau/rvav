@@ -101,13 +101,31 @@ function awxJob(template: string, host: string, jobId: number): Step {
 type Rec = Record<string, unknown>;
 
 /**
- * What a branch takes when its step ends, and the steps it leaves out. Chosen
- * from the form's values when planned: the mocks' steps have no outputs, so a
- * case on one of them doesn't hold.
+ * What a step gives later steps' CEL once it ran (`steps.<key>`): a person's
+ * answer, a REST call's status, a branch's case. Other steps give nothing here.
  */
-const branches = new Map<string, { taken: number; detail: string; left: string[] }>();
-/** What a message says when its step ends, or why it can't be sent. */
-const messages = new Map<string, { text?: string; error?: string; requester: boolean }>();
+const outputs = new WeakMap<Step, Rec>();
+
+/** What the request's earlier steps give, as a later step reads them: those that ran. */
+function stepsOf(r: StoredRequest): Rec {
+  return Object.fromEntries(
+    r.steps.flatMap((s) => {
+      const out = outputs.get(s);
+      return s.key.startsWith("step:") && s.status === "done" && out ? [[s.key.slice(5), out]] : [];
+    }),
+  );
+}
+
+type Vars = { inputs: Rec; environment: EnvironmentKey; project: Rec; steps: Rec };
+
+/**
+ * A branch's cases and the steps of each side, the last what runs otherwise.
+ * It chooses when it runs, from the form and the steps before it (a person's
+ * answer), as the server does.
+ */
+const branches = new WeakMap<Step, { cases: Rec[]; hasElse: boolean; sides: Step[][]; vars: Vars }>();
+/** What a message says, filled in when it is sent; its vars hold a secret input as a mark. */
+const messages = new WeakMap<Step, { template: string; vars: Vars; requester: boolean }>();
 
 /** A message's text with its values, or why it can't have them (provision.fillMessage). */
 function fillMessage(template: string, vars: Rec): { text?: string; error?: string } {
@@ -142,20 +160,21 @@ const secretMark = Object.freeze({ secret: true });
 /**
  * A composite item's steps, as its published blueprint lists them (ADR-0022):
  * one step:<key> each, the key the canvas gives its node (ADR-0032); one whose
- * condition is false is skipped. Parallel groups run one after the other here;
- * a branch's sides come after it, flat, as the server's do (ADR-0033).
+ * condition is false is skipped (read when planned, from the form only).
+ * Parallel groups run one after the other here; a branch's sides come after
+ * it, flat, as the server's do (ADR-0033).
  */
 function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey, inputs: Rec, jobBase: number): Step[] {
   const bp = publishedBlueprint(db, item);
   const groups = (Array.isArray(bp?.steps) ? bp.steps : []) as Rec[];
-  const vars = {
+  const vars: Vars = {
     inputs,
     environment: env,
     project: { id: project.id, code: project.code, name: project.name },
     steps: {},
   };
   const secrets = secretInputsOf(db, item);
-  const messageVars = {
+  const messageVars: Vars = {
     ...vars,
     inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, secrets.has(k) ? secretMark : v])),
   };
@@ -179,32 +198,20 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     if (st.branch) {
       const b = st.branch as Rec;
       const cases = (Array.isArray(b.cases) ? b.cases : []) as Rec[];
-      const i = cases.findIndex((c) => celBool(text(c.when), vars, false));
       const s = step(key, title, "branch", { detail: "Chooses which side runs", branch_case: null });
       out.push(s);
-      const left: string[] = [];
-      [...cases.map((c) => (c.steps ?? []) as Rec[]), (b.else ?? []) as Rec[]].forEach((side, k) => {
+      const sides = [...cases.map((c) => (c.steps ?? []) as Rec[]), (b.else ?? []) as Rec[]].map((side) => {
         const from = out.length;
         side.forEach(plan);
-        // The side chosen, or the last when none was: what runs otherwise.
-        if (k !== (i < 0 ? cases.length : i)) left.push(...out.slice(from).map((x) => x.id));
+        return out.slice(from);
       });
-      branches.set(s.id, {
-        taken: i + 1,
-        left,
-        detail:
-          i >= 0
-            ? `Took: ${text(cases[i]!.title) || `case ${i + 1}`}`
-            : Array.isArray(b.else) && b.else.length > 0
-              ? "Took: otherwise"
-              : "No case held: nothing ran here.",
-      });
+      branches.set(s, { cases, hasElse: Array.isArray(b.else) && b.else.length > 0, sides, vars });
       return;
     }
     if (st.notify) {
       const n = st.notify as Rec;
       const s = step(key, title, "rvav", { detail: "Sends a message" });
-      messages.set(s.id, { ...fillMessage(text(n.message), messageVars), requester: n.requester === true });
+      messages.set(s, { template: text(n.message), vars: messageVars, requester: n.requester === true });
       out.push(s);
       return;
     }
@@ -419,8 +426,12 @@ function vmOf(d: DeploymentDetail) {
 
 /** Finish a step; one of several VMs' steps keeps saying which VM it was for. */
 function complete(r: StoredRequest, s: Step) {
-  const message = messages.get(s.id);
-  if (message?.error) return failStep(r, s, message.error);
+  const message = messages.get(s);
+  const filled = message && fillMessage(message.template, { ...message.vars, steps: stepsOf(r) });
+  if (filled?.error) return failStep(r, s, filled.error);
+  // A branch chooses once, from what the steps before it gave.
+  const branch = branches.get(s);
+  const taken = branch?.cases.findIndex((c) => celBool(text(c.when), { ...branch.vars, steps: stepsOf(r) }, false));
   completeStep(r, s);
   if (message) {
     s.detail = "Message sent.";
@@ -430,19 +441,25 @@ function complete(r: StoredRequest, s: Step) {
         data: {
           id: newId("ntf"),
           title: `${r.request.number} · ${r.request.title}`,
-          body: message.text ?? "",
+          body: filled?.text ?? "",
           level: "info",
           link: `/requests/${r.request.number}`,
         },
       } as Omit<LiveEvent, "id" | "at">);
   }
-  // A branch chooses once: the steps of the sides it left out are skipped.
-  const branch = branches.get(s.id);
-  if (branch) {
-    s.branch_case = branch.taken;
-    s.detail = branch.detail;
-    for (const other of r.steps)
-      if (branch.left.includes(other.id) && other.status !== "skipped") {
+  // The steps of the sides it left out are skipped: all but the side taken, or but what runs otherwise.
+  if (branch && taken !== undefined) {
+    s.branch_case = taken + 1;
+    s.detail =
+      taken >= 0
+        ? `Took: ${text(branch.cases[taken]!.title) || `case ${taken + 1}`}`
+        : branch.hasElse
+          ? "Took: otherwise"
+          : "No case held: nothing ran here.";
+    outputs.set(s, { case: taken + 1 });
+    const runs = branch.sides[taken < 0 ? branch.cases.length : taken];
+    for (const other of branch.sides.flat())
+      if (!runs?.includes(other) && other.status !== "skipped") {
         Object.assign(other, { status: "skipped", detail: "Its side of the branch wasn't taken." });
         publishStep(r, other);
       }
@@ -450,7 +467,9 @@ function complete(r: StoredRequest, s: Step) {
   // A REST call says what it answered.
   if (s.system === "rest" && s.detail?.startsWith("REST call · ")) {
     const method = s.detail.slice("REST call · ".length);
-    s.detail = `${method} answered ${method === "POST" ? 201 : 200}`;
+    const status = method === "POST" ? 201 : 200;
+    s.detail = `${method} answered ${status}`;
+    outputs.set(s, { status, json: null });
   }
   // A step that isn't a job is done with what it did (a composite's VM step run again).
   for (const c of s.children)
@@ -696,11 +715,12 @@ function openAsk(r: StoredRequest, s: Step) {
     } as Omit<LiveEvent, "id" | "at">);
 }
 
-/** A step's wait was answered: it says so, and the run goes on. */
-export function stepAnswered(r: StoredRequest, key: string, outcome: string) {
+/** A step's wait was answered: it says so, gives what later steps read of it, and the run goes on. */
+export function stepAnswered(r: StoredRequest, key: string, outcome: string, given: Rec) {
   const s = r.steps.find((x) => x.key === key && x.status === "running");
   if (!s) return;
   complete(r, s);
+  outputs.set(s, given);
   s.detail = outcome;
   publishStep(r, s);
   schedule(r.request.id);

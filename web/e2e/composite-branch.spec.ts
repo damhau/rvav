@@ -4,8 +4,9 @@ import { expect, type Page, test } from "@playwright/test";
 // in the designer from the keyboard, each edit one step of the YAML's history;
 // on the graph and the list view; saved, published, requested. A requester's
 // form masks what a case compares, and who a message names and what it says. On
-// a run's graph the side taken can be followed, the others skipped. The mocks'
-// steps have no outputs, so a spec's case reads the form.
+// a run's graph the side taken can be followed, the others skipped. In the
+// mocks a case reads the form, a person's answer or a REST call's status, no
+// other output; d2-acceptance.spec.ts branches on an answer.
 
 /** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
 async function choose(page: Page, name: string | RegExp) {
