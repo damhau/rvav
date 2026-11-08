@@ -537,7 +537,10 @@ nothing about it (positions, layout) is stored.
   (`rvav-edge-taken`, `rvav-edge-not-taken`). The list view nests a side's steps in a dashed box under the branch. In
   the mocks' run (`simulator.ts`), a branch chooses when it runs, as the server's does, from the form and what earlier
   steps gave: a person's answer (`answered`, `by`, `comment`, `answer`) and a REST call's `status`, the only outputs
-  the mocks' steps have. A message is filled in when sent, and reaches the mocks' me only if it tells the requester.
+  the mocks' steps have (another done step's read as null, `unmodelled`). Its cases are read strictly
+  (`celEval(…, true)`), as CEL reads them: a field that isn't there, or a condition that isn't true or false, fails
+  the branch, its literals masked and its sides not started, and a Retry reads it again (`chooseSide`). A message is
+  filled in when sent, and reaches the mocks' me only if it tells the requester.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
   (the designer, to a request), `composite-rest.spec.ts` (a REST call and

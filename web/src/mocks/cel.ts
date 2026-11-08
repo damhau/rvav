@@ -2,7 +2,8 @@
 // browser for instant feedback. The server evaluates the same rules on preview
 // and submit. Supported: literals, lists, maps, member and index access, ! - * / % +
 // < <= > >= == != in && || ?:, size(), has(), and string startsWith/endsWith/contains.
-// Unlike full CEL, a missing field evaluates to null instead of an error.
+// Unlike full CEL, a missing field evaluates to null instead of an error,
+// unless evaluated strictly, as a branch's case is.
 import { toText } from "@/lib/utils";
 
 type Node =
@@ -216,8 +217,25 @@ function parse(src: string): Node {
   return node;
 }
 
-const get = (obj: unknown, key: string | number): unknown =>
-  obj !== null && typeof obj === "object" ? ((obj as Record<string | number, unknown>)[key] ?? null) : null;
+/** A key or field that isn't there, read strictly: CEL's "no such key". */
+export class Missing extends Error {}
+
+/**
+ * What the mocks don't model, such as the outputs of a step they give none for
+ * (a VM's, an AWX job's): reading into it gives null, even strictly, since the
+ * server would have something there.
+ */
+export const unmodelled: Readonly<Record<string, never>> = Object.freeze({});
+
+function get(obj: unknown, key: string | number, strict: boolean): unknown {
+  if (obj === null || typeof obj !== "object" || obj === unmodelled) return null;
+  const o = obj as Record<string | number, unknown>;
+  if (strict && !(key in o)) {
+    if (Array.isArray(obj)) throw new Error("index out of range");
+    throw new Missing(`no such key: ${key}`);
+  }
+  return o[key] ?? null;
+}
 
 const equal = (a: unknown, b: unknown): boolean => {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => equal(x, b[i]));
@@ -229,39 +247,43 @@ const toStr = toText;
 const size = (v: unknown) =>
   typeof v === "string" || Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0;
 
-function evaluate(n: Node, ctx: Record<string, unknown>): unknown {
+function evaluate(n: Node, ctx: Record<string, unknown>, strict = false): unknown {
+  const ev = (m: Node) => evaluate(m, ctx, strict);
   switch (n.k) {
     case "lit":
       return n.v;
     case "id":
-      return ctx[n.name] ?? null;
+      return strict ? get(ctx, n.name, true) : (ctx[n.name] ?? null);
     case "list":
-      return n.items.map((i) => evaluate(i, ctx));
+      return n.items.map(ev);
     case "map":
-      return Object.fromEntries(n.entries.map(([k, v]) => [String(evaluate(k, ctx)), evaluate(v, ctx)]));
+      return Object.fromEntries(n.entries.map(([k, v]) => [String(ev(k)), ev(v)]));
     case "member":
-      return get(evaluate(n.obj, ctx), n.name);
+      return get(ev(n.obj), n.name, strict);
     case "index": {
-      const i = evaluate(n.index, ctx);
-      return get(evaluate(n.obj, ctx), typeof i === "number" ? i : String(i));
+      const i = ev(n.index);
+      return get(ev(n.obj), typeof i === "number" ? i : String(i), strict);
     }
     case "unary": {
-      const v = evaluate(n.arg, ctx);
+      const v = ev(n.arg);
       return n.op === "!" ? !v : -Number(v);
     }
     case "cond":
-      return evaluate(n.test, ctx) ? evaluate(n.then, ctx) : evaluate(n.else, ctx);
+      return ev(n.test) ? ev(n.then) : ev(n.else);
     case "call": {
-      const args = n.args.map((a) => evaluate(a, ctx));
+      // has() asks whether its field is there, so it reads it as missing is null.
+      if (n.target === null && n.fn === "has") {
+        const v = n.args[0] && evaluate(n.args[0], ctx, false);
+        return v !== null && v !== undefined;
+      }
+      const args = n.args.map(ev);
       if (n.target === null) {
-        // A missing field is null here, so its presence is that it isn't.
-        if (n.fn === "has") return args[0] !== null && args[0] !== undefined;
         if (n.fn === "size") return size(args[0]);
         if (n.fn === "int") return Math.trunc(Number(args[0]));
         if (n.fn === "string") return toStr(args[0]);
         throw new Error(`Unknown function ${n.fn}()`);
       }
-      const target = evaluate(n.target, ctx);
+      const target = ev(n.target);
       const s = typeof target === "string" ? target : "";
       const a = typeof args[0] === "string" ? args[0] : "";
       if (n.fn === "startsWith") return s.startsWith(a);
@@ -271,10 +293,10 @@ function evaluate(n: Node, ctx: Record<string, unknown>): unknown {
       throw new Error(`Unknown method ${n.fn}()`);
     }
     case "binary": {
-      if (n.op === "&&") return Boolean(evaluate(n.left, ctx)) && Boolean(evaluate(n.right, ctx));
-      if (n.op === "||") return Boolean(evaluate(n.left, ctx)) || Boolean(evaluate(n.right, ctx));
-      const l = evaluate(n.left, ctx);
-      const r = evaluate(n.right, ctx);
+      if (n.op === "&&") return Boolean(ev(n.left)) && Boolean(ev(n.right));
+      if (n.op === "||") return Boolean(ev(n.left)) || Boolean(ev(n.right));
+      const l = ev(n.left);
+      const r = ev(n.right);
       switch (n.op) {
         case "==":
           return equal(l, r);
@@ -310,14 +332,17 @@ function evaluate(n: Node, ctx: Record<string, unknown>): unknown {
 
 const cache = new Map<string, Node>();
 
-/** Evaluate a rule. Throws on syntax errors and unknown functions. */
-export function celEval(expression: string, ctx: Record<string, unknown>): unknown {
+/**
+ * Evaluate a rule. Throws on syntax errors and unknown functions; strictly, as
+ * the server does, also on a key or field that isn't there (Missing).
+ */
+export function celEval(expression: string, ctx: Record<string, unknown>, strict = false): unknown {
   let ast = cache.get(expression);
   if (!ast) {
     ast = parse(expression);
     cache.set(expression, ast);
   }
-  return evaluate(ast, ctx);
+  return evaluate(ast, ctx, strict);
 }
 
 /** Checks an expression's syntax, as the server does when a draft is saved. */

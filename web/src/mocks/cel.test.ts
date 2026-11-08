@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { celBool, celEval } from "./cel";
+import { celBool, celEval, Missing, unmodelled } from "./cel";
 
 const ctx = {
   environment: "prd",
@@ -48,5 +48,22 @@ describe("celBool", () => {
   it("falls back when a rule is empty or broken", () => {
     expect(celBool(undefined, ctx, true)).toBe(true);
     expect(celBool("((", ctx, false)).toBe(false);
+  });
+});
+
+describe("celEval, strictly", () => {
+  const vars = { ...ctx, steps: { ask: { answer: { size: null } }, vm: unmodelled } };
+
+  it("refuses a field that isn't there, as the server does, where it reads null otherwise", () => {
+    expect(celEval("inputs.absent == 'x'", vars)).toBe(false);
+    expect(() => celEval("inputs.absent == 'x'", vars, true)).toThrow(Missing);
+    expect(() => celEval("steps.skipped.status == 200", vars, true)).toThrow(Missing);
+    expect(() => celEval("inputs.post_config[5] == 'x'", vars, true)).toThrow("index out of range");
+    expect(celEval("steps.ask.answer.size == null", vars, true)).toBe(true);
+  });
+
+  it("asks has() whether it is there, and reads what the mocks don't model as null", () => {
+    expect(celEval("has(steps.skipped) && steps.skipped.status == 200", vars, true)).toBe(false);
+    expect(celEval("has(steps.vm) && steps.vm.fqdn == null", vars, true)).toBe(true);
   });
 });

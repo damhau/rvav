@@ -19,7 +19,7 @@ import { maskLiterals } from "./blueprints";
 import type { StoredApproval } from "./approvals";
 import { completeDay2Step, day2Finished } from "./day2";
 import { publishedBlueprint, secretInputsOf } from "./catalogAdmin";
-import { celBool, celEval } from "./cel";
+import { celBool, celEval, Missing, unmodelled } from "./cel";
 import { bus } from "./events";
 import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
 import { multiName, multiParts } from "./components";
@@ -102,17 +102,17 @@ type Rec = Record<string, unknown>;
 
 /**
  * What a step gives later steps' CEL once it ran (`steps.<key>`): a person's
- * answer, a REST call's status, a branch's case. Other steps give nothing here.
+ * answer, a REST call's status, a branch's case. The mocks give other steps'
+ * outputs as `unmodelled`: there, but each field reads null.
  */
 const outputs = new WeakMap<Step, Rec>();
 
 /** What the request's earlier steps give, as a later step reads them: those that ran. */
 function stepsOf(r: StoredRequest): Rec {
   return Object.fromEntries(
-    r.steps.flatMap((s) => {
-      const out = outputs.get(s);
-      return s.key.startsWith("step:") && s.status === "done" && out ? [[s.key.slice(5), out]] : [];
-    }),
+    r.steps.flatMap((s) =>
+      s.key.startsWith("step:") && s.status === "done" ? [[s.key.slice(5), outputs.get(s) ?? unmodelled]] : [],
+    ),
   );
 }
 
@@ -156,6 +156,31 @@ function fillMessage(template: string, vars: Rec): { text?: string; error?: stri
 
 // A secret input, as a message reads it: not its value.
 const secretMark = Object.freeze({ secret: true });
+
+/**
+ * The case a branch takes, -1 for none, or why it can't choose, its literals
+ * masked (provision.chooseSide): a field that isn't there, a condition the mocks
+ * can't read (their CEL is a subset), or one that isn't true or false.
+ */
+function chooseSide(cases: Rec[], vars: Rec): { taken: number; error?: never } | { taken?: never; error: string } {
+  for (const [i, c] of cases.entries()) {
+    const when = text(c.when);
+    let v: unknown;
+    let why = "";
+    try {
+      v = celEval(when, vars, true);
+    } catch (e) {
+      why = e instanceof Missing ? "what it reads isn't there" : "it can't be read";
+    }
+    if (!why && typeof v !== "boolean") why = "it isn't true or false";
+    if (why)
+      return {
+        error: `Its side couldn't be chosen: case ${i + 1}'s condition \${${maskLiterals(when, false)}}: ${why}`,
+      };
+    if (v) return { taken: i };
+  }
+  return { taken: -1 };
+}
 
 /**
  * A composite item's steps, as its published blueprint lists them (ADR-0022):
@@ -429,9 +454,12 @@ function complete(r: StoredRequest, s: Step) {
   const message = messages.get(s);
   const filled = message && fillMessage(message.template, { ...message.vars, steps: stepsOf(r) });
   if (filled?.error) return failStep(r, s, filled.error);
-  // A branch chooses once, from what the steps before it gave.
+  // A branch chooses once, from what the steps before it gave; a condition it
+  // can't read fails it, its sides left pending, and a Retry reads it again.
   const branch = branches.get(s);
-  const taken = branch?.cases.findIndex((c) => celBool(text(c.when), { ...branch.vars, steps: stepsOf(r) }, false));
+  const chosen = branch && chooseSide(branch.cases, { ...branch.vars, steps: stepsOf(r) });
+  if (chosen?.error !== undefined) return failStep(r, s, chosen.error);
+  const taken = chosen?.taken;
   completeStep(r, s);
   if (message) {
     s.detail = "Message sent.";
@@ -885,7 +913,7 @@ function tick(requestId: string) {
     }
   } else {
     complete(r, s);
-    // A message that can't be sent has ended the request.
+    // A message that can't be sent, or a branch that can't choose, has ended the request.
     if (s.status === "failed") return;
   }
   publishStep(r, s);

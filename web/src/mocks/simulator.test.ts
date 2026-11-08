@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ApprovalPage, ServiceRequest, Step } from "@/lib/api/types";
 import { bus } from "./events";
+import { db } from "./seed";
 
 // The mocks' run of a composite (ADR-0033): a branch chooses when it runs, from
-// a person's answer as the server's does, and a message reads it when sent.
+// a person's answer as the server's does, and a message reads it when sent. A
+// case it can't read fails it, masked, as the server's does.
 
 const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
   const res = await fetch(`http://localhost/api/v1${path}`, {
@@ -57,36 +59,46 @@ const blueprint = {
   ],
 };
 
-async function published() {
-  const item = await api<{ id: string; draft_version: { id: string } }>("POST", "/admin/catalog/items", {
-    slug: "missing-detail",
-    name: "Missing detail",
+type Item = { id: string; draft_version: { id: string } };
+
+async function published(slug = "missing-detail", bp: Record<string, unknown> = blueprint): Promise<Item> {
+  const item = await api<Item>("POST", "/admin/catalog/items", {
+    slug,
+    name: slug,
     summary: "Asks.",
     category: "compute",
     type: "composite",
   });
-  const draft = await api<{ definition: Record<string, unknown>; revision: number }>(
-    "GET",
-    `/admin/catalog/items/missing-detail/versions/${item.draft_version.id}`,
-  );
-  await api("PUT", `/admin/catalog/items/missing-detail/versions/${item.draft_version.id}`, {
-    definition: { ...draft.definition, blueprint },
-    base_revision: draft.revision,
-  });
-  await api("POST", `/admin/catalog/items/missing-detail/versions/${item.draft_version.id}/publish`);
-  await api("PUT", "/admin/catalog/items/missing-detail/entitlements", { all_projects: true, project_ids: [] });
+  const version = `/admin/catalog/items/${slug}/versions/${item.draft_version.id}`;
+  const draft = await api<{ definition: Record<string, unknown>; revision: number }>("GET", version);
+  await api("PUT", version, { definition: { ...draft.definition, blueprint: bp }, base_revision: draft.revision });
+  await api("POST", `${version}/publish`);
+  await api("PUT", `/admin/catalog/items/${slug}/entitlements`, { all_projects: true, project_ids: [] });
   return item;
 }
 
-/** Requests it, answers the requester's question, and gives its steps once it ended. */
-async function run(item: { id: string; draft_version: { id: string } }, backup: string) {
-  const req = await api<ServiceRequest>("POST", "/requests", {
+const request = (item: Item) =>
+  api<ServiceRequest>("POST", "/requests", {
     catalog_item_id: item.id,
     version_id: item.draft_version.id,
     project_id: "prj_web",
     environment: "dev",
     inputs: { name: "web-01" },
   });
+
+/** The request once it ended, and its steps by key. */
+async function ended(id: string) {
+  const r = await until("it didn't end", async () => {
+    const got = await api<ServiceRequest>("GET", `/requests/${id}`);
+    return got.status === "succeeded" || got.status === "failed" ? got : undefined;
+  });
+  const { items } = await api<{ items: Step[] }>("GET", `/requests/${id}/steps`);
+  return { r, steps: Object.fromEntries(items.map((s) => [s.key, s])) };
+}
+
+/** Requests it, answers the requester's question, and gives its steps once it ended. */
+async function run(item: Item, backup: string) {
+  const req = await request(item);
   const asked = await until("nobody was asked", async () => {
     const inbox = await api<ApprovalPage>("GET", "/approvals");
     return inbox.items.find((a) => a.request.id === req.id);
@@ -119,5 +131,50 @@ describe("a composite's run in the mocks", () => {
       detail: "No case held: nothing ran here.",
     });
     expect(steps["step:warn"]).toMatchObject({ status: "skipped", detail: "Its side of the branch wasn't taken." });
+  });
+
+  const secret = "lit-br4nch-secret";
+  const side = (key: string) => ({ key, rest: { method: "GET", url: `https://cmdb.corp.example/api/ci/${key}` } });
+  const reading = (when: string, ...before: Record<string, unknown>[]) => ({
+    kind: "composite",
+    steps: [
+      ...before,
+      { key: "choose", branch: { cases: [{ title: "Reads", when, steps: [side("no")] }], else: [side("other")] } },
+    ],
+  });
+  const skipped = { ...side("earlier"), when: "inputs.name == 'other'" };
+
+  it.each([
+    ["absent", reading(`inputs.absent == '${secret}'`), "what it reads isn't there"],
+    ["text", reading(`'${secret}'`), "it isn't true or false"],
+    // A step its own `when` skipped isn't there: it is read with has().
+    ["skipped", reading(`steps.earlier.status == 200 || inputs.name == '${secret}'`, skipped), "isn't there"],
+  ])("a case it can't read (%s) fails the branch, masked, its sides left pending", async (slug, bp, why) => {
+    const req = await request(await published(`branch-${slug}`, bp));
+    const { r, steps } = await ended(req.id);
+    expect(r.status).toBe("failed");
+    expect(r.error?.message).toContain(`Its side couldn't be chosen: case 1's condition`);
+    expect(r.error?.message).toContain(why);
+    expect(steps["step:choose"]).toMatchObject({ status: "failed", branch_case: null, error: r.error?.message });
+    expect(JSON.stringify([r, steps])).not.toContain(secret);
+    expect(steps["step:no"]!.status).toBe("pending");
+    expect(steps["step:other"]!.status).toBe("pending");
+  });
+
+  it("a Retry reads a failed branch's condition again", async () => {
+    const req = await request(await published("branch-again", reading(`inputs.absent == '${secret}'`)));
+    expect((await ended(req.id)).r.status).toBe("failed");
+    // Retried as it was, it fails again; once what it reads is there, it takes its side.
+    await api("POST", `/requests/${req.id}/retry`);
+    const again = await ended(req.id);
+    expect(again.r.status).toBe("failed");
+    expect(again.steps["step:choose"]!.error).toContain("what it reads isn't there");
+    db.requests.find((x) => x.request.id === req.id)!.request.inputs!.absent = secret;
+    await api("POST", `/requests/${req.id}/retry`);
+    const { r, steps } = await ended(req.id);
+    expect(r.status).toBe("succeeded");
+    expect(steps["step:choose"]).toMatchObject({ status: "done", branch_case: 1, detail: "Took: Reads" });
+    expect(steps["step:no"]!.status).toBe("done");
+    expect(steps["step:other"]).toMatchObject({ status: "skipped", detail: "Its side of the branch wasn't taken." });
   });
 });

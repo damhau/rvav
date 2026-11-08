@@ -4,9 +4,10 @@ import { expect, type Page, test } from "@playwright/test";
 // in the designer from the keyboard, each edit one step of the YAML's history;
 // on the graph and the list view; saved, published, requested. A requester's
 // form masks what a case compares, and who a message names and what it says. On
-// a run's graph the side taken can be followed, the others skipped. In the
-// mocks a case reads the form, a person's answer or a REST call's status, no
-// other output; d2-acceptance.spec.ts branches on an answer.
+// a run's graph the side taken can be followed, the others skipped; a case that
+// can't be read fails its branch, masked. In the mocks a case reads the form, a
+// person's answer or a REST call's status, other outputs as null;
+// d2-acceptance.spec.ts branches on an answer.
 
 /** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
 async function choose(page: Page, name: string | RegExp) {
@@ -333,6 +334,38 @@ test("a message that can't be filled in fails its step, masked, and a Retry keep
   await expect(failed).toBeVisible({ timeout: 30_000 });
   await expect(run.getByRole("button", { name: /^Branch The way\. Done\./ })).toBeVisible();
   await expect(run.getByText("Case 1: taken")).toBeVisible();
+});
+
+test("a case that can't be read fails its branch, masked, its side not started, and a Retry reads it again", async ({
+  page,
+}) => {
+  test.slow();
+  await newItem(page, "Unread case", "unread-case");
+  const branch = await addStep(page, aBranch, "way", "The way");
+  const first = branch.getByRole("group", { name: "Case 1" });
+  await commit(first, "When", "inputs.absent == 'lit-c4se-secret'");
+  await first.getByRole("button", { name: "Add a step to Case 1" }).click();
+  const hold = await fillAdd(page, "A wait for a time", "hold", "Hold it");
+  await commit(hold, "For", "72h");
+  await publishAndOpen(page, "Unread case");
+  await submit(page);
+  const run = page.getByRole("application", { name: /^Run of REQ-\d+$/ });
+  const failed = run.getByRole("button", { name: /^Branch The way\. Failed\./ });
+  await expect(failed).toBeVisible({ timeout: 30_000 });
+  await expect(run.getByRole("button", { name: /^Wait Hold it\. Not started\./ })).toBeVisible();
+  const main = page.getByRole("main");
+  await expect(main).toContainText("Its side couldn't be chosen");
+  await expect(main).toContainText("what it reads isn't there");
+  await expect(main).not.toContainText("lit-c4se-secret");
+  // What it reads still isn't there: it fails again, its side still not started.
+  await page.getByRole("button", { name: "Retry from the failed step" }).click();
+  await expect(page.getByRole("button", { name: "Retry from the failed step" })).toHaveCount(0);
+  await expect(failed).toBeVisible({ timeout: 30_000 });
+  await expect(run.getByRole("button", { name: /^Wait Hold it\. Not started\./ })).toBeVisible();
+  await page.getByRole("button", { name: "Timeline" }).click();
+  const timeline = page.getByRole("region", { name: "Steps", exact: true });
+  await expect(timeline).toContainText("Its side couldn't be chosen");
+  await expect(timeline).not.toContainText("lit-c4se-secret");
 });
 
 test("a step on a side can't read another side, and neither a branch nor a VM can be on one", async ({ page }) => {
