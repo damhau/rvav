@@ -1,11 +1,13 @@
 package vraimport
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -172,5 +174,43 @@ func TestStandardVRO(t *testing.T) {
 	}
 	if !strings.Contains(toAdd, "| wait for an event | 0 |") {
 		t.Fatalf("report:\n%s", md)
+	}
+}
+
+// The summary counts the step kinds rvav may still add (NewSteps) and no
+// other: a workflow with a kind D2 built has it in its steps, not in the
+// summary. The API says so (G3 of D2's review).
+func TestTriageCountsNewSteps(t *testing.T) {
+	e := vra.StandardVRO(time.Now())
+	i := slices.IndexFunc(e.Workflows, func(w vra.VROWorkflow) bool { return w.ID == "std-ask-requester" })
+	ev := e.Workflows[i]
+	ev.ID, ev.Name = "std-ask-event", "Ask, then wait for an event"
+	ev.Content = strings.Replace(ev.Content, `"type":"input"}`, `"type":"input"},{"name":"signal","type":"waiting-event"}`, 1)
+	e.Workflows = append(e.Workflows, ev)
+	tr := TriageVRO(&e)
+	keys := slices.Sorted(maps.Keys(tr.Steps))
+	if !slices.Equal(keys, slices.Sorted(slices.Values(NewSteps))) || tr.Steps[StepEvent] != 1 {
+		t.Fatalf("summary steps = %v, want the keys %v", tr.Steps, NewSteps)
+	}
+	built := []string{StepPerson, StepTime, StepREST, StepNotify, StepBranch}
+	for _, s := range built {
+		if !slices.ContainsFunc(tr.Items, func(it TriageItem) bool { return slices.Contains(it.Steps, s) }) {
+			t.Errorf("no workflow has %s: the test doesn't show it left out", s)
+		}
+	}
+	sw, err := api.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := sw.Components.Schemas["VroTriage"].Value.Properties["steps"].Value.Description
+	for _, s := range NewSteps {
+		if !strings.Contains(desc, s) {
+			t.Errorf("the API's steps don't say they count %s: %q", s, desc)
+		}
+	}
+	for _, s := range built {
+		if strings.Contains(desc, s) {
+			t.Errorf("the API's steps say they count %s, which is built: %q", s, desc)
+		}
 	}
 }

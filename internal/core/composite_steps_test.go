@@ -3,9 +3,11 @@ package core
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/blueprint"
 )
 
 // D1.3: a step's inputs, as the composite designer offers them to bind.
@@ -53,5 +55,32 @@ func TestFormInputs(t *testing.T) {
 	}
 	if out := formInputs(json.RawMessage(`not json`), nil); out == nil || len(out) != 0 {
 		t.Fatalf("a schema that doesn't parse = %+v", out)
+	}
+}
+
+// A text's limit counts characters, as it says, not the bytes of UTF-8: an
+// accented letter is one, as is one outside the BMP (two in UTF-16).
+func TestTextLimitsCountCharacters(t *testing.T) {
+	for _, c := range []string{"é", "€", "𝄞"} {
+		at, over := strings.Repeat(c, maxStepMessage), strings.Repeat(c, maxStepMessage+1)
+		if errs, _ := checkNotify(blueprint.Notify{Requester: true, Message: at}, "/m"); len(errs) != 0 {
+			t.Errorf("a message of %d %q = %v", maxStepMessage, c, errs)
+		}
+		if errs, _ := checkNotify(blueprint.Notify{Requester: true, Message: over}, "/m"); len(errs) != 1 || errs[0].Code == nil || *errs[0].Code != "too_long" {
+			t.Errorf("a message of %d %q = %v", maxStepMessage+1, c, errs)
+		}
+		if errs := checkAsk(blueprint.Ask{Requester: true, Message: strings.Repeat(c, maxAskText)}, "/a"); len(errs) != 0 {
+			t.Errorf("a question of %d %q = %v", maxAskText, c, errs)
+		}
+		if errs := checkAsk(blueprint.Ask{Requester: true, Message: strings.Repeat(c, maxAskText+1)}, "/a"); len(errs) != 1 {
+			t.Errorf("a question of %d %q = %v", maxAskText+1, c, errs)
+		}
+		text := blueprint.AskField{Type: "string"}
+		if why := askValueProblem(text, strings.Repeat(c, maxAskAnswer)); why != "" {
+			t.Errorf("an answer of %d %q: %s", maxAskAnswer, c, why)
+		}
+		if why := askValueProblem(text, strings.Repeat(c, maxAskAnswer+1)); why != "At most 4096 characters." {
+			t.Errorf("an answer of %d %q: %q", maxAskAnswer+1, c, why)
+		}
 	}
 }

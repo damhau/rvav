@@ -279,6 +279,19 @@ describe("readComposite", () => {
       expect(form({ ...base, type: "choice", options: ["a", "b"], default: "c" })).toEqual([
         ["/steps/0/ask/form/0/default", "Choose one of: a, b."],
       ]);
+      expect(form({ ...base, default: "𝄞".repeat(4096) })).toEqual([]);
+      expect(form({ ...base, default: "é".repeat(4097) })).toEqual([
+        ["/steps/0/ask/form/0/default", "At most 4096 characters."],
+      ]);
+    });
+
+    it("counts characters as the server does, not UTF-16 units", () => {
+      for (const c of ["é", "𝄞"]) {
+        expect(problems({ requester: true, message: c.repeat(2000) })).toEqual([]);
+        expect(problems({ requester: true, message: c.repeat(2001) })).toEqual([
+          ["/steps/0/ask/message", "At most 2000 characters."],
+        ]);
+      }
     });
 
     it("reads a step's outputs as any other's", () => {
@@ -444,6 +457,14 @@ describe("a message", () => {
       ["/steps/0/notify/message", "At most 2000 characters."],
     ]);
     expect(problems({ requester: true, message: "Bad ${" })[0]![0]).toBe("/steps/0/notify/message");
+    // Characters, as the server counts them: one for an accented letter, and
+    // one for a letter outside the BMP, two UTF-16 units in .length.
+    for (const c of ["é", "𝄞"]) {
+      expect(problems({ requester: true, message: c.repeat(2000) })).toEqual([]);
+      expect(problems({ requester: true, message: c.repeat(2001) })).toEqual([
+        ["/steps/0/notify/message", "At most 2000 characters."],
+      ]);
+    }
     expect(
       readComposite({ steps: [{ key: "n", notify: { requester: true, message: "x" }, undo: { job_template: "t" } }] })
         .problems[0]!.message,

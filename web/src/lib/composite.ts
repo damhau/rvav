@@ -141,12 +141,22 @@ export function goDuration(v: string): number | null {
   return v.startsWith("-") ? -total : total;
 }
 
+/**
+ * A text's length in characters, as the server counts them (Go's runes): a
+ * letter outside the BMP is one, where `.length` counts two UTF-16 units.
+ */
+export const chars = (s: string) => [...s].length;
+
+/** The longest a person's text answer may be (core.maxAskAnswer). */
+export const maxAskAnswer = 4096;
+
 /** A question's value: what is wrong with it, if anything (core.askValueProblem). */
 function askValueProblem(f: Raw, v: unknown): string {
   const options = Array.isArray(f.options) ? (f.options as unknown[]).map(String) : [];
   switch (f.type) {
     case "string":
-      return typeof v === "string" ? "" : "Give text.";
+      if (typeof v !== "string") return "Give text.";
+      return chars(v) > maxAskAnswer ? `At most ${maxAskAnswer} characters.` : "";
     case "number":
       return typeof v === "number" ? "" : "Give a number.";
     case "boolean":
@@ -163,7 +173,7 @@ function checkAsk(ask: Raw, ptr: string, err: (field: string, code: string, mess
   const named = Array.isArray(ask.approvers) ? ask.approvers : [];
   if (!str(ask.group) && named.length === 0 && !ask.requester && !ask.owner)
     err(ptr, "required", "Say who is asked: an OIDC group, approvers, the requester or the owner.");
-  if (str(ask.message).length > 2000) err(`${ptr}/message`, "too_long", "At most 2000 characters.");
+  if (chars(str(ask.message)) > 2000) err(`${ptr}/message`, "too_long", "At most 2000 characters.");
   if (str(ask.timeout)) {
     const d = goDuration(str(ask.timeout));
     if (d === null || d < 1000) err(`${ptr}/timeout`, "invalid", "A duration such as 48h.");
@@ -311,7 +321,7 @@ function checkNotify(n: Raw, ptr: string, err: (field: string, code: string, mes
     err(`${ptr}/message`, "required", "Say what it says.");
     return;
   }
-  if (message.length > maxStepMessage) err(`${ptr}/message`, "too_long", `At most ${maxStepMessage} characters.`);
+  if (chars(message) > maxStepMessage) err(`${ptr}/message`, "too_long", `At most ${maxStepMessage} characters.`);
   const { error } = parseUrl(message);
   if (error) err(`${ptr}/message`, "invalid", `This message can't be read: ${error}.`);
 }

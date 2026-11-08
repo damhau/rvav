@@ -52,8 +52,8 @@ type TriageItem struct {
 	Group   string   `json:"group"`
 	Becomes string   `json:"becomes"`
 	Reasons []string `json:"reasons"`
-	// Steps are the composite steps a workflow would be rebuilt with (D2):
-	// rvav's, AWX's and REST calls, and the step kinds D2 may add.
+	// Steps are the composite steps a workflow would be rebuilt with: rvav's,
+	// AWX's, the kinds D2 built, and those rvav may still add.
 	Steps []string `json:"steps,omitempty"`
 }
 
@@ -120,8 +120,8 @@ type Triage struct {
 	// Library: vRO's own workflows and actions, left out (vRO ships them;
 	// nobody migrates them).
 	Library int `json:"library"`
-	// Steps counts, for each step kind D2 may add, the workflows (not to
-	// retire) that would use it.
+	// Steps counts, for each step kind rvav may still add (NewSteps), the
+	// workflows (not to retire) that would use it.
 	Steps map[string]int `json:"steps"`
 }
 

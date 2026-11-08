@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -21,7 +22,7 @@ const (
 	maxAskFields = 20
 	maxAskText   = 2000
 	// maxAskAnswer bounds one answer: it travels through Temporal's history
-	// to every later step.
+	// to every later step. Each limit counts characters (runes), as it says.
 	maxAskAnswer = 4096
 )
 
@@ -34,7 +35,7 @@ func checkAsk(a blueprint.Ask, ptr string) []api.FieldError {
 	if a.Group == "" && len(a.Approvers) == 0 && !a.Requester && !a.Owner {
 		errs = append(errs, fieldErr(ptr, "required", "Say who is asked: an OIDC group, approvers, the requester or the owner."))
 	}
-	if len(a.Message) > maxAskText {
+	if utf8.RuneCountInString(a.Message) > maxAskText {
 		errs = append(errs, fieldErr(ptr+"/message", "too_long", fmt.Sprintf("At most %d characters.", maxAskText)))
 	}
 	if a.Timeout != "" {
@@ -98,7 +99,7 @@ func askValueProblem(f blueprint.AskField, v any) string {
 	case "string":
 		if s, ok := v.(string); !ok {
 			return "Give text."
-		} else if len(s) > maxAskAnswer {
+		} else if utf8.RuneCountInString(s) > maxAskAnswer {
 			return fmt.Sprintf("At most %d characters.", maxAskAnswer)
 		}
 	case "number":

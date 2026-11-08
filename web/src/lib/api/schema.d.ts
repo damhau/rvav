@@ -4737,7 +4737,7 @@ export interface components {
             };
             /** @description vRO's own workflows and actions, left out. */
             library: number;
-            /** @description For each composite step kind rvav may add (D2: wait for a person, wait for a time, wait for an event, notification, branch), the workflows to keep that would use it. */
+            /** @description For each composite step kind rvav may still add (after D2: wait for an event), the workflows to keep that would use it. A kind D2 built is only in a workflow's own steps. */
             steps?: {
                 [key: string]: number;
             };
@@ -4771,7 +4771,7 @@ export interface components {
             group: string;
             becomes: string;
             reasons: string[];
-            /** @description A workflow's steps, rebuilt as a composite item: rvav steps, AWX job, and the step kinds rvav may add (D2). */
+            /** @description A workflow's steps, rebuilt as a composite item: rvav steps, AWX job, the step kinds D2 built, and those rvav may still add. */
             steps?: string[];
         };
         VmDrift: {

@@ -12,6 +12,7 @@ import type {
   ServiceRequest,
   UserRef,
 } from "@/lib/api/types";
+import { chars, maxAskAnswer } from "@/lib/composite";
 import { toText } from "@/lib/utils";
 import { networks, sizes, type SizeKey } from "./inventory";
 
@@ -109,13 +110,15 @@ export function checkAnswer(
     const why =
       f.type === "string" && typeof v !== "string"
         ? "Give text."
-        : f.type === "number" && typeof v !== "number"
-          ? "Give a number."
-          : f.type === "boolean" && typeof v !== "boolean"
-            ? "Give true or false."
-            : f.type === "choice" && !(typeof v === "string" && (f.options ?? []).includes(v))
-              ? `Choose one of: ${(f.options ?? []).join(", ")}.`
-              : "";
+        : f.type === "string" && chars(v as string) > maxAskAnswer
+          ? `At most ${maxAskAnswer} characters.`
+          : f.type === "number" && typeof v !== "number"
+            ? "Give a number."
+            : f.type === "boolean" && typeof v !== "boolean"
+              ? "Give true or false."
+              : f.type === "choice" && !(typeof v === "string" && (f.options ?? []).includes(v))
+                ? `Choose one of: ${(f.options ?? []).join(", ")}.`
+                : "";
     if (why) errors.push({ field, code: "invalid", message: why });
     else clean[f.key] = v;
   }

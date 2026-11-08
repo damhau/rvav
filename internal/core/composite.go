@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ohler55/ojg/jp"
 
@@ -76,7 +77,7 @@ var stepRef = regexp.MustCompile(`\bsteps\.([a-z][a-z0-9_]*)`)
 // inputRead finds the inputs an expression reads, by name or by index.
 var inputRead = regexp.MustCompile(`\binputs\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([^"']+)["']\s*\])`)
 
-// maxStepMessage bounds a message as written.
+// maxStepMessage bounds a message as written, in characters (runes).
 const maxStepMessage = 2000
 
 // flattenSteps numbers a composite's steps by group: a parallel group's
@@ -384,7 +385,7 @@ func checkNotify(n blueprint.Notify, ptr string) ([]api.FieldError, []stepExpr) 
 	if strings.TrimSpace(n.Message) == "" {
 		return append(errs, fieldErr(at, "required", "Say what it says.")), nil
 	}
-	if len(n.Message) > maxStepMessage {
+	if utf8.RuneCountInString(n.Message) > maxStepMessage {
 		errs = append(errs, fieldErr(at, "too_long", fmt.Sprintf("At most %d characters.", maxStepMessage)))
 	}
 	if _, err := restcall.ParseURL(n.Message); err != nil {
