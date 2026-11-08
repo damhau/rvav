@@ -535,8 +535,9 @@ nothing about it (positions, layout) is stored.
   keeps room for `taken` or `not taken` on their labels whether or not there is a run, so nothing moves. A run
   passes `taken` (`branchTaken`, from `Step.branch_case`) and each edge says its word and is drawn as chosen
   (`rvav-edge-taken`, `rvav-edge-not-taken`). The list view nests a side's steps in a dashed box under the branch. In
-  the mocks' run (`simulator.ts`), a branch chooses when planned from the form, as its steps have no outputs, so a
-  spec's case reads the inputs; a message reaches the mocks' me only if it tells the requester.
+  the mocks' run (`simulator.ts`), a branch chooses when it runs, as the server's does, from the form and what earlier
+  steps gave: a person's answer (`answered`, `by`, `comment`, `answer`) and a REST call's `status`, the only outputs
+  the mocks' steps have. A message is filled in when sent, and reaches the mocks' me only if it tells the requester.
 - **Browser tests**, on the mock API: `e2e/topology.spec.ts` (a topology
   beside its YAML and on the request form), `composite-designer.spec.ts`
   (the designer, to a request), `composite-rest.spec.ts` (a REST call and
@@ -546,8 +547,9 @@ nothing about it (positions, layout) is stored.
   masked on the form, waiting, cancelled, run to their end, at a deadline, retried), `composite-branch.spec.ts` (a branch
   and a message from the keyboard, masked on the form, its side followed, otherwise, nothing held, a failed message and a
   Retry, what's refused on a side), `request-run.spec.ts` (a failed run
-  retried and followed), and D1's acceptance, `one-canvas.spec.ts`, the
-  same with the keyboard only; `accessibility.spec.ts` scans the
+  retried and followed), D1's acceptance, `one-canvas.spec.ts`, the
+  same with the keyboard only, and D2's, `d2-acceptance.spec.ts` (a vRO workflow rebuilt from the keyboard, answered,
+  and followed to the side its answer took, with axe in both themes); `accessibility.spec.ts` scans the
   designer and a run. The mocks can't approve as someone else, so a
   spec's own request of a seeded composite is followed as far as its
   approval; a new composite item needs none, so `composite-rest.spec.ts`

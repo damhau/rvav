@@ -503,8 +503,13 @@ triage of the organisation's vRA (#85) confirms or reorders them.
 - No scripting language: work that needs one is an AWX playbook or a
   custom workflow.
 
-**Acceptance:** a vRO workflow with a user interaction and a REST call,
-rebuilt as a composite on the canvas, run end to end.
+**Acceptance** (built: `TestD2Acceptance`, through a real Temporal dev server; in the browser, on the mock API: `d2-acceptance.spec.ts`): a vRO workflow with a user interaction and a REST call,
+std-ask-requester (group A in `rvav vro-triage -standard`), rebuilt as a
+composite on the canvas and published: the requester asked for a backup
+policy, the answer recorded in the CMDB by a PATCH and deciding a branch
+whose side tells the owner. Requested, answered (in Go with no worker up,
+the run going on once one is back) and followed on the graph, the side
+taken included; keyboard and axe in both themes.
 
 ## 7. Dependencies
 
