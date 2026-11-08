@@ -134,7 +134,7 @@ func fillMessage(tpl string, vars policy.Vars) (string, error) {
 			b.WriteString(p.Text)
 			continue
 		}
-		v, err := restEval(p.Expr, vars)
+		v, err := stepEval(p.Expr, vars)
 		if err == nil {
 			var s string
 			if s, err = messageValue(v); err == nil {

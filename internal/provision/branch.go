@@ -3,7 +3,6 @@ package provision
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"go.temporal.io/sdk/workflow"
@@ -170,7 +169,7 @@ func (a *Activities) DecideBranch(ctx context.Context, in BranchInput) (int, err
 // none.
 func chooseSide(cases []BranchChoice, vars policy.Vars) (int, error) {
 	for i, c := range cases {
-		holds, err := branchHolds(c.When, vars)
+		holds, err := stepBool(c.When, vars)
 		if err != nil {
 			return 0, permanent("Its side couldn't be chosen: case %d's condition ${%s}: %v", i+1, policy.MaskLiterals(c.When, false), err)
 		}
@@ -179,19 +178,6 @@ func chooseSide(cases []BranchChoice, vars policy.Vars) (int, error) {
 		}
 	}
 	return 0, nil
-}
-
-// branchHolds evaluates a case's condition. Its errors quote no text of it.
-func branchHolds(when string, vars policy.Vars) (bool, error) {
-	v, err := restEval(when, vars)
-	if err != nil {
-		return false, err
-	}
-	holds, ok := v.(bool)
-	if !ok {
-		return false, errors.New("it isn't true or false")
-	}
-	return holds, nil
 }
 
 // branchDetail says on the timeline which side was taken, as the canvas names

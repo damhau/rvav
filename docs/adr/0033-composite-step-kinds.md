@@ -85,8 +85,12 @@ A stored secret or a secret input may be sent, never kept:
   the mark.
 - **Errors say little.** A requester reads them: the method, the host and the
   status or network failure, not the URL, the answer or the server's status
-  text. A CEL problem names the expression with its literals masked, or says
-  only that it isn't valid CEL, since a compile error quotes its text.
+  text. A CEL problem names the expression with its literals masked, and says
+  why in rvav's words (`what it reads isn't there`, `it can't be read`, `it
+  isn't true or false`, `it isn't valid CEL`), never cel-go's, which quote a key
+  a map lacks, a pattern's text or the whole expression. Every step's CEL goes
+  through one evaluator for this (`stepEval`): a `when`, a step's inputs, a URL,
+  a body, a case, a message, a time, a poll's condition.
 - **A secret input can't go in a URL,** where proxies and access logs would
   have it: it stays a marker, a map, which a URL refuses. It may go in a body.
 

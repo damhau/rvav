@@ -147,9 +147,6 @@ func Day2Bool(expr string, vars Vars) (bool, error) { return day2.boolean(expr, 
 // CompositeEval evaluates a composite step's binding.
 func CompositeEval(expr string, vars Vars) (any, error) { return composite.eval(expr, vars) }
 
-// CompositeBool evaluates a composite step's condition.
-func CompositeBool(expr string, vars Vars) (bool, error) { return composite.boolean(expr, vars) }
-
 // CheckComposite compiles a composite binding or condition.
 func CheckComposite(expr string) error {
 	_, err := composite.program(expr)

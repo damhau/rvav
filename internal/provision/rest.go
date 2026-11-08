@@ -158,7 +158,7 @@ func restTarget(ctx context.Context, caller *restcall.Caller, tpl string, vars p
 	if !restcall.FixedOrigin(tpl) {
 		return "", "", permanent("The call's URL lets expressions choose its host. Ask a catalog admin to check this item.")
 	}
-	target, err = restcall.Fill(parts, func(expr string) (any, error) { return restEval(expr, vars) })
+	target, err = restcall.Fill(parts, func(expr string) (any, error) { return stepEval(expr, vars) })
 	if err != nil {
 		var fe *restcall.FillError
 		if errors.As(err, &fe) {
@@ -176,18 +176,9 @@ func restTarget(ctx context.Context, caller *restcall.Caller, tpl string, vars p
 	return target, u.Host, nil
 }
 
-// restEval evaluates an expression of a call, whose errors a requester reads:
-// none quotes its text, as a compile error would, its literals and all.
-func restEval(expr string, vars policy.Vars) (any, error) {
-	if policy.CheckComposite(expr) != nil {
-		return nil, errors.New("it isn't valid CEL. Ask a catalog admin to check this item.")
-	}
-	return policy.CompositeEval(expr, vars)
-}
-
 // restBody evaluates a call's body and opens the secret inputs in it.
 func (a *Activities) restBody(ctx context.Context, requestID, expr string, vars policy.Vars) ([]byte, error) {
-	v, err := restEval(expr, vars)
+	v, err := stepEval(expr, vars)
 	if err != nil {
 		return nil, fmt.Errorf("The call wasn't made: its body: %v", err)
 	}

@@ -259,11 +259,15 @@ func TestCompositeBranch(t *testing.T) {
 		}
 
 		// A condition that can't be read fails the branch, masked; nothing of
-		// its sides runs, and a Retry chooses again.
+		// its sides runs, and a Retry chooses again. cel-go's own errors quote
+		// a key a map lacks and a pattern's text: neither reaches the
+		// requester, on the request, its steps or their notifications.
 		for slug, when := range map[string]string{
 			"branch-cel":    "int('" + waitLiteral + "') == 1",
 			"branch-text":   "'" + waitLiteral + "'",
 			"branch-absent": "inputs.absent == '" + waitLiteral + "'",
+			"branch-key":    "inputs['" + waitLiteral + "'] == 'x'",
+			"branch-regex":  "inputs.name.matches('" + waitLiteral + "(')",
 		} {
 			d := rig.publishDefinition(slug, waitDefinition(branchOf("choose", []any{caseOf("Reads", when, posting(change, "no", "{}"))}, posting(change, "other", "{}"))))
 			before := len(change.got())
@@ -278,6 +282,11 @@ func TestCompositeBranch(t *testing.T) {
 			}
 			if strings.Contains(msg, waitLiteral) || strings.Contains(deref(s.Error), waitLiteral) {
 				t.Errorf("%s reads its literal: %q", slug, msg)
+			}
+			for _, path := range []string{"/api/v1/requests/" + req.Id, "/api/v1/requests/" + req.Id + "/steps", "/api/v1/me/notifications"} {
+				if _, body, _ := h.do("GET", path, requester, nil); strings.Contains(string(body), waitLiteral) {
+					t.Errorf("%s: GET %s reads its literal: %s", slug, path, body)
+				}
 			}
 			if len(change.got()) != before || steps["step:no"].Status != api.StepStatusPending {
 				t.Errorf("%s ran a side: %+v", slug, steps["step:no"])

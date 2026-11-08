@@ -350,9 +350,15 @@ func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved
 	if err != nil {
 		return Resolved{}, err
 	}
+	return resolveStep(in, vars)
+}
+
+// resolveStep evaluates a step's condition and bindings over vars. Its errors
+// mask the expression's literals and say why in rvav's words (stepEval).
+func resolveStep(in ResolveInput, vars policy.Vars) (Resolved, error) {
 	out := Resolved{Values: map[string]any{}}
 	if in.When != "" {
-		ok, err := policy.CompositeBool(in.When, vars)
+		ok, err := stepBool(in.When, vars)
 		if err != nil {
 			return out, permanent("the step's condition %s: %v", policy.MaskLiterals(in.When, false), err)
 		}
@@ -367,9 +373,9 @@ func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved
 			out.Values[k] = v
 			continue
 		}
-		val, err := policy.CompositeEval(expr, vars)
+		val, err := stepEval(expr, vars)
 		if err != nil {
-			return out, permanent("%s: %s: %v", k, expr, err)
+			return out, permanent("%s: %s: %v", k, policy.MaskLiterals(expr, false), err)
 		}
 		out.Values[k] = val
 	}

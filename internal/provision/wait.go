@@ -236,7 +236,7 @@ func (a *Activities) waitUntil(ctx context.Context, in WaitInput) (time.Time, er
 	if err != nil {
 		return time.Time{}, err
 	}
-	v, err := restEval(in.Wait.Until, vars)
+	v, err := stepEval(in.Wait.Until, vars)
 	if err == nil {
 		if t, ok := timeOf(v); ok {
 			return t, nil
@@ -389,17 +389,16 @@ func (a *Activities) CheckPoll(ctx context.Context, in PollInput) (PollCheck, er
 // pollHolds reads a poll's condition. An error masks its literals and quotes
 // no value: a requester reads it.
 func pollHolds(expr string, vars policy.Vars) (bool, error) {
-	v, err := restEval(expr, vars)
-	if err != nil {
+	met, err := stepBool(expr, vars)
+	switch {
+	case errors.Is(err, errNotTruth):
+		return false, permanent("Its condition %s doesn't give true or false. Ask a catalog admin to check this item.", policy.MaskLiterals(expr, false))
+	case err != nil:
 		why := "it can't be read on the last answer"
-		if strings.HasPrefix(err.Error(), "no such key") {
+		if errors.Is(err, errMissing) {
 			why = "the last answer doesn't have what it reads"
 		}
 		return false, permanent("Its condition %s failed: %s. Ask a catalog admin to check this item.", policy.MaskLiterals(expr, false), why)
-	}
-	met, ok := v.(bool)
-	if !ok {
-		return false, permanent("Its condition %s doesn't give true or false. Ask a catalog admin to check this item.", policy.MaskLiterals(expr, false))
 	}
 	return met, nil
 }
