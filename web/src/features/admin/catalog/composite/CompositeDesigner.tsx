@@ -30,7 +30,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { type Option, Select } from "@/components/ui/select";
-import type { CatalogEntitlements, CompositeStepInput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import type {
+  CatalogEntitlements,
+  CompositeStepInput,
+  CompositeStepOutput,
+  CompositeStepTarget,
+  FieldError,
+} from "@/lib/api/types";
 import { maxStepMessage } from "@/lib/composite";
 import { adm, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -47,7 +53,7 @@ import {
   formInputsOf,
   listedTarget,
   openEarlier,
-  restOutputs,
+  outputsOf,
   type Source,
   type StepTarget,
   targetOf,
@@ -792,7 +798,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             onChange={(u) => apply(() => edits.setUndo(text, id, u))}
             bind={(name) => bind(name, "undo")}
             onRest={(field, v) => apply(() => edits.setRestField(text, id, field, v, "undo"))}
-            reads={[...sources.map((s) => s.value), ...(key ? restOutputs.map((o) => `steps.${key}.${o.name}`) : [])]}
+            reads={[...sources.map((s) => s.value), ...undoReads(key, outputsOf(step, targets))]}
           />
         </fieldset>
       )}
@@ -919,6 +925,12 @@ export function writtenStatuses(text: string): number[] | undefined {
   const words = text.split(/[\s,]+/).filter(Boolean);
   if (!words.every((w) => /^\d+$/.test(w))) return undefined;
   return words.map(Number);
+}
+
+/** What an undo reads of its own step: what that step gives, or any name a custom workflow returns. */
+function undoReads(key: string, own: { outputs: CompositeStepOutput[]; open: boolean }): string[] {
+  if (!key) return [];
+  return [...own.outputs.map((o) => `steps.${key}.${o.name}`), ...(own.open ? [`steps.${key}.<name>`] : [])];
 }
 
 /** What a field's CEL can read at that point. */

@@ -408,6 +408,11 @@ describe("the composite designer", longTests, () => {
     expect(step("rest_call").rest).toBeUndefined();
     expect(step("rest_call").awx).toEqual({ job_template: "register-ci" });
     expect(step("rest_call").undo).toBeDefined();
+    // Its undo reads what an AWX job gives, no longer a REST call's answer.
+    const undone = within(again).getByRole("group", { name: "Undo" });
+    expect(undone).toHaveTextContent("steps.rest_call.job_id");
+    expect(undone).not.toHaveTextContent("steps.rest_call.status");
+    expect(undone).not.toHaveTextContent("steps.rest_call.json");
   });
 
   it("moves, joins and removes steps from the selected step's details", async () => {
