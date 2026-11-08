@@ -289,17 +289,31 @@ func segmentsInDev(h *harness, admin, project string) {
 
 // compositeNodes are the IDs of the nodes the canvas draws for a
 // composite's topology (blueprintGraph): the Request node, a step:<key> per
-// step in the order they run, Done.
+// step in the order they run, a branch's sides after it (each case's steps,
+// then its else's), Done.
 func compositeNodes(t *testing.T, topology map[string]any) []string {
 	t.Helper()
 	out := []string{"inputs"}
+	key := func(s any) string { return "step:" + s.(map[string]any)["key"].(string) }
 	for _, raw := range topology["steps"].([]any) {
 		slot := []any{raw}
 		if g, ok := raw.(map[string]any)["parallel"].([]any); ok {
 			slot = g
 		}
 		for _, s := range slot {
-			out = append(out, "step:"+s.(map[string]any)["key"].(string))
+			out = append(out, key(s))
+			b, _ := s.(map[string]any)["branch"].(map[string]any)
+			cases, _ := b["cases"].([]any)
+			for _, c := range cases {
+				side, _ := c.(map[string]any)["steps"].([]any)
+				for _, x := range side {
+					out = append(out, key(x))
+				}
+			}
+			otherwise, _ := b["else"].([]any)
+			for _, x := range otherwise {
+				out = append(out, key(x))
+			}
 		}
 	}
 	return append(out, "end")

@@ -77,6 +77,8 @@ func newRESTCMDB(t *testing.T) *restCMDB {
 			answer(http.StatusCreated, map[string]any{"result": map[string]any{
 				"id": 42, "auth": auth, "as_base64": base64.StdEncoding.EncodeToString([]byte(restToken)),
 				"password": body["password"], restToken: "as a key"}, "dropped": "not kept"})
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/ci/"):
+			answer(http.StatusOK, map[string]any{"result": body}) // the CI as it now is
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/check/"):
 			answer(http.StatusOK, map[string]any{"seen": []any{"one"}, "auth": auth})
 		case r.Method == http.MethodPut && r.URL.Path == "/api/flaky":
