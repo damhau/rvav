@@ -138,13 +138,12 @@ The external penetration test is the organisation's (Lab acceptance).
 
 ## Scanning and SBOMs
 
-- **`.github/workflows/security.yml`** runs on every push and daily. It fails on any of these:
+- **`make vuln`** fails on any of these:
   - **Go code:** `govulncheck` reports a vulnerability the code reaches;
   - **web app:** `pnpm audit` reports one in its dependencies, including
     build and test tools;
   - **images:** Trivy finds a HIGH or CRITICAL vulnerability with a fix in
     either image.
-- **Locally:** `make vuln` runs the same three checks.
 - **`.github/workflows/release.yml`**, on a tag `v1.2.3`:
   - scans the images, then pushes them to `ghcr.io/damhau/rvav` and
     `ghcr.io/damhau/rvav-web` as `1.2.3`;

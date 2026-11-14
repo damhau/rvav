@@ -87,7 +87,7 @@ web-check: ## Web app: generated types current, typecheck, lint, unit tests, bui
 web-e2e: ## The browser tests (Playwright on the mock API, accessibility included); CI runs them daily
 	cd web && $(PNPM) e2e
 
-vuln: vuln-go vuln-web vuln-images ## Known vulnerabilities in the Go code, the web app's dependencies and the images (CI, daily)
+vuln: vuln-go vuln-web vuln-images ## Known vulnerabilities in the Go code, the web app's dependencies and the images
 
 vuln-go: ## Vulnerabilities the Go code reaches (govulncheck, built with the module's toolchain)
 	GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) run $(GOVULNCHECK) ./...
