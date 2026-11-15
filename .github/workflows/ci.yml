@@ -46,6 +46,13 @@ jobs:
           go-version-file: go.mod
       # The S10 acceptance test runs the Python example worker (uv).
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      # internal/pgtest downloads PostgreSQL from Maven Central, which now
+      # and then answers "no version found matching 16.9.0".
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/rvav/embedded-postgres
+          key: embedded-postgres-${{ hashFiles('go.mod', 'internal/pgtest/pgtest.go') }}
+          restore-keys: embedded-postgres-
       - name: A third of the end-to-end tests (embedded PostgreSQL, vcsim, a Temporal dev server)
         run: make test-e2e-shard SHARD=${{ matrix.shard }} TOTAL=3
 
