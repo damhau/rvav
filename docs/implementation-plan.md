@@ -483,7 +483,9 @@ keyboard and axe in both themes.
   approve, see, administer...), at the project or the whole of rvav; the
   fixed roles become built-in ones.
 - A role editor and assignment to users and groups; day-2 and approval
-  policies keep deciding within what a role allows.
+  policies keep deciding within what a role allows. The model, its
+  permissions and the checks they replace are in
+  [ADR-0034](adr/0034-custom-roles.md).
 
 **Acceptance:** an operator who may only power VMs on and off, and an
 auditor who sees everything and changes nothing, made and used.

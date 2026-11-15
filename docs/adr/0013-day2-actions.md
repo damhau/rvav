@@ -1,6 +1,7 @@
 # ADR-0013: Day-2 actions are requests
 
-- Status: accepted
+- Status: accepted; a role can allow an action no policy decides, and
+  policies name custom roles ([ADR-0034](0034-custom-roles.md))
 - Date: 2026-10-27
 
 ## Context

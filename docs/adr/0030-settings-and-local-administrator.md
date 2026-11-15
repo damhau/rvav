@@ -3,7 +3,8 @@
 ## Status
 Accepted (U1, after C1). Revises how saved settings take effect in
 [ADR-0020](0020-administration.md), and sign-in in
-[ADR-0010](0010-identity-provider.md).
+[ADR-0010](0010-identity-provider.md). The local administrator holds the
+built-in `admin` role of [ADR-0034](0034-custom-roles.md).
 
 ## Context
 vRA is installed with what it needs to start. Everything else is set from

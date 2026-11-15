@@ -1,7 +1,9 @@
 # ADR-0020: Administration: projects, placement, governance and settings
 
 - Status: accepted; how saved settings take effect revised by
-  [ADR-0030](0030-settings-and-local-administrator.md)
+  [ADR-0030](0030-settings-and-local-administrator.md); who may do what
+  revised by [ADR-0034](0034-custom-roles.md): the roles here are built-in
+  roles made of permissions
 - Date: 2026-10-28
 
 ## Context

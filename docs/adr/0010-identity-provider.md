@@ -1,6 +1,7 @@
 # ADR-0010: Any OIDC provider; Keycloak for development and tests
 
-- Status: accepted
+- Status: accepted; group mappings give custom roles too
+  ([ADR-0034](0034-custom-roles.md))
 - Date: 2026-10-27
 
 ## Context

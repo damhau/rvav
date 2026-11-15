@@ -1,7 +1,8 @@
 # ADR-0011: Approvals
 
 - Status: accepted; a composite step's wait for a person reuses a level's row
-  ([ADR-0033](0033-composite-step-kinds.md))
+  ([ADR-0033](0033-composite-step-kinds.md)); who sees every approval, and
+  who a project's admins are, by permission ([ADR-0034](0034-custom-roles.md))
 - Date: 2026-10-27
 
 ## Context

@@ -1,6 +1,7 @@
 # ADR-0019: Catalog administration and item versions
 
-- Status: accepted
+- Status: accepted; catalog admins are those holding `catalog.manage`
+  ([ADR-0034](0034-custom-roles.md))
 - Date: 2026-10-27
 
 ## Context
