@@ -80,7 +80,7 @@ with MSW for Playwright. Docker Compose is used to prove the real stack
 | Decision | Choice | Where |
 |---|---|---|
 | Git workflow | Commits go straight to `main`; CI runs on every push | – |
-| Go version | 1.27.3, pinned with `toolchain` in `go.mod` (CI and the image follow it) | – |
+| Go version | 1.27.4, pinned with `toolchain` in `go.mod` (CI and the image follow it) | – |
 | Where Temporal runs | Self-hosted on PostgreSQL | ADR-0008 |
 | Hosting | Kubernetes with Helm; Compose for development and the lab | ADR-0009 |
 | Identity provider | Any OIDC provider; Keycloak for development and tests | ADR-0010 |

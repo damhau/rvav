@@ -2,7 +2,7 @@ module github.com/damhau/rvav
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
