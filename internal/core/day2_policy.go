@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/policy"
@@ -129,11 +130,15 @@ func day2Roles(p *auth.Principal, d store.DeploymentRow) []string {
 	if d.OwnerID == p.User.ID {
 		roles = append(roles, "owner")
 	}
-	switch r := p.ProjectRoles[d.ProjectID]; {
+	var given *api.ProjectRole
+	for _, k := range p.RolesIn(d.ProjectID) {
+		given = strongest(given, k)
+	}
+	switch {
 	case slices.Contains(p.Roles, "admin"):
 		roles = append(roles, "project-admin", "admin")
-	case r != "":
-		roles = append(roles, r)
+	case given != nil:
+		roles = append(roles, string(*given))
 	}
 	for _, k := range append(slices.Clone(p.RolesIn(d.ProjectID)), p.Roles...) {
 		if r, ok := p.Role(k); ok && !r.BuiltIn && !slices.Contains(roles, k) {

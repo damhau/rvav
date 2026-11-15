@@ -15,15 +15,40 @@ import (
 
 var update = flag.Bool("update", false, "rewrite testdata/roles.json from the catalogue and the built-in roles")
 
-// legacy is today's check for each permission, from the code ADR-0034's
-// appendix lists: the built-in roles must grant exactly what they allow.
-var legacy = map[Permission]func(p *Principal, projectID string) bool{
-	ProjectSee:           (*Principal).CanSeeProject,
-	RequestSubmit:        (*Principal).CanRequest,
+// was is a principal as the checks before ADR-0034 saw it: the built-in
+// roles held for all of rvav, and the strongest one held in each project.
+type was struct {
+	global   []string
+	projects map[string]string
+}
+
+var rank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
+
+func (w was) has(role string) bool { return slices.Contains(w.global, role) }
+func (w was) isAdmin() bool        { return w.has("admin") }
+func (w was) seesEverything() bool { return w.isAdmin() || w.has("auditor") }
+
+// projectRole: administrators acted as project admins everywhere.
+func (w was) projectRole(id string) string {
+	if w.isAdmin() {
+		return "project-admin"
+	}
+	return w.projects[id]
+}
+
+// legacy is the check before ADR-0034 for each permission, from the code
+// its appendix lists (the predicates, since removed): the built-in roles
+// must grant exactly what they allowed.
+var legacy = map[Permission]func(w was, projectID string) bool{
+	ProjectSee: func(w was, id string) bool { return w.seesEverything() || w.projects[id] != "" },
+	RequestSubmit: func(w was, id string) bool {
+		r := w.projectRole(id)
+		return r == "member" || r == "project-admin"
+	},
 	RequestOnBehalf:      isProjectAdmin,
 	RequestManage:        isProjectAdmin,
 	ProjectMembersManage: isProjectAdmin,
-	ApprovalProject:      func(p *Principal, id string) bool { return p.ProjectRoles[id] == "project-admin" },
+	ApprovalProject:      func(w was, id string) bool { return w.projects[id] == "project-admin" },
 	ProjectSettingsRead:  seesOrProjectAdmin,
 	AuditRead:            seesOrProjectAdmin,
 	ProjectUpdate:        admin,
@@ -47,15 +72,15 @@ var legacy = map[Permission]func(p *Principal, projectID string) bool{
 	ImportManage:         admin,
 	SystemManage:         admin,
 	TokensManage:         admin,
-	CatalogManage:        func(p *Principal, _ string) bool { return p.IsAdmin() || p.HasGlobal("catalog-admin") },
+	CatalogManage:        func(w was, _ string) bool { return w.isAdmin() || w.has("catalog-admin") },
 }
 
-func isProjectAdmin(p *Principal, id string) bool { return p.ProjectRole(id) == "project-admin" }
-func seesOrProjectAdmin(p *Principal, id string) bool {
-	return p.SeesEverything() || isProjectAdmin(p, id)
+func isProjectAdmin(w was, id string) bool { return w.projectRole(id) == "project-admin" }
+func seesOrProjectAdmin(w was, id string) bool {
+	return w.seesEverything() || isProjectAdmin(w, id)
 }
-func sees(p *Principal, _ string) bool  { return p.SeesEverything() }
-func admin(p *Principal, _ string) bool { return p.IsAdmin() }
+func sees(w was, _ string) bool  { return w.seesEverything() }
+func admin(w was, _ string) bool { return w.isAdmin() }
 
 // subsets lists every subset of the roles.
 func subsets(roles []string) [][]string {
@@ -82,20 +107,20 @@ func TestBuiltinRolesGrantTodaysChecks(t *testing.T) {
 	for _, global := range subsets([]string{"admin", "catalog-admin", "auditor", "user"}) {
 		for _, inA := range subsets([]string{"viewer", "member", "project-admin"}) {
 			for _, viewsB := range []bool{false, true} {
-				p := &Principal{GlobalRoles: global, ProjectRoles: map[string]string{}}
+				p := was{global: global, projects: map[string]string{}}
 				var as []Assignment
 				for _, r := range global {
 					as = append(as, Assignment{Role: r})
 				}
 				for _, r := range inA {
 					as = append(as, Assignment{Role: r, ProjectID: a})
-					if roleRank[r] > roleRank[p.ProjectRoles[a]] {
-						p.ProjectRoles[a] = r
+					if rank[r] > rank[p.projects[a]] {
+						p.projects[a] = r
 					}
 				}
 				if viewsB {
 					as = append(as, Assignment{Role: "viewer", ProjectID: b})
-					p.ProjectRoles[b] = "viewer"
+					p.projects[b] = "viewer"
 				}
 				g := Compute(as, BuiltinRole)
 				for _, c := range Catalogue {
@@ -328,8 +353,8 @@ func TestPrincipalRoles(t *testing.T) {
 	if got := p.RolesIn("prj_a"); !slices.Equal(got, []string{"member", "viewer", "vm-operator"}) {
 		t.Errorf("roles in A: %v", got)
 	}
-	if p.RolesIn("prj_b") != nil || p.RolesIn("prj_c") != nil || p.ProjectRoles["prj_a"] != "member" {
-		t.Errorf("roles in B %v, C %v, the strongest in A %q", p.RolesIn("prj_b"), p.RolesIn("prj_c"), p.ProjectRoles["prj_a"])
+	if p.RolesIn("prj_b") != nil || p.RolesIn("prj_c") != nil {
+		t.Errorf("roles in B %v, C %v", p.RolesIn("prj_b"), p.RolesIn("prj_c"))
 	}
 	if r, ok := p.Role("vm-operator"); !ok || r.Name != "VM operator" {
 		t.Errorf("the operator's role: %+v", r)

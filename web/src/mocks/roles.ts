@@ -89,9 +89,7 @@ export function strongest(keys: string[]): S["ProjectRole"] | null {
 
 /** A project in /me, for someone holding these roles for all of rvav and these in it. */
 export function meProject(db: Db | null, project: S["ProjectRef"], rvav: string[], given: string[]): S["MeProject"] {
-  const role =
-    strongest(given) ?? (rvav.includes("admin") ? "project-admin" : rvav.includes("auditor") ? "viewer" : null);
-  return { project, role, roles: roleRefs(db, [...given].sort()), permissions: heldIn(db, rvav, given) };
+  return { project, roles: roleRefs(db, [...given].sort()), permissions: heldIn(db, rvav, given) };
 }
 
 /** GET /permissions: the catalogue and the day-2 actions the mocks offer. */

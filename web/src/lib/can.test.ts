@@ -7,10 +7,9 @@ const data = { id: "prj_data", code: "data", name: "Data Engineering" };
 
 const me = (permissions: string[], projects: [typeof web, string[]][]): Me => ({
   user: { id: "usr_1", name: "Claire Dubois" },
-  global_roles: ["user"],
   permissions,
   roles: [],
-  projects: projects.map(([project, held]) => ({ project, role: null, roles: [], permissions: held })),
+  projects: projects.map(([project, held]) => ({ project, roles: [], permissions: held })),
 });
 
 describe("can", () => {

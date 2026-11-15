@@ -44,19 +44,15 @@ func Environment(e store.Environment) api.Environment {
 	return api.Environment{Key: e.Key, Name: e.Name, Production: e.Production, Order: e.SortOrder}
 }
 
-// Project is a project as the caller sees it: role is their strongest
-// built-in one there ("" for none), permissions what they hold there.
-func Project(p store.Project, role string, permissions []string) api.Project {
+// Project is a project as the caller sees it, with the permissions they
+// hold there.
+func Project(p store.Project, permissions []string) api.Project {
 	out := api.Project{
 		Id: p.ID, Code: p.Code, Name: p.Name,
 		Description:   strPtr(p.Description),
 		CostCenter:    strPtr(p.CostCenter),
 		Environments:  append([]string{}, p.Environments...),
 		MyPermissions: &permissions,
-	}
-	if role != "" {
-		r := api.ProjectRole(role)
-		out.MyRole = &r
 	}
 	return out
 }

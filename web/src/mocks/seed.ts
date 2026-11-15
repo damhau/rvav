@@ -99,7 +99,6 @@ export function createDb(now = Date.now()): Db {
       description: "Public web front ends, checkout and search.",
       cost_center: "CC-4120",
       environments: ["dev", "tst", "prd"],
-      my_role: "project-admin",
     },
     {
       id: "prj_data",
@@ -108,7 +107,6 @@ export function createDb(now = Date.now()): Db {
       description: "Ledger, reporting and the analytics pipeline.",
       cost_center: "CC-4310",
       environments: ["dev", "prd"],
-      my_role: "member",
     },
   ];
   const web = projects[0]!;
@@ -124,12 +122,10 @@ export function createDb(now = Date.now()): Db {
   } catch {
     // No storage: an administrator.
   }
-  const rvav: Me["global_roles"] =
-    as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"];
+  const rvav = as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"];
   const me: Me = {
     user: lea,
     title: "Platform engineer",
-    global_roles: rvav,
     permissions: heldIn(null, rvav, []),
     roles: roleRefs(null, rvav),
     projects: [meProject(null, ref(web), rvav, ["project-admin"]), meProject(null, ref(data), rvav, ["member"])],

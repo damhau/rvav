@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -200,7 +201,7 @@ func TestLocalAdmin(t *testing.T) {
 		}
 		code, me := a.me()
 		if code != http.StatusOK || me.Local == nil || !*me.Local || me.PasswordChangeRequired == nil || !*me.PasswordChangeRequired ||
-			len(me.GlobalRoles) != 1 || me.GlobalRoles[0] != "admin" || me.User.Id != core.LocalAdminUserID {
+			!slices.Equal(roleKeys(me.Roles), []string{"admin"}) || me.User.Id != core.LocalAdminUserID {
 			t.Fatalf("/me = %d %+v", code, me)
 		}
 

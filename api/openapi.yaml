@@ -4755,7 +4755,7 @@ components:
     # ── Identity and projects ─────────────────────────────────────────────
     Me:
       type: object
-      required: [user, global_roles, permissions, roles, projects]
+      required: [user, permissions, roles, projects]
       properties:
         user: { $ref: "#/components/schemas/UserRef" }
         title: { type: string, description: Job title from the identity provider. }
@@ -4767,13 +4767,6 @@ components:
           description: |
             The local administrator must change the password before doing
             anything else (first sign-in, or after a reset).
-        global_roles:
-          type: array
-          deprecated: true
-          description: The built-in roles held for all of rvav. Read `permissions` and `roles` instead.
-          items:
-            type: string
-            enum: [admin, catalog-admin, auditor, user]
         permissions:
           type: array
           description: The permissions held for all of rvav, by any role.
@@ -4792,17 +4785,9 @@ components:
 
     MeProject:
       type: object
-      required: [project, role, roles, permissions]
+      required: [project, roles, permissions]
       properties:
         project: { $ref: "#/components/schemas/ProjectRef" }
-        role:
-          description: |
-            Deprecated: the strongest built-in role here (project-admin for
-            an administrator, viewer for an auditor), null where only custom
-            roles are held. Read `permissions` instead.
-          oneOf:
-            - $ref: "#/components/schemas/ProjectRole"
-            - type: "null"
         roles:
           type: array
           description: The roles given in this project, directly or through a group.
@@ -4943,11 +4928,6 @@ components:
               type: array
               description: Environments this project may deploy to.
               items: { $ref: "#/components/schemas/EnvironmentKey" }
-            my_role:
-              description: Deprecated, as `Me.projects[].role`. Read `my_permissions` instead.
-              oneOf:
-                - $ref: "#/components/schemas/ProjectRole"
-                - type: "null"
             my_permissions:
               type: array
               description: The permissions the caller holds in this project, those held for all of rvav included.

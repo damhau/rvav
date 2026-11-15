@@ -22,10 +22,10 @@ describe("the mocks' roles", () => {
     expect(heldIn(null, ["user", "admin"], [])).not.toContain("approval.project");
     expect(heldIn(null, ["user"], ["member"])).toEqual(["project.see", "request.submit"]);
     const ref = { id: "prj_web", code: "web", name: "Web Platform" };
-    expect(meProject(null, ref, ["user", "auditor"], [])).toMatchObject({ role: "viewer", roles: [] });
+    expect(meProject(null, ref, ["user", "auditor"], [])).toMatchObject({ roles: [] });
     expect(meProject(null, ref, ["user", "admin"], ["member"])).toMatchObject({
-      role: "member",
       roles: [{ key: "member", name: "Member" }],
     });
+    expect(meProject(null, ref, ["user", "admin"], ["member"])).not.toHaveProperty("role");
   });
 });

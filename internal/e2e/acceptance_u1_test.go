@@ -124,7 +124,7 @@ func TestU1Acceptance(t *testing.T) {
 		}
 		var me api.Me
 		ana("GET", "/api/v1/me", nil, 200, &me)
-		if len(me.Projects) != 1 || me.Projects[0].Project.Id != web.Id || roleOf(me.Projects[0].Role) != "member" || slices.Contains(me.GlobalRoles, api.MeGlobalRolesAdmin) {
+		if len(me.Projects) != 1 || me.Projects[0].Project.Id != web.Id || !slices.Equal(roleKeys(me.Projects[0].Roles), []string{"member"}) || slices.Contains(roleKeys(me.Roles), "admin") {
 			t.Fatalf("Ana = %+v", me)
 		}
 		marc("GET", "/api/v1/admin/setup", nil, 200, nil)

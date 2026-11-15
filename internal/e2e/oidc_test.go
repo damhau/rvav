@@ -181,7 +181,7 @@ func TestOIDCTokens(t *testing.T) {
 		}
 		code, m, _ := me(lea)
 		if code != 200 || m.User.Name != "Léa Martin" || len(m.Projects) != 1 ||
-			m.Projects[0].Project.Id != "prj_web" || roleOf(m.Projects[0].Role) != "project-admin" {
+			m.Projects[0].Project.Id != "prj_web" || !slices.Contains(roleKeys(m.Projects[0].Roles), "project-admin") {
 			t.Fatalf("lea: %d %+v", code, m)
 		}
 		// The same token again: its user and groups are remembered, not
@@ -212,8 +212,8 @@ func TestOIDCTokens(t *testing.T) {
 			t.Fatalf("dev user after OIDC sign-in: %+v %v", p, err)
 		}
 		marc := idp.token("kc-marc", "Marc Keller", "marc.keller@corp.example", []string{"/rvav-admins"}, tokenOpts{})
-		if code, m, _ := me(marc); code != 200 || !slices.Contains(m.GlobalRoles, api.MeGlobalRoles("admin")) {
-			t.Fatalf("marc: %d %+v", code, m.GlobalRoles)
+		if code, m, _ := me(marc); code != 200 || !slices.Contains(roleKeys(m.Roles), "admin") {
+			t.Fatalf("marc: %d %+v", code, m.Roles)
 		}
 
 		other, err := rsa.GenerateKey(rand.Reader, 2048)

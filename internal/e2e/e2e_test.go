@@ -24,6 +24,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -345,7 +346,7 @@ func TestSlice1EndToEnd(t *testing.T) {
 		// Identity and catalog
 		var me api.Me
 		h.json("GET", "/api/v1/me", "lmartin", nil, 200, &me)
-		if me.User.Name != "Léa Martin" || len(me.Projects) != 1 || roleOf(me.Projects[0].Role) != "project-admin" {
+		if me.User.Name != "Léa Martin" || len(me.Projects) != 1 || !slices.Contains(roleKeys(me.Projects[0].Roles), "project-admin") {
 			t.Fatalf("me = %+v", me)
 		}
 		var items api.CatalogItemPage
@@ -762,6 +763,15 @@ func firstID(t *testing.T, h *harness, _ string) string {
 }
 
 func strPtr(s string) *string { return &s }
+
+// roleKeys are the keys of these roles, as /me names them.
+func roleKeys(rs []api.RoleRef) []string {
+	out := []string{}
+	for _, r := range rs {
+		out = append(out, r.Key)
+	}
+	return out
+}
 
 // roleOf reads a role that may be null: where only custom roles are held.
 func roleOf(r *api.ProjectRole) string {

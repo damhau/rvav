@@ -37,11 +37,7 @@ type Principal struct {
 	Grants
 	// Roles are the keys of the roles held for all of rvav, user and
 	// custom ones included, as policies' CEL names them (user.roles).
-	Roles       []string
-	GlobalRoles []string
-	// ProjectRoles maps project ID to the caller's strongest built-in role
-	// there.
-	ProjectRoles map[string]string
+	Roles []string
 	// rolesIn maps a project to the keys of the roles given in it.
 	rolesIn map[string][]string
 	// known are the roles held, to name them.
@@ -60,49 +56,6 @@ type Principal struct {
 
 // ScopeInventory: the token only reads the Ansible inventory.
 const ScopeInventory = "inventory"
-
-func (p *Principal) HasGlobal(role string) bool { return slices.Contains(p.GlobalRoles, role) }
-
-func (p *Principal) IsAdmin() bool { return p.HasGlobal("admin") }
-
-// SeesEverything is true for administrators and auditors.
-func (p *Principal) SeesEverything() bool { return p.IsAdmin() || p.HasGlobal("auditor") }
-
-// ProjectRole returns the caller's role in a project ("" when none).
-// Administrators act as project admins everywhere.
-// An administrator who is also a member or viewer of a project is still its
-// project admin.
-func (p *Principal) ProjectRole(projectID string) string {
-	if p.IsAdmin() {
-		return "project-admin"
-	}
-	return p.ProjectRoles[projectID]
-}
-
-func (p *Principal) CanSeeProject(projectID string) bool {
-	return p.SeesEverything() || p.ProjectRoles[projectID] != ""
-}
-
-// CanRequest is true for members and project admins (viewers can only look).
-func (p *Principal) CanRequest(projectID string) bool {
-	r := p.ProjectRole(projectID)
-	return r == "member" || r == "project-admin"
-}
-
-// VisibleProjects lists the projects the caller can see; nil means all.
-func (p *Principal) VisibleProjects() []string {
-	if p.SeesEverything() {
-		return nil
-	}
-	out := make([]string, 0, len(p.ProjectRoles))
-	for id := range p.ProjectRoles {
-		out = append(out, id)
-	}
-	slices.Sort(out)
-	return out
-}
-
-var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
 
 // PermissionsIn lists the permissions held in a project, those held for all
 // of rvav included; "" lists those held for all of rvav.
@@ -211,7 +164,7 @@ func newPrincipal(u store.User, groups []string, as []Assignment, custom map[str
 		return r, ok
 	}
 	p := &Principal{User: u, Groups: groups, Grants: Compute(as, role), Roles: []string{},
-		ProjectRoles: map[string]string{}, rolesIn: map[string][]string{}, known: map[string]Role{}}
+		rolesIn: map[string][]string{}, known: map[string]Role{}}
 	for _, a := range as {
 		r, ok := role(a.Role)
 		if !ok || !r.Assignable(a.ProjectID) {
@@ -229,11 +182,7 @@ func newPrincipal(u store.User, groups []string, as []Assignment, custom map[str
 			slices.Sort(in)
 			p.rolesIn[a.ProjectID] = in
 		}
-		if roleRank[r.Key] > roleRank[p.ProjectRoles[a.ProjectID]] {
-			p.ProjectRoles[a.ProjectID] = r.Key
-		}
 	}
-	p.GlobalRoles = p.Roles
 	return p
 }
 

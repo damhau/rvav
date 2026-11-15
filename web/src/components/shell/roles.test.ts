@@ -8,10 +8,9 @@ const web = { id: "prj_web", code: "web", name: "Web Platform" };
 
 const me = (roles: RoleRef[], inWeb: RoleRef[] | null): Me => ({
   user: { id: "usr_1", name: "Local administrator", email: "" },
-  global_roles: ["user"],
   permissions: [],
   roles,
-  projects: inWeb ? [{ project: web, role: null, roles: inWeb, permissions: ["project.see"] }] : [],
+  projects: inWeb ? [{ project: web, roles: inWeb, permissions: ["project.see"] }] : [],
 });
 
 describe("rolesLabel", () => {

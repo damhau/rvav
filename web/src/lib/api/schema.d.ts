@@ -3555,11 +3555,6 @@ export interface components {
              *     anything else (first sign-in, or after a reset).
              */
             password_change_required?: boolean;
-            /**
-             * @deprecated
-             * @description The built-in roles held for all of rvav. Read `permissions` and `roles` instead.
-             */
-            global_roles: ("admin" | "catalog-admin" | "auditor" | "user")[];
             /** @description The permissions held for all of rvav, by any role. */
             permissions: components["schemas"]["Permission"][];
             /** @description The roles held for all of rvav, built-in and custom. */
@@ -3573,12 +3568,6 @@ export interface components {
         };
         MeProject: {
             project: components["schemas"]["ProjectRef"];
-            /**
-             * @description Deprecated: the strongest built-in role here (project-admin for
-             *     an administrator, viewer for an auditor), null where only custom
-             *     roles are held. Read `permissions` instead.
-             */
-            role: components["schemas"]["ProjectRole"] | null;
             /** @description The roles given in this project, directly or through a group. */
             roles: components["schemas"]["RoleRef"][];
             /** @description The permissions held here, those held for all of rvav included. */
@@ -3672,8 +3661,6 @@ export interface components {
             cost_center?: string;
             /** @description Environments this project may deploy to. */
             environments: components["schemas"]["EnvironmentKey"][];
-            /** @description Deprecated, as `Me.projects[].role`. Read `my_permissions` instead. */
-            my_role?: components["schemas"]["ProjectRole"] | null;
             /** @description The permissions the caller holds in this project, those held for all of rvav included. */
             my_permissions?: components["schemas"]["Permission"][];
         };

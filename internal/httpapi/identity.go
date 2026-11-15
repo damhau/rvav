@@ -20,24 +20,6 @@ func roleRefs(p *auth.Principal, keys []string) []api.RoleRef {
 	return out
 }
 
-// meRole is a project's deprecated role in /me: the strongest built-in role
-// held there, project-admin for an administrator and viewer for an auditor
-// elsewhere, as before (ADR-0034).
-func meRole(p *auth.Principal, projectID string) *api.ProjectRole {
-	role := p.ProjectRoles[projectID]
-	switch {
-	case role != "":
-	case p.IsAdmin():
-		role = string(api.ProjectAdmin)
-	case p.SeesEverything():
-		role = string(api.Viewer)
-	default:
-		return nil
-	}
-	r := api.ProjectRole(role)
-	return &r
-}
-
 func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	// Held for all of rvav, project.see lists every project, up to 200, and
@@ -65,7 +47,6 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 	out := api.Me{
 		User:        present.UserRef(p.User.ID, p.User.Name, p.User.Email),
-		GlobalRoles: []api.MeGlobalRoles{},
 		Permissions: p.PermissionsIn(""),
 		Roles:       roleRefs(p, p.Roles),
 		Projects:    []api.MeProject{},
@@ -76,14 +57,9 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	if p.Session != "" {
 		out.Local, out.PasswordChangeRequired = present.Ptr(true), present.Ptr(p.MustChangePassword)
 	}
-	for _, g := range p.GlobalRoles {
-		if b, ok := auth.BuiltinRole(g); ok && b.Global {
-			out.GlobalRoles = append(out.GlobalRoles, api.MeGlobalRoles(g))
-		}
-	}
 	for _, pr := range projects {
 		out.Projects = append(out.Projects, api.MeProject{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name),
-			Role: meRole(p, pr.ID), Roles: roleRefs(p, p.RolesIn(pr.ID)), Permissions: p.PermissionsIn(pr.ID)})
+			Roles: roleRefs(p, p.RolesIn(pr.ID)), Permissions: p.PermissionsIn(pr.ID)})
 	}
 	sort.SliceStable(out.Projects, func(i, j int) bool { return out.Projects[i].Project.Name < out.Projects[j].Project.Name })
 	writeJSON(w, http.StatusOK, out)
@@ -121,7 +97,7 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request, params api
 	}
 	out := api.ProjectPage{Items: make([]api.Project, len(page.Items)), NextCursor: nextCursor(page.Next)}
 	for i, pr := range page.Items {
-		out.Items[i] = present.Project(pr, p.ProjectRole(pr.ID), p.PermissionsIn(pr.ID))
+		out.Items[i] = present.Project(pr, p.PermissionsIn(pr.ID))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -144,7 +120,7 @@ func (s *Server) GetProject(w http.ResponseWriter, r *http.Request, projectID ap
 		return
 	}
 	p := principal(r)
-	writeJSON(w, http.StatusOK, present.Project(pr, p.ProjectRole(pr.ID), p.PermissionsIn(pr.ID)))
+	writeJSON(w, http.StatusOK, present.Project(pr, p.PermissionsIn(pr.ID)))
 }
 
 type quotaLine struct {

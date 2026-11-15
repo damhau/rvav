@@ -225,9 +225,9 @@ function state(db: Db): AdminState {
       { id: "gmp_web", oidc_group: "rvav-web", project: ref("prj_web"), role: "member", role_name: "Member", users: 1 },
       { id: "gmp_data", oidc_group: "rvav-data", project: ref("prj_data"), role: "member", role_name: "Member", users: 1 },
     ], // prettier-ignore
-    roleAssignments: db.me.global_roles
-      .filter((r) => r !== "user")
-      .map((r) => ({ user: db.me.user, role: { key: r, name: roleOf(null, r)?.name ?? r }, fixed: true })),
+    roleAssignments: db.me.roles
+      .filter((r) => r.key !== "user")
+      .map((r) => ({ user: db.me.user, role: { key: r.key, name: r.name }, fixed: true })),
     envs: Object.fromEntries(db.environments.map((e) => [e.key, { snapshot_max_count: 3, snapshot_max_age_days: 7 }])),
     rules,
     mappings: networks.map((n) => ({
@@ -704,10 +704,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     const pr = project(projectId)!;
     const given = rolesOfUser(projectId, db.me.user.id);
     const others = db.me.projects.filter((x) => x.project.id !== projectId);
-    const seen = given.length > 0 || heldIn(db, db.me.global_roles, []).includes("project.see");
+    const rvav = db.me.roles.map((r) => r.key);
+    const seen = given.length > 0 || heldIn(db, rvav, []).includes("project.see");
     db.me.projects = seen
-      ? [...others, meProject(db, { id: pr.id, code: pr.code, name: pr.name }, db.me.global_roles, given)].sort(
-          (a, b) => a.project.name.localeCompare(b.project.name),
+      ? [...others, meProject(db, { id: pr.id, code: pr.code, name: pr.name }, rvav, given)].sort((a, b) =>
+          a.project.name.localeCompare(b.project.name),
         )
       : others;
   };
@@ -756,7 +757,6 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         description: c.description ?? "",
         cost_center: c.cost_center ?? "",
         environments: c.environments,
-        my_role: "project-admin" as const,
       };
       db.projects.push(p);
       db.quota[p.id] = {

@@ -90,7 +90,7 @@ func TestRolesAPI(t *testing.T) {
 		var me api.Me
 		h.json("GET", "/api/v1/me", "cdubois", nil, 200, &me)
 		web := slices.IndexFunc(me.Projects, func(p api.MeProject) bool { return p.Project.Id == "prj_web" })
-		if web < 0 || roleOf(me.Projects[web].Role) != "viewer" || len(me.Projects[web].Roles) != 2 ||
+		if web < 0 || !slices.Equal(roleKeys(me.Projects[web].Roles), []string{"viewer", "vm-operator"}) ||
 			!slices.Contains(me.Projects[web].Permissions, "day2.power:power_on") || slices.Contains(me.Permissions, "project.see") {
 			t.Fatalf("me = %+v", me)
 		}
@@ -141,8 +141,7 @@ func TestRolesAPI(t *testing.T) {
 			t.Fatalf("assignments = %+v", list.Items)
 		}
 		h.json("GET", "/api/v1/me", "cdubois", nil, 200, &me)
-		if !slices.Contains(me.Permissions, "access.read") || !slices.ContainsFunc(me.Roles, func(r api.RoleRef) bool { return r.Key == "auditor" }) ||
-			!slices.Contains(me.GlobalRoles, api.MeGlobalRolesAuditor) {
+		if !slices.Contains(me.Permissions, "access.read") || !slices.Contains(roleKeys(me.Roles), "auditor") {
 			t.Fatalf("an auditor for all of rvav: %+v", me)
 		}
 		h.json("DELETE", "/api/v1/admin/role-assignments/"+deref(given.Id), admin, nil, 204, nil)
