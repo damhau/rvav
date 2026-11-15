@@ -37,7 +37,7 @@ func (s *Service) presentSecret(ctx context.Context, v store.Secret) (api.Secret
 // ListSecrets lists the stored secrets, without their values.
 func (s *Service) ListSecrets(ctx context.Context, p *auth.Principal) (api.SecretList, error) {
 	out := api.SecretList{Items: []api.Secret{}}
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return out, ErrForbidden
 	}
 	list, err := s.Store.Secrets(ctx)
@@ -56,7 +56,7 @@ func (s *Service) ListSecrets(ctx context.Context, p *auth.Principal) (api.Secre
 
 // PutSecret stores a secret, or replaces one (name in the path).
 func (s *Service) PutSecret(ctx context.Context, p *auth.Principal, name string, w api.SecretWrite, create bool) (api.Secret, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.Secret{}, ErrForbidden
 	}
 	if create {
@@ -117,7 +117,7 @@ func (s *Service) PutSecret(ctx context.Context, p *auth.Principal, name string,
 
 // DeleteSecret deletes a secret no value source uses.
 func (s *Service) DeleteSecret(ctx context.Context, p *auth.Principal, name string) error {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return ErrForbidden
 	}
 	users, err := s.Store.SecretUsers(ctx, name)

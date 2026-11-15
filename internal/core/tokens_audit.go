@@ -33,7 +33,7 @@ func presentToken(t store.APIToken) api.ApiToken {
 func (s *Service) APITokens(ctx context.Context, p *auth.Principal, all bool) ([]api.ApiToken, error) {
 	user := p.User.ID
 	if all {
-		if !p.IsAdmin() {
+		if !p.Everywhere(auth.TokensManage) {
 			return nil, ErrForbidden
 		}
 		user = ""
@@ -97,7 +97,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, p *auth.Principal, c api.A
 // RevokeAPIToken revokes one's own token, or anyone's for administrators.
 func (s *Service) RevokeAPIToken(ctx context.Context, p *auth.Principal, id string) error {
 	t, err := s.Store.GetAPIToken(ctx, id)
-	if errors.Is(err, store.ErrNotFound) || err == nil && t.UserID != p.User.ID && !p.IsAdmin() {
+	if errors.Is(err, store.ErrNotFound) || err == nil && t.UserID != p.User.ID && !p.Everywhere(auth.TokensManage) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -118,22 +118,13 @@ type AuditQuery struct {
 	Limit                              int
 }
 
-// AuditEvents searches the audit log: administrators and auditors see all
-// of it, project admins their projects' events.
+// AuditEvents searches the audit log: all of it with audit.read for all of
+// rvav, else the events of the projects where it is held.
 func (s *Service) AuditEvents(ctx context.Context, p *auth.Principal, q AuditQuery) ([]api.AuditEvent, *string, error) {
 	f := store.AuditFilter{Search: strings.TrimSpace(q.Search), ActorID: q.ActorID, Action: q.Action, ProjectID: q.ProjectID,
 		From: q.From, To: q.To, Limit: q.Limit}
-	if !p.SeesEverything() {
-		var mine []string
-		for id, role := range p.ProjectRoles {
-			if role == "project-admin" {
-				mine = append(mine, id)
-			}
-		}
-		if len(mine) == 0 {
-			return nil, nil, ErrForbidden
-		}
-		f.Projects = mine
+	if f.Projects = p.Projects(auth.AuditRead); f.Projects != nil && len(f.Projects) == 0 {
+		return nil, nil, ErrForbidden
 	}
 	if q.Cursor != "" {
 		before, err := strconv.ParseInt(q.Cursor, 10, 64)

@@ -36,16 +36,11 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		if p.ArchivedAt != nil {
 			continue
 		}
-		members, err := s.Store.ProjectMemberRoles(ctx, p.ID)
+		members, err := s.requesters(ctx, p.ID)
 		if err != nil {
 			return r, err
 		}
-		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments}
-		for _, m := range members {
-			if m.Role != "viewer" {
-				rp.Members = append(rp.Members, m.ID)
-			}
-		}
+		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments, Members: members}
 		r.Projects = append(r.Projects, rp)
 	}
 	if r.Users, err = s.Store.UsersByEmail(ctx); err != nil {
@@ -225,7 +220,7 @@ func fieldMessages(ve *ValidationError) string {
 // (P2.3). projectMap adds to the administrators' mapping.
 func (s *Service) AdoptVRADeployments(ctx context.Context, p *auth.Principal, e *vra.Estate, projectMap map[string]string,
 	apply bool) ([]vraimport.DeploymentPlan, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return nil, ErrForbidden
 	}
 	plan, _, err := s.vraPlan(ctx, e, projectMap)
@@ -271,7 +266,7 @@ func (s *Service) latestEstate(ctx context.Context) (store.VRASnapshot, *vra.Est
 
 // VRAImportStatus says whether rvav can read vRA, and what it read last.
 func (s *Service) VRAImportStatus(ctx context.Context, p *auth.Principal) (api.VraImportStatus, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return api.VraImportStatus{}, ErrForbidden
 	}
 	c := s.liveConfig(ctx).VRA
@@ -293,7 +288,7 @@ func (s *Service) VRAImportStatus(ctx context.Context, p *auth.Principal) (api.V
 // as the estate the plan and import work from. The file is decoded as it
 // comes, not held whole.
 func (s *Service) ReadVRA(ctx context.Context, p *auth.Principal, body io.Reader) (api.VraSnapshot, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return api.VraSnapshot{}, ErrForbidden
 	}
 	var e *vra.Estate
@@ -379,7 +374,7 @@ func presentVRAPlan(v store.VRASnapshot, plan vraimport.ImportPlan) (api.VraPlan
 
 // VRAPlan is the dry run of the estate read last.
 func (s *Service) VRAPlan(ctx context.Context, p *auth.Principal) (api.VraPlan, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return api.VraPlan{}, ErrForbidden
 	}
 	v, e, err := s.latestEstate(ctx)
@@ -396,7 +391,7 @@ func (s *Service) VRAPlan(ctx context.Context, p *auth.Principal) (api.VraPlan, 
 // MapVRAProject maps a vRA project of the estate to an rvav project, or
 // clears its mapping.
 func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID string, m api.VraProjectMapping) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return ErrForbidden
 	}
 	_, e, err := s.latestEstate(ctx)
@@ -437,7 +432,7 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		Name   string `json:"name"`
 		Reason string `json:"reason"`
 	}{}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return out, ErrForbidden
 	}
 	// One import at a time, finished even if whoever started it leaves:
@@ -572,7 +567,7 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 
 // VROTriageMarkdown is the vRO triage report of the estate read last.
 func (s *Service) VROTriageMarkdown(ctx context.Context, p *auth.Principal) (string, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return "", ErrForbidden
 	}
 	_, e, err := s.latestEstate(ctx)
@@ -601,7 +596,7 @@ func asValidation(err error) *ValidationError {
 // new requests go to rvav, and the plan checks vRA offers it nothing
 // (P2.6).
 func (s *Service) SetVRACutover(ctx context.Context, p *auth.Principal, vraID string, w api.VraCutoverWrite) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return ErrForbidden
 	}
 	_, e, err := s.latestEstate(ctx)

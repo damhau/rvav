@@ -53,7 +53,7 @@ func stepTarget(kind api.CompositeStepTargetKind, ref, title string, runs api.Co
 // projects only says which: a request from another is refused.
 func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (api.CompositeStepTargetList, error) {
 	out := api.CompositeStepTargetList{Items: []api.CompositeStepTarget{}}
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return out, ErrForbidden
 	}
 	var items, templates, workflows []api.CompositeStepTarget

@@ -76,6 +76,26 @@ func customRole(r store.StoredRole) auth.Role {
 	return out
 }
 
+// requesters are those given a role holding request.submit in the project,
+// who may own its deployments.
+func (s *Service) requesters(ctx context.Context, projectID string) ([]string, error) {
+	submit, err := s.rolesWith(ctx, auth.RequestSubmit)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.Store.ProjectMemberRoles(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, m := range members {
+		if slices.Contains(submit, m.Role) && !slices.Contains(out, m.ID) {
+			out = append(out, m.ID)
+		}
+	}
+	return out, nil
+}
+
 // rolesWith are the keys of the roles holding a permission.
 func (s *Service) rolesWith(ctx context.Context, perm auth.Permission) ([]string, error) {
 	var out []string

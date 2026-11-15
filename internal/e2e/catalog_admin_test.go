@@ -451,7 +451,7 @@ func TestDesignerPreview(t *testing.T) {
 			Items []struct{ Id, Name, Role string }
 		}
 		h.json("GET", "/api/v1/admin/catalog/preview-users?project_id="+web, admin, nil, 200, &members)
-		if !slices.ContainsFunc(members.Items, func(m struct{ Id, Name, Role string }) bool { return m.Id == "usr_tnguyen" && m.Role == "member" }) {
+		if !slices.ContainsFunc(members.Items, func(m struct{ Id, Name, Role string }) bool { return m.Id == "usr_tnguyen" && m.Role == "Member" }) {
 			t.Fatalf("preview users = %+v", members.Items)
 		}
 

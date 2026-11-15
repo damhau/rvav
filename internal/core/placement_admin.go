@@ -79,12 +79,6 @@ func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments) (
 	return sg, errs
 }
 
-// canSeeSettings: administrators and auditors everywhere; a project's
-// admins for their own project.
-func canSeeSettings(p *auth.Principal, projectID string) bool {
-	return p.SeesEverything() || projectID != "" && p.ProjectRole(projectID) == "project-admin"
-}
-
 func (s *Service) PlacementRules(ctx context.Context, p *auth.Principal, projectID string) ([]api.PlacementRule, error) {
 	if projectID != "" {
 		proj, err := s.visibleProject(ctx, p, projectID)
@@ -93,7 +87,7 @@ func (s *Service) PlacementRules(ctx context.Context, p *auth.Principal, project
 		}
 		projectID = proj.ID
 	}
-	if !canSeeSettings(p, projectID) {
+	if !p.In(auth.ProjectSettingsRead, projectID) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AllPlacementRules(ctx, projectID)
@@ -129,14 +123,16 @@ func checkTags(list []string, ptr string) []api.FieldError {
 }
 
 func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id string, w api.PlacementRuleWrite) (api.PlacementRule, error) {
-	if !p.IsAdmin() {
+	if !p.In(auth.PlacementManage, w.ProjectId) {
 		return api.PlacementRule{}, ErrForbidden
 	}
 	if id != "" {
-		if _, err := s.Store.GetPlacementRule(ctx, id); errors.Is(err, store.ErrNotFound) {
+		if was, err := s.Store.GetPlacementRule(ctx, id); errors.Is(err, store.ErrNotFound) {
 			return api.PlacementRule{}, ErrNotFound
 		} else if err != nil {
 			return api.PlacementRule{}, err
+		} else if !p.In(auth.PlacementManage, was.ProjectID) {
+			return api.PlacementRule{}, ErrForbidden
 		}
 	}
 	clusterTags, datastoreTags := derefSlice(w.ClusterTags), derefSlice(w.DatastoreTags)
@@ -212,7 +208,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 }
 
 func (s *Service) DeletePlacementRule(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Anywhere(auth.PlacementManage) {
 		return ErrForbidden
 	}
 	r, err := s.Store.GetPlacementRule(ctx, id)
@@ -221,6 +217,9 @@ func (s *Service) DeletePlacementRule(ctx context.Context, p *auth.Principal, id
 	}
 	if err != nil {
 		return err
+	}
+	if !p.In(auth.PlacementManage, r.ProjectID) {
+		return ErrForbidden
 	}
 	if err := s.Store.DeletePlacementRule(ctx, id); err != nil {
 		return err
@@ -238,7 +237,7 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 	if err != nil {
 		return out, err
 	}
-	if !canSeeSettings(p, proj.ID) {
+	if !p.In(auth.ProjectSettingsRead, proj.ID) {
 		return out, ErrForbidden
 	}
 	pl, err := s.placement(ctx, proj.ID, environment)
@@ -317,7 +316,7 @@ func presentNetworkMapping(n store.NetworkSubnet) api.NetworkMapping {
 }
 
 func (s *Service) NetworkMappings(ctx context.Context, p *auth.Principal) ([]api.NetworkMapping, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.InfrastructureRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.NetworkMappings(ctx)
@@ -334,7 +333,7 @@ func (s *Service) NetworkMappings(ctx context.Context, p *auth.Principal) ([]api
 // SetNetworkMapping sets a network's subnet by hand: it wins over
 // EfficientIP's (carry-over from S7.3).
 func (s *Service) SetNetworkMapping(ctx context.Context, p *auth.Principal, network string, w api.NetworkMappingWrite) (api.NetworkMapping, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.InfrastructureManage) {
 		return api.NetworkMapping{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -377,7 +376,7 @@ func (s *Service) SetNetworkMapping(ctx context.Context, p *auth.Principal, netw
 }
 
 func (s *Service) DeleteNetworkMapping(ctx context.Context, p *auth.Principal, network string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.InfrastructureManage) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteManualMapping(ctx, network); errors.Is(err, store.ErrNotFound) {

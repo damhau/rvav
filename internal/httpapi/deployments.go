@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -15,7 +16,7 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 		s.fail(w, r, err)
 		return
 	}
-	f := store.DeploymentFilter{Projects: p.VisibleProjects(), ProjectID: deref(params.ProjectId), Search: deref(params.Q),
+	f := store.DeploymentFilter{Projects: p.Projects(auth.ProjectSee), ProjectID: deref(params.ProjectId), Search: deref(params.Q),
 		LeaseExpiresBefore: params.LeaseExpiresBefore, Limit: limitOf(params.Limit), After: after, Sort: "name"}
 	if f.Projects != nil && len(f.Projects) == 0 {
 		writeJSON(w, http.StatusOK, api.DeploymentPage{Items: []api.Deployment{}})
@@ -56,7 +57,7 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 
 func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymentID string) {
 	d, err := s.Store.GetDeployment(r.Context(), deploymentID)
-	if err == nil && !principal(r).CanSeeProject(d.ProjectID) && d.OwnerID != principal(r).User.ID {
+	if err == nil && !principal(r).In(auth.ProjectSee, d.ProjectID) && d.OwnerID != principal(r).User.ID {
 		err = store.ErrNotFound
 	}
 	if err != nil {

@@ -152,3 +152,68 @@ func TestRolesAPI(t *testing.T) {
 		}
 	})
 }
+
+// TestCustomRoleAdministration: the administration's checks are the
+// permissions of roles, given in a project or for all of rvav (ADR-0034).
+func TestCustomRoleAdministration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, user = "mkeller", "cdubois"
+		h.json("POST", "/api/v1/admin/roles", admin, api.RoleCreate{Key: "placement-steward", Name: "Placement steward",
+			Permissions: []string{"project.see", "project.settings.read", "placement.manage", "project.quotas.manage", "audit.read"}}, 201, nil)
+		h.json("POST", "/api/v1/admin/roles", admin, api.RoleCreate{Key: "policy-reader", Name: "Policy reader",
+			Permissions: []string{"policies.read", "infrastructure.read"}}, 201, nil)
+		for _, path := range []string{"/api/v1/admin/lease-policies", "/api/v1/admin/templates", "/api/v1/admin/projects/prj_web",
+			"/api/v1/admin/placement-rules?project_id=prj_web", "/api/v1/audit"} {
+			if code, _, _ := h.do("GET", path, user, nil); code != 403 && code != 404 {
+				t.Errorf("GET %s before any role = %d", path, code)
+			}
+		}
+		h.json("PUT", "/api/v1/projects/prj_web/members/"+seed.UserID(user), admin,
+			api.ProjectMemberWrite{Roles: &[]string{"placement-steward"}}, 200, nil)
+		h.json("POST", "/api/v1/admin/role-assignments", admin, api.RoleAssignmentWrite{UserId: seed.UserID(user), Role: "policy-reader"}, 201, nil)
+
+		// For all of rvav: read, not change.
+		h.json("GET", "/api/v1/admin/lease-policies", user, nil, 200, nil)
+		h.json("GET", "/api/v1/admin/templates", user, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/lease-policies", user, api.LeasePolicy{Environment: "dev", DefaultDays: new(30)}, 403, nil)
+		h.json("GET", "/api/v1/admin/subscriptions", user, nil, 403, nil)
+		h.json("GET", "/api/v1/admin/system", user, nil, 403, nil)
+
+		// In Web Platform: its administration, its placement and quotas, its audit log; not its details.
+		var project api.Project
+		h.json("GET", "/api/v1/projects/prj_web", user, nil, 200, &project)
+		if mine := *project.MyPermissions; !slices.Contains(mine, "placement.manage") || slices.Contains(mine, "request.submit") {
+			t.Fatalf("my permissions in Web Platform = %v", project.MyPermissions)
+		}
+		h.json("GET", "/api/v1/projects/prj_data", user, nil, 404, nil)
+		h.json("GET", "/api/v1/admin/projects/prj_web", user, nil, 200, nil)
+		h.json("PATCH", "/api/v1/admin/projects/prj_web", user, api.AdminProjectUpdate{Name: new("Web")}, 403, nil)
+		h.json("GET", "/api/v1/admin/projects/prj_data", user, nil, 404, nil)
+		h.json("GET", "/api/v1/admin/projects", user, nil, 403, nil)
+		var rules api.PlacementRuleList
+		h.json("GET", "/api/v1/admin/placement-rules?project_id=prj_web", user, nil, 200, &rules)
+		r := rules.Items[slices.IndexFunc(rules.Items, func(r api.PlacementRule) bool { return r.Environment == "dev" })]
+		rule := api.PlacementRuleWrite{ProjectId: "prj_web", Environment: "dev", Priority: &r.Priority, Clusters: r.Clusters,
+			Datastores: r.Datastores, Networks: r.Networks, Folder: r.Folder, ClusterTags: &r.ClusterTags, DatastoreTags: &r.DatastoreTags}
+		h.json("PUT", "/api/v1/admin/placement-rules/"+r.Id, user, rule, 200, nil)
+		rule.ProjectId = "prj_data"
+		h.json("PUT", "/api/v1/admin/placement-rules/"+r.Id, user, rule, 403, nil)
+		h.json("POST", "/api/v1/admin/placement-rules", user, rule, 403, nil)
+		h.json("PUT", "/api/v1/admin/projects/prj_web/quotas", user, api.QuotaLimitList{Items: []api.QuotaLimit{
+			{Environment: "", Resource: api.Vcpu, Limit: new(200), Enforcement: api.QuotaLimitEnforcementHard}}}, 200, nil)
+		h.json("PUT", "/api/v1/admin/projects/prj_data/quotas", user, api.QuotaLimitList{Items: []api.QuotaLimit{}}, 403, nil)
+		var page api.AuditEventPage
+		h.json("GET", "/api/v1/audit", user, nil, 200, &page)
+		if len(page.Items) == 0 || slices.ContainsFunc(page.Items, func(e api.AuditEvent) bool { return e.Project == nil || e.Project.Id != "prj_web" }) {
+			t.Fatalf("Web Platform's audit log = %+v", page.Items)
+		}
+		h.json("GET", "/api/v1/audit?project_id=prj_data", user, nil, 200, &page)
+		if len(page.Items) != 0 {
+			t.Fatalf("Data Engineering's audit log = %+v", page.Items)
+		}
+	})
+}

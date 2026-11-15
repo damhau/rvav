@@ -25,7 +25,7 @@ const ProcessReady = 10 * time.Second
 // revision.
 func (s *Service) Processes(ctx context.Context, p *auth.Principal) (api.ProcessList, error) {
 	out := api.ProcessList{Items: []api.Process{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.SystemManage) {
 		return out, ErrForbidden
 	}
 	rows, err := s.Store.Processes(ctx, time.Now().Add(-ProcessesSeen))

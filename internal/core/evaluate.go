@@ -108,7 +108,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if ev.Project, err = s.visibleProject(ctx, p, d.ProjectId); err != nil {
 		return nil, err
 	}
-	if !p.CanRequest(ev.Project.ID) {
+	if !p.In(auth.RequestSubmit, ev.Project.ID) {
 		return nil, fmt.Errorf("%w: you can view %s but not request in it", ErrForbidden, ev.Project.Name)
 	}
 	// An approver's edits to a request made before still count (ofRequest).
@@ -211,7 +211,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	}
 
 	if d.OnBehalfOf != nil && *d.OnBehalfOf != "" {
-		if p.ProjectRole(ev.Project.ID) != "project-admin" {
+		if !p.In(auth.RequestOnBehalf, ev.Project.ID) {
 			add("/on_behalf_of", "not_allowed", "Only project admins can request for someone else.")
 		} else if u, err := s.Store.GetUser(ctx, *d.OnBehalfOf); err != nil {
 			add("/on_behalf_of", "unknown_user", "This user does not exist.")

@@ -204,7 +204,7 @@ func stepForm(lv store.Approval) []blueprint.AskField {
 
 // question is what a step's row asks and got, for those who may read it.
 func question(l loadedLevel, p *auth.Principal) *api.ApprovalQuestion {
-	if l.lv.StepKey == nil || !l.isApprover(p) && !p.SeesEverything() {
+	if l.lv.StepKey == nil || !l.isApprover(p) && !p.Everywhere(auth.ApprovalReadAll) {
 		return nil
 	}
 	q := &api.ApprovalQuestion{Form: []api.ApprovalQuestionField{}}

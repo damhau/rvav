@@ -42,7 +42,7 @@ func asEvent(ev outbox.Event) api.IntegrationEvent {
 
 // EventTopics lists the topics with a sample event of each.
 func (s *Service) EventTopics(ctx context.Context, p *auth.Principal) ([]api.EventTopic, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return nil, ErrForbidden
 	}
 	out := make([]api.EventTopic, len(outbox.Topics))
@@ -71,7 +71,7 @@ func presentSubscription(sub store.Subscription, counts map[string]int, last tim
 
 // Subscriptions lists them by topic and priority, with their recent runs.
 func (s *Service) Subscriptions(ctx context.Context, p *auth.Principal) ([]api.Subscription, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return nil, ErrForbidden
 	}
 	subs, err := s.Store.Subscriptions(ctx)
@@ -90,7 +90,7 @@ func (s *Service) Subscriptions(ctx context.Context, p *auth.Principal) ([]api.S
 }
 
 func (s *Service) GetSubscription(ctx context.Context, p *auth.Principal, id string) (api.Subscription, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.Subscription{}, ErrForbidden
 	}
 	sub, err := s.Store.GetSubscription(ctx, id)
@@ -133,7 +133,7 @@ func checkEventCondition(topic, expr string) error {
 
 // SaveSubscription creates (id empty) or replaces a subscription.
 func (s *Service) SaveSubscription(ctx context.Context, p *auth.Principal, id string, w api.SubscriptionWrite) (api.Subscription, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return api.Subscription{}, ErrForbidden
 	}
 	action := "subscription.create"
@@ -249,7 +249,7 @@ func (s *Service) checkTarget(ctx context.Context, t api.SubscriptionTarget) (js
 }
 
 func (s *Service) DeleteSubscription(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return ErrForbidden
 	}
 	sub, err := s.Store.GetSubscription(ctx, id)
@@ -283,7 +283,7 @@ func presentRun(r store.SubscriptionRun) api.SubscriptionRun {
 
 // SubscriptionRuns lists a subscription's runs, newest first.
 func (s *Service) SubscriptionRuns(ctx context.Context, p *auth.Principal, id, status, cursor string, limit int) ([]api.SubscriptionRun, *string, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return nil, nil, ErrForbidden
 	}
 	if _, err := s.Store.GetSubscription(ctx, id); errors.Is(err, store.ErrNotFound) {
@@ -322,7 +322,7 @@ func (s *Service) SubscriptionRuns(ctx context.Context, p *auth.Principal, id, s
 
 // SubscriptionRun is one run with its payload and every attempt.
 func (s *Service) SubscriptionRun(ctx context.Context, p *auth.Principal, id string) (api.SubscriptionRunDetail, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.SubscriptionRunDetail{}, ErrForbidden
 	}
 	run, payload, err := s.Store.GetSubscriptionRun(ctx, id)
@@ -356,7 +356,7 @@ func (s *Service) SubscriptionRun(ctx context.Context, p *auth.Principal, id str
 
 // RetrySubscriptionRun queues a failed run again.
 func (s *Service) RetrySubscriptionRun(ctx context.Context, p *auth.Principal, id string) (api.SubscriptionRun, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return api.SubscriptionRun{}, ErrForbidden
 	}
 	run, _, err := s.Store.GetSubscriptionRun(ctx, id)
@@ -384,7 +384,7 @@ func (s *Service) RetrySubscriptionRun(ctx context.Context, p *auth.Principal, i
 // TestSubscription delivers the topic's sample event once, now, and keeps
 // it as a test run.
 func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id string) (api.SubscriptionRunDetail, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return api.SubscriptionRunDetail{}, ErrForbidden
 	}
 	sub, err := s.Store.GetSubscription(ctx, id)

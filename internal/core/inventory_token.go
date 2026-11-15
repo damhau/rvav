@@ -31,7 +31,7 @@ func inventoryTokenLocked() bool { return os.Getenv("RVAV_INVENTORY_TOKEN") != "
 
 // InventoryToken says which token rvav made for AWX's inventory source.
 func (s *Service) InventoryToken(ctx context.Context, p *auth.Principal) (api.InventoryToken, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.InventoryToken{}, ErrForbidden
 	}
 	out := api.InventoryToken{Locked: inventoryTokenLocked(), SourceSet: s.liveConfig(ctx).AWX.InventorySourceID != 0,
@@ -55,7 +55,7 @@ func (s *Service) InventoryToken(ctx context.Context, p *auth.Principal) (api.In
 // it in AWX, in the credential the inventory source reads rvav with; then
 // the earlier ones are revoked and the source is synced.
 func (s *Service) MakeInventoryToken(ctx context.Context, p *auth.Principal, w api.InventoryTokenWrite) (api.InventoryTokenMade, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.InventoryTokenMade{}, ErrForbidden
 	}
 	if inventoryTokenLocked() {

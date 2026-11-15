@@ -23,10 +23,9 @@ func groupName(prefix, value string) string {
 // VM of a deployment that is not being deleted, with ansible_host its
 // reserved address, groups by project, environment, catalog item, its tags
 // and OS family, and rvav's context as host variables, the inputs the form
-// exposes to the inventory among them (rvav_inputs). Administrators and
-// auditors.
+// exposes to the inventory among them (rvav_inputs). For inventory.read.
 func (s *Service) AnsibleInventory(ctx context.Context, p *auth.Principal) (map[string]any, error) {
-	if !p.IsAdmin() && !p.HasGlobal("auditor") {
+	if !p.Everywhere(auth.InventoryRead) {
 		return nil, ErrForbidden
 	}
 	hosts, err := s.Store.InventoryHosts(ctx)

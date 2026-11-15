@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -15,10 +16,10 @@ import (
 // chosen user in a chosen project, for catalog admins.
 
 // previewPrincipal is who a catalog admin previews as (themselves by
-// default): a member of the project, directly or through a group, so a
-// preview shows what a requester there would get and no more.
+// default): someone given a role in the project, directly or through a
+// group, so a preview shows what a requester there would get and no more.
 func (s *Service) previewPrincipal(ctx context.Context, p *auth.Principal, asUserID *string, projectID string) (*auth.Principal, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return nil, ErrForbidden
 	}
 	as := p
@@ -32,7 +33,7 @@ func (s *Service) previewPrincipal(ctx context.Context, p *auth.Principal, asUse
 			return nil, err
 		}
 	}
-	if as.ProjectRoles[projectID] == "" {
+	if len(as.RolesIn(projectID)) == 0 {
 		return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/as_user_id", "not_member",
 			as.User.Name+" is not a member of this project: preview as one of its members.")}}
 	}
@@ -99,7 +100,7 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 
 // PreviewUsers are a project's members, to preview a form as one of them.
 func (s *Service) PreviewUsers(ctx context.Context, p *auth.Principal, projectID string) ([]api.UserRef, []string, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return nil, nil, ErrForbidden
 	}
 	users, err := s.Store.ProjectMembers(ctx, projectID)
@@ -110,7 +111,11 @@ func (s *Service) PreviewUsers(ctx context.Context, p *auth.Principal, projectID
 	for i, u := range users {
 		refs[i] = api.UserRef{Id: u.ID, Name: u.Name}
 		if as, err := auth.PrincipalFor(ctx, s.Store, u.ID); err == nil {
-			roles[i] = orDefault(as.ProjectRole(projectID), "member")
+			names := []string{}
+			for _, r := range as.RoleRefs(as.RolesIn(projectID)) {
+				names = append(names, r.Name)
+			}
+			roles[i] = strings.Join(names, ", ")
 		}
 	}
 	return refs, roles, nil

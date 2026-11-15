@@ -87,7 +87,7 @@ func presentNamingPolicy(p store.NamingPolicy, offers []store.Offer) api.NamingP
 }
 
 func (s *Service) NamingPolicies(ctx context.Context, p *auth.Principal) ([]api.NamingPolicy, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.PoliciesRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.NamingPolicies(ctx)
@@ -120,7 +120,7 @@ func checkNamingTemplate(raw, ptr string) []api.FieldError {
 }
 
 func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id string, w api.NamingPolicyWrite) (api.NamingPolicy, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return api.NamingPolicy{}, ErrForbidden
 	}
 	if id != "" {
@@ -162,7 +162,7 @@ func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id st
 }
 
 func (s *Service) DeleteNamingPolicy(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteNamingPolicy(ctx, id); errors.Is(err, store.ErrNotFound) {
@@ -178,7 +178,7 @@ func (s *Service) DeleteNamingPolicy(ctx context.Context, p *auth.Principal, id 
 // environment, checked as a request's are; nothing is reserved.
 func (s *Service) PreviewNaming(ctx context.Context, p *auth.Principal, q api.NamingPreviewQuery) (api.NamingPreview, error) {
 	out := api.NamingPreview{Names: []string{}, Skipped: []api.NamingSkipped{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return out, ErrForbidden
 	}
 	if errs := checkNamingTemplate(q.Template, "/template"); len(errs) > 0 {

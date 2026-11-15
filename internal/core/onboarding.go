@@ -38,7 +38,7 @@ const maxAdopt = 200
 // OnboardingVMs lists the inventory's VMs no deployment has.
 func (s *Service) OnboardingVMs(ctx context.Context, p *auth.Principal, f store.UnmanagedFilter) (api.OnboardingVmPage, error) {
 	out := api.OnboardingVmPage{Items: []api.OnboardingVm{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return out, ErrForbidden
 	}
 	page, total, err := s.Store.UnmanagedVMs(ctx, f)
@@ -88,7 +88,7 @@ func (s *Service) AdoptVMs(ctx context.Context, p *auth.Principal, d api.Onboard
 		Records   int      `json:"records"`
 		Vms       []string `json:"vms"`
 	}{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ImportManage) {
 		return out, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -110,12 +110,12 @@ func (s *Service) AdoptVMs(ctx context.Context, p *auth.Principal, d api.Onboard
 		} else if lease, err = s.Store.LeasePolicy(ctx, project.ID, d.Environment); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return out, err
 		}
-		members, err := s.Store.ProjectMemberRoles(ctx, project.ID)
+		owners, err := s.requesters(ctx, project.ID)
 		if err != nil {
 			return out, err
 		}
-		if !slices.ContainsFunc(members, func(m store.MemberRole) bool { return m.ID == d.OwnerId && m.Role != "viewer" }) {
-			add("/owner_id", "invalid", "Choose a member of "+project.Name+" (not a viewer): owners run the actions on their deployments.")
+		if !slices.Contains(owners, d.OwnerId) {
+			add("/owner_id", "invalid", "Choose a member of "+project.Name+" who requests there: owners run the actions on their deployments.")
 		}
 	}
 	item, version, msg := s.adoptionItem(ctx, p, d.CatalogItemId, project)

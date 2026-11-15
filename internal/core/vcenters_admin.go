@@ -41,7 +41,7 @@ func presentVCenter(v store.VCenter, inv map[string]store.VCenterInventory) api.
 // ListVCenters lists the vCenter integration's vCenter, then those added.
 func (s *Service) ListVCenters(ctx context.Context, p *auth.Principal) (api.VCenterList, error) {
 	out := api.VCenterList{Items: []api.VCenter{}}
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.InfrastructureRead) {
 		return out, ErrForbidden
 	}
 	inv, err := s.Store.VCenterInventories(ctx)
@@ -98,7 +98,7 @@ func (s *Service) checkVCenter(w api.VCenterWrite, current *store.VCenter) []api
 
 // SaveVCenter adds a vCenter (name "") or changes one.
 func (s *Service) SaveVCenter(ctx context.Context, p *auth.Principal, name string, w api.VCenterWrite) (api.VCenter, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.VCenter{}, ErrForbidden
 	}
 	create := name == ""
@@ -148,7 +148,7 @@ func (s *Service) SaveVCenter(ctx context.Context, p *auth.Principal, name strin
 // DeleteVCenter stops managing a vCenter and forgets its inventory; not
 // while a deployment has a VM there.
 func (s *Service) DeleteVCenter(ctx context.Context, p *auth.Principal, name string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return ErrForbidden
 	}
 	// Rules naming it would allow nothing once it is gone.
@@ -171,7 +171,7 @@ func (s *Service) DeleteVCenter(ctx context.Context, p *auth.Principal, name str
 // saved settings or those given.
 func (s *Service) TestVCenter(ctx context.Context, p *auth.Principal, name string, w *api.VCenterWrite) (api.IntegrationTest, error) {
 	out := api.IntegrationTest{Checks: []api.IntegrationCheck{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return out, ErrForbidden
 	}
 	c := config.VCenterConfig{Name: name}

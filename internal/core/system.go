@@ -16,7 +16,7 @@ import (
 // saved in Administration and how far each has applied, and the install
 // settings as this process reads them, secrets left out.
 func (s *Service) System(ctx context.Context, p *auth.Principal) (api.System, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.SystemManage) {
 		return api.System{}, ErrForbidden
 	}
 	procs, err := s.Processes(ctx, p)

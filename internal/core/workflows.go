@@ -50,7 +50,7 @@ func presentWorkflow(w store.WorkflowRegistration, use store.WorkflowUse) api.Wo
 
 // WorkflowRegistrations lists the registrations, with what uses them.
 func (s *Service) WorkflowRegistrations(ctx context.Context, p *auth.Principal) ([]api.WorkflowRegistration, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.WorkflowRegistrations(ctx)
@@ -69,7 +69,7 @@ func (s *Service) WorkflowRegistrations(ctx context.Context, p *auth.Principal) 
 }
 
 func (s *Service) GetWorkflowRegistration(ctx context.Context, p *auth.Principal, key string) (api.WorkflowRegistration, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.WorkflowRegistration{}, ErrForbidden
 	}
 	w, err := s.Store.GetWorkflowRegistration(ctx, key)
@@ -88,7 +88,7 @@ func (s *Service) GetWorkflowRegistration(ctx context.Context, p *auth.Principal
 // SaveWorkflow registers a workflow (create) or changes a registration;
 // its key never changes.
 func (s *Service) SaveWorkflowRegistration(ctx context.Context, p *auth.Principal, key string, create bool, w api.WorkflowRegistrationWrite) (api.WorkflowRegistration, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return api.WorkflowRegistration{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -181,7 +181,7 @@ func (s *Service) SaveWorkflowRegistration(ctx context.Context, p *auth.Principa
 
 // DeleteWorkflow removes a registration nothing uses.
 func (s *Service) DeleteWorkflowRegistration(ctx context.Context, p *auth.Principal, key string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return ErrForbidden
 	}
 	if _, err := s.Store.GetWorkflowRegistration(ctx, key); errors.Is(err, store.ErrNotFound) {

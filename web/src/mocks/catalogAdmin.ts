@@ -32,12 +32,12 @@ const builtinSources = [
 /** Who may be previewed as, per project (as the server's seed). */
 const previewMembers: Record<string, { id: string; role: string }[]> = {
   web: [
-    { id: "usr_lmartin", role: "project-admin" },
-    { id: "usr_tnguyen", role: "member" },
+    { id: "usr_lmartin", role: "Project admin" },
+    { id: "usr_tnguyen", role: "Member" },
   ],
-  data: [{ id: "usr_sbrunner", role: "project-admin" }],
-  fin: [{ id: "usr_sbrunner", role: "member" }],
-  core: [{ id: "usr_afavre", role: "project-admin" }],
+  data: [{ id: "usr_sbrunner", role: "Project admin" }],
+  fin: [{ id: "usr_sbrunner", role: "Member" }],
+  core: [{ id: "usr_afavre", role: "Project admin" }],
 };
 
 /** The server's answer to a preview as someone outside the project. */

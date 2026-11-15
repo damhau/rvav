@@ -18,7 +18,7 @@ import (
 func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.IpamReconcile, error) {
 	report := api.IpamReconcile{CheckedAt: time.Now().UTC(), OrphanAddresses: []api.IpamOrphanAddress{},
 		OrphanRecords: []api.IpamOrphanRecord{}, Missing: []api.IpamMissing{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.InfrastructureManage) {
 		return report, ErrForbidden
 	}
 	if s.IPAM == nil {

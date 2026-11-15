@@ -243,6 +243,20 @@ func (g Grants) In(p Permission, projectID string) bool {
 // Everywhere says whether the permission is held for all of rvav.
 func (g Grants) Everywhere(p Permission) bool { return g.all[p] }
 
+// Anywhere says whether the permission is held in a project at least, or
+// for all of rvav.
+func (g Grants) Anywhere(p Permission) bool {
+	if g.all[p] {
+		return true
+	}
+	for _, set := range g.projects {
+		if set[p] {
+			return true
+		}
+	}
+	return false
+}
+
 // Projects lists the projects where the permission is held, sorted; nil
 // means all of them.
 func (g Grants) Projects(p Permission) []string {

@@ -102,7 +102,7 @@ func (s *Service) testOIDC(ctx context.Context, settings map[string]any, roots *
 // from it. Nothing is saved.
 func (s *Service) TrialIdentityProvider(ctx context.Context, p *auth.Principal, req api.OidcTrialRequest) (api.OidcTrial, error) {
 	out := api.OidcTrial{Claims: map[string]any{}, Groups: []string{}, GlobalRoles: []string{}, ProjectRoles: []api.OidcTrialProjectRole{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return out, ErrForbidden
 	}
 	token := strings.TrimSpace(deref(req.AccessToken))

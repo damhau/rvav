@@ -109,7 +109,7 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request, params api
 		s.fail(w, r, err)
 		return
 	}
-	only := p.VisibleProjects()
+	only := p.Projects(auth.ProjectSee)
 	if only != nil && len(only) == 0 {
 		writeJSON(w, http.StatusOK, api.ProjectPage{Items: []api.Project{}})
 		return
@@ -128,7 +128,7 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request, params api
 
 func (s *Server) visibleProject(w http.ResponseWriter, r *http.Request, idOrCode string) (store.Project, bool) {
 	pr, err := s.Store.GetProject(r.Context(), idOrCode)
-	if err == nil && !principal(r).CanSeeProject(pr.ID) {
+	if err == nil && !principal(r).In(auth.ProjectSee, pr.ID) {
 		err = store.ErrNotFound
 	}
 	if err != nil {

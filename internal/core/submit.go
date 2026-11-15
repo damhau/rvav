@@ -237,7 +237,7 @@ func (s *Service) CanReadRequest(ctx context.Context, p *auth.Principal, r store
 
 // CanSeeRequest is true for the requester, the owner and anyone who can see the project.
 func CanSeeRequest(p *auth.Principal, r store.RequestRow) bool {
-	return p.CanSeeProject(r.ProjectID) || r.RequesterID == p.User.ID || r.OwnerID == p.User.ID
+	return p.In(auth.ProjectSee, r.ProjectID) || r.RequesterID == p.User.ID || r.OwnerID == p.User.ID
 }
 
 // Cancel stops a request. Waiting requests end at once; running ones stop
@@ -250,7 +250,7 @@ func (s *Service) Cancel(ctx context.Context, p *auth.Principal, idOrNumber stri
 	if err != nil {
 		return r, err
 	}
-	if r.RequesterID != p.User.ID && r.OwnerID != p.User.ID && p.ProjectRole(r.ProjectID) != "project-admin" {
+	if r.RequesterID != p.User.ID && r.OwnerID != p.User.ID && !p.In(auth.RequestManage, r.ProjectID) {
 		return r, fmt.Errorf("%w: only the requester, the owner or a project admin can cancel this request", ErrForbidden)
 	}
 	switch r.Status {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 )
 
@@ -21,7 +22,7 @@ const maxEstate = 64 << 20
 
 func (s *Server) ReadVra(w http.ResponseWriter, r *http.Request) {
 	// Only administrators get their file read at all.
-	if p := principal(r); !p.IsAdmin() {
+	if p := principal(r); !p.Everywhere(auth.ImportManage) {
 		s.fail(w, r, core.ErrForbidden)
 		return
 	}

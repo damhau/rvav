@@ -24,7 +24,7 @@ import (
 // admins and administrators.
 
 func (s *Service) adminItem(ctx context.Context, p *auth.Principal, idOrSlug string) (store.AdminItem, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return store.AdminItem{}, ErrForbidden
 	}
 	it, err := s.Store.GetAdminItem(ctx, idOrSlug)
@@ -111,7 +111,7 @@ func (s *Service) entitlements(ctx context.Context, it store.AdminItem) (api.Cat
 // AdminCatalogItems lists every item, in any state.
 func (s *Service) AdminCatalogItems(ctx context.Context, p *auth.Principal, f store.AdminItemFilter) (api.AdminCatalogItemPage, error) {
 	out := api.AdminCatalogItemPage{Items: []api.AdminCatalogItem{}}
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return out, ErrForbidden
 	}
 	page, err := s.Store.AdminItems(ctx, f)
@@ -135,7 +135,7 @@ var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
 
 // CreateCatalogItem makes an item and its first draft.
 func (s *Service) CreateCatalogItem(ctx context.Context, p *auth.Principal, c api.CatalogItemCreate) (api.AdminCatalogItem, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.AdminCatalogItem{}, ErrForbidden
 	}
 	var errs []api.FieldError

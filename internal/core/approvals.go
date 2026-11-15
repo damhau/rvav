@@ -71,7 +71,7 @@ func (s *Service) loadLevel(ctx context.Context, p *auth.Principal, id string) (
 	if err != nil {
 		return l, err
 	}
-	if !l.isApprover(p) && !CanSeeRequest(p, l.req) && !p.SeesEverything() {
+	if !l.isApprover(p) && !CanSeeRequest(p, l.req) && !p.Everywhere(auth.ApprovalReadAll) {
 		return l, ErrNotFound
 	}
 	return l, nil
@@ -97,7 +97,7 @@ func (s *Service) levelContext(ctx context.Context, lv store.Approval) (loadedLe
 // for admins and auditors with view=all.
 func (s *Service) ListApprovals(ctx context.Context, p *auth.Principal, params api.ListApprovalsParams) (api.ApprovalPage, error) {
 	all := params.View != nil && *params.View == api.ListApprovalsParamsViewAll
-	if all && !p.SeesEverything() {
+	if all && !p.Everywhere(auth.ApprovalReadAll) {
 		return api.ApprovalPage{}, fmt.Errorf("%w: only administrators and auditors can see every approval", ErrForbidden)
 	}
 	statuses := []string{"pending"}

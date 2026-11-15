@@ -3,7 +3,8 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import type { DeploymentDetail, DnsRecordResource, IpAddressResource, VmResource } from "@/lib/api/types";
-import { leasePolicyOf, memberRole } from "./administration";
+import { leasePolicyOf, rolesGiven } from "./administration";
+import { heldIn } from "./roles";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -84,13 +85,12 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
       else {
         if (!project.environments.includes(b.environment))
           errors.push(err("/environment", "invalid", `${project.name} has no environment ${b.environment}.`));
-        const role = memberRole(db, project.id, b.owner_id);
-        if (!role || role === "viewer")
+        if (!heldIn(db, [], rolesGiven(db, project.id, b.owner_id)).includes("request.submit"))
           errors.push(
             err(
               "/owner_id",
               "invalid",
-              `Choose a member of ${project.name} (not a viewer): owners run the actions on their deployments.`,
+              `Choose a member of ${project.name} who requests there: owners run the actions on their deployments.`,
             ),
           );
       }

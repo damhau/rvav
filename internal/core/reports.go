@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,7 +45,8 @@ func (s *Service) reportFilter(p *auth.Principal, q ReportQuery) (store.ReportFi
 	} else if q.To != nil {
 		from = to.AddDate(0, 0, -29)
 	}
-	f := store.ReportFilter{All: p.SeesEverything(), Project: q.ProjectID, Environment: q.Environment, From: from, To: to.AddDate(0, 0, 1)}
+	seen := p.Projects(auth.ProjectSee)
+	f := store.ReportFilter{All: seen == nil, Project: q.ProjectID, Environment: q.Environment, From: from, To: to.AddDate(0, 0, 1)}
 	switch {
 	case from.After(to):
 		return f, &ValidationError{Errors: []api.FieldError{fieldErr("/from", "invalid", "The first day comes after the last.")}}
@@ -59,7 +59,7 @@ func (s *Service) reportFilter(p *auth.Principal, q ReportQuery) (store.ReportFi
 		return f, &ValidationError{Errors: []api.FieldError{fieldErr("/interval", "enum", "day, week or month.")}}
 	}
 	if !f.All {
-		f.Projects = slices.Sorted(maps.Keys(p.ProjectRoles))
+		f.Projects = seen
 		if q.ProjectID != "" && !slices.Contains(f.Projects, q.ProjectID) {
 			return f, ErrForbidden
 		}

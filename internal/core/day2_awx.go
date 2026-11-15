@@ -191,7 +191,7 @@ func checkCondition(condition string, types []string) error {
 // administrators.
 func (s *Service) AWXActions(ctx context.Context, p *auth.Principal) (api.AwxActionList, error) {
 	out := api.AwxActionList{Items: []api.AwxAction{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return out, ErrForbidden
 	}
 	list, err := s.Store.AWXActions(ctx)
@@ -205,7 +205,7 @@ func (s *Service) AWXActions(ctx context.Context, p *auth.Principal) (api.AwxAct
 // name, the resource types it applies to, its condition and whether it is
 // offered.
 func (s *Service) UpdateAWXAction(ctx context.Context, p *auth.Principal, key string, u api.AwxActionUpdate) (api.AwxAction, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ExtensibilityManage) {
 		return api.AwxAction{}, ErrForbidden
 	}
 	var errs []api.FieldError

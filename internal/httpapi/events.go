@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -51,7 +52,7 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		}
 		projectID = pr.ID
 	}
-	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, CanSeeProject: p.CanSeeProject,
+	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, CanSeeProject: func(id string) bool { return p.In(auth.ProjectSee, id) },
 		Requests: map[string]bool{}}
 	// A single request may be followed by anyone who can read it, approvers
 	// outside its project included.

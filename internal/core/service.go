@@ -98,7 +98,7 @@ func (s *Service) visibleProject(ctx context.Context, p *auth.Principal, idOrCod
 	if err != nil {
 		return proj, err
 	}
-	if !p.CanSeeProject(proj.ID) {
+	if !p.In(auth.ProjectSee, proj.ID) {
 		return proj, ErrNotFound
 	}
 	return proj, nil

@@ -41,7 +41,7 @@ func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProj
 
 // AdminProjects lists projects for administrators and auditors.
 func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search string, archived bool) ([]api.AdminProject, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.ProjectSettingsRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AdminProjects(ctx, search, archived)
@@ -55,17 +55,17 @@ func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search s
 	return out, nil
 }
 
-// AdminProject is one project for its administrators: administrators,
-// auditors and its project admins.
+// AdminProject is one project for those who see its administration
+// (project.settings.read).
 func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string) (api.AdminProject, error) {
 	pr, err := s.Store.GetAdminProject(ctx, id)
-	if errors.Is(err, store.ErrNotFound) || err == nil && !p.CanSeeProject(pr.ID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !p.In(auth.ProjectSee, pr.ID) {
 		return api.AdminProject{}, ErrNotFound
 	}
 	if err != nil {
 		return api.AdminProject{}, err
 	}
-	if !p.SeesEverything() && p.ProjectRole(pr.ID) != "project-admin" {
+	if !p.In(auth.ProjectSettingsRead, pr.ID) {
 		return api.AdminProject{}, ErrForbidden
 	}
 	return presentAdminProject(pr, p), nil
@@ -87,7 +87,7 @@ func (s *Service) checkEnvironments(ctx context.Context, keys []string, ptr stri
 }
 
 func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.AdminProjectCreate) (api.AdminProject, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.ProjectCreate) {
 		return api.AdminProject{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -132,7 +132,7 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 }
 
 func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id string, u api.AdminProjectUpdate) (api.AdminProject, error) {
-	if !p.IsAdmin() {
+	if !p.In(auth.ProjectUpdate, id) {
 		return api.AdminProject{}, ErrForbidden
 	}
 	pr, err := s.Store.GetProject(ctx, id)
@@ -496,7 +496,7 @@ func presentAdminEnvironment(e store.AdminEnvironment) api.AdminEnvironment {
 }
 
 func (s *Service) AdminEnvironments(ctx context.Context, p *auth.Principal) ([]api.AdminEnvironment, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.EnvironmentsRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AdminEnvironments(ctx)
@@ -524,7 +524,7 @@ func (s *Service) adminEnvironment(ctx context.Context, key string) (api.AdminEn
 }
 
 func (s *Service) CreateEnvironment(ctx context.Context, p *auth.Principal, e api.AdminEnvironment) (api.AdminEnvironment, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.EnvironmentsManage) {
 		return api.AdminEnvironment{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -554,7 +554,7 @@ func (s *Service) CreateEnvironment(ctx context.Context, p *auth.Principal, e ap
 }
 
 func (s *Service) UpdateEnvironment(ctx context.Context, p *auth.Principal, key string, u api.AdminEnvironmentUpdate) (api.AdminEnvironment, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.EnvironmentsManage) {
 		return api.AdminEnvironment{}, ErrForbidden
 	}
 	if u.Name != nil && strings.TrimSpace(*u.Name) == "" {
@@ -578,7 +578,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, p *auth.Principal, key 
 }
 
 func (s *Service) DeleteEnvironment(ctx context.Context, p *auth.Principal, key string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.EnvironmentsManage) {
 		return ErrForbidden
 	}
 	switch err := s.Store.DeleteEnvironment(ctx, key); {

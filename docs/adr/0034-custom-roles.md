@@ -361,7 +361,7 @@ reference.
 | `catalog_git_admin.go` `CatalogGitStatus`, `ReadCatalogGit` | `canAdminCatalog` | `Everywhere(catalog.manage)` |
 | `composite_steps.go` `CompositeStepTargets` | `canAdminCatalog` | `Everywhere(catalog.manage)` |
 | `secrets.go` `ListSecrets`, `PutSecret`, `DeleteSecret` | `canAdminCatalog` | `Everywhere(catalog.manage)` |
-| `designer.go` `previewPrincipal` | `canAdminCatalog`; the user previewed as has a role in the project | `Everywhere(catalog.manage)`; they hold `project.see` there |
+| `designer.go` `previewPrincipal` | `canAdminCatalog`; the user previewed as has a role in the project | `Everywhere(catalog.manage)`; they are given a role in the project |
 | `designer.go` `PreviewCatalogItemVersion` | `visibleProject` as the user previewed as | unchanged (`project.see`) |
 | `designer.go` `PreviewUsers` | label `ProjectRole`, default member | the names of the roles held there |
 | `catalogues_admin.go` `VMTemplates`, `SizePresets` | `SeesEverything` | `Everywhere(infrastructure.read)` |

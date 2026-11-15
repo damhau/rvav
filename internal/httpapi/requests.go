@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -37,7 +38,7 @@ func (s *Server) ListRequests(w http.ResponseWriter, r *http.Request, params api
 		s.fail(w, r, err)
 		return
 	}
-	f := store.RequestFilter{Projects: p.VisibleProjects(), ViewerID: p.User.ID, ProjectID: deref(params.ProjectId),
+	f := store.RequestFilter{Projects: p.Projects(auth.ProjectSee), ViewerID: p.User.ID, ProjectID: deref(params.ProjectId),
 		Search: deref(params.Q), Limit: limitOf(params.Limit), After: after}
 	if f.Projects != nil && len(f.Projects) == 0 {
 		f.Projects = []string{}

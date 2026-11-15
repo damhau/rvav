@@ -62,7 +62,7 @@ func presentCategory(c store.AdminCategory) api.AdminCatalogCategory {
 // AdminCatalogCategories lists every category with its number of items.
 func (s *Service) AdminCatalogCategories(ctx context.Context, p *auth.Principal) (api.AdminCatalogCategoryList, error) {
 	out := api.AdminCatalogCategoryList{Items: []api.AdminCatalogCategory{}}
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return out, ErrForbidden
 	}
 	list, err := s.Store.AdminCategories(ctx)
@@ -87,7 +87,7 @@ func (s *Service) adminCategory(ctx context.Context, key string) (api.AdminCatal
 
 // CreateCatalogCategory adds a category.
 func (s *Service) CreateCatalogCategory(ctx context.Context, p *auth.Principal, c api.AdminCatalogCategory) (api.AdminCatalogCategory, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.AdminCatalogCategory{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -115,7 +115,7 @@ func (s *Service) CreateCatalogCategory(ctx context.Context, p *auth.Principal, 
 
 // UpdateCatalogCategory renames or reorders a category.
 func (s *Service) UpdateCatalogCategory(ctx context.Context, p *auth.Principal, key string, u api.AdminCatalogCategoryUpdate) (api.AdminCatalogCategory, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.AdminCatalogCategory{}, ErrForbidden
 	}
 	if u.Name != nil && (strings.TrimSpace(*u.Name) == "" || len(*u.Name) > 60) {
@@ -132,7 +132,7 @@ func (s *Service) UpdateCatalogCategory(ctx context.Context, p *auth.Principal, 
 
 // DeleteCatalogCategory removes an empty category.
 func (s *Service) DeleteCatalogCategory(ctx context.Context, p *auth.Principal, key string) error {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return ErrForbidden
 	}
 	switch err := s.Store.DeleteCategory(ctx, key); {
@@ -246,7 +246,7 @@ func (s *Service) ImportCatalogItem(ctx context.Context, p *auth.Principal, body
 // importItem imports the file; lastOnly makes a new item of its last
 // version only, a draft (a file of the catalog's repository).
 func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte, itemID string, lastOnly bool) (api.CatalogImportResult, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.CatalogImportResult{}, ErrForbidden
 	}
 	var root yaml.Node

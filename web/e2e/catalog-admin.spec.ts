@@ -104,7 +104,7 @@ test("build a small form in the designer", async ({ page }) => {
   await props.getByRole("button", { name: "Test the source" }).click();
   await expect(props.getByRole("status")).toContainText("2 options: rvav-web-admins, rvav-catalog-admins");
   await preview.getByRole("combobox", { name: "Preview as" }).click();
-  await page.getByRole("option", { name: "Thomas Nguyen (member)" }).click();
+  await page.getByRole("option", { name: "Thomas Nguyen (Member)" }).click();
   await props.getByRole("button", { name: "Test the source" }).click();
   await expect(props.getByRole("status")).toContainText("1 option: rvav-web");
 
@@ -180,7 +180,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await props.getByRole("textbox", { name: "Secret" }).press("Enter");
   await expect(status).toHaveText("Draft 1.0: saved");
   await preview.getByRole("combobox", { name: "Preview as" }).click();
-  await page.getByRole("option", { name: "Thomas Nguyen (member)" }).click();
+  await page.getByRole("option", { name: "Thomas Nguyen (Member)" }).click();
   await props.getByRole("button", { name: "Test the source" }).click();
   await expect(props.getByRole("status")).toContainText("2 options: Service 01, Service 02");
   await expect(preview.getByRole("combobox", { name: "Backup policy" })).toBeVisible();

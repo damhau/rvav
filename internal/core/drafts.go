@@ -99,7 +99,7 @@ func (s *Service) SaveRequestDraft(ctx context.Context, p *auth.Principal, id st
 	}
 	project, err := s.Store.GetProject(ctx, w.Draft.ProjectId)
 	switch {
-	case errors.Is(err, store.ErrNotFound) || err == nil && !p.CanRequest(project.ID):
+	case errors.Is(err, store.ErrNotFound) || err == nil && !p.In(auth.RequestSubmit, project.ID):
 		errs = append(errs, fieldErr("/draft/project_id", "unknown", "No such project, or not one you request in."))
 	case err != nil:
 		return api.SavedDraft{}, err

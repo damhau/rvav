@@ -92,7 +92,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		} else if !ok {
 			return out, ErrNotFound
 		}
-		if ver.State != "published" && !canAdminCatalog(p) {
+		if ver.State != "published" && !p.Everywhere(auth.CatalogManage) {
 			return out, ErrNotFound // drafts and earlier versions are for catalog admins
 		}
 	}

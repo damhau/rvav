@@ -147,7 +147,7 @@ onboarding ([ADR-0026](../adr/0026-onboarding.md)):
 | Its vSphere machines (`resourceName`) | The VMs of that name in the vCenters rvav reads. A name two vCenters both have isn't adopted. |
 | Its project | The rvav project it is mapped to (`-project`), or the one of the same name. |
 | Its `environment` (or `env`) input | Its environment, which must be one of the project's. |
-| Its owner (or who created it) | The rvav user of that email, who must be a member of the project (not a viewer). |
+| Its owner (or who created it) | The rvav user of that email, who must hold a role in the project that requests there (`request.submit`), such as Member or Project admin. |
 | The catalog item it was requested from | The item imported from that cloud template. Its published version is the deployment's. |
 | Its name | The same, made valid for rvav: lower case, other characters as dashes ("Web Server for Thomas" is web-server-for-thomas). |
 | The item | Must be published in rvav and offered to the project: the plan says when it isn't. |

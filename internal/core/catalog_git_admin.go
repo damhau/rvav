@@ -34,7 +34,7 @@ var errNoGit = &ConflictError{Msg: "rvav doesn't keep its catalog in Git: set th
 // CatalogGitStatus is the repository as rvav last read it, and every file
 // it keeps track of.
 func (s *Service) CatalogGitStatus(ctx context.Context, p *auth.Principal) (api.CatalogGitStatus, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.CatalogGitStatus{}, ErrForbidden
 	}
 	c := s.Config.Git
@@ -72,7 +72,7 @@ func (s *Service) CatalogGitStatus(ctx context.Context, p *auth.Principal) (api.
 // ReadCatalogGit reads the repository now and commits what waits, waiting
 // for it a minute at most.
 func (s *Service) ReadCatalogGit(ctx context.Context, p *auth.Principal) (api.CatalogGitStatus, error) {
-	if !canAdminCatalog(p) {
+	if !p.Everywhere(auth.CatalogManage) {
 		return api.CatalogGitStatus{}, ErrForbidden
 	}
 	if !s.Config.Git.Configured() {

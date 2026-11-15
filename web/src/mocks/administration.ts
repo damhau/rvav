@@ -407,9 +407,9 @@ export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeaseP
   return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
 }
 
-/** A user's strongest built-in role in a project ("" when none), for other mock handlers. */
-export function memberRole(db: Db, projectId: string, userId: string): string {
-  return strongest((state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role)) ?? "";
+/** The keys of the roles given to a user directly in a project. */
+export function rolesGiven(db: Db, projectId: string, userId: string): string[] {
+  return (state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role);
 }
 
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {

@@ -33,7 +33,7 @@ func (s *Service) ProjectQuotas(ctx context.Context, p *auth.Principal, projectI
 	if err != nil {
 		return nil, err
 	}
-	if !canSeeSettings(p, proj.ID) {
+	if !p.In(auth.ProjectSettingsRead, proj.ID) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.ProjectQuotas(ctx, proj.ID)
@@ -49,7 +49,7 @@ func (s *Service) ProjectQuotas(ctx context.Context, p *auth.Principal, projectI
 }
 
 func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, projectID string, items []api.QuotaLimit) ([]api.QuotaLimit, error) {
-	if !p.IsAdmin() {
+	if !p.In(auth.ProjectQuotasManage, projectID) {
 		return nil, ErrForbidden
 	}
 	proj, err := s.Store.GetProject(ctx, projectID)
@@ -100,7 +100,7 @@ func presentLeasePolicy(l store.LeasePolicy) api.LeasePolicy {
 }
 
 func (s *Service) LeasePolicies(ctx context.Context, p *auth.Principal) ([]api.LeasePolicy, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.PoliciesRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.LeasePolicies(ctx)
@@ -115,7 +115,7 @@ func (s *Service) LeasePolicies(ctx context.Context, p *auth.Principal) ([]api.L
 }
 
 func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.LeasePolicy) (api.LeasePolicy, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return api.LeasePolicy{}, ErrForbidden
 	}
 	var errs []api.FieldError
@@ -164,7 +164,7 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 }
 
 func (s *Service) DeleteLeaseOverride(ctx context.Context, p *auth.Principal, environment, projectID string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteLeaseOverride(ctx, environment, projectID); errors.Is(err, store.ErrNotFound) {
@@ -282,7 +282,7 @@ func presentApprovalPolicy(pol store.AdminApprovalPolicy) api.ApprovalPolicy {
 }
 
 func (s *Service) ApprovalPolicies(ctx context.Context, p *auth.Principal) ([]api.ApprovalPolicy, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.PoliciesRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AllApprovalPolicies(ctx)
@@ -311,7 +311,7 @@ func (s *Service) checkProjectRef(ctx context.Context, id *string) (*string, []a
 }
 
 func (s *Service) SaveApprovalPolicy(ctx context.Context, p *auth.Principal, id string, w api.ApprovalPolicyWrite) (api.ApprovalPolicy, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return api.ApprovalPolicy{}, ErrForbidden
 	}
 	if id != "" {
@@ -372,7 +372,7 @@ func (s *Service) SaveApprovalPolicy(ctx context.Context, p *auth.Principal, id 
 }
 
 func (s *Service) DeleteApprovalPolicy(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteApprovalPolicy(ctx, id); errors.Is(err, store.ErrNotFound) {
@@ -398,7 +398,7 @@ func presentDay2Policy(pol store.AdminDay2Policy) api.Day2Policy {
 }
 
 func (s *Service) Day2Policies(ctx context.Context, p *auth.Principal) ([]api.Day2Policy, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.PoliciesRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AllDay2Policies(ctx)
@@ -413,7 +413,7 @@ func (s *Service) Day2Policies(ctx context.Context, p *auth.Principal) ([]api.Da
 }
 
 func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id string, w api.Day2PolicyWrite) (api.Day2Policy, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return api.Day2Policy{}, ErrForbidden
 	}
 	if id != "" {
@@ -490,7 +490,7 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 }
 
 func (s *Service) DeleteDay2Policy(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.PoliciesManage) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteDay2Policy(ctx, id); errors.Is(err, store.ErrNotFound) {
@@ -512,7 +512,7 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 	if err != nil {
 		return out, err
 	}
-	if !canSeeSettings(p, proj.ID) {
+	if !p.In(auth.ProjectSettingsRead, proj.ID) {
 		return out, ErrForbidden
 	}
 	env, err := s.Store.GetEnvironment(ctx, q.Environment)
@@ -529,12 +529,12 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 			return out, err
 		}
 		// As someone of the project only, as in the designer's preview.
-		if !as.CanSeeProject(proj.ID) {
+		if !as.In(auth.ProjectSee, proj.ID) {
 			return out, &ValidationError{Errors: []api.FieldError{fieldErr("/as_user_id", "not_member", "They are not in "+proj.Name+".")}}
 		}
 	}
-	// Project admins see the policies that concern their project only.
-	full := p.SeesEverything()
+	// Without policies.read, only the policies that concern the project.
+	full := p.Everywhere(auth.PoliciesRead)
 	inputs := map[string]any{}
 	if q.Inputs != nil {
 		inputs = *q.Inputs

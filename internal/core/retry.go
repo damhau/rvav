@@ -33,7 +33,7 @@ func (s *Service) failedRequest(ctx context.Context, p *auth.Principal, idOrNumb
 			owner, project = d.OwnerID, d.ProjectID
 		}
 	}
-	if r.RequesterID != p.User.ID && owner != p.User.ID && p.ProjectRole(project) != "project-admin" {
+	if r.RequesterID != p.User.ID && owner != p.User.ID && !p.In(auth.RequestManage, project) {
 		return r, fmt.Errorf("%w: only the requester, the owner or a project admin can %s this request", ErrForbidden, verb)
 	}
 	if r.Status != "failed" {

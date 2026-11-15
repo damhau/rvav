@@ -130,7 +130,7 @@ func (s *Service) consoleSecretSet(ctx context.Context, row *store.IntegrationSe
 }
 
 func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.Integration, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return nil, ErrForbidden
 	}
 	stored, err := s.Store.StoredIntegrations(ctx)
@@ -182,7 +182,7 @@ func checkIntegrationKind(kind string) error {
 // SetIntegration saves an integration's settings; fields an environment
 // variable sets are left out. The secret, when given, is sealed.
 func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind string, w api.IntegrationWrite) (api.Integration, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.Integration{}, ErrForbidden
 	}
 	if err := checkIntegrationKind(kind); err != nil {
@@ -286,7 +286,7 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 // (environment variables still win), and says which checks pass.
 func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind string, w *api.IntegrationWrite) (api.IntegrationTest, error) {
 	out := api.IntegrationTest{Checks: []api.IntegrationCheck{}}
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.IntegrationsManage) {
 		return out, ErrForbidden
 	}
 	if err := checkIntegrationKind(kind); err != nil {

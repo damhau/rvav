@@ -16,7 +16,7 @@ import (
 // Setup is the setup checklist (ADR-0030): the steps that set rvav up from
 // its UI, each done or not, with what there is now.
 func (s *Service) Setup(ctx context.Context, p *auth.Principal) (api.Setup, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.SystemManage) {
 		return api.Setup{}, ErrForbidden
 	}
 	st, err := s.Store.SetupState(ctx, LocalAdminUsername)
@@ -76,7 +76,7 @@ func (s *Service) Setup(ctx context.Context, p *auth.Principal) (api.Setup, erro
 
 // SetSetup hides the checklist, or has it open at sign-in again.
 func (s *Service) SetSetup(ctx context.Context, p *auth.Principal, w api.SetupWrite) (api.Setup, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.SystemManage) {
 		return api.Setup{}, ErrForbidden
 	}
 	action := "setup.shown"

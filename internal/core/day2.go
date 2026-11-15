@@ -27,7 +27,7 @@ import (
 // visibleDeployment loads a deployment the principal may see.
 func (s *Service) visibleDeployment(ctx context.Context, p *auth.Principal, id string) (store.DeploymentRow, error) {
 	d, err := s.Store.GetDeployment(ctx, id)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && !p.CanSeeProject(d.ProjectID) && d.OwnerID != p.User.ID) {
+	if errors.Is(err, store.ErrNotFound) || (err == nil && !p.In(auth.ProjectSee, d.ProjectID) && d.OwnerID != p.User.ID) {
 		return d, ErrNotFound
 	}
 	return d, err
