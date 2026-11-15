@@ -249,9 +249,20 @@ function state(db: Db): AdminState {
       { id: "gmp_web", oidc_group: "rvav-web", project: ref("prj_web"), role: "member", role_name: "Member", users: 1 },
       { id: "gmp_data", oidc_group: "rvav-data", project: ref("prj_data"), role: "member", role_name: "Member", users: 1 },
     ], // prettier-ignore
+    // A persona's custom role was given by someone; built-in ones rvav set.
     roleAssignments: db.me.roles
       .filter((r) => r.key !== "user")
-      .map((r) => ({ user: db.me.user, role: { key: r.key, name: r.name }, fixed: true })),
+      .map((r) =>
+        roleOf(null, r.key)
+          ? { user: db.me.user, role: { key: r.key, name: r.name }, fixed: true }
+          : {
+              id: "ras_persona",
+              user: db.me.user,
+              role: { key: r.key, name: r.name },
+              fixed: false,
+              created_at: ago(30),
+            },
+      ),
     envs: Object.fromEntries(db.environments.map((e) => [e.key, { snapshot_max_count: 3, snapshot_max_age_days: 7 }])),
     rules,
     mappings: networks.map((n) => ({

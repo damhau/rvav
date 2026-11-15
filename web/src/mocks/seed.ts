@@ -23,7 +23,7 @@ import { factsFor } from "./approvals";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { formFor } from "./forms";
 import { DOMAIN, networks, templates, VCENTER } from "./inventory";
-import { heldIn, meProject, roleRefs } from "./roles";
+import { builtinRoles, customRoles, heldIn, meProject, type MockRole, roleRefs } from "./roles";
 
 export interface StoredRequest {
   request: ServiceRequest;
@@ -115,24 +115,36 @@ export function createDb(now = Date.now()): Db {
 
   // Mock mode shows every page: the mock user is an administrator too, unless
   // rvav.mock.as in localStorage says "project-admin" or "auditor" (tests of
-  // what those see). An auditor holds no role in a project, as the server's
-  // seed gives none.
+  // what those see), or names a custom role of A1's acceptance: "vm-operator"
+  // in Web Platform, "compliance-auditor" for all of rvav. An auditor holds
+  // no role in a project, as the server's seed gives none.
   let as: string | null = null;
   try {
     as = localStorage.getItem("rvav.mock.as");
   } catch {
     // No storage: an administrator.
   }
-  const rvav = as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"];
+  const persona = as ? personaRoles[as] : undefined;
+  const roles = { customRoles: persona ? [persona] : [] } as unknown as Db;
+  const auditing = as === "auditor" || as === "compliance-auditor";
+  const rvav =
+    as === "project-admin" || as === "vm-operator"
+      ? ["user"]
+      : as === "auditor" || as === "compliance-auditor"
+        ? ["user", as]
+        : ["user", "admin"];
   const me: Me = {
     user: lea,
     title: "Platform engineer",
-    permissions: heldIn(null, rvav, []),
-    roles: roleRefs(null, rvav),
-    projects: [
-      meProject(null, ref(web), rvav, as === "auditor" ? [] : ["project-admin"]),
-      meProject(null, ref(data), rvav, as === "auditor" ? [] : ["member"]),
-    ],
+    permissions: heldIn(roles, rvav, []),
+    roles: roleRefs(roles, rvav),
+    projects:
+      as === "vm-operator"
+        ? [meProject(roles, ref(web), rvav, ["vm-operator"])]
+        : [
+            meProject(roles, ref(web), rvav, auditing ? [] : ["project-admin"]),
+            meProject(roles, ref(data), rvav, auditing ? [] : ["member"]),
+          ],
   };
 
   const categories = [
@@ -1329,7 +1341,7 @@ export function createDb(now = Date.now()): Db {
       fresh: true,
     };
   }
-  return {
+  const out: Db = {
     me,
     users,
     environments,
@@ -1356,7 +1368,27 @@ export function createDb(now = Date.now()): Db {
     seq: { request: 10491, id: idSeq + 1000, moref: moref + 500, event: 0 },
     fresh: false,
   };
+  if (persona) customRoles(out).push(persona);
+  return out;
 }
+
+/** The custom roles A1's acceptance makes, held by the personas of the same keys. */
+const personaRoles: Record<string, MockRole> = {
+  "vm-operator": {
+    key: "vm-operator",
+    name: "VM operator",
+    description: "Powers the project's VMs on and off, nothing else.",
+    permissions: ["day2.power:power_off", "day2.power:power_on", "project.see"],
+    built_in: false,
+  },
+  "compliance-auditor": {
+    key: "compliance-auditor",
+    name: "Compliance auditor",
+    description: "Sees everything, changes nothing.",
+    permissions: builtinRoles.find((r) => r.key === "auditor")!.permissions,
+    built_in: false,
+  },
+};
 
 export const db: Db = createDb();
 
