@@ -132,6 +132,15 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/admin/roles/new (refused)");
     });
 
+    // A member's roles, given here and through a group (A1.3).
+    test("axe: a member's roles changing", async ({ page }) => {
+      await page.goto("/admin/projects/prj_web");
+      await loaded(page);
+      await page.getByRole("button", { name: "Change roles of Thomas Nguyen" }).click();
+      await expect(page.getByRole("dialog", { name: "Roles of Thomas Nguyen" })).toBeVisible();
+      await scan(page, "/admin/projects/prj_web (a member's roles)");
+    });
+
     test("axe: an approval open in the inbox", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);

@@ -10,7 +10,19 @@ import { celCheck } from "./cel";
 import { audited } from "./governance";
 import { clusters, datastores, networks } from "./inventory";
 import type { Db } from "./seed";
-import { assignable, heldIn, meProject, roleOf, roleRefs, rolesHandlers, strongest } from "./roles";
+import { userGroups } from "./logic";
+import {
+  assignable,
+  builtinRoles,
+  customRoles,
+  heldIn,
+  type MockRole,
+  meProject,
+  roleOf,
+  roleRefs,
+  rolesHandlers,
+  strongest,
+} from "./roles";
 import { localAdminPasswordChanged } from "./signIn";
 
 type S = components["schemas"];
@@ -212,13 +224,24 @@ function state(db: Db): AdminState {
   d.administration = {
     seq: 1000,
     extra: Object.fromEntries(db.projects.map((p) => [p.id, { created_at: ago(400) }])),
-    members: {
-      prj_web: [
-        { userId: "usr_lmartin", role: "project-admin" },
-        { userId: "usr_tnguyen", role: "member" },
-      ],
-      prj_data: [{ userId: "usr_sbrunner", role: "project-admin" }],
-    },
+    // The mock user's roles in a project are /me's.
+    members: Object.fromEntries(
+      (
+        [
+          ["prj_web", [{ userId: "usr_tnguyen", role: "member" }]],
+          ["prj_data", [{ userId: "usr_sbrunner", role: "project-admin" }]],
+        ] as [string, Member[]][]
+      ).map(([id, list]) => [
+        id,
+        [
+          ...(db.me.projects.find((p) => p.project.id === id)?.roles ?? []).map((r) => ({
+            userId: db.me.user.id,
+            role: r.key,
+          })),
+          ...list,
+        ],
+      ]),
+    ),
     groups: [
       { id: "gmp_admins", oidc_group: "rvav-admins", project: null, role: "admin", role_name: "Administrator", users: 1 },
       { id: "gmp_catalog", oidc_group: "rvav-catalog-admins", project: null, role: "catalog-admin", role_name: "Catalog admin", users: 1 },
@@ -408,8 +431,36 @@ export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeaseP
 }
 
 /** The keys of the roles given to a user directly in a project. */
+/** The roles a user holds in a project: given to them there, or through a group. */
 export function rolesGiven(db: Db, projectId: string, userId: string): string[] {
-  return (state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role);
+  return [
+    ...(state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role),
+    ...groupGrants(db, userId)
+      .filter((g) => g.project?.id === projectId)
+      .map((g) => g.role),
+  ];
+}
+
+/** The group mappings that give a user a role, by their groups at their last sign-in. */
+export function groupGrants(db: Db, userId: string): S["GroupMapping"][] {
+  const groups = userGroups[userId] ?? [];
+  return state(db).groups.filter((g) => groups.includes(g.oidc_group));
+}
+
+/** Says whether the mock user holds a permission in a project, a day-2 action through its group too. */
+function holdsIn(db: Db, projectId: string, permission: string): boolean {
+  const held = new Set([
+    ...db.me.permissions,
+    ...(db.me.projects.find((p) => p.project.id === projectId)?.permissions ?? []),
+  ]);
+  const group = /^(day2\.[a-z]+):/.exec(permission)?.[1];
+  return held.has(permission) || Boolean(group && held.has(group));
+}
+
+/** Says whether the mock user may give a role in a project, or take it away, as the server's mayGive. */
+export function mayGive(db: Db, r: MockRole, projectId: string): boolean {
+  if (db.me.permissions.includes("access.manage")) return true;
+  return holdsIn(db, projectId, "project.members.manage") && r.permissions.every((p) => holdsIn(db, projectId, p));
 }
 
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
@@ -681,23 +732,54 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
   };
   const rolesOfUser = (projectId: string, userId: string) =>
     (st().members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role);
+  const viaGroups = (projectId: string, userId: string) =>
+    groupGrants(db, userId).filter((g) => g.project?.id === projectId);
   const members = (projectId: string): S["ProjectMember"][] => {
-    const ids = [...new Set((st().members[projectId] ?? []).map((m) => m.userId))];
+    const ids = [
+      ...new Set([
+        ...(st().members[projectId] ?? []).map((m) => m.userId),
+        ...db.users.filter((u) => viaGroups(projectId, u.id).length > 0).map((u) => u.id),
+      ]),
+    ];
     return ids.map((userId) => {
-      const keys = rolesOfUser(projectId, userId).sort();
-      const role = strongest(keys);
+      const direct = rolesOfUser(projectId, userId).sort();
+      const groups = viaGroups(projectId, userId);
+      const keys = [...new Set([...direct, ...groups.map((g) => g.role)])];
+      const directRole = strongest(direct);
       return {
-        user: { id: userId, name: user(userId)?.name ?? userId },
-        role,
+        user: user(userId) ?? { id: userId, name: userId },
+        role: strongest(keys),
         roles: roleRefs(db, keys)
-          .map((r) => ({ ...r, direct: true, groups: [] }))
+          .map((r) => ({
+            ...r,
+            direct: direct.includes(r.key),
+            groups: groups.filter((g) => g.role === r.key).map((g) => g.oidc_group),
+          }))
           .sort((a, b) => a.name.localeCompare(b.name)),
-        direct: true,
-        ...(role ? { direct_role: role } : {}),
-        direct_roles: keys,
-        groups: [],
+        direct: direct.length > 0,
+        ...(directRole ? { direct_role: directRole } : {}),
+        direct_roles: direct,
+        groups: [...new Set(groups.map((g) => g.oidc_group))],
       };
     });
+  };
+  const forbidden = (detail: string) => problem(403, "Not allowed", undefined, detail);
+  /** What the server refuses in a change of someone's roles in a project: roles the mock user may not give or take away. */
+  const refusal = (projectId: string, current: string[], keys: string[]) => {
+    const p = project(projectId);
+    if (!p) return problem(404, "Not found");
+    if (!holdsIn(db, p.id, "project.members.manage")) return forbidden("you may not manage its members");
+    for (const k of keys.filter((k) => !current.includes(k))) {
+      const r = roleOf(db, k)!;
+      if (!mayGive(db, r, p.id))
+        return forbidden(`you may not give ${r.name}: it allows what you may not do in ${p.name}`);
+    }
+    for (const k of current.filter((k) => !keys.includes(k))) {
+      const r = roleOf(db, k);
+      if (r && !mayGive(db, r, p.id))
+        return forbidden(`you may not take ${r.name} away: it allows what you may not do in ${p.name}`);
+    }
+    return null;
   };
   /** Keeps /me's project current when the mock user's own roles there change. */
   const refreshMe = (projectId: string) => {
@@ -788,6 +870,23 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       audited(db, u.archived === true ? "project.archive" : "project.update", "project", p.id);
       return HttpResponse.json(adminProject(p));
     }),
+    http.get(`${base}/projects/:id/assignable-roles`, async ({ params }) => {
+      await wait();
+      const p = project(String(params.id));
+      if (!p) return problem(404, "Not found");
+      if (!holdsIn(db, p.id, "project.members.manage")) return forbidden("you may not manage its members");
+      return HttpResponse.json({
+        items: [...builtinRoles, ...customRoles(db)]
+          .filter((r) => r.key !== "user" && assignable(r, true) && mayGive(db, r, p.id))
+          .map(({ key, name, description, permissions, built_in }) => ({
+            key,
+            name,
+            description,
+            permissions,
+            built_in,
+          })),
+      });
+    }),
     http.get(`${base}/projects/:id/members`, async ({ params }) => {
       await wait();
       return HttpResponse.json({ items: members(String(params.id)) });
@@ -807,6 +906,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         return assignable(r, true) ? [] : [err(at, `${r.name} is given for all of rvav, not in a project.`)];
       });
       if (errors.length) return invalid(errors);
+      const refused = refusal(id, rolesOfUser(id, userId), keys);
+      if (refused) return refused;
       const list = (st().members[id] ??= []);
       const current = rolesOfUser(id, userId);
       const others = list.filter((x) => x.userId !== userId && manages(x.role)).length;
@@ -836,7 +937,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const userId = String(params.userId);
       const list = st().members[id] ?? [];
       const current = rolesOfUser(id, userId);
+      if (current.length === 0 && viaGroups(id, userId).length > 0)
+        return problem(409, "Conflict", undefined, "They are a member through a group only: change the group mapping.");
       if (current.length === 0) return problem(404, "Not found");
+      const refused = refusal(id, current, []);
+      if (refused) return refused;
       if (current.some(manages) && list.filter((x) => x.userId !== userId && manages(x.role)).length === 0)
         return problem(
           409,
@@ -877,7 +982,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         project: p ? { id: p.id, code: p.code, name: p.name } : null,
         role: r.key,
         role_name: r.name,
-        users: 0,
+        users: db.users.filter((u) => (userGroups[u.id] ?? []).includes(w.oidc_group.trim())).length,
       };
       st().groups.push(m);
       audited(db, "group_mapping.create", "group_mapping", m.id, { group: m.oidc_group, role: m.role });

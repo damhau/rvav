@@ -316,10 +316,19 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
   be deleted.
 
 To give a role:
-- in a project, to a member (`PUT /api/v1/projects/{id}/members/{user}`
-  with `roles`) or to a group (a group mapping with the project);
-- for all of rvav, to a user (`POST /api/v1/admin/role-assignments`) or
-  to a group (a group mapping without a project).
+- in a project, to a member: on the project's page, **Members**, choose
+  it in **As** and add them, or select **Change roles** to give or take
+  away the roles given there (`PUT /api/v1/projects/{id}/members/{user}`
+  with `roles`). Someone may hold several roles in a project, each given
+  there or through a group. A project admin is offered only the roles
+  whose permissions they hold in the project;
+- in a project, to a group: in **Projects › OIDC group mappings**, choose
+  the project and the role;
+- for all of rvav, to a user: in **Administration › Roles › For all of
+  rvav**, choose the role, then the person in **Give someone**
+  (`POST /api/v1/admin/role-assignments`);
+- for all of rvav, to a group: a group mapping with **For all of rvav**
+  instead of a project.
 
 rvav refuses a change that would leave no one holding `access.manage`, or
 a project with no one holding `project.members.manage`. A change applies

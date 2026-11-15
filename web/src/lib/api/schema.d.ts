@@ -5419,9 +5419,10 @@ export interface components {
             project_id?: string;
             /**
              * @description A role's key, built-in or custom. Without a project for a role
-             *     given for all of rvav only (admin, catalog-admin, auditor, or one
-             *     holding such a permission); with one for project-admin, member and
-             *     viewer.
+             *     that can be given for all of rvav (admin, catalog-admin, auditor,
+             *     or a custom one); with one for a role that can be given in a
+             *     project (project-admin, member, viewer, or a custom one holding no
+             *     permission for all of rvav only).
              */
             role: string;
         };

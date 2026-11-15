@@ -18,6 +18,7 @@ import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors } from "../governance/common";
 import { allows, byArea, type Catalogue, inOrder, scopeOf, scopeText } from "./permissions";
+import { AdminWarning, Refusal, refused } from "./refusal";
 
 type S = components["schemas"];
 
@@ -26,29 +27,6 @@ const crumbs = (
     Roles
   </Link>
 );
-
-/** A refusal the server said in words, where it happened. */
-function Refusal({ error }: { error: unknown }) {
-  if (!isApiError(error) || error.status !== 409) return null;
-  return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-bad">
-      <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-      {error.problem.detail ?? error.problem.title}
-    </p>
-  );
-}
-
-function AdminWarning() {
-  return (
-    <p className="flex items-start gap-1.5 rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
-      <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-      <span>
-        With <span className="font-mono">access.manage</span>, whoever holds this role is an administrator in all but
-        name: they can give themselves any permission.
-      </span>
-    </p>
-  );
-}
 
 const givenText = (scope: S["RoleScope"], why?: string) =>
   scope === "project"
@@ -253,7 +231,7 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
       if (!role) void navigate({ to: "/admin/roles/$roleKey", params: { roleKey: r.key } });
     },
     onError: (e) => {
-      if (!isApiError(e) || (e.status !== 409 && e.status !== 422)) failed(e, "Not saved");
+      if (!refused(e, [409, 422])) failed(e, "Not saved");
     },
   });
   const remove = useMutation({
@@ -264,7 +242,7 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
       void navigate({ to: "/admin/roles" });
     },
     onError: (e) => {
-      if (!isApiError(e) || e.status !== 409) failed(e, "Not deleted");
+      if (!refused(e, [409])) failed(e, "Not deleted");
     },
   });
   const errors = fieldErrors(save.error);
@@ -355,8 +333,8 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
               </Button>
             )}
           </div>
-          {!keyTaken && <Refusal error={save.error} />}
-          <Refusal error={remove.error} />
+          {!keyTaken && <Refusal error={save.error} only={[409]} />}
+          <Refusal error={remove.error} only={[409]} />
         </div>
       </div>
     </form>

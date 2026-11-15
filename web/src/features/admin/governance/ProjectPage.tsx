@@ -18,14 +18,10 @@ import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
+import { Refusal, refused } from "../access/refusal";
 import { errorAt, failed, fieldErrors, td, th, UserPicker } from "./common";
 
 type S = components["schemas"];
-const roleOptions = [
-  { value: "project-admin", label: "Project admin" },
-  { value: "member", label: "Member" },
-  { value: "viewer", label: "Viewer" },
-];
 const list = (s: string) =>
   s
     .split(",")
@@ -132,27 +128,127 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
   );
 }
 
-function Members({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+/** Where a role a member holds here comes from. */
+function sourceText(r: S["ProjectMemberRole"]): string {
+  return [r.direct ? "given here" : "", ...r.groups.map((g) => `through ${g}`)].filter(Boolean).join(" and ");
+}
+
+/** The roles given to someone in the project themselves: those the caller may give, and those held already. */
+function RolesDialog({
+  project,
+  member,
+  offered,
+  onClose,
+}: {
+  project: S["AdminProject"];
+  member: S["ProjectMember"];
+  offered: S["AssignableRole"][];
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
+  const [keys, setKeys] = useState(member.direct_roles);
+  const kept = member.roles.filter((r) => r.direct && !offered.some((o) => o.key === r.key));
+  const viaGroups = member.roles.filter((r) => r.groups.length > 0);
+  const save = useMutation({
+    mutationFn: () =>
+      call(
+        api.PUT("/projects/{projectId}/members/{userId}", {
+          params: { path: { projectId: project.id, userId: member.user.id } },
+          body: { roles: keys },
+        }),
+      ),
+    onSuccess: (m) => {
+      void qc.invalidateQueries({ queryKey: ["admin"] });
+      void qc.invalidateQueries({ queryKey: ["me"] });
+      toast.success(`${m.user.name}'s roles saved`);
+      onClose();
+    },
+    onError: (e) => {
+      if (!refused(e)) failed(e, "Not saved");
+    },
+  });
+  const toggle = (key: string, on: boolean) => setKeys(on ? [...keys, key] : keys.filter((k) => k !== key));
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        title={`Roles of ${member.user.name}`}
+        description={`Given to them in ${project.name} themselves. A role through a group changes with its mapping.`}
+      >
+        <form
+          className="flex flex-col gap-3 p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1 text-xs font-medium">Given here</legend>
+            {offered.map((r) => (
+              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-[13px]">
+                <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
+                {r.name}
+                {!r.built_in && <span className="font-mono text-xs text-muted">{r.key}</span>}
+              </label>
+            ))}
+            {kept.map((r) => (
+              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-[13px]">
+                <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
+                {r.name}
+                <span className="text-xs text-muted">(you may not take it away)</span>
+              </label>
+            ))}
+          </fieldset>
+          {viaGroups.length > 0 && (
+            <p className="text-xs text-muted">
+              Through groups: {viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; ")}.
+            </p>
+          )}
+          {keys.length === 0 && (
+            <p className="text-xs text-muted">Choose a role, or remove them from the project in the list.</p>
+          )}
+          <Refusal error={save.error} />
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={keys.length === 0 || save.isPending}>
+              Save roles
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Members({ project, canManage }: { project: S["AdminProject"]; canManage: boolean }) {
+  const projectId = project.id;
+  const qc = useQueryClient();
+  const { me } = useCurrentProject();
   const members = useQuery(adm.members(projectId));
+  const offered = useQuery({ ...adm.assignableRoles(projectId), enabled: canManage });
   const [role, setRole] = useState("member");
+  const [editing, setEditing] = useState<S["ProjectMember"] | null>(null);
+  const roleName = (key: string) => offered.data?.items.find((r) => r.key === key)?.name ?? key;
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["admin", "members", projectId] });
-    void qc.invalidateQueries({ queryKey: ["admin", "project", projectId] });
+    void qc.invalidateQueries({ queryKey: ["admin"] });
+    void qc.invalidateQueries({ queryKey: ["me"] });
   };
-  const set = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+  const add = useMutation({
+    mutationFn: ({ userId, roles }: { userId: string; roles: string[] }) =>
       call(
         api.PUT("/projects/{projectId}/members/{userId}", {
           params: { path: { projectId, userId } },
-          body: { role: role as S["ProjectRole"] },
+          body: { roles },
         }),
       ),
     onSuccess: (m) => {
       refresh();
-      toast.success(`${m.user.name} is a ${m.direct_role ?? m.role}`);
+      toast.success(`${m.user.name} added as ${roleName(role)}`);
     },
-    onError: (e) => failed(e, "Not changed"),
+    onError: (e) => {
+      if (!refused(e)) failed(e, "Not added");
+    },
   });
   const remove = useMutation({
     mutationFn: (userId: string) =>
@@ -163,25 +259,41 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
     },
     onError: (e) => failed(e, "Not removed"),
   });
+  const seesRoles = can(me, "access.read");
   return (
     <Panel title="Members" flush>
       {canManage && (
-        <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
-          <div className="w-72">
-            <UserPicker
-              label="Add someone"
-              id="member-search"
-              onPick={(u) =>
-                // Picking someone already in the project doesn't change their role: the list does.
-                members.data?.items.some((m) => m.user.id === u.id && m.direct)
-                  ? toast.info(`${u.name} is already a member`, { description: "Change their role in the list." })
-                  : set.mutate({ userId: u.id, role })
-              }
-            />
+        <div className="flex flex-col gap-2 border-b border-line px-4 py-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-72">
+              <UserPicker
+                label="Add someone"
+                id="member-search"
+                onPick={(u) => {
+                  const m = members.data?.items.find((x) => x.user.id === u.id);
+                  if (m?.direct_roles.includes(role))
+                    toast.info(`${u.name} already holds ${roleName(role)}`, {
+                      description: "Change their roles in the list.",
+                    });
+                  else add.mutate({ userId: u.id, roles: [...(m?.direct_roles ?? []), role] });
+                }}
+              />
+            </div>
+            <Field label="As" htmlFor="member-role" className="w-48">
+              <Select
+                id="member-role"
+                value={role}
+                onChange={setRole}
+                loading={offered.isPending}
+                options={(offered.data?.items ?? []).map((r) => ({
+                  value: r.key,
+                  label: r.name,
+                  group: r.built_in ? "Built in" : "Custom",
+                }))}
+              />
+            </Field>
           </div>
-          <Field label="As" htmlFor="member-role" className="w-40">
-            <Select id="member-role" value={role} onChange={setRole} options={roleOptions} />
-          </Field>
+          <Refusal error={add.error} />
         </div>
       )}
       {members.isPending && <SkeletonRows rows={3} cols={3} />}
@@ -195,10 +307,7 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
                   Who
                 </th>
                 <th scope="col" className={th}>
-                  Role
-                </th>
-                <th scope="col" className={th}>
-                  Through
+                  Roles, and where each comes from
                 </th>
                 <th scope="col" className={th}>
                   <span className="sr-only">Actions</span>
@@ -212,31 +321,34 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
                     {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
                   </td>
                   <td className={td}>
-                    {m.direct && canManage ? (
-                      <Select
-                        aria-label={`Role of ${m.user.name}`}
-                        value={m.direct_role ?? m.role ?? ""}
-                        onChange={(v) => set.mutate({ userId: m.user.id, role: v })}
-                        options={roleOptions}
-                        className="w-40"
-                      />
-                    ) : (
-                      (roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label ??
-                      m.roles.map((r) => r.name).join(", "))
+                    <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
+                      {m.roles.map((r) => (
+                        <li key={r.key}>
+                          {seesRoles ? (
+                            <Link
+                              to="/admin/roles/$roleKey"
+                              params={{ roleKey: r.key }}
+                              className="text-accent hover:underline"
+                            >
+                              {r.name}
+                            </Link>
+                          ) : (
+                            r.name
+                          )}{" "}
+                          <span className="text-xs text-muted">{sourceText(r)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    {canManage && offered.data && (
+                      <Button size="sm" variant="ghost" onClick={() => setEditing(m)}>
+                        Change roles<span className="sr-only"> of {m.user.name}</span>
+                      </Button>
                     )}
-                  </td>
-                  <td className={`${td} text-xs text-muted`}>
-                    {[m.direct ? "Direct" : "", ...m.groups.map((g) => `group ${g}`)].filter(Boolean).join(", ")}
-                  </td>
-                  <td className={`${td} text-right`}>
                     {m.direct && canManage && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${m.user.name}`}
-                        onClick={() => remove.mutate(m.user.id)}
-                      >
-                        Remove
+                      <Button size="sm" variant="ghost" onClick={() => remove.mutate(m.user.id)}>
+                        Remove<span className="sr-only"> {m.user.name}</span>
                       </Button>
                     )}
                   </td>
@@ -245,6 +357,9 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
             </tbody>
           </table>
         </div>
+      )}
+      {editing && offered.data && (
+        <RolesDialog project={project} member={editing} offered={offered.data.items} onClose={() => setEditing(null)} />
       )}
     </Panel>
   );
@@ -731,7 +846,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
         <TabsContent value="members" className="pt-4">
-          <Members projectId={p.id} canManage={can(me, "project.members.manage", p.id)} />
+          <Members project={p} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
         <TabsContent value="placement" className="pt-4">
           <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />

@@ -338,10 +338,14 @@ ones they may use; auditors see them read only.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)
-  and the OIDC group mappings (a global role, or a role in one project).
-  Project admins see their own projects only.
-- **Roles** (`access.read`): the built-in and custom roles, where each
-  can be given and how often it is. A role's page (`/admin/roles/<key>`)
+  and the OIDC group mappings (any role, for all of rvav or in one
+  project, as the role can be given; a role with `access.manage` warns
+  that the group's members are administrators in all but name). Project
+  admins see their own projects only.
+- **Roles** (`access.read`), in tabs: **Roles**, the built-in and custom
+  roles, where each can be given and how often it is; **For all of rvav**,
+  the roles given to users for all of rvav (given and taken away with
+  `access.manage`, the ones rvav sets read only). A role's page (`/admin/roles/<key>`)
   says what it allows in the catalogue's sentences (`GET /permissions`)
   and where it can be given. A built-in role is read only, with **Make a
   role from it** (`/admin/roles/new?from=<key>`). With `access.manage`, a
@@ -353,8 +357,11 @@ ones they may use; auditors see them read only.
   all of rvav on a role given in a project above the permissions), a
   conflict under the button that caused it (still given, named by a
   day-2 policy, the last way anyone holds `access.manage`).
-- A **project's page**, in tabs: **Members** (add someone found by name or
-  email, change a direct role, remove; roles from a group show the group),
+- A **project's page**, in tabs: **Members** (each person's roles, several
+  each, given here or through a group; add someone found by name or email
+  with a role, change the roles given here in a dialog, remove; a project
+  admin is offered only the roles whose permissions they hold there, from
+  `GET /projects/{id}/assignable-roles`),
   **Placement** (the rules for an environment, by cluster and datastore
   name patterns or vCenter tags, with their storage policy and vCenter
   ([ADR-0024](adr/0024-multi-vm-blueprints.md)), and a preview of the clusters,
@@ -415,7 +422,8 @@ they opened (`components/ui/dialog.tsx`); Radix only does that for a
 The mock backend follows the placement rules, naming policies and project
 quotas set on these pages. `rvav.mock.as` in localStorage set to
 `project-admin` or `auditor` makes the mock user one (Playwright uses it
-for what those roles see). `rvav.mock.fresh` set to `1` makes it a new
+for what those roles see); the auditor holds no role in a project, as on
+the server. `rvav.mock.fresh` set to `1` makes it a new
 install: no environments, projects, items or integration settings, and
 the setup checklist open (`e2e/setup.spec.ts` follows it).
 

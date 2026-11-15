@@ -16,6 +16,7 @@ import type { UserRef } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
 import { can, projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
+import { AdminWarning, Refusal, refused } from "../access/refusal";
 import { failed, fieldErrors, td, th, UserPicker } from "./common";
 
 function NewProject({ onClose }: { onClose: () => void }) {
@@ -398,21 +399,11 @@ function Environments({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-const globalRoles = [
-  { value: "admin", label: "Administrator" },
-  { value: "catalog-admin", label: "Catalog admin" },
-  { value: "auditor", label: "Auditor" },
-];
-const projectRoles = [
-  { value: "project-admin", label: "Project admin" },
-  { value: "member", label: "Member" },
-  { value: "viewer", label: "Viewer" },
-];
-
 function GroupMappings({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const mappings = useQuery(adm.groupMappings());
   const projects = useQuery(adm.projects("", false));
+  const roles = useQuery(adm.roles());
   const [f, setF] = useState({ group: "", project: "none", role: "auditor" });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["admin", "group-mappings"] });
   const add = useMutation({
@@ -427,14 +418,22 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
       toast.success(`${f.group} mapped`);
       setF({ ...f, group: "" });
     },
-    onError: (e) => failed(e, "Not mapped"),
+    onError: (e) => {
+      if (!refused(e)) failed(e, "Not mapped");
+    },
   });
   const remove = useMutation({
     mutationFn: (id: string) => call(api.DELETE("/admin/group-mappings/{id}", { params: { path: { id } } })),
     onSuccess: refresh,
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => {
+      if (!refused(e)) failed(e, "Not removed");
+    },
   });
-  const roles = f.project === "none" ? globalRoles : projectRoles;
+  // A role is mapped where it can be given: for all of rvav without a project, in one with it.
+  const offered = (roles.data?.items ?? []).filter(
+    (r) => r.key !== "user" && r.scope !== (f.project === "none" ? "project" : "rvav"),
+  );
+  const chosen = offered.find((r) => r.key === f.role);
   return (
     <Panel title="OIDC group mappings" flush>
       {mappings.isPending && <SkeletonRows rows={3} cols={3} />}
@@ -462,8 +461,14 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
                 <tr key={m.id}>
                   <td className={`${td} pl-4 font-mono text-xs`}>{m.oidc_group}</td>
                   <td className={`${td} text-xs`}>
-                    {[...globalRoles, ...projectRoles].find((r) => r.value === m.role)?.label ?? m.role}
-                    {m.project ? ` in ${m.project.name}` : ""}
+                    <Link
+                      to="/admin/roles/$roleKey"
+                      params={{ roleKey: m.role }}
+                      className="text-accent underline underline-offset-2"
+                    >
+                      {m.role_name ?? m.role}
+                    </Link>
+                    {m.project ? ` in ${m.project.name}` : " for all of rvav"}
                   </td>
                   <td className={`${td} text-xs text-muted`}>{m.users ?? 0}</td>
                   <td className={`${td} text-right`}>
@@ -504,7 +509,7 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
             value={f.project}
             onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
             options={[
-              { value: "none", label: "Everywhere (a global role)" },
+              { value: "none", label: "For all of rvav" },
               ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
             ]}
             className="w-56"
@@ -513,12 +518,22 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
             aria-label="Role"
             value={f.role}
             onChange={(v) => setF({ ...f, role: v })}
-            options={roles}
-            className="w-40"
+            loading={roles.isPending}
+            options={offered.map((r) => ({ value: r.key, label: r.name, group: r.built_in ? "Built in" : "Custom" }))}
+            className="w-48"
           />
           <Button size="sm" type="submit" disabled={!f.group || add.isPending}>
             Map group
           </Button>
+          {chosen && !chosen.built_in && chosen.permissions.includes("access.manage") && (
+            <div className="basis-full">
+              <AdminWarning who={`everyone in ${f.group || "the group"}`} />
+            </div>
+          )}
+          <div className="basis-full empty:hidden">
+            <Refusal error={add.error} />
+            <Refusal error={remove.error} />
+          </div>
         </form>
       )}
     </Panel>

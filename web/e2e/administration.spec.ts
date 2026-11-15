@@ -36,7 +36,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await expect(members.getByRole("row", { name: /Sophie Brunner/ })).toBeVisible();
   await members.getByRole("textbox", { name: "Add someone" }).fill("Thomas");
   await members.getByRole("button", { name: /Thomas Nguyen/ }).click();
-  await expect(page.getByText("Thomas Nguyen is a member")).toBeVisible();
+  await expect(page.getByText("Thomas Nguyen added as Member")).toBeVisible();
   await members.getByRole("button", { name: "Remove Sophie Brunner" }).click();
   await expect(page.getByText(/would have no project admin/)).toBeVisible();
 
@@ -389,8 +389,12 @@ test("an auditor reads the administration pages without changing them", async ({
     page.getByRole("region", { name: "OIDC group mappings" }).getByRole("button", { name: "Map group" }),
   ).toBeHidden();
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }).click();
-  await expect(page.getByRole("textbox", { name: "Add someone" })).toBeHidden();
-  await expect(page.getByRole("combobox", { name: /Role of/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Web Platform", level: 1 })).toBeVisible();
+  const members = page.getByRole("region", { name: "Members" });
+  await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("Member");
+  await expect(members.getByRole("textbox", { name: "Add someone" })).toBeHidden();
+  await expect(members.getByRole("button", { name: /^Change roles/ })).toHaveCount(0);
+  await expect(members.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
 });
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {

@@ -115,7 +115,8 @@ export function createDb(now = Date.now()): Db {
 
   // Mock mode shows every page: the mock user is an administrator too, unless
   // rvav.mock.as in localStorage says "project-admin" or "auditor" (tests of
-  // what those see).
+  // what those see). An auditor holds no role in a project, as the server's
+  // seed gives none.
   let as: string | null = null;
   try {
     as = localStorage.getItem("rvav.mock.as");
@@ -128,7 +129,10 @@ export function createDb(now = Date.now()): Db {
     title: "Platform engineer",
     permissions: heldIn(null, rvav, []),
     roles: roleRefs(null, rvav),
-    projects: [meProject(null, ref(web), rvav, ["project-admin"]), meProject(null, ref(data), rvav, ["member"])],
+    projects: [
+      meProject(null, ref(web), rvav, as === "auditor" ? [] : ["project-admin"]),
+      meProject(null, ref(data), rvav, as === "auditor" ? [] : ["member"]),
+    ],
   };
 
   const categories = [

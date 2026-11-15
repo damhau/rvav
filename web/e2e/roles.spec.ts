@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Administration › Roles on the mock backend (A1.3, ADR-0034): making,
-// changing, refusing and deleting a custom role. A reload resets the mock
+// changing, refusing and deleting a custom role, and giving roles in a
+// project, to a group and for all of rvav. A reload resets the mock
 // database, so each flow moves around in the app.
 
 async function openRolesFromNav(page: Page) {
@@ -12,6 +13,28 @@ async function openRolesFromNav(page: Page) {
 async function openRoles(page: Page) {
   await page.goto("/");
   await openRolesFromNav(page);
+}
+
+async function choose(page: Page, combobox: string, option: string) {
+  await page.getByRole("combobox", { name: combobox, exact: true }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+/** Makes a role from the Roles page, its permissions by their checkboxes' names. */
+async function makeRole(page: Page, key: string, name: string, boxes: string[]) {
+  await openRolesFromNav(page);
+  await page.getByRole("link", { name: "New role" }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill(key);
+  await page.getByRole("textbox", { name: "Name" }).fill(name);
+  for (const b of boxes) await page.getByRole("checkbox", { name: b, exact: true }).check();
+  await page.getByRole("button", { name: "Make role" }).click();
+  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+}
+
+async function openProject(page: Page, name: string) {
+  await page.getByRole("navigation").getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("region", { name: "Projects" }).getByRole("link", { name }).click();
+  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
 }
 
 test("make a custom role, change it and delete it", async ({ page }) => {
@@ -89,4 +112,85 @@ test("a built-in role can't be changed: a role of your own starts from it", asyn
   await page.getByRole("button", { name: "Make role" }).click();
   await expect(page.getByRole("heading", { name: "Reader", level: 1 })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "access.read" })).not.toBeChecked();
+});
+
+test("give a custom role in a project and to a group; what it then refuses", async ({ page }) => {
+  test.slow();
+  page.on("dialog", (d) => void d.accept());
+  await page.goto("/");
+  await makeRole(page, "vm-operator", "VM operator", ["project.see", "Power on", "Power off"]);
+
+  // Someone added with it; someone else holding it besides Member, given here and through a group.
+  await openProject(page, "Web Platform");
+  const members = page.getByRole("region", { name: "Members" });
+  await choose(page, "As", "VM operator");
+  await members.getByRole("textbox", { name: "Add someone" }).fill("Claire");
+  await members.getByRole("button", { name: /Claire Dubois/ }).click();
+  await expect(page.getByText("Claire Dubois added as VM operator")).toBeVisible();
+  await expect(members.getByRole("list", { name: "Roles of Claire Dubois" })).toHaveText("VM operator given here");
+  await members.getByRole("button", { name: "Change roles of Thomas Nguyen" }).click();
+  const dialog = page.getByRole("dialog", { name: "Roles of Thomas Nguyen" });
+  await expect(dialog).toContainText("Through groups: Member (rvav-web).");
+  await dialog.getByRole("checkbox", { name: "VM operator" }).check();
+  await dialog.getByRole("button", { name: "Save roles" }).click();
+  await expect(dialog).toBeHidden();
+  const thomas = members.getByRole("list", { name: "Roles of Thomas Nguyen" });
+  await expect(thomas).toContainText("Member given here and through rvav-web");
+  await expect(thomas).toContainText("VM operator given here");
+
+  // A group mapped to it in the project.
+  await page.getByRole("navigation").getByRole("link", { name: "Projects", exact: true }).click();
+  const groups = page.getByRole("region", { name: "OIDC group mappings" });
+  await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
+  await choose(page, "In project", "Web Platform");
+  await choose(page, "Role", "VM operator");
+  await groups.getByRole("button", { name: "Map group" }).click();
+  await expect(groups.getByRole("row", { name: /rvav-operators/ })).toContainText("VM operator in Web Platform");
+
+  // Given in a project, it takes no permission for all of rvav only, and isn't deleted.
+  await openRolesFromNav(page);
+  await page.getByRole("region", { name: "Roles" }).getByRole("link", { name: "VM operator" }).click();
+  await expect(page.getByText("Given 3 times, to users or groups.")).toBeVisible();
+  await page.getByRole("checkbox", { name: "policies.read" }).check();
+  await page.getByRole("button", { name: "Save role" }).click();
+  await expect(page.getByRole("region", { name: "Permissions" }).getByRole("alert")).toContainText(
+    "VM operator is given in Web Platform: a permission for all of rvav only can't be added while it is.",
+  );
+  await page.getByRole("button", { name: "Delete role" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "is given 3 times" })).toHaveText(
+    "VM operator is given 3 times, to users or groups: take it away first.",
+  );
+});
+
+test("give a role for all of rvav, refused twice, then taken away", async ({ page }) => {
+  await page.goto("/");
+  await makeRole(page, "access-keeper", "Access keeper", ["access.manage"]);
+  await openRolesFromNav(page);
+  await page.getByRole("tab", { name: "For all of rvav" }).click();
+  const rvav = page.getByRole("region", { name: "Given for all of rvav" });
+  await expect(rvav.getByRole("row", { name: /Léa Martin/ })).toContainText("Set by rvav");
+  await choose(page, "The role", "Access keeper");
+  await expect(rvav).toContainText("whoever holds Access keeper is an administrator in all but name");
+  for (let i = 0; i < 2; i++) {
+    await rvav.getByRole("textbox", { name: "Give someone" }).fill("Alain");
+    await rvav.getByRole("button", { name: /Alain Favre/ }).click();
+  }
+  await expect(rvav.getByRole("alert")).toHaveText("Alain Favre already holds Access keeper.");
+  await expect(rvav.getByRole("row", { name: /Alain Favre/ })).toContainText("Access keeper");
+  await rvav.getByRole("button", { name: "Take Access keeper away from Alain Favre" }).click();
+  await expect(page.getByText("Access keeper taken away from Alain Favre")).toBeVisible();
+  await expect(rvav.getByRole("row", { name: /Alain Favre/ })).toHaveCount(0);
+});
+
+test("a project admin is offered only the roles they hold there", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Roles", exact: true })).toBeHidden();
+  await nav.getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("region", { name: "Your projects" }).getByRole("link", { name: "Web Platform" }).click();
+  await page.getByRole("combobox", { name: "As", exact: true }).click();
+  await expect(page.getByRole("option")).toHaveCount(3);
+  for (const role of ["Project admin", "Member", "Viewer"])
+    await expect(page.getByRole("option", { name: role, exact: true })).toBeVisible();
 });
