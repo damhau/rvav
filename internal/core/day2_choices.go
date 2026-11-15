@@ -29,17 +29,7 @@ func (s *Service) memberChoices(ctx context.Context, d store.DeploymentRow) ([]a
 // to: where they can request, with its environment. Those whose placement
 // rules or hard quota don't allow its VMs are disabled, with the reason.
 func (s *Service) projectChoices(ctx context.Context, p *auth.Principal, d store.DeploymentRow, t day2.Target) ([]api.Option, error) {
-	var only []string
-	if !p.IsAdmin() {
-		only = []string{}
-		for id := range p.ProjectRoles {
-			if p.CanRequest(id) {
-				only = append(only, id)
-			}
-		}
-		slices.Sort(only)
-	}
-	page, err := s.Store.ListProjects(ctx, only, 500, nil)
+	page, err := s.Store.ListProjects(ctx, p.Projects(auth.RequestSubmit), 500, nil)
 	if err != nil {
 		return nil, err
 	}

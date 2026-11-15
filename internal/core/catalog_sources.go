@@ -78,11 +78,13 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 
 // formVars are the CEL variables of form rules and `cel` value sources.
 func formVars(inputs map[string]any, proj store.Project, environment string, p *auth.Principal) policy.Vars {
+	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(p.Roles), "groups": nonNilStrings(p.Groups),
+		"permissions": p.PermissionsIn(proj.ID)}
 	return policy.Vars{
 		"inputs":      inputs,
 		"environment": environment,
 		"project":     map[string]any{"id": proj.ID, "code": proj.Code, "name": proj.Name},
-		"user":        map[string]any{"id": p.User.ID, "roles": nonNilStrings(p.GlobalRoles), "groups": nonNilStrings(p.Groups)},
+		"user":        user,
 	}
 }
 

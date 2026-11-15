@@ -187,7 +187,7 @@ func sampleVars(inputs map[string]any) policy.Vars {
 		"project": map[string]any{"id": "prj_sample", "code": "sample", "name": "Sample"},
 		"item":    map[string]any{"slug": "sample", "category": "compute", "type": "vm_blueprint"},
 		"vm":      map[string]any{"vcpu": 2, "memory_gb": 4, "disk_gb": 40, "count": 1},
-		"user":    map[string]any{"id": "usr_sample", "roles": []string{"user"}, "groups": []string{}},
+		"user":    map[string]any{"id": "usr_sample", "roles": []string{"user"}, "groups": []string{}, "permissions": []string{}},
 		"quota":   quotaVars(nil)}
 }
 
@@ -439,8 +439,13 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 	}
 	errs = append(errs, checkPatterns(actions, "/actions")...)
 	for i, r := range roles {
-		if !slices.Contains(day2RoleNames, r) {
-			errs = append(errs, fieldErr(fmt.Sprintf("/roles/%d", i), "enum", "owner, viewer, member, project-admin or admin."))
+		if slices.Contains(day2RoleNames, r) {
+			continue
+		}
+		if stored, err := s.Store.GetRole(ctx, r); errors.Is(err, store.ErrNotFound) || err == nil && stored.BuiltIn {
+			errs = append(errs, fieldErr(fmt.Sprintf("/roles/%d", i), "enum", "owner, viewer, member, project-admin, admin or a custom role's key."))
+		} else if err != nil {
+			return api.Day2Policy{}, err
 		}
 	}
 	if err := checkCondition(condition, []string{"vsphere.vm", day2.DeploymentType}); err != nil {
@@ -801,6 +806,9 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 	}
 	if !decided {
 		msg := "No policy matches: " + a.Name + " is denied."
+		if as.RunsDay2(a.Group, a.Key, proj.ID) {
+			msg = "No policy matches: the roles held in " + proj.Name + " allow " + a.Name + "."
+		}
 		dec.Outcome = &msg
 	}
 	return dec, nil

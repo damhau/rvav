@@ -360,6 +360,8 @@ func prefixLength(cidr string) int {
 
 // PolicyVars are the CEL variables approval conditions can use.
 func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
+	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(p.Roles), "groups": nonNilStrings(p.Groups),
+		"permissions": p.PermissionsIn(ev.Project.ID)}
 	return policy.Vars{
 		"inputs":      ev.Inputs,
 		"environment": ev.Env.Key,
@@ -367,7 +369,7 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
 		"vm":          ev.vmPolicy(),
 		"vms":         ev.vmVars(),
-		"user":        map[string]any{"id": p.User.ID, "roles": p.GlobalRoles, "groups": nonNilStrings(p.Groups)},
+		"user":        user,
 		"quota":       quotaVars(ev.OverSoft),
 	}
 }

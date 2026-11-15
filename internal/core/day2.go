@@ -388,12 +388,16 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	return s.Store.GetRequest(ctx, req.ID)
 }
 
-// projectAdminsLevel is an approval level for the project's admins other
-// than the requester, directly or through the groups mapped to the role.
+// projectAdminsLevel is an approval level for those given approval.project
+// in the project other than the requester, directly or through a group.
 // It is rejected after three days without a decision, so it never blocks
 // the deployment for good.
 func (s *Service) projectAdminsLevel(ctx context.Context, d store.DeploymentRow, requesterID, reason string) (ChainLevel, error) {
-	ids, groups, err := s.Store.ProjectAdmins(ctx, d.ProjectID)
+	roles, err := s.rolesWith(ctx, auth.ApprovalProject)
+	if err != nil {
+		return ChainLevel{}, err
+	}
+	ids, groups, err := s.Store.ProjectAdmins(ctx, d.ProjectID, roles)
 	if err != nil {
 		return ChainLevel{}, err
 	}

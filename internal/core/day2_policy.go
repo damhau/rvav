@@ -45,8 +45,9 @@ func (s *Service) judge(ctx context.Context, p *auth.Principal, d store.Deployme
 }
 
 // decide finds the first day-2 policy that matches the action, the
-// principal's roles on the deployment and its condition. Nothing matching
-// denies. rvav itself (retention, leases) is not subject to the policies.
+// principal's roles on the deployment and its condition. With none, the
+// day-2 permissions of the roles held in the project decide (ADR-0034); no
+// built-in role holds any. rvav itself (retention, leases) is not subject to the policies.
 // inputs is nil when listing actions, before the form is filled in.
 func (j *judge) decide(a *day2.Action, t day2.Target, inputs map[string]any) decision {
 	return j.decideQuota(a, t, inputs, nil)
@@ -100,6 +101,9 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 			return decision{Chain: chain, Policy: pol.ID}
 		}
 	}
+	if p.RunsDay2(a.Group, a.Key, d.ProjectID) {
+		return decision{}
+	}
 	return decision{Denied: "Your role in " + d.ProjectName + " does not allow " + a.Name + "."}
 }
 
@@ -116,17 +120,25 @@ func (dec decision) reasons() []string {
 	return out
 }
 
-// day2Roles are the principal's roles on the deployment, as day-2 policies name them.
+// day2Roles are the principal's roles on the deployment, as day-2 policies
+// name them: owner, the strongest built-in role in its project
+// (project-admin for administrators), admin, and the custom roles held
+// there or for all of rvav.
 func day2Roles(p *auth.Principal, d store.DeploymentRow) []string {
 	var roles []string
 	if d.OwnerID == p.User.ID {
 		roles = append(roles, "owner")
 	}
-	if r := p.ProjectRole(d.ProjectID); r != "" {
+	switch r := p.ProjectRoles[d.ProjectID]; {
+	case slices.Contains(p.Roles, "admin"):
+		roles = append(roles, "project-admin", "admin")
+	case r != "":
 		roles = append(roles, r)
 	}
-	if p.IsAdmin() {
-		roles = append(roles, "admin")
+	for _, k := range append(slices.Clone(p.RolesIn(d.ProjectID)), p.Roles...) {
+		if r, ok := p.Role(k); ok && !r.BuiltIn && !slices.Contains(roles, k) {
+			roles = append(roles, k)
+		}
 	}
 	return roles
 }
@@ -166,13 +178,15 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		}
 		resource["os_family"], resource["guest_os"] = family, ""
 	}
+	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(roles), "groups": nonNilStrings(p.Groups),
+		"permissions": p.PermissionsIn(d.ProjectID)}
 	return policy.Vars{
 		"action":      map[string]any{"key": a.Key, "group": a.Group, "destructive": a.Destructive},
 		"resource":    resource,
 		"deployment":  map[string]any{"id": d.ID, "name": d.Name, "owner_id": d.OwnerID},
 		"project":     map[string]any{"id": d.ProjectID, "code": d.ProjectCode, "name": d.ProjectName},
 		"environment": map[string]any{"key": env.Key, "name": env.Name, "production": env.Production},
-		"user":        map[string]any{"id": p.User.ID, "roles": nonNilStrings(roles), "groups": nonNilStrings(p.Groups)},
+		"user":        user,
 		"inputs":      inputs,
 	}
 }

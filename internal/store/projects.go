@@ -210,14 +210,16 @@ func (s *Store) PeekName(ctx context.Context, prefix string) (int, error) {
 	return n, err
 }
 
-// ProjectAdmins returns the project's admins: users with the role, and the
-// OIDC groups mapped to it.
-func (s *Store) ProjectAdmins(ctx context.Context, projectID string) (ids, groups []string, err error) {
-	rows, _ := s.Pool.Query(ctx, `select user_id from project_members where project_id = $1 and role = 'project-admin' order by user_id`, projectID)
+// ProjectAdmins returns the users given one of these roles in the project,
+// and the OIDC groups mapped to one there.
+func (s *Store) ProjectAdmins(ctx context.Context, projectID string, roles []string) (ids, groups []string, err error) {
+	rows, _ := s.Pool.Query(ctx, `select distinct user_id from project_members where project_id = $1 and role = any($2) order by user_id`,
+		projectID, roles)
 	if ids, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
 		return nil, nil, err
 	}
-	rows, _ = s.Pool.Query(ctx, `select oidc_group from group_mappings where project_id = $1 and role = 'project-admin' order by oidc_group`, projectID)
+	rows, _ = s.Pool.Query(ctx, `select distinct oidc_group from group_mappings where project_id = $1 and role = any($2) order by oidc_group`,
+		projectID, roles)
 	groups, err = pgx.CollectRows(rows, pgx.RowTo[string])
 	return ids, groups, err
 }
