@@ -53,5 +53,14 @@ alter table project_members drop constraint project_members_pkey;
 alter table project_members add primary key (project_id, user_id);
 alter table project_members add constraint project_members_role_check check (role in ('project-admin', 'member', 'viewer'));
 
+-- The built-in roles given for all of rvav fit in users.global_roles, as
+-- they were before.
+update users u set global_roles = u.global_roles || array(
+    select r.role from user_roles r
+    where r.user_id = u.id and r.role in ('admin', 'auditor', 'catalog-admin', 'user') and r.role <> all(u.global_roles)
+    order by r.created_at, r.role)
+where exists (select 1 from user_roles r
+              where r.user_id = u.id and r.role in ('admin', 'auditor', 'catalog-admin', 'user') and r.role <> all(u.global_roles));
+
 drop table user_roles;
 drop table roles;

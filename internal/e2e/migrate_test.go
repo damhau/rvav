@@ -122,7 +122,8 @@ func TestMigrateRoles(t *testing.T) {
 		insert into project_members (project_id, user_id, role) values ('prj_a', 'usr_b', 'viewer'), ('prj_a', 'usr_b', 'vm-operator'),
 			('prj_b', 'usr_a', 'vm-operator');
 		insert into group_mappings (id, oidc_group, project_id, role) values ('gmp_5', 'ops', 'prj_a', 'vm-operator');
-		insert into user_roles (id, user_id, role) values ('ras_1', 'usr_b', 'vm-operator')`)
+		insert into user_roles (id, user_id, role) values ('ras_1', 'usr_b', 'vm-operator'), ('ras_2', 'usr_b', 'auditor'),
+			('ras_3', 'usr_c', 'admin')`)
 	if b, err = auth.ForUser(ctx, st, "usr_b"); err != nil || !b.RunsDay2("power", "reset", "prj_b") ||
 		!slices.Equal(b.RolesIn("prj_a"), []string{"member", "viewer", "vm-operator"}) {
 		t.Fatalf("several roles and a custom one: %v, %v", b.RolesIn("prj_a"), err)
@@ -138,6 +139,12 @@ func TestMigrateRoles(t *testing.T) {
 	rows, _ = st.Pool.Query(ctx, `select id from group_mappings order by id`)
 	if ids, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || !slices.Equal(ids, []string{"gmp_1", "gmp_2", "gmp_3"}) {
 		t.Fatalf("mappings after down: %v, %v", ids, err)
+	}
+	// A built-in role given for all of rvav is kept, once.
+	rows, _ = st.Pool.Query(ctx, `select id || ' ' || array_to_string(global_roles, ',') from users where id in ('usr_a', 'usr_b', 'usr_c') order by id`)
+	if users, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil ||
+		!slices.Equal(users, []string{"usr_a user", "usr_b user,auditor", "usr_c user,admin"}) {
+		t.Fatalf("global roles after down: %v, %v", users, err)
 	}
 	if err := store.Migrate(ctx, databaseURL); err != nil {
 		t.Fatalf("up again: %v", err)
