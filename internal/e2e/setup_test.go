@@ -95,7 +95,8 @@ func TestSetupChecklist(t *testing.T) {
 		}
 		want := map[api.SetupStepKey]string{api.SetupStepKeyPassword: "Changed from the install's."}
 		st = check(want)
-		if st.Steps[1].Detail != "None: only the local administrator can sign in." || st.Steps[3].Detail != "Not set." ||
+		if st.Steps[1].Detail != "None: only the local administrator can sign in." ||
+			st.Steps[2].Detail != "No group is mapped to admin, nor to another role holding access.manage." || st.Steps[3].Detail != "Not set." ||
 			st.Steps[4].Detail != "0 environments, 0 projects, 0 placement rules" || st.Steps[7].Detail != "0 items, 0 published" {
 			t.Fatalf("an empty install = %+v", st.Steps)
 		}
@@ -196,6 +197,16 @@ func TestSetupChecklist(t *testing.T) {
 				t.Fatalf("audit of %s = %+v", action, audit.Items)
 			}
 		}
+
+		// The admin group is one given access.manage for all of rvav: through
+		// a role of rvav's own or of yours, not any group for all of rvav.
+		a.json("POST", "/api/v1/admin/group-mappings", api.GroupMappingWrite{OidcGroup: "rvav-auditors", Role: "auditor"}, 201, nil)
+		check(want)
+		a.json("POST", "/api/v1/admin/roles", api.RoleCreate{Key: "iam", Name: "IAM",
+			Permissions: []string{"access.manage", "access.read"}}, 201, nil)
+		a.json("POST", "/api/v1/admin/group-mappings", api.GroupMappingWrite{OidcGroup: "iam-admins", Role: "iam"}, 201, nil)
+		want[api.SetupStepKeyAdminGroup] = "iam-admins"
+		check(want)
 	})
 }
 

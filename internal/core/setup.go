@@ -19,11 +19,15 @@ func (s *Service) Setup(ctx context.Context, p *auth.Principal) (api.Setup, erro
 	if !p.Everywhere(auth.SystemManage) {
 		return api.Setup{}, ErrForbidden
 	}
-	st, err := s.Store.SetupState(ctx, LocalAdminUsername)
+	admins, err := s.rolesWith(ctx, auth.AccessManage)
 	if err != nil {
 		return api.Setup{}, err
 	}
-	its, err := s.Integrations(ctx, p)
+	st, err := s.Store.SetupState(ctx, LocalAdminUsername, admins)
+	if err != nil {
+		return api.Setup{}, err
+	}
+	its, err := s.integrations(ctx)
 	if err != nil {
 		return api.Setup{}, err
 	}
@@ -52,7 +56,7 @@ func (s *Service) Setup(ctx context.Context, p *auth.Principal) (api.Setup, erro
 		provider.Detail = "None: only the local administrator can sign in."
 	}
 	group := api.SetupStep{Key: api.SetupStepKeyAdminGroup, Done: len(st.AdminGroups) > 0,
-		Detail: "No group is mapped to admin."}
+		Detail: "No group is mapped to admin, nor to another role holding access.manage."}
 	if group.Done {
 		group.Detail = strings.Join(st.AdminGroups, ", ")
 	}

@@ -53,13 +53,8 @@ func (s *Service) projectQuotas(ctx context.Context, projectID string) ([]api.Qu
 }
 
 func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, projectID string, items []api.QuotaLimit) ([]api.QuotaLimit, error) {
-	if !p.In(auth.ProjectQuotasManage, projectID) {
-		return nil, ErrForbidden
-	}
-	proj, err := s.Store.GetProject(ctx, projectID)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, ErrNotFound
-	} else if err != nil {
+	proj, err := s.projectFor(ctx, p, auth.ProjectQuotasManage, projectID)
+	if err != nil {
 		return nil, err
 	}
 	var errs []api.FieldError

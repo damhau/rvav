@@ -14,9 +14,10 @@ type SetupState struct {
 	Hidden                  bool
 }
 
-// SetupState counts what the checklist's steps look for. Seeded: the
-// development seed's users are there.
-func (s *Store) SetupState(ctx context.Context, localAdmin string) (SetupState, error) {
+// SetupState counts what the checklist's steps look for. AdminGroups: the
+// groups given one of adminRoles for all of rvav. Seeded: the development
+// seed's users are there.
+func (s *Store) SetupState(ctx context.Context, localAdmin string, adminRoles []string) (SetupState, error) {
 	var st SetupState
 	err := s.Pool.QueryRow(ctx, `select
 		(select count(*) from environments),
@@ -25,10 +26,10 @@ func (s *Store) SetupState(ctx context.Context, localAdmin string) (SetupState, 
 		(select count(*) from catalog_items),
 		(select count(*) from catalog_items where published_version_id is not null),
 		(select coalesce(array_agg(distinct oidc_group order by oidc_group), '{}') from group_mappings
-			where project_id is null and role = 'admin'),
+			where project_id is null and role = any($2)),
 		exists (select 1 from local_accounts where username = $1 and not must_change),
 		exists (select 1 from users where subject like 'seed:%'),
-		coalesce((select hidden from setup_checklist), false)`, localAdmin).
+		coalesce((select hidden from setup_checklist), false)`, localAdmin, adminRoles).
 		Scan(&st.Environments, &st.Projects, &st.Placements, &st.Items, &st.PublishedItems, &st.AdminGroups,
 			&st.PasswordChanged, &st.Seeded, &st.Hidden)
 	return st, err

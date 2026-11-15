@@ -104,6 +104,24 @@ func (s *Service) visibleProject(ctx context.Context, p *auth.Principal, idOrCod
 	return proj, nil
 }
 
+// projectFor finds a project by its ID or code for a change that needs a
+// permission there. Without the permission the answer is a refusal, whether
+// or not the project exists.
+func (s *Service) projectFor(ctx context.Context, p *auth.Principal, perm auth.Permission, idOrCode string) (store.Project, error) {
+	proj, err := s.Store.GetProject(ctx, idOrCode)
+	switch {
+	case errors.Is(err, store.ErrNotFound) && !p.Everywhere(perm):
+		return proj, ErrForbidden
+	case errors.Is(err, store.ErrNotFound):
+		return proj, ErrNotFound
+	case err != nil:
+		return proj, err
+	case !p.In(perm, proj.ID):
+		return proj, ErrForbidden
+	}
+	return proj, nil
+}
+
 // placement is what a project may use in one environment. Clusters are
 // known by name; with several vCenters (ADR-0024) a cluster is the first of
 // that name its rules allow, and its datastores and networks are its

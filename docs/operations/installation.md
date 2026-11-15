@@ -81,9 +81,10 @@ applies the database migrations as it starts, one at a time.
    how to find it. `rvav admin reset-password`, run in an API pod, sets
    another.
 5. Follow the setup checklist (**Administration › Setup**), which opens
-   at that sign-in: the identity provider and a group mapped to `admin`,
-   vCenter, environments and projects, EfficientIP, AWX and a first
-   catalog item ([admin guide](../guides/admin.md#first-steps)).
+   at that sign-in: the identity provider and a group mapped to `admin`
+   (or to another role holding `access.manage`), vCenter, environments
+   and projects, EfficientIP, AWX and a first catalog item
+   ([admin guide](../guides/admin.md#first-steps)).
    **Administration › System** then shows each process applying the
    connections, and the install settings as the API reads them.
 

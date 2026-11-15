@@ -133,6 +133,10 @@ func (s *Service) Integrations(ctx context.Context, p *auth.Principal) ([]api.In
 	if !p.Everywhere(auth.IntegrationsManage) {
 		return nil, ErrForbidden
 	}
+	return s.integrations(ctx)
+}
+
+func (s *Service) integrations(ctx context.Context) ([]api.Integration, error) {
 	stored, err := s.Store.StoredIntegrations(ctx)
 	if err != nil {
 		return nil, err

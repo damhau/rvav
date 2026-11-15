@@ -407,7 +407,9 @@ function setupOf(db: Db): S["Setup"] {
     return configuredOf(kind, it) ? { key, done: true, detail: url } : { key, done: false, detail: "Not set." };
   };
   const issuer = typeof a.integrations.oidc!.settings.issuer === "string" ? a.integrations.oidc!.settings.issuer : "";
-  const admins = [...new Set(a.groups.filter((g) => g.role === "admin" && !g.project).map((g) => g.oidc_group))].sort();
+  const managesAccess = (g: S["GroupMapping"]) =>
+    !g.project && roleOf(db, g.role)?.permissions.includes("access.manage");
+  const admins = [...new Set(a.groups.filter(managesAccess).map((g) => g.oidc_group))].sort();
   const published = db.items.filter((i) => adminItemOf(db, i).published_version).length;
   const changed = localAdminPasswordChanged();
   const placements = a.rules.filter((r) => db.projects.some((p) => p.id === r.project.id)).length;
@@ -422,7 +424,11 @@ function setupOf(db: Db): S["Setup"] {
       : { key: "provider", done: false, detail: "None: only the local administrator can sign in." },
     admins.length > 0
       ? { key: "admin_group", done: true, detail: admins.join(", ") }
-      : { key: "admin_group", done: false, detail: "No group is mapped to admin." },
+      : {
+          key: "admin_group",
+          done: false,
+          detail: "No group is mapped to admin, nor to another role holding access.manage.",
+        },
     connection("vcenter", "vcenter"),
     {
       key: "projects",

@@ -8162,8 +8162,9 @@ components:
           description: |
             password - the local administrator's password changed from the
             install's; provider - the identity provider set; admin_group - a
-            group mapped to admin; vcenter, ipam (EfficientIP), awx - the
-            connection set; projects - an environment and a project; and
+            group given access.manage for all of rvav (mapped to admin, or to
+            a role of your own holding it); vcenter, ipam (EfficientIP), awx -
+            the connection set; projects - an environment and a project; and
             catalog_item - an item published.
         done: { type: boolean }
         detail:

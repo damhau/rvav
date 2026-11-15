@@ -39,7 +39,8 @@ step is done.
 
 0. **Sign in as `admin`** and choose its password.
 1. **The identity provider** (**Integrations › Identity provider**), and
-   a group of it mapped to `admin` (**Projects › OIDC group mappings**):
+   a group of it mapped to `admin`, or to a role of your own holding
+   `access.manage`, for all of rvav (**Projects › OIDC group mappings**):
    [the identity provider](#the-identity-provider).
 2. **Integrations:** vCenter, AWX and EfficientIP, with rvav's service
    accounts ([integrations.md](../integrations.md)). Each has a test. Its

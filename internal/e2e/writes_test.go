@@ -19,7 +19,9 @@ import (
 
 // TestWritesWithoutTheirRead: a change allowed by its own permission
 // answers what was changed, whether or not its holder may read it
-// (ADR-0034): never a refusal after the change was made.
+// (ADR-0034): never a refusal after the change was made. A project is
+// changed by its code as by its ID, and the setup checklist, read and
+// changed with system.manage, needs nothing else.
 func TestWritesWithoutTheirRead(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -84,6 +86,12 @@ func TestWritesWithoutTheirRead(t *testing.T) {
 			{[]string{"extensibility.manage"}, "", "PUT", "/api/v1/admin/workflows/w-flow",
 				api.WorkflowRegistrationWrite{Title: "Decommission 2", WorkflowType: "decommission.v1", TaskQueue: "platform-workflows",
 					Usages: []api.WorkflowUsage{api.WorkflowUsageCatalogItem}}, 200, &api.WorkflowRegistration{}},
+			{[]string{"project.see", "project.update"}, "prj_web", "PATCH", "/api/v1/admin/projects/web",
+				api.AdminProjectUpdate{Name: new("Web 3")}, 200, &api.AdminProject{}},
+			{[]string{"project.see", "project.quotas.manage"}, "prj_web", "PUT", "/api/v1/admin/projects/web/quotas",
+				api.QuotaLimitList{Items: quotas}, 200, &api.QuotaLimitList{}},
+			{[]string{"system.manage"}, "", "GET", "/api/v1/admin/setup", nil, 200, &api.Setup{}},
+			{[]string{"system.manage"}, "", "PUT", "/api/v1/admin/setup", api.SetupWrite{Hidden: true}, 200, &api.Setup{}},
 		}
 		for i, tc := range cases {
 			key := fmt.Sprintf("w-role-%d", i)
@@ -157,6 +165,18 @@ func TestWritesWithoutTheirRead(t *testing.T) {
 		}
 		if x := cases[14].out.(*api.WorkflowRegistration); x.Title != "Decommission 2" {
 			t.Errorf("changed workflow = %+v", x)
+		}
+		if p := cases[15].out.(*api.AdminProject); p.Id != "prj_web" || p.Name != "Web 3" {
+			t.Errorf("project updated by its code = %+v", p)
+		}
+		if q := cases[16].out.(*api.QuotaLimitList); len(q.Items) != 1 {
+			t.Errorf("quotas set by the project's code = %+v", q.Items)
+		}
+		if st := cases[17].out.(*api.Setup); len(st.Steps) != 8 {
+			t.Errorf("setup checklist = %+v", st)
+		}
+		if st := cases[18].out.(*api.Setup); !st.Hidden || len(st.Steps) != 8 {
+			t.Errorf("setup checklist hidden = %+v", st)
 		}
 	})
 }

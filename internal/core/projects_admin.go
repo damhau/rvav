@@ -151,13 +151,7 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 }
 
 func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id string, u api.AdminProjectUpdate) (api.AdminProject, error) {
-	if !p.In(auth.ProjectUpdate, id) {
-		return api.AdminProject{}, ErrForbidden
-	}
-	pr, err := s.Store.GetProject(ctx, id)
-	if errors.Is(err, store.ErrNotFound) {
-		return api.AdminProject{}, ErrNotFound
-	}
+	pr, err := s.projectFor(ctx, p, auth.ProjectUpdate, id)
 	if err != nil {
 		return api.AdminProject{}, err
 	}
