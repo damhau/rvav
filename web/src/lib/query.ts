@@ -144,6 +144,10 @@ export const adm = {
     get(["admin", "assignable-roles", projectId], (signal) =>
       call(api.GET("/projects/{projectId}/assignable-roles", { params: { path: { projectId } }, signal })),
     ),
+  explain: (userId: string, projectId: string | undefined) =>
+    get(["admin", "explain", userId, projectId ?? ""], (signal) =>
+      call(api.GET("/admin/access/explain", { params: { query: { user_id: userId, project_id: projectId } }, signal })),
+    ),
   environments: () => get(["admin", "environments"], (signal) => call(api.GET("/admin/environments", { signal }))),
   placementRules: (projectId: string) =>
     get(["admin", "placement-rules", projectId], (signal) =>

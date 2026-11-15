@@ -19,6 +19,12 @@ Your organisation can also give you roles of its own, which allow other
 things. The project you work in is chosen at the top of the page. Your
 roles in it show under your name.
 
+To find out why you can't do something, open **What I may do** in your
+menu: for a project, or for all of rvav, it lists each permission, held or
+not, with the roles that grant it and where each comes from (given to you,
+through a group, or set by rvav). A permission no role of yours grants is
+one to ask your project admin or administrator for.
+
 ## Requesting a VM
 
 1. **Catalog:** find the item by name, category or the filter. Star the

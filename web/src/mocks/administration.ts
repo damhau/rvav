@@ -18,6 +18,7 @@ import {
   heldIn,
   type MockRole,
   meProject,
+  permissionCatalogue,
   roleOf,
   roleRefs,
   rolesHandlers,
@@ -430,7 +431,6 @@ export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeaseP
   return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
 }
 
-/** The keys of the roles given to a user directly in a project. */
 /** The roles a user holds in a project: given to them there, or through a group. */
 export function rolesGiven(db: Db, projectId: string, userId: string): string[] {
   return [
@@ -764,6 +764,53 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     });
   };
   const forbidden = (detail: string) => problem(403, "Not allowed", undefined, detail);
+  /** As the server's ExplainAccess: the grants that count, and what each permission is held through. */
+  const explain = (u: S["UserRef"], p: Db["projects"][number] | null): S["AccessExplanation"] => {
+    // The mock user's roles for all of rvav are its persona's: none of its groups gives it another.
+    const personaHolds = (name: string) =>
+      st().groups.every((g) => g.oidc_group !== name || g.project || db.me.roles.some((r) => r.key === g.role));
+    const groups = (userGroups[u.id] ?? []).filter((name) => u.id !== db.me.user.id || personaHolds(name));
+    const grants: { grant: S["AccessGrant"]; permissions: string[] }[] = [];
+    const add = (
+      key: string,
+      given: S["AccessGrant"]["given"],
+      through: S["AccessGrant"]["through"],
+      group?: string,
+    ) => {
+      const r = roleOf(db, key);
+      if (!r || !assignable(r, given === "project")) return;
+      const same = ({ grant: g }: (typeof grants)[number]) =>
+        g.role.key === key && g.given === given && g.through === through && g.group === group;
+      if (grants.some(same)) return;
+      const grant = { role: { key: r.key, name: r.name }, given, through, ...(group ? { group } : {}) };
+      grants.push({ grant, permissions: r.permissions });
+    };
+    add("user", "rvav", "rvav");
+    for (const a of st().roleAssignments.filter((a) => a.user.id === u.id))
+      add(a.role.key, "rvav", a.fixed ? "rvav" : "user");
+    if (p) for (const m of st().members[p.id] ?? []) if (m.userId === u.id) add(m.role, "project", "user");
+    for (const g of st().groups.filter((g) => groups.includes(g.oidc_group))) {
+      if (!g.project) add(g.role, "rvav", "group", g.oidc_group);
+      else if (g.project.id === p?.id) add(g.role, "project", "group", g.oidc_group);
+    }
+    const by = new Map<string, S["AccessGrant"][]>();
+    for (const { grant, permissions } of grants)
+      for (const perm of permissions)
+        if (perm !== "approval.project" || grant.given === "project") by.set(perm, [...(by.get(perm) ?? []), grant]);
+    const day2 = [...by.keys()].filter((k) => k.startsWith("day2.")).sort();
+    return {
+      user: u,
+      project: p ? { id: p.id, code: p.code, name: p.name } : null,
+      groups,
+      roles: grants.map((g) => g.grant),
+      permissions: [...permissionCatalogue.map((c) => c.id), ...day2].map((id) => ({
+        id,
+        held: by.has(id),
+        granted_by: by.get(id) ?? [],
+      })),
+    };
+  };
+
   /** What the server refuses in a change of someone's roles in a project: roles the mock user may not give or take away. */
   const refusal = (projectId: string, current: string[], keys: string[]) => {
     const p = project(projectId);
@@ -886,6 +933,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             built_in,
           })),
       });
+    }),
+    http.get(`${base}/admin/access/explain`, async ({ request }) => {
+      await wait();
+      const url = new URL(request.url);
+      const anyone = db.me.permissions.includes("access.read");
+      const u = user(url.searchParams.get("user_id") ?? "");
+      if (!anyone && u?.id !== db.me.user.id) return forbidden("you may not see what someone else may do");
+      if (!u) return problem(404, "Not found");
+      const projectId = url.searchParams.get("project_id");
+      const p = projectId ? project(projectId) : null;
+      if (projectId && (!p || (!anyone && !db.me.projects.some((m) => m.project.id === p.id))))
+        return problem(404, "Not found");
+      return HttpResponse.json(explain(u, p ?? null));
     }),
     http.get(`${base}/projects/:id/members`, async ({ params }) => {
       await wait();

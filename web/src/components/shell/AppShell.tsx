@@ -14,10 +14,15 @@ import { TopBar } from "./TopBar";
 const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 /** Pages that work without a project: approving, the requests one decides
- * on, API tokens and administration (an administrator setting up a new
- * install is in none yet; the server decides who may see each). */
+ * on, API tokens, what one may do, and administration (an administrator
+ * setting up a new install is in none yet; the server decides who may see
+ * each). */
 const withoutProject = (path: string) =>
-  path.startsWith("/approvals") || /^\/requests\/[^/]+$/.test(path) || path.startsWith("/admin/") || path === "/tokens";
+  path.startsWith("/approvals") ||
+  /^\/requests\/[^/]+$/.test(path) ||
+  path.startsWith("/admin/") ||
+  path === "/tokens" ||
+  path === "/access";
 
 function NoProject() {
   const { me } = useCurrentProject();

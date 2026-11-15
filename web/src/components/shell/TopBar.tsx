@@ -9,6 +9,7 @@ import {
   Monitor,
   Moon,
   Search,
+  ShieldCheck,
   Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
             <MenuLabel>{me.local ? "Signed in with the local account" : me.user.email}</MenuLabel>
             {me.title && <p className="px-2 pb-1 text-xs text-muted">{me.title}</p>}
             <MenuSeparator />
+            <MenuItem onSelect={() => void navigate({ to: "/access", search: {} })}>
+              <ShieldCheck /> What I may do
+            </MenuItem>
             <MenuItem onSelect={() => void navigate({ to: "/tokens" })}>
               <KeyRound /> API tokens
             </MenuItem>

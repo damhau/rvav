@@ -345,7 +345,11 @@ ones they may use; auditors see them read only.
 - **Roles** (`access.read`), in tabs: **Roles**, the built-in and custom
   roles, where each can be given and how often it is; **For all of rvav**,
   the roles given to users for all of rvav (given and taken away with
-  `access.manage`, the ones rvav sets read only). A role's page (`/admin/roles/<key>`)
+  `access.manage`, the ones rvav sets read only); **What someone may do**,
+  for a user and a project or all of rvav (`?user=&project=` in the URL),
+  each permission held or not with the roles granting it and where each
+  comes from (`GET /admin/access/explain`,
+  `features/admin/access/AccessExplained.tsx`). A role's page (`/admin/roles/<key>`)
   says what it allows in the catalogue's sentences (`GET /permissions`)
   and where it can be given. A built-in role is read only, with **Make a
   role from it** (`/admin/roles/new?from=<key>`). With `access.manage`, a
@@ -406,6 +410,10 @@ ones they may use; auditors see them read only.
   (`features/admin/VCenters.tsx`): the others are added, tested, changed
   and removed there, with what the sync last read from each. The
   EfficientIP reconcile report stays below.
+
+**What I may do** (`/access`, in the account menu) is the same
+explanation about the signed-in person, in their projects or for all of
+rvav; it works without a project.
 
 What each person can change follows the server: auditors read every page
 without write controls, project admins manage their projects' members and

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as AccessRouteImport } from "./routes/access"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as NotificationsRouteImport } from "./routes/notifications"
 import { Route as ReportsRouteImport } from "./routes/reports"
@@ -46,6 +47,11 @@ import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessRoute = AccessRouteImport.update({
+  id: "/access",
+  path: "/access",
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApprovalsRoute = ApprovalsRouteImport.update({
@@ -213,6 +219,7 @@ const DeploymentsDeploymentIdConsoleResourceIdRoute =
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
+  "/access": typeof AccessRoute
   "/approvals": typeof ApprovalsRoute
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
+  "/access": typeof AccessRoute
   "/approvals": typeof ApprovalsRoute
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
@@ -284,6 +292,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
+  "/access": typeof AccessRoute
   "/approvals": typeof ApprovalsRoute
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/"
+    | "/access"
     | "/approvals"
     | "/notifications"
     | "/reports"
@@ -356,6 +366,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
+    | "/access"
     | "/approvals"
     | "/notifications"
     | "/reports"
@@ -391,6 +402,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/"
+    | "/access"
     | "/approvals"
     | "/notifications"
     | "/reports"
@@ -427,6 +439,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccessRoute: typeof AccessRoute
   ApprovalsRoute: typeof ApprovalsRoute
   NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
@@ -468,6 +481,13 @@ declare module "@tanstack/react-router" {
       path: "/"
       fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/access": {
+      id: "/access"
+      path: "/access"
+      fullPath: "/access"
+      preLoaderRoute: typeof AccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/approvals": {
@@ -699,6 +719,7 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccessRoute: AccessRoute,
   ApprovalsRoute: ApprovalsRoute,
   NotificationsRoute: NotificationsRoute,
   ReportsRoute: ReportsRoute,

@@ -18,6 +18,7 @@ const pages = [
   "/notifications",
   "/reports",
   "/tokens",
+  "/access",
   "/admin/setup",
   "/admin/catalog-items",
   "/admin/projects",

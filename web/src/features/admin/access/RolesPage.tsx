@@ -20,6 +20,7 @@ import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { failed, td, th, UserPicker } from "../governance/common";
 import { scopeText } from "./permissions";
+import { WhatSomeoneMayDo } from "./AccessExplained";
 import { AdminWarning, Refusal, refused } from "./refusal";
 
 type S = components["schemas"];
@@ -248,9 +249,15 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-export type RolesTab = "roles" | "rvav";
+export type RolesTab = "roles" | "rvav" | "explain";
 
-export function RolesPage({ tab }: { tab?: RolesTab }) {
+export interface RolesSearch {
+  tab?: RolesTab;
+  user?: string;
+  project?: string;
+}
+
+export function RolesPage({ tab, user, project }: RolesSearch) {
   const { me } = useCurrentProject();
   const navigate = useNavigate();
   return (
@@ -263,12 +270,20 @@ export function RolesPage({ tab }: { tab?: RolesTab }) {
         <TabsList aria-label="Roles sections">
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="rvav">For all of rvav</TabsTrigger>
+          <TabsTrigger value="explain">What someone may do</TabsTrigger>
         </TabsList>
         <TabsContent value="roles" className="pt-4">
           <Roles canEdit={can(me, "access.manage")} />
         </TabsContent>
         <TabsContent value="rvav" className="pt-4">
           <ForAllOfRvav canEdit={can(me, "access.manage")} />
+        </TabsContent>
+        <TabsContent value="explain" className="pt-4">
+          <WhatSomeoneMayDo
+            userId={user}
+            projectId={project}
+            onChange={(s) => void navigate({ to: "/admin/roles", search: { tab: "explain", ...s }, replace: true })}
+          />
         </TabsContent>
       </Tabs>
     </Page>

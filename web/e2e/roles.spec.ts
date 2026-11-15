@@ -194,3 +194,42 @@ test("a project admin is offered only the roles they hold there", async ({ page 
   for (const role of ["Project admin", "Member", "Viewer"])
     await expect(page.getByRole("option", { name: role, exact: true })).toBeVisible();
 });
+
+test("what someone may do in a project, and why they can't", async ({ page }) => {
+  await openRoles(page);
+  await page.getByRole("tab", { name: "What someone may do" }).click();
+  const panel = page.getByRole("region", { name: "What someone may do" });
+  await panel.getByRole("textbox", { name: "Who" }).fill("Thomas");
+  await panel.getByRole("button", { name: /Thomas Nguyen/ }).click();
+  await choose(page, "Where", "Web Platform");
+  const table = panel.getByRole("table", { name: "What Thomas Nguyen may do in Web Platform" });
+  const see = table.getByRole("row", { name: /\bproject\.see\b/ });
+  await expect(see).toContainText("Member, given in Web Platform");
+  await expect(see).toContainText("Member, through rvav-web, in Web Platform");
+  await expect(table.getByRole("row", { name: /project\.members\.manage/ })).toContainText(
+    "No role they hold in Web Platform grants it.",
+  );
+  await choose(page, "Show", "Those not held");
+  await expect(see).toHaveCount(0);
+  await expect(table.getByRole("row", { name: /project\.members\.manage/ })).toBeVisible();
+});
+
+test("what I may do, from the account menu", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Account/ }).click();
+  await page.getByRole("menuitem", { name: "What I may do" }).click();
+  await expect(page.getByRole("heading", { name: "What I may do", level: 1 })).toBeVisible();
+  const inWeb = page.getByRole("table", { name: "What you may do in Web Platform" });
+  await expect(inWeb.getByRole("row", { name: /project\.members\.manage/ })).toContainText(
+    "Project admin, given in Web Platform",
+  );
+  await expect(inWeb.getByRole("row", { name: /project\.update/ })).toContainText(
+    "No role you hold in Web Platform grants it.",
+  );
+  await choose(page, "Where", "For all of rvav");
+  const everywhere = page.getByRole("table", { name: "What you may do for all of rvav" });
+  await expect(everywhere.getByRole("row", { name: /\bproject\.see\b/ })).toContainText(
+    "No role you hold for all of rvav grants it.",
+  );
+});

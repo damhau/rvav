@@ -210,7 +210,8 @@ They are today's roles, exactly; they can't be changed or deleted.
   where each comes from: given to them, set by rvav, or through a group at
   their last sign-in. It counts as `Compute` does (`approval.project` from
   a role given in the project only); a permission no role grants has none.
-  Administration › Roles shows it ("why can't they?").
+  Administration › Roles shows it ("why can't they?"), and **What I may
+  do**, in the account menu, about oneself.
 - **Who may ask:** whoever holds `access.read`, about anyone; anyone about
   themselves, in the projects they see. Their roles and permissions are
   already theirs to read in `/me`, and their groups are in their token:
