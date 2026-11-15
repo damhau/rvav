@@ -2,7 +2,7 @@
 // with its preview, and quotas.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
@@ -257,9 +257,14 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
       refresh();
       toast.success("Member removed");
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => {
+      if (!refused(e)) failed(e, "Not removed");
+    },
   });
   const seesRoles = can(me, "access.read");
+  // The server refuses to take away a role the caller may not give: those not offered.
+  const removable = (m: S["ProjectMember"]) =>
+    m.direct && m.roles.every((r) => !r.direct || offered.data?.items.some((o) => o.key === r.key));
   return (
     <Panel title="Members" flush>
       {canManage && (
@@ -316,43 +321,52 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
             </thead>
             <tbody>
               {members.data.items.map((m) => (
-                <tr key={m.user.id}>
-                  <td className={`${td} pl-4`}>
-                    {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
-                  </td>
-                  <td className={td}>
-                    <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
-                      {m.roles.map((r) => (
-                        <li key={r.key}>
-                          {seesRoles ? (
-                            <Link
-                              to="/admin/roles/$roleKey"
-                              params={{ roleKey: r.key }}
-                              className="text-accent hover:underline"
-                            >
-                              {r.name}
-                            </Link>
-                          ) : (
-                            r.name
-                          )}{" "}
-                          <span className="text-xs text-muted">{sourceText(r)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {canManage && offered.data && (
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(m)}>
-                        Change roles<span className="sr-only"> of {m.user.name}</span>
-                      </Button>
-                    )}
-                    {m.direct && canManage && (
-                      <Button size="sm" variant="ghost" onClick={() => remove.mutate(m.user.id)}>
-                        Remove<span className="sr-only"> {m.user.name}</span>
-                      </Button>
-                    )}
-                  </td>
-                </tr>
+                <Fragment key={m.user.id}>
+                  <tr>
+                    <td className={`${td} pl-4`}>
+                      {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
+                    </td>
+                    <td className={td}>
+                      <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
+                        {m.roles.map((r) => (
+                          <li key={r.key}>
+                            {seesRoles ? (
+                              <Link
+                                to="/admin/roles/$roleKey"
+                                params={{ roleKey: r.key }}
+                                className="text-accent hover:underline"
+                              >
+                                {r.name}
+                              </Link>
+                            ) : (
+                              r.name
+                            )}{" "}
+                            <span className="text-xs text-muted">{sourceText(r)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className={`${td} text-right whitespace-nowrap`}>
+                      {canManage && offered.data && (
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(m)}>
+                          Change roles<span className="sr-only"> of {m.user.name}</span>
+                        </Button>
+                      )}
+                      {canManage && offered.data && removable(m) && (
+                        <Button size="sm" variant="ghost" onClick={() => remove.mutate(m.user.id)}>
+                          Remove<span className="sr-only"> {m.user.name}</span>
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                  {remove.variables === m.user.id && refused(remove.error) && (
+                    <tr>
+                      <td colSpan={3} className="px-4 pb-2">
+                        <Refusal error={remove.error} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

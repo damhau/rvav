@@ -91,8 +91,10 @@ test("environments and OIDC group mappings", async ({ page }) => {
   await choose(page, "Role", "Auditor");
   await groups.getByRole("button", { name: "Map group" }).click();
   await expect(groups.getByRole("cell", { name: "rvav-auditors", exact: true })).toBeVisible();
+  // Léa stays an administrator, rvav's own: the server lets the group's go.
   await groups.getByRole("button", { name: "Remove the mapping of rvav-admins" }).click();
-  await expect(page.getByText(/Nobody would be an administrator/)).toBeVisible();
+  await expect(groups.getByRole("cell", { name: "rvav-admins", exact: true })).toBeHidden();
+  await expect(groups.getByRole("alert")).toHaveCount(0);
 });
 
 test("approval, day-2, lease and naming policies, and what applies", async ({ page }) => {

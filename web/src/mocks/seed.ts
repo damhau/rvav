@@ -53,6 +53,8 @@ export interface Db {
   seq: { request: number; id: number; moref: number; event: number };
   /** A new install (U1.5): the schema only, no seed nor integration settings. */
   fresh: boolean;
+  /** Roles a persona's seed gives others in projects, beyond the mocks' own. */
+  seedMembers?: { projectId: string; userId: string; role: string }[];
 }
 
 /** rvav.mock.fresh in localStorage set to "1" starts the mock as a new
@@ -1369,6 +1371,13 @@ export function createDb(now = Date.now()): Db {
     fresh: false,
   };
   if (persona) customRoles(out).push(persona);
+  // A project admin meets a role they may neither give nor take away: an
+  // administrator gave Thomas Nguyen VM operator in Web Platform.
+  if (as === "project-admin") {
+    const r = personaRoles["vm-operator"]!;
+    customRoles(out).push({ ...r, permissions: [...r.permissions] });
+    out.seedMembers = [{ projectId: "prj_web", userId: "usr_tnguyen", role: r.key }];
+  }
   return out;
 }
 

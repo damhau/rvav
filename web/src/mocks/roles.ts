@@ -129,6 +129,10 @@ export interface RoleUses {
   holders: (key: string) => number;
   policies: (key: string) => string[];
   assignments: () => S["RoleAssignment"][];
+  /** The roles mapped to groups for all of rvav, once per mapping. */
+  rvavMappings: () => string[];
+  /** The ways a project has project.members.manage given in it, leaving out a role. */
+  membersManagers: (projectId: string, exceptRole: string) => number;
   projectName: (id: string) => string;
 }
 
@@ -159,8 +163,15 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
     holders: uses.holders(r.key),
     policies: uses.policies(r.key),
   });
-  const accessManagers = (except?: (a: S["RoleAssignment"]) => boolean) =>
-    uses.assignments().filter((a) => !except?.(a) && roleOf(db, a.role.key)?.permissions.includes("access.manage"));
+  const managesAccess = (key: string) => roleOf(db, key)?.permissions.includes("access.manage") ?? false;
+  /** As the server's RvavHolders: the ways anyone holds access.manage for all of rvav, but these. */
+  const accessManagers = (except: { role?: string; assignment?: S["RoleAssignment"] }) => {
+    const counts = (key: string) => key !== except.role && managesAccess(key);
+    return (
+      uses.assignments().filter((a) => a !== except.assignment && counts(a.role.key)).length +
+      uses.rvavMappings().filter(counts).length
+    );
+  };
   return [
     http.get(`${base}/permissions`, async () => {
       await wait();
@@ -220,12 +231,20 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
         );
       const added = perms.filter((p) => !r.permissions.includes(p));
       const removed = r.permissions.filter((p) => !perms.includes(p));
-      if (removed.includes("access.manage") && accessManagers((a) => a.role.key === r.key).length === 0)
+      if (removed.includes("access.manage") && accessManagers({ role: r.key }) === 0)
         return problem(
           409,
           "Conflict",
           "Nobody would be an administrator any more: give access.manage to someone else first.",
         );
+      if (removed.includes("project.members.manage"))
+        for (const projectId of where)
+          if (uses.membersManagers(projectId, r.key) === 0)
+            return problem(
+              409,
+              "Conflict",
+              `${uses.projectName(projectId)} would have no project admin: make someone else one first.`,
+            );
       Object.assign(r, {
         ...(u.name !== undefined ? { name: u.name.trim() } : {}),
         ...(u.description !== undefined ? { description: u.description.trim() } : {}),
@@ -285,7 +304,7 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
       const list = uses.assignments();
       const a = list.find((x) => x.id === params.id);
       if (!a) return problem(404, "Not found");
-      if (roleOf(db, a.role.key)?.permissions.includes("access.manage") && accessManagers((x) => x === a).length === 0)
+      if (managesAccess(a.role.key) && accessManagers({ assignment: a }) === 0)
         return problem(409, "Conflict", "Nobody would be an administrator any more: make someone else one first.");
       list.splice(list.indexOf(a), 1);
       audited(db, "role_assignment.delete", "role_assignment", a.id!, { user_id: a.user.id, role: a.role.key });

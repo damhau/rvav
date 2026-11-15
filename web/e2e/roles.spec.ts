@@ -183,16 +183,21 @@ test("give a role for all of rvav, refused twice, then taken away", async ({ pag
 });
 
 test("a project admin is offered only the roles they hold there", async ({ page }) => {
+  // The persona's Web Platform has VM operator, given to Thomas Nguyen by an
+  // administrator: its day-2 actions are not the project admin's.
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Projects", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Roles", exact: true })).toBeHidden();
   await nav.getByRole("link", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Your projects" }).getByRole("link", { name: "Web Platform" }).click();
+  const members = page.getByRole("region", { name: "Members" });
+  await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("VM operator");
   await page.getByRole("combobox", { name: "As", exact: true }).click();
-  await expect(page.getByRole("option")).toHaveCount(3);
   for (const role of ["Project admin", "Member", "Viewer"])
     await expect(page.getByRole("option", { name: role, exact: true })).toBeVisible();
+  await expect(page.getByRole("option")).toHaveCount(3);
 });
 
 test("what someone may do in a project, and why they can't", async ({ page }) => {

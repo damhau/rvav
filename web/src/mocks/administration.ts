@@ -240,6 +240,7 @@ function state(db: Db): AdminState {
             role: r.key,
           })),
           ...list,
+          ...(db.seedMembers ?? []).filter((m) => m.projectId === id).map(({ userId, role }) => ({ userId, role })),
         ],
       ]),
     ),
@@ -854,6 +855,21 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
   };
   const manages = (key: string) => roleOf(db, key)?.permissions.includes("project.members.manage") ?? false;
   const managesAccess = (key: string) => roleOf(db, key)?.permissions.includes("access.manage") ?? false;
+  /** As the server's ProjectHolders: the ways a project has project.members.manage given in it, but these. */
+  const membersManagers = (projectId: string, except: { user?: string; mapping?: string; role?: string }) => {
+    const counts = (key: string) => key !== except.role && manages(key);
+    return (
+      (st().members[projectId] ?? []).filter((m) => m.userId !== except.user && counts(m.role)).length +
+      st().groups.filter((g) => g.project?.id === projectId && g.id !== except.mapping && counts(g.role)).length
+    );
+  };
+  const noManager = (projectId: string) =>
+    problem(
+      409,
+      "Conflict",
+      undefined,
+      `${project(projectId)?.name ?? projectId} would have no project admin: make someone else one first.`,
+    );
   const next = (prefix: string) => `${prefix}_${++st().seq}`;
   const checkCel = (expr: string | null | undefined, field: string, out: S["FieldError"][]) => {
     const p = expr ? celCheck(expr) : null;
@@ -981,14 +997,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (refused) return refused;
       const list = (st().members[id] ??= []);
       const current = rolesOfUser(id, userId);
-      const others = list.filter((x) => x.userId !== userId && manages(x.role)).length;
-      if (current.some(manages) && !keys.some(manages) && others === 0)
-        return problem(
-          409,
-          "Conflict",
-          undefined,
-          "The project would have no project admin: make someone else one first.",
-        );
+      if (current.some(manages) && !keys.some(manages) && membersManagers(id, { user: userId }) === 0)
+        return noManager(id);
       st().members[id] = [
         ...list.filter((x) => x.userId !== userId),
         ...[...new Set(keys)].map((role) => ({ userId, role })),
@@ -1013,13 +1023,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (current.length === 0) return problem(404, "Not found");
       const refused = refusal(id, current, []);
       if (refused) return refused;
-      if (current.some(manages) && list.filter((x) => x.userId !== userId && manages(x.role)).length === 0)
-        return problem(
-          409,
-          "Conflict",
-          undefined,
-          "The project would have no project admin: make someone else one first.",
-        );
+      if (current.some(manages) && membersManagers(id, { user: userId }) === 0) return noManager(id);
       st().members[id] = list.filter((x) => x.userId !== userId);
       if (userId === db.me.user.id) refreshMe(id);
       audited(db, "member.remove", "project", id, { user_id: userId, removed: current });
@@ -1065,9 +1069,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const i = groups.findIndex((g) => g.id === params.id);
       if (i < 0) return problem(404, "Not found");
       const g = groups[i]!;
+      // As the server's RvavHolders: rvav's own roles ("Set by rvav") count too.
       const rvavHolders =
         groups.filter((x) => x !== g && !x.project && managesAccess(x.role)).length +
-        st().roleAssignments.filter((a) => a.id && managesAccess(a.role.key)).length;
+        st().roleAssignments.filter((a) => managesAccess(a.role.key)).length;
       if (!g.project && managesAccess(g.role) && rvavHolders === 0)
         return problem(
           409,
@@ -1075,6 +1080,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           undefined,
           "Nobody would be an administrator any more: map another group to admin first.",
         );
+      if (g.project && manages(g.role) && membersManagers(g.project.id, { mapping: g.id }) === 0)
+        return noManager(g.project.id);
       groups.splice(i, 1);
       audited(db, "group_mapping.delete", "group_mapping", String(params.id), { group: g.oidc_group, role: g.role });
       return new HttpResponse(null, { status: 204 });
@@ -1097,6 +1104,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           .day2.filter((p) => (p.roles ?? []).includes(key))
           .map((p) => p.name),
       assignments: () => st().roleAssignments,
+      rvavMappings: () =>
+        st()
+          .groups.filter((g) => !g.project)
+          .map((g) => g.role),
+      membersManagers: (projectId, exceptRole) => membersManagers(projectId, { role: exceptRole }),
       projectName: (id) => project(id)?.name ?? id,
     }),
     http.get(`${base}/admin/environments`, async () => {
