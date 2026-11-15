@@ -35,6 +35,9 @@ import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catal
 import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
 import { Route as AdminProjectsIndexRouteImport } from "./routes/admin/projects/index"
 import { Route as AdminProjectsProjectIdRouteImport } from "./routes/admin/projects/$projectId"
+import { Route as AdminRolesIndexRouteImport } from "./routes/admin/roles/index"
+import { Route as AdminRolesRoleKeyRouteImport } from "./routes/admin/roles/$roleKey"
+import { Route as AdminRolesNewRouteImport } from "./routes/admin/roles/new"
 import { Route as AdminSubscriptionsIndexRouteImport } from "./routes/admin/subscriptions/index"
 import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/admin/subscriptions/$subscriptionId"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
@@ -170,6 +173,21 @@ const AdminProjectsProjectIdRoute = AdminProjectsProjectIdRouteImport.update({
   path: "/admin/projects/$projectId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRolesIndexRoute = AdminRolesIndexRouteImport.update({
+  id: "/admin/roles/",
+  path: "/admin/roles/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRolesRoleKeyRoute = AdminRolesRoleKeyRouteImport.update({
+  id: "/admin/roles/$roleKey",
+  path: "/admin/roles/$roleKey",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRolesNewRoute = AdminRolesNewRouteImport.update({
+  id: "/admin/roles/new",
+  path: "/admin/roles/new",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminSubscriptionsIndexRoute = AdminSubscriptionsIndexRouteImport.update({
   id: "/admin/subscriptions/",
   path: "/admin/subscriptions/",
@@ -218,10 +236,13 @@ export interface FileRoutesByFullPath {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
+  "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
+  "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -250,10 +271,13 @@ export interface FileRoutesByTo {
   "/requests": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
+  "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
+  "/admin/roles": typeof AdminRolesIndexRoute
   "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -283,10 +307,13 @@ export interface FileRoutesById {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
+  "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
+  "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
+  "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -317,10 +344,13 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/roles/$roleKey"
+    | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
     | "/admin/projects/"
+    | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
@@ -349,10 +379,13 @@ export interface FileRouteTypes {
     | "/requests"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/roles/$roleKey"
+    | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items"
     | "/admin/projects"
+    | "/admin/roles"
     | "/admin/subscriptions"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
@@ -381,10 +414,13 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/projects/$projectId"
+    | "/admin/roles/$roleKey"
+    | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
     | "/admin/projects/"
+    | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
@@ -414,10 +450,13 @@ export interface RootRouteChildren {
   RequestsIndexRoute: typeof RequestsIndexRoute
   AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
   AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
+  AdminRolesRoleKeyRoute: typeof AdminRolesRoleKeyRoute
+  AdminRolesNewRoute: typeof AdminRolesNewRoute
   AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
   AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
+  AdminRolesIndexRoute: typeof AdminRolesIndexRoute
   AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -606,6 +645,27 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminProjectsProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/roles/": {
+      id: "/admin/roles/"
+      path: "/admin/roles"
+      fullPath: "/admin/roles/"
+      preLoaderRoute: typeof AdminRolesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/roles/$roleKey": {
+      id: "/admin/roles/$roleKey"
+      path: "/admin/roles/$roleKey"
+      fullPath: "/admin/roles/$roleKey"
+      preLoaderRoute: typeof AdminRolesRoleKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/roles/new": {
+      id: "/admin/roles/new"
+      path: "/admin/roles/new"
+      fullPath: "/admin/roles/new"
+      preLoaderRoute: typeof AdminRolesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admin/subscriptions/": {
       id: "/admin/subscriptions/"
       path: "/admin/subscriptions"
@@ -662,10 +722,13 @@ const rootRouteChildren: RootRouteChildren = {
   RequestsIndexRoute: RequestsIndexRoute,
   AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
   AdminProjectsProjectIdRoute: AdminProjectsProjectIdRoute,
+  AdminRolesRoleKeyRoute: AdminRolesRoleKeyRoute,
+  AdminRolesNewRoute: AdminRolesNewRoute,
   AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
+  AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,

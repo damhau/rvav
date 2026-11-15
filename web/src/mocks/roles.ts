@@ -173,11 +173,11 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
     http.post(`${base}/admin/roles`, async ({ request }) => {
       await wait();
       const c = (await request.json()) as S["RoleCreate"];
-      if (!KEY.test(c.key) || builtinRoles.some((r) => r.key === c.key) || c.key === "owner")
+      if (!KEY.test(c.key) || builtinRoles.some((r) => r.key === c.key) || ["owner", "new"].includes(c.key))
         return invalid(
           "/key",
           "pattern",
-          "2 to 41 lower-case letters, digits and hyphens, starting with a letter; not a built-in role's key, nor owner.",
+          "2 to 41 lower-case letters, digits and hyphens, starting with a letter; not a built-in role's key, nor owner or new.",
         );
       if (!c.name.trim()) return invalid("/name", "required", "Give the role a name.");
       const perms = [...new Set(c.permissions)];

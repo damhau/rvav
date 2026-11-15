@@ -125,8 +125,9 @@ They are today's roles, exactly; they can't be changed or deleted.
 
 ### Custom roles
 - A role has a **key** (`^[a-z][a-z0-9-]{1,40}$`, fixed once made, none of
-  the built-in roles' nor `owner`, which day-2 policies name for a
-  deployment's owner: `auth.ValidRoleKey`), a name, a description and its
+  the built-in roles', nor `owner`, which day-2 policies name for a
+  deployment's owner, nor `new`, the web app's address for a new role,
+  `/admin/roles/new`: `auth.ValidRoleKey`), a name, a description and its
   permissions.
 - Those holding `access.manage` make, change and delete them. A change
   applies at the next request of everyone holding the role. Adding an R

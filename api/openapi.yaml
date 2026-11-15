@@ -7278,7 +7278,7 @@ components:
         key:
           type: string
           pattern: "^[a-z][a-z0-9-]{1,40}$"
-          description: Fixed once made; none of the built-in roles' keys, nor owner.
+          description: Fixed once made; none of the built-in roles' keys, nor owner or new.
         name: { type: string, minLength: 1, maxLength: 80 }
         description: { type: string, maxLength: 1000 }
         permissions:

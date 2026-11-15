@@ -244,7 +244,7 @@ func (s *Service) CreateRole(ctx context.Context, p *auth.Principal, c api.RoleC
 	var errs []api.FieldError
 	if !auth.ValidRoleKey(c.Key) {
 		errs = append(errs, fieldErr("/key", "pattern",
-			"2 to 41 lower-case letters, digits and hyphens, starting with a letter; not a built-in role's key, nor owner."))
+			"2 to 41 lower-case letters, digits and hyphens, starting with a letter; not a built-in role's key, nor owner or new."))
 	}
 	name := strings.TrimSpace(c.Name)
 	if name == "" {

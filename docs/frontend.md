@@ -321,7 +321,8 @@ Catalog admins and administrators build items under **Catalog items**
 ## Administration
 
 The other administration pages ([ADR-0020](adr/0020-administration.md))
-are in `features/admin/governance/`. The sidebar shows each person the
+are in `features/admin/governance/`, roles in `features/admin/access/`
+([ADR-0034](adr/0034-custom-roles.md)). The sidebar shows each person the
 ones they may use; auditors see them read only.
 
 - **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
@@ -339,6 +340,19 @@ ones they may use; auditors see them read only.
   environments (production or not, snapshots kept, removable while unused)
   and the OIDC group mappings (a global role, or a role in one project).
   Project admins see their own projects only.
+- **Roles** (`access.read`): the built-in and custom roles, where each
+  can be given and how often it is. A role's page (`/admin/roles/<key>`)
+  says what it allows in the catalogue's sentences (`GET /permissions`)
+  and where it can be given. A built-in role is read only, with **Make a
+  role from it** (`/admin/roles/new?from=<key>`). With `access.manage`, a
+  custom role's page is its editor: key fixed once made, name,
+  description, permissions by area, day-2 ones by group or single action,
+  a warning when `access.manage` is chosen, and **Delete role**. The
+  server's refusals show where they apply: a field's under its field (a
+  taken key under **Key**, a missing `project.see` or a permission for
+  all of rvav on a role given in a project above the permissions), a
+  conflict under the button that caused it (still given, named by a
+  day-2 policy, the last way anyone holds `access.manage`).
 - A **project's page**, in tabs: **Members** (add someone found by name or
   email, change a direct role, remove; roles from a group show the group),
   **Placement** (the rules for an environment, by cluster and datastore

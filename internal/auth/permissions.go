@@ -177,11 +177,11 @@ func allPermissions() []Permission {
 var roleKey = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
 
 // ValidRoleKey says whether a custom role may take this key: none of the
-// built-in roles' nor owner, which day-2 policies name for a deployment's
-// owner.
+// built-in roles', nor owner, which day-2 policies name for a deployment's
+// owner, nor new, the address of the web app's new role.
 func ValidRoleKey(key string) bool {
 	_, builtIn := BuiltinRole(key)
-	return roleKey.MatchString(key) && !builtIn && key != "owner"
+	return roleKey.MatchString(key) && !builtIn && key != "owner" && key != "new"
 }
 
 // BuiltinRole finds a built-in role by its key.

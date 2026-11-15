@@ -133,6 +133,11 @@ export const adm = {
     ),
   groupMappings: () => get(["admin", "group-mappings"], (signal) => call(api.GET("/admin/group-mappings", { signal }))),
   roles: () => get(["admin", "roles"], (signal) => call(api.GET("/admin/roles", { signal }))),
+  role: (key: string) =>
+    get(["admin", "roles", key], (signal) =>
+      call(api.GET("/admin/roles/{key}", { params: { path: { key } }, signal })),
+    ),
+  permissions: () => get(["permissions"], (signal) => call(api.GET("/permissions", { signal }))),
   environments: () => get(["admin", "environments"], (signal) => call(api.GET("/admin/environments", { signal }))),
   placementRules: (projectId: string) =>
     get(["admin", "placement-rules", projectId], (signal) =>

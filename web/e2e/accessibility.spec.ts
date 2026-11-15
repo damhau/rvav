@@ -21,6 +21,9 @@ const pages = [
   "/admin/setup",
   "/admin/catalog-items",
   "/admin/projects",
+  "/admin/roles",
+  "/admin/roles/new",
+  "/admin/roles/auditor",
   "/admin/policies",
   "/admin/integrations",
   "/admin/infrastructure",
@@ -114,6 +117,19 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/admin/integrations › AWX (applying)");
       await expect(applying.getByRole("status")).toHaveText("Applied: every process runs with these settings.");
       await scan(page, "/admin/integrations › AWX (applied)");
+    });
+
+    // The role editor's refusals, at their fields (A1.3).
+    test("axe: a new role refused", async ({ page }) => {
+      await page.goto("/admin/roles/new");
+      await loaded(page);
+      await page.getByRole("textbox", { name: "Key" }).fill("vm-operator");
+      await page.getByRole("textbox", { name: "Name" }).fill("VM operator");
+      await page.getByRole("checkbox", { name: "Power on" }).check();
+      await page.getByRole("checkbox", { name: "access.manage" }).check();
+      await page.getByRole("button", { name: "Make role" }).click();
+      await expect(page.getByRole("region", { name: "Permissions" }).getByRole("alert")).toBeVisible();
+      await scan(page, "/admin/roles/new (refused)");
     });
 
     test("axe: an approval open in the inbox", async ({ page }) => {

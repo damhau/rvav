@@ -20,6 +20,7 @@ const admin: [string, string, (me: Me) => boolean][] = [
   ["day2-actions", "Day-2 actions", (me) => can(me, "extensibility.manage")],
   ["policies", "Policies", (me) => can(me, "policies.read")],
   ["projects", "Projects", (me) => canAnywhere(me, "project.settings.read")],
+  ["roles", "Roles", (me) => can(me, "access.read")],
   ["infrastructure", "Templates and networks", (me) => can(me, "infrastructure.read")],
   ["onboarding", "Onboarding", (me) => can(me, "import.manage")],
   ["vra-import", "vRA import", (me) => can(me, "import.manage")],

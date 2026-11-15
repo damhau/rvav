@@ -270,7 +270,7 @@ func TestCustomRoles(t *testing.T) {
 
 func TestValidRoleKey(t *testing.T) {
 	for key, want := range map[string]bool{"vm-operator": true, "read-only": true, "admin": false, "member": false,
-		"user": false, "owner": false, "Operator": false, "o": false, "vm operator": false} {
+		"user": false, "owner": false, "new": false, "Operator": false, "o": false, "vm operator": false} {
 		if ValidRoleKey(key) != want {
 			t.Errorf("ValidRoleKey(%q) = %v", key, !want)
 		}

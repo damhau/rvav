@@ -5488,7 +5488,7 @@ export interface components {
             items: components["schemas"]["Role"][];
         };
         RoleCreate: {
-            /** @description Fixed once made; none of the built-in roles' keys, nor owner. */
+            /** @description Fixed once made; none of the built-in roles' keys, nor owner or new. */
             key: string;
             name: string;
             description?: string;

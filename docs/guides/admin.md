@@ -298,9 +298,14 @@ or only for all of rvav. The built-in roles can't be changed:
 | Viewer | In a project | Seeing it. |
 | User | To everyone | Nothing. |
 
-To give someone less, or a mix, make a role of your own with
-`POST /api/v1/admin/roles` (`access.manage`, which only administrators
-hold):
+To give someone less, or a mix, make a role of your own in
+**Administration › Roles** (`access.manage`, which only administrators
+hold). Select **New role**, or open a built-in role and select **Make a
+role from it** to start from what it allows. Choose its key, fixed once
+made, its name and its permissions, grouped by area; **What it allows**
+says in words what you chose. `POST /api/v1/admin/roles` does the same.
+- Whoever holds `access.manage` can give themselves any permission: a
+  role with it makes its holders administrators in all but name.
 - A role holding a permission that exists only for all of rvav, such as
   `policies.read`, can only be given for all of rvav.
 - A role given in a project must hold `project.see`.

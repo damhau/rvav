@@ -56,6 +56,7 @@ func TestRolesAPI(t *testing.T) {
 		for _, bad := range []api.RoleCreate{
 			{Key: "admin", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "owner", Name: "x", Permissions: []string{"project.see"}},
+			{Key: "new", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "Bad!", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "nothing", Name: "x", Permissions: []string{}},
 			{Key: "unseen", Name: "x", Permissions: []string{"day2.power"}},
