@@ -13,6 +13,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -22,8 +23,6 @@ import (
 var (
 	projectCode    = regexp.MustCompile(`^[a-z][a-z0-9]{1,7}$`)
 	environmentKey = regexp.MustCompile(`^[a-z][a-z0-9]{1,9}$`)
-	projectRoles   = []string{"project-admin", "member", "viewer"}
-	globalRoles    = []string{"admin", "catalog-admin", "auditor"}
 )
 
 func (s *Service) audit(ctx context.Context, p *auth.Principal, action, targetType, targetID string, projectID *string, detail any) {
@@ -33,26 +32,11 @@ func (s *Service) audit(ctx context.Context, p *auth.Principal, action, targetTy
 	}
 }
 
-func presentAdminProject(pr store.AdminProject, role string) api.AdminProject {
-	base := presentProject(pr.Project, role)
+func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProject {
+	base := present.Project(pr.Project, p.ProjectRole(pr.ID), p.PermissionsIn(pr.ID))
 	return api.AdminProject{Id: base.Id, Code: base.Code, Name: base.Name, Description: base.Description, CostCenter: base.CostCenter,
-		Environments: base.Environments, MyRole: base.MyRole, Archived: pr.ArchivedAt != nil, ArchivedAt: pr.ArchivedAt,
-		CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments}
-}
-
-func presentProject(p store.Project, role string) api.Project {
-	out := api.Project{Id: p.ID, Code: p.Code, Name: p.Name, Environments: append([]string{}, p.Environments...)}
-	if p.Description != "" {
-		out.Description = &p.Description
-	}
-	if p.CostCenter != "" {
-		out.CostCenter = &p.CostCenter
-	}
-	if role != "" {
-		r := api.ProjectRole(role)
-		out.MyRole = &r
-	}
-	return out
+		Environments: base.Environments, MyRole: base.MyRole, MyPermissions: base.MyPermissions, Archived: pr.ArchivedAt != nil,
+		ArchivedAt: pr.ArchivedAt, CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments}
 }
 
 // AdminProjects lists projects for administrators and auditors.
@@ -66,7 +50,7 @@ func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search s
 	}
 	out := make([]api.AdminProject, len(list))
 	for i, pr := range list {
-		out[i] = presentAdminProject(pr, p.ProjectRole(pr.ID))
+		out[i] = presentAdminProject(pr, p)
 	}
 	return out, nil
 }
@@ -84,7 +68,7 @@ func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string
 	if !p.SeesEverything() && p.ProjectRole(pr.ID) != "project-admin" {
 		return api.AdminProject{}, ErrForbidden
 	}
-	return presentAdminProject(pr, p.ProjectRole(pr.ID)), nil
+	return presentAdminProject(pr, p), nil
 }
 
 // checkEnvironments says which of these keys are not environments.
@@ -186,8 +170,17 @@ func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id strin
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
 
-// ProjectMembers lists a project's members: their role (the highest they
-// have), their own role in it and the groups that give them one.
+// strongest keeps the strongest built-in project role of the two.
+func strongest(current *api.ProjectRole, key string) *api.ProjectRole {
+	if roleRank[key] == 0 || current != nil && roleRank[key] <= roleRank[string(*current)] {
+		return current
+	}
+	r := api.ProjectRole(key)
+	return &r
+}
+
+// ProjectMembers lists a project's members: every role they hold there and
+// where it comes from, themselves or groups.
 func (s *Service) ProjectMembers(ctx context.Context, p *auth.Principal, projectID string) ([]api.ProjectMember, error) {
 	proj, err := s.visibleProject(ctx, p, projectID)
 	if err != nil {
@@ -204,18 +197,31 @@ func (s *Service) ProjectMembers(ctx context.Context, p *auth.Principal, project
 		if !ok {
 			i = len(out)
 			index[r.ID] = i
-			out = append(out, api.ProjectMember{User: userRef(r.User), Groups: []string{}})
+			out = append(out, api.ProjectMember{User: userRef(r.User), Groups: []string{}, Roles: []api.ProjectMemberRole{}, DirectRoles: []string{}})
 		}
 		m := &out[i]
+		j := slices.IndexFunc(m.Roles, func(x api.ProjectMemberRole) bool { return x.Key == r.Role })
+		if j < 0 {
+			j = len(m.Roles)
+			m.Roles = append(m.Roles, api.ProjectMemberRole{Key: r.Role, Name: r.RoleName, Groups: []string{}})
+		}
 		if r.Group == nil {
-			role := api.ProjectRole(r.Role)
-			m.Direct, m.DirectRole = true, &role
-		} else if !slices.Contains(m.Groups, *r.Group) {
-			m.Groups = append(m.Groups, *r.Group)
+			m.Direct, m.Roles[j].Direct = true, true
+			m.DirectRoles = append(m.DirectRoles, r.Role)
+			m.DirectRole = strongest(m.DirectRole, r.Role)
+		} else {
+			if !slices.Contains(m.Roles[j].Groups, *r.Group) {
+				m.Roles[j].Groups = append(m.Roles[j].Groups, *r.Group)
+			}
+			if !slices.Contains(m.Groups, *r.Group) {
+				m.Groups = append(m.Groups, *r.Group)
+			}
 		}
-		if roleRank[r.Role] > roleRank[string(m.Role)] {
-			m.Role = api.ProjectRole(r.Role)
-		}
+		m.Role = strongest(m.Role, r.Role)
+	}
+	for i := range out {
+		slices.SortFunc(out[i].Roles, func(a, b api.ProjectMemberRole) int { return strings.Compare(a.Name, b.Name) })
+		slices.Sort(out[i].DirectRoles)
 	}
 	return out, nil
 }
@@ -229,58 +235,128 @@ func userRef(u store.User) api.UserRef {
 	return ref
 }
 
-// canManageMembers: project admins of the project, and administrators.
+// canManageMembers: project.members.manage in the project.
 func (s *Service) canManageMembers(ctx context.Context, p *auth.Principal, projectID string) (store.Project, error) {
 	proj, err := s.visibleProject(ctx, p, projectID)
 	if err != nil {
 		return proj, err
 	}
-	if p.ProjectRole(proj.ID) != "project-admin" {
+	if !p.In(auth.ProjectMembersManage, proj.ID) {
 		return proj, ErrForbidden
 	}
 	return proj, nil
 }
 
-// keepsAdmin refuses to take away a project's last project admin.
-func (s *Service) keepsAdmin(ctx context.Context, proj store.Project, userID string) error {
-	current, err := s.Store.DirectRoles(ctx, proj.ID, userID)
-	if err != nil || !slices.Contains(current, "project-admin") {
-		return err
+// memberRoles finds the roles to give in a project, and says what is wrong
+// with them: unknown, or given for all of rvav only.
+func (s *Service) memberRoles(ctx context.Context, proj store.Project, w api.ProjectMemberWrite) ([]auth.Role, error) {
+	var keys []string
+	field := "/roles"
+	switch {
+	case w.Roles != nil && w.Role == nil:
+		keys = *w.Roles
+	case w.Role != nil && w.Roles == nil:
+		keys, field = []string{*w.Role}, "/role"
+	default:
+		return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/roles", "required", "Give the roles, or one role.")}}
 	}
-	others, err := s.Store.OtherProjectAdmins(ctx, proj.ID, userID)
-	if err != nil {
-		return err
+	var out []auth.Role
+	var errs []api.FieldError
+	for i, k := range keys {
+		ptr := field
+		if field == "/roles" {
+			ptr = fmt.Sprintf("/roles/%d", i)
+		}
+		r, err := s.role(ctx, k)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			errs = append(errs, fieldErr(ptr, "unknown", fmt.Sprintf("%q is no role.", k)))
+		case err != nil:
+			return nil, err
+		case !r.Assignable(proj.ID):
+			errs = append(errs, fieldErr(ptr, "scope", r.Name+" is given for all of rvav, not in a project."))
+		case !slices.ContainsFunc(out, func(o auth.Role) bool { return o.Key == r.Key }):
+			out = append(out, r)
+		}
 	}
-	if others == 0 {
-		return &ConflictError{Msg: proj.Name + " would have no project admin: make someone else one first."}
+	if len(errs) > 0 {
+		return nil, &ValidationError{Errors: errs}
 	}
-	return nil
+	return out, nil
 }
 
-func (s *Service) SetProjectMember(ctx context.Context, p *auth.Principal, projectID, userID string, role string) (api.ProjectMember, error) {
+// changeMembership gives a user exactly these roles in a project
+// themselves (none: removes them). The caller may give or take away each
+// role changed, and the project keeps someone managing its members.
+func (s *Service) changeMembership(ctx context.Context, p *auth.Principal, proj store.Project, userID string, roles []auth.Role) (added, removed []string, err error) {
+	err = s.Store.WithLock(ctx, store.LockAdmins, func() error {
+		current, err := s.Store.DirectRoles(ctx, proj.ID, userID)
+		if err != nil {
+			return err
+		}
+		keys := make([]string, len(roles))
+		manages := false
+		for i, r := range roles {
+			keys[i] = r.Key
+			manages = manages || slices.Contains(r.Permissions, auth.ProjectMembersManage)
+			if !slices.Contains(current, r.Key) {
+				if !mayGive(p, r, proj.ID) {
+					return fmt.Errorf("%w: you may not give %s: it allows what you may not do in %s", ErrForbidden, r.Name, proj.Name)
+				}
+				added = append(added, r.Key)
+			}
+		}
+		managed := false
+		for _, k := range current {
+			if slices.Contains(keys, k) {
+				continue
+			}
+			r, err := s.role(ctx, k)
+			if err != nil {
+				return err
+			}
+			if !mayGive(p, r, proj.ID) {
+				return fmt.Errorf("%w: you may not take %s away: it allows what you may not do in %s", ErrForbidden, r.Name, proj.Name)
+			}
+			managed = managed || slices.Contains(r.Permissions, auth.ProjectMembersManage)
+			removed = append(removed, k)
+		}
+		if managed && !manages {
+			if err := s.keepsMembersManager(ctx, proj, "", userID, ""); err != nil {
+				return err
+			}
+		}
+		if len(roles) == 0 {
+			return s.Store.RemoveMember(ctx, proj.ID, userID)
+		}
+		return s.Store.SetMemberRoles(ctx, proj.ID, userID, keys)
+	})
+	return added, removed, err
+}
+
+func (s *Service) SetProjectMember(ctx context.Context, p *auth.Principal, projectID, userID string, w api.ProjectMemberWrite) (api.ProjectMember, error) {
 	proj, err := s.canManageMembers(ctx, p, projectID)
 	if err != nil {
 		return api.ProjectMember{}, err
 	}
-	if !slices.Contains(projectRoles, role) {
-		return api.ProjectMember{}, &ValidationError{Errors: []api.FieldError{fieldErr("/role", "enum", "project-admin, member or viewer.")}}
+	roles, err := s.memberRoles(ctx, proj, w)
+	if err != nil {
+		return api.ProjectMember{}, err
 	}
 	if _, err := s.Store.GetUser(ctx, userID); errors.Is(err, store.ErrNotFound) {
 		return api.ProjectMember{}, ErrNotFound
 	} else if err != nil {
 		return api.ProjectMember{}, err
 	}
-	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
-		if role != "project-admin" {
-			if err := s.keepsAdmin(ctx, proj, userID); err != nil {
-				return err
-			}
-		}
-		return s.Store.SetMemberRoles(ctx, proj.ID, userID, []string{role})
-	}); err != nil {
+	added, removed, err := s.changeMembership(ctx, p, proj, userID, roles)
+	if err != nil {
 		return api.ProjectMember{}, err
 	}
-	s.audit(ctx, p, "member.set", "project", proj.ID, &proj.ID, map[string]any{"user_id": userID, "role": role})
+	detail := map[string]any{"user_id": userID, "added": nonNilStrings(added), "removed": nonNilStrings(removed)}
+	if len(roles) == 1 {
+		detail["role"] = roles[0].Key
+	}
+	s.audit(ctx, p, "member.set", "project", proj.ID, &proj.ID, detail)
 	members, err := s.ProjectMembers(ctx, p, proj.ID)
 	if err != nil {
 		return api.ProjectMember{}, err
@@ -298,22 +374,18 @@ func (s *Service) RemoveProjectMember(ctx context.Context, p *auth.Principal, pr
 	if err != nil {
 		return err
 	}
-	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
-		if err := s.keepsAdmin(ctx, proj, userID); err != nil {
-			return err
-		}
-		return s.Store.RemoveMember(ctx, proj.ID, userID)
-	}); errors.Is(err, store.ErrNotFound) {
+	_, removed, err := s.changeMembership(ctx, p, proj, userID, nil)
+	if errors.Is(err, store.ErrNotFound) {
 		return &ConflictError{Msg: "They are a member through a group only: change the group mapping."}
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "member.remove", "project", proj.ID, &proj.ID, map[string]any{"user_id": userID})
+	s.audit(ctx, p, "member.remove", "project", proj.ID, &proj.ID, map[string]any{"user_id": userID, "removed": nonNilStrings(removed)})
 	return nil
 }
 
 func presentGroupMapping(m store.GroupMapping) api.GroupMapping {
-	out := api.GroupMapping{Id: m.ID, OidcGroup: m.Group, Role: m.Role, Users: &m.Users}
+	out := api.GroupMapping{Id: m.ID, OidcGroup: m.Group, Role: m.Role, RoleName: &m.RoleName, Users: &m.Users}
 	if m.ProjectID != nil {
 		out.Project = &api.ProjectRef{Id: *m.ProjectID, Code: deref(m.ProjectCode), Name: deref(m.ProjectName)}
 	}
@@ -321,7 +393,7 @@ func presentGroupMapping(m store.GroupMapping) api.GroupMapping {
 }
 
 func (s *Service) GroupMappings(ctx context.Context, p *auth.Principal) ([]api.GroupMapping, error) {
-	if !p.SeesEverything() {
+	if !p.Everywhere(auth.AccessRead) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.GroupMappings(ctx)
@@ -336,7 +408,7 @@ func (s *Service) GroupMappings(ctx context.Context, p *auth.Principal) ([]api.G
 }
 
 func (s *Service) CreateGroupMapping(ctx context.Context, p *auth.Principal, w api.GroupMappingWrite) (api.GroupMapping, error) {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.AccessManage) {
 		return api.GroupMapping{}, ErrForbidden
 	}
 	group := strings.TrimSpace(w.OidcGroup)
@@ -345,11 +417,18 @@ func (s *Service) CreateGroupMapping(ctx context.Context, p *auth.Principal, w a
 		errs = append(errs, fieldErr("/oidc_group", "required", "Name the OIDC group."))
 	}
 	projectID := deref(w.ProjectId)
+	r, err := s.role(ctx, w.Role)
 	switch {
-	case projectID != "" && !slices.Contains(projectRoles, w.Role):
-		errs = append(errs, fieldErr("/role", "enum", "In a project: project-admin, member or viewer."))
-	case projectID == "" && !slices.Contains(globalRoles, w.Role):
-		errs = append(errs, fieldErr("/role", "enum", "Without a project: admin, catalog-admin or auditor."))
+	case errors.Is(err, store.ErrNotFound):
+		errs = append(errs, fieldErr("/role", "unknown", "There is no such role."))
+	case err != nil:
+		return api.GroupMapping{}, err
+	case r.Key == "user":
+		errs = append(errs, fieldErr("/role", "scope", "Everyone signed in holds User: map the group to another role."))
+	case projectID != "" && !r.Assignable(projectID):
+		errs = append(errs, fieldErr("/role", "scope", "In a project: "+r.Name+" is given for all of rvav only."))
+	case projectID == "" && !r.Assignable(""):
+		errs = append(errs, fieldErr("/role", "scope", "Without a project: "+r.Name+" is given in a project only."))
 	}
 	var project *string
 	if projectID != "" {
@@ -377,7 +456,7 @@ func (s *Service) CreateGroupMapping(ctx context.Context, p *auth.Principal, w a
 }
 
 func (s *Service) DeleteGroupMapping(ctx context.Context, p *auth.Principal, id string) error {
-	if !p.IsAdmin() {
+	if !p.Everywhere(auth.AccessManage) {
 		return ErrForbidden
 	}
 	m, err := s.Store.GetGroupMapping(ctx, id)
@@ -388,18 +467,19 @@ func (s *Service) DeleteGroupMapping(ctx context.Context, p *auth.Principal, id 
 		return err
 	}
 	if err := s.Store.WithLock(ctx, store.LockAdmins, func() error {
-		if m.Role == "admin" && m.ProjectID == nil {
-			if n, err := s.Store.AdminSources(ctx, m.ID); err != nil {
+		r, err := s.role(ctx, m.Role)
+		if err != nil {
+			return err
+		}
+		if m.ProjectID == nil && slices.Contains(r.Permissions, auth.AccessManage) {
+			if err := s.keepsAccessManager(ctx, "", "", m.ID, "map another group to admin first."); err != nil {
 				return err
-			} else if n == 0 {
-				return &ConflictError{Msg: "Nobody would be an administrator any more: map another group to admin first."}
 			}
 		}
-		if m.Role == "project-admin" && m.ProjectID != nil {
-			if n, err := s.Store.OtherProjectAdmins(ctx, *m.ProjectID, ""); err != nil {
+		if m.ProjectID != nil && slices.Contains(r.Permissions, auth.ProjectMembersManage) {
+			proj := store.Project{ID: *m.ProjectID, Name: deref(m.ProjectName)}
+			if err := s.keepsMembersManager(ctx, proj, "", "", m.ID); err != nil {
 				return err
-			} else if n <= 1 {
-				return &ConflictError{Msg: deref(m.ProjectName) + " would have no project admin: make someone one first."}
 			}
 		}
 		return s.Store.DeleteGroupMapping(ctx, id)

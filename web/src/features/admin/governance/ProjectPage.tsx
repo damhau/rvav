@@ -214,13 +214,14 @@ function Members({ projectId, canManage }: { projectId: string; canManage: boole
                     {m.direct && canManage ? (
                       <Select
                         aria-label={`Role of ${m.user.name}`}
-                        value={m.direct_role ?? m.role}
+                        value={m.direct_role ?? m.role ?? ""}
                         onChange={(v) => set.mutate({ userId: m.user.id, role: v })}
                         options={roleOptions}
                         className="w-40"
                       />
                     ) : (
-                      roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label
+                      (roleOptions.find((r) => r.value === (m.direct_role ?? m.role))?.label ??
+                      m.roles.map((r) => r.name).join(", "))
                     )}
                   </td>
                   <td className={`${td} text-xs text-muted`}>

@@ -87,20 +87,22 @@ func (s *Store) UpdateProject(ctx context.Context, id string, u ProjectUpdate) e
 // MemberRole is a user's role in a project, directly or through a group.
 type MemberRole struct {
 	User
-	Role  string  `db:"role"`
-	Group *string `db:"group_name"` // nil for a direct member
+	Role     string  `db:"role"`
+	Group    *string `db:"group_name"` // nil for a direct member
+	RoleName string  `db:"role_name"`
 }
 
 // ProjectMemberRoles lists a project's members: one row per direct
 // membership and per group that gives them a role.
 func (s *Store) ProjectMemberRoles(ctx context.Context, projectID string) ([]MemberRole, error) {
-	rows, _ := s.Pool.Query(ctx, `select u.id, u.subject, u.name, u.email, u.title, u.global_roles, m.role, null::text as group_name
-		from project_members m join users u on u.id = m.user_id where m.project_id = $1
-		union all
-		select u.id, u.subject, u.name, u.email, u.title, u.global_roles, gm.role, g.group_name
-		from user_groups g join group_mappings gm on gm.oidc_group = g.group_name join users u on u.id = g.user_id
-		where gm.project_id = $1
-		order by 3, 1, 8 nulls first`, projectID)
+	rows, _ := s.Pool.Query(ctx, `select a.*, r.name as role_name from (
+			select u.id, u.subject, u.name, u.email, u.title, u.global_roles, m.role, null::text as group_name
+			from project_members m join users u on u.id = m.user_id where m.project_id = $1
+			union all
+			select u.id, u.subject, u.name, u.email, u.title, u.global_roles, gm.role, g.group_name
+			from user_groups g join group_mappings gm on gm.oidc_group = g.group_name join users u on u.id = g.user_id
+			where gm.project_id = $1) a join roles r on r.key = a.role
+		order by a.name, a.id, a.group_name nulls first, r.name`, projectID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[MemberRole])
 }
 
@@ -132,17 +134,7 @@ func (s *Store) RemoveMember(ctx context.Context, projectID, userID string) erro
 	return err
 }
 
-// OtherProjectAdmins counts the ways a project has a project admin besides
-// this user's direct membership: other direct ones and group mappings.
-func (s *Store) OtherProjectAdmins(ctx context.Context, projectID, userID string) (int, error) {
-	var n int
-	err := s.Pool.QueryRow(ctx, `select
-		(select count(*) from project_members where project_id = $1 and role = 'project-admin' and user_id <> $2) +
-		(select count(*) from group_mappings where project_id = $1 and role = 'project-admin')`, projectID, userID).Scan(&n)
-	return n, err
-}
-
-// GroupMapping maps an OIDC group to a role, in a project or globally.
+// GroupMapping maps an OIDC group to a role, in a project or for all of rvav.
 type GroupMapping struct {
 	ID          string  `db:"id"`
 	Group       string  `db:"oidc_group"`
@@ -150,12 +142,13 @@ type GroupMapping struct {
 	ProjectCode *string `db:"project_code"`
 	ProjectName *string `db:"project_name"`
 	Role        string  `db:"role"`
+	RoleName    string  `db:"role_name"`
 	Users       int     `db:"users"`
 }
 
 const groupMappingSelect = `select gm.id, gm.oidc_group, gm.project_id, p.code as project_code, p.name as project_name, gm.role,
-	(select count(*) from user_groups g where g.group_name = gm.oidc_group)::int as users
-	from group_mappings gm left join projects p on p.id = gm.project_id`
+	r.name as role_name, (select count(*) from user_groups g where g.group_name = gm.oidc_group)::int as users
+	from group_mappings gm left join projects p on p.id = gm.project_id join roles r on r.key = gm.role`
 
 func (s *Store) GroupMappings(ctx context.Context) ([]GroupMapping, error) {
 	rows, _ := s.Pool.Query(ctx, groupMappingSelect+` order by gm.oidc_group, p.name nulls first, gm.role`)
@@ -184,16 +177,6 @@ func (s *Store) DeleteGroupMapping(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return err
-}
-
-// AdminSources counts the ways anyone is an administrator, leaving out one
-// group mapping: users with the role themselves and other admin mappings.
-func (s *Store) AdminSources(ctx context.Context, exceptMapping string) (int, error) {
-	var n int
-	err := s.Pool.QueryRow(ctx, `select
-		(select count(*) from users where 'admin' = any(global_roles)) +
-		(select count(*) from group_mappings where role = 'admin' and project_id is null and id <> $1)`, exceptMapping).Scan(&n)
-	return n, err
 }
 
 // AdminEnvironment is an environment with what uses it.

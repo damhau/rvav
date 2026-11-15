@@ -181,7 +181,7 @@ func TestOIDCTokens(t *testing.T) {
 		}
 		code, m, _ := me(lea)
 		if code != 200 || m.User.Name != "Léa Martin" || len(m.Projects) != 1 ||
-			m.Projects[0].Project.Id != "prj_web" || m.Projects[0].Role != "project-admin" {
+			m.Projects[0].Project.Id != "prj_web" || roleOf(m.Projects[0].Role) != "project-admin" {
 			t.Fatalf("lea: %d %+v", code, m)
 		}
 		// The same token again: its user and groups are remembered, not

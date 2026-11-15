@@ -10,3 +10,5 @@ src/lib/api/schema.d.ts
 e2e/__screenshots__
 test-results
 playwright-report
+# A copy of internal/auth/testdata/roles.json, which Go writes.
+src/mocks/roles.json

@@ -101,7 +101,7 @@ func TestVRADeployments(t *testing.T) {
 
 		// Léa joins Data Engineering: run again, her database is adopted,
 		// and nothing is adopted twice.
-		h.json("PUT", "/api/v1/projects/prj_data/members/usr_lmartin", "mkeller", api.ProjectMemberWrite{Role: api.Member}, 200, nil)
+		h.json("PUT", "/api/v1/projects/prj_data/members/usr_lmartin", "mkeller", api.ProjectMemberWrite{Role: new(string(api.Member))}, 200, nil)
 		again, err := h.svc.AdoptVRADeployments(ctx, admin, &e, projectMap, true)
 		if err != nil {
 			t.Fatal(err)

@@ -1,0 +1,287 @@
+{
+  "catalogue": [
+    {
+      "id": "project.see",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "See the project: its catalog, deployments, requests, members, quotas and reports, as they change."
+    },
+    {
+      "id": "request.submit",
+      "scope": "project",
+      "area": "Requests",
+      "summary": "Request from the project's catalog and save drafts; own deployments there, and move one into it."
+    },
+    {
+      "id": "request.on_behalf",
+      "scope": "project",
+      "area": "Requests",
+      "summary": "Request for someone else."
+    },
+    {
+      "id": "request.manage",
+      "scope": "project",
+      "area": "Requests",
+      "summary": "Cancel, retry and roll back anyone's request in the project."
+    },
+    {
+      "id": "approval.project",
+      "scope": "project",
+      "area": "Approvals",
+      "summary": "Be asked with the project's admins, as when a lease is extended beyond its policy; held only from a role given in the project."
+    },
+    {
+      "id": "project.members.manage",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "Add and remove the project's members, and change their roles."
+    },
+    {
+      "id": "project.settings.read",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "See the project's administration: its placement, quotas and the policies that apply there; for all of rvav, every project's."
+    },
+    {
+      "id": "project.update",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "Change the project's details and environments, or archive it."
+    },
+    {
+      "id": "project.quotas.manage",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "Set the project's quotas."
+    },
+    {
+      "id": "placement.manage",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "Change the project's placement rules."
+    },
+    {
+      "id": "audit.read",
+      "scope": "project",
+      "area": "Audit",
+      "summary": "Read the audit log: the project's events, or every event for all of rvav."
+    },
+    {
+      "id": "approval.read_all",
+      "scope": "rvav",
+      "area": "Approvals",
+      "summary": "See every approval, and the questions and answers of composites' waits for a person."
+    },
+    {
+      "id": "project.create",
+      "scope": "rvav",
+      "area": "Projects",
+      "summary": "Create projects."
+    },
+    {
+      "id": "environments.read",
+      "scope": "rvav",
+      "area": "Projects",
+      "summary": "See the environments' settings."
+    },
+    {
+      "id": "environments.manage",
+      "scope": "rvav",
+      "area": "Projects",
+      "summary": "Add, change and remove environments."
+    },
+    {
+      "id": "access.read",
+      "scope": "rvav",
+      "area": "Access",
+      "summary": "See the roles and who holds them, groups of the identity provider included."
+    },
+    {
+      "id": "access.manage",
+      "scope": "rvav",
+      "area": "Access",
+      "summary": "Make roles, and give them to users and groups: whoever holds it can give themselves any permission."
+    },
+    {
+      "id": "catalog.manage",
+      "scope": "rvav",
+      "area": "Catalog",
+      "summary": "Build, publish and open catalog items, with their categories, secrets, Git repository and AWX templates."
+    },
+    {
+      "id": "infrastructure.read",
+      "scope": "rvav",
+      "area": "Infrastructure",
+      "summary": "See templates, sizes, network mappings and the vCenters rvav reaches."
+    },
+    {
+      "id": "infrastructure.manage",
+      "scope": "rvav",
+      "area": "Infrastructure",
+      "summary": "Change templates, sizes and network mappings, and reconcile IPAM."
+    },
+    {
+      "id": "integrations.manage",
+      "scope": "rvav",
+      "area": "Integrations",
+      "summary": "See, set and test the identity provider and every connection, and make the inventory token."
+    },
+    {
+      "id": "policies.read",
+      "scope": "rvav",
+      "area": "Policies",
+      "summary": "See the approval, day-2, lease and naming policies, every project's included."
+    },
+    {
+      "id": "policies.manage",
+      "scope": "rvav",
+      "area": "Policies",
+      "summary": "Change the approval, day-2, lease and naming policies."
+    },
+    {
+      "id": "extensibility.read",
+      "scope": "rvav",
+      "area": "Extensibility",
+      "summary": "See event subscriptions, their runs and the custom workflows."
+    },
+    {
+      "id": "extensibility.manage",
+      "scope": "rvav",
+      "area": "Extensibility",
+      "summary": "Change event subscriptions, custom workflows and AWX day-2 actions, retry and test runs."
+    },
+    {
+      "id": "import.manage",
+      "scope": "rvav",
+      "area": "Import",
+      "summary": "Onboard existing VMs and import from vRA."
+    },
+    {
+      "id": "system.manage",
+      "scope": "rvav",
+      "area": "System",
+      "summary": "Use the setup checklist and the System page."
+    },
+    {
+      "id": "tokens.manage",
+      "scope": "rvav",
+      "area": "Access",
+      "summary": "See and revoke everyone's API tokens."
+    },
+    {
+      "id": "inventory.read",
+      "scope": "rvav",
+      "area": "Integrations",
+      "summary": "Read the Ansible inventory."
+    }
+  ],
+  "day2_groups": [
+    "power",
+    "configuration",
+    "snapshots",
+    "access",
+    "lifecycle",
+    "automation"
+  ],
+  "roles": [
+    {
+      "key": "admin",
+      "name": "Administrator",
+      "scope": "rvav",
+      "permissions": [
+        "project.see",
+        "request.submit",
+        "request.on_behalf",
+        "request.manage",
+        "approval.project",
+        "project.members.manage",
+        "project.settings.read",
+        "project.update",
+        "project.quotas.manage",
+        "placement.manage",
+        "audit.read",
+        "approval.read_all",
+        "project.create",
+        "environments.read",
+        "environments.manage",
+        "access.read",
+        "access.manage",
+        "catalog.manage",
+        "infrastructure.read",
+        "infrastructure.manage",
+        "integrations.manage",
+        "policies.read",
+        "policies.manage",
+        "extensibility.read",
+        "extensibility.manage",
+        "import.manage",
+        "system.manage",
+        "tokens.manage",
+        "inventory.read"
+      ]
+    },
+    {
+      "key": "catalog-admin",
+      "name": "Catalog admin",
+      "scope": "rvav",
+      "permissions": [
+        "catalog.manage"
+      ]
+    },
+    {
+      "key": "auditor",
+      "name": "Auditor",
+      "scope": "rvav",
+      "permissions": [
+        "project.see",
+        "project.settings.read",
+        "audit.read",
+        "approval.read_all",
+        "environments.read",
+        "access.read",
+        "infrastructure.read",
+        "policies.read",
+        "extensibility.read",
+        "inventory.read"
+      ]
+    },
+    {
+      "key": "user",
+      "name": "User",
+      "scope": "rvav",
+      "permissions": []
+    },
+    {
+      "key": "project-admin",
+      "name": "Project admin",
+      "scope": "project",
+      "permissions": [
+        "project.see",
+        "request.submit",
+        "request.on_behalf",
+        "request.manage",
+        "approval.project",
+        "project.members.manage",
+        "project.settings.read",
+        "audit.read"
+      ]
+    },
+    {
+      "key": "member",
+      "name": "Member",
+      "scope": "project",
+      "permissions": [
+        "project.see",
+        "request.submit"
+      ]
+    },
+    {
+      "key": "viewer",
+      "name": "Viewer",
+      "scope": "project",
+      "permissions": [
+        "project.see"
+      ]
+    }
+  ]
+}

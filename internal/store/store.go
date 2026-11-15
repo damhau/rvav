@@ -106,6 +106,12 @@ func IsUniqueViolation(err error) bool {
 	return errors.As(err, &pg) && pg.Code == "23505"
 }
 
+// IsForeignKeyViolation reports a row other rows still reference.
+func IsForeignKeyViolation(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23503"
+}
+
 // Advisory lock keys.
 const (
 	LockAWXSync int64 = 0x7276_6176_0001

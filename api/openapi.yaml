@@ -68,7 +68,11 @@ paths:
     get:
       tags: [identity]
       operationId: getMe
-      summary: The signed-in user, their global roles and project memberships
+      summary: The signed-in user, what they may do for all of rvav and in each project
+      description: |
+        What the web app shows and hides is read from `permissions`: those
+        held for all of rvav here, and in each project those held there
+        (ADR-0034). The server decides again on every call.
       responses:
         "200":
           description: OK
@@ -441,7 +445,7 @@ paths:
     get:
       tags: [projects]
       operationId: listProjects
-      summary: Projects the caller is a member of (all projects for administrators)
+      summary: Projects the caller sees (`project.see`), all of them when it is held for all of rvav
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Cursor" }
@@ -1656,7 +1660,10 @@ paths:
                         id: { type: string }
                         name: { type: string }
                         email: { type: string, description: "Tells apart people with the same name." }
-                        role: { type: string, examples: [member] }
+                        role:
+                          type: string
+                          description: The names of the roles they hold in the project.
+                          examples: [Member]
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -2081,7 +2088,15 @@ paths:
     put:
       tags: [projects]
       operationId: setProjectMember
-      summary: Add a member or change their role (project admins and administrators)
+      summary: Add a member or change their roles (`project.members.manage`, or `access.manage`)
+      description: |
+        Sets the roles the user holds in the project themselves, exactly
+        (`roles`), or one role (`role`, as before). Each role added or taken
+        away must be one the caller may give: with `access.manage`, any role
+        that can be given in a project; with `project.members.manage` there,
+        a role whose permissions the caller holds in the project. A project
+        keeps someone holding `project.members.manage` from a role given in
+        it (409).
       requestBody:
         required: true
         content:
@@ -2100,8 +2115,12 @@ paths:
     delete:
       tags: [projects]
       operationId: removeProjectMember
-      summary: Remove a direct member (project admins and administrators)
-      description: A project keeps at least one project admin. Members through a group are removed from the group mapping.
+      summary: Take away every role a user holds in the project themselves
+      description: |
+        As `setProjectMember`: the caller may give each of their roles, and the
+        project keeps someone holding `project.members.manage` from a role
+        given in it (409). Members through a group are removed from the group
+        mapping.
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2113,7 +2132,7 @@ paths:
     get:
       tags: [admin]
       operationId: listGroupMappings
-      summary: OIDC groups mapped to project and global roles
+      summary: OIDC groups mapped to roles, in a project or for all of rvav (`access.read`)
       responses:
         "200":
           description: OK
@@ -2125,7 +2144,7 @@ paths:
     post:
       tags: [admin]
       operationId: createGroupMapping
-      summary: Map an OIDC group to a role, in a project or globally
+      summary: Map an OIDC group to any role, in a project or for all of rvav (`access.manage`)
       requestBody:
         required: true
         content:
@@ -2148,8 +2167,186 @@ paths:
     delete:
       tags: [admin]
       operationId: deleteGroupMapping
-      summary: Remove a group mapping
-      description: The last mapping that makes anyone an administrator can't be removed.
+      summary: Remove a group mapping (`access.manage`)
+      description: |
+        Not the last way anyone holds `access.manage`, nor the last way a
+        project has someone holding `project.members.manage` given in it
+        (409).
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /permissions:
+    get:
+      tags: [identity]
+      operationId: listPermissions
+      summary: The permissions roles are made of, and the day-2 actions they can allow
+      description: |
+        The catalogue (ADR-0034): each permission's stable identifier,
+        where it can be given and what it allows, as the role editor shows
+        it. Day-2 actions have their own: `day2.<group>` allows every action
+        of the group, those added later included, and `day2.<group>:<action>`
+        one action. Any signed-in user may read it, to understand what they
+        may do.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PermissionCatalogue" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/roles:
+    get:
+      tags: [admin]
+      operationId: listRoles
+      summary: The built-in roles and those made here, with who holds them (`access.read`)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createRole
+      summary: Make a role (`access.manage`)
+      description: |
+        A role holds at least one permission, and `project.see` when it
+        holds one given in a project: every check in a project starts by
+        seeing it. Its key can't change once made.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/roles/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    get:
+      tags: [admin]
+      operationId: getRole
+      summary: One role (`access.read`)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [admin]
+      operationId: updateRole
+      summary: Change a role's name, description or permissions (`access.manage`)
+      description: |
+        A change applies at the next request of everyone holding the role.
+        Built-in roles can't be changed (409). A permission given for all of
+        rvav only can't be added while the role is given in a project (422,
+        naming where), and taking away `access.manage` or
+        `project.members.manage` is checked as removing an assignment is
+        (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteRole
+      summary: Delete a role nobody holds and no day-2 policy names (`access.manage`)
+      description: Built-in roles, and a role someone holds or a day-2 policy names, can't be deleted (409, saying which).
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/role-assignments:
+    get:
+      tags: [admin]
+      operationId: listRoleAssignments
+      summary: The roles users hold for all of rvav (`access.read`)
+      description: |
+        Those given here, and those rvav sets itself (the local
+        administrator's, the system users', the seed's), which can't be taken
+        away (`fixed`). Every user signed in through the identity provider
+        holds `user`, which isn't listed. Roles from groups are in the group
+        mappings.
+      parameters:
+        - name: role
+          in: query
+          description: Only this role's.
+          schema: { type: string }
+        - name: user_id
+          in: query
+          description: Only this user's.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleAssignmentList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createRoleAssignment
+      summary: Give a user a role for all of rvav (`access.manage`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleAssignmentWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleAssignment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/role-assignments/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    delete:
+      tags: [admin]
+      operationId: deleteRoleAssignment
+      summary: Take a role for all of rvav away from a user (`access.manage`)
+      description: Not the last way anyone holds `access.manage` (409).
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3704,7 +3901,10 @@ paths:
         `Last-Event-ID` to receive what was missed; if that is too old, the
         server sends `resync` and the client should refetch its queries.
 
-        Only events the caller is allowed to see are sent.
+        Only events the caller is allowed to see are sent. When roles,
+        assignments or group mappings change, every stream ends with
+        `resync`: the client connects again, with what the caller now holds,
+        and refetches, `/me` included.
       parameters:
         - name: topics
           in: query
@@ -4555,7 +4755,7 @@ components:
     # ── Identity and projects ─────────────────────────────────────────────
     Me:
       type: object
-      required: [user, global_roles, projects]
+      required: [user, global_roles, permissions, roles, projects]
       properties:
         user: { $ref: "#/components/schemas/UserRef" }
         title: { type: string, description: Job title from the identity provider. }
@@ -4569,21 +4769,48 @@ components:
             anything else (first sign-in, or after a reset).
         global_roles:
           type: array
+          deprecated: true
+          description: The built-in roles held for all of rvav. Read `permissions` and `roles` instead.
           items:
             type: string
             enum: [admin, catalog-admin, auditor, user]
+        permissions:
+          type: array
+          description: The permissions held for all of rvav, by any role.
+          items: { $ref: "#/components/schemas/Permission" }
+        roles:
+          type: array
+          description: The roles held for all of rvav, built-in and custom.
+          items: { $ref: "#/components/schemas/RoleRef" }
         projects:
           type: array
           description: |
-            Projects the caller works in: their memberships, and every project
-            for administrators (as project-admin) and auditors (as viewer).
-            Empty for someone who only approves.
-          items:
-            type: object
-            required: [project, role]
-            properties:
-              project: { $ref: "#/components/schemas/ProjectRef" }
-              role: { $ref: "#/components/schemas/ProjectRole" }
+            The projects the caller sees (`project.see`): every one, up to
+            200, when it is held for all of rvav. Empty for someone who only
+            approves.
+          items: { $ref: "#/components/schemas/MeProject" }
+
+    MeProject:
+      type: object
+      required: [project, role, roles, permissions]
+      properties:
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        role:
+          description: |
+            Deprecated: the strongest built-in role here (project-admin for
+            an administrator, viewer for an auditor), null where only custom
+            roles are held. Read `permissions` instead.
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRole"
+            - type: "null"
+        roles:
+          type: array
+          description: The roles given in this project, directly or through a group.
+          items: { $ref: "#/components/schemas/RoleRef" }
+        permissions:
+          type: array
+          description: The permissions held here, those held for all of rvav included.
+          items: { $ref: "#/components/schemas/Permission" }
 
     ProjectRole:
       type: string
@@ -4619,6 +4846,7 @@ components:
     OidcTrial:
       type: object
       required: [accepted, claims, groups, global_roles, project_roles]
+      description: "`global_roles` and `project_roles` are every role the group mappings give, built-in or custom, by key."
       properties:
         accepted:
           type: boolean
@@ -4716,9 +4944,14 @@ components:
               description: Environments this project may deploy to.
               items: { $ref: "#/components/schemas/EnvironmentKey" }
             my_role:
+              description: Deprecated, as `Me.projects[].role`. Read `my_permissions` instead.
               oneOf:
                 - $ref: "#/components/schemas/ProjectRole"
                 - type: "null"
+            my_permissions:
+              type: array
+              description: The permissions the caller holds in this project, those held for all of rvav included.
+              items: { $ref: "#/components/schemas/Permission" }
 
     ProjectPage:
       allOf:
@@ -6816,18 +7049,44 @@ components:
         archived: { type: boolean }
     ProjectMember:
       type: object
-      required: [user, role, direct, groups]
+      required: [user, role, roles, direct, direct_roles, groups]
       properties:
         user: { $ref: "#/components/schemas/UserRef" }
-        role: { $ref: "#/components/schemas/ProjectRole" }
+        role:
+          description: The strongest built-in role they hold here; null when they hold only custom ones.
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRole"
+            - type: "null"
+        roles:
+          type: array
+          description: Every role they hold here, and where it comes from.
+          items: { $ref: "#/components/schemas/ProjectMemberRole" }
         direct:
           type: boolean
           description: A member of the project itself (else only through groups).
         direct_role:
+          description: The strongest built-in role among `direct_roles`.
           $ref: "#/components/schemas/ProjectRole"
+        direct_roles:
+          type: array
+          description: The keys of the roles given to them in the project themselves.
+          items: { type: string }
         groups:
           type: array
           description: OIDC groups that make them a member, at their last sign-in.
+          items: { type: string }
+    ProjectMemberRole:
+      type: object
+      required: [key, name, direct, groups]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        direct:
+          type: boolean
+          description: Given to them in the project themselves.
+        groups:
+          type: array
+          description: The OIDC groups that give it to them here.
           items: { type: string }
     ProjectMemberList:
       type: object
@@ -6838,10 +7097,17 @@ components:
           items: { $ref: "#/components/schemas/ProjectMember" }
     ProjectMemberWrite:
       type: object
-      required: [role]
       additionalProperties: false
+      description: "`roles`, or `role` alone (the same as `roles` with it only)."
       properties:
-        role: { $ref: "#/components/schemas/ProjectRole" }
+        role:
+          type: string
+          description: A role's key, such as member.
+        roles:
+          type: array
+          minItems: 1
+          description: The keys of the roles they hold in the project themselves, exactly.
+          items: { type: string }
     GroupMapping:
       type: object
       required: [id, oidc_group, role]
@@ -6854,7 +7120,8 @@ components:
             - type: "null"
         role:
           type: string
-          description: "A project role with a project (project-admin, member, viewer); a global role without (admin, catalog-admin, auditor)."
+          description: The role's key.
+        role_name: { type: string }
         users:
           type: integer
           description: Users in the group at their last sign-in.
@@ -6872,7 +7139,149 @@ components:
       properties:
         oidc_group: { type: string, minLength: 1, maxLength: 200 }
         project_id: { type: string }
-        role: { type: string, description: "project-admin, member or viewer with a project; admin, catalog-admin or auditor without." }
+        role:
+          type: string
+          description: |
+            A role's key, built-in or custom. Without a project for a role
+            given for all of rvav only (admin, catalog-admin, auditor, or one
+            holding such a permission); with one for project-admin, member and
+            viewer.
+    # ── Roles and permissions (A1, ADR-0034) ──────────────────────────────
+    Permission:
+      type: string
+      description: |
+        A permission's stable identifier: one of the catalogue (`project.see`,
+        `policies.manage`), or a day-2 one, `day2.<group>` or
+        `day2.<group>:<action>`.
+      examples: [project.see, day2.power:power_on]
+    PermissionInfo:
+      type: object
+      required: [id, scope, area, summary]
+      properties:
+        id: { $ref: "#/components/schemas/Permission" }
+        scope:
+          type: string
+          enum: [project, rvav]
+          description: "`project`: given in a project, or for all of rvav; `rvav`: for all of rvav only."
+        area: { type: string, description: Groups permissions in the role editor. }
+        summary: { type: string, description: What it allows. }
+    PermissionCatalogue:
+      type: object
+      required: [items, day2]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PermissionInfo" }
+        day2:
+          type: array
+          description: The day-2 groups, each with the actions known now; they are given in a project, or for all of rvav.
+          items: { $ref: "#/components/schemas/Day2PermissionGroup" }
+    Day2PermissionGroup:
+      type: object
+      required: [group, permission, actions]
+      properties:
+        group: { type: string, examples: [power] }
+        permission: { $ref: "#/components/schemas/Permission" }
+        actions:
+          type: array
+          items:
+            type: object
+            required: [key, name, permission]
+            properties:
+              key: { type: string }
+              name: { type: string }
+              permission: { $ref: "#/components/schemas/Permission" }
+    RoleRef:
+      type: object
+      required: [key, name]
+      properties:
+        key: { type: string }
+        name: { type: string }
+    RoleScope:
+      type: string
+      enum: [project, rvav, any]
+      description: |
+        Where the role may be given: in a project (the built-in project-admin,
+        member and viewer), for all of rvav (the other built-in roles, and a
+        role holding a permission given that way only), or either.
+    Role:
+      type: object
+      required: [key, name, description, permissions, built_in, scope, holders, policies]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+        built_in:
+          type: boolean
+          description: One of rvav's roles, which can't be changed or deleted.
+        scope: { $ref: "#/components/schemas/RoleScope" }
+        holders:
+          type: integer
+          description: Its assignments to users and group mappings, in projects and for all of rvav.
+        policies:
+          type: array
+          description: The day-2 policies that name it.
+          items: { type: string }
+    RoleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+    RoleCreate:
+      type: object
+      required: [key, name, permissions]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,40}$"
+          description: Fixed once made; none of the built-in roles' keys, nor owner.
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 1000 }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+    RoleUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 1000 }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+    RoleAssignment:
+      type: object
+      required: [user, role, fixed]
+      properties:
+        id:
+          type: string
+          description: To take it away by; none when rvav set it.
+        user: { $ref: "#/components/schemas/UserRef" }
+        role: { $ref: "#/components/schemas/RoleRef" }
+        fixed:
+          type: boolean
+          description: rvav set it itself (the local administrator's, the system users', the seed's); it can't be taken away.
+        created_at: { type: string, format: date-time }
+    RoleAssignmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RoleAssignment" }
+    RoleAssignmentWrite:
+      type: object
+      required: [user_id, role]
+      additionalProperties: false
+      properties:
+        user_id: { type: string }
+        role: { type: string, description: The key of a role that can be given for all of rvav. }
     AdminEnvironment:
       allOf:
         - $ref: "#/components/schemas/Environment"
@@ -7295,7 +7704,7 @@ components:
           items: { type: string }
         roles:
           type: array
-          description: owner, viewer, member, project-admin, admin; empty for anyone.
+          description: owner, viewer, member, project-admin, admin, or a custom role's key; empty for anyone.
           items: { type: string }
         condition: { type: string, default: "true" }
         effect: { type: string, enum: [allow, deny, approval] }

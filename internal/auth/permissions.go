@@ -259,6 +259,22 @@ func (g Grants) Projects(p Permission) []string {
 	return out
 }
 
+// Held lists the permissions held in a project, those held for all of rvav
+// included, sorted; "" lists those held for all of rvav.
+func (g Grants) Held(projectID string) []Permission {
+	out := []Permission{}
+	for p := range g.all {
+		out = append(out, p)
+	}
+	for p := range g.projects[projectID] {
+		if projectID != "" && !g.all[p] {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // RunsDay2 says whether a role grants the day-2 action in the project, by
 // its group or by itself.
 func (g Grants) RunsDay2(group, key, projectID string) bool {

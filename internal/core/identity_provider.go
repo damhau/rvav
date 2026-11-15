@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"crypto/x509"
 	"errors"
@@ -161,23 +162,19 @@ func (s *Service) TrialIdentityProvider(ctx context.Context, p *auth.Principal, 
 		if err != nil {
 			return out, err
 		}
-		out.GlobalRoles = nonNilStrings(roles.GlobalRoles)
-		ids := make([]string, 0, len(roles.ProjectRoles))
-		for id := range roles.ProjectRoles {
-			ids = append(ids, id)
-		}
-		projects, err := s.Store.ProjectsByID(ctx, ids)
+		out.GlobalRoles = nonNilStrings(roles.Roles)
+		projects, err := s.Store.ProjectsByID(ctx, roles.ProjectsGiven())
 		if err != nil {
 			return out, err
 		}
-		for id, role := range roles.ProjectRoles {
-			pr, ok := projects[id]
-			if !ok {
-				continue
+		for id, pr := range projects {
+			for _, role := range roles.RolesIn(id) {
+				out.ProjectRoles = append(out.ProjectRoles, api.OidcTrialProjectRole{Project: api.ProjectRef{Id: pr.ID, Code: pr.Code, Name: pr.Name}, Role: role})
 			}
-			out.ProjectRoles = append(out.ProjectRoles, api.OidcTrialProjectRole{Project: api.ProjectRef{Id: pr.ID, Code: pr.Code, Name: pr.Name}, Role: role})
 		}
-		slices.SortFunc(out.ProjectRoles, func(a, b api.OidcTrialProjectRole) int { return strings.Compare(a.Project.Name, b.Project.Name) })
+		slices.SortFunc(out.ProjectRoles, func(a, b api.OidcTrialProjectRole) int {
+			return cmp.Or(strings.Compare(a.Project.Name, b.Project.Name), strings.Compare(a.Role, b.Role))
+		})
 	}
 	s.audit(ctx, p, "settings.trial.oidc", "integration", "oidc", nil, map[string]any{"issuer": ps.Issuer, "accepted": out.Accepted,
 		"subject": t.Subject, "groups": len(t.Groups)})

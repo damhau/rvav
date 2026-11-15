@@ -10,19 +10,23 @@ import { celCheck } from "./cel";
 import { audited } from "./governance";
 import { clusters, datastores, networks } from "./inventory";
 import type { Db } from "./seed";
+import { assignable, heldIn, meProject, roleOf, roleRefs, rolesHandlers, strongest } from "./roles";
 import { localAdminPasswordChanged } from "./signIn";
 
 type S = components["schemas"];
 
+/** A role given to a user in a project: one per role. */
 interface Member {
   userId: string;
-  role: S["ProjectRole"];
+  role: string;
 }
 
 interface AdminState {
   extra: Record<string, { archived_at?: string; created_at: string }>;
   members: Record<string, Member[]>;
   groups: S["GroupMapping"][];
+  /** Roles given for all of rvav: those with no id rvav set itself. */
+  roleAssignments: S["RoleAssignment"][];
   envs: Record<string, { snapshot_max_count: number; snapshot_max_age_days: number | null }>;
   rules: S["PlacementRule"][];
   mappings: S["NetworkMapping"][];
@@ -216,11 +220,14 @@ function state(db: Db): AdminState {
       prj_data: [{ userId: "usr_sbrunner", role: "project-admin" }],
     },
     groups: [
-      { id: "gmp_admins", oidc_group: "rvav-admins", project: null, role: "admin", users: 1 },
-      { id: "gmp_catalog", oidc_group: "rvav-catalog-admins", project: null, role: "catalog-admin", users: 1 },
-      { id: "gmp_web", oidc_group: "rvav-web", project: ref("prj_web"), role: "member", users: 1 },
-      { id: "gmp_data", oidc_group: "rvav-data", project: ref("prj_data"), role: "member", users: 1 },
-    ],
+      { id: "gmp_admins", oidc_group: "rvav-admins", project: null, role: "admin", role_name: "Administrator", users: 1 },
+      { id: "gmp_catalog", oidc_group: "rvav-catalog-admins", project: null, role: "catalog-admin", role_name: "Catalog admin", users: 1 },
+      { id: "gmp_web", oidc_group: "rvav-web", project: ref("prj_web"), role: "member", role_name: "Member", users: 1 },
+      { id: "gmp_data", oidc_group: "rvav-data", project: ref("prj_data"), role: "member", role_name: "Member", users: 1 },
+    ], // prettier-ignore
+    roleAssignments: db.me.global_roles
+      .filter((r) => r !== "user")
+      .map((r) => ({ user: db.me.user, role: { key: r, name: roleOf(null, r)?.name ?? r }, fixed: true })),
     envs: Object.fromEntries(db.environments.map((e) => [e.key, { snapshot_max_count: 3, snapshot_max_age_days: 7 }])),
     rules,
     mappings: networks.map((n) => ({
@@ -400,9 +407,9 @@ export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeaseP
   return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
 }
 
-/** A user's role in a project ("" when none), for other mock handlers. */
+/** A user's strongest built-in role in a project ("" when none), for other mock handlers. */
 export function memberRole(db: Db, projectId: string, userId: string): string {
-  return state(db).members[projectId]?.find((m) => m.userId === userId)?.role ?? "";
+  return strongest((state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role)) ?? "";
 }
 
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
@@ -672,14 +679,40 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       deployments: db.deployments.filter((d) => d.project.id === p.id && d.status !== "deleted").length,
     };
   };
-  const members = (projectId: string): S["ProjectMember"][] =>
-    (st().members[projectId] ?? []).map((m) => ({
-      user: { id: m.userId, name: user(m.userId)?.name ?? m.userId },
-      role: m.role,
-      direct: true,
-      direct_role: m.role,
-      groups: [],
-    }));
+  const rolesOfUser = (projectId: string, userId: string) =>
+    (st().members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role);
+  const members = (projectId: string): S["ProjectMember"][] => {
+    const ids = [...new Set((st().members[projectId] ?? []).map((m) => m.userId))];
+    return ids.map((userId) => {
+      const keys = rolesOfUser(projectId, userId).sort();
+      const role = strongest(keys);
+      return {
+        user: { id: userId, name: user(userId)?.name ?? userId },
+        role,
+        roles: roleRefs(db, keys)
+          .map((r) => ({ ...r, direct: true, groups: [] }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        direct: true,
+        ...(role ? { direct_role: role } : {}),
+        direct_roles: keys,
+        groups: [],
+      };
+    });
+  };
+  /** Keeps /me's project current when the mock user's own roles there change. */
+  const refreshMe = (projectId: string) => {
+    const pr = project(projectId)!;
+    const given = rolesOfUser(projectId, db.me.user.id);
+    const others = db.me.projects.filter((x) => x.project.id !== projectId);
+    const seen = given.length > 0 || heldIn(db, db.me.global_roles, []).includes("project.see");
+    db.me.projects = seen
+      ? [...others, meProject(db, { id: pr.id, code: pr.code, name: pr.name }, db.me.global_roles, given)].sort(
+          (a, b) => a.project.name.localeCompare(b.project.name),
+        )
+      : others;
+  };
+  const manages = (key: string) => roleOf(db, key)?.permissions.includes("project.members.manage") ?? false;
+  const managesAccess = (key: string) => roleOf(db, key)?.permissions.includes("access.manage") ?? false;
   const next = (prefix: string) => `${prefix}_${++st().seq}`;
   const checkCel = (expr: string | null | undefined, field: string, out: S["FieldError"][]) => {
     const p = expr ? celCheck(expr) : null;
@@ -732,8 +765,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       };
       st().extra[p.id] = { created_at: now() };
       st().members[p.id] = (c.project_admins ?? []).map((u) => ({ userId: u, role: "project-admin" }));
-      if (c.project_admins?.includes(db.me.user.id))
-        db.me.projects.push({ project: { id: p.id, code: p.code, name: p.name }, role: "project-admin" });
+      refreshMe(p.id);
       st().quotas[p.id] = [];
       audited(db, "project.create", "project", p.id, { code: p.code });
       return HttpResponse.json(adminProject(p), { status: 201 });
@@ -763,44 +795,58 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.put(`${base}/projects/:id/members/:userId`, async ({ params, request }) => {
       await wait();
       const id = String(params.id);
-      const { role } = (await request.json()) as S["ProjectMemberWrite"];
+      const userId = String(params.userId);
+      const w = (await request.json()) as S["ProjectMemberWrite"];
+      const keys = w.roles ?? (w.role ? [w.role] : []);
+      const field = w.roles ? "/roles" : "/role";
+      if (keys.length === 0) return invalid([err("/roles", "Give the roles, or one role.")]);
+      const errors = keys.flatMap((k, i) => {
+        const r = roleOf(db, k);
+        const at = w.roles ? `${field}/${i}` : field;
+        if (!r) return [err(at, `"${k}" is no role.`)];
+        return assignable(r, true) ? [] : [err(at, `${r.name} is given for all of rvav, not in a project.`)];
+      });
+      if (errors.length) return invalid(errors);
       const list = (st().members[id] ??= []);
-      const m = list.find((x) => x.userId === params.userId);
-      const admins = list.filter((x) => x.role === "project-admin" && x.userId !== params.userId).length;
-      if (m?.role === "project-admin" && role !== "project-admin" && admins === 0)
+      const current = rolesOfUser(id, userId);
+      const others = list.filter((x) => x.userId !== userId && manages(x.role)).length;
+      if (current.some(manages) && !keys.some(manages) && others === 0)
         return problem(
           409,
           "Conflict",
           undefined,
           "The project would have no project admin: make someone else one first.",
         );
-      if (m) m.role = role;
-      else list.push({ userId: String(params.userId), role });
-      if (params.userId === db.me.user.id) {
-        const mine = db.me.projects.find((x) => x.project.id === id);
-        const pr = project(id)!;
-        if (mine) mine.role = role;
-        else db.me.projects.push({ project: { id: pr.id, code: pr.code, name: pr.name }, role });
-      }
-      audited(db, "member.set", "project", id, { user_id: params.userId, role });
-      return HttpResponse.json(members(id).find((x) => x.user.id === params.userId));
+      st().members[id] = [
+        ...list.filter((x) => x.userId !== userId),
+        ...[...new Set(keys)].map((role) => ({ userId, role })),
+      ];
+      if (userId === db.me.user.id) refreshMe(id);
+      audited(db, "member.set", "project", id, {
+        user_id: userId,
+        added: keys.filter((k) => !current.includes(k)),
+        removed: current.filter((k) => !keys.includes(k)),
+        ...(keys.length === 1 ? { role: keys[0] } : {}),
+      });
+      return HttpResponse.json(members(id).find((x) => x.user.id === userId));
     }),
     http.delete(`${base}/projects/:id/members/:userId`, async ({ params }) => {
       await wait();
       const id = String(params.id);
+      const userId = String(params.userId);
       const list = st().members[id] ?? [];
-      const m = list.find((x) => x.userId === params.userId);
-      if (!m) return problem(404, "Not found");
-      if (m.role === "project-admin" && list.filter((x) => x.role === "project-admin").length === 1)
+      const current = rolesOfUser(id, userId);
+      if (current.length === 0) return problem(404, "Not found");
+      if (current.some(manages) && list.filter((x) => x.userId !== userId && manages(x.role)).length === 0)
         return problem(
           409,
           "Conflict",
           undefined,
           "The project would have no project admin: make someone else one first.",
         );
-      list.splice(list.indexOf(m), 1);
-      if (params.userId === db.me.user.id) db.me.projects = db.me.projects.filter((x) => x.project.id !== id);
-      audited(db, "member.remove", "project", id, { user_id: params.userId });
+      st().members[id] = list.filter((x) => x.userId !== userId);
+      if (userId === db.me.user.id) refreshMe(id);
+      audited(db, "member.remove", "project", id, { user_id: userId, removed: current });
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/group-mappings`, async () => {
@@ -810,15 +856,18 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.post(`${base}/admin/group-mappings`, async ({ request }) => {
       await wait();
       const w = (await request.json()) as S["GroupMappingWrite"];
-      const projectRole = ["project-admin", "member", "viewer"].includes(w.role);
       if (!w.oidc_group.trim()) return invalid([err("/oidc_group", "Name the OIDC group.")]);
-      if (Boolean(w.project_id) !== projectRole)
+      const r = roleOf(db, w.role);
+      if (!r) return invalid([err("/role", "There is no such role.")]);
+      if (r.key === "user")
+        return invalid([err("/role", "Everyone signed in holds User: map the group to another role.")]);
+      if (!assignable(r, Boolean(w.project_id)))
         return invalid([
           err(
             "/role",
             w.project_id
-              ? "In a project: project-admin, member or viewer."
-              : "Without a project: admin, catalog-admin or auditor.",
+              ? `In a project: ${r.name} is given for all of rvav only.`
+              : `Without a project: ${r.name} is given in a project only.`,
           ),
         ]);
       const p = w.project_id ? project(w.project_id) : undefined;
@@ -826,11 +875,12 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         id: next("gmp"),
         oidc_group: w.oidc_group.trim(),
         project: p ? { id: p.id, code: p.code, name: p.name } : null,
-        role: w.role,
+        role: r.key,
+        role_name: r.name,
         users: 0,
       };
       st().groups.push(m);
-      audited(db, "group_mapping.create", "group_mapping", m.id, { group: m.oidc_group });
+      audited(db, "group_mapping.create", "group_mapping", m.id, { group: m.oidc_group, role: m.role });
       return HttpResponse.json(m, { status: 201 });
     }),
     http.delete(`${base}/admin/group-mappings/:id`, async ({ params }) => {
@@ -838,7 +888,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const groups = st().groups;
       const i = groups.findIndex((g) => g.id === params.id);
       if (i < 0) return problem(404, "Not found");
-      if (groups[i]!.role === "admin" && groups.filter((g) => g.role === "admin").length === 1)
+      const g = groups[i]!;
+      const rvavHolders =
+        groups.filter((x) => x !== g && !x.project && managesAccess(x.role)).length +
+        st().roleAssignments.filter((a) => a.id && managesAccess(a.role.key)).length;
+      if (!g.project && managesAccess(g.role) && rvavHolders === 0)
         return problem(
           409,
           "Conflict",
@@ -846,8 +900,28 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           "Nobody would be an administrator any more: map another group to admin first.",
         );
       groups.splice(i, 1);
-      audited(db, "group_mapping.delete", "group_mapping", String(params.id));
+      audited(db, "group_mapping.delete", "group_mapping", String(params.id), { group: g.oidc_group, role: g.role });
       return new HttpResponse(null, { status: 204 });
+    }),
+    ...rolesHandlers(db, base, wait, {
+      given: (key) => [
+        ...Object.entries(st().members).flatMap(([projectId, list]) =>
+          list.filter((m) => m.role === key).map(() => projectId),
+        ),
+        ...st()
+          .groups.filter((g) => g.role === key && g.project)
+          .map((g) => g.project!.id),
+      ],
+      holders: (key) =>
+        Object.values(st().members).flatMap((l) => l.filter((m) => m.role === key)).length +
+        st().groups.filter((g) => g.role === key).length +
+        st().roleAssignments.filter((a) => a.role.key === key).length,
+      policies: (key) =>
+        st()
+          .day2.filter((p) => (p.roles ?? []).includes(key))
+          .map((p) => p.name),
+      assignments: () => st().roleAssignments,
+      projectName: (id) => project(id)?.name ?? id,
     }),
     http.get(`${base}/admin/environments`, async () => {
       await wait();

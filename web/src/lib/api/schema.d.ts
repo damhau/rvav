@@ -33,7 +33,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The signed-in user, their global roles and project memberships */
+        /**
+         * The signed-in user, what they may do for all of rvav and in each project
+         * @description What the web app shows and hides is read from `permissions`: those
+         *     held for all of rvav here, and in each project those held there
+         *     (ADR-0034). The server decides again on every call.
+         */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -346,7 +351,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Projects the caller is a member of (all projects for administrators) */
+        /** Projects the caller sees (`project.see`), all of them when it is held for all of rvav */
         get: operations["listProjects"];
         put?: never;
         post?: never;
@@ -1680,12 +1685,24 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Add a member or change their role (project admins and administrators) */
+        /**
+         * Add a member or change their roles (`project.members.manage`, or `access.manage`)
+         * @description Sets the roles the user holds in the project themselves, exactly
+         *     (`roles`), or one role (`role`, as before). Each role added or taken
+         *     away must be one the caller may give: with `access.manage`, any role
+         *     that can be given in a project; with `project.members.manage` there,
+         *     a role whose permissions the caller holds in the project. A project
+         *     keeps someone holding `project.members.manage` from a role given in
+         *     it (409).
+         */
         put: operations["setProjectMember"];
         post?: never;
         /**
-         * Remove a direct member (project admins and administrators)
-         * @description A project keeps at least one project admin. Members through a group are removed from the group mapping.
+         * Take away every role a user holds in the project themselves
+         * @description As `setProjectMember`: the caller may give each of their roles, and the
+         *     project keeps someone holding `project.members.manage` from a role
+         *     given in it (409). Members through a group are removed from the group
+         *     mapping.
          */
         delete: operations["removeProjectMember"];
         options?: never;
@@ -1700,10 +1717,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** OIDC groups mapped to project and global roles */
+        /** OIDC groups mapped to roles, in a project or for all of rvav (`access.read`) */
         get: operations["listGroupMappings"];
         put?: never;
-        /** Map an OIDC group to a role, in a project or globally */
+        /** Map an OIDC group to any role, in a project or for all of rvav (`access.manage`) */
         post: operations["createGroupMapping"];
         delete?: never;
         options?: never;
@@ -1724,10 +1741,139 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove a group mapping
-         * @description The last mapping that makes anyone an administrator can't be removed.
+         * Remove a group mapping (`access.manage`)
+         * @description Not the last way anyone holds `access.manage`, nor the last way a
+         *     project has someone holding `project.members.manage` given in it
+         *     (409).
          */
         delete: operations["deleteGroupMapping"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The permissions roles are made of, and the day-2 actions they can allow
+         * @description The catalogue (ADR-0034): each permission's stable identifier,
+         *     where it can be given and what it allows, as the role editor shows
+         *     it. Day-2 actions have their own: `day2.<group>` allows every action
+         *     of the group, those added later included, and `day2.<group>:<action>`
+         *     one action. Any signed-in user may read it, to understand what they
+         *     may do.
+         */
+        get: operations["listPermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The built-in roles and those made here, with who holds them (`access.read`) */
+        get: operations["listRoles"];
+        put?: never;
+        /**
+         * Make a role (`access.manage`)
+         * @description A role holds at least one permission, and `project.see` when it
+         *     holds one given in a project: every check in a project starts by
+         *     seeing it. Its key can't change once made.
+         */
+        post: operations["createRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/roles/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        /** One role (`access.read`) */
+        get: operations["getRole"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a role nobody holds and no day-2 policy names (`access.manage`)
+         * @description Built-in roles, and a role someone holds or a day-2 policy names, can't be deleted (409, saying which).
+         */
+        delete: operations["deleteRole"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a role's name, description or permissions (`access.manage`)
+         * @description A change applies at the next request of everyone holding the role.
+         *     Built-in roles can't be changed (409). A permission given for all of
+         *     rvav only can't be added while the role is given in a project (422,
+         *     naming where), and taking away `access.manage` or
+         *     `project.members.manage` is checked as removing an assignment is
+         *     (409).
+         */
+        patch: operations["updateRole"];
+        trace?: never;
+    };
+    "/admin/role-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The roles users hold for all of rvav (`access.read`)
+         * @description Those given here, and those rvav sets itself (the local
+         *     administrator's, the system users', the seed's), which can't be taken
+         *     away (`fixed`). Every user signed in through the identity provider
+         *     holds `user`, which isn't listed. Roles from groups are in the group
+         *     mappings.
+         */
+        get: operations["listRoleAssignments"];
+        put?: never;
+        /** Give a user a role for all of rvav (`access.manage`) */
+        post: operations["createRoleAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/role-assignments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a role for all of rvav away from a user (`access.manage`)
+         * @description Not the last way anyone holds `access.manage` (409).
+         */
+        delete: operations["deleteRoleAssignment"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2845,7 +2991,10 @@ export interface paths {
          *     `Last-Event-ID` to receive what was missed; if that is too old, the
          *     server sends `resync` and the client should refetch its queries.
          *
-         *     Only events the caller is allowed to see are sent.
+         *     Only events the caller is allowed to see are sent. When roles,
+         *     assignments or group mappings change, every stream ends with
+         *     `resync`: the client connects again, with what the caller now holds,
+         *     and refetches, `/me` included.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3406,16 +3555,34 @@ export interface components {
              *     anything else (first sign-in, or after a reset).
              */
             password_change_required?: boolean;
-            global_roles: ("admin" | "catalog-admin" | "auditor" | "user")[];
             /**
-             * @description Projects the caller works in: their memberships, and every project
-             *     for administrators (as project-admin) and auditors (as viewer).
-             *     Empty for someone who only approves.
+             * @deprecated
+             * @description The built-in roles held for all of rvav. Read `permissions` and `roles` instead.
              */
-            projects: {
-                project: components["schemas"]["ProjectRef"];
-                role: components["schemas"]["ProjectRole"];
-            }[];
+            global_roles: ("admin" | "catalog-admin" | "auditor" | "user")[];
+            /** @description The permissions held for all of rvav, by any role. */
+            permissions: components["schemas"]["Permission"][];
+            /** @description The roles held for all of rvav, built-in and custom. */
+            roles: components["schemas"]["RoleRef"][];
+            /**
+             * @description The projects the caller sees (`project.see`): every one, up to
+             *     200, when it is held for all of rvav. Empty for someone who only
+             *     approves.
+             */
+            projects: components["schemas"]["MeProject"][];
+        };
+        MeProject: {
+            project: components["schemas"]["ProjectRef"];
+            /**
+             * @description Deprecated: the strongest built-in role here (project-admin for
+             *     an administrator, viewer for an auditor), null where only custom
+             *     roles are held. Read `permissions` instead.
+             */
+            role: components["schemas"]["ProjectRole"] | null;
+            /** @description The roles given in this project, directly or through a group. */
+            roles: components["schemas"]["RoleRef"][];
+            /** @description The permissions held here, those held for all of rvav included. */
+            permissions: components["schemas"]["Permission"][];
         };
         /** @enum {string} */
         ProjectRole: "project-admin" | "member" | "viewer";
@@ -3442,6 +3609,7 @@ export interface components {
             };
             access_token: string;
         };
+        /** @description `global_roles` and `project_roles` are every role the group mappings give, built-in or custom, by key. */
         OidcTrial: {
             /** @description rvav accepts the token with these settings. */
             accepted: boolean;
@@ -3504,7 +3672,10 @@ export interface components {
             cost_center?: string;
             /** @description Environments this project may deploy to. */
             environments: components["schemas"]["EnvironmentKey"][];
+            /** @description Deprecated, as `Me.projects[].role`. Read `my_permissions` instead. */
             my_role?: components["schemas"]["ProjectRole"] | null;
+            /** @description The permissions the caller holds in this project, those held for all of rvav included. */
+            my_permissions?: components["schemas"]["Permission"][];
         };
         ProjectPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Project"][];
@@ -5158,25 +5329,44 @@ export interface components {
         };
         ProjectMember: {
             user: components["schemas"]["UserRef"];
-            role: components["schemas"]["ProjectRole"];
+            /** @description The strongest built-in role they hold here; null when they hold only custom ones. */
+            role: components["schemas"]["ProjectRole"] | null;
+            /** @description Every role they hold here, and where it comes from. */
+            roles: components["schemas"]["ProjectMemberRole"][];
             /** @description A member of the project itself (else only through groups). */
             direct: boolean;
+            /** @description The strongest built-in role among `direct_roles`. */
             direct_role?: components["schemas"]["ProjectRole"];
+            /** @description The keys of the roles given to them in the project themselves. */
+            direct_roles: string[];
             /** @description OIDC groups that make them a member, at their last sign-in. */
+            groups: string[];
+        };
+        ProjectMemberRole: {
+            key: string;
+            name: string;
+            /** @description Given to them in the project themselves. */
+            direct: boolean;
+            /** @description The OIDC groups that give it to them here. */
             groups: string[];
         };
         ProjectMemberList: {
             items: components["schemas"]["ProjectMember"][];
         };
+        /** @description `roles`, or `role` alone (the same as `roles` with it only). */
         ProjectMemberWrite: {
-            role: components["schemas"]["ProjectRole"];
+            /** @description A role's key, such as member. */
+            role?: string;
+            /** @description The keys of the roles they hold in the project themselves, exactly. */
+            roles?: string[];
         };
         GroupMapping: {
             id: string;
             oidc_group: string;
             project?: components["schemas"]["ProjectRef"] | null;
-            /** @description A project role with a project (project-admin, member, viewer); a global role without (admin, catalog-admin, auditor). */
+            /** @description The role's key. */
             role: string;
+            role_name?: string;
             /** @description Users in the group at their last sign-in. */
             users?: number;
         };
@@ -5186,7 +5376,104 @@ export interface components {
         GroupMappingWrite: {
             oidc_group: string;
             project_id?: string;
-            /** @description project-admin, member or viewer with a project; admin, catalog-admin or auditor without. */
+            /**
+             * @description A role's key, built-in or custom. Without a project for a role
+             *     given for all of rvav only (admin, catalog-admin, auditor, or one
+             *     holding such a permission); with one for project-admin, member and
+             *     viewer.
+             */
+            role: string;
+        };
+        /**
+         * @description A permission's stable identifier: one of the catalogue (`project.see`,
+         *     `policies.manage`), or a day-2 one, `day2.<group>` or
+         *     `day2.<group>:<action>`.
+         * @example project.see
+         * @example day2.power:power_on
+         */
+        Permission: string;
+        PermissionInfo: {
+            id: components["schemas"]["Permission"];
+            /**
+             * @description `project`: given in a project, or for all of rvav; `rvav`: for all of rvav only.
+             * @enum {string}
+             */
+            scope: "project" | "rvav";
+            /** @description Groups permissions in the role editor. */
+            area: string;
+            /** @description What it allows. */
+            summary: string;
+        };
+        PermissionCatalogue: {
+            items: components["schemas"]["PermissionInfo"][];
+            /** @description The day-2 groups, each with the actions known now; they are given in a project, or for all of rvav. */
+            day2: components["schemas"]["Day2PermissionGroup"][];
+        };
+        Day2PermissionGroup: {
+            /** @example power */
+            group: string;
+            permission: components["schemas"]["Permission"];
+            actions: {
+                key: string;
+                name: string;
+                permission: components["schemas"]["Permission"];
+            }[];
+        };
+        RoleRef: {
+            key: string;
+            name: string;
+        };
+        /**
+         * @description Where the role may be given: in a project (the built-in project-admin,
+         *     member and viewer), for all of rvav (the other built-in roles, and a
+         *     role holding a permission given that way only), or either.
+         * @enum {string}
+         */
+        RoleScope: "project" | "rvav" | "any";
+        Role: {
+            key: string;
+            name: string;
+            description: string;
+            permissions: components["schemas"]["Permission"][];
+            /** @description One of rvav's roles, which can't be changed or deleted. */
+            built_in: boolean;
+            scope: components["schemas"]["RoleScope"];
+            /** @description Its assignments to users and group mappings, in projects and for all of rvav. */
+            holders: number;
+            /** @description The day-2 policies that name it. */
+            policies: string[];
+        };
+        RoleList: {
+            items: components["schemas"]["Role"][];
+        };
+        RoleCreate: {
+            /** @description Fixed once made; none of the built-in roles' keys, nor owner. */
+            key: string;
+            name: string;
+            description?: string;
+            permissions: components["schemas"]["Permission"][];
+        };
+        RoleUpdate: {
+            name?: string;
+            description?: string;
+            permissions?: components["schemas"]["Permission"][];
+        };
+        RoleAssignment: {
+            /** @description To take it away by; none when rvav set it. */
+            id?: string;
+            user: components["schemas"]["UserRef"];
+            role: components["schemas"]["RoleRef"];
+            /** @description rvav set it itself (the local administrator's, the system users', the seed's); it can't be taken away. */
+            fixed: boolean;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        RoleAssignmentList: {
+            items: components["schemas"]["RoleAssignment"][];
+        };
+        RoleAssignmentWrite: {
+            user_id: string;
+            /** @description The key of a role that can be given for all of rvav. */
             role: string;
         };
         AdminEnvironment: components["schemas"]["Environment"] & {
@@ -5529,7 +5816,7 @@ export interface components {
             priority: number;
             /** @description Action keys or patterns (delete, snapshot_*, awx.*, *). */
             actions?: string[];
-            /** @description owner, viewer, member, project-admin, admin; empty for anyone. */
+            /** @description owner, viewer, member, project-admin, admin, or a custom role's key; empty for anyone. */
             roles?: string[];
             /** @default true */
             condition: string;
@@ -8387,7 +8674,10 @@ export interface operations {
                             name: string;
                             /** @description Tells apart people with the same name. */
                             email: string;
-                            /** @example member */
+                            /**
+                             * @description The names of the roles they hold in the project.
+                             * @example Member
+                             */
                             role: string;
                         }[];
                     };
@@ -9062,6 +9352,236 @@ export interface operations {
         };
     };
     deleteGroupMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listPermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionCatalogue"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Role"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Role"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Role"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listRoleAssignments: {
+        parameters: {
+            query?: {
+                /** @description Only this role's. */
+                role?: string;
+                /** @description Only this user's. */
+                user_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createRoleAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignmentWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteRoleAssignment: {
         parameters: {
             query?: never;
             header?: never;

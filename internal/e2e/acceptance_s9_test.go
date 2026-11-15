@@ -38,7 +38,7 @@ func TestAdministrationAcceptance(t *testing.T) {
 		h.json("POST", "/api/v1/admin/projects", admin, api.AdminProjectCreate{Code: "pay", Name: "Payments",
 			Environments: []string{"dev"}, ProjectAdmins: &[]string{seed.UserID("sbrunner")}}, 201, &pay)
 		h.json("PUT", "/api/v1/projects/"+pay.Id+"/members/"+seed.UserID("tnguyen"), "sbrunner",
-			api.ProjectMemberWrite{Role: api.Member}, 200, nil)
+			api.ProjectMemberWrite{Role: new(string(api.Member))}, 200, nil)
 
 		// Placement: bronze clusters by vCenter tag, one datastore by name, the dev app networks.
 		h.json("POST", "/api/v1/admin/placement-rules", admin, api.PlacementRuleWrite{ProjectId: pay.Id, Environment: "dev",

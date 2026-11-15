@@ -104,6 +104,39 @@ func (p *Principal) VisibleProjects() []string {
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
 
+// PermissionsIn lists the permissions held in a project, those held for all
+// of rvav included; "" lists those held for all of rvav.
+func (p *Principal) PermissionsIn(projectID string) []string {
+	held := p.Held(projectID)
+	out := make([]string, len(held))
+	for i, h := range held {
+		out[i] = string(h)
+	}
+	return out
+}
+
+// RoleRefs names the roles of these keys.
+func (p *Principal) RoleRefs(keys []string) []Role {
+	out := make([]Role, 0, len(keys))
+	for _, k := range keys {
+		if r, ok := p.known[k]; ok {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ProjectsGiven lists the projects where a role is given to the principal,
+// sorted.
+func (p *Principal) ProjectsGiven() []string {
+	out := make([]string, 0, len(p.rolesIn))
+	for id := range p.rolesIn {
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // RolesIn are the keys of the roles given in a project, sorted.
 func (p *Principal) RolesIn(projectID string) []string { return p.rolesIn[projectID] }
 

@@ -173,7 +173,7 @@ func TestVRAImport(t *testing.T) {
 		if err := (&inventory.Syncer{Store: h.store, VSphere: h.vc, Events: h.acts.Events, Log: h.acts.Log}).SyncOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		h.json("PUT", "/api/v1/projects/prj_data/members/usr_lmartin", admin, api.ProjectMemberWrite{Role: api.Member}, 200, nil)
+		h.json("PUT", "/api/v1/projects/prj_data/members/usr_lmartin", admin, api.ProjectMemberWrite{Role: new(string(api.Member))}, 200, nil)
 		dep := func(p api.VraPlan, vraID string) api.VraDeploymentPlan {
 			t.Helper()
 			return p.Deployments[slices.IndexFunc(p.Deployments, func(d api.VraDeploymentPlan) bool { return d.VraId == vraID })]

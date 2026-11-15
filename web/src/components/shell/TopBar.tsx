@@ -66,7 +66,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               <MenuItem key={p.project.id} onSelect={() => setProjectId(p.project.id)}>
                 <span className="flex flex-col">
                   <span>{p.project.name}</span>
-                  <span className="text-[11px] text-faint">{roleLabel[p.role]}</span>
+                  <span className="text-[11px] text-faint">
+                    {p.role ? roleLabel[p.role] : p.roles.map((r) => r.name).join(", ")}
+                  </span>
                 </span>
                 {p.project.id === project.id && <Check className="ml-auto text-accent!" />}
               </MenuItem>

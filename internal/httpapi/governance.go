@@ -402,7 +402,7 @@ func (s *Server) SetProjectMember(w http.ResponseWriter, r *http.Request, projec
 	if !s.decode(w, r, &m) {
 		return
 	}
-	out, err := s.Core.SetProjectMember(r.Context(), principal(r), projectId, userId, string(m.Role))
+	out, err := s.Core.SetProjectMember(r.Context(), principal(r), projectId, userId, m)
 	s.reply(w, r, http.StatusOK, out, err)
 }
 

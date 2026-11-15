@@ -3,31 +3,72 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"sort"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
+func roleRefs(p *auth.Principal, keys []string) []api.RoleRef {
+	out := []api.RoleRef{}
+	for _, r := range p.RoleRefs(keys) {
+		out = append(out, api.RoleRef{Key: r.Key, Name: r.Name})
+	}
+	return out
+}
+
+// meRole is a project's deprecated role in /me: the strongest built-in role
+// held there, project-admin for an administrator and viewer for an auditor
+// elsewhere, as before (ADR-0034).
+func meRole(p *auth.Principal, projectID string) *api.ProjectRole {
+	role := p.ProjectRoles[projectID]
+	switch {
+	case role != "":
+	case p.IsAdmin():
+		role = string(api.ProjectAdmin)
+	case p.SeesEverything():
+		role = string(api.Viewer)
+	default:
+		return nil
+	}
+	r := api.ProjectRole(role)
+	return &r
+}
+
 func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
-	idList := make([]string, 0, len(p.ProjectRoles))
-	for id := range p.ProjectRoles {
-		idList = append(idList, id)
+	// Held for all of rvav, project.see lists every project, up to 200, and
+	// those where a role is given, as before.
+	ids := p.Projects(auth.ProjectSee)
+	var projects []store.Project
+	if ids == nil {
+		all, err := s.Store.ListProjects(r.Context(), nil, 200, nil)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		projects = all.Items
+		ids = slices.DeleteFunc(p.ProjectsGiven(), func(id string) bool {
+			return slices.ContainsFunc(projects, func(pr store.Project) bool { return pr.ID == id })
+		})
 	}
-	projects, err := s.Store.ProjectsByID(r.Context(), idList)
+	byID, err := s.Store.ProjectsByID(r.Context(), ids)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	for _, pr := range byID {
+		projects = append(projects, pr)
+	}
 	out := api.Me{
 		User:        present.UserRef(p.User.ID, p.User.Name, p.User.Email),
 		GlobalRoles: []api.MeGlobalRoles{},
-		Projects: []struct {
-			Project api.ProjectRef  `json:"project"`
-			Role    api.ProjectRole `json:"role"`
-		}{},
+		Permissions: p.PermissionsIn(""),
+		Roles:       roleRefs(p, p.Roles),
+		Projects:    []api.MeProject{},
 	}
 	if p.User.Title != "" {
 		out.Title = &p.User.Title
@@ -36,40 +77,15 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 		out.Local, out.PasswordChangeRequired = present.Ptr(true), present.Ptr(p.MustChangePassword)
 	}
 	for _, g := range p.GlobalRoles {
-		out.GlobalRoles = append(out.GlobalRoles, api.MeGlobalRoles(g))
-	}
-	for id, role := range p.ProjectRoles {
-		pr, ok := projects[id]
-		if !ok {
-			continue
-		}
-		out.Projects = append(out.Projects, struct {
-			Project api.ProjectRef  `json:"project"`
-			Role    api.ProjectRole `json:"role"`
-		}{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name), Role: api.ProjectRole(role)})
-	}
-	// Administrators and auditors work in every project, not only their own.
-	if p.SeesEverything() {
-		all, err := s.Store.ListProjects(r.Context(), nil, 200, nil)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		for _, pr := range all.Items {
-			if _, member := p.ProjectRoles[pr.ID]; member {
-				continue
-			}
-			role := api.Viewer
-			if p.IsAdmin() {
-				role = api.ProjectAdmin
-			}
-			out.Projects = append(out.Projects, struct {
-				Project api.ProjectRef  `json:"project"`
-				Role    api.ProjectRole `json:"role"`
-			}{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name), Role: role})
+		if b, ok := auth.BuiltinRole(g); ok && b.Global {
+			out.GlobalRoles = append(out.GlobalRoles, api.MeGlobalRoles(g))
 		}
 	}
-	sort.Slice(out.Projects, func(i, j int) bool { return out.Projects[i].Project.Name < out.Projects[j].Project.Name })
+	for _, pr := range projects {
+		out.Projects = append(out.Projects, api.MeProject{Project: present.ProjectRef(pr.ID, pr.Code, pr.Name),
+			Role: meRole(p, pr.ID), Roles: roleRefs(p, p.RolesIn(pr.ID)), Permissions: p.PermissionsIn(pr.ID)})
+	}
+	sort.SliceStable(out.Projects, func(i, j int) bool { return out.Projects[i].Project.Name < out.Projects[j].Project.Name })
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -105,7 +121,7 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request, params api
 	}
 	out := api.ProjectPage{Items: make([]api.Project, len(page.Items)), NextCursor: nextCursor(page.Next)}
 	for i, pr := range page.Items {
-		out.Items[i] = present.Project(pr, p.ProjectRole(pr.ID))
+		out.Items[i] = present.Project(pr, p.ProjectRole(pr.ID), p.PermissionsIn(pr.ID))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -127,7 +143,8 @@ func (s *Server) GetProject(w http.ResponseWriter, r *http.Request, projectID ap
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, present.Project(pr, principal(r).ProjectRole(pr.ID)))
+	p := principal(r)
+	writeJSON(w, http.StatusOK, present.Project(pr, p.ProjectRole(pr.ID), p.PermissionsIn(pr.ID)))
 }
 
 type quotaLine struct {

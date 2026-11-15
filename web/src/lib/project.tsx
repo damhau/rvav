@@ -61,7 +61,7 @@ export function ProjectProvider({
       me: me.data,
       projectId: membership.project.id,
       project: membership.project,
-      role: membership.role,
+      role: membership.role ?? "viewer",
       setProjectId,
     };
   }, [me.data, chosen, setProjectId]);

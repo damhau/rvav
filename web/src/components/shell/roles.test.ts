@@ -5,6 +5,8 @@ import { accountRole } from "./roles";
 const me = (global_roles: Me["global_roles"]): Me => ({
   user: { id: "usr_1", name: "Local administrator", email: "" },
   global_roles,
+  permissions: [],
+  roles: [],
   projects: [],
 });
 

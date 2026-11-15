@@ -53,12 +53,12 @@ func TestProjectAdministration(t *testing.T) {
 
 		// Members: the project admin manages them; members can't.
 		members := "/api/v1/projects/" + pay.Id + "/members/"
-		h.json("PUT", members+seed.UserID("tnguyen"), "sbrunner", api.ProjectMemberWrite{Role: api.Member}, 200, nil)
-		h.json("PUT", members+seed.UserID("lmartin"), "tnguyen", api.ProjectMemberWrite{Role: api.Member}, 403, nil)
-		h.json("PUT", members+seed.UserID("sbrunner"), "sbrunner", api.ProjectMemberWrite{Role: api.Member}, 409, nil) // the last project admin
+		h.json("PUT", members+seed.UserID("tnguyen"), "sbrunner", api.ProjectMemberWrite{Role: new(string(api.Member))}, 200, nil)
+		h.json("PUT", members+seed.UserID("lmartin"), "tnguyen", api.ProjectMemberWrite{Role: new(string(api.Member))}, 403, nil)
+		h.json("PUT", members+seed.UserID("sbrunner"), "sbrunner", api.ProjectMemberWrite{Role: new(string(api.Member))}, 409, nil) // the last project admin
 		// An administrator who is also a member still manages the members.
-		h.json("PUT", members+seed.UserID(admin), admin, api.ProjectMemberWrite{Role: api.Member}, 200, nil)
-		h.json("PUT", members+seed.UserID("cdubois"), admin, api.ProjectMemberWrite{Role: api.Viewer}, 200, nil)
+		h.json("PUT", members+seed.UserID(admin), admin, api.ProjectMemberWrite{Role: new(string(api.Member))}, 200, nil)
+		h.json("PUT", members+seed.UserID("cdubois"), admin, api.ProjectMemberWrite{Role: new(string(api.Viewer))}, 200, nil)
 		h.json("DELETE", members+seed.UserID("cdubois"), admin, nil, 204, nil)
 		h.json("DELETE", members+seed.UserID(admin), admin, nil, 204, nil)
 		h.json("DELETE", members+seed.UserID("sbrunner"), "sbrunner", nil, 409, nil)
@@ -75,7 +75,7 @@ func TestProjectAdministration(t *testing.T) {
 		h.json("GET", "/api/v1/projects/"+pay.Id+"/members", "sbrunner", nil, 200, &list)
 		roles := map[string]string{}
 		for _, m := range list.Items {
-			roles[m.User.Id] = string(m.Role)
+			roles[m.User.Id] = roleOf(m.Role)
 			if m.User.Id == seed.UserID("afavre") && (m.Direct || !slices.Contains(m.Groups, "rvav-pay")) {
 				t.Fatalf("afavre should be a member through rvav-pay only: %+v", m)
 			}
@@ -707,7 +707,7 @@ func TestTokensAndAudit(t *testing.T) {
 
 		// The audit log: searched, by prefix, per project, as CSV.
 		h.json("PATCH", "/api/v1/admin/environments/dev", admin, api.AdminEnvironmentUpdate{Order: new(1)}, 200, nil)
-		h.json("PUT", "/api/v1/projects/prj_web/members/"+seed.UserID("cdubois"), "lmartin", api.ProjectMemberWrite{Role: api.Viewer}, 200, nil)
+		h.json("PUT", "/api/v1/projects/prj_web/members/"+seed.UserID("cdubois"), "lmartin", api.ProjectMemberWrite{Role: new(string(api.Viewer))}, 200, nil)
 		var page api.AuditEventPage
 		h.json("GET", "/api/v1/audit?action=token.", admin, nil, 200, &page)
 		if len(page.Items) != 2 || page.Items[0].Action != "token.revoke" || page.Items[0].Actor == nil {

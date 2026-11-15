@@ -23,6 +23,7 @@ import { factsFor } from "./approvals";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { formFor } from "./forms";
 import { DOMAIN, networks, templates, VCENTER } from "./inventory";
+import { heldIn, meProject, roleRefs } from "./roles";
 
 export interface StoredRequest {
   request: ServiceRequest;
@@ -123,14 +124,15 @@ export function createDb(now = Date.now()): Db {
   } catch {
     // No storage: an administrator.
   }
+  const rvav: Me["global_roles"] =
+    as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"];
   const me: Me = {
     user: lea,
     title: "Platform engineer",
-    global_roles: as === "project-admin" ? ["user"] : as === "auditor" ? ["user", "auditor"] : ["user", "admin"],
-    projects: [
-      { project: ref(web), role: "project-admin" },
-      { project: ref(data), role: "member" },
-    ],
+    global_roles: rvav,
+    permissions: heldIn(null, rvav, []),
+    roles: roleRefs(null, rvav),
+    projects: [meProject(null, ref(web), rvav, ["project-admin"]), meProject(null, ref(data), rvav, ["member"])],
   };
 
   const categories = [
