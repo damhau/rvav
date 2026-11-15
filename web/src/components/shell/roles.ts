@@ -1,16 +1,13 @@
-import type { Me, ProjectRole } from "@/lib/api/types";
-
-export const roleLabel = { "project-admin": "Project admin", member: "Member", viewer: "Viewer" } as const;
-const globalRoleLabel = { admin: "Administrator", "catalog-admin": "Catalog admin", auditor: "Auditor" } as const;
+import type { Me } from "@/lib/api/types";
 
 /**
- * What the account button says under the name: the role in the current
- * project, or for someone in none (an administrator setting up a new install,
- * an approver) their own role, if they have one. "Viewer" would name a role
- * they hold nowhere.
+ * What the account button and the project menu say under a name: the names
+ * of the roles given in the project, or of those held for all of rvav where
+ * it gives none (an administrator in a project they were not added to,
+ * someone in no project). User, which everyone holds, says nothing.
  */
-export function accountRole(me: Me, projectId: string, role: ProjectRole): string | undefined {
-  if (projectId) return roleLabel[role];
-  const own = (["admin", "catalog-admin", "auditor"] as const).find((r) => me.global_roles.includes(r));
-  return own && globalRoleLabel[own];
+export function rolesLabel(me: Me, projectId: string): string | undefined {
+  const given = me.projects.find((p) => p.project.id === projectId)?.roles ?? [];
+  const held = given.length > 0 ? given : me.roles.filter((r) => r.key !== "user");
+  return held.length > 0 ? held.map((r) => r.name).join(", ") : undefined;
 }

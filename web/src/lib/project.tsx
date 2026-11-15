@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import type { Me, ProjectRef, ProjectRole } from "./api/types";
+import type { Me, ProjectRef } from "./api/types";
 import { q } from "./query";
 
 const KEY = "rvav.project";
@@ -10,7 +10,6 @@ interface ProjectContext {
   /** Empty for someone in no project, who only approves. */
   projectId: string;
   project: ProjectRef;
-  role: ProjectRole;
   setProjectId: (id: string) => void;
 }
 
@@ -53,7 +52,6 @@ export function ProjectProvider({
         me: me.data,
         projectId: "",
         project: { id: "", code: "", name: "No project" },
-        role: "viewer",
         setProjectId,
       };
     }
@@ -61,7 +59,6 @@ export function ProjectProvider({
       me: me.data,
       projectId: membership.project.id,
       project: membership.project,
-      role: membership.role ?? "viewer",
       setProjectId,
     };
   }, [me.data, chosen, setProjectId]);

@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { relative } from "@/lib/utils";
@@ -74,7 +75,7 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
 export function TokensPage() {
   const qc = useQueryClient();
   const { me } = useCurrentProject();
-  const isAdmin = me.global_roles.includes("admin");
+  const isAdmin = can(me, "tokens.manage");
   const [everyone, setEveryone] = useState(false);
   const [made, setMade] = useState<string | null>(null);
   const tokens = useQuery(q.tokens(everyone));

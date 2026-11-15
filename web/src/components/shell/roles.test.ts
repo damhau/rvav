@@ -1,26 +1,38 @@
 import { describe, expect, it } from "vitest";
-import type { Me } from "@/lib/api/types";
-import { accountRole } from "./roles";
+import type { Me, RoleRef } from "@/lib/api/types";
+import { rolesLabel } from "./roles";
 
-const me = (global_roles: Me["global_roles"]): Me => ({
+const role = (key: string, name: string): RoleRef => ({ key, name });
+const user = role("user", "User");
+const web = { id: "prj_web", code: "web", name: "Web Platform" };
+
+const me = (roles: RoleRef[], inWeb: RoleRef[] | null): Me => ({
   user: { id: "usr_1", name: "Local administrator", email: "" },
-  global_roles,
+  global_roles: ["user"],
   permissions: [],
-  roles: [],
-  projects: [],
+  roles,
+  projects: inWeb ? [{ project: web, role: null, roles: inWeb, permissions: ["project.see"] }] : [],
 });
 
-describe("accountRole", () => {
-  it("names the role in the current project", () => {
-    expect(accountRole(me(["user", "admin"]), "prj_web", "project-admin")).toBe("Project admin");
-    expect(accountRole(me(["user"]), "prj_web", "member")).toBe("Member");
+describe("rolesLabel", () => {
+  it("names the roles given in the current project", () => {
+    expect(
+      rolesLabel(me([user, role("admin", "Administrator")], [role("project-admin", "Project admin")]), "prj_web"),
+    ).toBe("Project admin");
+    expect(rolesLabel(me([user], [role("member", "Member"), role("vm-operator", "VM operator")]), "prj_web")).toBe(
+      "Member, VM operator",
+    );
   });
 
-  it("names someone's own role when they are in no project, never Viewer", () => {
+  it("names the roles held for all of rvav where the project gives none", () => {
+    expect(rolesLabel(me([user, role("auditor", "Auditor")], []), "prj_web")).toBe("Auditor");
+  });
+
+  it("names someone's own roles when they are in no project, never Viewer", () => {
     // A new install's administrator has no project until they make one; the
     // top bar said "Local administrator · Viewer".
-    expect(accountRole(me(["admin"]), "", "viewer")).toBe("Administrator");
-    expect(accountRole(me(["user", "auditor", "catalog-admin"]), "", "viewer")).toBe("Catalog admin");
-    expect(accountRole(me(["user"]), "", "viewer")).toBeUndefined();
+    expect(rolesLabel(me([role("admin", "Administrator")], null), "")).toBe("Administrator");
+    expect(rolesLabel(me([user, role("catalog-admin", "Catalog admin")], null), "")).toBe("Catalog admin");
+    expect(rolesLabel(me([user], null), "")).toBeUndefined();
   });
 });

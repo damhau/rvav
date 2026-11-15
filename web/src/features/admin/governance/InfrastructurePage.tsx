@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, td, th, writable } from "./common";
 
@@ -629,7 +630,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
 
 export function InfrastructurePage() {
   const { me } = useCurrentProject();
-  const canEdit = me.global_roles.includes("admin");
+  const canEdit = can(me, "infrastructure.manage");
   return (
     <Page>
       <PageHeader

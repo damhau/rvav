@@ -18,7 +18,7 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } fr
 import { CHANGE_PASSWORD_PATH, signOut } from "@/lib/auth";
 import { isMock } from "@/lib/env";
 import { useCurrentProject } from "@/lib/project";
-import { accountRole, roleLabel } from "./roles";
+import { rolesLabel } from "./roles";
 import { useTheme, type Theme } from "@/lib/theme";
 import { initials } from "@/lib/utils";
 
@@ -29,8 +29,8 @@ const themes: { value: Theme; label: string; icon: React.ElementType }[] = [
 ];
 
 export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void; onOpenNav: () => void }) {
-  const { me, projectId, project, role, setProjectId } = useCurrentProject();
-  const ownRole = accountRole(me, projectId, role);
+  const { me, projectId, project, setProjectId } = useCurrentProject();
+  const ownRole = rolesLabel(me, projectId);
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const ThemeIcon = themes.find((t) => t.value === theme)?.icon ?? Monitor;
@@ -66,9 +66,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               <MenuItem key={p.project.id} onSelect={() => setProjectId(p.project.id)}>
                 <span className="flex flex-col">
                   <span>{p.project.name}</span>
-                  <span className="text-[11px] text-faint">
-                    {p.role ? roleLabel[p.role] : p.roles.map((r) => r.name).join(", ")}
-                  </span>
+                  <span className="text-[11px] text-faint">{rolesLabel(me, p.project.id)}</span>
                 </span>
                 {p.project.id === project.id && <Check className="ml-auto text-accent!" />}
               </MenuItem>
@@ -106,7 +104,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               </span>
               <span className="hidden flex-col text-left leading-tight sm:flex">
                 <span className="font-medium">{me.user.name}</span>
-                {ownRole && <span className="text-[11px] text-faint">{ownRole}</span>}
+                {ownRole && <span className="max-w-48 truncate text-[11px] text-faint">{ownRole}</span>}
               </span>
             </button>
           </MenuTrigger>

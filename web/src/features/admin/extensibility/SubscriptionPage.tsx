@@ -7,6 +7,7 @@ import { KeyValues, Page, PageHeader, Panel } from "@/components/common/page";
 import { Mono, Time } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { adm } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { RunsPanel } from "./runs";
 import { targetText } from "./SubscriptionsPage";
@@ -53,7 +54,7 @@ export function SubscriptionPage({ subscriptionId }: { subscriptionId: string })
               ]}
             />
           </Panel>
-          <RunsPanel subscriptionId={s.id} canRetry={me.global_roles.includes("admin")} />
+          <RunsPanel subscriptionId={s.id} canRetry={can(me, "extensibility.manage")} />
         </>
       )}
     </Page>

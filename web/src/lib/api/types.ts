@@ -8,6 +8,7 @@ export type FieldError = S["FieldError"];
 export type UserRef = S["UserRef"];
 export type Me = S["Me"];
 export type ProjectRole = S["ProjectRole"];
+export type RoleRef = S["RoleRef"];
 export type EnvironmentKey = S["EnvironmentKey"];
 export type Environment = S["Environment"];
 export type ProjectRef = S["ProjectRef"];

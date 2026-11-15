@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import {
   errorAt,
@@ -1197,7 +1198,7 @@ function Explain() {
 
 export function PoliciesPage() {
   const { me } = useCurrentProject();
-  const canEdit = me.global_roles.includes("admin");
+  const canEdit = can(me, "policies.manage");
   return (
     <Page>
       <PageHeader

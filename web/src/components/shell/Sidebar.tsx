@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChartColumn, House, LayoutGrid, List, Server, SquareCheckBig } from "lucide-react";
+import type { Me } from "@/lib/api/types";
+import { can, canAnywhere } from "@/lib/can";
 import { useLiveStatus } from "@/lib/live/LiveProvider";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
@@ -10,29 +12,22 @@ const item =
   "flex h-[30px] items-center gap-2.5 rounded-md px-2 text-[13px] text-muted hover:bg-sunken hover:text-fg [&_svg]:size-[15px] [&_svg]:shrink-0";
 const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface";
 
-interface Roles {
-  admin: boolean;
-  catalogAdmin: boolean;
-  auditor: boolean;
-  projectAdmin: boolean;
-}
-
-// The administration pages, each for those who may use it (ADR-0020); the
-// server decides again.
-const admin: [string, string, (r: Roles) => boolean][] = [
-  ["setup", "Setup", (r) => r.admin],
-  ["catalog-items", "Catalog items", (r) => r.admin || r.catalogAdmin],
-  ["day2-actions", "Day-2 actions", (r) => r.admin],
-  ["policies", "Policies", (r) => r.admin || r.auditor],
-  ["projects", "Projects", (r) => r.admin || r.auditor || r.projectAdmin],
-  ["infrastructure", "Templates and networks", (r) => r.admin || r.auditor],
-  ["onboarding", "Onboarding", (r) => r.admin],
-  ["vra-import", "vRA import", (r) => r.admin],
-  ["integrations", "Integrations", (r) => r.admin],
-  ["subscriptions", "Subscriptions", (r) => r.admin || r.auditor],
-  ["workflows", "Custom workflows", (r) => r.admin || r.auditor],
-  ["audit", "Audit log", (r) => r.admin || r.auditor || r.projectAdmin],
-  ["system", "System", (r) => r.admin],
+// The administration pages, each for those who may use it (ADR-0020,
+// ADR-0034); the server decides again.
+const admin: [string, string, (me: Me) => boolean][] = [
+  ["setup", "Setup", (me) => can(me, "system.manage")],
+  ["catalog-items", "Catalog items", (me) => can(me, "catalog.manage")],
+  ["day2-actions", "Day-2 actions", (me) => can(me, "extensibility.manage")],
+  ["policies", "Policies", (me) => can(me, "policies.read")],
+  ["projects", "Projects", (me) => canAnywhere(me, "project.settings.read")],
+  ["infrastructure", "Templates and networks", (me) => can(me, "infrastructure.read")],
+  ["onboarding", "Onboarding", (me) => can(me, "import.manage")],
+  ["vra-import", "vRA import", (me) => can(me, "import.manage")],
+  ["integrations", "Integrations", (me) => can(me, "integrations.manage")],
+  ["subscriptions", "Subscriptions", (me) => can(me, "extensibility.read")],
+  ["workflows", "Custom workflows", (me) => can(me, "extensibility.read")],
+  ["audit", "Audit log", (me) => canAnywhere(me, "audit.read")],
+  ["system", "System", (me) => can(me, "system.manage")],
 ];
 
 function LiveIndicator() {
@@ -61,13 +56,7 @@ function LiveIndicator() {
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { projectId, me } = useCurrentProject();
-  const roles: Roles = {
-    admin: me.global_roles.includes("admin"),
-    catalogAdmin: me.global_roles.includes("catalog-admin"),
-    auditor: me.global_roles.includes("auditor"),
-    projectAdmin: me.projects.some((p) => p.role === "project-admin"),
-  };
-  const adminPages = admin.filter(([, , show]) => show(roles));
+  const adminPages = admin.filter(([, , show]) => show(me));
   const running = useInfiniteQuery(q.requests({ projectId, status: ["running", "queued", "cancelling"], limit: 50 }));
   const runningCount = running.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0;
   const waiting = useQuery(q.approvals(["pending"])).data?.total ?? 0;

@@ -14,6 +14,7 @@ import type {
   UserRef,
   VmResource,
 } from "@/lib/api/types";
+import { can } from "@/lib/can";
 import type { Db, StoredRequest } from "./seed";
 
 const now = () => new Date().toISOString();
@@ -490,7 +491,14 @@ function approvalReason(a: MockAction, d: DeploymentDetail, inputs?: Inputs): st
 
 /** The actions list of a deployment, as GET /deployments/{id}/actions answers. */
 export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
-  const role = db.me.projects.find((p) => p.project.id === d.project.id)?.role;
+  // The seeded day-2 policies let administrators, members and project
+  // admins run them; with none matching, the roles' day-2 permissions decide.
+  const held = db.me.projects.find((p) => p.project.id === d.project.id);
+  const runs = (a: MockAction) =>
+    db.me.roles.some((r) => r.key === "admin") ||
+    Boolean(held?.roles.some((r) => r.key === "member" || r.key === "project-admin")) ||
+    can(db.me, `day2.${a.group}`, d.project.id) ||
+    can(db.me, `day2.${a.group}:${a.key}`, d.project.id);
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const targets: (VmResource | undefined)[] = [undefined, ...vms];
   const out: Day2Action[] = [];
@@ -505,7 +513,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
           : d.status !== "ready" && !(d.status === "updating" && vm) && !(d.status === "failed" && a.key === "delete")
             ? `The deployment is ${d.status}.`
             : null) ??
-        (role === "viewer" || !role ? `Your role in ${d.project.name} does not allow ${a.name}.` : null) ??
+        (runs(a) ? null : `Your role in ${d.project.name} does not allow ${a.name}.`) ??
         a.unavailable?.(vm, d) ??
         null;
       out.push({

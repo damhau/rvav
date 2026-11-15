@@ -16,6 +16,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
 import { useRequestStream } from "@/lib/live/LiveProvider";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { duration, toText } from "@/lib/utils";
@@ -86,8 +87,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const { me, projectId } = useCurrentProject();
   useRequestStream(id, Boolean(request.data && request.data.project.id !== projectId));
   // Request again: for those who may request in its project.
-  const canRequestIn = (pid: string) =>
-    me.projects.some((p) => p.project.id === pid && (p.role === "member" || p.role === "project-admin"));
+  const canRequestIn = (pid: string) => can(me, "request.submit", pid);
   const steps = useQuery({ ...q.steps(id ?? ""), enabled: Boolean(id) });
   const approvals = useQuery({ ...q.requestApprovals(id ?? ""), enabled: Boolean(id) });
   const levels = (approvals.data?.items ?? []).filter((a) => !a.step_key);

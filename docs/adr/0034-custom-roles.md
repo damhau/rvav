@@ -458,7 +458,7 @@ reference.
 | Where | Today | Becomes |
 |---|---|---|
 | `components/shell/Sidebar.tsx` `Sidebar`, `admin` | flags from `global_roles` and any `project-admin` | Setup `system.manage`; Catalog items `catalog.manage`; Day-2 actions `extensibility.manage`; Policies `policies.read`; Projects `project.settings.read` anywhere; Templates and networks `infrastructure.read`; Onboarding and vRA import `import.manage`; Integrations `integrations.manage`; Subscriptions and Custom workflows `extensibility.read`; Audit log `audit.read` anywhere; System `system.manage` |
-| `components/shell/AppShell.tsx` `NoProject`, `SetupLanding` | `admin` | `project.create`; `system.manage` |
+| `components/shell/AppShell.tsx` `NoProject`, `SetupLanding` | `admin` | `system.manage` (the empty state leads to the setup checklist); `system.manage` |
 | `features/overview/OverviewPage.tsx` `SetupNotice` | `admin` | `system.manage` |
 | `components/shell/roles.ts` `roleLabel`, `accountRole`; `TopBar.tsx` | built-in role labels | the names of the roles held, from `/me` |
 | `lib/project.tsx` | the current project's `role`, `viewer` when none | its `roles` and `permissions`, none when none |

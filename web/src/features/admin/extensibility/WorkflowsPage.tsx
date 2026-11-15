@@ -13,6 +13,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, td, th } from "../governance/common";
 
@@ -291,7 +292,7 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
 export function WorkflowsPage() {
   const qc = useQueryClient();
   const { me } = useCurrentProject();
-  const canEdit = me.global_roles.includes("admin");
+  const canEdit = can(me, "extensibility.manage");
   const workflows = useQuery(adm.workflows());
   const [editing, setEditing] = useState<S["WorkflowRegistration"] | "new" | null>(null);
   const remove = useMutation({

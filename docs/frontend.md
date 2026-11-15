@@ -749,8 +749,12 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
 - OIDC authorization code flow with PKCE through `oidc-client-ts`; silent renew.
 - Tokens are kept in memory (not in localStorage); the API client adds the bearer
   token and handles a 401 by renewing once, then redirecting to log in.
-- The user's roles and project memberships are loaded once and used for route
-  guards and for hiding actions (the server still enforces everything).
+- The user's permissions, for all of rvav and in each project, are loaded
+  once from `/me` and used for route guards and for hiding actions, through
+  `can(me, permission, projectId?)` in `web/src/lib/can.ts`; the web app
+  never checks a role name (ADR-0034). The server still enforces
+  everything. A change of roles ends the live stream with `resync`, which
+  loads `/me` again.
 
 ## Error handling
 

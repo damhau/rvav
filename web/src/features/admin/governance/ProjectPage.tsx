@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, td, th, UserPicker } from "./common";
 
@@ -690,7 +691,6 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
 
 export function ProjectPage({ projectId }: { projectId: string }) {
   const { me } = useCurrentProject();
-  const isAdmin = me.global_roles.includes("admin");
   const project = useQuery(adm.project(projectId));
   if (project.isPending)
     return (
@@ -731,22 +731,19 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
         <TabsContent value="members" className="pt-4">
-          <Members
-            projectId={p.id}
-            canManage={isAdmin || me.projects.some((x) => x.project.id === p.id && x.role === "project-admin")}
-          />
+          <Members projectId={p.id} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
         <TabsContent value="placement" className="pt-4">
-          <Placement project={p} isAdmin={isAdmin} />
+          <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />
         </TabsContent>
         <TabsContent value="quotas" className="pt-4">
-          <Quotas project={p} isAdmin={isAdmin} />
+          <Quotas project={p} isAdmin={can(me, "project.quotas.manage", p.id)} />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <Details
             key={[p.name, p.description, p.cost_center, p.environments.join(), p.archived].join("|")}
             project={p}
-            isAdmin={isAdmin}
+            isAdmin={can(me, "project.update", p.id)}
           />
         </TabsContent>
       </Tabs>

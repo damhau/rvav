@@ -26,6 +26,7 @@ import {
   vote,
   type StoredApproval,
 } from "./approvals";
+import { can } from "@/lib/can";
 import { actionsFor, runAction } from "./day2";
 import { bus, matches } from "./events";
 import {
@@ -281,6 +282,11 @@ function answerStep(a: StoredApproval, stored: StoredRequest, body: S["ApprovalD
 
 const visibleApproval = (a: StoredApproval) => isApproverOf(db, a) || myProjectIds().has(a.project.id);
 
+/** A project as its GET answers: with what the caller holds there. */
+function withMine(p: S["Project"]): S["Project"] {
+  return { ...p, my_permissions: db.me.projects.find((x) => x.project.id === p.id)?.permissions ?? db.me.permissions };
+}
+
 export const handlers = [
   // Every call needs a bearer token, as with the real API.
   http.all(`${base}/*`, ({ request }) => {
@@ -439,14 +445,14 @@ export const handlers = [
 
   http.get(`${base}/projects`, async ({ request }) => {
     await wait();
-    const mine = db.projects.filter((p) => myProjectIds().has(p.id));
+    const mine = db.projects.filter((p) => myProjectIds().has(p.id)).map(withMine);
     return json<S["ProjectPage"]>(page(mine, new URL(request.url)));
   }),
 
   http.get<{ projectId: string }>(`${base}/projects/:projectId`, async ({ params }) => {
     await wait();
     const p = projectById(params.projectId);
-    return p ? json<S["Project"]>(p) : notFound("Project");
+    return p ? json<S["Project"]>(withMine(p)) : notFound("Project");
   }),
 
   http.get<{ projectId: string }>(`${base}/projects/:projectId/quota`, async ({ params, request }) => {
@@ -523,9 +529,13 @@ export const handlers = [
     const item = itemByKey(params.itemId);
     const projectId = new URL(request.url).searchParams.get("project_id");
     if (!item) return notFound("Catalog item");
-    const role = db.me.projects.find((p) => p.project.id === projectId)?.role;
-    if (role === "viewer")
-      return problem(403, "forbidden", "You can't request items in this project", "Viewers can only look.");
+    if (!can(db.me, "request.submit", projectId ?? ""))
+      return problem(
+        403,
+        "forbidden",
+        "You can't request items in this project",
+        "Your roles there don't let you request.",
+      );
     return json<S["RequestForm"]>(db.forms[item.id]!);
   }),
 
@@ -594,7 +604,7 @@ export const handlers = [
     const item = itemByKey(draft.catalog_item_id);
     const project = projectById(draft.project_id);
     if (!item || !project) return notFound("Catalog item or project");
-    if (db.me.projects.find((p) => p.project.id === project.id)?.role === "viewer") {
+    if (!can(db.me, "request.submit", project.id)) {
       return problem(403, "forbidden", "You can't request items in this project");
     }
     const check = preview(db, item, project, draft);
@@ -825,11 +835,14 @@ export const handlers = [
   http.get(`${base}/approvals`, async ({ request }) => {
     await wait();
     const url = new URL(request.url);
-    if (url.searchParams.get("view") === "all") {
-      return problem(403, "forbidden", "Not allowed", "Only administrators and auditors can see every approval.");
-    }
     const statuses = list(url, "status");
     const wanted = statuses.length ? statuses : ["pending"];
+    if (url.searchParams.get("view") === "all") {
+      if (!can(db.me, "approval.read_all"))
+        return problem(403, "forbidden", "Not allowed", "Only administrators and auditors can see every approval.");
+      const all = db.approvals.filter((a) => wanted.includes(a.status)).map((a) => summaryOf(db, a));
+      return json<S["ApprovalPage"]>({ ...page(all, url), total: all.length });
+    }
     const open = (a: StoredApproval) => a.status === "pending" || a.status === "waiting";
     const voted = (a: StoredApproval) => a.votes.some((v) => v.user.id === db.me.user.id);
     const mine = db.approvals.filter(

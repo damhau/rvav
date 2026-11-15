@@ -8,6 +8,7 @@ import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import type { QuotaResource } from "@/lib/api/types";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
 import { leaseLabel, roughDuration } from "@/lib/utils";
@@ -258,7 +259,7 @@ function Favourites() {
 /** While the setup checklist is open (U1.5), the way back to it. */
 function SetupNotice() {
   const { me } = useCurrentProject();
-  const setup = useQuery({ ...adm.setup(), enabled: me.global_roles.includes("admin") });
+  const setup = useQuery({ ...adm.setup(), enabled: can(me, "system.manage") });
   if (!setup.data?.open) return null;
   const done = setup.data.steps.filter((s) => s.done).length;
   return (

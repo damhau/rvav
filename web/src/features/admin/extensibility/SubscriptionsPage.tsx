@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, priorityOf, td, th } from "../governance/common";
 import { RunDialog } from "./runs";
@@ -292,7 +293,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
 export function SubscriptionsPage() {
   const qc = useQueryClient();
   const { me } = useCurrentProject();
-  const canEdit = me.global_roles.includes("admin");
+  const canEdit = can(me, "extensibility.manage");
   const subs = useQuery(adm.subscriptions());
   const [editing, setEditing] = useState<S["Subscription"] | "new" | null>(null);
   const [tested, setTested] = useState<S["SubscriptionRunDetail"] | null>(null);

@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { UserRef } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
+import { can, projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { failed, fieldErrors, td, th, UserPicker } from "./common";
 
@@ -141,24 +142,22 @@ function Projects() {
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const { me } = useCurrentProject();
-  const isAdmin = me.global_roles.includes("admin");
-  const seesAll = isAdmin || me.global_roles.includes("auditor");
-  const projects = useQuery({ ...adm.projects(search, archived), enabled: seesAll });
+  const scope = projectsWith(me, "project.settings.read");
+  const projects = useQuery({ ...adm.projects(search, archived), enabled: scope === "all" });
   const list = projects.data?.items ?? [];
-  if (!seesAll) {
-    // A project admin's own projects.
-    const mine = me.projects.filter((p) => p.role === "project-admin");
+  if (scope !== "all") {
+    // The projects whose settings the caller sees: a project admin's own.
     return (
       <Panel title="Your projects">
         <ul className="flex flex-col gap-1 text-[13px]">
-          {mine.map((p) => (
-            <li key={p.project.id}>
+          {scope.map((p) => (
+            <li key={p.id}>
               <Link
                 to="/admin/projects/$projectId"
-                params={{ projectId: p.project.id }}
+                params={{ projectId: p.id }}
                 className="font-medium hover:text-accent"
               >
-                {p.project.name}
+                {p.name}
               </Link>
             </li>
           ))}
@@ -171,7 +170,7 @@ function Projects() {
       title="Projects"
       flush
       actions={
-        isAdmin && (
+        can(me, "project.create") && (
           <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
             New project
           </Button>
@@ -528,14 +527,12 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
 
 export function ProjectsPage() {
   const { me } = useCurrentProject();
-  const isAdmin = me.global_roles.includes("admin");
-  const seesAll = isAdmin || me.global_roles.includes("auditor");
   return (
     <Page>
       <PageHeader title="Projects" meta="Projects, who is in them and the environments they deploy to." />
       <Projects />
-      {seesAll && <Environments canEdit={isAdmin} />}
-      {seesAll && <GroupMappings canEdit={isAdmin} />}
+      {can(me, "environments.read") && <Environments canEdit={can(me, "environments.manage")} />}
+      {can(me, "access.read") && <GroupMappings canEdit={can(me, "access.manage")} />}
     </Page>
   );
 }

@@ -3,6 +3,7 @@
 // leases of the mock data.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { can } from "@/lib/can";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -77,7 +78,7 @@ function fakes(db: Db): Fake[] {
 }
 
 function scopeOf(db: Db, project?: string | null) {
-  const all = db.me.global_roles.includes("admin") || db.me.global_roles.includes("auditor");
+  const all = can(db.me, "project.see");
   const mine = all ? db.projects.map((p) => p.id) : db.me.projects.map((p) => p.project.id);
   return project ? mine.filter((p) => p === project) : mine;
 }

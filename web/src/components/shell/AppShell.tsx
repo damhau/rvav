@@ -4,6 +4,7 @@ import { Dialog } from "radix-ui";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { EmptyState, Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { Sidebar } from "./Sidebar";
@@ -20,7 +21,7 @@ const withoutProject = (path: string) =>
 
 function NoProject() {
   const { me } = useCurrentProject();
-  if (me.global_roles.includes("admin")) {
+  if (can(me, "system.manage")) {
     return (
       <Page>
         <EmptyState
@@ -56,7 +57,7 @@ let landedOnSetup = false;
 
 function SetupLanding() {
   const { me } = useCurrentProject();
-  const setup = useQuery({ ...adm.setup(), enabled: me.global_roles.includes("admin") && !landedOnSetup });
+  const setup = useQuery({ ...adm.setup(), enabled: can(me, "system.manage") && !landedOnSetup });
   const navigate = useNavigate();
   const open = setup.data?.open ?? false;
   useEffect(() => {

@@ -42,6 +42,12 @@ function AdoptDialog({
   const projects = useQuery(adm.projects("", false));
   const project = projects.data?.items.find((p) => p.id === f.project);
   const members = useQuery({ ...adm.members(f.project), enabled: f.project !== "" });
+  // Owners run the actions on their deployments: members who may request
+  // there. Without the roles to read, every member is offered; the server
+  // decides.
+  const roles = useQuery(adm.roles()).data?.items;
+  const requests = (m: S["ProjectMember"]) =>
+    !roles || m.roles.some((r) => roles.find((x) => x.key === r.key)?.permissions.includes("request.submit"));
   const items = useQuery({ ...q.catalog({ projectId: f.project, type: "vm_blueprint" }), enabled: f.project !== "" });
   const adopt = useMutation({
     mutationFn: () =>
@@ -126,7 +132,7 @@ function AdoptDialog({
                 loading={members.isFetching}
                 onChange={(v) => setF({ ...f, owner: v })}
                 options={(members.data?.items ?? [])
-                  .filter((m) => m.role !== "viewer")
+                  .filter(requests)
                   .map((m) => ({ value: m.user.id, label: m.user.name }))}
               />
             </Field>

@@ -132,6 +132,7 @@ export const adm = {
       call(api.GET("/projects/{projectId}/members", { params: { path: { projectId: id } }, signal })),
     ),
   groupMappings: () => get(["admin", "group-mappings"], (signal) => call(api.GET("/admin/group-mappings", { signal }))),
+  roles: () => get(["admin", "roles"], (signal) => call(api.GET("/admin/roles", { signal }))),
   environments: () => get(["admin", "environments"], (signal) => call(api.GET("/admin/environments", { signal }))),
   placementRules: (projectId: string) =>
     get(["admin", "placement-rules", projectId], (signal) =>

@@ -15,6 +15,7 @@ import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { cn, fullDate } from "@/lib/utils";
@@ -382,7 +383,7 @@ export function ReportsPage() {
     </Button>
   );
   const r = report.data;
-  const seesAll = me.global_roles.includes("admin") || me.global_roles.includes("auditor");
+  const seesAll = can(me, "project.see");
   return (
     <Page>
       <PageHeader

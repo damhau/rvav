@@ -27,6 +27,7 @@ import type {
   UserRef,
 } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
+import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, newIdempotencyKey, roughDuration } from "@/lib/utils";
@@ -616,7 +617,7 @@ function RequestFormBody({
 }
 
 export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; draftId?: string; from?: string }) {
-  const { me, projectId, role, setProjectId } = useCurrentProject();
+  const { me, projectId, setProjectId } = useCurrentProject();
   const item = useQuery(q.catalogItem(itemKey, projectId));
   const form = useQuery(q.form(itemKey, projectId));
   const project = useQuery(q.project(projectId));
@@ -707,7 +708,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
           environments={environments.data.items}
           start={start}
           draftId={draftId}
-          canActForOthers={role === "project-admin"}
+          canActForOthers={can(me, "request.on_behalf", projectId)}
         />
       )}
     </Page>
