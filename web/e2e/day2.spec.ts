@@ -118,3 +118,16 @@ test("a VM changed outside rvav: what differs, then accepted (S13.2)", async ({ 
   await expect(drift).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText("Changed outside rvav", { exact: true })).toHaveCount(0);
 });
+
+test("an auditor is offered no action on a VM, not even its console", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-dev-api" })).toBeVisible();
+  await expect(page.getByText(/vm-\d+ · on/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Power off web-dev-api004" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Open the console of web-dev-api004" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Open the console of web-dev-api004" })).toHaveCount(0);
+  await page.getByRole("button", { name: "More actions for web-dev-api004" }).click();
+  await expect(page.getByRole("menuitem", { name: "Open the console" })).toHaveAttribute("data-disabled", "");
+});

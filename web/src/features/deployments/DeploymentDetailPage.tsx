@@ -121,6 +121,7 @@ function VmTable({
               const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
               const mine = actions.filter((a) => a.resource_id === id);
               const powerBtn = powerAction(mine, on);
+              const consoleAction = mine.find((a) => a.key === "console");
               return (
                 <tr key={id} className="hover:bg-sunken">
                   <td className="border-b border-line px-4 py-2.5">
@@ -164,7 +165,7 @@ function VmTable({
                           </Button>
                         </span>
                       </Tip>
-                      {on ? (
+                      {on && consoleAction?.enabled ? (
                         <Tip content="Console">
                           <Button size="icon" asChild>
                             <Link
@@ -177,7 +178,7 @@ function VmTable({
                           </Button>
                         </Tip>
                       ) : (
-                        <Tip content="The VM is powered off">
+                        <Tip content={on ? (consoleAction?.disabled_reason ?? "Console") : "The VM is powered off"}>
                           <span>
                             <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
                               <SquareTerminal />
