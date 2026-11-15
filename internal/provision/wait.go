@@ -143,6 +143,7 @@ func runPoll(ctx, stop workflow.Context, info Info, c CompositeStep) (map[string
 	nothing := workflow.NewChannel(ctx)
 	var check PollCheck
 	for {
+		checked := workflow.Now(ctx)
 		check = PollCheck{}
 		err := workflow.ExecuteActivity(pollCtx(ctx), a.CheckPoll, in).Get(ctx, &check)
 		switch {
@@ -151,7 +152,13 @@ func runPoll(ctx, stop workflow.Context, info Info, c CompositeStep) (map[string
 		case err != nil && gaveUp(err):
 			return nil, false, err
 		}
-		if check.Met || !st.DueAt.After(workflow.Now(ctx)) {
+		// A check made before the deadline and read after it, its worker gone
+		// in between, isn't the last (#125). Runs that began before took it as
+		// the last.
+		if workflow.GetVersion(ctx, "poll-last-check", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+			checked = workflow.Now(ctx)
+		}
+		if check.Met || !st.DueAt.After(checked) {
 			break
 		}
 		next := workflow.Now(ctx).Add(st.Every)

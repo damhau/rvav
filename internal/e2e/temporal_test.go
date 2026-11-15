@@ -164,6 +164,28 @@ func startTemporal(t *testing.T, extraArgs ...string) *testsuite.DevServer {
 	return ts
 }
 
+// settle waits until a request's workflow has no task pending, only a timer
+// or a signal to wait for, so that a worker can stop. A worker stopping as the
+// server hands it a task drops that task, which Temporal gives again only at
+// its timeout: an activity's is its 2-minute heartbeat timeout (#125).
+func settle(t *testing.T, ctx context.Context, tc client.Client, requestID string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		desc, err := tc.DescribeWorkflowExecution(ctx, provision.WorkflowID(requestID), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(desc.PendingActivities) == 0 && desc.PendingWorkflowTask == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("request %s's workflow has a task pending: %v, %v", requestID, desc.PendingActivities, desc.PendingWorkflowTask)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // waitInbox polls a user's approvals until n are pending: the workflow opens
 // a level shortly after the request is submitted.
 func (h *harness) waitInbox(user string, n int) api.ApprovalPage {

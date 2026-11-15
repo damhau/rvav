@@ -36,6 +36,7 @@ type changeAPI struct {
 	methods []string
 	posted  []map[string]any
 	when    atomic.Value
+	hold    chan struct{} // while set, a check waits for it to close or for its caller to give up
 }
 
 type changeAnswer struct {
@@ -74,7 +75,15 @@ func newChangeAPI(t *testing.T) *changeAPI {
 					c.answers = c.answers[1:]
 				}
 			}
+			hold := c.hold
 			c.mu.Unlock()
+			if hold != nil {
+				select {
+				case <-hold:
+				case <-r.Context().Done():
+					return
+				}
+			}
 			reply(a)
 		}
 	}))
@@ -86,6 +95,20 @@ func (c *changeAPI) script(answers ...changeAnswer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.answers, c.checks, c.methods, c.posted = answers, nil, nil, nil
+}
+
+// holding keeps the checks from now on waiting, until it is released.
+func (c *changeAPI) holding() (release func()) {
+	hold := make(chan struct{})
+	c.mu.Lock()
+	c.hold = hold
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		c.hold = nil
+		c.mu.Unlock()
+		close(hold)
+	}
 }
 
 func (c *changeAPI) checked() int {
@@ -787,6 +810,7 @@ func TestCompositeWaitThroughTemporal(t *testing.T) {
 		if len(change.got()) != 0 {
 			t.Fatal("what comes after ran during the wait")
 		}
+		settle(t, ctx, tc, req.Id)
 		stop()
 		time.Sleep(time.Until(due.Add(time.Second))) // it comes due with no worker
 		if s := rig.steps(req.Id, requester)["step:keep"]; s.Status != api.StepStatusRunning {
@@ -827,6 +851,7 @@ func TestCompositeWaitThroughTemporal(t *testing.T) {
 			t.Fatalf("a run of the poll has %d events", events)
 		}
 		// Not checking faster than it says: at most one a second, with a margin.
+		settle(t, ctx, tc, req.Id)
 		stop()
 		after := change.checked()
 		time.Sleep(1500 * time.Millisecond)
@@ -841,23 +866,34 @@ func TestCompositeWaitThroughTemporal(t *testing.T) {
 		}
 
 		// Its deadline comes with no worker: one last check when one is back,
-		// then what the step says.
+		// then what the step says. Its worker gone as it waits, or with a check
+		// under way: read after the deadline, that check isn't the last (#125).
 		late := rig.publishDefinition("poll-late", waitDefinition(pollOf(change, "change", map[string]any{"on_timeout": "continue"}),
 			finishing(change, "{'json': steps.change.json, 'met': steps.change.met}")))
 		quicken("poll-late", "1s", "3s")
-		change.script(state("new"))
-		req = rig.submit(requester, late)
-		until("the poll didn't check", func() bool { return change.checked() > 0 })
-		stop()
-		time.Sleep(4 * time.Second)
-		change.script(state("new"))
-		stop = worker()
-		h.waitStatus(req.Id, requester, api.RequestStatusSucceeded)
-		if change.checked() < 1 {
-			t.Fatal("no last check when its worker came back")
-		}
-		if got := change.got(); len(got) != 1 || got[0]["met"] != false {
-			t.Fatalf("what the later step read = %v", got)
+		for _, underway := range []bool{false, true} {
+			change.script(state("new"))
+			release := func() {}
+			if underway {
+				release = change.holding()
+			}
+			req = rig.submit(requester, late)
+			until("the poll didn't check", func() bool { return change.checked() > 0 })
+			if !underway {
+				settle(t, ctx, tc, req.Id)
+			}
+			stop()
+			release()
+			time.Sleep(4 * time.Second)
+			change.script(state("new"))
+			stop = worker()
+			h.waitStatus(req.Id, requester, api.RequestStatusSucceeded)
+			if change.checked() < 1 {
+				t.Fatalf("no last check when its worker came back, a check under way: %v", underway)
+			}
+			if got := change.got(); len(got) != 1 || got[0]["met"] != false {
+				t.Fatalf("what the later step read = %v, a check under way: %v", got, underway)
+			}
 		}
 
 		// Cancelling through Temporal stops each, whatever is left to wait.

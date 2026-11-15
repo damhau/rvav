@@ -68,7 +68,9 @@ workflows in flight fails there, not in production. The histories in
 - NSX (N1, N2): a VM on its own segment in security groups, and a
   composite whose VM step is (recorded on the compose stack's fake NSX);
 - day-2 actions;
-- housekeeping.
+- housekeeping;
+- a composite's poll whose last check was read after its deadline, recorded
+  before `poll-last-check` (#125) on the end-to-end tests' dev server.
 
 Add a history whenever a workflow gains a path:
 

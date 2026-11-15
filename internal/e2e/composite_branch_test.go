@@ -779,6 +779,7 @@ func TestCompositeBranchThroughTemporal(t *testing.T) {
 		if len(change.got()) != 0 {
 			t.Fatal("what comes after ran during the wait")
 		}
+		settle(t, ctx, tc, req.Id)
 		stop()
 		time.Sleep(time.Until(due.Add(time.Second))) // it comes due with no worker
 		if s := rig.steps(req.Id, requester)["step:keep"]; s.Status != api.StepStatusRunning {

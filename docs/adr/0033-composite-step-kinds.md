@@ -247,8 +247,10 @@ a secret either.
   | `steps.<key>.json` | Its answer, what `keep` picks, scrubbed as a REST step's; null if none did |
   | `steps.<key>.met` | True when the condition held |
 
-- **A deadline.** It counts from when the step begins. At it, one last check, then
-  `on_timeout`: `fail`, the default, fails the step (`Its condition wasn't met
+- **A deadline.** It counts from when the step begins. At it, one last check, made
+  at the deadline or after it: a check made before and read after, its worker
+  gone in between, is followed by another (#125, versioned as `poll-last-check`).
+  Then `on_timeout`: `fail`, the default, fails the step (`Its condition wasn't met
   within 72h.`); `continue` goes on, saying so. There is no `escalate`: nobody is
   asked. **A later step reads, when it went on at the deadline,** `met: false`
   with the last answer's `status` and `json`, each null if no check got one. It

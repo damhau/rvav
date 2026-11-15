@@ -20,7 +20,8 @@ import (
 // history in testdata/histories is a request rvav ran at 1.0: provisioning
 // (one VM, approved, cancelled while waiting, failed), the PostgreSQL
 // composite, day-2 actions, housekeeping; then NSX's: a VM on its own
-// segment in security groups, and a composite whose VM step is (N1, N2). A change to workflow code goes
+// segment in security groups, and a composite whose VM step is (N1, N2);
+// then a poll whose last check was read after its deadline (#125). A change to workflow code goes
 // behind workflow.GetVersion until no workflow in flight can predate it.
 func TestReplayHistories(t *testing.T) {
 	files, err := filepath.Glob("testdata/histories/*.json")
