@@ -76,7 +76,7 @@
       "id": "project.create",
       "scope": "rvav",
       "area": "Projects",
-      "summary": "Create projects."
+      "summary": "Create projects, and name their first project admins, themselves included."
     },
     {
       "id": "environments.read",

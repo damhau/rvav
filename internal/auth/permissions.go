@@ -71,7 +71,7 @@ var Catalogue = []PermissionInfo{
 	{AuditRead, true, "Audit", "Read the audit log: the project's events, or every event for all of rvav."},
 
 	{ApprovalReadAll, false, "Approvals", "See every approval, and the questions and answers of composites' waits for a person."},
-	{ProjectCreate, false, "Projects", "Create projects."},
+	{ProjectCreate, false, "Projects", "Create projects, and name their first project admins, themselves included."},
 	{EnvironmentsRead, false, "Projects", "See the environments' settings."},
 	{EnvironmentsManage, false, "Projects", "Add, change and remove environments."},
 	{AccessRead, false, "Access", "See the roles and who holds them, groups of the identity provider included."},

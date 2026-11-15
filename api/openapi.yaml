@@ -7094,7 +7094,9 @@ components:
           items: { $ref: "#/components/schemas/EnvironmentKey" }
         project_admins:
           type: array
-          description: Users made project admins of it.
+          description: |
+            Users made project admins of it, the caller too when named:
+            `project.create` is enough, whatever roles the caller may give.
           items: { type: string }
     AdminProjectUpdate:
       type: object

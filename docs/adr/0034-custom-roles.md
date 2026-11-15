@@ -64,7 +64,7 @@ used, with the built-in roles unchanged.
 | `audit.read` | P | Read the audit log: the project's events, or for all of rvav every event. | admin, auditor, project-admin |
 | `day2.<group>`, `day2.<group>:<action>` | P | Run the day-2 action when no policy decides it (below). | none |
 | `approval.read_all` | R | See every approval, and the questions and answers of composites' waits for a person. | admin, auditor |
-| `project.create` | R | Create projects. | admin |
+| `project.create` | R | Create projects, and name their first project admins, themselves included. | admin |
 | `environments.read` | R | See the environments. | admin, auditor |
 | `environments.manage` | R | Add, change and remove environments. | admin |
 | `access.read` | R | See the roles and who holds them, through groups too. | admin, auditor |
@@ -332,6 +332,12 @@ hidden. Read permissions for them would be new identifiers.
   built-in roles unchanged.
 - `access.manage` is an administrator in all but name: whoever holds it
   can give themselves any permission. The editor says so.
+- `project.create` names a new project's first project admins, its holder
+  among them if they choose, with no check of what they may give: naming
+  them is what creating a project is for. Those admins hold everything a
+  project admin does there (requesting for others, approving at the
+  project's level, its members), in the environments the creator lists.
+  The editor says so.
 - A custom role allowed a day-2 action passes wherever no policy matches.
   A policy meant to restrict "everyone but admins" names the roles it
   restricts, or none.
@@ -418,7 +424,7 @@ reference.
 | `projects_admin.go` `presentProject`, `presentAdminProject` | `my_role` | `my_role` (strongest built-in, or null) and `my_permissions` |
 | `projects_admin.go` `AdminProjects` | `SeesEverything` | `Everywhere(project.settings.read)` |
 | `projects_admin.go` `AdminProject` | `CanSeeProject`, then `SeesEverything` or project admin | `project.see`, then `In(project.settings.read, id)` |
-| `projects_admin.go` `CreateProject` | `IsAdmin`; its admins become `project-admin` | `Everywhere(project.create)`; unchanged |
+| `projects_admin.go` `CreateProject` | `IsAdmin`; its admins become `project-admin` | `Everywhere(project.create)`; unchanged: its admins, the creator too if named, become `project-admin` |
 | `projects_admin.go` `UpdateProject` | `IsAdmin` | `In(project.update, id)` |
 | `projects_admin.go` `ProjectMembers` | `visibleProject`; strongest by `roleRank` | `project.see`; every role held, direct or through a group |
 | `projects_admin.go` `canManageMembers`, `SetProjectMember`, `RemoveProjectMember` | `ProjectRole == project-admin`; roles in `projectRoles` | `In(project.members.manage, id)`; roles given in a project whose permissions the giver holds there, or `access.manage` |

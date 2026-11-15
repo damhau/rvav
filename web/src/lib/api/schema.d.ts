@@ -5384,7 +5384,10 @@ export interface components {
             description?: string;
             cost_center?: string;
             environments: components["schemas"]["EnvironmentKey"][];
-            /** @description Users made project admins of it. */
+            /**
+             * @description Users made project admins of it, the caller too when named:
+             *     `project.create` is enough, whatever roles the caller may give.
+             */
             project_admins?: string[];
         };
         AdminProjectUpdate: {

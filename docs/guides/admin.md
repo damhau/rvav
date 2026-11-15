@@ -307,6 +307,10 @@ made, its name and its permissions, grouped by area; **What it allows**
 says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - Whoever holds `access.manage` can give themselves any permission: a
   role with it makes its holders administrators in all but name.
+- Whoever holds `project.create` names a new project's first project
+  admins, themselves included: those admins request for others, approve
+  at the project's level and manage its members there, in the
+  environments the project is given.
 - A role holding a permission that exists only for all of rvav, such as
   `policies.read`, can only be given for all of rvav.
 - A role given in a project must hold `project.see`.
