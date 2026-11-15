@@ -193,6 +193,10 @@ func (s *Service) Role(ctx context.Context, p *auth.Principal, key string) (api.
 	if !p.Everywhere(auth.AccessRead) {
 		return api.Role{}, ErrForbidden
 	}
+	return s.apiRole(ctx, key)
+}
+
+func (s *Service) apiRole(ctx context.Context, key string) (api.Role, error) {
 	st, err := s.Store.GetRole(ctx, key)
 	if errors.Is(err, store.ErrNotFound) {
 		return api.Role{}, ErrNotFound
@@ -261,7 +265,7 @@ func (s *Service) CreateRole(ctx context.Context, p *auth.Principal, c api.RoleC
 		return api.Role{}, err
 	}
 	s.audit(ctx, p, "role.create", "role", r.Key, nil, map[string]any{"name": r.Name, "permissions": perms})
-	return s.Role(ctx, p, r.Key)
+	return s.apiRole(ctx, r.Key)
 }
 
 func (s *Service) UpdateRole(ctx context.Context, p *auth.Principal, key string, u api.RoleUpdate) (api.Role, error) {
@@ -353,7 +357,7 @@ func (s *Service) UpdateRole(ctx context.Context, p *auth.Principal, key string,
 	if u.Permissions != nil {
 		s.accessChanged(ctx)
 	}
-	return s.Role(ctx, p, key)
+	return s.apiRole(ctx, key)
 }
 
 func trimmed(s *string) *string {

@@ -72,6 +72,10 @@ func (s *Service) GetWorkflowRegistration(ctx context.Context, p *auth.Principal
 	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.WorkflowRegistration{}, ErrForbidden
 	}
+	return s.workflowRegistration(ctx, key)
+}
+
+func (s *Service) workflowRegistration(ctx context.Context, key string) (api.WorkflowRegistration, error) {
 	w, err := s.Store.GetWorkflowRegistration(ctx, key)
 	if errors.Is(err, store.ErrNotFound) {
 		return api.WorkflowRegistration{}, ErrNotFound
@@ -176,7 +180,7 @@ func (s *Service) SaveWorkflowRegistration(ctx context.Context, p *auth.Principa
 	action := map[bool]string{true: "workflow.register", false: "workflow.update"}[create]
 	s.audit(ctx, p, action, "workflow", key, nil, map[string]any{"workflow_type": reg.WorkflowType, "task_queue": reg.TaskQueue,
 		"usages": reg.Usages, "enabled": reg.Enabled})
-	return s.GetWorkflowRegistration(ctx, p, key)
+	return s.workflowRegistration(ctx, key)
 }
 
 // DeleteWorkflow removes a registration nothing uses.

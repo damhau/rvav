@@ -71,6 +71,16 @@ func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string
 	return presentAdminProject(pr, p), nil
 }
 
+// writtenProject is the answer to a change of a project: the change's own
+// permission allowed it, whether or not its holder reads the settings.
+func (s *Service) writtenProject(ctx context.Context, p *auth.Principal, id string) (api.AdminProject, error) {
+	pr, err := s.Store.GetAdminProject(ctx, id)
+	if err != nil {
+		return api.AdminProject{}, err
+	}
+	return presentAdminProject(pr, p), nil
+}
+
 // checkEnvironments says which of these keys are not environments.
 func (s *Service) checkEnvironments(ctx context.Context, keys []string, ptr string) ([]api.FieldError, error) {
 	envs, err := s.Store.ListEnvironments(ctx)
@@ -131,7 +141,13 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 	if len(admins) > 0 {
 		s.accessChanged(ctx)
 	}
-	return s.AdminProject(ctx, p, pr.ID)
+	// Its creator named among its admins holds what they hold there now.
+	if slices.Contains(admins, p.User.ID) {
+		if p, err = auth.Again(ctx, s.Store, p); err != nil {
+			return api.AdminProject{}, err
+		}
+	}
+	return s.writtenProject(ctx, p, pr.ID)
 }
 
 func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id string, u api.AdminProjectUpdate) (api.AdminProject, error) {
@@ -168,7 +184,7 @@ func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id strin
 		action = map[bool]string{true: "project.archive", false: "project.unarchive"}[*u.Archived]
 	}
 	s.audit(ctx, p, action, "project", pr.ID, &pr.ID, u)
-	return s.AdminProject(ctx, p, pr.ID)
+	return s.writtenProject(ctx, p, pr.ID)
 }
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}

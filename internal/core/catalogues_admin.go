@@ -69,6 +69,10 @@ func (s *Service) VMTemplates(ctx context.Context, p *auth.Principal) ([]api.VmT
 	if !p.Everywhere(auth.InfrastructureRead) {
 		return nil, ErrForbidden
 	}
+	return s.vmTemplates(ctx)
+}
+
+func (s *Service) vmTemplates(ctx context.Context) ([]api.VmTemplate, error) {
 	list, err := s.Store.VMTemplates(ctx)
 	if err != nil {
 		return nil, err
@@ -147,7 +151,7 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 		return api.VmTemplate{}, err
 	}
 	s.audit(ctx, p, map[bool]string{true: "template.create", false: "template.update"}[create], "vm_template", key, nil, w)
-	list, err := s.VMTemplates(ctx, p)
+	list, err := s.vmTemplates(ctx)
 	if err != nil {
 		return api.VmTemplate{}, err
 	}
@@ -176,6 +180,10 @@ func (s *Service) SizePresets(ctx context.Context, p *auth.Principal) ([]api.Siz
 	if !p.Everywhere(auth.InfrastructureRead) {
 		return nil, ErrForbidden
 	}
+	return s.sizePresets(ctx)
+}
+
+func (s *Service) sizePresets(ctx context.Context) ([]api.SizePreset, error) {
 	list, err := s.Store.SizePresets(ctx)
 	if err != nil {
 		return nil, err
@@ -232,7 +240,7 @@ func (s *Service) SaveSizePreset(ctx context.Context, p *auth.Principal, key str
 		return api.SizePreset{}, err
 	}
 	s.audit(ctx, p, map[bool]string{true: "size.create", false: "size.update"}[create], "size_preset", key, nil, w)
-	list, err := s.SizePresets(ctx, p)
+	list, err := s.sizePresets(ctx)
 	if err != nil {
 		return api.SizePreset{}, err
 	}

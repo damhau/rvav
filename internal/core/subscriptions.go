@@ -93,6 +93,10 @@ func (s *Service) GetSubscription(ctx context.Context, p *auth.Principal, id str
 	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.Subscription{}, ErrForbidden
 	}
+	return s.subscription(ctx, id)
+}
+
+func (s *Service) subscription(ctx context.Context, id string) (api.Subscription, error) {
 	sub, err := s.Store.GetSubscription(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return api.Subscription{}, ErrNotFound
@@ -194,7 +198,7 @@ func (s *Service) SaveSubscription(ctx context.Context, p *auth.Principal, id st
 	}
 	s.audit(ctx, p, action, "subscription", id, nil, map[string]any{"name": sub.Name, "topic": sub.Topic,
 		"blocking": sub.Blocking, "target": json.RawMessage(target)})
-	return s.GetSubscription(ctx, p, id)
+	return s.subscription(ctx, id)
 }
 
 // checkTarget checks a target and returns it as stored.
@@ -325,6 +329,10 @@ func (s *Service) SubscriptionRun(ctx context.Context, p *auth.Principal, id str
 	if !p.Everywhere(auth.ExtensibilityRead) {
 		return api.SubscriptionRunDetail{}, ErrForbidden
 	}
+	return s.subscriptionRun(ctx, id)
+}
+
+func (s *Service) subscriptionRun(ctx context.Context, id string) (api.SubscriptionRunDetail, error) {
 	run, payload, err := s.Store.GetSubscriptionRun(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return api.SubscriptionRunDetail{}, ErrNotFound
@@ -425,7 +433,7 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 		return api.SubscriptionRunDetail{}, err
 	}
 	s.audit(ctx, p, "subscription.test", "subscription", sub.ID, nil, map[string]any{"ok": res.OK})
-	return s.SubscriptionRun(ctx, p, run.ID)
+	return s.subscriptionRun(ctx, run.ID)
 }
 
 // checkWorkflowTarget checks a custom workflow named as a subscription's

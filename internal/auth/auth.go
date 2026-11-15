@@ -123,6 +123,21 @@ func ForUser(ctx context.Context, s *store.Store, userID string) (*Principal, er
 	return build(ctx, s, u, groups)
 }
 
+// Again is what a principal holds now: the same user, groups and token,
+// with the roles read again after a change of them.
+func Again(ctx context.Context, s *store.Store, p *Principal) (*Principal, error) {
+	u, err := s.GetUser(ctx, p.User.ID)
+	if err != nil {
+		return nil, err
+	}
+	q, err := build(ctx, s, u, p.Groups)
+	if err != nil {
+		return nil, err
+	}
+	q.Scope, q.Session, q.MustChangePassword = p.Scope, p.Session, p.MustChangePassword
+	return q, nil
+}
+
 // FromGroups is the principal of a user with these groups and no roles of
 // their own: what the group mappings give, shown by the provider's trial
 // sign-in (ADR-0030).

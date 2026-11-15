@@ -36,7 +36,11 @@ func (s *Service) ProjectQuotas(ctx context.Context, p *auth.Principal, projectI
 	if !p.In(auth.ProjectSettingsRead, proj.ID) {
 		return nil, ErrForbidden
 	}
-	list, err := s.Store.ProjectQuotas(ctx, proj.ID)
+	return s.projectQuotas(ctx, proj.ID)
+}
+
+func (s *Service) projectQuotas(ctx context.Context, projectID string) ([]api.QuotaLimit, error) {
+	list, err := s.Store.ProjectQuotas(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +93,7 @@ func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, proje
 		return nil, err
 	}
 	s.audit(ctx, p, "policy.quota.set", "project", proj.ID, &proj.ID, items)
-	return s.ProjectQuotas(ctx, p, proj.ID)
+	return s.projectQuotas(ctx, proj.ID)
 }
 
 // ── Lease policies ──────────────────────────────────────────────────────
