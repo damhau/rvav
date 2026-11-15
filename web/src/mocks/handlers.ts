@@ -839,7 +839,12 @@ export const handlers = [
     const wanted = statuses.length ? statuses : ["pending"];
     if (url.searchParams.get("view") === "all") {
       if (!can(db.me, "approval.read_all"))
-        return problem(403, "forbidden", "Not allowed", "Only administrators and auditors can see every approval.");
+        return problem(
+          403,
+          "forbidden",
+          "Not allowed",
+          "Seeing every approval needs approval.read_all for all of rvav.",
+        );
       const all = db.approvals.filter((a) => wanted.includes(a.status)).map((a) => summaryOf(db, a));
       return json<S["ApprovalPage"]>({ ...page(all, url), total: all.length });
     }

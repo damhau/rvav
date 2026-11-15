@@ -4,9 +4,9 @@ How the platform is used (S13.4). `GET /reports` answers for a range of days
 (the last 30 by default, two years at most), optionally one project and one
 environment. `GET /reports/export?section=…` gives one section as CSV.
 
-**Who sees what:** administrators and auditors see every project; others
-see the projects they are members of. Asking for a project you're not a
-member of is refused.
+**Who sees what:** with `project.see` for all of rvav (administrators and
+auditors), you see every project; otherwise, the projects where a role
+gives you `project.see`. Asking for a project you don't see is refused.
 
 ## What each figure means
 

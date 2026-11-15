@@ -39,7 +39,7 @@ func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProj
 		ArchivedAt: pr.ArchivedAt, CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments}
 }
 
-// AdminProjects lists projects for administrators and auditors.
+// AdminProjects lists projects for those who read every project's settings.
 func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search string, archived bool) ([]api.AdminProject, error) {
 	if !p.Everywhere(auth.ProjectSettingsRead) {
 		return nil, ErrForbidden

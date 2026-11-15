@@ -10,8 +10,9 @@ is in the [operations guides](../operations/README.md); using it, in the
 - **Catalog admin:** the catalog only.
 - **Auditor:** reads everything and changes nothing.
 
-Roles are given to groups of the identity provider. Every change made
-here is in the **Audit log**.
+Roles are given to groups of the identity provider, or to users. You can
+also make roles of your own: see [Roles and permissions](#roles-and-permissions).
+Every change made here is in the **Audit log**.
 
 **The local administrator,** `admin`, is rvav's only local account
 (ADR-0030). It signs in on rvav's sign-in page, below single sign-on:
@@ -53,7 +54,7 @@ step is done.
      project.
 4. **Projects:**
    - each with its members or the groups that map to its roles (viewer,
-     member, project admin);
+     member, project admin, or [one of your own](#roles-and-permissions));
    - its quotas, per environment or for the project as a whole, hard or
      soft.
 5. **Policies.**
@@ -280,6 +281,49 @@ With an NSX Manager set in **Integrations**
     who may is up to the **Day-2** policies (`nsx_group_add`,
     `nsx_group_remove`).
   - A tag removed in NSX shows the deployment as changed outside rvav.
+
+## Roles and permissions
+
+What someone may do comes from the permissions their roles hold
+(ADR-0034). `GET /api/v1/permissions` lists them, each held in a project
+or only for all of rvav. The built-in roles can't be changed:
+
+| Role | Given | Holds |
+|---|---|---|
+| Administrator (`admin`) | For all of rvav | Every permission. Day-2 actions are decided by the day-2 policies. |
+| Catalog admin | For all of rvav | `catalog.manage`. |
+| Auditor | For all of rvav | Every read permission: projects, their settings and audit log, every approval, environments, access, infrastructure, policies, extensibility and the inventory. |
+| Project admin | In a project | Seeing it, requesting (for others too), its requests, approvals, members, settings and audit log. |
+| Member | In a project | Seeing it and requesting. |
+| Viewer | In a project | Seeing it. |
+| User | To everyone | Nothing. |
+
+To give someone less, or a mix, make a role of your own with
+`POST /api/v1/admin/roles` (`access.manage`, which only administrators
+hold):
+- A role holding a permission that exists only for all of rvav, such as
+  `policies.read`, can only be given for all of rvav.
+- A role given in a project must hold `project.see`.
+- `day2.<group>` allows a group of day-2 actions, `day2.<group>:<action>`
+  one of them, for example `day2.power:power_off`. A day-2 policy that
+  matches decides first; with none, the roles' day-2 permissions decide.
+- A role still given, mapped to a group or named by a day-2 policy can't
+  be deleted.
+
+To give a role:
+- in a project, to a member (`PUT /api/v1/projects/{id}/members/{user}`
+  with `roles`) or to a group (a group mapping with the project);
+- for all of rvav, to a user (`POST /api/v1/admin/role-assignments`) or
+  to a group (a group mapping without a project).
+
+rvav refuses a change that would leave no one holding `access.manage`, or
+a project with no one holding `project.members.manage`. A change applies
+to the user's next request, and their open pages load again.
+
+Policies' conditions see `user.roles`, the keys of the roles held (yours
+too), and `user.permissions`, those held in the request's or deployment's
+project. The audit log has each change as `role.*`, `role_assignment.*`,
+`member.*` or `group_mapping.*`.
 
 ## Policies
 

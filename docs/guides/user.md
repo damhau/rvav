@@ -15,8 +15,9 @@ You sign in with your organisation's account. What you see depends on your
 | Member | Request, and act on your own VMs. |
 | Project admin | Act on every VM of the project, hand them over, delete them. |
 
-The project you work in is chosen at the top of the page. Your role in it
-shows under your name.
+Your organisation can also give you roles of its own, which allow other
+things. The project you work in is chosen at the top of the page. Your
+roles in it show under your name.
 
 ## Requesting a VM
 

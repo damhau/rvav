@@ -1010,7 +1010,7 @@ export interface paths {
          *     a failed run), and addresses and records a deployment owns that
          *     EfficientIP no longer has. Nothing is changed. A request running
          *     while the check runs may show its newest objects as orphans.
-         *     Administrators only.
+         *     Needs `infrastructure.manage` (administrators).
          */
         get: operations["reconcileIpam"];
         put?: never;
@@ -1033,7 +1033,7 @@ export interface paths {
          * @description The templates chosen by organisation and label (ADR-0016), each with
          *     the item made from it, whether its survey changed since the item's
          *     form was made (and what changed), and warnings about its launch
-         *     settings. Catalog admins and administrators.
+         *     settings. Needs `catalog.manage` (catalog admins and administrators).
          */
         get: operations["listAwxTemplates"];
         put?: never;
@@ -1074,7 +1074,7 @@ export interface paths {
          *     `RVAV_AWX_ACTION_LABELS` (`day2`), synced with the catalog's
          *     (ADR-0018): each is a day-2 action with its form from the survey,
          *     on the resource types and under the condition administrators
-         *     choose. Administrators.
+         *     choose. Needs `extensibility.manage` (administrators).
          */
         get: operations["listAwxActions"];
         put?: never;
@@ -1113,7 +1113,7 @@ export interface paths {
         };
         /**
          * Every catalog item, in any state, for catalog admins
-         * @description Catalog admins and administrators (ADR-0019).
+         * @description Needs `catalog.manage`, held by catalog admins and administrators (ADR-0019).
          */
         get: operations["listAdminCatalogItems"];
         put?: never;
@@ -1540,7 +1540,7 @@ export interface paths {
          *     schema), the outputs later steps read as `steps.<key>.<name>`, and
          *     the projects it is offered to when not all of them. A step may also
          *     name an AWX template not listed (any template AWX has): its inputs
-         *     are then the author's. Catalog admins and administrators.
+         *     are then the author's. Needs `catalog.manage` (catalog admins and administrators).
          */
         get: operations["listCompositeStepTargets"];
         put?: never;
@@ -1560,7 +1560,7 @@ export interface paths {
         };
         /**
          * Stored secrets, without their values
-         * @description Catalog admins and administrators. Value sources refer to secrets by name (ADR-0019).
+         * @description Needs `catalog.manage` (catalog admins and administrators). Value sources refer to secrets by name (ADR-0019).
          */
         get: operations["listSecrets"];
         put?: never;
@@ -1623,7 +1623,7 @@ export interface paths {
         /** Every project, archived ones on request, with member counts */
         get: operations["listAdminProjects"];
         put?: never;
-        /** Create a project (administrators) */
+        /** Create a project (`project.create`) */
         post: operations["createProject"];
         delete?: never;
         options?: never;
@@ -1648,7 +1648,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change a project, or archive it (administrators)
+         * Change a project, or archive it (`project.update` there)
          * @description An archived project can't request anything new; its deployments,
          *     leases and day-2 actions go on. Unarchiving gives it back.
          */
@@ -2732,7 +2732,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Event subscriptions, by topic and priority (administrators and auditors) */
+        /** Event subscriptions, by topic and priority (`extensibility.read`) */
         get: operations["listSubscriptions"];
         put?: never;
         /** Subscribe a webhook, an AWX template or a custom workflow to a topic */
@@ -2886,7 +2886,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's API tokens (everyone's for administrators with all=true) */
+        /** The caller's API tokens (everyone's with all=true, for `tokens.manage`) */
         get: operations["listApiTokens"];
         put?: never;
         /** Create an API token; its value is shown once */
@@ -2909,7 +2909,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a token (one's own, or anyone's for administrators) */
+        /** Revoke a token (one's own, or anyone's with `tokens.manage`) */
         delete: operations["revokeApiToken"];
         options?: never;
         head?: never;
@@ -2925,7 +2925,9 @@ export interface paths {
         };
         /**
          * The audit log, newest first
-         * @description Administrators and auditors see everything; project admins see their projects' events.
+         * @description With `audit.read` for all of rvav (administrators and auditors),
+         *     every event; with it in projects (project admins), those projects'
+         *     events.
          */
         get: operations["listAuditEvents"];
         put?: never;
@@ -2947,8 +2949,8 @@ export interface paths {
          * How the platform is used (S13.4)
          * @description Requests over time and their success rate, provisioning time,
          *     approval lead time, usage against quota and the leases ending in the
-         *     next 30 days. Administrators and auditors see every project; others
-         *     the projects they are members of.
+         *     next 30 days. With `project.see` for all of rvav (administrators and
+         *     auditors), every project; else the projects the caller sees.
          */
         get: operations["getReport"];
         put?: never;
@@ -3888,7 +3890,7 @@ export interface components {
             /** @description Text typed in a searchable select. */
             search?: string;
             /**
-             * @description Catalog admins only: resolve as this user would (the form
+             * @description With `catalog.manage` only: resolve as this user would (the form
              *     designer's "preview as"), for any version of any item.
              */
             as_user_id?: string;
@@ -3916,7 +3918,7 @@ export interface components {
              * @default 1
              */
             count: number;
-            /** @description User ID of the future owner. Needs the project-admin role. */
+            /** @description User ID of the future owner. Needs `request.on_behalf` in the project (project admins). */
             on_behalf_of?: string;
             /** @description Shown to approvers. */
             justification?: string;

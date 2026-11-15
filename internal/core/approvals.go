@@ -98,7 +98,7 @@ func (s *Service) levelContext(ctx context.Context, lv store.Approval) (loadedLe
 func (s *Service) ListApprovals(ctx context.Context, p *auth.Principal, params api.ListApprovalsParams) (api.ApprovalPage, error) {
 	all := params.View != nil && *params.View == api.ListApprovalsParamsViewAll
 	if all && !p.Everywhere(auth.ApprovalReadAll) {
-		return api.ApprovalPage{}, fmt.Errorf("%w: only administrators and auditors can see every approval", ErrForbidden)
+		return api.ApprovalPage{}, fmt.Errorf("%w: seeing every approval needs approval.read_all for all of rvav", ErrForbidden)
 	}
 	statuses := []string{"pending"}
 	if params.Status != nil && len(*params.Status) > 0 {

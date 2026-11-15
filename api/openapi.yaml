@@ -36,9 +36,9 @@ tags:
   - name: events
     description: Live updates over Server-Sent Events.
   - name: admin
-    description: Checks and settings for administrators.
+    description: Checks and settings of rvav, each for the roles that hold its permission (ADR-0034).
   - name: catalog-admin
-    description: Building and publishing catalog items (catalog admins and administrators).
+    description: Building and publishing catalog items (`catalog.manage`, held by catalog admins and administrators).
   - name: ansible
     description: What AWX reads from rvav.
   - name: notifications
@@ -1213,7 +1213,7 @@ paths:
         a failed run), and addresses and records a deployment owns that
         EfficientIP no longer has. Nothing is changed. A request running
         while the check runs may show its newest objects as orphans.
-        Administrators only.
+        Needs `infrastructure.manage` (administrators).
       responses:
         "200":
           description: OK
@@ -1233,7 +1233,7 @@ paths:
         The templates chosen by organisation and label (ADR-0016), each with
         the item made from it, whether its survey changed since the item's
         form was made (and what changed), and warnings about its launch
-        settings. Catalog admins and administrators.
+        settings. Needs `catalog.manage` (catalog admins and administrators).
       responses:
         "200":
           description: OK
@@ -1268,7 +1268,7 @@ paths:
         `RVAV_AWX_ACTION_LABELS` (`day2`), synced with the catalog's
         (ADR-0018): each is a day-2 action with its form from the survey,
         on the resource types and under the condition administrators
-        choose. Administrators.
+        choose. Needs `extensibility.manage` (administrators).
       responses:
         "200":
           description: OK
@@ -1309,7 +1309,7 @@ paths:
       tags: [catalog-admin]
       operationId: listAdminCatalogItems
       summary: Every catalog item, in any state, for catalog admins
-      description: Catalog admins and administrators (ADR-0019).
+      description: Needs `catalog.manage`, held by catalog admins and administrators (ADR-0019).
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - name: category
@@ -1887,7 +1887,7 @@ paths:
         schema), the outputs later steps read as `steps.<key>.<name>`, and
         the projects it is offered to when not all of them. A step may also
         name an AWX template not listed (any template AWX has): its inputs
-        are then the author's. Catalog admins and administrators.
+        are then the author's. Needs `catalog.manage` (catalog admins and administrators).
       responses:
         "200":
           description: OK
@@ -1902,7 +1902,7 @@ paths:
       tags: [catalog-admin]
       operationId: listSecrets
       summary: Stored secrets, without their values
-      description: Catalog admins and administrators. Value sources refer to secrets by name (ADR-0019).
+      description: Needs `catalog.manage` (catalog admins and administrators). Value sources refer to secrets by name (ADR-0019).
       responses:
         "200":
           description: OK
@@ -2009,7 +2009,7 @@ paths:
     post:
       tags: [admin]
       operationId: createProject
-      summary: Create a project (administrators)
+      summary: Create a project (`project.create`)
       requestBody:
         required: true
         content:
@@ -2045,7 +2045,7 @@ paths:
     patch:
       tags: [admin]
       operationId: updateProject
-      summary: Change a project, or archive it (administrators)
+      summary: Change a project, or archive it (`project.update` there)
       description: |
         An archived project can't request anything new; its deployments,
         leases and day-2 actions go on. Unarchiving gives it back.
@@ -3509,7 +3509,7 @@ paths:
     get:
       tags: [admin]
       operationId: listSubscriptions
-      summary: Event subscriptions, by topic and priority (administrators and auditors)
+      summary: Event subscriptions, by topic and priority (`extensibility.read`)
       responses:
         "200":
           description: The subscriptions
@@ -3741,7 +3741,7 @@ paths:
     get:
       tags: [identity]
       operationId: listApiTokens
-      summary: The caller's API tokens (everyone's for administrators with all=true)
+      summary: The caller's API tokens (everyone's with all=true, for `tokens.manage`)
       parameters:
         - name: all
           in: query
@@ -3779,7 +3779,7 @@ paths:
     delete:
       tags: [identity]
       operationId: revokeApiToken
-      summary: Revoke a token (one's own, or anyone's for administrators)
+      summary: Revoke a token (one's own, or anyone's with `tokens.manage`)
       responses:
         "204": { description: Revoked }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3790,7 +3790,10 @@ paths:
       tags: [admin]
       operationId: listAuditEvents
       summary: The audit log, newest first
-      description: Administrators and auditors see everything; project admins see their projects' events.
+      description: |
+        With `audit.read` for all of rvav (administrators and auditors),
+        every event; with it in projects (project admins), those projects'
+        events.
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - name: actor
@@ -3833,8 +3836,8 @@ paths:
       description: |
         Requests over time and their success rate, provisioning time,
         approval lead time, usage against quota and the leases ending in the
-        next 30 days. Administrators and auditors see every project; others
-        the projects they are members of.
+        next 30 days. With `project.see` for all of rvav (administrators and
+        auditors), every project; else the projects the caller sees.
       parameters:
         - name: from
           in: query
@@ -5271,7 +5274,7 @@ components:
         as_user_id:
           type: string
           description: |
-            Catalog admins only: resolve as this user would (the form
+            With `catalog.manage` only: resolve as this user would (the form
             designer's "preview as"), for any version of any item.
 
     FieldValues:
@@ -5311,7 +5314,7 @@ components:
           description: Number of identical deployments to create.
         on_behalf_of:
           type: string
-          description: User ID of the future owner. Needs the project-admin role.
+          description: User ID of the future owner. Needs `request.on_behalf` in the project (project admins).
         justification:
           type: string
           maxLength: 2000
