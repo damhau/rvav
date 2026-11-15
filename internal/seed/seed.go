@@ -210,8 +210,7 @@ func Run(ctx context.Context, s *store.Store) error {
 			}
 		}
 		for _, m := range members {
-			if err := exec(`insert into project_members (project_id, user_id, role) values ($1,$2,$3)
-				on conflict (project_id, user_id) do update set role = excluded.role`,
+			if err := exec(`insert into project_members (project_id, user_id, role) values ($1,$2,$3) on conflict do nothing`,
 				ProjectID(m.project), UserID(m.user), m.role); err != nil {
 				return err
 			}

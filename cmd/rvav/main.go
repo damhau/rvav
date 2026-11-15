@@ -417,8 +417,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 				pm[strings.TrimSpace(k)] = strings.TrimSpace(v)
 			}
 		}
-		plans, err := a.Core(nil).AdoptVRADeployments(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID},
-			GlobalRoles: []string{"admin"}}, e, pm, *apply)
+		plans, err := a.Core(nil).AdoptVRADeployments(ctx, auth.System(store.User{ID: core.SystemUserID}, "admin"), e, pm, *apply)
 		if err != nil {
 			return err
 		}
@@ -429,7 +428,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 		_, err = os.Stdout.Write(append(b, '\n'))
 		return err
 	case "ipam-reconcile":
-		report, err := a.Core(nil).ReconcileIPAM(ctx, &auth.Principal{User: store.User{ID: core.SystemUserID}, GlobalRoles: []string{"admin"}})
+		report, err := a.Core(nil).ReconcileIPAM(ctx, auth.System(store.User{ID: core.SystemUserID}, "admin"))
 		if err != nil {
 			return err
 		}

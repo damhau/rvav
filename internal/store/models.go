@@ -36,11 +36,6 @@ type Project struct {
 	ArchivedAt *time.Time `db:"archived_at"`
 }
 
-type Membership struct {
-	ProjectID string `db:"project_id"`
-	Role      string `db:"role"`
-}
-
 type QuotaLimit struct {
 	Environment string `db:"environment"`
 	Resource    string `db:"resource"`

@@ -1,12 +1,19 @@
 package auth
 
 import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"os"
 	"regexp"
 	"slices"
 	"testing"
 
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/store"
 )
+
+var update = flag.Bool("update", false, "rewrite testdata/roles.json from the catalogue and the built-in roles")
 
 // legacy is today's check for each permission, from the code ADR-0034's
 // appendix lists: the built-in roles must grant exactly what they allow.
@@ -252,4 +259,85 @@ func mustBuiltin(t *testing.T, key string) Role {
 		t.Fatalf("no built-in role %s", key)
 	}
 	return r
+}
+
+// TestRolesFixture keeps testdata/roles.json current: the catalogue and the
+// built-in roles' permissions. The mocks hold the same and are checked
+// against it (web/src/mocks/roles.test.ts), so the two can't drift. A change
+// shows here: rewrite the file with -update and read what changed.
+func TestRolesFixture(t *testing.T) {
+	type permission struct {
+		ID      Permission `json:"id"`
+		Scope   string     `json:"scope"`
+		Area    string     `json:"area"`
+		Summary string     `json:"summary"`
+	}
+	type role struct {
+		Key         string       `json:"key"`
+		Name        string       `json:"name"`
+		Scope       string       `json:"scope"`
+		Permissions []Permission `json:"permissions"`
+	}
+	scope := func(rvav bool) string { return map[bool]string{true: "rvav", false: "project"}[rvav] }
+	var fixture struct {
+		Catalogue  []permission `json:"catalogue"`
+		Day2Groups []string     `json:"day2_groups"`
+		Roles      []role       `json:"roles"`
+	}
+	for _, c := range Catalogue {
+		fixture.Catalogue = append(fixture.Catalogue, permission{c.ID, scope(!c.Project), c.Area, c.Summary})
+	}
+	fixture.Day2Groups = Day2Groups
+	for _, r := range BuiltinRoles {
+		fixture.Roles = append(fixture.Roles, role{r.Key, r.Name, scope(r.Global), append([]Permission{}, r.Permissions...)})
+	}
+	var got bytes.Buffer
+	enc := json.NewEncoder(&got)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(fixture); err != nil {
+		t.Fatal(err)
+	}
+	const path = "testdata/roles.json"
+	if *update {
+		if err := os.WriteFile(path, got.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatalf("%s isn't the catalogue and the built-in roles: run go test ./internal/auth -run TestRolesFixture -update and read the change", path)
+	}
+}
+
+// TestPrincipalRoles: the role keys a principal holds, for CEL and /me, and
+// those that grant nothing where they are given.
+func TestPrincipalRoles(t *testing.T) {
+	operator := Role{Key: "vm-operator", Name: "VM operator", Permissions: []Permission{ProjectSee, Day2Action(day2.GroupPower, "power_on")}}
+	p := newPrincipal(store.User{ID: "usr_a"}, nil, []Assignment{
+		{Role: "user"}, {Role: "auditor"}, {Role: "member", ProjectID: "prj_a"}, {Role: "viewer", ProjectID: "prj_a"},
+		{Role: "vm-operator", ProjectID: "prj_a"}, {Role: "vm-operator"}, {Role: "auditor"},
+		{Role: "admin", ProjectID: "prj_b"}, {Role: "member"}, {Role: "gone", ProjectID: "prj_c"},
+	}, map[string]Role{"vm-operator": operator})
+	if !slices.Equal(p.Roles, []string{"user", "auditor", "vm-operator"}) {
+		t.Errorf("roles for all of rvav: %v", p.Roles)
+	}
+	if got := p.RolesIn("prj_a"); !slices.Equal(got, []string{"member", "viewer", "vm-operator"}) {
+		t.Errorf("roles in A: %v", got)
+	}
+	if p.RolesIn("prj_b") != nil || p.RolesIn("prj_c") != nil || p.ProjectRoles["prj_a"] != "member" {
+		t.Errorf("roles in B %v, C %v, the strongest in A %q", p.RolesIn("prj_b"), p.RolesIn("prj_c"), p.ProjectRoles["prj_a"])
+	}
+	if r, ok := p.Role("vm-operator"); !ok || r.Name != "VM operator" {
+		t.Errorf("the operator's role: %+v", r)
+	}
+	if !p.RunsDay2(day2.GroupPower, "power_on", "prj_z") || p.In(RequestSubmit, "prj_z") || !p.In(RequestSubmit, "prj_a") {
+		t.Error("the grants aren't the roles'")
+	}
+	if s := System(store.User{ID: "usr_rvav"}, "admin"); !s.Everywhere(AccessManage) || !slices.Equal(s.Roles, []string{"admin"}) {
+		t.Errorf("rvav's own principal: %v", s.Roles)
+	}
 }

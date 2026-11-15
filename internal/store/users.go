@@ -58,33 +58,34 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title 
 	return u, err
 }
 
-func (s *Store) Memberships(ctx context.Context, userID string) ([]Membership, error) {
-	rows, _ := s.Pool.Query(ctx, `select project_id, role from project_members where user_id = $1`, userID)
-	return pgx.CollectRows(rows, pgx.RowToStructByName[Membership])
+// RoleGrant is a role a user holds, themselves or through a group: in a
+// project, or for all of rvav (ProjectID ""). Custom says it is no built-in
+// role, whose name and permissions are stored; Known is false for a key
+// that is no role.
+type RoleGrant struct {
+	Role        string   `db:"role"`
+	ProjectID   string   `db:"project_id"`
+	Known       bool     `db:"known"`
+	Custom      bool     `db:"custom"`
+	Name        string   `db:"name"`
+	Permissions []string `db:"permissions"`
 }
 
-// GroupRoles maps OIDC groups to global roles and project roles.
-func (s *Store) GroupRoles(ctx context.Context, groups []string) (global []string, projects []Membership, err error) {
-	if len(groups) == 0 {
-		return nil, nil, nil
-	}
-	rows, err := s.Pool.Query(ctx, `select coalesce(project_id, ''), role from group_mappings where oidc_group = any($1)`, groups)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var project, role string
-		if err := rows.Scan(&project, &role); err != nil {
-			return nil, nil, err
-		}
-		if project == "" {
-			global = append(global, role)
-		} else {
-			projects = append(projects, Membership{ProjectID: project, Role: role})
-		}
-	}
-	return global, projects, rows.Err()
+// RoleGrants lists in one query the roles a user holds (ADR-0034): those
+// rvav sets (global, from users.global_roles), those given to them for all
+// of rvav and in projects, then their groups' (none for nil), with the
+// custom roles' permissions.
+func (s *Store) RoleGrants(ctx context.Context, userID string, global, groups []string) ([]RoleGrant, error) {
+	rows, _ := s.Pool.Query(ctx, `with held (role, project_id, src, n) as (
+			select g.role, '', 1, g.n from unnest($2::text[]) with ordinality as g(role, n)
+			union all select role, '', 2, 0 from user_roles where user_id = $1
+			union all select role, project_id, 3, 0 from project_members where user_id = $1
+			union all select role, coalesce(project_id, ''), 4, 0 from group_mappings where oidc_group = any($3))
+		select h.role, h.project_id, r.key is not null as known, coalesce(not r.built_in, false) as custom,
+			coalesce(r.name, '') as name, coalesce(r.permissions, '{}') as permissions
+		from held h left join roles r on r.key = h.role
+		order by h.src, h.n, h.role, h.project_id`, userID, global, groups)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[RoleGrant])
 }
 
 // CreateAPIToken stores a token by the SHA-256 hash of its value. A scope

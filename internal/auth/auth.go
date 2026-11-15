@@ -1,5 +1,5 @@
-// Package auth turns a bearer token into a Principal: the user, their global
-// roles and their role in each project.
+// Package auth turns a bearer token into a Principal: the user, the roles
+// they hold and what those allow (ADR-0034).
 package auth
 
 import (
@@ -31,10 +31,21 @@ var ErrProviderUnavailable = errors.New("identity provider unavailable")
 
 // Principal is who is calling and what they may do.
 type Principal struct {
-	User        store.User
+	User store.User
+	// Grants are what the principal's roles allow, computed once per
+	// request (ADR-0034).
+	Grants
+	// Roles are the keys of the roles held for all of rvav, user and
+	// custom ones included, as policies' CEL names them (user.roles).
+	Roles       []string
 	GlobalRoles []string
-	// ProjectRoles maps project ID to the caller's strongest role there.
+	// ProjectRoles maps project ID to the caller's strongest built-in role
+	// there.
 	ProjectRoles map[string]string
+	// rolesIn maps a project to the keys of the roles given in it.
+	rolesIn map[string][]string
+	// known are the roles held, to name them.
+	known map[string]Role
 	// Groups are the caller's OIDC groups (approvers may be a group).
 	Groups []string
 	// Scope limits an API token to one use (ScopeInventory); "" otherwise.
@@ -93,6 +104,25 @@ func (p *Principal) VisibleProjects() []string {
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}
 
+// RolesIn are the keys of the roles given in a project, sorted.
+func (p *Principal) RolesIn(projectID string) []string { return p.rolesIn[projectID] }
+
+// Role finds a role the principal holds by its key, to name it.
+func (p *Principal) Role(key string) (Role, bool) {
+	r, ok := p.known[key]
+	return r, ok
+}
+
+// System is the principal of a user rvav acts as itself (ADR-0030), with
+// these built-in roles for all of rvav.
+func System(u store.User, roles ...string) *Principal {
+	as := make([]Assignment, len(roles))
+	for i, r := range roles {
+		as[i] = Assignment{Role: r}
+	}
+	return newPrincipal(u, nil, as, nil)
+}
+
 // ForUser builds the principal of a stored user with the groups seen in their
 // last token, for acting on their behalf (re-evaluating their request).
 func ForUser(ctx context.Context, s *store.Store, userID string) (*Principal, error) {
@@ -114,28 +144,64 @@ func FromGroups(ctx context.Context, s *store.Store, groups []string) (*Principa
 	return build(ctx, s, store.User{}, groups)
 }
 
-// build combines a user's own roles with those granted by OIDC groups.
+// build gathers in one query the roles a user holds, themselves and through
+// their groups (nil for none), and what they grant.
 func build(ctx context.Context, s *store.Store, u store.User, groups []string) (*Principal, error) {
-	p := &Principal{User: u, GlobalRoles: append([]string{}, u.GlobalRoles...), ProjectRoles: map[string]string{}, Groups: groups}
-	members, err := s.Memberships(ctx, u.ID)
+	held, err := s.RoleGrants(ctx, u.ID, u.GlobalRoles, groups)
 	if err != nil {
 		return nil, err
 	}
-	global, fromGroups, err := s.GroupRoles(ctx, groups)
-	if err != nil {
-		return nil, err
-	}
-	for _, g := range global {
-		if !slices.Contains(p.GlobalRoles, g) {
-			p.GlobalRoles = append(p.GlobalRoles, g)
+	as := make([]Assignment, len(held))
+	custom := map[string]Role{}
+	for i, h := range held {
+		as[i] = Assignment{Role: h.Role, ProjectID: h.ProjectID}
+		if h.Known && h.Custom {
+			r := Role{Key: h.Role, Name: h.Name}
+			for _, perm := range h.Permissions {
+				// One rvav no longer knows grants nothing.
+				if _, ok := Info(Permission(perm)); ok {
+					r.Permissions = append(r.Permissions, Permission(perm))
+				}
+			}
+			custom[h.Role] = r
 		}
 	}
-	for _, m := range append(members, fromGroups...) {
-		if roleRank[m.Role] > roleRank[p.ProjectRoles[m.ProjectID]] {
-			p.ProjectRoles[m.ProjectID] = m.Role
+	return newPrincipal(u, groups, as, custom), nil
+}
+
+func newPrincipal(u store.User, groups []string, as []Assignment, custom map[string]Role) *Principal {
+	role := func(key string) (Role, bool) {
+		if r, ok := BuiltinRole(key); ok {
+			return r, true
+		}
+		r, ok := custom[key]
+		return r, ok
+	}
+	p := &Principal{User: u, Groups: groups, Grants: Compute(as, role), Roles: []string{},
+		ProjectRoles: map[string]string{}, rolesIn: map[string][]string{}, known: map[string]Role{}}
+	for _, a := range as {
+		r, ok := role(a.Role)
+		if !ok || !r.Assignable(a.ProjectID) {
+			continue
+		}
+		p.known[r.Key] = r
+		if a.ProjectID == "" {
+			if !slices.Contains(p.Roles, r.Key) {
+				p.Roles = append(p.Roles, r.Key)
+			}
+			continue
+		}
+		if in := p.rolesIn[a.ProjectID]; !slices.Contains(in, r.Key) {
+			in = append(in, r.Key)
+			slices.Sort(in)
+			p.rolesIn[a.ProjectID] = in
+		}
+		if roleRank[r.Key] > roleRank[p.ProjectRoles[a.ProjectID]] {
+			p.ProjectRoles[a.ProjectID] = r.Key
 		}
 	}
-	return p, nil
+	p.GlobalRoles = p.Roles
+	return p
 }
 
 // Authenticator resolves the principal of an HTTP request.

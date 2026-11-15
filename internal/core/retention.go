@@ -17,7 +17,7 @@ const SystemUserID = "usr_rvav"
 
 // system acts for rvav's own policies; it may run any action.
 func system() *auth.Principal {
-	return &auth.Principal{User: store.User{ID: SystemUserID, Name: "rvav"}, GlobalRoles: []string{"admin"}}
+	return auth.System(store.User{ID: SystemUserID, Name: "rvav"}, "admin")
 }
 
 // ExpireSnapshots starts the deletion of snapshots older than their

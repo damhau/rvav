@@ -243,8 +243,8 @@ func (s *Service) canManageMembers(ctx context.Context, p *auth.Principal, proje
 
 // keepsAdmin refuses to take away a project's last project admin.
 func (s *Service) keepsAdmin(ctx context.Context, proj store.Project, userID string) error {
-	current, err := s.Store.DirectRole(ctx, proj.ID, userID)
-	if err != nil || current != "project-admin" {
+	current, err := s.Store.DirectRoles(ctx, proj.ID, userID)
+	if err != nil || !slices.Contains(current, "project-admin") {
 		return err
 	}
 	others, err := s.Store.OtherProjectAdmins(ctx, proj.ID, userID)
@@ -276,7 +276,7 @@ func (s *Service) SetProjectMember(ctx context.Context, p *auth.Principal, proje
 				return err
 			}
 		}
-		return s.Store.SetMember(ctx, proj.ID, userID, role)
+		return s.Store.SetMemberRoles(ctx, proj.ID, userID, []string{role})
 	}); err != nil {
 		return api.ProjectMember{}, err
 	}

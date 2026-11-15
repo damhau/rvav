@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -105,21 +104,24 @@ func (s *Store) ProjectMemberRoles(ctx context.Context, projectID string) ([]Mem
 	return pgx.CollectRows(rows, pgx.RowToStructByName[MemberRole])
 }
 
-// SetMember adds a direct member or changes their role.
-func (s *Store) SetMember(ctx context.Context, projectID, userID, role string) error {
-	_, err := s.Pool.Exec(ctx, `insert into project_members (project_id, user_id, role) values ($1, $2, $3)
-		on conflict (project_id, user_id) do update set role = excluded.role`, projectID, userID, role)
-	return err
+// SetMemberRoles gives a user exactly these roles in a project themselves,
+// as one change.
+func (s *Store) SetMemberRoles(ctx context.Context, projectID, userID string, roles []string) error {
+	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `delete from project_members where project_id = $1 and user_id = $2 and role <> all($3)`,
+			projectID, userID, roles); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `insert into project_members (project_id, user_id, role) select $1, $2, unnest($3::text[])
+			on conflict do nothing`, projectID, userID, roles)
+		return err
+	})
 }
 
-// DirectRole is a user's own role in a project ("" when none).
-func (s *Store) DirectRole(ctx context.Context, projectID, userID string) (string, error) {
-	var role string
-	err := s.Pool.QueryRow(ctx, `select role from project_members where project_id = $1 and user_id = $2`, projectID, userID).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
-	}
-	return role, err
+// DirectRoles are the roles a user holds in a project themselves, by key.
+func (s *Store) DirectRoles(ctx context.Context, projectID, userID string) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select role from project_members where project_id = $1 and user_id = $2 order by role`, projectID, userID)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 func (s *Store) RemoveMember(ctx context.Context, projectID, userID string) error {
