@@ -1931,6 +1931,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/access/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The projects to explain access in (`access.read` for all of rvav)
+         * @description The projects in use (archived ones left out), by name: their ID,
+         *     code and name only. Where `explainAccess` can look for someone who
+         *     may read everyone's access without reading projects' settings
+         *     (`project.settings.read`, which `listAdminProjects` takes).
+         */
+        get: operations["listAccessProjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/environments": {
         parameters: {
             query?: never;
@@ -5530,6 +5553,9 @@ export interface components {
         };
         AssignableRoleList: {
             items: components["schemas"]["AssignableRole"][];
+        };
+        ProjectRefList: {
+            items: components["schemas"]["ProjectRef"][];
         };
         /** @description A role a user holds, and where it comes from. */
         AccessGrant: {
@@ -9749,6 +9775,28 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listAccessProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRefList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listAdminEnvironments: {

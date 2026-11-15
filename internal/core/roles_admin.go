@@ -559,6 +559,24 @@ func (s *Service) AssignableRoles(ctx context.Context, p *auth.Principal, projec
 	return out, nil
 }
 
+// AccessProjects are the projects in use, for those who may explain anyone's
+// access in any of them (access.read for all of rvav) without reading their
+// settings: references only.
+func (s *Service) AccessProjects(ctx context.Context, p *auth.Principal) ([]api.ProjectRef, error) {
+	if !p.Everywhere(auth.AccessRead) {
+		return nil, ErrForbidden
+	}
+	list, err := s.Store.AdminProjects(ctx, "", false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.ProjectRef, len(list))
+	for i, pr := range list {
+		out[i] = api.ProjectRef{Id: pr.ID, Code: pr.Code, Name: pr.Name}
+	}
+	return out, nil
+}
+
 // ExplainAccess says what a user may do in a project ("" for all of rvav),
 // and which of their roles allows each permission, as Compute counts them:
 // anyone about themselves, in the projects they see; access.read about

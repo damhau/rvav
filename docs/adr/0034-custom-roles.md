@@ -217,6 +217,12 @@ They are today's roles, exactly; they can't be changed or deleted.
   already theirs to read in `/me`, and their groups are in their token:
   the explanation adds only which role gives what, and a person, or a
   script with their token, finds out without an administrator.
+- **`GET /admin/access/projects`** lists the projects in use, their ID,
+  code and name only, to whoever holds `access.read` for all of rvav: the
+  projects to explain access in. Listing projects takes
+  `project.settings.read` (their quotas, cost centre and members' count),
+  which reading access doesn't give, so an access reader is handed the
+  references the explanation names anyway, not the settings.
 - **`GET /projects/{id}/assignable-roles`** lists the roles whoever manages
   a project's members may give there, as setting a member checks them, so
   the members' tab offers only those. Project admins don't hold

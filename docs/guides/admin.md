@@ -335,7 +335,9 @@ To find out why someone can't do something, open **Administration ›
 Roles › What someone may do**, choose them in **Who** and the project in
 **Where**: each permission, held or not, lists the roles that grant it
 and where each comes from, given to them, through a group or set by rvav
-(`GET /api/v1/admin/access/explain`, `access.read`). Anyone sees the same
+(`GET /api/v1/admin/access/explain`, `access.read`; **Where** lists the
+projects of `GET /api/v1/admin/access/projects`, which `access.read` is
+enough for). Anyone sees the same
 about themselves in **What I may do**, in their menu.
 
 rvav refuses a change that would leave no one holding `access.manage`, or

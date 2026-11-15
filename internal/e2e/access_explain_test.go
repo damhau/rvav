@@ -140,5 +140,24 @@ func TestAccessExplanation(t *testing.T) {
 		h.json("GET", "/api/v1/projects/prj_data/assignable-roles", "lmartin", nil, 404, nil)
 		h.json("PUT", "/api/v1/projects/prj_web/members/"+seed.UserID("afavre"), "lmartin",
 			api.ProjectMemberWrite{Roles: &[]string{"viewer", "requester"}}, 200, nil)
+
+		// Who reads everyone's access, and no project's settings, has the
+		// projects to explain it in: their references only.
+		h.json("POST", "/api/v1/admin/roles", admin, api.RoleCreate{Key: "access-reader", Name: "Access reader",
+			Permissions: []string{"access.read"}}, 201, nil)
+		h.json("POST", "/api/v1/admin/role-assignments", admin, api.RoleAssignmentWrite{UserId: seed.UserID("cdubois"),
+			Role: "access-reader"}, 201, nil)
+		h.json("GET", "/api/v1/admin/projects", "cdubois", nil, 403, nil)
+		var refs api.ProjectRefList
+		h.json("GET", "/api/v1/admin/access/projects", "cdubois", nil, 200, &refs)
+		names := make([]string, len(refs.Items))
+		for i, p := range refs.Items {
+			names[i] = p.Name
+		}
+		if !slices.Contains(names, "Web Platform") || len(names) != 4 || refs.Items[0].Code == "" {
+			t.Fatalf("projects to explain access in = %+v", refs.Items)
+		}
+		explain("cdubois", "tnguyen", refs.Items[slices.Index(names, "Web Platform")].Id, 200)
+		h.json("GET", "/api/v1/admin/access/projects", "lmartin", nil, 403, nil)
 	})
 }

@@ -893,6 +893,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     }),
     http.get(`${base}/admin/projects`, async ({ request }) => {
       await wait();
+      if (!db.me.permissions.includes("project.settings.read"))
+        return forbidden("you may not read every project's settings");
       const url = new URL(request.url);
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
       const archived = url.searchParams.get("archived") === "true";
@@ -965,6 +967,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             permissions,
             built_in,
           })),
+      });
+    }),
+    http.get(`${base}/admin/access/projects`, async () => {
+      await wait();
+      if (!db.me.permissions.includes("access.read")) return forbidden("you may not see what anyone may do");
+      return HttpResponse.json({
+        items: db.projects
+          .map(adminProject)
+          .filter((p) => !p.archived)
+          .map(({ id, code, name }) => ({ id, code, name })),
       });
     }),
     http.get(`${base}/admin/access/explain`, async ({ request }) => {

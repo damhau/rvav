@@ -2409,6 +2409,25 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/access/projects:
+    get:
+      tags: [admin]
+      operationId: listAccessProjects
+      summary: The projects to explain access in (`access.read` for all of rvav)
+      description: |
+        The projects in use (archived ones left out), by name: their ID,
+        code and name only. Where `explainAccess` can look for someone who
+        may read everyone's access without reading projects' settings
+        (`project.settings.read`, which `listAdminProjects` takes).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectRefList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/environments:
     post:
       tags: [admin]
@@ -7342,6 +7361,13 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/AssignableRole" }
+    ProjectRefList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectRef" }
     AccessGrant:
       type: object
       required: [role, given, through]
