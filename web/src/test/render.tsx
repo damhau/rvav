@@ -13,8 +13,7 @@ export function renderWithQuery(ui: ReactNode, client = testQueryClient()) {
 }
 
 /** Render the whole app (shell, providers, routes) at a path, against the mock API. */
-export function renderApp(path: string) {
-  const client = testQueryClient();
+export function renderApp(path: string, client = testQueryClient()) {
   const router = createAppRouter(client, path);
   return {
     client,

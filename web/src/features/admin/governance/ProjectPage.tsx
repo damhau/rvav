@@ -227,8 +227,13 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   const { me } = useCurrentProject();
   const members = useQuery(adm.members(projectId));
   const offered = useQuery({ ...adm.assignableRoles(projectId), enabled: canManage });
-  const [role, setRole] = useState("member");
+  const [picked, setRole] = useState("member");
   const [editing, setEditing] = useState<S["ProjectMember"] | null>(null);
+  // Member unless the caller may not give it: then the first role they may.
+  const items = offered.data?.items ?? [];
+  const role = items.some((r) => r.key === picked)
+    ? picked
+    : ((items.find((r) => r.key === "member") ?? items[0])?.key ?? picked);
   const roleName = (key: string) => offered.data?.items.find((r) => r.key === key)?.name ?? key;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["admin"] });

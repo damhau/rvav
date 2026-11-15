@@ -405,7 +405,11 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
   const projects = useQuery(adm.projects("", false));
   const roles = useQuery(adm.roles());
   const [f, setF] = useState({ group: "", project: "none", role: "auditor" });
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["admin", "group-mappings"] });
+  // A mapping changes roles' holders, members' groups, what anyone may do, and /me.
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["admin"] });
+    void qc.invalidateQueries({ queryKey: ["me"] });
+  };
   const add = useMutation({
     mutationFn: () =>
       call(
