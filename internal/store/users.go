@@ -61,30 +61,40 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title 
 // RoleGrant is a role a user holds, themselves or through a group: in a
 // project, or for all of rvav (ProjectID ""). Custom says it is no built-in
 // role, whose name and permissions are stored; Known is false for a key
-// that is no role.
+// that is no role. Source says where it comes from: GrantRvav, GrantUser or
+// GrantGroup, then Group names the group.
 type RoleGrant struct {
 	Role        string   `db:"role"`
 	ProjectID   string   `db:"project_id"`
+	Source      string   `db:"source"`
+	Group       string   `db:"oidc_group"`
 	Known       bool     `db:"known"`
 	Custom      bool     `db:"custom"`
 	Name        string   `db:"name"`
 	Permissions []string `db:"permissions"`
 }
 
+// Where a role a user holds comes from.
+const (
+	GrantRvav  = "rvav"
+	GrantUser  = "user"
+	GrantGroup = "group"
+)
+
 // RoleGrants lists in one query the roles a user holds (ADR-0034): those
 // rvav sets (global, from users.global_roles), those given to them for all
 // of rvav and in projects, then their groups' (none for nil), with the
 // custom roles' permissions.
 func (s *Store) RoleGrants(ctx context.Context, userID string, global, groups []string) ([]RoleGrant, error) {
-	rows, _ := s.Pool.Query(ctx, `with held (role, project_id, src, n) as (
-			select g.role, '', 1, g.n from unnest($2::text[]) with ordinality as g(role, n)
-			union all select role, '', 2, 0 from user_roles where user_id = $1
-			union all select role, project_id, 3, 0 from project_members where user_id = $1
-			union all select role, coalesce(project_id, ''), 4, 0 from group_mappings where oidc_group = any($3))
-		select h.role, h.project_id, r.key is not null as known, coalesce(not r.built_in, false) as custom,
+	rows, _ := s.Pool.Query(ctx, `with held (role, project_id, src, n, source, oidc_group) as (
+			select g.role, '', 1, g.n, 'rvav', '' from unnest($2::text[]) with ordinality as g(role, n)
+			union all select role, '', 2, 0, 'user', '' from user_roles where user_id = $1
+			union all select role, project_id, 3, 0, 'user', '' from project_members where user_id = $1
+			union all select role, coalesce(project_id, ''), 4, 0, 'group', oidc_group from group_mappings where oidc_group = any($3))
+		select h.role, h.project_id, h.source, h.oidc_group, r.key is not null as known, coalesce(not r.built_in, false) as custom,
 			coalesce(r.name, '') as name, coalesce(r.permissions, '{}') as permissions
 		from held h left join roles r on r.key = h.role
-		order by h.src, h.n, h.role, h.project_id`, userID, global, groups)
+		order by h.src, h.n, h.role, h.project_id, h.oidc_group`, userID, global, groups)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[RoleGrant])
 }
 

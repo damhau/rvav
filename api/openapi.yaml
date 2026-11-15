@@ -2081,6 +2081,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /projects/{projectId}/assignable-roles:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [projects]
+      operationId: listAssignableRoles
+      summary: The roles the caller may give the project's members (`project.members.manage` there)
+      description: |
+        As setting a member checks them: with `access.manage`, every role
+        that can be given in a project; otherwise those whose permissions
+        the caller holds in the project. A project admin gets viewer, member
+        and project-admin, and custom roles holding no more than they do.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignableRoleList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /projects/{projectId}/members/{userId}:
     parameters:
       - { $ref: "#/components/parameters/ProjectIdPath" }
@@ -2353,6 +2375,39 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/access/explain:
+    get:
+      tags: [admin]
+      operationId: explainAccess
+      summary: What a user may do, and which of their roles allows it (`access.read`, or about oneself)
+      description: |
+        For a user, in a project or for all of rvav: every permission of the
+        catalogue, held or not, with the roles granting it and where each
+        comes from (given to them, set by rvav, or through a group of the
+        identity provider), then the day-2 permissions their roles hold. A
+        permission no role grants has none. As they hold them when signed
+        in, with the groups of their last sign-in: an API token acts with
+        their own roles only. Anyone may ask about themselves, in the
+        projects they see; about someone else takes `access.read`.
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: project_id
+          in: query
+          description: In this project (its ID or code); without it, for all of rvav.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessExplanation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /admin/environments:
     post:
@@ -7265,6 +7320,78 @@ components:
       properties:
         user_id: { type: string }
         role: { type: string, description: The key of a role that can be given for all of rvav. }
+    AssignableRole:
+      type: object
+      required: [key, name, description, permissions, built_in]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+        built_in: { type: boolean }
+    AssignableRoleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AssignableRole" }
+    AccessGrant:
+      type: object
+      required: [role, given, through]
+      description: A role a user holds, and where it comes from.
+      properties:
+        role: { $ref: "#/components/schemas/RoleRef" }
+        given:
+          type: string
+          enum: [project, rvav]
+          description: Given in the project, or for all of rvav.
+        through:
+          type: string
+          enum: [user, group, rvav]
+          description: |
+            `user`: given to them; `group`: through a group mapping; `rvav`:
+            set by rvav itself (`user` for everyone signed in, the local
+            administrator's, the system users' and the seed's).
+        group:
+          type: string
+          description: The group of the identity provider, when through one.
+    AccessPermission:
+      type: object
+      required: [id, held, granted_by]
+      properties:
+        id: { $ref: "#/components/schemas/Permission" }
+        held: { type: boolean }
+        granted_by:
+          type: array
+          description: |
+            The roles granting it here; empty when none does. `approval.project`
+            counts from a role given in the project only.
+          items: { $ref: "#/components/schemas/AccessGrant" }
+    AccessExplanation:
+      type: object
+      required: [user, project, groups, roles, permissions]
+      properties:
+        user: { $ref: "#/components/schemas/UserRef" }
+        project:
+          description: The project asked about; null for all of rvav.
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        groups:
+          type: array
+          description: Their groups of the identity provider, at their last sign-in.
+          items: { type: string }
+        roles:
+          type: array
+          description: The roles that count here, those given for all of rvav included.
+          items: { $ref: "#/components/schemas/AccessGrant" }
+        permissions:
+          type: array
+          description: Every permission of the catalogue, in its order, then the day-2 permissions held.
+          items: { $ref: "#/components/schemas/AccessPermission" }
     AdminEnvironment:
       allOf:
         - $ref: "#/components/schemas/Environment"

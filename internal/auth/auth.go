@@ -141,18 +141,30 @@ func build(ctx context.Context, s *store.Store, u store.User, groups []string) (
 	custom := map[string]Role{}
 	for i, h := range held {
 		as[i] = Assignment{Role: h.Role, ProjectID: h.ProjectID}
-		if h.Known && h.Custom {
-			r := Role{Key: h.Role, Name: h.Name}
-			for _, perm := range h.Permissions {
-				// One rvav no longer knows grants nothing.
-				if _, ok := Info(Permission(perm)); ok {
-					r.Permissions = append(r.Permissions, Permission(perm))
-				}
-			}
+		if r, ok := RoleOf(h); ok && !r.BuiltIn {
 			custom[h.Role] = r
 		}
 	}
 	return newPrincipal(u, groups, as, custom), nil
+}
+
+// RoleOf is the role a grant names: built in, or custom with the
+// permissions rvav still knows (one it no longer knows grants nothing);
+// false for a key that is no role.
+func RoleOf(h store.RoleGrant) (Role, bool) {
+	if r, ok := BuiltinRole(h.Role); ok {
+		return r, true
+	}
+	if !h.Known || !h.Custom {
+		return Role{}, false
+	}
+	r := Role{Key: h.Role, Name: h.Name}
+	for _, perm := range h.Permissions {
+		if _, ok := Info(Permission(perm)); ok {
+			r.Permissions = append(r.Permissions, Permission(perm))
+		}
+	}
+	return r, true
 }
 
 func newPrincipal(u store.User, groups []string, as []Assignment, custom map[string]Role) *Principal {

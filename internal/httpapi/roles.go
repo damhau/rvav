@@ -60,3 +60,13 @@ func (s *Server) CreateRoleAssignment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) DeleteRoleAssignment(w http.ResponseWriter, r *http.Request, id api.IdPath) {
 	s.replyEmpty(w, r, s.Core.DeleteRoleAssignment(r.Context(), principal(r), id))
 }
+
+func (s *Server) ListAssignableRoles(w http.ResponseWriter, r *http.Request, projectID api.ProjectIdPath) {
+	items, err := s.Core.AssignableRoles(r.Context(), principal(r), projectID)
+	s.reply(w, r, http.StatusOK, api.AssignableRoleList{Items: items}, err)
+}
+
+func (s *Server) ExplainAccess(w http.ResponseWriter, r *http.Request, params api.ExplainAccessParams) {
+	out, err := s.Core.ExplainAccess(r.Context(), principal(r), params.UserId, deref(params.ProjectId))
+	s.reply(w, r, http.StatusOK, out, err)
+}

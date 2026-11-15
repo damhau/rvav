@@ -1674,6 +1674,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/assignable-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The roles the caller may give the project's members (`project.members.manage` there)
+         * @description As setting a member checks them: with `access.manage`, every role
+         *     that can be given in a project; otherwise those whose permissions
+         *     the caller holds in the project. A project admin gets viewer, member
+         *     and project-admin, and custom roles holding no more than they do.
+         */
+        get: operations["listAssignableRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/members/{userId}": {
         parameters: {
             query?: never;
@@ -1874,6 +1899,33 @@ export interface paths {
          * @description Not the last way anyone holds `access.manage` (409).
          */
         delete: operations["deleteRoleAssignment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/access/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a user may do, and which of their roles allows it (`access.read`, or about oneself)
+         * @description For a user, in a project or for all of rvav: every permission of the
+         *     catalogue, held or not, with the roles granting it and where each
+         *     comes from (given to them, set by rvav, or through a group of the
+         *     identity provider), then the day-2 permissions their roles hold. A
+         *     permission no role grants has none. As they hold them when signed
+         *     in, with the groups of their last sign-in: an API token acts with
+         *     their own roles only. Anyone may ask about themselves, in the
+         *     projects they see; about someone else takes `access.read`.
+         */
+        get: operations["explainAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5464,6 +5516,54 @@ export interface components {
             user_id: string;
             /** @description The key of a role that can be given for all of rvav. */
             role: string;
+        };
+        AssignableRole: {
+            key: string;
+            name: string;
+            description: string;
+            permissions: components["schemas"]["Permission"][];
+            built_in: boolean;
+        };
+        AssignableRoleList: {
+            items: components["schemas"]["AssignableRole"][];
+        };
+        /** @description A role a user holds, and where it comes from. */
+        AccessGrant: {
+            role: components["schemas"]["RoleRef"];
+            /**
+             * @description Given in the project, or for all of rvav.
+             * @enum {string}
+             */
+            given: "project" | "rvav";
+            /**
+             * @description `user`: given to them; `group`: through a group mapping; `rvav`:
+             *     set by rvav itself (`user` for everyone signed in, the local
+             *     administrator's, the system users' and the seed's).
+             * @enum {string}
+             */
+            through: "user" | "group" | "rvav";
+            /** @description The group of the identity provider, when through one. */
+            group?: string;
+        };
+        AccessPermission: {
+            id: components["schemas"]["Permission"];
+            held: boolean;
+            /**
+             * @description The roles granting it here; empty when none does. `approval.project`
+             *     counts from a role given in the project only.
+             */
+            granted_by: components["schemas"]["AccessGrant"][];
+        };
+        AccessExplanation: {
+            user: components["schemas"]["UserRef"];
+            /** @description The project asked about; null for all of rvav. */
+            project: components["schemas"]["ProjectRef"] | null;
+            /** @description Their groups of the identity provider, at their last sign-in. */
+            groups: string[];
+            /** @description The roles that count here, those given for all of rvav included. */
+            roles: components["schemas"]["AccessGrant"][];
+            /** @description Every permission of the catalogue, in its order, then the day-2 permissions held. */
+            permissions: components["schemas"]["AccessPermission"][];
         };
         AdminEnvironment: components["schemas"]["Environment"] & {
             /** @description Snapshots kept per VM. */
@@ -9234,6 +9334,31 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listAssignableRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignableRoleList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     setProjectMember: {
         parameters: {
             query?: never;
@@ -9592,6 +9717,33 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    explainAccess: {
+        parameters: {
+            query: {
+                user_id: string;
+                /** @description In this project (its ID or code); without it, for all of rvav. */
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessExplanation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAdminEnvironments: {

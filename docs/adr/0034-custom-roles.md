@@ -203,6 +203,23 @@ They are today's roles, exactly; they can't be changed or deleted.
   tests write and compare (`internal/auth/testdata`), so the two can't
   drift.
 
+### What a user may do, explained
+- **`GET /admin/access/explain`** says, for a user in a project or for all
+  of rvav, whether each permission is held, with the roles granting it and
+  where each comes from: given to them, set by rvav, or through a group at
+  their last sign-in. It counts as `Compute` does (`approval.project` from
+  a role given in the project only); a permission no role grants has none.
+  Administration › Roles shows it ("why can't they?").
+- **Who may ask:** whoever holds `access.read`, about anyone; anyone about
+  themselves, in the projects they see. Their roles and permissions are
+  already theirs to read in `/me`, and their groups are in their token:
+  the explanation adds only which role gives what, and a person, or a
+  script with their token, finds out without an administrator.
+- **`GET /projects/{id}/assignable-roles`** lists the roles whoever manages
+  a project's members may give there, as setting a member checks them, so
+  the members' tab offers only those. Project admins don't hold
+  `access.read`, which `/admin/roles` takes.
+
 ### Day-2 actions: a role allows, a policy can still require approval or refuse
 1. The deployment is visible: `project.see` in its project, or its owner.
 2. The day-2 policies, by priority: the first that matches decides, as

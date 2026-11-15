@@ -525,3 +525,128 @@ func (s *Service) DeleteRoleAssignment(ctx context.Context, p *auth.Principal, i
 	s.accessChanged(ctx)
 	return nil
 }
+
+// AssignableRoles are the roles the principal may give the project's
+// members, as changeMembership checks them.
+func (s *Service) AssignableRoles(ctx context.Context, p *auth.Principal, projectID string) ([]api.AssignableRole, error) {
+	proj, err := s.canManageMembers(ctx, p, projectID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := s.Store.Roles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []api.AssignableRole{}
+	for _, st := range list {
+		r, ok := auth.BuiltinRole(st.Key)
+		if !st.BuiltIn {
+			r, ok = customRole(st), true
+		}
+		if !ok || !r.Assignable(proj.ID) || !mayGive(p, r, proj.ID) {
+			continue
+		}
+		a := api.AssignableRole{Key: r.Key, Name: r.Name, Description: st.Description, BuiltIn: r.BuiltIn, Permissions: []string{}}
+		for _, perm := range r.Permissions {
+			a.Permissions = append(a.Permissions, string(perm))
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// ExplainAccess says what a user may do in a project ("" for all of rvav),
+// and which of their roles allows each permission, as Compute counts them:
+// anyone about themselves, in the projects they see; access.read about
+// anyone, anywhere.
+func (s *Service) ExplainAccess(ctx context.Context, p *auth.Principal, userID, projectID string) (api.AccessExplanation, error) {
+	out := api.AccessExplanation{Groups: []string{}, Roles: []api.AccessGrant{}, Permissions: []api.AccessPermission{}}
+	anyone := p.Everywhere(auth.AccessRead)
+	if !anyone && userID != p.User.ID {
+		return out, ErrForbidden
+	}
+	u, err := s.Store.GetUser(ctx, userID)
+	if errors.Is(err, store.ErrNotFound) {
+		return out, ErrNotFound
+	}
+	if err != nil {
+		return out, err
+	}
+	out.User = userRef(u)
+	if projectID != "" {
+		var proj store.Project
+		if anyone {
+			if proj, err = s.Store.GetProject(ctx, projectID); errors.Is(err, store.ErrNotFound) {
+				err = ErrNotFound
+			}
+		} else {
+			proj, err = s.visibleProject(ctx, p, projectID)
+		}
+		if err != nil {
+			return out, err
+		}
+		projectID = proj.ID
+		out.Project = &api.ProjectRef{Id: proj.ID, Code: proj.Code, Name: proj.Name}
+	}
+	groups, err := s.Store.UserGroups(ctx, u.ID)
+	if err != nil {
+		return out, err
+	}
+	out.Groups = append(out.Groups, groups...)
+	held, err := s.Store.RoleGrants(ctx, u.ID, u.GlobalRoles, groups)
+	if err != nil {
+		return out, err
+	}
+	granted := map[auth.Permission][]api.AccessGrant{}
+	seen := map[string]bool{}
+	for _, h := range held {
+		r, ok := auth.RoleOf(h)
+		if !ok || h.ProjectID != "" && h.ProjectID != projectID || !r.Assignable(h.ProjectID) {
+			continue
+		}
+		id := strings.Join([]string{h.Role, h.ProjectID, h.Source, h.Group}, "\x00")
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		g := accessGrant(r, h)
+		out.Roles = append(out.Roles, g)
+		for _, perm := range r.Permissions {
+			if perm != auth.ApprovalProject || h.ProjectID != "" {
+				granted[perm] = append(granted[perm], g)
+			}
+		}
+	}
+	for _, c := range auth.Catalogue {
+		out.Permissions = append(out.Permissions, accessPermission(c.ID, granted[c.ID]))
+	}
+	var day2 []auth.Permission
+	for perm := range granted {
+		if strings.HasPrefix(string(perm), "day2.") {
+			day2 = append(day2, perm)
+		}
+	}
+	slices.Sort(day2)
+	for _, perm := range day2 {
+		out.Permissions = append(out.Permissions, accessPermission(perm, granted[perm]))
+	}
+	return out, nil
+}
+
+func accessGrant(r auth.Role, h store.RoleGrant) api.AccessGrant {
+	g := api.AccessGrant{Role: api.RoleRef{Key: r.Key, Name: r.Name}, Given: api.AccessGrantGivenRvav, Through: api.AccessGrantThrough(h.Source)}
+	if h.ProjectID != "" {
+		g.Given = api.AccessGrantGivenProject
+	}
+	if h.Source == store.GrantGroup {
+		g.Group = &h.Group
+	}
+	return g
+}
+
+func accessPermission(perm auth.Permission, by []api.AccessGrant) api.AccessPermission {
+	if by == nil {
+		by = []api.AccessGrant{}
+	}
+	return api.AccessPermission{Id: string(perm), Held: len(by) > 0, GrantedBy: by}
+}
