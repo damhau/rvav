@@ -75,6 +75,11 @@ switch: `RVAV_AUTH_MODE=oidc docker compose -f deploy/docker-compose.yml up --bu
 The API starts even while Keycloak is still booting; it answers `503`, and
 reports not ready, until it can reach it. `RVAV_STACK_AUTH=oidc pnpm e2e:stack` signs in as `lea` and
 `thomas` and checks that their Keycloak groups give them their project roles.
+It also runs the custom roles' acceptance (`e2e-stack/custom-roles.spec.ts`):
+`marc` makes a VM operator and gives it to `thomas` in Infra Core, `thomas`
+powers a new VM there off and on, then reads the administration with an
+auditor role `marc` made; the spec then takes both roles away, deletes them
+and deletes the VM.
 Keycloak imports `keycloak/realm-rvav.json` only when its container is
 created: after the file changes, recreate it with
 `docker compose -f deploy/docker-compose.yml up -d --force-recreate keycloak`.
