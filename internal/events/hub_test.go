@@ -72,3 +72,25 @@ func TestAccessChangedEndsStreams(t *testing.T) {
 		t.Fatalf("delivered %d and %d events; access.changed itself is never sent", len(subs[0].C), len(subs[1].C))
 	}
 }
+
+func TestFilterSetAfterSubscribing(t *testing.T) {
+	h := NewHub(nil, nil)
+	web := "prj_web"
+	event := store.Event{ID: 1, Type: "request.updated", ProjectID: &web, Topics: []string{"requests", "request:req_1"}}
+	s := h.Subscribe(Filter{})
+	h.deliver(event)
+	if len(s.C) != 0 {
+		t.Fatal("a subscription without a filter received an event")
+	}
+	h.SetFilter(s, Filter{Topics: []string{"requests"}})
+	h.deliver(event)
+	h.deliver(store.Event{ID: 2, Type: AccessChangedType, Topics: []string{}})
+	select {
+	case <-s.Lagged:
+	default:
+		t.Fatal("still open after access.changed")
+	}
+	if len(s.C) != 1 {
+		t.Fatalf("delivered %d events once filtered, want 1", len(s.C))
+	}
+}

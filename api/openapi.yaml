@@ -3962,7 +3962,10 @@ paths:
         Only events the caller is allowed to see are sent. When roles,
         assignments or group mappings change, every stream ends with
         `resync`: the client connects again, with what the caller now holds,
-        and refetches, `/me` included.
+        and refetches, `/me` included. A stream reads the caller's roles
+        once subscribed, so a change while it opens is in them or ends it;
+        a `Last-Event-ID` from before a change gets `resync` instead of the
+        missed events.
       parameters:
         - name: topics
           in: query

@@ -58,6 +58,14 @@ func (h *Hub) Subscribe(f Filter) *Subscription {
 	return s
 }
 
+// SetFilter changes what a subscriber receives. Subscribed with none, it
+// receives nothing, yet an access change ends it as any other.
+func (h *Hub) SetFilter(s *Subscription, f Filter) {
+	h.mu.Lock()
+	s.filter = f
+	h.mu.Unlock()
+}
+
 func (h *Hub) Unsubscribe(s *Subscription) {
 	h.mu.Lock()
 	delete(h.subs, s)

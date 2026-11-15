@@ -278,6 +278,13 @@ They are today's roles, exactly; they can't be changed or deleted.
   hold, and fetch again, `/me` included (the web app's bridge invalidates
   every query on `resync`). A stream's project filter is set when it
   starts, so this is what stops one going on with a permission taken away.
+  The stream subscribes first, with no filter, then reads the caller's
+  roles again (`auth.Again`) and sets its filter from them: a change made
+  before that read is in it, one made after ends the stream, so none falls
+  between authenticating and subscribing. A replay from a `Last-Event-ID`
+  that finds `access.changed` sends `resync` instead, as for a gap, and
+  goes on with the rights just read: ending there would have a client
+  that keeps its last ID reconnect into the same replay.
 - `access.changed` carries no detail (the audit log says who changed what)
   and isn't offered to event subscriptions.
 - Project topics are filtered by `project.see`; `request:<id>` as today

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,17 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		s.problem(w, r, http.StatusBadRequest, "bad-request", "No topics", "Pass at least one topic.", nil)
 		return
 	}
+	// Subscribed before the caller's roles are read again, the stream holds
+	// no rights from before an access change: one made before the read is
+	// in what it reads, one made after ends the stream with resync.
+	sub := s.Hub.Subscribe(events.Filter{})
+	defer s.Hub.Unsubscribe(sub)
+	p, err := auth.Again(r.Context(), s.Store, p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	r = r.WithContext(auth.WithPrincipal(r.Context(), p))
 	projectID := deref(params.ProjectId)
 	if projectID != "" {
 		pr, ok := s.visibleProject(w, r, projectID)
@@ -76,9 +88,8 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		filter.Requests[row.ID] = true
 	}
 
-	// Subscribe before replaying so nothing falls between the two.
-	sub := s.Hub.Subscribe(filter)
-	defer s.Hub.Unsubscribe(sub)
+	// Filtered before replaying so nothing falls between the two.
+	s.Hub.SetFilter(sub, filter)
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -124,7 +135,10 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 			if err != nil {
 				return
 			}
-			if (oldest > 0 && last+1 < oldest) || len(list) > replayLimit {
+			// After an access change the client's state may hold what it no
+			// longer may see: resync, as for a gap.
+			changed := slices.ContainsFunc(list, func(e store.Event) bool { return e.Type == events.AccessChangedType })
+			if (oldest > 0 && last+1 < oldest) || len(list) > replayLimit || changed {
 				if !control("resync") {
 					return
 				}
