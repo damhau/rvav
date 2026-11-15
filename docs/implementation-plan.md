@@ -116,7 +116,7 @@ without a restart ([section 6](#u1-settings-after-c1-built)).
 | 41 | vRO visual workflow designer | M | After N1: composite items on a canvas, built ([ADR-0032](adr/0032-one-canvas.md)), then step kinds for waits, people and REST, logic in CEL; no scripts (half) | D1, D2 |
 | 42 | Multi-tenancy (organisations) | L | No ([ADR-0002](adr/0002-single-organisation.md)) | – |
 | 43 | Single sign-on | H | 1.0 | S1, S2 |
-| 44 | Role-based access, custom roles | M | Half: fixed roles in 1.0; custom roles after N1 | S9, A1 |
+| 44 | Role-based access, custom roles | M | Fixed roles in 1.0; custom roles after N1, built ([ADR-0034](adr/0034-custom-roles.md)) | S9, A1 |
 | 45 | API and CLI | H | 1.0 | S1, S9, S14 |
 | 46 | Audit log | M | 1.0 | S9 |
 | 47 | Reports and dashboards | L | 1.0 (stretch) | S13 |
@@ -478,7 +478,7 @@ ADR-0007's "no visual designer" is revised in this slice's ADR.
 request followed on the same graph; a three-tier item's topology shown;
 keyboard and axe in both themes.
 
-### A1 Custom roles (after N1)
+### A1 Custom roles (after N1, built)
 - Roles as sets of permissions (request, run each kind of day-2 action,
   approve, see, administer...), at the project or the whole of rvav; the
   fixed roles become built-in ones.
@@ -487,8 +487,15 @@ keyboard and axe in both themes.
   permissions and the checks they replace are in
   [ADR-0034](adr/0034-custom-roles.md).
 
-**Acceptance:** an operator who may only power VMs on and off, and an
-auditor who sees everything and changes nothing, made and used.
+**Acceptance** (built: `TestA1Acceptance`, through a real Temporal dev server and vcsim; in the browser, on the mock API: `a1-acceptance.spec.ts`; on the compose stack with Keycloak: `e2e-stack/custom-roles.spec.ts`): an operator who may only power VMs on and off, and an
+auditor who sees everything and changes nothing, made and used. The
+operator, given in a project directly and through a group, powers a real
+VM off and on there and is refused every other day-2 action, requests and
+other projects. The auditor, made from the built-in one's permissions and
+given for all of rvav, answers every operation of the API as the built-in
+auditor does: every read the same, and every change refused. The built-in
+roles are unchanged: the end-to-end suite passes, and
+`TestBuiltinRolesGrantTodaysChecks` holds them to the checks they replaced.
 
 ### D2 Composite step kinds (after N1)
 Sized first from twelve typical enterprise vRO workflows

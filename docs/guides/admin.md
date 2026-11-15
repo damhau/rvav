@@ -346,6 +346,43 @@ too), and `user.permissions`, those held in the request's or deployment's
 project. The audit log has each change as `role.*`, `role_assignment.*`,
 `member.*` or `group_mapping.*`.
 
+### Example: an operator and an auditor
+
+To let someone power a project's VMs on and off, and nothing else:
+1. In **Administration › Roles**, select **New role**.
+2. Enter the key `vm-operator` and the name `VM operator`.
+3. Select `project.see`, then **Power on** and **Power off** among the
+   power day-2 actions. **What it allows** says "Run the power day-2
+   actions Power on and Power off."
+4. Select **Make role**.
+5. On the project's page, under **Members**, choose **VM operator** in
+   **As** and add the person. To give it to a team, map their OIDC group
+   to it in **Projects › OIDC group mappings**, with the project.
+
+On the project's deployments, the operator's VM menu offers **Power off**,
+or **Power on** once the VM is off. Every other action is disabled, the
+console too, with "Your role in <project> does not allow <action>." They
+can't request in the project and don't see the others. The seeded day-2
+policies still let a deployment's owner run its actions: the role decides
+on deployments the operator doesn't own.
+
+To let someone see everything and change nothing, under a name of your
+own:
+1. In **Administration › Roles**, open **Auditor** and select **Make a
+   role from it**.
+2. Enter the key `compliance-auditor` and the name `Compliance auditor`,
+   and keep the permissions as they are.
+3. Select **Make role**. It holds permissions for all of rvav only, so it
+   can only be given for all of rvav.
+4. In **For all of rvav**, choose **Compliance auditor** in **The role**,
+   then the person in **Give someone**.
+
+The compliance auditor then reads what the built-in auditor reads,
+administration pages and audit log included, with no way to change them;
+the API answers them as it answers the built-in auditor. To check either
+role, open **What someone may do**, choose the person, and the project or
+**For all of rvav**.
+
 ## Policies
 
 **Policies** has a tab each. **What applies here** shows, for a project

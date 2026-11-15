@@ -431,7 +431,10 @@ The mock backend follows the placement rules, naming policies and project
 quotas set on these pages. `rvav.mock.as` in localStorage set to
 `project-admin` or `auditor` makes the mock user one (Playwright uses it
 for what those roles see); the auditor holds no role in a project, as on
-the server. `rvav.mock.fresh` set to `1` makes it a new
+the server. `vm-operator` and `compliance-auditor` give it a custom role of
+A1's acceptance instead (`e2e/a1-acceptance.spec.ts`): the operator powers
+VMs on and off in Web Platform, its only project; the compliance auditor
+holds the auditor's permissions for all of rvav. `rvav.mock.fresh` set to `1` makes it a new
 install: no environments, projects, items or integration settings, and
 the setup checklist open (`e2e/setup.spec.ts` follows it).
 
