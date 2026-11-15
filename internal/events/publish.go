@@ -58,6 +58,17 @@ func (p *Publisher) secretFields(ctx context.Context, versionID string) map[stri
 
 func requestTopics(id string) []string { return []string{"requests", "request:" + id} }
 
+// AccessChangedType is the event of a change of roles, assignments or
+// group mappings. It has no topic: the hub ends every stream on it with
+// resync, and each client reconnects with the permissions held now
+// (ADR-0034).
+const AccessChangedType = "access.changed"
+
+// AccessChanged publishes access.changed.
+func (p *Publisher) AccessChanged(ctx context.Context) {
+	p.insert(ctx, AccessChangedType, nil, []string{}, map[string]any{})
+}
+
 // Request publishes request.updated with the request's current state.
 func (p *Publisher) Request(ctx context.Context, requestID string) {
 	r, err := p.Store.GetRequest(ctx, requestID)

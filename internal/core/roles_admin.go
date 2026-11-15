@@ -68,6 +68,14 @@ func (s *Service) role(ctx context.Context, key string) (auth.Role, error) {
 	return customRole(stored), nil
 }
 
+// accessChanged ends every live stream, so that each reconnects with the
+// permissions held now.
+func (s *Service) accessChanged(ctx context.Context) {
+	if s.Events != nil {
+		s.Events.AccessChanged(ctx)
+	}
+}
+
 func customRole(r store.StoredRole) auth.Role {
 	out := auth.Role{Key: r.Key, Name: r.Name}
 	for _, p := range r.Permissions {
@@ -342,6 +350,9 @@ func (s *Service) UpdateRole(ctx context.Context, p *auth.Principal, key string,
 		detail["added"], detail["removed"] = nonNilStrings(added), nonNilStrings(removed)
 	}
 	s.audit(ctx, p, "role.update", "role", key, nil, detail)
+	if u.Permissions != nil {
+		s.accessChanged(ctx)
+	}
 	return s.Role(ctx, p, key)
 }
 
@@ -480,6 +491,7 @@ func (s *Service) CreateRoleAssignment(ctx context.Context, p *auth.Principal, w
 		return api.RoleAssignment{}, err
 	}
 	s.audit(ctx, p, "role_assignment.create", "role_assignment", id, nil, map[string]any{"user_id": u.ID, "role": r.Key})
+	s.accessChanged(ctx)
 	a, err := s.Store.GetRoleAssignment(ctx, id)
 	return presentRoleAssignment(a), err
 }
@@ -510,5 +522,6 @@ func (s *Service) DeleteRoleAssignment(ctx context.Context, p *auth.Principal, i
 		return err
 	}
 	s.audit(ctx, p, "role_assignment.delete", "role_assignment", id, nil, map[string]any{"user_id": a.UserID, "role": a.Role})
+	s.accessChanged(ctx)
 	return nil
 }

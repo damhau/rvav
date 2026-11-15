@@ -54,3 +54,21 @@ func TestEncodeAddsID(t *testing.T) {
 		t.Fatalf("encoded = %s", b)
 	}
 }
+
+func TestAccessChangedEndsStreams(t *testing.T) {
+	h := NewHub(nil, nil)
+	web := "prj_web"
+	subs := []*Subscription{h.Subscribe(Filter{Topics: []string{"requests"}}), h.Subscribe(Filter{Topics: []string{"notifications"}, UserID: "usr_a"})}
+	h.deliver(store.Event{ID: 1, Type: "request.updated", ProjectID: &web, Topics: []string{"requests", "request:req_1"}})
+	h.deliver(store.Event{ID: 2, Type: AccessChangedType, Topics: []string{}})
+	for i, s := range subs {
+		select {
+		case <-s.Lagged:
+		default:
+			t.Fatalf("subscription %d is still open after access.changed", i)
+		}
+	}
+	if len(subs[0].C) != 1 || len(subs[1].C) != 0 {
+		t.Fatalf("delivered %d and %d events; access.changed itself is never sent", len(subs[0].C), len(subs[1].C))
+	}
+}

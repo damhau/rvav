@@ -40,7 +40,8 @@ type Filter struct {
 type Subscription struct {
 	filter Filter
 	C      chan store.Event
-	// Lagged is closed when the subscriber fell behind and lost events.
+	// Lagged is closed when the subscriber fell behind and lost events, or
+	// when access changed: either way, the stream ends with resync.
 	Lagged chan struct{}
 	once   sync.Once
 }
@@ -111,6 +112,10 @@ func (h *Hub) deliver(e store.Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for s := range h.subs {
+		if e.Type == AccessChangedType {
+			s.once.Do(func() { close(s.Lagged) })
+			continue
+		}
 		if !s.filter.Matches(e) {
 			continue
 		}

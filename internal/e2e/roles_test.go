@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
@@ -96,7 +97,22 @@ func TestRolesAPI(t *testing.T) {
 		h.json("PATCH", "/api/v1/admin/roles/vm-operator", admin, api.RoleUpdate{Permissions: &[]string{"project.see", "policies.read"}}, 422, nil)
 		h.json("DELETE", "/api/v1/admin/roles/vm-operator", admin, nil, 409, nil)
 		h.json("PUT", cdubois, "lmartin", api.ProjectMemberWrite{Role: new("member")}, 403, nil) // taking vm-operator away
+
+		// A change of access ends every live stream with resync, someone else's too.
+		stream := make(chan string, 16)
+		sctx, stop := context.WithCancel(ctx)
+		defer stop()
+		go readSSE(sctx, h.srv.URL+"/api/v1/events?topics=deployments", "tnguyen", "", stream)
+		time.Sleep(200 * time.Millisecond)
 		h.json("PUT", cdubois, admin, api.ProjectMemberWrite{Role: new("member")}, 200, &member)
+		select {
+		case e := <-stream:
+			if e != " resync" {
+				t.Fatalf("after a change of access, the stream got %q", e)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("a change of access didn't end the stream")
+		}
 
 		// Groups map to any role, within its scope.
 		var mapping api.GroupMapping

@@ -128,6 +128,9 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 		return api.AdminProject{}, err
 	}
 	s.audit(ctx, p, "project.create", "project", pr.ID, &pr.ID, map[string]any{"code": pr.Code, "name": pr.Name, "admins": admins})
+	if len(admins) > 0 {
+		s.accessChanged(ctx)
+	}
 	return s.AdminProject(ctx, p, pr.ID)
 }
 
@@ -357,6 +360,7 @@ func (s *Service) SetProjectMember(ctx context.Context, p *auth.Principal, proje
 		detail["role"] = roles[0].Key
 	}
 	s.audit(ctx, p, "member.set", "project", proj.ID, &proj.ID, detail)
+	s.accessChanged(ctx)
 	members, err := s.ProjectMembers(ctx, p, proj.ID)
 	if err != nil {
 		return api.ProjectMember{}, err
@@ -381,6 +385,7 @@ func (s *Service) RemoveProjectMember(ctx context.Context, p *auth.Principal, pr
 		return err
 	}
 	s.audit(ctx, p, "member.remove", "project", proj.ID, &proj.ID, map[string]any{"user_id": userID, "removed": nonNilStrings(removed)})
+	s.accessChanged(ctx)
 	return nil
 }
 
@@ -451,6 +456,7 @@ func (s *Service) CreateGroupMapping(ctx context.Context, p *auth.Principal, w a
 		return api.GroupMapping{}, err
 	}
 	s.audit(ctx, p, "group_mapping.create", "group_mapping", id, project, map[string]any{"group": group, "role": w.Role})
+	s.accessChanged(ctx)
 	m, err := s.Store.GetGroupMapping(ctx, id)
 	return presentGroupMapping(m), err
 }
@@ -487,6 +493,7 @@ func (s *Service) DeleteGroupMapping(ctx context.Context, p *auth.Principal, id 
 		return err
 	}
 	s.audit(ctx, p, "group_mapping.delete", "group_mapping", id, m.ProjectID, map[string]any{"group": m.Group, "role": m.Role})
+	s.accessChanged(ctx)
 	return nil
 }
 
