@@ -1976,6 +1976,8 @@ paths:
       description: |
         Everyone who has signed in at least once (or was seeded). Any signed-in
         user may search: approvers delegate to people outside their projects.
+        By name; someone the identity provider gave a new subject has a record
+        per subject, and the one seen last comes first.
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - { $ref: "#/components/parameters/Limit" }

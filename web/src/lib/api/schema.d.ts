@@ -1603,6 +1603,8 @@ export interface paths {
          * People rvav knows, by name or email, for pickers
          * @description Everyone who has signed in at least once (or was seeded). Any signed-in
          *     user may search: approvers delegate to people outside their projects.
+         *     By name; someone the identity provider gave a new subject has a record
+         *     per subject, and the one seen last comes first.
          */
         get: operations["searchUsers"];
         put?: never;

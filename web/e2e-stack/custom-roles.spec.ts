@@ -52,8 +52,13 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   const auditor = `Compliance auditor ${suffix}`;
   const role = `op${suffix}`;
 
+  // Keycloak gives Thomas a new subject whenever it imports the realm again,
+  // and rvav a record per subject: the pickers list the one seen last first.
+  await page.goto("/");
+  await signIn(page, "thomas");
+  await expect(page.getByRole("button", { name: /^Account: Thomas Nguyen/ })).toBeVisible();
+  await signInAs(page, "marc");
   await page.goto("/admin/roles");
-  await signIn(page, "marc");
   await expect(page.getByRole("heading", { name: "Roles", level: 1 })).toBeVisible();
   await page.getByRole("link", { name: "New role" }).click();
   await page.getByRole("textbox", { name: "Key" }).fill(`op-${suffix}`);

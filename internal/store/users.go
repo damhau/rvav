@@ -39,8 +39,8 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title 
 		}
 		switch {
 		case err == pgx.ErrNoRows:
-			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, email, title)
-				values ($1, $2, $3, $4, $5) returning `+userCols,
+			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, email, title, last_seen_at)
+				values ($1, $2, $3, $4, $5, now()) returning `+userCols,
 				ids.New(ids.User), subject, name, email, title)
 			u, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[User])
 			return err

@@ -147,6 +147,19 @@ func TestProjectAdministration(t *testing.T) {
 		if len(people.Items) != 1 || people.Items[0].Id != seed.UserID("tnguyen") {
 			t.Fatalf("search = %+v", people.Items)
 		}
+		// Keycloak importing its realm again gives its users new subjects.
+		if _, err := h.store.Pool.Exec(ctx, `insert into users (id, subject, name, email, last_seen_at)
+			values ('usr_00stale', 'idp-old', 'Pat Doe', 'pat.doe@corp.example', now() - interval '30 days')`); err != nil {
+			t.Fatal(err)
+		}
+		pat, err := h.store.UpsertOIDCUser(ctx, "idp-new", "Pat Doe", "pat.doe@corp.example", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.json("GET", "/api/v1/users?q=pat.doe", "tnguyen", nil, 200, &people)
+		if len(people.Items) != 2 || people.Items[0].Id != pat.ID {
+			t.Fatalf("search = %+v, want the record seen last, %s, first", people.Items, pat.ID)
+		}
 
 		var audited int
 		_ = h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action in ('project.create', 'member.set',
