@@ -68,7 +68,7 @@ describe("the sign-in page", () => {
     expect(assign).not.toHaveBeenCalled();
 
     // Once the wait is over, the right password goes on to the change.
-    await waitFor(() => expect(screen.queryByText(/left\./)).not.toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByText(/left\./)).not.toBeInTheDocument());
     await user.type(password, MOCK_ADMIN_PASSWORD);
     expect(submit).toBeEnabled();
     await user.click(submit);

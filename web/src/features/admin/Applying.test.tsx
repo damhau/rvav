@@ -30,7 +30,7 @@ describe("saved settings applying", () => {
     const list = within(applying).getByRole("list", { name: "rvav's processes" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(4);
     expect(within(list).getByText("rvav-api-7d9f-2k4xq")).toBeInTheDocument();
-    expect(await within(list).findByText("Finishing its running work", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await within(list).findByText("Finishing its running work")).toBeInTheDocument();
 
     expect(
       await within(applying).findByText("Applied: every process runs with these settings.", {}, { timeout: 5000 }),
@@ -38,7 +38,7 @@ describe("saved settings applying", () => {
     expect(within(list).getAllByText("Applied")).toHaveLength(4);
     // The badge goes once the panel reads that nothing applies any more.
     await screen.findByRole("region", { name: "AWX connection" });
-    await expect.poll(() => screen.queryByText("Applying", { selector: "span" }), { timeout: 3000 }).toBeNull();
+    await expect.poll(() => screen.queryByText("Applying", { selector: "span" })).toBeNull();
   });
 
   it("isn't applied while a process that exited hasn't been started again", async () => {

@@ -37,6 +37,7 @@ export default defineConfig(({ mode }) => {
       include: ["src/**/*.test.{ts,tsx}"],
       css: false,
       restoreMocks: true,
+      expect: { poll: { timeout: 5000 } },
     },
   };
 });

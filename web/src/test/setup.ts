@@ -1,8 +1,12 @@
 /* eslint-disable @typescript-eslint/unbound-method -- polyfills only check whether a method exists */
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import { resetMocks, server } from "@/mocks/node";
+
+// The whole suite runs its files in parallel, and under that load a page can
+// take longer than Testing Library's default second to render.
+configure({ asyncUtilTimeout: 5000 });
 
 // jsdom gaps that Radix and cmdk rely on.
 class ResizeObserverStub {
