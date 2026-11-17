@@ -22,7 +22,7 @@ import { errorAt, failed, fieldErrors, OfferEditor, offersText, td, th, writable
 type S = components["schemas"];
 
 function useProjectName() {
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   return (id: string) => projects.data?.items.find((p) => p.id === id)?.name ?? id;
 }
 

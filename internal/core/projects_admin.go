@@ -55,6 +55,30 @@ func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search s
 	return out, nil
 }
 
+// projectPickers are the permissions whose Administration pages pick or
+// name projects without reading their settings.
+var projectPickers = []auth.Permission{auth.ProjectSettingsRead, auth.AccessRead, auth.AuditRead,
+	auth.InfrastructureRead, auth.InfrastructureManage, auth.PoliciesRead, auth.PoliciesManage,
+	auth.ExtensibilityRead, auth.ExtensibilityManage, auth.ImportManage}
+
+// ProjectNames lists every project's reference, and whether it is
+// archived, for those holding one of projectPickers for all of rvav: the
+// IDs their pages show anyway, by name.
+func (s *Service) ProjectNames(ctx context.Context, p *auth.Principal, archived bool) ([]api.ProjectName, error) {
+	if !slices.ContainsFunc(projectPickers, p.Everywhere) {
+		return nil, ErrForbidden
+	}
+	list, err := s.Store.AdminProjects(ctx, "", archived)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.ProjectName, len(list))
+	for i, pr := range list {
+		out[i] = api.ProjectName{Id: pr.ID, Code: pr.Code, Name: pr.Name, Archived: pr.ArchivedAt != nil}
+	}
+	return out, nil
+}
+
 // AdminProject is one project for those who see its administration
 // (project.settings.read).
 func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string) (api.AdminProject, error) {

@@ -123,6 +123,11 @@ export const adm = {
     get(["admin", "projects", search, archived], (signal) =>
       call(api.GET("/admin/projects", { params: { query: { q: search || undefined, archived } }, signal })),
     ),
+  /** Every project's ID, code and name, for the pages that pick projects without reading their settings. */
+  projectNames: (archived = false) =>
+    get(["admin", "project-names", archived], (signal) =>
+      call(api.GET("/admin/project-names", { params: { query: { archived } }, signal })),
+    ),
   project: (id: string) =>
     get(["admin", "project", id], (signal) =>
       call(api.GET("/admin/projects/{projectId}", { params: { path: { projectId: id } }, signal })),
@@ -144,8 +149,6 @@ export const adm = {
     get(["admin", "assignable-roles", projectId], (signal) =>
       call(api.GET("/projects/{projectId}/assignable-roles", { params: { path: { projectId } }, signal })),
     ),
-  accessProjects: () =>
-    get(["admin", "access-projects"], (signal) => call(api.GET("/admin/access/projects", { signal }))),
   explain: (userId: string, projectId: string | undefined) =>
     get(["admin", "explain", userId, projectId ?? ""], (signal) =>
       call(api.GET("/admin/access/explain", { params: { query: { user_id: userId, project_id: projectId } }, signal })),

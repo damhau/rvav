@@ -47,7 +47,7 @@ const list = (s: string) =>
     .filter(Boolean);
 
 function useProjects() {
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   const items = projects.data?.items ?? [];
   return {
     items,
@@ -1107,7 +1107,7 @@ function Explain() {
   const project = f.project || projects.items[0]?.id || "";
   // The items the project may request.
   const items = useQuery({ ...q.catalog({ projectId: project }), enabled: Boolean(project) });
-  const environment = f.environment || projects.items.find((p) => p.id === project)?.environments[0] || "";
+  const environment = f.environment || envs.data?.items[0]?.key || "";
   const explain = useMutation({
     mutationFn: () =>
       call(

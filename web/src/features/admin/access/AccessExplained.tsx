@@ -180,7 +180,7 @@ export function WhatSomeoneMayDo({
   onChange: (s: { user?: string; project?: string }) => void;
 }) {
   const { me } = useCurrentProject();
-  const projects = useQuery(adm.accessProjects());
+  const projects = useQuery(adm.projectNames());
   const who = userId ?? me.user.id;
   return (
     <Panel title="What someone may do" flush>

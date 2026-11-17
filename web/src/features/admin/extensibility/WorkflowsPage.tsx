@@ -43,7 +43,7 @@ const sampleSchema = `{
 
 function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClose: () => void }) {
   const qc = useQueryClient();
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   const [f, setF] = useState({
     key: wf?.key ?? "",
     title: wf?.title ?? "",

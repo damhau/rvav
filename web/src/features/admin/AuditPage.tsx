@@ -13,7 +13,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
 import { adm, q, type AuditFilters } from "@/lib/query";
-import { can, projectsWith } from "@/lib/can";
+import { projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
@@ -62,14 +62,17 @@ function Detail({ e }: { e: AuditEvent }) {
 
 export function AuditPage() {
   const { me } = useCurrentProject();
-  // Those who read the audit log of every project filter by any (archived
-  // ones too, when they see projects' settings); project admins by theirs.
+  // Those who read the audit log of every project filter by any, archived
+  // ones too; project admins by theirs.
   const scope = projectsWith(me, "audit.read");
-  const listsAll = scope === "all" && can(me, "project.settings.read");
-  const allProjects = useQuery({ ...adm.projects("", true), enabled: listsAll });
-  const projectOptions = (
-    listsAll ? (allProjects.data?.items ?? []) : scope === "all" ? me.projects.map((p) => p.project) : scope
-  ).map((p) => ({ value: p.id, label: p.name }));
+  const allProjects = useQuery({ ...adm.projectNames(true), enabled: scope === "all" });
+  const projectOptions =
+    scope === "all"
+      ? (allProjects.data?.items ?? []).map((p) => ({
+          value: p.id,
+          label: p.archived ? `${p.name} (archived)` : p.name,
+        }))
+      : scope.map((p) => ({ value: p.id, label: p.name }));
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("any");
   const [project, setProject] = useState("any");

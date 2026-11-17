@@ -66,11 +66,6 @@ func (s *Server) ListAssignableRoles(w http.ResponseWriter, r *http.Request, pro
 	s.reply(w, r, http.StatusOK, api.AssignableRoleList{Items: items}, err)
 }
 
-func (s *Server) ListAccessProjects(w http.ResponseWriter, r *http.Request) {
-	items, err := s.Core.AccessProjects(r.Context(), principal(r))
-	s.reply(w, r, http.StatusOK, api.ProjectRefList{Items: items}, err)
-}
-
 func (s *Server) ExplainAccess(w http.ResponseWriter, r *http.Request, params api.ExplainAccessParams) {
 	out, err := s.Core.ExplainAccess(r.Context(), principal(r), params.UserId, deref(params.ProjectId))
 	s.reply(w, r, http.StatusOK, out, err)

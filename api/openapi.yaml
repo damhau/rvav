@@ -2067,6 +2067,34 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/project-names:
+    get:
+      tags: [admin]
+      operationId: listProjectNames
+      summary: Every project's ID, code and name, for the pages that pick projects
+      description: |
+        Every project by name, archived ones on request: its ID, code and
+        name, and whether it is archived, never its settings. For whoever
+        holds, for all of rvav, a permission whose Administration pages
+        pick or name projects: `project.settings.read`, `access.read`,
+        `audit.read`, `infrastructure.read`, `infrastructure.manage`,
+        `policies.read`, `policies.manage`, `extensibility.read`,
+        `extensibility.manage` or `import.manage`. Listing projects with
+        their settings (`listAdminProjects`) takes `project.settings.read`.
+      parameters:
+        - name: archived
+          in: query
+          description: Archived projects too.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectNameList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /projects/{projectId}/members:
     parameters:
       - { $ref: "#/components/parameters/ProjectIdPath" }
@@ -2410,25 +2438,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-
-  /admin/access/projects:
-    get:
-      tags: [admin]
-      operationId: listAccessProjects
-      summary: The projects to explain access in (`access.read` for all of rvav)
-      description: |
-        The projects in use (archived ones left out), by name: their ID,
-        code and name only. Where `explainAccess` can look for someone who
-        may read everyone's access without reading projects' settings
-        (`project.settings.read`, which `listAdminProjects` takes).
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ProjectRefList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
 
   /admin/environments:
     post:
@@ -4998,6 +5007,22 @@ components:
           pattern: "^[a-z][a-z0-9]{1,7}$"
         name: { type: string }
 
+    ProjectName:
+      allOf:
+        - $ref: "#/components/schemas/ProjectRef"
+        - type: object
+          required: [archived]
+          properties:
+            archived: { type: boolean }
+
+    ProjectNameList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectName" }
+
     Project:
       allOf:
         - $ref: "#/components/schemas/ProjectRef"
@@ -7365,13 +7390,6 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/AssignableRole" }
-    ProjectRefList:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items: { $ref: "#/components/schemas/ProjectRef" }
     AccessGrant:
       type: object
       required: [role, given, through]

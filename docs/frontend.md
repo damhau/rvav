@@ -323,7 +323,11 @@ Catalog admins and administrators build items under **Catalog items**
 The other administration pages ([ADR-0020](adr/0020-administration.md))
 are in `features/admin/governance/`, roles in `features/admin/access/`
 ([ADR-0034](adr/0034-custom-roles.md)). The sidebar shows each person the
-ones they may use; auditors see them read only.
+ones they may use; auditors see them read only. A page that picks or
+names projects lists them with `adm.projectNames()`
+(`GET /admin/project-names`), which its own permission is enough for;
+`adm.projects()` takes `project.settings.read`, so only **Projects** uses
+it.
 
 - **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
   checklist, from `GET /admin/setup`, read again each time it opens. Each

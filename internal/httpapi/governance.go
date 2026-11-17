@@ -278,6 +278,11 @@ func (s *Server) ListAdminProjects(w http.ResponseWriter, r *http.Request, param
 	s.reply(w, r, http.StatusOK, api.AdminProjectList{Items: items}, err)
 }
 
+func (s *Server) ListProjectNames(w http.ResponseWriter, r *http.Request, params api.ListProjectNamesParams) {
+	items, err := s.Core.ProjectNames(r.Context(), principal(r), params.Archived != nil && *params.Archived)
+	s.reply(w, r, http.StatusOK, api.ProjectNameList{Items: items}, err)
+}
+
 func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
 	var c api.AdminProjectCreate
 	if !s.decode(w, r, &c) {

@@ -79,6 +79,20 @@ interface MockProcess {
   pid: number;
 }
 
+/** Who holds one of these for all of rvav lists every project's name, as the server's projectPickers. */
+const PROJECT_PICKERS = [
+  "project.settings.read",
+  "access.read",
+  "audit.read",
+  "infrastructure.read",
+  "infrastructure.manage",
+  "policies.read",
+  "policies.manage",
+  "extensibility.read",
+  "extensibility.manage",
+  "import.manage",
+];
+
 /** The integrations read on next use (ADR-0030). */
 const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra"];
 
@@ -193,7 +207,8 @@ const tags: Record<string, string[]> = {
   "nfs-gva-bronze-01": ["rvav-tier/bronze"],
 };
 
-function state(db: Db): AdminState {
+/** The administration's state, made on first use from the projects the mock holds then. */
+export function adminState(db: Db): AdminState {
   const d = db as Db & { administration?: AdminState };
   if (d.administration) return d.administration;
   const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
@@ -400,7 +415,7 @@ const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
 /** The setup checklist, from what the mock holds, as the server reads it. */
 function setupOf(db: Db): S["Setup"] {
-  const a = state(db);
+  const a = adminState(db);
   const connection = (key: S["SetupStep"]["key"], kind: string): S["SetupStep"] => {
     const it = a.integrations[kind]!;
     const url = typeof it.settings.url === "string" ? it.settings.url : "";
@@ -445,14 +460,14 @@ function setupOf(db: Db): S["Setup"] {
 
 /** The lease policy that applies to a project's environment. */
 export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeasePolicy"] | undefined {
-  const all = state(db).leases.filter((l) => l.environment === env);
+  const all = adminState(db).leases.filter((l) => l.environment === env);
   return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
 }
 
 /** The roles a user holds in a project: given to them there, or through a group. */
 export function rolesGiven(db: Db, projectId: string, userId: string): string[] {
   return [
-    ...(state(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role),
+    ...(adminState(db).members[projectId] ?? []).filter((m) => m.userId === userId).map((m) => m.role),
     ...groupGrants(db, userId)
       .filter((g) => g.project?.id === projectId)
       .map((g) => g.role),
@@ -462,7 +477,7 @@ export function rolesGiven(db: Db, projectId: string, userId: string): string[] 
 /** The group mappings that give a user a role, by their groups at their last sign-in. */
 export function groupGrants(db: Db, userId: string): S["GroupMapping"][] {
   const groups = userGroups[userId] ?? [];
-  return state(db).groups.filter((g) => groups.includes(g.oidc_group));
+  return adminState(db).groups.filter((g) => groups.includes(g.oidc_group));
 }
 
 /** Says whether the mock user holds a permission in a project, a day-2 action through its group too. */
@@ -519,7 +534,7 @@ export function placed(
   kind: "cluster" | "datastore" | "network",
   name: string,
 ) {
-  return state(db).rules.some(
+  return adminState(db).rules.some(
     (r) =>
       r.project.id === projectId &&
       r.environment === env &&
@@ -533,7 +548,7 @@ export function placed(
 
 /** The VM folder of a project's first placement rule in an environment. */
 export function placementFolder(db: Db, projectId: string, env: string): string | undefined {
-  return state(db)
+  return adminState(db)
     .rules.filter((r) => r.project.id === projectId && r.environment === env)
     .sort((a, b) => a.priority - b.priority)[0]?.folder;
 }
@@ -541,7 +556,7 @@ export function placementFolder(db: Db, projectId: string, env: string): string 
 /** The naming policy offered to a project in an environment, the most specific winning. */
 export function namingTemplate(db: Db, projectId: string, env: string): string | undefined {
   let best: { template: string; score: number } | undefined;
-  for (const n of state(db).naming) {
+  for (const n of adminState(db).naming) {
     for (const o of n.offers) {
       if ((o.project_id && o.project_id !== projectId) || (o.environment && o.environment !== env)) continue;
       const score = (o.project_id ? 2 : 0) + (o.environment ? 1 : 0);
@@ -721,7 +736,7 @@ function trustErrors(kind: string, settings: Record<string, unknown>): S["FieldE
 }
 
 export function administrationHandlers(db: Db, base: string, wait: () => Promise<void>) {
-  const st = () => state(db);
+  const st = () => adminState(db);
   /** A save's revision: a connection's drains the processes, one read on next use doesn't. */
   const saved = (kind: string) => {
     const a = st();
@@ -969,15 +984,17 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           })),
       });
     }),
-    http.get(`${base}/admin/access/projects`, async () => {
+    http.get(`${base}/admin/project-names`, async ({ request }) => {
       await wait();
-      if (!db.me.permissions.includes("access.read")) return forbidden("you may not see what anyone may do");
+      if (!PROJECT_PICKERS.some((p) => db.me.permissions.includes(p)))
+        return forbidden("you may not see every project's name");
+      const archived = new URL(request.url).searchParams.get("archived") === "true";
       return HttpResponse.json({
         items: db.projects
           .map(adminProject)
-          .filter((p) => !p.archived)
-          .map(({ id, code, name }) => ({ id, code, name })),
-      });
+          .filter((p) => archived || !p.archived)
+          .map(({ id, code, name, archived }) => ({ id, code, name, archived })),
+      } satisfies S["ProjectNameList"]);
     }),
     http.get(`${base}/admin/access/explain`, async ({ request }) => {
       await wait();

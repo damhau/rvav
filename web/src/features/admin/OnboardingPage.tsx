@@ -39,8 +39,8 @@ function AdoptDialog({
 }) {
   const [f, setF] = useState({ project: "", environment: "", owner: "", item: "", lease: "", one: false, name: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const projects = useQuery(adm.projects("", false));
-  const project = projects.data?.items.find((p) => p.id === f.project);
+  const projects = useQuery(adm.projectNames());
+  const project = useQuery({ ...q.project(f.project), enabled: f.project !== "" });
   const members = useQuery({ ...adm.members(f.project), enabled: f.project !== "" });
   // Owners run the actions on their deployments: members who may request
   // there. Without the roles to read, every member is offered; the server
@@ -119,16 +119,17 @@ function AdoptDialog({
               <Select
                 id="ob-env"
                 value={f.environment}
-                disabled={!project}
+                disabled={!f.project}
                 onChange={(v) => setF({ ...f, environment: v })}
-                options={(project?.environments ?? []).map((e) => ({ value: e, label: e }))}
+                loading={project.isFetching}
+                options={(project.data?.environments ?? []).map((e) => ({ value: e, label: e }))}
               />
             </Field>
             <Field label="Owner" htmlFor="ob-owner" hint="A member of the project" error={errors["/owner_id"]}>
               <Select
                 id="ob-owner"
                 value={f.owner}
-                disabled={!project}
+                disabled={!f.project}
                 loading={members.isFetching}
                 onChange={(v) => setF({ ...f, owner: v })}
                 options={(members.data?.items ?? [])
@@ -145,7 +146,7 @@ function AdoptDialog({
               <Select
                 id="ob-item"
                 value={f.item}
-                disabled={!project}
+                disabled={!f.project}
                 loading={items.isFetching}
                 onChange={(v) => setF({ ...f, item: v })}
                 options={(items.data?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}

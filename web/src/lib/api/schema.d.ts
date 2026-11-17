@@ -1657,6 +1657,33 @@ export interface paths {
         patch: operations["updateProject"];
         trace?: never;
     };
+    "/admin/project-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every project's ID, code and name, for the pages that pick projects
+         * @description Every project by name, archived ones on request: its ID, code and
+         *     name, and whether it is archived, never its settings. For whoever
+         *     holds, for all of rvav, a permission whose Administration pages
+         *     pick or name projects: `project.settings.read`, `access.read`,
+         *     `audit.read`, `infrastructure.read`, `infrastructure.manage`,
+         *     `policies.read`, `policies.manage`, `extensibility.read`,
+         *     `extensibility.manage` or `import.manage`. Listing projects with
+         *     their settings (`listAdminProjects`) takes `project.settings.read`.
+         */
+        get: operations["listProjectNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/members": {
         parameters: {
             query?: never;
@@ -1925,29 +1952,6 @@ export interface paths {
          *     projects they see; about someone else takes `access.read`.
          */
         get: operations["explainAccess"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/access/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The projects to explain access in (`access.read` for all of rvav)
-         * @description The projects in use (archived ones left out), by name: their ID,
-         *     code and name only. Where `explainAccess` can look for someone who
-         *     may read everyone's access without reading projects' settings
-         *     (`project.settings.read`, which `listAdminProjects` takes).
-         */
-        get: operations["listAccessProjects"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3737,6 +3741,12 @@ export interface components {
             /** @description Short code used in names, for example `web` in `web-prd-front001`. */
             code: string;
             name: string;
+        };
+        ProjectName: components["schemas"]["ProjectRef"] & {
+            archived: boolean;
+        };
+        ProjectNameList: {
+            items: components["schemas"]["ProjectName"][];
         };
         Project: components["schemas"]["ProjectRef"] & {
             description?: string;
@@ -5558,9 +5568,6 @@ export interface components {
         };
         AssignableRoleList: {
             items: components["schemas"]["AssignableRole"][];
-        };
-        ProjectRefList: {
-            items: components["schemas"]["ProjectRef"][];
         };
         /** @description A role a user holds, and where it comes from. */
         AccessGrant: {
@@ -9346,6 +9353,31 @@ export interface operations {
             422: components["responses"]["ValidationFailed"];
         };
     };
+    listProjectNames: {
+        parameters: {
+            query?: {
+                /** @description Archived projects too. */
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectNameList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listProjectMembers: {
         parameters: {
             query?: never;
@@ -9780,28 +9812,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    listAccessProjects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRefList"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
         };
     };
     listAdminEnvironments: {

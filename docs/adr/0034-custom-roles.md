@@ -217,12 +217,27 @@ They are today's roles, exactly; they can't be changed or deleted.
   already theirs to read in `/me`, and their groups are in their token:
   the explanation adds only which role gives what, and a person, or a
   script with their token, finds out without an administrator.
-- **`GET /admin/access/projects`** lists the projects in use, their ID,
-  code and name only, to whoever holds `access.read` for all of rvav: the
-  projects to explain access in. Listing projects takes
-  `project.settings.read` (their quotas, cost centre and members' count),
-  which reading access doesn't give, so an access reader is handed the
-  references the explanation names anyway, not the settings.
+- **The projects to explain access in** are those of
+  `GET /admin/project-names` (below), which `access.read` for all of rvav
+  is enough for.
+- **`GET /admin/project-names`** lists every project's ID, code and name,
+  and whether it is archived (archived ones on request), to whoever holds
+  for all of rvav a permission whose Administration pages pick or name
+  projects: `project.settings.read`, `access.read`, `audit.read`,
+  `infrastructure.read`, `infrastructure.manage`, `policies.read`,
+  `policies.manage`, `extensibility.read`, `extensibility.manage` and
+  `import.manage`. Listing
+  projects with their settings (`GET /admin/projects`: cost centre,
+  environments, members' and deployments' counts) takes
+  `project.settings.read`, which the others don't give, so their pages get
+  the references, not the settings: the explanation's projects, the
+  offers of templates and naming policies, the policies' and custom
+  workflows' projects, the group mappings' form, onboarding, the vRA
+  import's mapping and the audit log's filter. Those pages already show
+  project IDs (offers, policies, audit events), so the names add little.
+  A1.4 (#109) gave it to `access.read`, at `GET /admin/access/projects`;
+  #126 renamed it and gave it to the others, whose pickers came up empty
+  for a custom role without `project.settings.read`.
 - **`GET /projects/{id}/assignable-roles`** lists the roles whoever manages
   a project's members may give there, as setting a member checks them, so
   the members' tab offers only those. Project admins don't hold

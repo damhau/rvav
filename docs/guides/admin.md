@@ -314,6 +314,16 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - A role holding a permission that exists only for all of rvav, such as
   `policies.read`, can only be given for all of rvav.
 - A role given in a project must hold `project.see`.
+- Pages that pick or name projects list every project by name to whoever
+  holds the page's permission for all of rvav, without
+  `project.settings.read`: offers in **Templates and networks** and
+  naming policies, **Policies**, **Custom workflows**, the **OIDC group
+  mappings** form, **Onboarding**, **vRA import**, **What someone may
+  do**, and the **Audit log**'s **Project** filter, archived projects
+  included (`GET /api/v1/admin/project-names`: ID, code and name only).
+  To adopt VMs into a project in **Onboarding**, you also need
+  `project.see` there: the environments, owners and items offered are
+  the project's.
 - `day2.<group>` allows a group of day-2 actions, `day2.<group>:<action>`
   one of them, for example `day2.power:power_off`. A day-2 policy that
   matches decides first; with none, the roles' day-2 permissions decide.
@@ -340,7 +350,7 @@ Roles › What someone may do**, choose them in **Who** and the project in
 **Where**: each permission, held or not, lists the roles that grant it
 and where each comes from, given to them, through a group or set by rvav
 (`GET /api/v1/admin/access/explain`, `access.read`; **Where** lists the
-projects of `GET /api/v1/admin/access/projects`, which `access.read` is
+projects of `GET /api/v1/admin/project-names`, which `access.read` is
 enough for). Anyone sees the same
 about themselves in **What I may do**, in their menu.
 

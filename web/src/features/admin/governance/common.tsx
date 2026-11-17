@@ -104,7 +104,7 @@ export function OfferEditor({
   onChange: (v: Offer[]) => void;
   error?: string;
 }) {
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   const envs = useQuery(q.environments());
   const projectOptions = [
     { value: "all", label: "All projects" },

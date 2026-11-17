@@ -141,7 +141,7 @@ function Summary({ plan }: { plan: Plan }) {
 
 function ProjectsTab({ plan }: { plan: Plan }) {
   const qc = useQueryClient();
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   const map = useMutation({
     mutationFn: ({ vra, to }: { vra: string; to: string }) =>
       call(

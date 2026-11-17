@@ -402,7 +402,7 @@ function Environments({ canEdit }: { canEdit: boolean }) {
 function GroupMappings({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const mappings = useQuery(adm.groupMappings());
-  const projects = useQuery(adm.projects("", false));
+  const projects = useQuery(adm.projectNames());
   const roles = useQuery(adm.roles());
   const [f, setF] = useState({ group: "", project: "none", role: "auditor" });
   // A mapping changes roles' holders, members' groups, what anyone may do, and /me.
