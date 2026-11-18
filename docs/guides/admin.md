@@ -328,6 +328,39 @@ With an NSX Manager set in **Integrations**
     `nsx_group_remove`).
   - A tag removed in NSX shows the deployment as changed outside rvav.
 
+## Projects
+
+**Projects** has three tabs:
+- **Projects:** each project with its environments, members, deployments
+  and quota use: the project-wide limit nearest to being reached. **New
+  project** asks for its code, which can't change later, its name,
+  description, cost centre, the environments it deploys to and its first
+  project admins. Archive a project from its menu: nobody can request
+  anything new in it, and its deployments go on running. To put one back
+  in use, select **Archived ones too**, then **Put back in use** in its
+  menu.
+- **Environments:** where projects deploy, whether each is production,
+  and the snapshots kept per VM. You can't remove an environment that a
+  project deploys to or that has deployments in it.
+- **OIDC group mappings:** the roles that the identity provider's groups
+  give ([Roles and permissions](#roles-and-permissions)).
+
+A project's page has four tabs:
+- **Members:** who holds a role in the project, and where each role comes
+  from. To add someone, choose the role in **As**, then find them in
+  **Add someone**. A member's menu changes their roles or removes them.
+- **Placement:** each environment's placement rules, lowest priority
+  first, and what the project gets there: the clusters, datastores,
+  networks and folder a request would use, or what stops it.
+- **Quotas:** the limits on vCPU, memory, storage and VMs, for the whole
+  project or one environment, with what the project takes now. A hard
+  limit refuses a request that would pass it; a soft one asks for an
+  approval.
+- **Details:** name, cost centre, description and environments; **Archive**.
+
+Each tab is in the page's address, so a link can open it, for example
+`/admin/projects?tab=groups`.
+
 ## Roles and permissions
 
 What someone may do comes from the permissions their roles hold
@@ -362,9 +395,9 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - Pages that pick or name projects list every project by name to whoever
   holds the page's permission for all of rvav, without
   `project.settings.read`: offers in **Templates and networks** and
-  naming policies, **Policies**, **Custom workflows**, the **OIDC group
-  mappings** form, **Onboarding**, **vRA import**, **What someone may
-  do**, and the **Audit log**'s **Project** filter, archived projects
+  naming policies, **Policies**, **Custom workflows**, **Map a group** in
+  **OIDC group mappings**, **Onboarding**, **vRA import**, **What someone
+  may do**, and the **Audit log**'s **Project** filter, archived projects
   included (`GET /api/v1/admin/project-names`: ID, code and name only).
   To adopt VMs into a project in **Onboarding**, you also need
   `project.see` there: the environments, owners and items offered are
@@ -377,13 +410,13 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 
 To give a role:
 - in a project, to a member: on the project's page, **Members**, choose
-  it in **As** and add them, or select **Change roles** to give or take
-  away the roles given there (`PUT /api/v1/projects/{id}/members/{user}`
-  with `roles`). Someone may hold several roles in a project, each given
+  it in **As** and add them, or select **Change roles** in their menu to
+  give or take away the roles given there
+  (`PUT /api/v1/projects/{id}/members/{user}` with `roles`). Someone may hold several roles in a project, each given
   there or through a group. A project admin is offered only the roles
   whose permissions they hold in the project;
-- in a project, to a group: in **Projects › OIDC group mappings**, choose
-  the project and the role;
+- in a project, to a group: in **Projects › OIDC group mappings**, select
+  **Map a group**, then choose the project and the role;
 - for all of rvav, to a user: in **Administration › Roles › For all of
   rvav**, choose the role, then the person in **Give someone**
   (`POST /api/v1/admin/role-assignments`);
@@ -460,14 +493,27 @@ and an environment, which policies would apply to a request and why.
 
 ## The catalog
 
-**Catalog items** lists the items, their versions and who may request
-them. An item is a form and a blueprint
+**Catalog items** has four tabs: **Items**, which you can search and
+filter by kind, category and state; **Categories**; **Secrets**, for REST
+value sources and calls; and **AWX templates**, those imported from AWX.
+A row's menu has what you can do with it, and removing anything asks
+first and says what depends on it. An item that was ever requested can't
+be deleted: withdraw it instead.
+
+An item is a form and a blueprint
 ([service-catalog.md](../service-catalog.md)):
 - **a VM blueprint:** one VM or several, with their guest settings;
 - **an AWX job or workflow:** imported from AWX's templates with the
   catalog label, their survey becoming the form;
 - **a composite:** VMs, jobs, custom workflows, REST calls and waits for a person, a time or a condition in steps;
 - **a custom workflow**, run by your own worker.
+
+An item's page has its main action in its header: **Publish** the
+draft, or **New draft** from the published version. Publishing waits
+while the form designer saves, or while YAML you typed isn't saved, and
+says why beside the button. The **⋯** menu beside it opens the request
+form, exports every version as YAML, withdraws the published version,
+and deletes an item nobody requested.
 
 An item's tabs:
 - **Details:** name, category, icon, description.
@@ -621,10 +667,15 @@ An item's tabs:
   host isn't allowed or whose secret is gone. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.
-- **Versions:**
-  - publish a draft;
-  - compare two versions;
-  - deprecate one: requests keep the version they were made with.
+- **Versions:** each version's menu:
+  - **Publish** a draft, or **Roll back** to a deprecated version.
+    Requests keep the version they were made with;
+  - **Withdraw** the published version: nobody can request the item until
+    a version is published again;
+  - **Export** it as YAML;
+  - **Discard** a draft.
+
+  **Compare** shows what changed between two versions.
 - **Entitlements:** which projects may request it.
 
 Items can be exported and imported as YAML, between installations.
@@ -657,8 +708,9 @@ its published version. **rvav publishes, the repository proposes:**
 - **Never in the repository:** drafts, entitlements, secrets' values, and
   items imported from AWX.
 
-**Catalog items** shows the repository as last read and the files that
-need you; **Read the repository now** reads it at once (otherwise every 5
+Above the items, **Catalog items** shows the repository, when it was
+last read, and how many files need you. **Details** lists those files,
+and **Read the repository now** reads it at once (otherwise every 5
 minutes, or when the Git server calls rvav's webhook). An item's **Git**
 tab shows its file, its last commit, and how the repository's file
 differs from rvav's:
@@ -670,7 +722,7 @@ differs from rvav's:
 - **Conflict in Git:** both changed it (a draft open in rvav, or a change
   not committed yet). **Keep rvav's** commits rvav's file over the
   repository's change; **Take the repository's** makes a draft of it,
-  discarding rvav's draft.
+  discarding rvav's draft after asking.
 - **Refused from Git:** the file can't be imported: the problems, by line.
   Fix it in the repository.
 - **Deleted in Git:** rvav keeps the item; its next change adds the file

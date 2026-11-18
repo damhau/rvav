@@ -219,7 +219,10 @@ it and works in both themes.
 - Create and edit records in a `Sheet`, so the list stays in view. Keep dialogs
   for questions.
 - A record's actions go in its row's ⋯ menu; the panel header keeps the action
-  that adds one.
+  that adds one. A page about one record has its primary action in
+  `PageHeader`, and the rest in a ⋯ menu beside it.
+- A page's tabs are in its address (`?tab=`, checked by the route's
+  `validateSearch`), so a link or a reload opens the same tab.
 - Every list has an empty state with a next step, a loading state, and an
   error state with a retry.
 - Ask before removing anything, and say what depends on it. Actions that need
@@ -290,13 +293,18 @@ the designer preview.
 Catalog admins and administrators build items under **Catalog items**
 ([ADR-0019](adr/0019-catalog-administration.md)):
 
-- The list page: items with filters, **New item** (it starts as a draft
-  1.0) and **Import YAML**; categories; stored secrets for REST value
-  sources and calls (values are write-only); the templates imported from AWX.
-- An item's page, in tabs: **Versions** (publish a draft, roll back to a
-  deprecated version, withdraw the published one, discard, export as YAML,
-  compare two versions), **Form designer**, **Definition** (the version as
-  YAML), **Details** (icon from rvav's own set) and **Entitlements**.
+- The list page, in tabs: **Items** (search, filters by kind, category and
+  state, **New item**, which starts as a draft 1.0, and **Import YAML**,
+  below the Git repository's banner when the catalog is in Git);
+  **Categories**; **Secrets** for REST value sources and calls (values are
+  write-only); **AWX templates**, those imported from AWX.
+- An item's page: **Publish** the draft or **New draft** in its header, and a
+  ⋯ menu for the whole item (request form, export, withdraw, delete). Its
+  tabs: **Versions** (a row menu to publish a draft, roll back to a
+  deprecated version, withdraw the published one, export as YAML or
+  discard; **Compare** two versions), **Form designer**, **Definition**
+  (the version as YAML), **Details** (icon from rvav's own set),
+  **Entitlements** and, in Git, **Git**.
 - The **Definition** tab is a CodeMirror 6 editor, loaded only when opened.
   A YAML parse error, or a 422 from the server with JSON pointers under
   `/definition`, shows on its line (`definitionYaml.ts` walks the YAML
