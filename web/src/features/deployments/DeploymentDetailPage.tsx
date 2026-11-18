@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Panel } from "@/components/ui/panel";
 import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
@@ -691,9 +692,9 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-secondary text-faint">
-          <Link to="/deployments">Deployments</Link> / {d?.name ?? "…"}
-        </span>
+        <Breadcrumbs>
+          <Link to="/deployments">Deployments</Link>
+        </Breadcrumbs>
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="text-title font-semibold">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
           {d && <EnvBadge env={d.environment} />}

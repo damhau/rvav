@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
@@ -670,9 +671,9 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
     <Page>
       <PageHeader
         breadcrumbs={
-          <Link to="/admin/catalog-items" className="hover:text-fg">
-            Catalog items
-          </Link>
+          <Breadcrumbs>
+            <Link to="/admin/catalog-items">Catalog items</Link>
+          </Breadcrumbs>
         }
         title={
           <span className="flex items-center gap-2.5">

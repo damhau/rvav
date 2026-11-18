@@ -198,6 +198,7 @@ it and works in both themes.
 | Block | What it is | When to use it |
 |---|---|---|
 | `PageHeader` | The page's `h1`, a sentence on what the page is for (`description`), facts about what it shows (`meta`), `breadcrumbs` and `actions` | Once, at the top of every page. One of its actions is primary. |
+| `Breadcrumbs` | A `Breadcrumb` navigation landmark: links to the pages above this one, top-level first. The page's own title follows it, so it isn't repeated. | In `PageHeader`'s `breadcrumbs` on every page below a top-level one: a deployment, a request, a request form, a catalog item, a project, a role. Top-level pages have none. |
 | `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. |
 | `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |
 | `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. |
@@ -232,13 +233,32 @@ it and works in both themes.
   `prefers-reduced-motion`.
 - Responsive down to tablet width; the approval flows also work on a phone.
 
+### Navigation
+- The sidebar (`components/shell/Sidebar.tsx`) starts with the main menu:
+  Overview, Catalog, Deployments, Requests, Approvals and Reports. Below a
+  line, **Administration** lists its pages in four groups, each under a
+  small heading: Catalog, Governance, Infrastructure and Operations.
+- `components/shell/nav.ts` lists the pages, their icons, their groups and
+  who may open each. The sidebar shows only the pages the person may open,
+  and leaves out a group with none. The command palette lists the same
+  pages.
+- A menu entry's label is its page's title. `Shell.test.tsx` opens every
+  page and checks its `h1` and the entry marked `aria-current="page"`.
+- From 1024 px wide, the sidebar shows labels. From 768 px, it's a rail of
+  icons, each with its label in a tooltip on hover and focus. Narrower, it's
+  a drawer. On the rail and the drawer, the top bar's **Open navigation**
+  button opens the drawer, with labels.
+
 ## Command palette (⌘K)
 
-- Groups: Navigate, Catalog items (request directly), Deployments and VMs (search
-  by name, IP or FQDN), Actions on the current page, Admin.
-- Server-backed search, debounced, with results cached in TanStack Query.
-- Context-aware: on a deployment page, the day-2 actions for it come first.
-- Shortcuts are shown next to commands; `?` opens the shortcut sheet.
+- Groups: Deployments and VMs (by name, IP or FQDN) and Requests, searched on
+  the server from two characters; Request (catalog items, to request
+  directly); Go to (the main menu's pages); Actions (the theme).
+- Once something is typed, the administration pages the person may open
+  come after Go to, in the sidebar's groups. They're found by their name, their
+  group's name, or a keyword from `keywords` in `components/shell/nav.ts`,
+  such as "sizes" for **Templates and networks**.
+- Results are cached in TanStack Query.
 
 ## Catalog form renderer
 
@@ -371,7 +391,8 @@ Catalog admins and administrators build items under **Catalog items**
 The other administration pages ([ADR-0020](adr/0020-administration.md))
 are in `features/admin/governance/`, roles in `features/admin/access/`
 ([ADR-0034](adr/0034-custom-roles.md)). The sidebar shows each person the
-ones they may use; auditors see them read only. A page that picks or
+ones they may use, in groups (see [Navigation](#navigation)); auditors see
+them read only. A page that picks or
 names projects lists them with `adm.projectNames()`
 (`GET /admin/project-names`), which its own permission is enough for;
 `adm.projects()` takes `project.settings.read`, so only **Projects** uses

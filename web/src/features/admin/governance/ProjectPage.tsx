@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
@@ -846,9 +847,9 @@ export function ProjectPage({ projectId }: { projectId: string }) {
     <Page>
       <PageHeader
         breadcrumbs={
-          <Link to="/admin/projects" className="hover:text-fg">
-            Projects
-          </Link>
+          <Breadcrumbs>
+            <Link to="/admin/projects">Projects</Link>
+          </Breadcrumbs>
         }
         title={p.name}
         meta={

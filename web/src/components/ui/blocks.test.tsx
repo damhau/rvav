@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { Inbox, Trash2 } from "lucide-react";
 import { describe, expect, it } from "vitest";
+import { Breadcrumbs } from "./breadcrumbs";
 import { Button, IconButton } from "./button";
 import { EmptyState } from "./empty-state";
 import { Field, Input } from "./input";
@@ -22,6 +23,31 @@ describe("PageHeader", () => {
     expect(header).toHaveTextContent("What VMs are built from.");
     expect(within(header).getByRole("link", { name: "Administration" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "New template" })).toBeInTheDocument();
+  });
+});
+
+describe("Breadcrumbs", () => {
+  it("is a navigation landmark listing the pages above, top-level first", () => {
+    render(
+      <PageHeader
+        title="Console of web01"
+        breadcrumbs={
+          <Breadcrumbs>
+            <a href="/deployments">Deployments</a>
+            {null}
+            <a href="/deployments/dep_1">web-prod</a>
+          </Breadcrumbs>
+        }
+      />,
+    );
+    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+    const items = within(trail).getAllByRole("listitem");
+    expect(items.map((i) => i.textContent)).toEqual(["Deployments", "web-prod"]);
+    expect(
+      within(trail)
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href")),
+    ).toEqual(["/deployments", "/deployments/dep_1"]);
   });
 });
 

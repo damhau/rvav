@@ -8,6 +8,7 @@ import { ApprovalHistory } from "@/components/common/approvals";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Timeline } from "@/components/common/timeline";
@@ -133,9 +134,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-secondary text-faint">
-          <Link to="/requests">Requests</Link> / {r?.number ?? requestKey}
-        </span>
+        <Breadcrumbs>
+          <Link to="/requests">Requests</Link>
+        </Breadcrumbs>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <h1 className="text-title font-semibold">{r ? r.title : <Skeleton className="h-5 w-72" />}</h1>
@@ -167,6 +168,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
         </div>
         {r && (
           <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-secondary text-muted">
+            <span className="font-mono">{r.number}</span>
             <span>Requested by {r.requester.name}</span>
             <span className="flex items-center gap-1.5">
               {r.project.name} <EnvBadge env={r.environment} />

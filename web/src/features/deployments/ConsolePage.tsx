@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
@@ -154,13 +155,12 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
     <Page>
       <PageHeader
         breadcrumbs={
-          <>
-            <Link to="/deployments">Deployments</Link> /
+          <Breadcrumbs>
+            <Link to="/deployments">Deployments</Link>
             <Link to="/deployments/$deploymentId" params={{ deploymentId }}>
               {dep.data?.name ?? "…"}
             </Link>
-            / Console
-          </>
+          </Breadcrumbs>
         }
         title={name ? `Console · ${name}` : <Skeleton className="h-5 w-48" />}
         meta={vm && <span className="font-mono text-caption">{vm.vm.moref}</span>}

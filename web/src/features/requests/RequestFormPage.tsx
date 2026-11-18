@@ -9,6 +9,7 @@ import { itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 // The graph's model only: the canvas itself (React Flow) loads with RequestTopology.
 import { blueprintGraph } from "@/components/canvas/blueprint";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -666,9 +667,9 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-secondary text-faint">
-          <Link to="/catalog">Catalog</Link> / {item.data?.name ?? "…"}
-        </span>
+        <Breadcrumbs>
+          <Link to="/catalog">Catalog</Link>
+        </Breadcrumbs>
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface font-mono text-caption font-medium text-muted">
             {item.data?.type === "vm_blueprint" ? "VM" : item.data ? "AWX" : ""}

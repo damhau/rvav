@@ -19,11 +19,32 @@
 ## Navigation
 
 ```
-Sidebar:  Home · Catalog · Deployments · Requests · Approvals (badge) · Reports
-          ── Admin: Catalog items · Content sources · Policies · Projects ·
-                    Integrations · Subscriptions · Audit · Settings
-Top bar:  ⌘K search · project switcher · notifications · user menu
+Sidebar:  Overview · Catalog · Deployments · Requests (running) ·
+          Approvals (badge) · Reports
+          ── Administration
+             Catalog:        Catalog items · Day-2 actions · Custom workflows ·
+                             Subscriptions
+             Governance:     Projects · Roles · Policies
+             Infrastructure: Integrations · Templates and networks ·
+                             Onboarding · vRA import
+             Operations:     Setup · Audit log · System
+Top bar:  ⌘K search · project switcher · notifications · theme · user menu
 ```
+
+- Every entry has an icon. The main menu's entries are larger and darker
+  than the administration's, whose groups each have a small heading.
+- Each person sees only the pages they may open; a group with none is left
+  out.
+- A menu entry's label is its page's title.
+- Pages below a top-level one start with breadcrumbs: links to the pages
+  above, such as **Deployments** above a deployment or **Catalog items**
+  above an item. Top-level pages have none.
+- From 1024 px wide, the sidebar shows labels; from 768 px, icons with
+  their labels in tooltips; narrower, it's a drawer. The menu button in the
+  top bar opens the drawer, with labels, on the rail too.
+- Keyboard: the skip link comes first, then the menu in order; the
+  groups' headings aren't stops. The current page's entry has
+  `aria-current="page"`, and every entry shows its focus.
 
 ## Key screens
 

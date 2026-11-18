@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { KeyValues, Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Mono, Time } from "@/components/common/misc";
@@ -22,9 +23,9 @@ export function SubscriptionPage({ subscriptionId }: { subscriptionId: string })
     <Page>
       <PageHeader
         breadcrumbs={
-          <Link to="/admin/subscriptions" className="hover:text-fg">
-            Subscriptions
-          </Link>
+          <Breadcrumbs>
+            <Link to="/admin/subscriptions">Subscriptions</Link>
+          </Breadcrumbs>
         }
         title={s?.name ?? "Subscription"}
         meta={s?.description}

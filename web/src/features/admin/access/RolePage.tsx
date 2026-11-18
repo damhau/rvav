@@ -7,6 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +26,9 @@ import { AdminWarning, Refusal, refused } from "./refusal";
 type S = components["schemas"];
 
 const crumbs = (
-  <Link to="/admin/roles" className="hover:text-fg">
-    Roles
-  </Link>
+  <Breadcrumbs>
+    <Link to="/admin/roles">Roles</Link>
+  </Breadcrumbs>
 );
 
 const givenText = (scope: S["RoleScope"], why?: string) =>

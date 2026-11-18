@@ -14,6 +14,18 @@ Roles are given to groups of the identity provider, or to users. You can
 also make roles of your own: see [Roles and permissions](#roles-and-permissions).
 Every change made here is in the **Audit log**.
 
+**The Administration menu** lists only the pages your roles let you open,
+in four groups:
+- **Catalog:** Catalog items, Day-2 actions, Custom workflows, Subscriptions.
+- **Governance:** Projects, Roles, Policies.
+- **Infrastructure:** Integrations, Templates and networks (with the VM
+  sizes), Onboarding, vRA import.
+- **Operations:** Setup, Audit log, System.
+
+This guide names a page as **Administration › Page**, such as
+**Administration › Roles**. You can also open one from the search box
+(Ctrl+K or ⌘K) by typing its name.
+
 **The local administrator,** `admin`, is rvav's only local account
 (ADR-0030). It signs in on rvav's sign-in page, below single sign-on:
 - at first, before an identity provider is set up;
