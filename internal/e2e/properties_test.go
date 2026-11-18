@@ -51,6 +51,9 @@ func TestCustomProperties(t *testing.T) {
 		def.Blueprint["properties"] = map[string]any{"owner": "shop team", "app": "${inputs.role}",
 			"billing": "${project.properties.costCenter + '/shop'}"}
 		item := publishItem(h, "props", def)
+		def.Blueprint["folder"] = "/ZRH/vm/${inputs.role}"
+		zrh := publishItem(h, "props-zrh", def)
+		def.Blueprint["folder"] = "apps/${inputs.role}"
 
 		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id, ProjectId: "prj_web", Environment: "dev",
 			Inputs: map[string]any{"role": "prop", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}
@@ -58,6 +61,15 @@ func TestCustomProperties(t *testing.T) {
 		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
 		if !pv.Valid || deref((*pv.Components)[0].Placement.Folder) != "/GVA/vm/apps/prop" {
 			t.Fatalf("preview = %+v / %+v", pv.Errors, (*pv.Components)[0].Placement)
+		}
+		// A folder of another datacenter than the cluster's is refused
+		// before anything is made (T1.7).
+		other := draft
+		other.CatalogItemId, other.VersionId = zrh.Id, zrh.DraftVersion.Id
+		h.json("POST", "/api/v1/requests", "tnguyen", other, 422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/inputs/role" ||
+			problem.Errors[0].Message != "Folder /ZRH/vm/prop is in datacenter ZRH, and cluster GVA-DEV-CL01 in GVA." {
+			t.Fatalf("a ZRH folder = %+v", problem.Errors)
 		}
 		var req api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())

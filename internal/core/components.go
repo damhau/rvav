@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -123,6 +124,17 @@ var bindingInput = regexp.MustCompile(`^\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*$`
 
 // bindingField is the input a binding is (/inputs/<name>), so errors show
 // next to it; def when the binding is anything else.
+// inputOf is the field of the first input a component's text reads, ""
+// when it reads none: where an error about that text shows.
+func inputOf(text string) string {
+	if m := readsInput.FindStringSubmatch(text); m != nil {
+		return "/inputs/" + m[1]
+	}
+	return ""
+}
+
+var readsInput = regexp.MustCompile(`\binputs\.([A-Za-z_][A-Za-z0-9_]*)`)
+
 func bindingField(expr any, def string) string {
 	if s, ok := expr.(string); ok {
 		if m := bindingInput.FindStringSubmatch(s); m != nil {
@@ -524,6 +536,13 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			}
 			if plan.ResourcePool != "" && pl.pool(*pl.cluster(plan.Cluster), plan.ResourcePool) == nil {
 				add(field("resource_pool"), "not_allowed", fmt.Sprintf("Cluster %s has no resource pool %s.", plan.Cluster, plan.ResourcePool))
+			}
+			// vCenter clones only into a folder of the cluster's datacenter:
+			// found later, the VM's addresses, DNS and folder would be made
+			// first.
+			if dc, at := blueprint.FolderDatacenter(plan.Folder), pl.cluster(plan.Cluster).Datacenter; dc != "" && at != "" && dc != at {
+				add(inputOf(c.Folder), "not_allowed", fmt.Sprintf("Folder %s is in datacenter %s, and cluster %s in %s.",
+					path.Clean(strings.TrimSpace(plan.Folder)), dc, plan.Cluster, at))
 			}
 			if pl.planned == nil {
 				pl.planned = map[string]int{}

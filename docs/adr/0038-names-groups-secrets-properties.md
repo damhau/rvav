@@ -123,6 +123,11 @@ own `properties` (C30).
   VMs in a folder named `••••`. Saving refuses it, and the vRA importer
   leaves out a folder or a custom property that reads an encrypted input,
   since a masked property is no use to the VM.
+  A folder from the root in another datacenter than the cluster placement
+  chose is refused when the request is evaluated, on the input the folder
+  reads, else on the form (T1.7): vCenter clones only into the cluster's
+  datacenter, and failing at the clone would leave its addresses, DNS
+  records and folder made first.
   Missing folders are created, as for the rule's. **Move to another
   project** still moves VMs to the new project's rule folder.
 

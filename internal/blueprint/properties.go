@@ -64,6 +64,23 @@ func FolderUnder(ruleFolder, folder string) string {
 	return path.Join(root, folder)
 }
 
+// FolderDatacenter is the datacenter a folder from the root is in: the part
+// before its first "vm" (GVA for /GVA/vm/rvav/web); "" for a relative folder
+// or one that names no datacenter's VM folder.
+func FolderDatacenter(folder string) string {
+	folder = strings.TrimSpace(folder)
+	if !strings.HasPrefix(folder, "/") {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(path.Clean(folder), "/"), "/")
+	for i := 1; i < len(parts); i++ {
+		if parts[i] == "vm" {
+			return parts[i-1]
+		}
+	}
+	return ""
+}
+
 // Interpolate works out text holding ${CEL}: each expression gives text, a
 // number or a boolean.
 func Interpolate(text string, vars policy.Vars) (string, error) {

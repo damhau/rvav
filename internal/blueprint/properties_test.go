@@ -19,6 +19,11 @@ func TestFolderUnder(t *testing.T) {
 			t.Errorf("FolderUnder(%q, %q) = %q, want %q", c.rule, c.folder, got, c.want)
 		}
 	}
+	for folder, want := range map[string]string{"/ZRH/vm/shop/": "ZRH", "/EU/GVA/vm": "GVA", "apps/vm/x": "", "/Lab/rvav": "", " /GVA/vm/a/vm ": "GVA"} {
+		if got := FolderDatacenter(folder); got != want {
+			t.Errorf("FolderDatacenter(%q) = %q, want %q", folder, got, want)
+		}
+	}
 	if CheckFolder("apps/../../x") == "" || CheckFolder("apps/${inputs.app") == "" || CheckFolder("apps/${inputs.app}") != "" {
 		t.Fatal("folder checks")
 	}
