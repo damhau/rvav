@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
-import { failed, fieldErrors } from "@/features/admin/governance/common";
+import { failed, fieldErrors, keyProblems } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
@@ -49,12 +49,20 @@ interface InputRow {
   help: string;
 }
 
-/** A constant as typed, with the stored value it came from. */
+type ConstantType = "string" | "number" | "boolean";
+
+/** A constant as typed: its value as text, and the type it is saved as. */
 interface ConstantRow {
   key: string;
+  type: ConstantType;
   value: string;
-  stored?: unknown;
 }
+
+const constantTypes: { value: ConstantType; label: string }[] = [
+  { value: "string", label: "Text" },
+  { value: "number", label: "Number" },
+  { value: "boolean", label: "Yes or no" },
+];
 
 function asText(v: unknown): string {
   if (typeof v === "string") return v;
@@ -92,8 +100,42 @@ function fromRow(r: InputRow): GroupInput {
   return out;
 }
 
-// A constant typed as it was stored keeps its type: a number stays one.
-const constantValue = (c: ConstantRow) => (c.stored !== undefined && asText(c.stored) === c.value ? c.stored : c.value);
+const toConstant = ([key, v]: [string, unknown]): ConstantRow => ({
+  key,
+  type: typeof v === "number" ? "number" : typeof v === "boolean" ? "boolean" : "string",
+  value: asText(v),
+});
+
+const isNumber = (s: string) => s.trim() !== "" && Number.isFinite(Number(s.trim()));
+
+function constantValue(c: ConstantRow): string | number | boolean {
+  if (c.type === "number") return Number(c.value.trim());
+  if (c.type === "boolean") return c.value === "true";
+  return c.value;
+}
+
+/** What is wrong with the constants before they are sent, by `<row>/key` and `<row>/value`. */
+function constantProblems(rows: ConstantRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [i, why] of Object.entries(keyProblems(rows, (c) => c.value === "", "Give the constant a name.")))
+    out[`${i}/key`] = why;
+  rows.forEach((c, i) => {
+    if (c.type === "number" && c.key.trim() && !isNumber(c.value)) out[`${i}/value`] = "Enter a number, such as 300.";
+  });
+  return out;
+}
+
+/** The server's problems no field of the sheet shows. */
+function unplaced(errors: Record<string, string>, inputs: number, constants: ConstantRow[]): string[] {
+  const keys = new Set(constants.map((c) => `/constants/${c.key.trim()}`));
+  return Object.entries(errors)
+    .filter(([at]) => {
+      if (["/key", "/name", "/description"].includes(at) || keys.has(at)) return false;
+      const m = /^\/inputs\/(\d+)\/(name|label|type|default|options|secret|help)$/.exec(at);
+      return !(m && Number(m[1]) < inputs);
+    })
+    .map(([, why]) => why);
+}
 
 function InputEditor({
   row,
@@ -129,7 +171,13 @@ function InputEditor({
           <Select
             id={id("type")}
             value={row.type}
-            onChange={(v) => onChange({ ...row, type: v as InputType, default: "" })}
+            onChange={(v) =>
+              onChange(
+                v === "string"
+                  ? { ...row, type: v, default: "" }
+                  : { ...row, type: v as InputType, default: "", secret: false, options: "" },
+              )
+            }
             options={Object.entries(typeLabel).map(([value, label]) => ({ value, label }))}
           />
         </Field>
@@ -171,6 +219,9 @@ function InputEditor({
           />
         </Field>
       )}
+      <Field label="Help" htmlFor={id("help")} hint="Shown under the field on the request form." error={err("help")}>
+        <Input id={id("help")} value={row.help} onChange={(e) => onChange({ ...row, help: e.target.value })} />
+      </Field>
       <div className="flex flex-wrap items-center gap-4">
         <label htmlFor={id("required")} className="flex items-center gap-2 text-body">
           <Checkbox id={id("required")} checked={row.required} onChange={(v) => onChange({ ...row, required: v })} />
@@ -210,10 +261,9 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [inputs, setInputs] = useState<InputRow[]>((existing?.inputs ?? []).map(toRow));
-  const [constants, setConstants] = useState<ConstantRow[]>(
-    Object.entries(existing?.constants ?? {}).map(([k, v]) => ({ key: k, value: asText(v), stored: v })),
-  );
+  const [constants, setConstants] = useState<ConstantRow[]>(Object.entries(existing?.constants ?? {}).map(toConstant));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [local, setLocal] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => {
       const body = {
@@ -240,6 +290,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
   });
   const setInput = (i: number, r: InputRow) => setInputs((xs) => xs.map((x, j) => (j === i ? r : x)));
   const setConstant = (i: number, c: ConstantRow) => setConstants((xs) => xs.map((x, j) => (j === i ? c : x)));
+  const elsewhere = unplaced(errors, inputs.length, constants);
   return (
     <Sheet
       open
@@ -255,9 +306,18 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});
-        save.mutate();
+        const problems = constantProblems(constants);
+        setLocal(problems);
+        if (Object.keys(problems).length === 0) save.mutate();
       }}
     >
+      {elsewhere.length > 0 && (
+        <div role="alert" className="rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary text-bad">
+          {elsewhere.map((why) => (
+            <p key={why}>{why}</p>
+          ))}
+        </div>
+      )}
       <Field
         label="Key"
         htmlFor="pg-key"
@@ -280,7 +340,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
       <Field label="Name" htmlFor="pg-name" error={errors["/name"]}>
         <Input id="pg-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Description" htmlFor="pg-description">
+      <Field label="Description" htmlFor="pg-description" error={errors["/description"]}>
         <Input
           id="pg-description"
           value={description}
@@ -332,8 +392,12 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
         <legend className="mb-1 text-secondary font-medium">Constants</legend>
         <p className="text-secondary text-muted">Values the items' bindings read; requesters don't see them.</p>
         {constants.map((c, i) => (
-          <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-start gap-2">
-            <Field label="Name" htmlFor={`pg-const-${i}-key`} error={errors[`/constants/${c.key.trim()}`]}>
+          <div key={i} className="grid grid-cols-[1fr_8rem_1.4fr_auto] items-start gap-2">
+            <Field
+              label="Name"
+              htmlFor={`pg-const-${i}-key`}
+              error={local[`${i}/key`] ?? errors[`/constants/${c.key.trim()}`]}
+            >
               <Input
                 id={`pg-const-${i}-key`}
                 className="font-mono"
@@ -341,12 +405,39 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
                 onChange={(e) => setConstant(i, { ...c, key: e.target.value })}
               />
             </Field>
-            <Field label="Value" htmlFor={`pg-const-${i}-value`}>
-              <Input
-                id={`pg-const-${i}-value`}
-                value={c.value}
-                onChange={(e) => setConstant(i, { ...c, value: e.target.value })}
+            <Field label="Type" htmlFor={`pg-const-${i}-type`}>
+              <Select
+                id={`pg-const-${i}-type`}
+                value={c.type}
+                onChange={(v) =>
+                  setConstant(i, {
+                    ...c,
+                    type: v as ConstantType,
+                    value: v === "boolean" ? String(c.value === "true") : c.value,
+                  })
+                }
+                options={constantTypes}
               />
+            </Field>
+            <Field label="Value" htmlFor={`pg-const-${i}-value`} error={local[`${i}/value`]}>
+              {c.type === "boolean" ? (
+                <Select
+                  id={`pg-const-${i}-value`}
+                  value={c.value}
+                  onChange={(v) => setConstant(i, { ...c, value: v })}
+                  options={[
+                    { value: "true", label: "Yes" },
+                    { value: "false", label: "No" },
+                  ]}
+                />
+              ) : (
+                <Input
+                  id={`pg-const-${i}-value`}
+                  inputMode={c.type === "number" ? "decimal" : undefined}
+                  value={c.value}
+                  onChange={(e) => setConstant(i, { ...c, value: e.target.value })}
+                />
+              )}
             </Field>
             <Button
               type="button"
@@ -354,7 +445,10 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
               variant="quiet"
               className="mt-6"
               aria-label={`Remove constant ${c.key || i + 1}`}
-              onClick={() => setConstants((xs) => xs.filter((_, j) => j !== i))}
+              onClick={() => {
+                setLocal({});
+                setConstants((xs) => xs.filter((_, j) => j !== i));
+              }}
             >
               <X className="size-3.5" />
             </Button>
@@ -364,7 +458,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
           <Button
             type="button"
             variant="secondary"
-            onClick={() => setConstants((xs) => [...xs, { key: "", value: "" }])}
+            onClick={() => setConstants((xs) => [...xs, { key: "", type: "string", value: "" }])}
           >
             <Plus className="size-3.5" /> Add constant
           </Button>

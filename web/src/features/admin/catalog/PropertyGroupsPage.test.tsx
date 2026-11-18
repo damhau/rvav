@@ -5,6 +5,25 @@ import { describe, expect, it } from "vitest";
 import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 
+const opsGroup = {
+  key: "ops",
+  name: "Operations",
+  description: "",
+  version: 1,
+  versions: [1],
+  inputs: [],
+  constants: { ttl: 300, ipv6: true, zone: "corp.example" },
+  used_by: [],
+  updated_at: new Date().toISOString(),
+};
+
+async function openChange(user: ReturnType<typeof userEvent.setup>, name: string) {
+  const row = await screen.findByRole("row", { name: new RegExp(name) });
+  await user.click(within(row).getByRole("button", { name: `Actions for ${name}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+  return screen.findByRole("dialog", { name: `Change ${name}` });
+}
+
 describe("Property groups", () => {
   it("adds a group with an input and a constant", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
@@ -51,6 +70,137 @@ describe("Property groups", () => {
     await user.click(within(sheet).getByRole("button", { name: "Save as a new version" }));
     expect(await screen.findByText("Corporate operations saved as version 2")).toBeInTheDocument();
     await waitFor(() => expect(within(row).getAllByRole("cell")[1]).toHaveTextContent("2"));
+  });
+
+  it(
+    "keeps a constant's type: a number stays one when changed, and yes or no is a boolean",
+    { timeout: 15_000 },
+    async () => {
+      const user = userEvent.setup();
+      const sent: unknown[] = [];
+      server.use(
+        http.get("*/api/v1/admin/property-groups", () => HttpResponse.json({ items: [opsGroup] })),
+        http.put("*/api/v1/admin/property-groups/:key", async ({ request }) => {
+          sent.push(await request.json());
+          return HttpResponse.json({ ...opsGroup, version: 2, versions: [1, 2] });
+        }),
+      );
+      renderApp("/admin/property-groups");
+      const sheet = await openChange(user, "Operations");
+      const type = (i: number) => within(sheet).getByLabelText("Type", { selector: `#pg-const-${i}-type` });
+      expect(type(0)).toHaveTextContent("Number");
+      expect(type(1)).toHaveTextContent("Yes or no");
+      expect(type(2)).toHaveTextContent("Text");
+      const ttl = within(sheet).getByLabelText("Value", { selector: "#pg-const-0-value" });
+      await user.clear(ttl);
+      await user.type(ttl, "600");
+
+      await user.click(within(sheet).getByRole("button", { name: "Add constant" }));
+      await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-const-3-key" }), "retries");
+      await user.click(type(3));
+      await user.click(await screen.findByRole("option", { name: "Number" }));
+      await user.type(within(sheet).getByLabelText("Value", { selector: "#pg-const-3-value" }), "3");
+      await user.click(within(sheet).getByLabelText("Value", { selector: "#pg-const-1-value" }));
+      await user.click(await screen.findByRole("option", { name: "No" }));
+      await user.click(within(sheet).getByRole("button", { name: "Save as a new version" }));
+
+      await waitFor(() => expect(sent).toHaveLength(1));
+      expect((sent[0] as { constants: unknown }).constants).toEqual({
+        ttl: 600,
+        ipv6: false,
+        zone: "corp.example",
+        retries: 3,
+      });
+    },
+  );
+
+  it("says what is wrong with the constants before sending them", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    const sent: unknown[] = [];
+    server.use(
+      http.get("*/api/v1/admin/property-groups", () => HttpResponse.json({ items: [opsGroup] })),
+      http.put("*/api/v1/admin/property-groups/:key", async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json(opsGroup);
+      }),
+    );
+    renderApp("/admin/property-groups");
+    const sheet = await openChange(user, "Operations");
+    const ttl = within(sheet).getByLabelText("Value", { selector: "#pg-const-0-value" });
+    await user.clear(ttl);
+    await user.type(ttl, "five minutes");
+    await user.click(within(sheet).getByRole("button", { name: "Add constant" }));
+    await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-const-3-key" }), "zone");
+    await user.click(within(sheet).getByRole("button", { name: "Add constant" }));
+    await user.type(within(sheet).getByLabelText("Value", { selector: "#pg-const-4-value" }), "orphan");
+    await user.click(within(sheet).getByRole("button", { name: "Add constant" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save as a new version" }));
+
+    expect(within(sheet).getByLabelText("Value", { selector: "#pg-const-0-value" })).toHaveAccessibleDescription(
+      "Enter a number, such as 300.",
+    );
+    expect(within(sheet).getByLabelText("Name", { selector: "#pg-const-3-key" })).toHaveAccessibleDescription(
+      "zone is given twice.",
+    );
+    expect(within(sheet).getByLabelText("Name", { selector: "#pg-const-4-key" })).toHaveAccessibleDescription(
+      "Give the constant a name.",
+    );
+    // The blank row is left out without a word.
+    expect(within(sheet).getByLabelText("Name", { selector: "#pg-const-5-key" })).not.toHaveAccessibleDescription();
+    expect(sent).toHaveLength(0);
+  });
+
+  it("says a problem the server finds outside the sheet's fields", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/admin/property-groups", () => HttpResponse.json({ items: [opsGroup] })),
+      http.put("*/api/v1/admin/property-groups/:key", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Some inputs need attention",
+            status: 422,
+            errors: [{ field: "/inputs", code: "max", message: "A group has at most 50 inputs." }],
+          },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    renderApp("/admin/property-groups");
+    const sheet = await openChange(user, "Operations");
+    await user.click(within(sheet).getByRole("button", { name: "Save as a new version" }));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("A group has at most 50 inputs.");
+  });
+
+  it("sends an input's help, and drops what a type no longer has", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    const sent: unknown[] = [];
+    server.use(
+      http.post("*/api/v1/admin/property-groups", async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json({ ...opsGroup, key: "sizing", name: "Sizing" }, { status: 201 });
+      }),
+    );
+    renderApp("/admin/property-groups");
+    await user.click(await screen.findByRole("button", { name: "New property group" }));
+    const sheet = await screen.findByRole("dialog", { name: "New property group" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Key" }), "sizing");
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Sizing");
+    await user.click(within(sheet).getByRole("button", { name: "Add input" }));
+    await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-input-0-name" }), "disk_gb");
+    await user.type(within(sheet).getByLabelText("Label"), "Disk");
+    await user.click(within(sheet).getByRole("checkbox", { name: "Secret" }));
+    expect(within(sheet).queryByLabelText("Default")).toBeNull();
+    await user.click(within(sheet).getByLabelText("Type", { selector: "#pg-input-0-type" }));
+    await user.click(await screen.findByRole("option", { name: "Whole number" }));
+    await user.type(within(sheet).getByLabelText("Default"), "40");
+    await user.type(within(sheet).getByLabelText("Help"), "In GB, on top of the template's disk.");
+    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect((sent[0] as { inputs: unknown }).inputs).toEqual([
+      { name: "disk_gb", label: "Disk", type: "integer", default: 40, help: "In GB, on top of the template's disk." },
+    ]);
   });
 
   it("can't delete a group an item uses", async () => {

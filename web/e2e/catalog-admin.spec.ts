@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { scan, theme } from "./axe";
 
 // Catalog administration against the mock backend (S8, ADR-0019).
 
@@ -322,13 +323,34 @@ test("a property group, changed as a new version", async ({ page }) => {
   const row = table.getByRole("row", { name: /Network/ });
   await expect(row).toContainText("zone");
 
-  await row.getByRole("button", { name: "Actions for Network" }).click();
-  await page.getByRole("menuitem", { name: "Change" }).click();
+  // A typed constant, and the sheet scanned in both themes: the theme
+  // button is behind the modal sheet, so the sheet is opened in each.
   const change = page.getByRole("dialog", { name: "Change Network" });
-  await expect(change.getByText(/Saving makes version 2/)).toBeVisible();
+  // A fading toast fails axe's contrast check, and one under the pointer
+  // (the sheet's Add was there) doesn't go.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });
+  for (const name of ["Light", "Dark"] as const) {
+    await theme(page, name);
+    await row.getByRole("button", { name: "Actions for Network" }).click();
+    await page.getByRole("menuitem", { name: "Change" }).click();
+    await expect(change.getByText(/Saving makes version 2/)).toBeVisible();
+    await change.getByRole("button", { name: "Add constant" }).click();
+    await change.locator("#pg-const-1-key").fill("ttl");
+    await change.locator("#pg-const-1-type").click();
+    await page.getByRole("option", { name: "Number" }).click();
+    await change.locator("#pg-const-1-value").fill("300");
+    await scan(page, `a property group's sheet, ${name.toLowerCase()}`);
+    if (name === "Light") {
+      await page.keyboard.press("Escape");
+      await expect(change).toHaveCount(0);
+    }
+  }
   await change.locator("#pg-const-0-value").fill("new.example");
   await change.getByRole("button", { name: "Save as a new version" }).click();
   await expect(page.getByText("Network saved as version 2")).toBeVisible();
+  await expect(row).toContainText("dns_domain, ttl");
+  await theme(page, "Light");
   await expect(row.getByRole("cell").nth(1)).toHaveText("2");
 
   await row.getByRole("button", { name: "Actions for Network" }).click();

@@ -32,6 +32,27 @@ export function writable<T extends object, K extends keyof T>(v: T, ...keys: K[]
   return out as Omit<T, K>;
 }
 
+/**
+ * Problems with rows of keys and values as typed, by row: a key missing on
+ * a row that isn't blank (blank rows are left out), or a key given twice.
+ */
+export function keyProblems<T extends { key: string }>(
+  rows: T[],
+  blank: (row: T) => boolean,
+  missing: string,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  const seen = new Set<string>();
+  rows.forEach((r, i) => {
+    const k = r.key.trim();
+    if (!k) {
+      if (!blank(r)) out[i] = missing;
+    } else if (seen.has(k)) out[i] = `${k} is given twice.`;
+    seen.add(k);
+  });
+  return out;
+}
+
 /** A priority typed in a box: empty is the default, 100. */
 export const priorityOf = (v: string) => (v.trim() === "" ? 100 : Number(v));
 
