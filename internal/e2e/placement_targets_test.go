@@ -244,5 +244,7 @@ func TestPlacementTargets(t *testing.T) {
 			"Resource pool other is not within rvav, where VMs go on GVA-DEV-CL01.")
 		refused("t13-missing", map[string]any{"resource_pool": "'rvav/none'", "cluster": "'GVA-DEV-CL01'"},
 			"Cluster GVA-DEV-CL01 has no resource pool rvav/none.")
+		refused("t13-pod", map[string]any{"datastore_cluster": "'dsc-none'"},
+			"No cluster allowed here can use datastore cluster dsc-none, or has room for these VMs on it.")
 	})
 }

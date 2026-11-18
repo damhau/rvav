@@ -13,13 +13,14 @@ func TestUserDataComponents(t *testing.T) {
 		`{{ range .components.web.addresses }}{{ . }}{{ end }}`:                                 {"web"},
 		`{{ if .components.db.count }}{{ with $.components.db }}{{ .names }}{{ end }}{{ end }}`: {"db"},
 		`{{ define "x" }}{{ .components.lb.fqdns }}{{ end }}{{ template "x" . }}`:               {"lb"},
+		`{{ $r := . }}{{ $r.components.db.addresses }}`:                                         {"db"},
 	} {
 		got, err := UserDataComponents(text)
 		if err != nil || !slices.Equal(got, want) {
 			t.Errorf("%s: %v, %v; want %v", text, got, err, want)
 		}
 	}
-	for _, text := range []string{`{{ range .components }}{{ . }}{{ end }}`, `{{ index .components "db" }}`} {
+	for _, text := range []string{`{{ range .components }}{{ . }}{{ end }}`, `{{ index .components "db" }}`, `{{ $r := . }}{{ index $r.components "db" }}`} {
 		if _, err := UserDataComponents(text); err == nil {
 			t.Errorf("%s: read components without naming one", text)
 		}

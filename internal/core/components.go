@@ -425,6 +425,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("host"), "no_room", fmt.Sprintf("Host %s is none the rules allow with room for these VMs, or it takes no new VMs.", plan.Host))
 		case plan.ResourcePool != "":
 			add(field("resource_pool"), "no_room", fmt.Sprintf("No cluster allowed here has resource pool %s, or room for these VMs there.", plan.ResourcePool))
+		case plan.DatastoreCluster != "":
+			add(field("datastore_cluster"), "no_room", fmt.Sprintf("No cluster allowed here can use datastore cluster %s, or has room for these VMs on it.", plan.DatastoreCluster))
 		default:
 			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
 		}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -134,6 +135,22 @@ func TestChooseKeepsRoomAndHosts(t *testing.T) {
 		anyDatastore: true, hasTemplate: func(string) bool { return true }, cons: cons, disks: map[int]int{1: 300}, vmGB: 50})
 	if ch.cluster == nil || ch.cluster.Name != "app-2" {
 		t.Errorf("chose %v, want app-2", ch.cluster)
+	}
+}
+
+// A host bound is placed on its cluster, not on one whose hosts the
+// inventory lacks (T1.7).
+func TestChooseBoundHost(t *testing.T) {
+	pl := tagged()
+	pl.hosts = []store.InvHost{{VCenter: "vc", Name: "esx-21", Cluster: "app-2", State: vsphere.HostConnected, MemoryTotalMB: 100_000, MemoryUsedMB: 50_000}}
+	q := placementQuery{plan: blueprint.VMPlan{DiskGB: 50, Host: "esx-21"}, count: 1, anyDatastore: true, anyNetwork: true,
+		hasTemplate: func(string) bool { return true }, vmGB: 50}
+	if ch, _, why := pl.choose(q); ch.cluster == nil || ch.cluster.Name != "app-2" {
+		t.Errorf("chose %v (%s), want app-2, where esx-21 is", ch.cluster, why)
+	}
+	q.plan.Host = "esx-99"
+	if ch, _, _ := pl.choose(q); ch.cluster == nil || ch.cluster.Name == "app-2" {
+		t.Errorf("a host the inventory lacks chose %v, want a cluster whose hosts it lacks", ch.cluster)
 	}
 }
 

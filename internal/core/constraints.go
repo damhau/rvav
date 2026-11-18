@@ -162,6 +162,11 @@ type computeCand struct {
 func (pl *placement) computeCands(c *store.InvCluster, bound string) []computeCand {
 	hosts := pl.hostsFor(c, bound)
 	if hosts == nil {
+		// A cluster whose hosts the inventory lacks may have the host bound,
+		// unless the inventory has it on another.
+		if bound != "" && slices.ContainsFunc(pl.hosts, func(h store.InvHost) bool { return h.VCenter == c.VCenter && h.Name == bound }) {
+			return nil
+		}
 		return []computeCand{{cluster: c, host: bound, tags: c.Tags}}
 	}
 	out := make([]computeCand, len(hosts))

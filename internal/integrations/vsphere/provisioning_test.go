@@ -65,6 +65,18 @@ func TestLinkedDisk(t *testing.T) {
 	}
 }
 
+// A custom attribute is set by the VMs' definition of its name, or the
+// global one, never a host's of the same name (T1.7).
+func TestVMFieldKey(t *testing.T) {
+	fields := []types.CustomFieldDef{{Key: 1, Name: "owner", ManagedObjectType: "HostSystem"}, {Key: 2, Name: "owner", ManagedObjectType: "VirtualMachine"},
+		{Key: 3, Name: "site"}, {Key: 4, Name: "rack", ManagedObjectType: "HostSystem"}}
+	for name, want := range map[string]int32{"owner": 2, "site": 3, "rack": 0, "app": 0} {
+		if got, ok := vmFieldKey(fields, name); got != want || ok != (want != 0) {
+			t.Errorf("vmFieldKey(%q) = %d, %v", name, got, ok)
+		}
+	}
+}
+
 // A clone converts the template's flat disks with disk locators, which vcsim
 // ignores: the clone spec is checked here.
 func TestDiskLocators(t *testing.T) {

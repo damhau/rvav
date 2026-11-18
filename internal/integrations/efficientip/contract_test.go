@@ -213,6 +213,9 @@ func TestContractIPv6(t *testing.T) {
 	if _, err := c.Reserve(ctx, s, name, "dep_other"); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("the name reserved for another owner = %v", err)
 	}
+	if taken, err := c.NameExists(ctx, name); err != nil || !taken {
+		t.Fatalf("a name only an IPv6 address has is free: %v, %v", taken, err)
+	}
 
 	r, err := c.CreateRecord(ctx, Record{FQDN: name, Type: "AAAA", Value: a.IP})
 	if err != nil || r.ID == "" {

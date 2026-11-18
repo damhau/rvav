@@ -645,7 +645,8 @@ func (c *HTTPClient) DeleteRecord(ctx context.Context, r Record) error {
 }
 
 // NameExists reports whether DNS has an A, AAAA or CNAME record for the
-// name, on any server, or an IPAM address has it as its name.
+// name, on any server, or an IPAM address of either family has it as its
+// name.
 func (c *HTTPClient) NameExists(ctx context.Context, name string) (bool, error) {
 	rows, err := c.call(ctx, http.MethodGet, "dns_rr_list",
 		list("rr_full_name="+quote(fqdn(name))+" and (rr_type='A' or rr_type='AAAA' or rr_type='CNAME')", 20))
@@ -655,8 +656,12 @@ func (c *HTTPClient) NameExists(ctx context.Context, name string) (bool, error) 
 	if len(live(rows)) > 0 {
 		return true, nil
 	}
-	rows, err = c.call(ctx, http.MethodGet, "ip_address_list", list("name="+quote(fqdn(name)), 1))
-	return len(rows) > 0, err
+	for _, f := range []family{ipv4, ipv6} {
+		if rows, err = c.call(ctx, http.MethodGet, f.addressList, list(f.name+"="+quote(fqdn(name)), 1)); err != nil || len(rows) > 0 {
+			return len(rows) > 0, err
+		}
+	}
+	return false, nil
 }
 
 // pages calls a list service page after page, until a page is empty (the

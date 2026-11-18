@@ -999,19 +999,14 @@ func setCustomAttributes(ctx context.Context, c *vim25.Client, vm types.ManagedO
 	if err != nil {
 		return err
 	}
-	keys := map[string]int32{}
-	for _, f := range fields {
-		if f.ManagedObjectType == "" || f.ManagedObjectType == "VirtualMachine" {
-			keys[f.Name] = f.Key
-		}
-	}
 	for _, name := range slices.Sorted(maps.Keys(attrs)) {
-		key, ok := keys[name]
+		key, ok := vmFieldKey(fields, name)
 		if !ok {
 			def, err := m.Add(ctx, name, "VirtualMachine", nil, nil)
 			if err != nil {
 				// Another VM's clone may have defined it meanwhile.
-				if key, err = m.FindKey(ctx, name); err != nil {
+				again, ferr := m.Field(ctx)
+				if key, ok = vmFieldKey(again, name); ferr != nil || !ok {
 					return fmt.Errorf("define %s: %w", name, err)
 				}
 			} else {
@@ -1023,6 +1018,18 @@ func setCustomAttributes(ctx context.Context, c *vim25.Client, vm types.ManagedO
 		}
 	}
 	return nil
+}
+
+// vmFieldKey is the key of the custom attribute VMs can have by that name:
+// one for VMs or for every object, never a host's or a datastore's of the
+// same name.
+func vmFieldKey(fields []types.CustomFieldDef, name string) (int32, bool) {
+	for _, f := range fields {
+		if f.Name == name && (f.ManagedObjectType == "" || f.ManagedObjectType == "VirtualMachine") {
+			return f.Key, true
+		}
+	}
+	return 0, false
 }
 
 // baseDevices are how many disks and adapters the VM had before rvav added

@@ -162,7 +162,8 @@ func UserDataComponents(text string) ([]string, error) {
 		case *parse.FieldNode:
 			field(n.Ident)
 		case *parse.VariableNode:
-			if n.Ident[0] == "$" && len(n.Ident) > 1 {
+			// Not only $: {{ $r := . }} makes $r.components read them too.
+			if len(n.Ident) > 1 {
 				field(n.Ident[1:])
 			}
 		case *parse.ChainNode:
