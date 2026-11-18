@@ -1,13 +1,15 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, call } from "./api/client";
-import type { components } from "./api/schema";
+import type { components, operations } from "./api/schema";
 import type {
   ApprovalStatus,
   AuditEventPage,
   CatalogItemType,
-  DeploymentStatus,
+  DeploymentStatusFilter,
   EnvironmentKey,
   RequestStatus,
+  ViewList,
+  VmPowerState,
 } from "./api/types";
 
 export interface CatalogFilters {
@@ -26,14 +28,37 @@ export interface RequestFilters {
   limit?: number;
 }
 
+type DeploymentQuery = NonNullable<operations["listDeployments"]["parameters"]["query"]>;
+type VmQuery = NonNullable<operations["listVms"]["parameters"]["query"]>;
+export type DeploymentSort = NonNullable<DeploymentQuery["sort"]>;
+export type VmSort = NonNullable<VmQuery["sort"]>;
+
 export interface DeploymentFilters {
+  /** Empty for every project the caller sees. */
   projectId: string;
-  status?: DeploymentStatus[];
+  status?: DeploymentStatusFilter[];
   environment?: EnvironmentKey[];
+  /** Catalog items, by slug. */
+  item?: string[];
+  /** VM templates, by name. */
+  template?: string[];
   owner?: string;
   q?: string;
   leaseExpiresBefore?: string;
-  sort?: "name" | "-name" | "created_at" | "-created_at" | "lease_expires_at" | "-lease_expires_at";
+  sort?: DeploymentSort;
+  limit?: number;
+}
+
+export interface VmFilters {
+  /** Empty for every project the caller sees. */
+  projectId: string;
+  environment?: EnvironmentKey[];
+  powerState?: VmPowerState[];
+  vcenter?: string;
+  cluster?: string;
+  network?: string;
+  q?: string;
+  sort?: VmSort;
   limit?: number;
 }
 
@@ -109,10 +134,17 @@ export const keys = {
     detail: (id: string) => ["deployments", "detail", id] as const,
     actions: (id: string) => ["deployments", "actions", id] as const,
     history: (id: string) => ["deployments", "history", id] as const,
+    facets: (projectId: string) => ["deployments", "facets", projectId] as const,
   },
+  vms: {
+    all: ["vms"] as const,
+    list: (f: VmFilters) => ["vms", "list", f] as const,
+    facets: (projectId: string) => ["vms", "facets", projectId] as const,
+  },
+  views: (list: ViewList) => ["me", "views", list] as const,
 };
 
-const csv = <T extends string>(v?: T[]) => (v && v.length ? (v as string[]) : undefined);
+const csv = <T extends string>(v?: T[]) => (v && v.length ? v : undefined);
 
 const get = <T>(key: readonly unknown[], fn: (signal: AbortSignal) => Promise<T>) =>
   queryOptions({ queryKey: key, queryFn: ({ signal }) => fn(signal) });
@@ -444,7 +476,7 @@ export const q = {
             params: {
               query: {
                 project_id: f.projectId,
-                status: csv(f.status) as RequestStatus[] | undefined,
+                status: csv(f.status),
                 requester: f.requester,
                 q: f.q,
                 limit: f.limit ?? 50,
@@ -505,9 +537,11 @@ export const q = {
           api.GET("/deployments", {
             params: {
               query: {
-                project_id: f.projectId,
-                status: csv(f.status) as DeploymentStatus[] | undefined,
+                project_id: f.projectId || undefined,
+                status: csv(f.status),
                 environment: csv(f.environment),
+                item: csv(f.item),
+                template: csv(f.template),
                 owner: f.owner,
                 q: f.q,
                 lease_expires_before: f.leaseExpiresBefore,
@@ -520,6 +554,53 @@ export const q = {
           }),
         ),
       getNextPageParam: (last) => last.next_cursor ?? undefined,
+    }),
+  /** The items, templates and environments the deployments have, to filter them by. */
+  deploymentFacets: (projectId: string) =>
+    queryOptions({
+      queryKey: keys.deployments.facets(projectId),
+      queryFn: ({ signal }) =>
+        call(api.GET("/deployments/facets", { params: { query: { project_id: projectId || undefined } }, signal })),
+      staleTime: 60_000,
+    }),
+  vms: (f: VmFilters) =>
+    infiniteQueryOptions({
+      queryKey: keys.vms.list(f),
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({ pageParam, signal }) =>
+        call(
+          api.GET("/resources/vms", {
+            params: {
+              query: {
+                project_id: f.projectId || undefined,
+                environment: csv(f.environment),
+                power_state: csv(f.powerState),
+                vcenter: f.vcenter,
+                cluster: f.cluster,
+                network: f.network,
+                q: f.q,
+                sort: f.sort,
+                limit: f.limit ?? 50,
+                cursor: pageParam,
+              },
+            },
+            signal,
+          }),
+        ),
+      getNextPageParam: (last) => last.next_cursor ?? undefined,
+    }),
+  /** The vCenters, clusters and networks the VMs are in, to filter them by. */
+  vmFacets: (projectId: string) =>
+    queryOptions({
+      queryKey: keys.vms.facets(projectId),
+      queryFn: ({ signal }) =>
+        call(api.GET("/resources/vms/facets", { params: { query: { project_id: projectId || undefined } }, signal })),
+      staleTime: 60_000,
+    }),
+  savedViews: (list: ViewList) =>
+    queryOptions({
+      queryKey: keys.views(list),
+      queryFn: ({ signal }) => call(api.GET("/me/views", { params: { query: { list } }, signal })),
     }),
   deployment: (id: string) =>
     queryOptions({

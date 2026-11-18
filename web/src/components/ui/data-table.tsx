@@ -53,6 +53,8 @@ export interface DataTableProps<T> {
   /** The sort, when the page keeps it (in the URL, say). */
   sort?: Sort | null;
   onSortChange?: (sort: Sort | null) => void;
+  /** The rows come in the sort's order (the server sorts the whole list): a header only changes the sort. */
+  presorted?: boolean;
   /** The width under which the table scrolls sideways, such as 720. */
   minWidth?: number;
   className?: string;
@@ -85,6 +87,7 @@ export function DataTable<T>({
   defaultSort,
   sort: sortProp,
   onSortChange,
+  presorted,
   minWidth,
   className,
 }: DataTableProps<T>) {
@@ -96,7 +99,7 @@ export function DataTable<T>({
   };
   const by = sort ? columns.find((c) => c.id === sort.id) : undefined;
   const sorted =
-    rows && by?.sortValue
+    rows && by?.sortValue && !presorted
       ? [...rows].sort((a, b) => compare(by.sortValue!(a), by.sortValue!(b)) * (sort?.desc ? -1 : 1))
       : rows;
   const menus = rowMenu && sorted ? new Map(sorted.map((r) => [rowKey(r), rowMenu(r)])) : undefined;

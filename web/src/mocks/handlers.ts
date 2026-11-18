@@ -48,6 +48,7 @@ import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
+import { listingHandlers, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
@@ -360,6 +361,7 @@ export const handlers = [
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),
+  ...listingHandlers(db, base, wait),
 
   // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).
   ...(() => {
@@ -1009,19 +1011,57 @@ export const handlers = [
     await wait();
     const url = new URL(request.url);
     const projectId = url.searchParams.get("project_id");
-    const statuses = list(url, "status") as DeploymentStatus[];
+    const wanted = list(url, "status");
+    const expired = wanted.includes("expired");
+    const statuses = wanted.filter((s) => s !== "expired") as DeploymentStatus[];
     const envs = list(url, "environment");
+    const itemKeys = list(url, "item");
+    const templates = list(url, "template");
     const owner = url.searchParams.get("owner");
     const before = url.searchParams.get("lease_expires_before");
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
     const sort = url.searchParams.get("sort") ?? "name";
     const desc = sort.startsWith("-");
     const field = sort.replace(/^-/, "");
-    const items = db.deployments
-      .filter((d) => myProjectIds().has(d.project.id) && d.status !== "deleted")
-      .filter((d) => !projectId || d.project.id === projectId)
-      .filter((d) => statuses.length === 0 || statuses.includes(d.status))
+    const now = new Date().toISOString();
+    const key = (d: DeploymentDetail): string => {
+      switch (field) {
+        case "created_at":
+          return d.created_at;
+        case "lease_expires_at":
+          return d.lease.expires_at ?? "9999";
+        case "status":
+          return d.status;
+        case "environment":
+          return d.environment;
+        case "owner":
+          return d.owner.name;
+        case "item":
+          return d.catalog_item.name;
+        case "project":
+          return d.project.name;
+        case "vm_count":
+          return String(d.resources.filter((r) => r.type === "vsphere.vm").length).padStart(6, "0");
+        default:
+          return d.name;
+      }
+    };
+    const items = visibleDeployments(db, projectId)
+      .filter(
+        (d) =>
+          (statuses.length === 0 && !expired) ||
+          statuses.includes(d.status) ||
+          (expired && d.lease.expires_at !== null && d.lease.expires_at <= now),
+      )
       .filter((d) => envs.length === 0 || envs.includes(d.environment))
+      .filter(
+        (d) => itemKeys.length === 0 || itemKeys.includes(d.catalog_item.slug) || itemKeys.includes(d.catalog_item.id),
+      )
+      .filter(
+        (d) =>
+          templates.length === 0 ||
+          d.resources.some((r) => r.type === "vsphere.vm" && templates.includes(r.vm.template ?? "")),
+      )
       .filter((d) => !owner || d.owner.id === (owner === "me" ? db.me.user.id : owner))
       .filter((d) => !before || (d.lease.expires_at !== null && d.lease.expires_at < before))
       .filter(
@@ -1040,19 +1080,8 @@ export const handlers = [
             .includes(q),
       )
       .sort((a, b) => {
-        const av =
-          field === "created_at"
-            ? a.created_at
-            : field === "lease_expires_at"
-              ? (a.lease.expires_at ?? "9999")
-              : a.name;
-        const bv =
-          field === "created_at"
-            ? b.created_at
-            : field === "lease_expires_at"
-              ? (b.lease.expires_at ?? "9999")
-              : b.name;
-        return desc ? bv.localeCompare(av) : av.localeCompare(bv);
+        const byKey = key(a).localeCompare(key(b));
+        return (field === "name" || byKey !== 0 ? byKey : a.name.localeCompare(b.name)) * (desc ? -1 : 1);
       })
       .map(summarize);
     return json<S["DeploymentPage"]>(page(items, url));

@@ -97,7 +97,26 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
 
 ### Deployments
 - A table with its filters in the toolbar, kept in the address; each row's
-  ⋯ menu holds its actions, and selected rows get bulk actions.
+  ⋯ menu holds its actions, and selected rows get bulk actions. Filters:
+  search, status (with **Lease ended**), environment (the project's own),
+  catalog item and VM template (the values some deployment has), owner (a
+  people picker), Only mine, lease ending within 7 days.
+- A column header sorts the whole list on the server (`?sort=`), not the
+  rows loaded: the table is `presorted`.
+- **All my projects**, a segmented toggle beside the header's actions,
+  lists every project the person is in (`?project=all`) and adds a
+  **Project** column; the project switcher still names the project they
+  work in.
+- **Table** and **Cards**, an icon-only segmented toggle (`?layout=`), the
+  choice remembered per person in the browser. A card shows the name (the
+  link), catalog item, status, environment, VMs on, address, owner, lease
+  and the ⋯ menu; cards have no selection, and a **Sort by** select stands
+  in for the headers.
+- **Views**, a menu: the person's saved views, **Save as a new view…**,
+  **Update** the view last opened once its filters change, and **Rename**
+  or **Delete** the view shown. The button names the view the address
+  matches. Views are the person's own, kept on the server: the address
+  already shares a list with someone else.
 - Detail page: its status and owner in the header, beside an **Actions** menu
   with every action that applies (a submenu per VM when there are several),
   each it can't run with the reason. Tabs in the address: Overview (VMs live,

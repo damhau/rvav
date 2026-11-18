@@ -62,6 +62,27 @@ describe("DataTable", () => {
     expect(names()).toEqual(["db-01", "web-02", "web-10"]);
   });
 
+  it("leaves rows the server sorted in their order, a header only asking for another sort", async () => {
+    const user = userEvent.setup();
+    const onSortChange = vi.fn();
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms}
+        rowKey={(v) => v.name}
+        sort={{ id: "cpus", desc: true }}
+        onSortChange={onSortChange}
+        presorted
+      />,
+    );
+    expect(names()).toEqual(["web-02", "web-10", "db-01"]);
+    expect(screen.getByRole("columnheader", { name: "vCPU" })).toHaveAttribute("aria-sort", "descending");
+    await user.click(screen.getByRole("button", { name: "Name" }));
+    expect(onSortChange).toHaveBeenCalledWith({ id: "name", desc: false });
+    expect(names()).toEqual(["web-02", "web-10", "db-01"]);
+  });
+
   it("gives each row a named menu, and none to a row without items", async () => {
     const user = userEvent.setup();
     const remove = vi.fn<(name: string) => void>();

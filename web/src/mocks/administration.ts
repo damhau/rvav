@@ -1020,7 +1020,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       await wait();
       const q = (new URL(request.url).searchParams.get("q") ?? "").toLowerCase();
       return HttpResponse.json({
-        items: db.users.filter((u) => `${u.name} ${u.email ?? ""}`.toLowerCase().includes(q)),
+        items: db.users.filter((u) => u.id === q || `${u.name} ${u.email ?? ""}`.toLowerCase().includes(q)),
       });
     }),
     http.get(`${base}/admin/projects`, async ({ request }) => {

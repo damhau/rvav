@@ -173,13 +173,39 @@ their times and tasks.
 
 ## Your deployments
 
-**Deployments** lists what your requests made. Search by name, IP or
-owner, choose a status or an environment, or select **Lease ends within 7
-days** or **Only mine**. The address keeps what you choose. Select a row to
-open its deployment, or its **⋯** menu for its actions. To act on several
-at once, select their checkboxes: power them on or off, shut down their
-guests, take a snapshot, or delete them. A deployment's page shows its status
-and owner at the top, and:
+**Deployments** lists what your requests made in the project you work in.
+To list the deployments of every project you're in, select **All my
+projects**: a **Project** column then names each one's project.
+
+To narrow the list:
+- search by name, IP or owner;
+- choose a status (**Lease ended** lists the deployments whose lease has
+  ended, whatever their status), an environment, a catalog item or the VM
+  template their VMs were cloned from. Only the values some deployment has
+  are offered;
+- type a name or email under **Owner** and pick the person, or select
+  **Only mine**;
+- select **Lease ends within 7 days**.
+
+To sort, select a column's header; select it again to reverse the order.
+The whole list is sorted, not only the deployments loaded. To see the
+deployments as cards, select **Cards** beside **Table**: sort them with
+**Sort by**. Rvav remembers the layout you chose the next time you open
+the list. The address keeps your filters, sort and layout, so you can
+bookmark it or send it to a colleague, who sees what their projects let
+them see.
+
+To keep a set of filters, select **Views**, then **Save as a new view**,
+and name it. To show it again, pick it from **Views**. When you change the
+filters of the view you opened, **Update** saves the new ones under its
+name. You can also rename or delete the view shown. Your views are yours
+alone: no one else sees them.
+
+Select a row or a card's name to open its deployment, or its **⋯** menu
+for its actions. To act on several at once, in the table, select their
+checkboxes: power them on or off, shut down their guests, take a snapshot,
+or delete them. A deployment's page shows its status and owner at the top,
+and:
 - **Overview:** its VMs, their addresses and DNS records, and their state
   in vCenter, live; its details, lease and placement. A VM whose address
   comes from DHCP shows the address it reports, once it has one, and a VM
