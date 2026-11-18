@@ -955,8 +955,8 @@ first says what stops. A subscription's row opens its page, where
 
 - **Onboarding:** adopt VMs rvav didn't build. Search and filter the
   list, select the VMs (a selection outlives a change of filters), then
-  select **Adopt N VMs…** and give them a project, an environment, an
-  owner and an item in the side panel. rvav finds their addresses and DNS
+  select **Adopt N VMs…** in the bar above the list and give them a
+  project, an environment, an owner and an item in the side panel. rvav finds their addresses and DNS
   records in EfficientIP, and nothing is changed there
   ([ADR-0026](../adr/0026-onboarding.md)).
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records

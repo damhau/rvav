@@ -7,8 +7,9 @@ How vRA 8 / Aria Automation's content and deployments move to rvav
 
 Administration › **vRA import** is where it happens, for administrators.
 Its **Steps** say where the move stands (read vRA, map the projects,
-import, move each project) and mark the one to do now. Each tab of the
-plan is in the page's address, for example `/admin/vra-import?tab=cutover`.
+import, move each project) and mark the one to do now. The plan opens on
+that step's tab, and each tab is in the page's address, for example
+`/admin/vra-import?tab=cutover`.
 
 1. **Read vRA** (rvav reads the vRA it is configured with), or **Upload
    file…** (what `rvav vra-export` wrote, where vRA is reachable). What was

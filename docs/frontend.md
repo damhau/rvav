@@ -108,8 +108,14 @@ Rules:
   renders, and stays cached for navigation back.
 - **Intent preloading** (`defaultPreload: "intent"`): hovering a link prefetches
   its route code and data.
-- Route guards check auth and role in `beforeLoad`; admin routes are hidden and
-  protected.
+- Route guards check auth and role in `beforeLoad`. Under `/admin`, the layout
+  route (`routes/admin/route.tsx`) finds the page an address is on, or the
+  page above it, with `adminPageAt` from `nav.ts`. When that page's menu
+  entry is hidden from the person (`show(me)` is false), it shows
+  `PageNotAllowed` (**You can't open this page**) instead of the page, so a
+  typed or shared address doesn't open a page whose actions the server
+  refuses. An address that matches no page, `/admin` included, shows
+  `PageNotFound`, the root route's `notFoundComponent`.
 - `pendingComponent` shows skeletons that match the final layout (no layout
   shift); `errorComponent` shows a friendly error with retry and a request ID.
 
@@ -132,6 +138,19 @@ Rules:
 - Mutations invalidate by key factory; long-running operations return a request
   ID and the UI follows it over SSE rather than polling.
 - `placeholderData: keepPreviousData` for paginated tables (no flicker).
+- **A search box** uses `useSearchBox(search, onSearch)` (`lib/hooks.ts`): it
+  shows what's typed at once, sends it after 250 ms, and takes the search
+  from outside (Back, a link, **Clear filters**) without putting the old
+  text back. A list the server searches also keeps its rows while the next
+  ones load (`keepPreviousData`), unless its key changes with the project,
+  whose old rows would show for a moment under the new one.
+- **Mutations that must not overlap** share a `mutationKey`, and the buttons
+  that start them wait on `useIsMutating` for that key and say why: a
+  catalog item's Publish and Roll back, the vRA import's read, map, import
+  and adopt.
+- **Deleting what a page shows:** leave the page first, then remove its query
+  (`removeQueries`), and leave it out of the invalidation. Otherwise the page
+  reads itself again before it leaves, and flashes "not found".
 
 ### Realtime bridge (SSE → Query cache)
 
@@ -201,16 +220,16 @@ it and works in both themes.
 | `Breadcrumbs` | A `Breadcrumb` navigation landmark: links to the pages above this one, top-level first. The page's own title follows it, so it isn't repeated. | In `PageHeader`'s `breadcrumbs` on every page below a top-level one: a deployment, a request, a request form, a catalog item, a project, a role. Top-level pages have none. |
 | `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. A section of a long form is `as="fieldset"`: a group of fields its title names. |
 | `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |
-| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. Selecting all selects the rows shown; unticking it leaves selected rows the filters hide as they are (name it **Select all shown** with `selection.allLabel` when filters or paging hide rows). |
+| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. Selecting all selects the rows shown; unticking it leaves selected rows the filters hide as they are (name it **Select all shown** with `selection.allLabel` when filters or paging hide rows). Pass `rowLinks` when a row has a page: a click anywhere on the row, but not on its buttons, checkbox or menu, focuses its first link and follows it, so what opens gives the focus back there. Only such rows light up under the pointer. A list loaded page by page sorts only where the server sorts too (its sort in the query, through `sort` and `onSortChange`, as Deployments does); otherwise leave `sortValue` off, as sorting the loaded rows would mislead. |
 | `EmptyState` | An icon, a title, one line, and the next step | A list or panel with nothing in it yet: say what goes there, and offer the step that adds it. |
-| `Sheet` | A side panel on the Radix dialog. It opens on its first field, keeps the focus inside, closes with Escape, and gives the focus back to what opened it, a row menu's button included. | Creating and editing a record, with the list still in view. Pass `onSubmit` and `submitLabel` for a Cancel and Save footer, or a `footer` of its own. When its action removes what opened it (a row decided, say), `returnFocus` names where the focus goes instead. |
-| `ConfirmDialog` | An alert dialog that says what will be removed (`description`) and what depends on it (`consequences`) | Before removing or breaking something. |
+| `Sheet` | A side panel on the Radix dialog. It opens on its first field, keeps the focus inside, closes with Escape, and gives the focus back to what opened it, a row menu's button included. | Creating and editing a record, with the list still in view. Pass `onSubmit` and `submitLabel` for a Cancel and Save footer, or a `footer` of its own. Pass `pending` while its change runs: Cancel, Close and the submit button wait, and Escape or a click outside don't close it. When its action removes what opened it (a row decided, say), `returnFocus` names where the focus goes instead. |
+| `ConfirmDialog` | An alert dialog that says what will be removed (`description`) and what depends on it (`consequences`) | Before removing or breaking something; never `window.confirm`. Pass `pending` while the change runs, and `cancelLabel` when "Cancel" would read as the action (**Keep it running** beside **Cancel request**). |
 | `DialogContent` | A centred modal | Short questions and small forms that aren't a record's: a reason, a choice, a result. |
 | `Button` | Variants `primary`, `secondary`, `quiet`, `danger` and `danger-solid`; sizes `sm`, `md` and `icon` | One `primary` per page or panel; `secondary` for the others; `quiet` in rows and toolbars; `danger` for an action that asks before it removes, and `danger-solid` for the button that confirms. |
 | `IconButton` | A button that shows only an icon, named by its `label` | Close, more actions, copy: actions whose icon is clear. |
 | `Menu` | A dropdown menu on Radix: `MenuItem`, `MenuLabel` for a group's name, `MenuSeparator`, and `MenuSub` with `MenuSubTrigger` and `MenuSubContent` for a submenu. It isn't modal, so the page behind keeps its accessibility tree, and it scrolls when it's taller than the window. | A ⋯ menu, or an **Actions** menu that holds all of a record's actions, such as a deployment's, with a submenu per VM. A disabled item says why in its text. An item that opens a dialog uses `onSelect`; the dialog gives the focus back to the menu's button, from a submenu too. |
 | `StepMark` | A step's number, a tick once done, the accent for the step to do now (`stepNow` marks its row) | A list of steps in order: the setup checklist, the vRA import's steps. The step's own text says its state to screen readers. |
-| `Field` | A control's label, a line of help, and the problem with its value, tied to the control (`aria-describedby`, `aria-invalid`) | Every form control. A control that has no `Field` of its own (a radio group, a form widget) puts `FieldNote` under it, for the same error and help. |
+| `Field` | A control's label, a line of help, and the problem with its value, tied to the control (`aria-describedby`, `aria-invalid`) | Every form control. `Field` adds its note's id to the ids already describing its first child, so a control of your own passes `aria-describedby` and `aria-invalid` through to its input. A problem with the value goes in `error`, not `hint`, so it's announced as invalid. A control that has no `Field` of its own (a radio group, a form widget) puts `FieldNote` under it, for the same error and help. |
 
 `components/common` has the rest: `Page` (a page's width and padding),
 `KeyValues`, the status badges, `Timeline`, `Meter`, the skeletons and
@@ -221,7 +240,9 @@ links opening in a new tab, and its headings moved below the section it's in
 routes.
 
 ### Interaction rules
-- One primary action per page, and at most one per panel.
+- One primary action per page, and at most one per panel. An empty list
+  offers the action that adds one in its empty state only; the header shows
+  it once the list has rows.
 - Create and edit records in a `Sheet`, so the list stays in view. Keep dialogs
   for questions.
 - A record's actions go in its row's ⋯ menu; the panel header keeps the action
@@ -235,6 +256,15 @@ routes.
   it ask for the deployment's name to be typed.
 - An async button shows that it's pending and is disabled, so it can't submit
   twice.
+- A disabled control says why, in its text or beside it. Rather than a
+  button disabled until something is selected, show the action once there
+  is a selection, as Deployments' and Onboarding's selection bars do.
+- An overlay (a sheet, a dialog, the command palette, the phone drawer)
+  opens on what it asks first and gives the focus back to what opened it:
+  `useOpener` in its `onCloseAutoFocus`. A dialog that asks for a value
+  focuses it on open (`onOpenAutoFocus`) rather than **Close**.
+- A failed load says so and offers **Try again**, in a menu too: never an
+  empty list or a skeleton that stays.
 - Toasts for results, inline messages for validation, never `alert()`.
 - Don't show what doesn't work yet: no disabled buttons for features that come
   later.
@@ -830,7 +860,9 @@ The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
   **Select all shown** keeps the selected VMs the filters hide, the count
   says how many are hidden, **Clear selection** empties it, and the side
   panel lists them all. At most 200 at once.
-- **Adopting:** **Adopt N VMs…**, the page's primary action, opens a side
+- **Adopting:** once VMs are selected, a bar above the table (**Selected
+  VMs**, as Deployments' bulk actions) offers **Adopt N VMs…** and **Clear
+  selection**; nothing waits disabled before that. Adopt opens a side
   panel asking for the project, environment, owner (members who aren't
   viewers), catalog item (the project's VM items), lease, and optionally
   one deployment for all with its name. The server's errors show by
@@ -851,13 +883,17 @@ imports it:
 - **Header:** the read's source and counts as `meta`; before a plan,
   **Read vRA** (or **Upload file…** when rvav has no vRA set) is the
   primary action, after it **Import…**.
-- **The plan,** in tabs kept in the address (`?tab=`, catalog items by
-  default): the vRA projects (each mapped with a select; the placement
-  strategy is the third column), cloud templates, vRA deployments and the
-  vRO triage are `DataTable`s; policies and cutover are sections named by
-  their policy or project.
+- **The plan,** in tabs kept in the address (`?tab=`). Without one, it opens
+  on the tab of the step it's at: projects while some aren't mapped, then
+  catalog items or deployments while some are left to import, then
+  cutover. That tab is chosen once, when the plan first loads, so mapping
+  the last project doesn't move it away. The vRA projects (each mapped with
+  a select; the placement strategy is the third column), cloud templates,
+  vRA deployments and the vRO triage are `DataTable`s; policies and cutover
+  are sections named by their policy or project.
 - **Side panels:** a row's notes, the import (catalog, deployments or
-  both) and **Mark as moved…**. **Not moved…** asks in a
+  both) and **Mark as moved…**, which a project not mapped to an rvav
+  project doesn't offer yet: it says it moves once mapped. **Not moved…** asks in a
   `ConfirmDialog` that warns that deleting an adopted deployment in vRA
   deletes its VMs.
 
@@ -907,10 +943,14 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
   - reflow at 320 px;
   - a request made with the keyboard only;
   - a dialog's focus handling;
+  - a page someone may not open, and an address that matches no page;
   - the canvas: a composite draft with a step selected, and a composite
     request's run, failed and running (`e2e/one-canvas.spec.ts` designs,
     requests and follows one with the keyboard only).
 - Full keyboard support, visible focus rings, a skip-to-content link.
+  `e2e/focus-return.spec.ts` opens the phone drawer, the command palette, an
+  approval's panel, a typed confirmation and a token's revoke with the
+  keyboard only, and checks where the focus goes on open and on close.
 - Colour is never the only signal: status always has an icon and text.
 - **Text colours:** the `faint` text colour keeps 4.5:1 on every background
   it's used on, in both themes. Code is highlighted with the app's colours,

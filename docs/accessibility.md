@@ -11,8 +11,8 @@ and fixed, and what still needs a person.
 (Actions › Browser tests). It runs on the mock API.
 
 - **axe** (WCAG 2.0, 2.1 and 2.2, levels A and AA):
-  - on all 24 pages and in each of their tabs, the three-tier item's
-    request form and its topology among them;
+  - on every page and in each of its tabs (`pages` in the spec), the
+    three-tier item's request form and its topology among them;
   - on a detail page reached from each list (requests, deployments,
     catalog items, projects, subscriptions);
   - on an approval opened in the inbox;
@@ -42,6 +42,13 @@ and fixed, and what still needs a person.
     nodes, Enter selects one and Escape clears it.
 - **Dialogs:** opened from the keyboard, a dialog takes the focus and keeps
   it while tabbing. Escape closes it and gives the focus back to its button.
+  `focus-return.spec.ts` checks the same, from the keyboard only, for the
+  phone navigation drawer (it opens on the current page's entry), the
+  command palette (from its box and with Ctrl+K), an approval's side panel
+  (back to its row), a typed confirmation (it opens on the name to type)
+  and a token's revoke confirmation.
+- **Pages someone can't open:** axe on **You can't open this page** and on
+  **Page not found**.
 
 ## Found and fixed (S14.8)
 
@@ -69,6 +76,16 @@ Already in place before the audit:
 |---|---|---|
 | A node's visible text, read without spaces between its badge, title and status, wasn't a run of words in its name. | 2.5.3 Label in name | Spaces between them, and the name lists what the node shows in its order before its relations. |
 | On a running request's timeline, the steps not started yet were drawn at 55% opacity, too faint for their AWX label and title. | 1.4.3 Contrast | The muted and faint text colours, which keep their contrast. |
+
+## Found and fixed (V1.6, the UI overhaul's review)
+
+| Finding | WCAG | Fix |
+|---|---|---|
+| Closing the phone navigation drawer, the command palette or an approval's panel left the focus on the page's body. | 2.4.3 Focus order | Each gives the focus back to what opened it. |
+| Field's help and error didn't reach the inputs of the designer's own controls, and a field's name problem was help, not an error. | 1.3.1, 3.3.1 | Field adds its note to the ids describing the control, which passes them through; the problem is an error. |
+| A day-2 action's typed confirmation opened on Close, not on the name to type. | 2.4.3 | It opens on what it asks first. |
+| Disabled menu items and buttons didn't say why (Publish, Move up and down, Mark as moved, Adopt). | 3.3.2 Labels or instructions | The reason is in the item's text or beside it, or the action shows only when it can run. |
+| Revoking a token and leaving typed YAML asked with `window.confirm`. | 4.1.2 | A `ConfirmDialog`, named, that gives the focus back. |
 
 ## What still needs a person
 

@@ -134,7 +134,8 @@ guests, take a snapshot, or delete them. A deployment's page shows its status
 and owner at the top, and:
 - **Overview:** its VMs, their addresses and DNS records, and their state
   in vCenter, live; its details, lease and placement;
-- **History:** what ran on it;
+- **History:** the day-2 actions that ran on it (the request that created it
+  is under **Details**);
 - **Inputs:** what it was requested with.
 
 **Actions**, at the top of the page, lists every action that applies, by
@@ -216,7 +217,8 @@ Teams, Slack. A test message checks that each channel works.
 **API tokens** (your menu) are for scripts and tools acting as you:
 - name a token and give it an expiry;
 - it is shown once;
-- revoke it when it's no longer used.
+- revoke it when it's no longer used: rvav asks first, as what uses it is
+  refused from then on.
 
 A token acts with the roles given to you in rvav itself, not those from
 your groups, so it can't approve. The [API reference](../operations/README.md#api) describes every

@@ -34,7 +34,10 @@ Top bar:  ⌘K search · project switcher · notifications · theme · user menu
 - Every entry has an icon. The main menu's entries are larger and darker
   than the administration's, whose groups each have a small heading.
 - Each person sees only the pages they may open; a group with none is left
-  out.
+  out. An address for an administration page someone may not open says
+  **You can't open this page** and links to **What I may do**; an address
+  that matches no page says **Page not found** and offers **Go to the
+  overview**.
 - A menu entry's label is its page's title.
 - Pages below a top-level one start with breadcrumbs: links to the pages
   above, such as **Deployments** above a deployment or **Catalog items**
@@ -44,7 +47,9 @@ Top bar:  ⌘K search · project switcher · notifications · theme · user menu
   top bar opens the drawer, with labels, on the rail too.
 - Keyboard: the skip link comes first, then the menu in order; the
   groups' headings aren't stops. The current page's entry has
-  `aria-current="page"`, and every entry shows its focus.
+  `aria-current="page"`, and every entry shows its focus. The drawer opens
+  on the current page's entry, and closing it, the command palette or a
+  side panel gives the focus back to what opened it.
 
 ## Key screens
 
@@ -55,9 +60,11 @@ leases expiring soon, featured catalog items, recent activity.
 ### Catalog
 A grid of cards, with search and the category and kind filters in a toolbar
 above it. A card shows the item's icon (or its kind's), its kind, its one-line
-summary and a Request button. Clicking a card opens the item's page: its
-Markdown description, the version requests use, what it builds (the topology,
-or a composite's steps), and Request as the primary action.
+summary and a Request button, for those whose roles in the project let them
+request; for others, the page says why there is none. Clicking a card opens
+the item's page: its Markdown description, the version requests use, what it
+builds (the topology, or a composite's steps), and Request as the primary
+action.
 
 ### Request form
 - Wizard or single page, depending on the form layout. Each section of the
@@ -137,7 +144,8 @@ sentence case.
 ### Rules
 
 - **One primary action per page.** The page header holds it; a panel has at
-  most one of its own. Other actions are secondary or quiet buttons.
+  most one of its own. Other actions are secondary or quiet buttons. An
+  empty list offers its New … in the empty state only.
 - **Edit in a side panel.** Creating and editing a record opens a side panel
   (`Sheet`) over the page, so the list stays in view. Dialogs are for
   questions.
@@ -146,6 +154,14 @@ sentence case.
 - **Empty states give a next step.** An empty list says what goes there and
   offers the step that adds it, such as "New template".
 - **Removing asks first.** The confirmation names what goes and what depends
-  on it, such as the projects a template is offered to.
+  on it, such as the projects a template is offered to. It waits while the
+  change runs, and its way out says what it keeps when "Cancel" would be
+  ambiguous: **Keep it running** beside **Cancel request**.
+- **Off says why.** A disabled button or menu item says why beside it, such
+  as "Waits for the change running" or "It comes first already". An action
+  that needs a selection appears with the selection, in a bar above the
+  table.
+- **Failures offer a retry.** A list, a panel or a menu that couldn't load
+  says so and offers **Try again**.
 - **Nothing that comes later.** A feature that doesn't work yet isn't shown,
   not even as a disabled button.
