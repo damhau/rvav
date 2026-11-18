@@ -26,6 +26,14 @@ instead, set up from the UI: no seed, no integration variables, the local
 administrator signing in and the setup checklist
 ([installation.md](../docs/operations/installation.md#trying-a-new-install)).
 
+`vcsim-bootstrap` also tags the GVA layout for placement by tag and
+constraint tags ([ADR-0035](../docs/adr/0035-constraint-tags.md)):
+`env/dev`, `env/tst` and `env/prd` on each environment's clusters,
+`net/app` on the `dvpg-app-*` port groups, `rvav-tier/gold` and
+`rvav-tier/bronze` on clusters and datastores, and `rvav-zone/dmz` on
+`dvpg-web-prd-vl210`. The sample vRA's RHEL 9 template, once imported,
+places its VMs by the `env` and `net` tags.
+
 When a port is already taken, change it with `RVAV_API_PORT`,
 `RVAV_WEB_PORT`, `RVAV_KEYCLOAK_PORT`, `RVAV_TEMPORAL_PORT`,
 `RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the

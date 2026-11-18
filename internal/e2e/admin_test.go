@@ -251,8 +251,9 @@ func TestPlacementAdministration(t *testing.T) {
 		for _, n := range inv.Networks {
 			tagged[n.Name] = fmt.Sprint(n.Tags)
 		}
-		if tagged["GVA-PRD-CL01"] != "[rvav-tier/gold]" || tagged["nfs-gva-bronze-01"] != "[rvav-tier/bronze]" ||
-			tagged["dvpg-web-prd-vl210"] != "[rvav-zone/dmz]" || tagged["dvpg-app-dev-vl310"] != "[]" {
+		if tagged["GVA-PRD-CL01"] != "[env/prd rvav-tier/gold]" || tagged["nfs-gva-bronze-01"] != "[rvav-tier/bronze]" ||
+			tagged["dvpg-web-prd-vl210"] != "[rvav-zone/dmz]" || tagged["dvpg-app-dev-vl310"] != "[net/app]" ||
+			tagged["dvpg-db-dev-vl320"] != "[]" {
 			t.Fatalf("inventory tags = %v", tagged)
 		}
 

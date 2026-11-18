@@ -104,11 +104,17 @@ func DefaultLayout() Layout {
 		Libraries: []LibrarySpec{{Name: "rvav-templates", Datastore: "vsan-gva-dev-cl01", Cluster: "GVA-DEV-CL01",
 			Items: map[string]string{"rhel9-library": "tpl-rhel9.4-2026.10"}}},
 		// Placement by tag (ADR-0020) and constraints (ADR-0035): a storage
-		// tier on clusters and datastores, a zone on networks.
+		// tier on clusters and datastores, a zone on networks; and the
+		// environment and network tags the sample vRA's RHEL template
+		// constrains its machine to, env:${input.environment} and net:app.
 		Tags: []TagSpec{
 			{Category: "rvav-tier", Name: "gold", Objects: []string{"GVA-PRD-CL01", "vsan-gva-prd-cl01", "vsan-gva-dev-cl01"}},
 			{Category: "rvav-tier", Name: "bronze", Objects: []string{"GVA-DEV-CL01", "nfs-gva-bronze-01"}},
 			{Category: "rvav-zone", Name: "dmz", Objects: []string{"dvpg-web-prd-vl210"}},
+			{Category: "env", Name: "dev", Objects: []string{"GVA-DEV-CL01"}},
+			{Category: "env", Name: "tst", Objects: []string{"GVA-TST-CL01"}},
+			{Category: "env", Name: "prd", Objects: []string{"GVA-PRD-CL01", "GVA-PRD-CL02"}},
+			{Category: "net", Name: "app", Objects: []string{"dvpg-app-dev-vl310", "dvpg-app-tst-vl410", "dvpg-app-prd-vl220"}},
 		},
 	}
 }

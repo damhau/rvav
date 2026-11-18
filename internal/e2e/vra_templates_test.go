@@ -17,7 +17,6 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
-	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/vra"
 	"github.com/damhau/rvav/internal/vraimport"
 )
@@ -26,19 +25,14 @@ import (
 // items import through the catalog's own YAML import as drafts; the RHEL
 // one, published, makes a valid request named by the project's vRA naming
 // template, sized from vRA's flavors (P2.2), and placed by its constraint
-// tags on the cluster and network tagged in vCenter (T1.2).
+// tags in each seeded environment, on the clusters and networks the
+// default vcsim layout tags env/<environment> and net/app (T1.2).
 func TestVRATemplates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
-		tagObjects(t, ctx, c, "env/dev", "GVA-DEV-CL01")
-		tagObjects(t, ctx, c, "net/app", "dvpg-app-dev-vl310")
-		sync := &inventory.Syncer{Store: h.store, VSphere: h.vc, Events: h.acts.Events, Log: h.acts.Log}
-		if err := sync.SyncOnce(ctx); err != nil {
-			t.Fatal(err)
-		}
 		e := vra.SampleEstate(time.Now())
 		imported := importVRAItems(h, &e)
 		if len(imported) != 4 {
@@ -54,11 +48,30 @@ func TestVRATemplates(t *testing.T) {
 		if !pv.Valid || pv.Names == nil || len(*pv.Names) != 1 || (*pv.Names)[0] != "web-dev-api001" {
 			t.Fatalf("preview: valid %v, names %v, errors %+v", pv.Valid, pv.Names, pv.Errors)
 		}
-		// env:${input.environment} is env/dev; the gold datastore is
-		// preferred (rvav-tier:gold:soft); net:app chooses the network.
-		if pl := (*pv.Components)[0].Placement; deref(pl.Cluster) != "GVA-DEV-CL01" || deref(pl.Datastore) != "vsan-gva-dev-cl01" ||
-			pl.Constraints == nil || len(*pl.Constraints) != 4 {
-			t.Fatalf("placement = %+v", pl)
+		// env:${input.environment} is env/<environment>; a gold datastore
+		// is preferred (rvav-tier:gold:soft), let go in test, which has
+		// none; net:app chooses the network.
+		for _, want := range []struct{ env, cluster, datastore, network string }{
+			{"dev", "GVA-DEV-CL01", "vsan-gva-dev-cl01", "dvpg-app-dev-vl310"},
+			{"tst", "GVA-TST-CL01", "vsan-gva-tst-cl01", "dvpg-app-tst-vl410"},
+			{"prd", "GVA-PRD-CL0", "", "dvpg-app-prd-vl220"},
+		} {
+			at := in
+			at.Environment = want.env
+			h.json("POST", "/api/v1/requests/preview", "tnguyen", at, 200, &pv)
+			if !pv.Valid {
+				t.Fatalf("%s preview errors = %+v", want.env, pv.Errors)
+			}
+			pl := (*pv.Components)[0].Placement
+			if !strings.HasPrefix(deref(pl.Cluster), want.cluster) || want.datastore != "" && deref(pl.Datastore) != want.datastore ||
+				pl.Constraints == nil || len(*pl.Constraints) != 4 {
+				t.Fatalf("%s placement = %+v", want.env, pl)
+			}
+			for _, k := range *pl.Constraints {
+				if k.Kind == api.Network && deref(k.Object) != want.network {
+					t.Fatalf("%s network = %+v", want.env, k)
+				}
+			}
 		}
 		var req api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", in, 202, &req, "Idempotency-Key", uuid.NewString())

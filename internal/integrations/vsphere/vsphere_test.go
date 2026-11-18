@@ -36,16 +36,19 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 			t.Fatalf("datastore vsan-gva-dev-cl01 = %+v", ds)
 		}
 		// Tags, for placement by tag, once each though the bootstrap ran twice.
-		if inv.TagsError != nil || !contains(cluster.Tags, "rvav-tier/bronze") || len(cluster.Tags) != 1 ||
-			!contains(ds.Tags, "rvav-tier/gold") || len(ds.Tags) != 1 {
+		if inv.TagsError != nil || !slices.Equal(cluster.Tags, []string{"env/dev", "rvav-tier/bronze"}) ||
+			!slices.Equal(ds.Tags, []string{"rvav-tier/gold"}) {
 			t.Fatalf("tags: cluster %v, datastore %v, error %v", cluster.Tags, ds.Tags, inv.TagsError)
 		}
 		pg := findNetworkInv(inv, "dvpg-app-dev-vl310")
-		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") || len(pg.Tags) != 0 {
+		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") || !slices.Equal(pg.Tags, []string{"net/app"}) {
 			t.Fatalf("port group dvpg-app-dev-vl310 = %+v", pg)
 		}
 		if dmz := findNetworkInv(inv, "dvpg-web-prd-vl210"); dmz == nil || !slices.Equal(dmz.Tags, []string{"rvav-zone/dmz"}) {
 			t.Fatalf("port group dvpg-web-prd-vl210 = %+v", dmz)
+		}
+		if db := findNetworkInv(inv, "dvpg-db-dev-vl320"); db == nil || len(db.Tags) != 0 {
+			t.Fatalf("port group dvpg-db-dev-vl320 = %+v", db)
 		}
 		// Three VM templates, the content library's item (ADR-0024) and the
 		// VM template vcsim keeps for it; the storage policies vcsim has.
