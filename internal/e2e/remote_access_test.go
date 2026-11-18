@@ -231,5 +231,26 @@ func TestRemoteAccess(t *testing.T) {
 		if keys, _ := ops["ssh_authorized_keys"].([]any); len(keys) != 1 || keys[0] != stored {
 			t.Fatalf("the stored key's user = %v (%s)", ops, storedFP)
 		}
+
+		// User data holding a stored secret or a secret input leaves
+		// guestinfo once read too; user data without either stays (T1.7).
+		for slug, ud := range map[string]string{
+			"ud-secret": "#cloud-config\nwrite_files:\n  - path: /etc/app/key\n    content: {{ secret \"team-key\" | json }}",
+			"ud-input":  "#cloud-config\nwrite_files:\n  - path: /etc/app/pw\n    content: {{ .inputs.pw | json }}",
+			"ud-plain":  "#cloud-config\nwrite_files:\n  - path: /etc/app/role\n    content: {{ .inputs.role | json }}",
+		} {
+			def := accessItem(map[string]any{"kind": "ssh_key", "username": "ops", "public_key": "${inputs.ssh_key}"})
+			def.Blueprint["guest"].(map[string]any)["cloud_init"] = map[string]any{"user_data": ud}
+			req = h.submit(h.publish(slug, def), strings.TrimPrefix(slug, "ud-"), map[string]any{"ssh_key": key, "pw": "Ud-S3cret!"})
+			h.runWorkflow(req.Id, cloudInitGuest(h.harness, c))
+			h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
+			if req.Status != api.RequestStatusSucceeded {
+				t.Fatalf("%s request = %s %s", slug, req.Status, errorOf(req))
+			}
+			_, meta = h.userData(ctx, c, req.Id)
+			if _, cleared := meta["cleanup-guestinfo"]; cleared != (slug != "ud-plain") {
+				t.Errorf("%s: metadata = %v", slug, meta)
+			}
+		}
 	})
 }

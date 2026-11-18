@@ -937,6 +937,9 @@ func (a *Activities) guestNICs(ctx context.Context, in VMInput, extra []vsphere.
 type guestData struct {
 	image, own string
 	acc        *access
+	// secret is whether the user data holds a stored secret or a secret
+	// input: guestinfo mustn't keep it.
+	secret bool
 }
 
 // guestData renders the user data over the VM and its request, its
@@ -949,6 +952,7 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
+	sealed := maps.Clone(inputs)
 	if inputs, err = a.openSecretInputs(ctx, r.ID, inputs); err != nil {
 		return out, permanent("%v", err)
 	}
@@ -965,17 +969,31 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 	}
 	secret := func(name string) (string, error) {
 		_, v, err := a.openSecret(ctx, in.ProjectID, name)
+		out.secret = out.secret || err == nil
 		return v, err
+	}
+	// A secret input shows in the user data when it renders otherwise
+	// with the inputs still sealed.
+	readsSecretInput := func(text, rendered string) bool {
+		if !slices.ContainsFunc(slices.Collect(maps.Values(sealed)), secretinput.IsMarker) {
+			return false
+		}
+		withSealed := maps.Clone(vars)
+		withSealed["inputs"] = sealed
+		again, err := renderUserData(text, withSealed, secret)
+		return err != nil || again != rendered
 	}
 	if in.Guest.CloudInit != nil {
 		if out.own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret); err != nil {
 			return out, permanent("user data: %v. Ask a catalog admin to check this item.", err)
 		}
+		out.secret = out.secret || readsSecretInput(in.Guest.CloudInit.UserData, out.own)
 	}
 	if in.VM.ImageUserData != "" {
 		if out.image, err = renderUserData(in.VM.ImageUserData, vars, secret); err != nil {
 			return out, permanent("the template's user data: %v. Ask an administrator to check the template.", err)
 		}
+		out.secret = out.secret || readsSecretInput(in.VM.ImageUserData, out.image)
 	}
 	out.acc, err = a.remoteAccess(ctx, in, inputs)
 	return out, err
@@ -1011,7 +1029,7 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	if err != nil {
 		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 	}
-	if g.acc != nil && g.acc.password != "" {
+	if g.secret || g.acc != nil && g.acc.password != "" {
 		if meta, err = withCleanup(meta); err != nil {
 			return "", "", err
 		}

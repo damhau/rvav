@@ -210,7 +210,7 @@ func (r *access) describe() string {
 }
 
 // withCleanup has cloud-init clear the user data from guestinfo once it
-// read it (cleanup-guestinfo): it holds a password.
+// read it (cleanup-guestinfo): it holds a password or another secret.
 func withCleanup(meta []byte) ([]byte, error) {
 	var m map[string]any
 	if err := json.Unmarshal(meta, &m); err != nil {

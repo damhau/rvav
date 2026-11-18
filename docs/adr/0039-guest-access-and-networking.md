@@ -54,7 +54,9 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
   the key's SHA-256 fingerprint only) nor its log carries a key or a
   password. With a password, the metadata asks cloud-init to clear
   `guestinfo.userdata` once read (`cleanup-guestinfo`), so it doesn't stay
-  in the VM's configuration in vCenter.
+  in the VM's configuration in vCenter. So does user data that opens a
+  stored secret, or reads a secret input: one that renders otherwise
+  with the request's inputs still sealed (T1.7).
 - Each component with remote access gets a `guest.access` resource:
   component, kind, user and fingerprint, which the deployment page shows.
   Migration 00062 adds the type.
@@ -81,7 +83,9 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
   `#ps1_sysnative`, that runs VMware Tools' `rpctool.exe "info-set
   guestinfo.metadata …"` with the metadata without the password.
   cloudbase-init keeps the metadata it loaded for the rest of its run, so
-  its password plugin, after the user data plugin, still sets it.
+  its password plugin, after the user data plugin, still sets it. User
+  data that holds a stored secret or a secret input stays in
+  `guestinfo.userdata` on Windows: nothing clears it yet.
 - Without cloudbase-init, a Windows VM's remote access is `password` for
   `Administrator` only: the customization specification's administrator
   password, as `admin_password` is. Anything else (a key, another user,
