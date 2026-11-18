@@ -1,11 +1,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { ArrowRight, LayoutGrid, List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
+import { List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { useTheme } from "@/lib/theme";
+import { adminMenu, mainPages } from "./nav";
 
 interface Entry {
   id: string;
@@ -42,7 +43,7 @@ function Group({ heading, entries }: { heading: string; entries: Entry[] }) {
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const navigate = useNavigate();
-  const { projectId } = useCurrentProject();
+  const { projectId, me } = useCurrentProject();
   const { setTheme } = useTheme();
   const [search, setSearch] = useState("");
   const term = useDeferredValue(search.trim());
@@ -66,12 +67,19 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const match = (...parts: (string | undefined)[]) =>
     !term || parts.some((p) => p?.toLowerCase().includes(term.toLowerCase()));
 
-  const nav: Entry[] = [
-    { id: "go-overview", label: "Overview", icon: ArrowRight, hint: "g o", run: go("/") },
-    { id: "go-catalog", label: "Catalog", icon: LayoutGrid, hint: "g c", run: go("/catalog") },
-    { id: "go-deployments", label: "Deployments", icon: Server, hint: "g d", run: go("/deployments") },
-    { id: "go-requests", label: "Requests", icon: List, hint: "g r", run: go("/requests") },
-  ].filter((e) => match(e.label));
+  const nav: Entry[] = mainPages
+    .filter((p) => match(p.label))
+    .map((p) => ({ id: `go-${p.key}`, label: p.label, icon: p.icon, run: go(p.to) }));
+
+  // The administration pages show once something is typed, in the sidebar's groups.
+  const admin = term
+    ? adminMenu(me).map((g) => ({
+        heading: g.label,
+        entries: g.pages
+          .filter((p) => match(p.label, g.label, ...(p.keywords ?? [])))
+          .map((p): Entry => ({ id: `go-${p.to}`, label: p.label, icon: p.icon, run: go(p.to) })),
+      }))
+    : [];
 
   const items: Entry[] = (catalog.data?.items ?? [])
     .filter((i) => match(i.name, i.summary, i.source.awx_template_name))
@@ -140,6 +148,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         <Group heading="Requests" entries={reqs} />
         <Group heading="Request" entries={items} />
         <Group heading="Go to" entries={nav} />
+        {admin.map((g) => (
+          <Group key={g.heading} heading={g.heading} entries={g.entries} />
+        ))}
         <Group heading="Actions" entries={actions} />
       </Command.List>
       <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-caption text-faint">

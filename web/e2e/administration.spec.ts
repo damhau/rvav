@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function open(page: Page, link: string, heading: string) {
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("link", { name: link }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: link }).click();
   await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
 }
 
@@ -178,7 +178,7 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
 });
 
 test("templates, sizes and network mappings", async ({ page }) => {
-  await open(page, "Templates and networks", "Templates, sizes and networks");
+  await open(page, "Templates and networks", "Templates and networks");
   await page.getByRole("button", { name: "New template" }).click();
   const tpl = page.getByRole("dialog", { name: "New VM template" });
   await tpl.getByRole("textbox", { name: "Key" }).fill("ubuntu24");

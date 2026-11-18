@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 // database, so each flow moves around in the app.
 
 async function openRolesFromNav(page: Page) {
-  await page.getByRole("navigation").getByRole("link", { name: "Roles", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Roles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Roles", level: 1 })).toBeVisible();
 }
 
@@ -32,7 +32,7 @@ async function makeRole(page: Page, key: string, name: string, boxes: string[]) 
 }
 
 async function openProject(page: Page, name: string) {
-  await page.getByRole("navigation").getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
 }
@@ -139,7 +139,7 @@ test("give a custom role in a project and to a group; what it then refuses", asy
   await expect(thomas).toContainText("VM operator given here");
 
   // A group mapped to it in the project.
-  await page.getByRole("navigation").getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects", exact: true }).click();
   const groups = page.getByRole("region", { name: "OIDC group mappings" });
   await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
   await choose(page, "In project", "Web Platform");

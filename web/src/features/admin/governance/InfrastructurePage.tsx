@@ -661,7 +661,7 @@ export function InfrastructurePage() {
   return (
     <Page>
       <PageHeader
-        title="Templates, sizes and networks"
+        title="Templates and networks"
         description="What blueprints' template and size pickers offer, and the subnet each network deploys into."
       />
       <Tabs defaultValue="templates">

@@ -7,8 +7,10 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { can } from "@/lib/can";
+import { useMediaQuery } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
+import { cn } from "@/lib/utils";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
@@ -87,6 +89,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [paletteLoaded, setPaletteLoaded] = useState(false);
   if (paletteOpen && !paletteLoaded) setPaletteLoaded(true);
+  // Below a desktop's width the sidebar is an icon rail, and below a tablet's
+  // a drawer; the drawer opens on both.
+  const rail = useMediaQuery("(width < 64rem)");
+  if (!rail && navOpen) setNavOpen(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -107,15 +113,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <aside className="hidden w-[216px] shrink-0 border-r border-line bg-rail md:block">
-        <Sidebar />
+      <aside className={cn("hidden shrink-0 border-r border-line bg-rail md:block", rail ? "w-14" : "w-[232px]")}>
+        <Sidebar rail={rail} />
       </aside>
 
       <Dialog.Root open={navOpen} onOpenChange={setNavOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 md:hidden" />
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 lg:hidden" />
           <Dialog.Content
-            className="fixed inset-y-0 left-0 z-50 w-[min(260px,85vw)] border-r border-line bg-rail md:hidden"
+            className="fixed inset-y-0 left-0 z-50 w-[min(260px,85vw)] border-r border-line bg-rail lg:hidden"
             style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
           >
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>

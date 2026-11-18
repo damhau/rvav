@@ -106,7 +106,7 @@ export function SetupPage() {
   return (
     <Page>
       <PageHeader
-        title="Set up rvav"
+        title="Setup"
         meta="The steps that get a first request through. Each opens its page, and is ticked once that page has what it needs."
         actions={
           setup.data &&

@@ -194,7 +194,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("1.0 published")).toBeVisible();
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog items" }).click();
   await expect(page.getByRole("region", { name: "Secrets" }).getByRole("row", { name: /cmdb/ })).toContainText(
     "ubuntu-web",
   );
@@ -207,13 +207,13 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
     .filter({ hasText: "Ubuntu with nginx and a backup policy." })
     .last();
   const requestForm = async (label: string, version: string) => {
-    await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
     await expect(card.getByText(`v${version}`, { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Ubuntu web" }).click();
     await expect(page.getByRole("combobox", { name: label })).toBeVisible();
   };
   const backToItem = async () => {
-    await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog items" }).click();
     await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "Ubuntu web" }).click();
   };
   await requestForm("Backup policy", "1.0");

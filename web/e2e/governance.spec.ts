@@ -26,7 +26,7 @@ test("make an API token, see it once, revoke it", async ({ page }) => {
 
 test("search the audit log and export it", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("link", { name: "Audit log" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Audit log" }).click();
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   await expect(page.getByText("catalog.version.publish")).toBeVisible();
   await page.getByRole("combobox", { name: "What" }).click();

@@ -60,7 +60,7 @@ async function publishAndOpen(page: Page, name: string) {
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name: new RegExp(`^${name}`) }).click();
 }
 
@@ -234,7 +234,7 @@ test("approve or reject: a reject fails it, a Retry asks again, a cancel takes t
 
   // The inbox has it too, and sends it to the request's page.
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: /^Approvals/ })
     .click();
   const row = page.getByRole("button", { name: /A step asks: A manager's OK/ });

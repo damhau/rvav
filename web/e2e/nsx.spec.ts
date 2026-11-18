@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function open(page: Page, link: string, heading: string) {
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("link", { name: link }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: link }).click();
   await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
 }
 

@@ -11,8 +11,8 @@ async function choose(page: Page, combobox: string, option: string) {
 
 /** Back to the checklist, from the sidebar (the mock's state lasts the page load). */
 async function checklist(page: Page) {
-  await page.getByRole("navigation").getByRole("link", { name: "Setup" }).click();
-  await expect(page.getByRole("heading", { name: "Set up rvav", level: 1 })).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Setup" }).click();
+  await expect(page.getByRole("heading", { name: "Setup", level: 1 })).toBeVisible();
 }
 
 function step(page: Page, name: string) {
@@ -32,7 +32,7 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
 
   await page.goto("/");
   await expect(page).toHaveURL(/\/admin\/setup$/);
-  await expect(page.getByRole("heading", { name: "Set up rvav", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Setup", level: 1 })).toBeVisible();
   await expect(page.getByText("0 of 8 done")).toBeVisible();
   await expect(step(page, "Add environments and projects")).toContainText(
     "0 environments, 0 projects, 0 placement rules",

@@ -262,7 +262,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
-      await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: /^Owner check/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       // What a requester's form says of it. A toast that is fading reads as too faint.
@@ -350,7 +350,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
-      await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: /^Keep check/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
@@ -440,7 +440,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
-      await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: /^Which way/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });

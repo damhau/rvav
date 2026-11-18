@@ -207,7 +207,7 @@ test("an item of only REST calls, requested and run to its end", async ({ page }
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
 
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name: /^CMDB entry/ }).click();
   await page.getByRole("textbox", { name: "Name" }).fill("web-01");
   await page.getByRole("button", { name: "Submit request" }).click();

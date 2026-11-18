@@ -435,7 +435,7 @@ for (const theme of ["light", "dark"] as const) {
     await scan(page, `designer (${theme})`);
 
     await publish(page);
-    await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
     await page.getByRole("link", { name: new RegExp(`^${item}`) }).click();
     await page.getByRole("textbox", { name: "Name" }).fill("web-01");
     await page.getByRole("button", { name: "Submit request" }).click();

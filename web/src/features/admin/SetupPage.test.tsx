@@ -18,7 +18,7 @@ describe("setup checklist", () => {
   it("is where a new install's administrator lands, with nothing done", async () => {
     freshInstall();
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Set up rvav" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Setup", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("0 of 8 done")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Steps done" })).toHaveAttribute("aria-valuenow", "0");
     const steps = within(screen.getByRole("list", { name: "Steps" })).getAllByRole("listitem");
@@ -75,7 +75,7 @@ describe("setup checklist", () => {
     renderApp("/");
     expect(await screen.findByText("You are not in a project yet")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Set up rvav" })).toHaveAttribute("href", "/admin/setup");
-    expect(screen.queryByRole("heading", { name: "Set up rvav" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Setup", level: 1 })).not.toBeInTheDocument();
   });
 
   it("doesn't open on a seeded install", async () => {
@@ -83,6 +83,6 @@ describe("setup checklist", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Needs your attention" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Setup" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Set up rvav" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Setup", level: 1 })).not.toBeInTheDocument();
   });
 });
