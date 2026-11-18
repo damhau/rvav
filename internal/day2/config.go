@@ -68,7 +68,11 @@ func init() {
 			}
 			fields := []field{number("size_gb", "Size (GB)", help, 1, maxDiskGB, 50)}
 			if len(c.Datastores) > 0 {
-				fields = append(fields, choice("datastore", "Datastore", c.Datastores, firstDatastore(t, c)))
+				// Optional: a request without one puts the disk on the
+				// VM's datastore, as before the choice existed.
+				ds := choice("datastore", "Datastore", c.Datastores, firstDatastore(t, c))
+				ds.optional = true
+				fields = append(fields, ds)
 			}
 			if len(c.StoragePolicies) > 0 {
 				fields = append(fields, policyField(c))
@@ -360,14 +364,16 @@ const datastoreDefault = "datastore_default"
 // policyField offers the storage policies a new disk may take: the VM's
 // placement rule's alone when it names one.
 func policyField(c Choices) field {
+	var f field
 	if c.RulePolicy != "" {
-		return choice("storage_policy", "Storage policy", []api.Option{{Value: c.RulePolicy, Label: c.RulePolicy}}, c.RulePolicy)
+		f = choice("storage_policy", "Storage policy", []api.Option{{Value: c.RulePolicy, Label: c.RulePolicy}}, c.RulePolicy)
+	} else {
+		opts := []api.Option{{Value: datastoreDefault, Label: "The datastore's default"}}
+		for _, p := range c.StoragePolicies {
+			opts = append(opts, api.Option{Value: p, Label: p})
+		}
+		f = choice("storage_policy", "Storage policy", opts, datastoreDefault)
 	}
-	opts := []api.Option{{Value: datastoreDefault, Label: "The datastore's default"}}
-	for _, p := range c.StoragePolicies {
-		opts = append(opts, api.Option{Value: p, Label: p})
-	}
-	f := choice("storage_policy", "Storage policy", opts, datastoreDefault)
 	f.optional = true
 	return f
 }

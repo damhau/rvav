@@ -1,6 +1,7 @@
 package day2
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/damhau/rvav/internal/api"
@@ -88,9 +89,16 @@ func TestAddDiskChoices(t *testing.T) {
 	if opts := *f.UiSchema.Fields["storage_policy"].Options; len(opts) != 1 || f.InitialValues["storage_policy"] != "Gold" {
 		t.Errorf("with the rule's policy: %+v", opts)
 	}
+	if req := f.Schema["required"].([]string); !slices.Equal(req, []string{"size_gb"}) {
+		t.Errorf("required = %v: a size alone adds a disk, as before the choices", req)
+	}
 	ops := a.Ops(vm, map[string]any{"size_gb": 10.0, "datastore": "ds-a", "storage_policy": "Gold", "provisioning": "thin"})
 	if len(ops) != 1 || ops[0].Args["datastore"] != "ds-a" || ops[0].Args["storage_policy"] != "Gold" || ops[0].Detail != "Thin · Storage policy Gold" {
 		t.Errorf("ops = %+v", ops)
+	}
+	ops = a.Ops(vm, map[string]any{"size_gb": 10.0})
+	if len(ops) != 1 || len(ops[0].Args) != 1 || ops[0].Title != "Add a 10 GB disk" {
+		t.Errorf("ops with a size alone = %+v", ops)
 	}
 	f = a.Form(vm, Choices{})
 	if _, ok := f.UiSchema.Fields["datastore"]; ok || deref(f.UiSchema.Fields["size_gb"].Help) != "On the VM's datastore." {
