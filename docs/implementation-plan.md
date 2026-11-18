@@ -525,6 +525,27 @@ whose side tells the owner. Requested, answered (in Go with no worker up,
 the run going on once one is back) and followed on the graph, the side
 taken included; keyboard and axe in both themes.
 
+### The parity programme (after D2)
+Decided 2026-11-18, from [vra-parity.md](vra-parity.md), which counted
+65% of vRA (a partial feature counted as half): an overhaul of the web
+app first, then a milestone per theme of that page's gaps. 80% is passed
+after G1; the milestones after it take rvav to every feature in scope.
+
+| Milestone | What it covers | Parity rows |
+|---|---|---|
+| [V1 UI overhaul](https://github.com/damhau/rvav/milestone/17) | Shared building blocks, a grouped Administration menu, one main thing per page, editing in side panels; the requester pages | A1 |
+| [T1 Templates and placement](https://github.com/damhau/rvav/milestone/18) | String functions and references in expressions, constraint tags, resource pools and strategies, images per vCenter, property groups, secrets in templates, guest access, IPv6 | C4, C6, C7, C9, C13, C14, C18, C19, C22–C26, C30 |
+| [X1 Deployments and day-2](https://github.com/damhau/rvav/milestone/19) | A deployment's topology and resources, list views, a resources view, the missing day-2 actions, updating a deployment, onboarding plans | B1–B3, B5, B7, B13, B15–B18, B22, B27, A19 |
+| [F1 Forms](https://github.com/damhau/rvav/milestone/20) | Every field type, pages, editable defaults, values from REST, a library of value sources, a check on submit | A8, A9, A11–A13, D6 |
+| [G1 Access, sharing and approvals](https://github.com/damhau/rvav/milestone/21) | A supervisor role, approvers by role or manager, items shared with users or groups, deployment sharing, project policies | A7, A20, A28, A29, B4, C5, C6, D15 |
+| [C2 Catalog and requesting](https://github.com/damhau/rvav/milestone/22) | A deployment's name and description, a choice of version, lease rules per item, quotas per user, deployment limits | A15, A23, A26, A27 |
+| [E1 Extensibility](https://github.com/damhau/rvav/milestone/23) | More topics, subscriptions that change the request, forms for custom day-2 actions, custom resource types, richer composites | D1, D2, D4, D8, D9, D11, B19, C27 |
+| [O1 Platform and tooling](https://github.com/damhau/rvav/milestone/24) | A command line, a Terraform provider and a PowerShell module, the UI in French, audit to syslog, notification templates and branding, FIPS | D18, D19, D21, A31–A33 |
+| [I1 Infrastructure gaps](https://github.com/damhau/rvav/milestone/25) | Several NSX Managers, rvav's own IP ranges, Active Directory computer objects, VM items drawn on the canvas, ServiceNow | C2, C11, C16, C31, D27 |
+
+Still left out: Puppet and Salt (C21; AWX runs configuration
+management), vROps (C32), and what section 3 decided out.
+
 ## 7. Dependencies
 
 | Slice | Needs |
