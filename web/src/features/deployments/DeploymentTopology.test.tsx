@@ -61,4 +61,10 @@ describe("a deployment's Topology tab", () => {
     fireEvent.click(within(listed).getByRole("button", { name: "shop-dev-worker05 properties" }));
     expect(onOpen).toHaveBeenCalledWith(vms[4]);
   });
+
+  it("says when there is nothing to draw", () => {
+    renderWithQuery(<DeploymentTopology deployment={{ ...search(), resources: [] }} onOpen={vi.fn()} />);
+    expect(screen.queryByRole("application")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Nothing to draw: the deployment holds no VMs or NSX resources\.$/)).toBeInTheDocument();
+  });
 });

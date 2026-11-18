@@ -79,13 +79,17 @@ export default function DeploymentTopology({
   };
   return (
     <Panel title="Topology" description="What the deployment holds, as rvav last read it from vCenter and NSX.">
-      <Canvas
-        graph={graph}
-        label={`Topology of ${d.name}`}
-        selected={selected}
-        onSelect={select}
-        renderDetails={details}
-      />
+      {graph.nodes.length === 0 ? (
+        <p className="text-secondary text-muted">Nothing to draw: the deployment holds no VMs or NSX resources.</p>
+      ) : (
+        <Canvas
+          graph={graph}
+          label={`Topology of ${d.name}`}
+          selected={selected}
+          onSelect={select}
+          renderDetails={details}
+        />
+      )}
     </Panel>
   );
 }

@@ -664,7 +664,8 @@ nothing about it (positions, layout) is stored.
   draft's is the composite designer
   (`features/admin/catalog/composite/CompositeDesigner.tsx`), and the
   request form, under its fields (`features/requests/RequestTopology.tsx`;
-  see Multi-VM items), and a composite request's page (below).
+  see Multi-VM items), a composite request's page (below), and a
+  deployment's Topology tab (below).
 - **`Canvas`**: `graph` and `label` (names the region and its list), and
   optionally `status` (by node ID: a run's step status, or `undone`),
   `selected` and `onSelect` (controlled, or left to the canvas),
@@ -705,6 +706,17 @@ nothing about it (positions, layout) is stored.
   `Timeline` and its `FailureActions`. The graph object is memoized from
   the topology, so events never lay it out or fit it again; keep a run's
   status out of what sizes a node.
+- **A deployment's Topology tab** (`features/deployments/DeploymentTopology.tsx`,
+  loaded lazily by `DeploymentDetailPage` when `?tab=topology`): drawn from the deployment's resources, not its
+  blueprint (`deploymentGraph` in `features/deployments/topology.ts`), left to right: `vm:<resource ID>` per VM
+  (kind `vm`: power, first IPv4, size, disks; sync drift and NSX tag drift as problems), `network:<name>` and
+  `segment:<name>` from each adapter (an edge per adapter, `Adapter <n>`, `· DHCP` when it is), `sg:<NSX ID>` for
+  the deployment's groups, `nsx:<NSX ID>` for existing ones, `any`, with `member` edges from the memberships and
+  `rule` edges from the policies. A component of up to `ONE_BY_ONE` (4) VMs is drawn VM by VM, in a `frame:<key>`
+  group when there are several components; more is one `component:<key>` node with the count, whose details list
+  its VMs. With several components, the creating request's topology (`q.requestTopology`, not retried) gives
+  titles and the build order (`dependsOn`, `sequence` edges between frames or nodes). Selecting a VM's node, or a
+  name in a grouped node's details, opens `VmPropertiesSheet`, the side panel the Overview's VM names open too.
 - **Themes:** only React Flow's `base.css` is imported; `canvas.css` points
   its variables at the app's tokens, and the nodes are our own components.
 - **A wait on the request's page:** `features/requests/AskPanel.tsx` shows a composite's waits
@@ -743,8 +755,9 @@ nothing about it (positions, layout) is stored.
   Retry, what's refused on a side), `request-run.spec.ts` (a failed run
   retried and followed), D1's acceptance, `one-canvas.spec.ts`, the
   same with the keyboard only, and D2's, `d2-acceptance.spec.ts` (a vRO workflow rebuilt from the keyboard, answered,
-  and followed to the side its answer took, with axe in both themes); `accessibility.spec.ts` scans the
-  designer and a run. The mocks can't approve as someone else, so a
+  and followed to the side its answer took, with axe in both themes), `deployment-topology.spec.ts` (a
+  deployment's Topology tab, a VM's properties opened by click and by keyboard, with axe in both themes);
+  `accessibility.spec.ts` scans the designer and a run. The mocks can't approve as someone else, so a
   spec's own request of a seeded composite is followed as far as its
   approval; a new composite item needs none, so `composite-rest.spec.ts`
   follows one to its end, and the seeded REQ-10484 is retried to follow a run with its failure

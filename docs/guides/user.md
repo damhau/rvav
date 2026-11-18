@@ -172,12 +172,23 @@ and owner at the top, and:
   in vCenter, live; its details, lease and placement. A VM whose address
   comes from DHCP shows the address it reports, once it has one, and a VM
   with an IPv6 address lists it beside its IPv4 one;
+- **Topology:** what it holds, drawn as a graph: its VMs, the networks and
+  NSX segments their adapters are on, the security groups they are in, and
+  the firewall rules into those groups;
 - **History:** the day-2 actions that ran on it (the request that created it
   is under **Details**);
 - **Inputs:** what it was requested with.
 
-To see everything about one VM, select its name in the **Overview** list.
-Its properties open in a side panel:
+On **Topology**, each VM is a node, with an edge for each network adapter.
+When the deployment has several components, each component's VMs sit in a
+frame named after it, and an arrow shows which component was built after
+which. A component of more than four VMs is one node with their count:
+select it to list its VMs. To move between nodes with the keyboard, use the
+arrow keys, **Home** and **End**; press **Enter** to select one. To read the
+same as a list, select **List**.
+
+To see everything about one VM, select its name in the **Overview** list,
+or its node on **Topology**. Its properties open in a side panel:
 - its guest OS, power state and VMware Tools state;
 - each network adapter: network, MAC address, IPv4 and IPv6 addresses, and
   whether the address comes from DHCP or is fixed;

@@ -274,6 +274,37 @@ differ, and none fits rvav's design system).
   canvas's own list there (`Canvas`'s `list` prop) and keeps its live
   region.
 
+### A deployment's topology (X1.1)
+- **What it holds, not what it was asked for.** A deployment's Topology
+  tab draws its resources: each VM as it was last synced from vCenter,
+  the networks and NSX segments its adapters are on, the security groups
+  it is in, existing NSX groups, and the firewall rules between them. A
+  VM moved to another network, or a group membership removed in NSX,
+  shows as it is. The blueprint isn't read: the deployment may come from
+  an earlier version, an import from vRA, or onboarding, and day-2
+  actions change it after.
+- **Read only, the same canvas.** It adds a `vm` node kind, one VM, beside
+  the blueprint's `component`; nothing else of the canvas changes. Not
+  editing anything, it has no designer and no problems from checks: a VM
+  changed outside rvav, or whose NSX tags were removed, carries that as a
+  problem, so it stands out as the Overview's drift does.
+- **One VM per node, up to four per component.** A component of up to
+  four VMs is drawn VM by VM, so each can be selected; four cards stack
+  within the canvas's default height and stay readable without zooming
+  out. More is one node with the count, whose details list its VMs. With
+  several components, each component's VMs sit in a frame named after it
+  (a `CanvasGroup`, as a parallel group is).
+- **Titles and build order from the request.** VMs carry their component's
+  key only. With several components, the tab reads the creating
+  request's topology (`GET /requests/{id}/topology`, the version it was
+  made from) for the components' titles and the order they were built in
+  (`dependsOn`, as the request form's graph draws it). When it can't be
+  read (onboarded, or a request the reader may not see), the keys stand
+  for the titles and no order is drawn.
+- **A VM selected opens its properties**, the side panel a VM's name in
+  the Overview list opens too; other nodes show their details under the
+  canvas.
+
 ### Accessibility
 - The graph is one Tab stop, on the node last visited (roving tabindex).
   The arrow keys move to the nearest node that way (the next layer, or

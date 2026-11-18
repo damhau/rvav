@@ -101,7 +101,9 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
 - Detail page: its status and owner in the header, beside an **Actions** menu
   with every action that applies (a submenu per VM when there are several),
   each it can't run with the reason. Tabs in the address: Overview (VMs live,
-  network, security groups, details, lease, placement), History, Inputs.
+  network, security groups, details, lease, placement), Topology (the canvas,
+  read only, drawn from what the deployment holds; a VM's node opens its
+  properties), History, Inputs.
 - VM row: power indicator, IP and FQDN (click to copy), console button, actions menu.
   Its name opens the VM's properties in a read-only side panel: guest, adapters,
   disks, snapshots, ISO, placement, custom properties, and a link into the
