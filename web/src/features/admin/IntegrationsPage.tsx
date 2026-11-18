@@ -14,7 +14,7 @@ const td = "border-b border-line px-4 py-2 align-top";
 function Table({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] border-collapse text-[13px]">
+      <table className="w-full min-w-[560px] border-collapse text-body">
         <thead>
           <tr className="label text-left">
             {head.map((h) => (
@@ -41,14 +41,14 @@ function Table({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
 }
 
 function Mono({ children }: { children: React.ReactNode }) {
-  return <span className="font-mono text-xs">{children}</span>;
+  return <span className="font-mono text-secondary">{children}</span>;
 }
 
 function Report({ report }: { report: IpamReconcile }) {
   const clean = report.orphan_addresses.length + report.orphan_records.length + report.missing.length === 0;
   return (
     <div className="flex flex-col">
-      <p className="px-4 py-3 text-xs text-muted">
+      <p className="px-4 py-3 text-secondary text-muted">
         EfficientIP has {report.managed_addresses} addresses and {report.managed_records} DNS records tagged for rvav.
         Checked {new Date(report.checked_at).toLocaleString()}.
       </p>
@@ -60,7 +60,7 @@ function Report({ report }: { report: IpamReconcile }) {
       )}
       {report.orphan_addresses.length > 0 && (
         <section aria-label="Addresses no deployment owns" className="border-t border-line">
-          <h3 className="px-4 pt-3 text-[13px] font-semibold">Addresses no deployment owns</h3>
+          <h3 className="px-4 pt-3 text-body font-semibold">Addresses no deployment owns</h3>
           <Table
             head={["Address", "Name", "Subnet", "EfficientIP ID"]}
             rows={report.orphan_addresses.map((a) => [
@@ -74,7 +74,7 @@ function Report({ report }: { report: IpamReconcile }) {
       )}
       {report.orphan_records.length > 0 && (
         <section aria-label="DNS records no deployment owns" className="border-t border-line">
-          <h3 className="px-4 pt-3 text-[13px] font-semibold">DNS records no deployment owns</h3>
+          <h3 className="px-4 pt-3 text-body font-semibold">DNS records no deployment owns</h3>
           <Table
             head={["Name", "Type", "Value", "EfficientIP ID"]}
             rows={report.orphan_records.map((r) => [
@@ -88,7 +88,7 @@ function Report({ report }: { report: IpamReconcile }) {
       )}
       {report.missing.length > 0 && (
         <section aria-label="Missing in EfficientIP" className="border-t border-line">
-          <h3 className="px-4 pt-3 text-[13px] font-semibold">Owned by a deployment, missing in EfficientIP</h3>
+          <h3 className="px-4 pt-3 text-body font-semibold">Owned by a deployment, missing in EfficientIP</h3>
           <Table
             head={["Deployment", "What", "EfficientIP ID"]}
             rows={report.missing.map((m) => [
@@ -130,7 +130,7 @@ export function IntegrationsPage({ tab }: { tab?: string }) {
         }
       >
         {!run && (
-          <p className="px-4 py-3 text-xs text-muted">
+          <p className="px-4 py-3 text-secondary text-muted">
             Compares EfficientIP with what rvav recorded: addresses and records tagged for rvav that no deployment owns
             (for example left by a failed run), and those a deployment owns that EfficientIP no longer has. Nothing is
             changed. A request running during the check may show its newest objects here.

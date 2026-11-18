@@ -42,9 +42,9 @@ function StepQuestion({ a }: { a: Approval }) {
   const given = q.form.filter((f) => f.key in answer);
   return (
     <>
-      {q.message && <p className="text-xs whitespace-pre-wrap">{q.message}</p>}
+      {q.message && <p className="text-secondary whitespace-pre-wrap">{q.message}</p>}
       {given.length > 0 && (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-secondary">
           {given.map((f) => (
             <div key={f.key} className="contents">
               <dt className="text-muted">{f.label}</dt>
@@ -91,8 +91,8 @@ function Vote({ v, step }: { v: ApprovalVote; step: boolean }) {
       {v.comment && <span className="text-muted">“{v.comment}”</span>}
       {v.changes.map((c) => (
         <span key={c.field} className="text-muted">
-          Changed {c.label.toLowerCase()} from <span className="font-mono text-[12px]">{toText(c.from)}</span> to{" "}
-          <span className="font-mono text-[12px]">{toText(c.to)}</span>
+          Changed {c.label.toLowerCase()} from <span className="font-mono text-secondary">{toText(c.from)}</span> to{" "}
+          <span className="font-mono text-secondary">{toText(c.to)}</span>
         </span>
       ))}
     </li>
@@ -104,7 +104,7 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
   return (
     <ol className="flex flex-col gap-3.5" aria-label={label}>
       {levels.map((a) => (
-        <li key={a.id} className="flex flex-col gap-1.5 text-[13px]">
+        <li key={a.id} className="flex flex-col gap-1.5 text-body">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">
               {a.level.name}
@@ -117,11 +117,11 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
             </span>
             <ApprovalStatusBadge status={a.status} label={stepLabel(a)} />
           </div>
-          {a.reasons.length > 0 && <span className="text-xs text-muted">{a.reasons.join(" · ")}</span>}
+          {a.reasons.length > 0 && <span className="text-secondary text-muted">{a.reasons.join(" · ")}</span>}
           <StepQuestion a={a} />
-          {a.outcome && <span className="text-xs">{a.outcome}</span>}
+          {a.outcome && <span className="text-secondary">{a.outcome}</span>}
           {a.status === "pending" && (
-            <span className="text-xs text-muted">
+            <span className="text-secondary text-muted">
               {a.approvers.length > 0 ? `Waiting for ${a.approvers.map((u) => u.name).join(", ")}` : "Waiting"}
               {a.due_at && (
                 <>
@@ -133,7 +133,7 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
             </span>
           )}
           {a.votes.length > 0 && (
-            <ul className="flex flex-col gap-1.5 text-xs">
+            <ul className="flex flex-col gap-1.5 text-secondary">
               {a.votes.map((v) => (
                 <Vote key={v.user.id} v={v} step={Boolean(a.step_key)} />
               ))}

@@ -28,14 +28,14 @@ export function MenuItem({
   return (
     <D.Item
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] outline-none select-none data-[disabled]:opacity-40 data-[highlighted]:bg-sunken [&_svg]:size-3.5 [&_svg]:text-faint",
+        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-body outline-none select-none data-[disabled]:opacity-40 data-[highlighted]:bg-sunken [&_svg]:size-3.5 [&_svg]:text-faint",
         danger && "text-bad [&_svg]:text-bad",
         className,
       )}
       {...props}
     >
       {children}
-      {shortcut && <span className="ml-auto pl-4 font-mono text-[11px] text-faint">{shortcut}</span>}
+      {shortcut && <span className="ml-auto pl-4 font-mono text-caption text-faint">{shortcut}</span>}
     </D.Item>
   );
 }

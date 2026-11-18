@@ -90,7 +90,7 @@ export function Timeline({
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span
                   className={cn(
-                    "text-[13px]",
+                    "text-body",
                     s.status === "pending" && "text-muted",
                     s.status === "running" && "font-semibold",
                     s.status === "failed" && "font-semibold text-bad",
@@ -101,14 +101,14 @@ export function Timeline({
                 {system && s.system && (
                   <span
                     className={cn(
-                      "font-mono text-[10px] tracking-wide uppercase",
+                      "font-mono text-badge tracking-wide uppercase",
                       s.status === "pending" ? "text-faint" : systemTone[s.system],
                     )}
                   >
                     {system}
                   </span>
                 )}
-                <span className="tnum ml-auto flex gap-3 font-mono text-[11px] text-faint">
+                <span className="tnum ml-auto flex gap-3 text-caption text-faint">
                   {s.started_at && s.status !== "pending" && <span>{clock(s.started_at)}</span>}
                   {s.started_at && (s.status === "running" || s.finished_at) && (
                     <span className="w-14 text-right">
@@ -121,12 +121,12 @@ export function Timeline({
                   )}
                 </span>
               </div>
-              {s.detail && <span className="text-xs text-muted">{s.detail}</span>}
+              {s.detail && <span className="text-secondary text-muted">{s.detail}</span>}
               {/* A wait for a time, or a poll's deadline: in the viewer's own time. */}
               {s.due_at && (s.status === "running" || s.status === "done") && (
-                <span className="text-xs text-muted">Until {fullDate(s.due_at)}</span>
+                <span className="text-secondary text-muted">Until {fullDate(s.due_at)}</span>
               )}
-              {s.error && <span className="text-xs text-bad">{s.error}</span>}
+              {s.error && <span className="text-secondary text-bad">{s.error}</span>}
               {s.children.length > 0 && s.status !== "pending" && (
                 <div className="mt-2 rounded-md border border-line bg-sunken/60 px-3 py-2">
                   <ul className="flex flex-col gap-1">
@@ -138,7 +138,7 @@ export function Timeline({
                         <div className="min-w-0">
                           <span
                             className={cn(
-                              "font-mono text-[12px]",
+                              "font-mono text-secondary",
                               c.status === "pending" && "text-faint",
                               c.status === "running" && "font-medium",
                               c.status === "failed" && "text-bad",
@@ -146,7 +146,7 @@ export function Timeline({
                           >
                             {c.title}
                           </span>
-                          {c.error && <p className="font-mono text-[11px] text-bad">{c.error}</p>}
+                          {c.error && <p className="font-mono text-caption text-bad">{c.error}</p>}
                         </div>
                       </li>
                     ))}
@@ -156,7 +156,7 @@ export function Timeline({
                       type="button"
                       onClick={() => onOpenLog(s)}
                       aria-pressed={selectedLogStep === s.id}
-                      className="mt-2 text-xs font-medium text-accent hover:underline"
+                      className="mt-2 text-secondary font-medium text-accent hover:underline"
                     >
                       {selectedLogStep === s.id ? "Showing job output" : "Show job output"}
                     </button>

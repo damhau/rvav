@@ -9,7 +9,7 @@ export function NotInSlice({ title, what }: { title: string; what: string }) {
         <div className="flex max-w-prose flex-col gap-2">
           <p className="font-medium">Not in this slice yet</p>
           <p className="text-muted">{what}</p>
-          <p className="text-xs text-faint">
+          <p className="text-secondary text-faint">
             See the roadmap in <span className="font-mono">docs/roadmap.md</span>. Meanwhile you can{" "}
             <Link to="/catalog">request something from the catalog</Link> or{" "}
             <Link to="/requests">follow your requests</Link>.

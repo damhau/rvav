@@ -79,15 +79,15 @@ function CompareDialog({ item, onClose }: { item: AdminCatalogItem; onClose: () 
               <Select id="compare-to" value={to} onChange={setTo} options={options} className="w-48" />
             </Field>
           </div>
-          {from === to && <p className="text-xs text-muted">Choose two different versions.</p>}
+          {from === to && <p className="text-secondary text-muted">Choose two different versions.</p>}
           {diff.isPending && from !== to && <Skeleton className="h-24" />}
-          {diff.data && diff.data.changes.length === 0 && <p className="text-xs text-muted">No difference.</p>}
+          {diff.data && diff.data.changes.length === 0 && <p className="text-secondary text-muted">No difference.</p>}
           {diff.data && diff.data.changes.length > 0 && (
             <ul aria-label="Changes" className="flex max-h-[50vh] flex-col overflow-auto rounded-md border border-line">
               {diff.data.changes.map((c, i) => (
                 <li
                   key={i}
-                  className="flex items-baseline gap-2 border-b border-line px-3 py-1.5 text-xs last:border-b-0"
+                  className="flex items-baseline gap-2 border-b border-line px-3 py-1.5 text-secondary last:border-b-0"
                 >
                   <Badge tone={c.change === "added" ? "ok" : c.change === "removed" ? "bad" : "warn"}>{c.change}</Badge>
                   <span className="text-faint">{c.area}</span>
@@ -185,7 +185,7 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
       }
     >
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-body">
           <thead>
             <tr className="label text-left">
               <th scope="col" className="border-b border-line px-4 py-2 font-medium">
@@ -210,13 +210,15 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
                     <span className="font-mono font-medium">{v.number}</span>
                     <Badge tone={stateTone[v.state]}>{v.state}</Badge>
                   </div>
-                  <div className="text-[11px] text-faint">
+                  <div className="text-caption text-faint">
                     {v.created_by ? `${v.created_by.name}, ` : ""}
                     {relative(v.published_at ?? v.created_at)}
                   </div>
                 </td>
-                <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.changelog || "—"}</td>
-                <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">{v.deployments}</td>
+                <td className="border-b border-line px-3 py-2 align-top text-secondary text-muted">
+                  {v.changelog || "—"}
+                </td>
+                <td className="border-b border-line px-3 py-2 align-top text-secondary text-muted">{v.deployments}</td>
                 <td className="border-b border-line px-4 py-2 text-right align-top whitespace-nowrap">
                   {v.state === "draft" && (
                     <>
@@ -396,10 +398,12 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
       }
     >
       {!editable && (
-        <p className="mb-2 text-xs text-muted">Published and earlier versions never change: make a draft to edit.</p>
+        <p className="mb-2 text-secondary text-muted">
+          Published and earlier versions never change: make a draft to edit.
+        </p>
       )}
       {pending && (
-        <p role="note" className="mb-2 text-xs text-warn">
+        <p role="note" className="mb-2 text-secondary text-warn">
           This shows the designer's changes, which the server hasn't saved yet; fix them here and save.
         </p>
       )}
@@ -424,7 +428,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
             </Suspense>
           )}
           {problems.length > 0 && (
-            <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-xs text-bad">
+            <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-secondary text-bad">
               {problems.map((p, i) => (
                 <li key={i}>
                   Line {p.line}: {p.message}
@@ -528,12 +532,12 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
         >
           <Input id="item-tags" value={d.tags} onChange={(e) => set("tags", e.target.value)} />
         </Field>
-        <div className="flex items-center gap-2 self-end pb-1 text-[13px]">
+        <div className="flex items-center gap-2 self-end pb-1 text-body">
           <Checkbox id="item-featured" checked={d.featured} onChange={(v) => set("featured", v)} />
           <label htmlFor="item-featured">Featured in the catalog</label>
         </div>
         <fieldset className="md:col-span-2">
-          <legend className="mb-1.5 text-xs font-medium">Icon</legend>
+          <legend className="mb-1.5 text-secondary font-medium">Icon</legend>
           <div role="radiogroup" aria-label="Icon" className="flex flex-wrap gap-1.5">
             {Object.keys(icons).map((name, i, names) => (
               <button
@@ -592,7 +596,7 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
   const projects = item.entitlements.projects ?? [];
   return (
     <Panel title="Who may request it">
-      <div className="flex max-w-xl flex-col gap-3 text-[13px]">
+      <div className="flex max-w-xl flex-col gap-3 text-body">
         <div role="radiogroup" aria-label="Open to" className="flex flex-col gap-1.5">
           {[
             { v: true, label: "Every project", hint: "projects made later included" },
@@ -601,7 +605,7 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
             <label key={o.label} className="flex items-center gap-2">
               <input type="radio" name="open-to" checked={all === o.v} onChange={() => setAll(o.v)} />
               {o.label}
-              {o.hint && <span className="text-xs text-faint">{o.hint}</span>}
+              {o.hint && <span className="text-secondary text-faint">{o.hint}</span>}
             </label>
           ))}
         </div>
@@ -622,7 +626,7 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
                   }
                 />
                 <label htmlFor={`project-${p.id}`}>{p.name}</label>
-                <span className="font-mono text-[11px] text-faint">{p.code}</span>
+                <span className="font-mono text-caption text-faint">{p.code}</span>
               </li>
             ))}
           </ul>

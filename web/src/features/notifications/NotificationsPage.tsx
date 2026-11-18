@@ -41,7 +41,7 @@ function List() {
       flush
       actions={
         <div className="flex items-center gap-3">
-          <label htmlFor="unread-only" className="flex items-center gap-1.5 text-xs">
+          <label htmlFor="unread-only" className="flex items-center gap-1.5 text-secondary">
             <Checkbox id="unread-only" checked={unread} onChange={setUnread} />
             Unread only
           </label>
@@ -62,7 +62,7 @@ function List() {
       {items.length > 0 && (
         <ul aria-label="Notifications" className="divide-y divide-line">
           {items.map((n) => (
-            <li key={n.id} className="flex items-start gap-3 px-4 py-2.5 text-[13px]">
+            <li key={n.id} className="flex items-start gap-3 px-4 py-2.5 text-body">
               <div className="min-w-0 flex-1">
                 {n.link ? (
                   <Link
@@ -146,10 +146,10 @@ function Preferences() {
   return (
     <div className="flex flex-col gap-4">
       <Panel title="Where rvav can reach you">
-        <ul className="flex flex-col gap-2 text-[13px]">
+        <ul className="flex flex-col gap-2 text-body">
           <li className="flex items-center gap-2">
             <Badge tone="ok">On</Badge> <span className="font-medium">In the app</span>
-            <span className="text-xs text-muted">Always: everything is here.</span>
+            <span className="text-secondary text-muted">Always: everything is here.</span>
           </li>
           {channels.map((ch) => {
             const c = reach[ch];
@@ -157,7 +157,7 @@ function Preferences() {
               <li key={ch} className="flex flex-wrap items-center gap-2">
                 {c?.available ? <Badge tone="ok">Can reach you</Badge> : <Badge tone="neutral">Can't</Badge>}
                 <span className="font-medium">{channelLabel[ch]}</span>
-                <span className="text-xs text-muted">{c?.available ? c.address : c?.reason}</span>
+                <span className="text-secondary text-muted">{c?.available ? c.address : c?.reason}</span>
                 {c?.available && (
                   <Button
                     size="sm"
@@ -194,7 +194,7 @@ function Preferences() {
             />
           </Field>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-[13px]">
+            <table className="w-full min-w-[620px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line py-2 pr-3 font-medium">
@@ -216,9 +216,9 @@ function Preferences() {
                     <th scope="row" className="border-b border-line py-2 pr-3 text-left font-normal">
                       <span className="font-medium">{kindLabel[r.kind].label}</span>
                       {!differs(r.kind, rules[r.kind] ?? []) && (
-                        <span className="ml-2 text-[11px] text-faint">default</span>
+                        <span className="ml-2 text-caption text-faint">default</span>
                       )}
-                      <div className="text-xs text-muted">{kindLabel[r.kind].hint}</div>
+                      <div className="text-secondary text-muted">{kindLabel[r.kind].hint}</div>
                     </th>
                     <td className="border-b border-line px-3 py-2">
                       <Checkbox

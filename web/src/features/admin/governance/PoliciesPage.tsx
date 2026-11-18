@@ -192,7 +192,7 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
           >
             <Textarea
               id="ap-condition"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               rows={2}
               value={f.condition}
               onChange={(e) => setF({ ...f, condition: e.target.value })}
@@ -225,13 +225,13 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
           <Field label="Approved at once when (CEL, optional)" htmlFor="ap-auto" error={errors["/auto_approve"]}>
             <Input
               id="ap-auto"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={f.auto_approve ?? ""}
               onChange={(e) => setF({ ...f, auto_approve: e.target.value || null })}
             />
           </Field>
           <LevelsEditor value={f.levels} onChange={(levels) => setF({ ...f, levels })} errors={errors} />
-          <label htmlFor="ap-enabled" className="flex items-center gap-1.5 text-[13px]">
+          <label htmlFor="ap-enabled" className="flex items-center gap-1.5 text-body">
             <Checkbox id="ap-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
             Enabled
           </label>
@@ -284,7 +284,7 @@ function Approvals({ canEdit }: { canEdit: boolean }) {
       )}
       {items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -311,12 +311,12 @@ function Approvals({ canEdit }: { canEdit: boolean }) {
                         Off
                       </Badge>
                     )}
-                    <div className="text-xs text-faint">
+                    <div className="text-secondary text-faint">
                       {p.project_id ? projects.name(p.project_id) : "Every project"} · priority {p.priority}
                     </div>
                   </td>
-                  <td className={`${td} font-mono text-xs`}>{p.condition}</td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} font-mono text-secondary`}>{p.condition}</td>
+                  <td className={`${td} text-secondary text-muted`}>
                     {p.levels.map((l) => l.group ?? l.approvers?.join(", ") ?? l.name).join(" → ")}
                   </td>
                   <td className={`${td} text-right whitespace-nowrap`}>
@@ -450,7 +450,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           >
             <Input
               id="d2-actions"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={actions}
               onChange={(e) => setActions(e.target.value)}
             />
@@ -463,7 +463,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           >
             <Input
               id="d2-roles"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={roles}
               onChange={(e) => setRoles(e.target.value)}
             />
@@ -476,7 +476,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           >
             <Textarea
               id="d2-condition"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               rows={2}
               value={f.condition}
               onChange={(e) => setF({ ...f, condition: e.target.value })}
@@ -496,7 +496,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
           {f.effect === "approval" && (
             <LevelsEditor value={f.levels ?? []} onChange={(levels) => setF({ ...f, levels })} errors={errors} />
           )}
-          <label htmlFor="d2-enabled" className="flex items-center gap-1.5 text-[13px]">
+          <label htmlFor="d2-enabled" className="flex items-center gap-1.5 text-body">
             <Checkbox id="d2-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
             Enabled
           </label>
@@ -543,14 +543,14 @@ function Day2({ canEdit }: { canEdit: boolean }) {
         )
       }
     >
-      <p className="border-b border-line px-4 py-2 text-xs text-muted">
+      <p className="border-b border-line px-4 py-2 text-secondary text-muted">
         The first policy that matches an action decides; when none does, the action is denied.
       </p>
       {policies.isPending && <SkeletonRows rows={3} cols={4} />}
       {policies.isError && <ErrorState error={policies.error} onRetry={() => void policies.refetch()} />}
       {items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -580,10 +580,10 @@ function Day2({ canEdit }: { canEdit: boolean }) {
                         Off
                       </Badge>
                     )}
-                    <div className="text-xs text-faint">priority {p.priority}</div>
+                    <div className="text-secondary text-faint">priority {p.priority}</div>
                   </td>
-                  <td className={`${td} font-mono text-xs`}>{(p.actions ?? []).join(", ")}</td>
-                  <td className={`${td} text-xs`}>
+                  <td className={`${td} font-mono text-secondary`}>{(p.actions ?? []).join(", ")}</td>
+                  <td className={`${td} text-secondary`}>
                     {(p.roles ?? []).length ? (p.roles ?? []).join(", ") : "Anyone"}
                     {p.condition !== "true" && <div className="font-mono text-faint">{p.condition}</div>}
                   </td>
@@ -773,7 +773,7 @@ function Leases({ canEdit }: { canEdit: boolean }) {
       {leases.isPending && <SkeletonRows rows={3} cols={4} />}
       {leases.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -800,13 +800,15 @@ function Leases({ canEdit }: { canEdit: boolean }) {
                   <tr key={`${l.environment}-${l.project_id ?? ""}`}>
                     <td className={`${td} pl-4`}>
                       {l.environment}
-                      {l.project_id && <span className="text-xs text-muted"> · {projects.name(l.project_id)}</span>}
+                      {l.project_id && (
+                        <span className="text-secondary text-muted"> · {projects.name(l.project_id)}</span>
+                      )}
                     </td>
-                    <td className={`${td} text-xs`}>
+                    <td className={`${td} text-secondary`}>
                       {l.default_days ? `${l.default_days} days, up to ${l.max_days ?? "—"}` : "None"}
                     </td>
-                    <td className={`${td} text-xs`}>{l.max_extensions}</td>
-                    <td className={`${td} text-xs text-muted`}>
+                    <td className={`${td} text-secondary`}>{l.max_extensions}</td>
+                    <td className={`${td} text-secondary text-muted`}>
                       {expiryLabels[l.expiry_action]}, {l.grace_days} days' grace
                     </td>
                     <td className={`${td} text-right whitespace-nowrap`}>
@@ -919,7 +921,7 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
           >
             <Input
               id="nm-template"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={f.template}
               onChange={(e) => setF({ ...f, template: e.target.value })}
             />
@@ -941,7 +943,7 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
             error={errorAt(errors, "/offers")}
           />
           <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
-            <legend className="px-1 text-xs font-medium">Next names</legend>
+            <legend className="px-1 text-secondary font-medium">Next names</legend>
             <div className="grid grid-cols-3 gap-2">
               <Select
                 aria-label="Preview project"
@@ -966,7 +968,7 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
               </Button>
             </div>
             {preview.data && (
-              <div className="text-xs" aria-live="polite">
+              <div className="text-secondary" aria-live="polite">
                 {preview.data.problem && <p className="text-warn">{preview.data.problem}</p>}
                 {preview.data.names.length > 0 && (
                   <p>
@@ -1017,7 +1019,7 @@ function Naming({ canEdit }: { canEdit: boolean }) {
         )
       }
     >
-      <p className="border-b border-line px-4 py-2 text-xs text-muted">
+      <p className="border-b border-line px-4 py-2 text-secondary text-muted">
         The most specific offer wins over a blueprint's own template. A name is never given twice: rvav checks vCenter,
         DNS and every deployment it made.
       </p>
@@ -1027,7 +1029,7 @@ function Naming({ canEdit }: { canEdit: boolean }) {
       )}
       {policies.data && policies.data.items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -1048,8 +1050,8 @@ function Naming({ canEdit }: { canEdit: boolean }) {
               {policies.data.items.map((p) => (
                 <tr key={p.id}>
                   <td className={`${td} pl-4 font-medium`}>{p.name}</td>
-                  <td className={`${td} font-mono text-xs`}>{p.template}</td>
-                  <td className={`${td} text-xs text-muted`}>{offersText(p.offers, projects.name)}</td>
+                  <td className={`${td} font-mono text-secondary`}>{p.template}</td>
+                  <td className={`${td} text-secondary text-muted`}>{offersText(p.offers, projects.name)}</td>
                   <td className={`${td} text-right whitespace-nowrap`}>
                     {canEdit && (
                       <>
@@ -1084,11 +1086,11 @@ function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
   if (!d) return null;
   return (
     <section aria-label={title} className="flex flex-col gap-1 rounded-md border border-line p-3">
-      <h3 className="text-xs font-semibold">{title}</h3>
-      <p className="text-[13px]">{d.outcome}</p>
-      <p className="text-xs text-muted">Decided by: {d.decided_by ?? "nothing"}</p>
+      <h3 className="text-secondary font-semibold">{title}</h3>
+      <p className="text-body">{d.outcome}</p>
+      <p className="text-secondary text-muted">Decided by: {d.decided_by ?? "nothing"}</p>
       {d.considered.length > 0 && (
-        <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+        <ul className="mt-1 flex flex-col gap-0.5 text-secondary">
           {d.considered.map((c) => (
             <li key={c.id} className={c.applies ? "" : "text-faint"}>
               {c.applies ? "✓" : "–"} {c.name}: {c.why}
@@ -1178,9 +1180,9 @@ function Explain() {
           <Decision title="Lease" d={r.lease} />
           <Decision title="Naming" d={r.naming} />
           <section aria-label="Quota" className="flex flex-col gap-1 rounded-md border border-line p-3">
-            <h3 className="text-xs font-semibold">Quota</h3>
-            {r.quota.length === 0 && <p className="text-xs text-muted">No limit.</p>}
-            <ul className="text-xs">
+            <h3 className="text-secondary font-semibold">Quota</h3>
+            {r.quota.length === 0 && <p className="text-secondary text-muted">No limit.</p>}
+            <ul className="text-secondary">
               {r.quota.map((l) => (
                 <li key={`${l.resource}-${l.scope}`}>
                   {l.resource} {l.scope ? `in ${l.scope}` : "(project)"}: {l.used + l.reserved} of{" "}

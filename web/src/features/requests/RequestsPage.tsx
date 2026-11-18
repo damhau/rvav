@@ -80,7 +80,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
             </Link>
           ))}
         </div>
-        <label className="ml-auto flex items-center gap-2 text-xs text-muted">
+        <label className="ml-auto flex items-center gap-2 text-secondary text-muted">
           <input
             type="checkbox"
             checked={Boolean(search.mine)}
@@ -138,7 +138,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
                     >
                       {r.title}
                     </Link>
-                    <div className="font-mono text-[11px] text-faint">{r.number}</div>
+                    <div className="font-mono text-caption text-faint">{r.number}</div>
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
                     <RequestStatusBadge status={r.status} />
@@ -157,7 +157,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
                       {(r.status === "running" || r.status === "cancelling") && <ProgressSegments request={r} />}
                     </div>
                   </td>
-                  <td className="border-b border-line px-3 py-2.5 text-muted">{r.requester.name}</td>
+                  <td className="border-b border-line px-3 py-2.5 whitespace-nowrap text-muted">{r.requester.name}</td>
                   <td className="border-b border-line px-4 py-2.5 text-right text-muted">
                     <Time iso={r.submitted_at} />
                   </td>

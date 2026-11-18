@@ -56,7 +56,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
         <Menu>
           <MenuTrigger asChild>
             <Button variant="secondary" className="border-line">
-              <span className="text-[11px] font-normal text-faint">Project</span>
+              <span className="text-caption font-normal text-faint">Project</span>
               <span className="max-w-40 truncate">{project.name}</span>
               <ChevronDown className="text-faint" />
             </Button>
@@ -67,7 +67,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               <MenuItem key={p.project.id} onSelect={() => setProjectId(p.project.id)}>
                 <span className="flex flex-col">
                   <span>{p.project.name}</span>
-                  <span className="text-[11px] text-faint">{rolesLabel(me, p.project.id)}</span>
+                  <span className="text-caption text-faint">{rolesLabel(me, p.project.id)}</span>
                 </span>
                 {p.project.id === project.id && <Check className="ml-auto text-accent!" />}
               </MenuItem>
@@ -99,19 +99,19 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               <span className="sr-only">Account: </span>
               <span
                 aria-hidden
-                className="flex size-[26px] items-center justify-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent"
+                className="flex size-[26px] items-center justify-center rounded-full bg-accent-soft text-badge font-semibold text-accent"
               >
                 {initials(me.user.name)}
               </span>
               <span className="hidden flex-col text-left leading-tight sm:flex">
                 <span className="font-medium">{me.user.name}</span>
-                {ownRole && <span className="max-w-48 truncate text-[11px] text-faint">{ownRole}</span>}
+                {ownRole && <span className="max-w-48 truncate text-caption text-faint">{ownRole}</span>}
               </span>
             </button>
           </MenuTrigger>
           <MenuContent>
             <MenuLabel>{me.local ? "Signed in with the local account" : me.user.email}</MenuLabel>
-            {me.title && <p className="px-2 pb-1 text-xs text-muted">{me.title}</p>}
+            {me.title && <p className="px-2 pb-1 text-secondary text-muted">{me.title}</p>}
             <MenuSeparator />
             <MenuItem onSelect={() => void navigate({ to: "/access", search: {} })}>
               <ShieldCheck /> What I may do
@@ -125,7 +125,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
               </MenuItem>
             )}
             {isMock ? (
-              <p className="max-w-56 px-2 py-1.5 text-xs text-faint">
+              <p className="max-w-56 px-2 py-1.5 text-secondary text-faint">
                 Mock mode: signed in with a development identity.
               </p>
             ) : (

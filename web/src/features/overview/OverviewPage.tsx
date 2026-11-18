@@ -112,9 +112,9 @@ function Attention() {
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-px">
               <span className="font-medium">{r.title}</span>
-              <span className="truncate text-xs text-muted">{r.body}</span>
+              <span className="truncate text-secondary text-muted">{r.body}</span>
             </span>
-            <span className="text-xs font-medium whitespace-nowrap text-accent">{r.action}</span>
+            <span className="text-secondary font-medium whitespace-nowrap text-accent">{r.action}</span>
           </Link>
         </li>
       ))}
@@ -165,7 +165,7 @@ function OpenRequests() {
                 >
                   {r.title}
                 </Link>
-                <div className="font-mono text-[11px] text-faint">
+                <div className="font-mono text-caption text-faint">
                   {r.number} · {r.environment} · {r.requester.name}
                 </div>
               </td>
@@ -193,7 +193,7 @@ function Quota() {
   const { projectId, project } = useCurrentProject();
   const quota = useQuery(q.quota(projectId));
   return (
-    <Panel title="Quota" actions={<span className="text-[11px] text-faint">{project.name}</span>}>
+    <Panel title="Quota" actions={<span className="text-caption text-faint">{project.name}</span>}>
       {quota.isPending ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
@@ -242,7 +242,7 @@ function Favourites() {
                 <ItemIcon name={i.icon} className="size-7" />
                 <span className="min-w-0">
                   <span className="block font-medium">{i.name}</span>
-                  <span className="text-[11px] text-faint">
+                  <span className="text-caption text-faint">
                     {itemTypeLabel[i.type]} · {i.version.number}
                     {i.typical_duration_seconds ? ` · ${roughDuration(i.typical_duration_seconds)}` : ""}
                   </span>
@@ -265,7 +265,7 @@ function SetupNotice() {
   return (
     <section
       aria-label="Setup"
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]"
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-body"
     >
       <ListChecks className="size-4 text-accent" aria-hidden />
       <span className="flex-1">
@@ -318,7 +318,7 @@ export function OverviewPage() {
             title="Open requests"
             flush
             actions={
-              <Link to="/requests" className="text-xs">
+              <Link to="/requests" className="text-secondary">
                 All requests
               </Link>
             }

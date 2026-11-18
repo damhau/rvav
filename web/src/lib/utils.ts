@@ -1,5 +1,11 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// Without the type scale's names, tailwind-merge takes text-caption for a
+// colour and drops it next to text-muted.
+const twMerge = extendTailwindMerge({
+  extend: { theme: { text: ["badge", "caption", "secondary", "body", "section", "title"] } },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

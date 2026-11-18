@@ -72,19 +72,19 @@ export function UserPicker({ label, id, onPick }: { label: string; id: string; o
           aria-label={`${label}: people found`}
           className="flex flex-col rounded-md border border-line bg-surface shadow-pop"
         >
-          {users.data.items.length === 0 && <li className="px-3 py-1.5 text-xs text-muted">Nobody found.</li>}
+          {users.data.items.length === 0 && <li className="px-3 py-1.5 text-secondary text-muted">Nobody found.</li>}
           {users.data.items.map((u) => (
             <li key={u.id}>
               <button
                 type="button"
-                className="w-full px-3 py-1.5 text-left text-[13px] hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+                className="w-full px-3 py-1.5 text-left text-body hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
                 onClick={() => {
                   onPick(u);
                   setText("");
                 }}
               >
-                {u.name} <span className="text-xs text-faint">{u.email}</span>
-                {u.id === me.user.id && <span className="text-xs text-faint"> (you)</span>}
+                {u.name} <span className="text-secondary text-faint">{u.email}</span>
+                {u.id === me.user.id && <span className="text-secondary text-faint"> (you)</span>}
               </button>
             </li>
           ))}
@@ -117,9 +117,9 @@ export function OfferEditor({
   const set = (i: number, o: Offer) => onChange(value.map((x, j) => (j === i ? o : x)));
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1 text-xs font-medium">Offered to</legend>
-      {error && <p className="text-xs text-bad">{error}</p>}
-      {value.length === 0 && <p className="text-xs text-faint">Nobody yet.</p>}
+      <legend className="mb-1 text-secondary font-medium">Offered to</legend>
+      {error && <p className="text-secondary text-bad">{error}</p>}
+      {value.length === 0 && <p className="text-secondary text-faint">Nobody yet.</p>}
       {value.map((o, i) => (
         <div key={i} className="flex items-center gap-2">
           <Select
@@ -185,8 +185,8 @@ export function LevelsEditor({
   const set = (i: number, l: ApprovalLevel) => onChange(value.map((x, j) => (j === i ? l : x)));
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-xs font-medium">Approval levels, in order</legend>
-      {errors["/levels"] && <p className="text-xs text-bad">{errors["/levels"]}</p>}
+      <legend className="mb-1 text-secondary font-medium">Approval levels, in order</legend>
+      {errors["/levels"] && <p className="text-secondary text-bad">{errors["/levels"]}</p>}
       {value.map((l, i) => {
         const at = (k: string) => errors[`/levels/${i}${k}`];
         const timeout = Boolean(l.timeout);

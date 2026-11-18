@@ -68,7 +68,9 @@ function VmTable({
 }) {
   if (vms.length === 0) {
     return (
-      <p className="px-4 py-6 text-xs text-muted">No VMs yet. They appear here as soon as vCenter creates them.</p>
+      <p className="px-4 py-6 text-secondary text-muted">
+        No VMs yet. They appear here as soon as vCenter creates them.
+      </p>
     );
   }
   // By component, in the order they come; one group without components.
@@ -109,7 +111,7 @@ function VmTable({
                 <th
                   scope="rowgroup"
                   colSpan={5}
-                  className="border-b border-line bg-sunken px-4 py-1.5 text-left text-[11px] font-medium text-muted"
+                  className="border-b border-line bg-sunken px-4 py-1.5 text-left text-caption font-medium text-muted"
                 >
                   {component} · {list.length} VM{list.length === 1 ? "" : "s"}
                 </th>
@@ -129,7 +131,7 @@ function VmTable({
                       <PowerDot on={on} />
                       <span className="flex flex-col">
                         <span className="font-medium">{name}</span>
-                        <span className="font-mono text-[11px] text-faint">
+                        <span className="font-mono text-caption text-faint">
                           {vm.moref} ·{" "}
                           {on
                             ? `on · tools ${vm.guest_state === "running" ? "running" : "not running"}`
@@ -140,13 +142,13 @@ function VmTable({
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
                     {ip ? <CopyText value={ip} /> : <span className="text-faint">waiting for IP</span>}
-                    {vm.fqdn && <div className="font-mono text-[11px] text-faint">{vm.fqdn}</div>}
+                    {vm.fqdn && <div className="font-mono text-caption text-faint">{vm.fqdn}</div>}
                   </td>
                   <td className="tnum border-b border-line px-3 py-2.5">
                     {vm.cpu_count} vCPU · {Math.round(vm.memory_mb / 1024)} GB · {disk} GB
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
-                    <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-[11px] text-faint">
+                    <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-caption text-faint">
                       <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
                       <Usage label="Mem" pct={vm.usage?.memory_pct} on={on} />
                     </div>
@@ -214,28 +216,28 @@ function Network({
   segments: SegmentResource[];
 }) {
   if (ips.length + dns.length + segments.length === 0)
-    return <p className="text-xs text-muted">No network resources yet.</p>;
+    return <p className="text-secondary text-muted">No network resources yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
       {/* NSX segments made for the deployment (ADR-0028). */}
       {segments.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <span className="min-w-0 font-mono text-[12px] break-all">{r.name}</span>
-          <span className="text-[11px] text-faint">
+          <span className="min-w-0 font-mono text-secondary break-all">{r.name}</span>
+          <span className="text-caption text-faint">
             NSX segment · {r.segment.tier1} · {r.segment.subnet}
           </span>
         </li>
       ))}
       {ips.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <span className="font-mono text-[12px]">{r.address}</span>
-          <span className="text-[11px] text-faint">EfficientIP · {r.subnet}</span>
+          <span className="font-mono text-secondary">{r.address}</span>
+          <span className="text-caption text-faint">EfficientIP · {r.subnet}</span>
         </li>
       ))}
       {dns.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <span className="min-w-0 font-mono text-[12px] break-all">{r.fqdn}</span>
-          <span className="text-[11px] text-faint">
+          <span className="min-w-0 font-mono text-secondary break-all">{r.fqdn}</span>
+          <span className="text-caption text-faint">
             {r.record_type} → {r.value}
           </span>
         </li>
@@ -262,16 +264,16 @@ function SecurityGroups({
   const where = (ids: string[]) => (ids.includes("ANY") ? "anywhere" : ids.map(title).join(", "));
   const what = (services: string[]) => (services.includes("ANY") ? "any service" : services.join(", "));
   return (
-    <div className="flex flex-col gap-3 text-xs">
+    <div className="flex flex-col gap-3 text-secondary">
       {groups.length > 0 && (
         <ul className="flex flex-col gap-2">
           {groups.map((g) => (
             <li key={g.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <span className="text-[13px] font-medium">{g.group.title ?? g.group.key ?? g.group.id}</span>
-                <span className="min-w-0 font-mono text-[11px] break-all text-faint">{g.group.id}</span>
+                <span className="text-body font-medium">{g.group.title ?? g.group.key ?? g.group.id}</span>
+                <span className="min-w-0 font-mono text-caption break-all text-faint">{g.group.id}</span>
               </div>
-              <ul className="mt-0.5 flex flex-col gap-0.5 text-[11px] text-muted">
+              <ul className="mt-0.5 flex flex-col gap-0.5 text-caption text-muted">
                 {/* Every rule naming the group: into it, out of it, or enforced on it. */}
                 {rules
                   .filter((r) => [...r.from, ...r.to, ...(r.scope ?? [])].includes(g.group.id))
@@ -290,8 +292,8 @@ function SecurityGroups({
         {members.map((m) => (
           <li key={m.id}>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-              <span className="font-mono text-[12px]">{m.membership.vm}</span>
-              <span className="min-w-0 text-[11px] break-all text-faint">
+              <span className="font-mono text-secondary">{m.membership.vm}</span>
+              <span className="min-w-0 text-caption break-all text-faint">
                 {m.membership.groups.map((g) => g.name).join(", ") || "No group"}
               </span>
             </div>
@@ -299,7 +301,7 @@ function SecurityGroups({
               <p
                 role="status"
                 title={m.membership.missing.join(", ")}
-                className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-[11px] text-warn"
+                className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-caption text-warn"
               >
                 Its tags for {m.membership.out_of?.map((g) => title(g.id)).join(", ") || "a group"} were removed in NSX,
                 so the group's firewall rules no longer apply to it. Use Add to a security group to put it back.
@@ -321,7 +323,7 @@ const distinct = (vms: VmResource[], of: (v: VmResource) => string | undefined) 
 
 function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[] }) {
   const vm = vms[0];
-  if (!vm) return <p className="text-xs text-muted">Placement is decided when the VM is cloned.</p>;
+  if (!vm) return <p className="text-secondary text-muted">Placement is decided when the VM is cloned.</p>;
   // Several VMs may be in several places: each value once, the label plural then.
   const row = (one: string, value: string) => [value.includes(", ") ? `${one}s` : one, value];
   const rows = [
@@ -356,7 +358,7 @@ function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[]
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-muted">{k}</dt>
-            <dd className="m-0 font-mono text-[12px] break-all">{v}</dd>
+            <dd className="m-0 font-mono text-secondary break-all">{v}</dd>
           </div>
         ))}
       </dl>
@@ -364,11 +366,11 @@ function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[]
         <ul className="flex flex-col gap-1.5 border-t border-line pt-3" aria-label="Kept on separate hosts">
           {rules.map((r) => (
             <li key={r.id} className="flex flex-col">
-              <span className="text-[13px]">
+              <span className="text-body">
                 <span className="font-medium">{r.rule.component}</span> on separate hosts:{" "}
-                <span className="font-mono text-[12px]">{r.rule.vms.join(", ")}</span>
+                <span className="font-mono text-secondary">{r.rule.vms.join(", ")}</span>
               </span>
-              <span className="text-[11px] text-faint">
+              <span className="text-caption text-faint">
                 DRS rule {r.name} in {r.rule.cluster}
               </span>
             </li>
@@ -405,7 +407,7 @@ const tileHint: Record<string, string> = {
 
 function ActionTiles({ actions, loading, onPick }: { actions: Day2Action[]; loading: boolean; onPick: Pick }) {
   if (loading) return <SkeletonRows rows={2} cols={3} />;
-  if (actions.length === 0) return <p className="px-4 py-6 text-xs text-muted">No actions apply here.</p>;
+  if (actions.length === 0) return <p className="px-4 py-6 text-secondary text-muted">No actions apply here.</p>;
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-px bg-line">
       {actions.map((a) => (
@@ -425,10 +427,10 @@ function ActionTiles({ actions, loading, onPick }: { actions: Day2Action[]; load
           >
             {a.name}
             {a.resource_id && (
-              <span className="ml-1.5 font-mono text-[11px] font-normal text-faint">{a.resource_name}</span>
+              <span className="ml-1.5 font-mono text-caption font-normal text-faint">{a.resource_name}</span>
             )}
           </span>
-          <span className="text-[11px] text-faint">
+          <span className="text-caption text-faint">
             {!a.enabled
               ? a.disabled_reason
               : a.approval.required
@@ -451,10 +453,10 @@ const afterExpiry = (d: DeploymentDetail) =>
 function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2Action; onPick: Pick }) {
   const l = d.lease;
   if (!l.expires_at) {
-    return <p className="text-xs text-muted">No expiry: the lease policy keeps it until someone deletes it.</p>;
+    return <p className="text-secondary text-muted">No expiry: the lease policy keeps it until someone deletes it.</p>;
   }
   return (
-    <div className="flex flex-col gap-2.5 text-xs">
+    <div className="flex flex-col gap-2.5 text-secondary">
       {l.expired_at ? (
         <p role="status" className="rounded-md bg-warn-soft px-3 py-2 text-warn">
           The lease ended on {fullDate(l.expires_at)} and its VMs were powered off.
@@ -490,7 +492,7 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
   if (drifted.length === 0) return null;
   return (
     <Panel title="Changed outside rvav" flush className="border-warn/40">
-      <p className="px-4 pt-2.5 text-xs text-muted">
+      <p className="px-4 pt-2.5 text-secondary text-muted">
         {drifted.length === 1 ? "This VM differs" : "These VMs differ"} in vCenter from how rvav left{" "}
         {drifted.length === 1 ? "it" : "them"}. Change {drifted.length === 1 ? "it" : "them"} back in vCenter, or accept
         the changes.
@@ -513,7 +515,7 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
                 </Tip>
               )}
             </div>
-            <table className="mt-1.5 w-full border-collapse text-xs" aria-label={`How ${v.name} differs`}>
+            <table className="mt-1.5 w-full border-collapse text-secondary" aria-label={`How ${v.name} differs`}>
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="py-1 pr-3 font-medium">
@@ -577,14 +579,14 @@ function Overview({
         <Panel
           title="Virtual machines"
           flush
-          actions={<span className="text-[11px] text-faint">Live from vCenter</span>}
+          actions={<span className="text-caption text-faint">Live from vCenter</span>}
         >
           <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} />
         </Panel>
         <Panel
           title="Actions"
           flush
-          actions={<span className="text-[11px] text-faint">More in each VM&apos;s menu</span>}
+          actions={<span className="text-caption text-faint">More in each VM&apos;s menu</span>}
         >
           <ActionTiles
             loading={loading}
@@ -623,7 +625,7 @@ function History({ deploymentId }: { deploymentId: string }) {
   const history = useQuery(q.deploymentHistory(deploymentId));
   if (history.isError) return <ErrorState error={history.error} onRetry={() => void history.refetch()} />;
   if (!history.data) return <SkeletonRows rows={3} cols={3} />;
-  if (history.data.items.length === 0) return <p className="text-xs text-muted">Nothing has run on it yet.</p>;
+  if (history.data.items.length === 0) return <p className="text-secondary text-muted">Nothing has run on it yet.</p>;
   return (
     <ol className="flex flex-col">
       {history.data.items.map((r) => (
@@ -643,9 +645,9 @@ function History({ deploymentId }: { deploymentId: string }) {
               · {r.kind === "day2"
                 ? (r.resource?.name ?? "deployment")
                 : `${r.catalog_item.name} ${r.version.number}`}{" "}
-              · {r.requester.name} · <span className="font-mono text-[11px]">{r.number}</span>
+              · {r.requester.name} · <span className="font-mono text-caption">{r.number}</span>
             </span>
-            {r.error && <span className="block text-[11px] text-bad">{r.error.message}</span>}
+            {r.error && <span className="block text-caption text-bad">{r.error.message}</span>}
           </span>
           <RequestStatusBadge status={r.status} />
         </li>
@@ -688,16 +690,16 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-faint">
+        <span className="text-secondary text-faint">
           <Link to="/deployments">Deployments</Link> / {d?.name ?? "…"}
         </span>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-lg font-semibold tracking-[-0.01em]">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
+            <h1 className="text-title font-semibold">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
             {d && <EnvBadge env={d.environment} />}
             {d && <DeploymentStatusBadge status={d.status} />}
             {d && d.sync_state !== "in_sync" && (
-              <span className="rounded-sm bg-warn-soft px-1.5 py-px text-[11px] font-medium text-warn">
+              <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
                 {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
               </span>
             )}
@@ -705,7 +707,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           <div className="flex flex-wrap gap-2">
             <Later what="AWX actions come with the AWX integration">
               <Button disabled>
-                <RefreshCw /> Patch now <span className="font-mono text-[10px] text-faint">AWX</span>
+                <RefreshCw /> Patch now <span className="font-mono text-badge text-faint">AWX</span>
               </Button>
             </Later>
             <Later what="Scaling out comes later">
@@ -716,9 +718,9 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           </div>
         </div>
         {d && (
-          <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-muted">
+          <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-secondary text-muted">
             <span>
-              {d.catalog_item.name} <span className="font-mono text-[11px]">{d.version.number}</span>
+              {d.catalog_item.name} <span className="font-mono text-caption">{d.version.number}</span>
             </span>
             <span>Owner {d.owner.name}</span>
             <span>
@@ -768,11 +770,11 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         </Panel>
       ) : tab === "inputs" ? (
         <Panel title="Inputs" flush>
-          <p className="border-b border-line px-4 py-2.5 text-xs text-muted">
+          <p className="border-b border-line px-4 py-2.5 text-secondary text-muted">
             Values submitted with {d.created_by_request_id ?? "the creating request"}, as passed to the blueprint and to
             AWX as <span className="font-mono">extra_vars</span>.
           </p>
-          <pre className="m-0 overflow-x-auto px-4 py-3.5 font-mono text-[12px] leading-relaxed">
+          <pre className="m-0 overflow-x-auto px-4 py-3.5 font-mono text-secondary leading-relaxed">
             {toYaml(d.inputs)}
           </pre>
         </Panel>

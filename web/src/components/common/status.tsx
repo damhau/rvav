@@ -56,7 +56,7 @@ export function EnvBadge({ env, production }: { env: string; production?: boolea
   return (
     <span
       className={cn(
-        "inline-flex h-[18px] items-center rounded-sm border px-1 font-mono text-[10px] font-medium uppercase",
+        "inline-flex h-[18px] items-center rounded-sm border px-1 font-mono text-badge font-medium uppercase",
         prd ? "border-bad/50 text-bad" : env === "tst" ? "border-warn/50 text-warn" : "border-line-strong text-muted",
       )}
     >
@@ -73,7 +73,7 @@ export function PowerDot({ on, label }: { on: boolean | null; label?: boolean })
         className={cn("size-2 shrink-0 rounded-full", on ? "bg-ok" : "border border-line-strong bg-transparent")}
         aria-hidden
       />
-      {label ? <span className="text-xs text-muted">{text}</span> : <span className="sr-only">{text}</span>}
+      {label ? <span className="text-secondary text-muted">{text}</span> : <span className="sr-only">{text}</span>}
     </span>
   );
 }

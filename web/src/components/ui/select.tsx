@@ -49,7 +49,7 @@ export function Select({
         id={id}
         {...aria}
         className={cn(
-          "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-[13px] text-fg focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none disabled:opacity-60 data-[placeholder]:text-faint",
+          "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-body text-fg focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none disabled:opacity-60 data-[placeholder]:text-faint",
           className,
         )}
       >
@@ -75,7 +75,7 @@ export function Select({
                 list.map((o) => <Item key={o.value} option={o} />)
               ) : (
                 <S.Group key={group}>
-                  <S.Label className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted">{group}</S.Label>
+                  <S.Label className="px-2 pt-2 pb-1 text-caption font-medium text-muted">{group}</S.Label>
                   {list.map((o) => (
                     <Item key={o.value} option={o} />
                   ))}
@@ -93,13 +93,13 @@ function Item({ option: o }: { option: Option }) {
   return (
     <S.Item
       value={o.value}
-      className="relative flex cursor-default items-center gap-3 rounded-sm py-1.5 pr-2 pl-6 text-[13px] outline-none select-none data-[highlighted]:bg-sunken"
+      className="relative flex cursor-default items-center gap-3 rounded-sm py-1.5 pr-2 pl-6 text-body outline-none select-none data-[highlighted]:bg-sunken"
     >
       <S.ItemIndicator className="absolute left-1.5">
         <Check className="size-3.5 text-accent" />
       </S.ItemIndicator>
       <S.ItemText>{o.label}</S.ItemText>
-      {o.meta && <span className="ml-auto font-mono text-[11px] text-faint">{o.meta}</span>}
+      {o.meta && <span className="ml-auto font-mono text-caption text-faint">{o.meta}</span>}
     </S.Item>
   );
 }

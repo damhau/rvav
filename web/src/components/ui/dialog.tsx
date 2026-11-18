@@ -43,9 +43,9 @@ export function DialogContent({
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
           <div>
-            <D.Title className="text-sm font-semibold">{title}</D.Title>
+            <D.Title className="text-section font-semibold">{title}</D.Title>
             {description ? (
-              <D.Description className="mt-0.5 text-xs text-muted">{description}</D.Description>
+              <D.Description className="mt-0.5 text-secondary text-muted">{description}</D.Description>
             ) : (
               <D.Description className="sr-only">{title}</D.Description>
             )}
@@ -86,9 +86,9 @@ export function SheetContent({
       >
         <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
           <div className="min-w-0">
-            <D.Title className="truncate text-sm font-semibold">{title}</D.Title>
+            <D.Title className="truncate text-section font-semibold">{title}</D.Title>
             {description ? (
-              <D.Description className="text-xs text-muted">{description}</D.Description>
+              <D.Description className="text-secondary text-muted">{description}</D.Description>
             ) : (
               <D.Description className="sr-only">{title}</D.Description>
             )}

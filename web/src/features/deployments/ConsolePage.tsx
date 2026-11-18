@@ -103,7 +103,7 @@ function WebConsole({ session, onReconnect }: { session: ConsoleSession; onRecon
       flush
       actions={
         <span className="flex items-center gap-2">
-          <span className="text-[11px] text-faint" role="status">
+          <span className="text-caption text-faint" role="status">
             {label[state]}
           </span>
           <Button size="sm" disabled={state !== "connected"} onClick={() => wmks.current?.sendCAD()}>
@@ -118,7 +118,7 @@ function WebConsole({ session, onReconnect }: { session: ConsoleSession; onRecon
         </span>
       }
     >
-      {error && <p className="border-b border-line px-4 py-2.5 text-xs text-bad">{error}</p>}
+      {error && <p className="border-b border-line px-4 py-2.5 text-secondary text-bad">{error}</p>}
       <div id="rvav-wmks" className="aspect-[16/10] w-full bg-black" />
     </Panel>
   );
@@ -161,7 +161,7 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
           </>
         }
         title={name ? `Console · ${name}` : <Skeleton className="h-5 w-48" />}
-        meta={vm && <span className="font-mono text-[11px]">{vm.vm.moref}</span>}
+        meta={vm && <span className="font-mono text-caption">{vm.vm.moref}</span>}
         actions={
           <Button onClick={() => vmrc.mutate()} disabled={vmrc.isPending}>
             <ExternalLink /> Open in VMRC
@@ -180,7 +180,7 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
         <WebConsole session={session.data} onReconnect={() => session.mutate()} />
       ) : (
         <Panel title="Web console">
-          <p className="flex items-start gap-2 text-xs text-muted">
+          <p className="flex items-start gap-2 text-secondary text-muted">
             <Power className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
               The web console is not set up here: an administrator provides VMware&apos;s HTML console client

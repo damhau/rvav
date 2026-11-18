@@ -39,15 +39,15 @@ function Processes({ system }: { system: S["System"] }) {
   return (
     <Panel title="Processes" flush>
       {versions.size > 1 && (
-        <p role="status" className="border-b border-line px-4 py-2 text-xs text-warn">
+        <p role="status" className="border-b border-line px-4 py-2 text-secondary text-warn">
           Processes run {versions.size} versions: an upgrade is under way, or a process was left behind.
         </p>
       )}
       {system.processes.length === 0 ? (
-        <p className="px-4 py-3 text-xs text-muted">No process has recorded itself in the last 30 seconds.</p>
+        <p className="px-4 py-3 text-secondary text-muted">No process has recorded itself in the last 30 seconds.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]" aria-label="Processes">
+          <table className="w-full border-collapse text-body" aria-label="Processes">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={th}>
@@ -72,12 +72,14 @@ function Processes({ system }: { system: S["System"] }) {
                 <tr key={p.id}>
                   <td className={td}>
                     <span className="font-medium">{roles[p.role]}</span>{" "}
-                    <span className="font-mono text-xs text-faint">{p.host}</span>
+                    <span className="font-mono text-secondary text-faint">{p.host}</span>
                   </td>
-                  <td className={`${td} font-mono text-xs`}>{p.version}</td>
+                  <td className={`${td} font-mono text-secondary`}>{p.version}</td>
                   <td className={td}>
                     {p.revision}
-                    {p.revision < system.revision && <span className="ml-1.5 text-xs text-warn">earlier settings</span>}
+                    {p.revision < system.revision && (
+                      <span className="ml-1.5 text-secondary text-warn">earlier settings</span>
+                    )}
                   </td>
                   <td className={td}>{states[p.state]}</td>
                   <td className={td} title={fullDate(p.started_at)}>
@@ -97,12 +99,12 @@ function Revisions({ system }: { system: S["System"] }) {
   return (
     <Panel title="Settings saved in Administration" flush>
       {system.settings.length === 0 ? (
-        <p className="px-4 py-3 text-xs text-muted">
+        <p className="px-4 py-3 text-secondary text-muted">
           None yet: every setting comes from the environment or its default.
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]" aria-label="Settings saved in Administration">
+          <table className="w-full border-collapse text-body" aria-label="Settings saved in Administration">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={th}>
@@ -148,12 +150,12 @@ function Revisions({ system }: { system: S["System"] }) {
 function Install({ system }: { system: S["System"] }) {
   return (
     <Panel title="Install settings" flush>
-      <p className="border-b border-line px-4 py-2 text-xs text-muted">
+      <p className="border-b border-line px-4 py-2 text-secondary text-muted">
         Set in the environment of each process, as the API answering reads them: change them there, then restart
         rvav&rsquo;s processes. A secret&rsquo;s value is never shown.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]" aria-label="Install settings">
+        <table className="w-full border-collapse text-body" aria-label="Install settings">
           <thead>
             <tr className="label text-left">
               <th scope="col" className={th}>
@@ -170,10 +172,10 @@ function Install({ system }: { system: S["System"] }) {
           <tbody>
             {system.install.map((s) => (
               <tr key={s.name}>
-                <th scope="row" className={`${td} text-left font-mono text-xs font-normal`}>
+                <th scope="row" className={`${td} text-left font-mono text-secondary font-normal`}>
                   {s.name}
                 </th>
-                <td className={`${td} font-mono text-xs break-all`}>
+                <td className={`${td} font-mono text-secondary break-all`}>
                   {s.value !== undefined && s.value !== "" ? (
                     <span>
                       {s.value}
@@ -193,7 +195,9 @@ function Install({ system }: { system: S["System"] }) {
                     <span className="font-sans text-faint">none</span>
                   )}
                 </td>
-                <td className={`${td} text-xs ${s.set ? "" : "text-muted"}`}>{s.set ? "Environment" : "Default"}</td>
+                <td className={`${td} text-secondary ${s.set ? "" : "text-muted"}`}>
+                  {s.set ? "Environment" : "Default"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -231,9 +235,9 @@ export function SystemPage() {
       {d && (
         <div className="flex flex-col gap-4">
           <Panel title="This install">
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-[13px]">
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-body">
               <dt className="text-muted">Version</dt>
-              <dd className="font-mono text-xs">{d.version}</dd>
+              <dd className="font-mono text-secondary">{d.version}</dd>
               <dt className="text-muted">Database schema</dt>
               <dd>Migration {d.schema}</dd>
               <dt className="text-muted">Connection settings</dt>

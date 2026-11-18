@@ -83,11 +83,11 @@ export function FieldList({
           type="button"
           aria-pressed={selected}
           onClick={() => onSelect({ kind: "field", name })}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-[13px] focus-visible:outline-2 focus-visible:outline-accent"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-body focus-visible:outline-2 focus-visible:outline-accent"
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate">{label}</span>
-            <span className="block truncate font-mono text-[11px] text-faint">
+            <span className="block truncate font-mono text-caption text-faint">
               {name} · {ui ? widgetLabels[ui.widget] : "no UI field"}
             </span>
           </span>
@@ -137,7 +137,7 @@ export function FieldList({
                   type="button"
                   aria-pressed={selected}
                   onClick={() => onSelect({ kind: "section", key: s.key })}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-xs font-semibold focus-visible:outline-2 focus-visible:outline-accent"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-secondary font-semibold focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   <span className="truncate">{s.title || s.key}</span>
                   {problems.sections[si] && <ProblemMark label={`Section ${s.title} has problems`} />}
@@ -164,7 +164,7 @@ export function FieldList({
                 </Button>
               </div>
               {s.fields.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-faint">No field yet.</p>
+                <p className="px-3 py-2 text-secondary text-faint">No field yet.</p>
               ) : (
                 <ul>{s.fields.map((name, i) => fieldRow(name, { si, i }))}</ul>
               )}
@@ -173,7 +173,7 @@ export function FieldList({
         })}
         {unplaced.length > 0 && (
           <div role="group" aria-label="Not in a section" className="border-b border-line">
-            <p className="bg-sunken px-3 py-1.5 text-xs font-semibold text-bad">Not in a section</p>
+            <p className="bg-sunken px-3 py-1.5 text-secondary font-semibold text-bad">Not in a section</p>
             <ul>{unplaced.map((name) => fieldRow(name))}</ul>
           </div>
         )}

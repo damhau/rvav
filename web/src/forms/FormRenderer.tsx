@@ -84,8 +84,8 @@ export function FormRenderer({
           <fieldset key={section.key} className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
             <legend className="sr-only">{section.title}</legend>
             <div className="border-b border-line px-4 py-2.5" aria-hidden>
-              <span className="text-[13px] font-semibold">{section.title}</span>
-              {section.description && <span className="ml-2 text-xs text-faint">{section.description}</span>}
+              <span className="text-body font-semibold">{section.title}</span>
+              {section.description && <span className="ml-2 text-secondary text-faint">{section.description}</span>}
             </div>
             <div className={cn("grid grid-cols-1 gap-x-4 gap-y-4 px-4 py-4", gridCols[section.columns ?? 2])}>
               {i === 0 && leading}
@@ -102,10 +102,12 @@ export function FormRenderer({
                   <div key={name} className={cn("flex min-w-0 flex-col gap-1.5", wide && "md:col-span-full")}>
                     {!selfLabelled.includes(ui.widget) && (
                       <div className="flex items-baseline justify-between gap-2">
-                        <label id={`${id}-label`} htmlFor={id} className="text-xs font-medium">
+                        <label id={`${id}-label`} htmlFor={id} className="text-secondary font-medium">
                           {ui.label}
                         </label>
-                        {!state.required && !state.readOnly && <span className="text-[11px] text-faint">Optional</span>}
+                        {!state.required && !state.readOnly && (
+                          <span className="text-caption text-faint">Optional</span>
+                        )}
                       </div>
                     )}
                     <Widget
@@ -123,12 +125,12 @@ export function FormRenderer({
                       readOnly={state.readOnly}
                     />
                     {error && (
-                      <p id={errorId} className="text-xs text-bad">
+                      <p id={errorId} className="text-secondary text-bad">
                         {error}
                       </p>
                     )}
                     {helpId && (
-                      <p id={helpId} className="text-[11px] text-faint">
+                      <p id={helpId} className="text-caption text-faint">
                         {ui.help}
                       </p>
                     )}

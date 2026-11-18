@@ -132,14 +132,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-faint">
+        <span className="text-secondary text-faint">
           <Link to="/requests">Requests</Link> / {r?.number ?? requestKey}
         </span>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h1 className="text-lg font-semibold tracking-[-0.01em]">
-              {r ? r.title : <Skeleton className="h-5 w-72" />}
-            </h1>
+            <h1 className="text-title font-semibold">{r ? r.title : <Skeleton className="h-5 w-72" />}</h1>
             {r && <RequestStatusBadge status={r.status} />}
           </div>
           {r && (
@@ -167,7 +165,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           )}
         </div>
         {r && (
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-secondary text-muted">
             <span>Requested by {r.requester.name}</span>
             <span className="flex items-center gap-1.5">
               {r.project.name} <EnvBadge env={r.environment} />
@@ -205,7 +203,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           title="Steps"
           actions={
             running ? (
-              <span className="flex items-center gap-1.5 text-[11px] text-faint">
+              <span className="flex items-center gap-1.5 text-caption text-faint">
                 <span className="size-1.5 rounded-full bg-ok" aria-hidden /> Live
               </span>
             ) : null
@@ -247,20 +245,20 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
         <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-4">
           <section className="overflow-hidden rounded-lg border border-line bg-surface">
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-              <h2 className="text-[13px] font-semibold">AWX job output</h2>
-              <span className="truncate font-mono text-[11px] text-faint">
+              <h2 className="text-body font-semibold">AWX job output</h2>
+              <span className="truncate font-mono text-caption text-faint">
                 {logStep?.title.replace(/^AWX /, "") ?? "no AWX job"}
               </span>
             </div>
             {id && logStep ? (
               <LogViewer requestId={id} step={logStep} />
             ) : (
-              <p className="px-4 py-6 text-xs text-muted">
+              <p className="px-4 py-6 text-secondary text-muted">
                 This request has no AWX job, or it hasn't been planned yet.
               </p>
             )}
             {logStep?.external_ref?.url && (
-              <div className="flex justify-between border-t border-line px-4 py-2 text-xs">
+              <div className="flex justify-between border-t border-line px-4 py-2 text-secondary">
                 <span className="text-faint">Follows the job live.</span>
                 <a
                   href={logStep.external_ref.url}
@@ -298,8 +296,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5">
                 {Object.entries(r.inputs ?? {}).map(([k, v]) => (
                   <div key={k} className="contents">
-                    <dt className="font-mono text-[12px] text-muted">{k}</dt>
-                    <dd className="m-0 font-mono text-[12px] break-words">{formatValue(v)}</dd>
+                    <dt className="font-mono text-secondary text-muted">{k}</dt>
+                    <dd className="m-0 font-mono text-secondary break-words">{formatValue(v)}</dd>
                   </div>
                 ))}
                 {r.justification && (

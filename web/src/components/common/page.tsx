@@ -22,12 +22,12 @@ export function PageHeader({
 }) {
   return (
     <header className="flex flex-col gap-1">
-      {crumbs && <div className="flex items-center gap-1 text-xs text-faint">{crumbs}</div>}
+      {crumbs && <div className="flex items-center gap-1 text-secondary text-faint">{crumbs}</div>}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h1 className="min-w-0 text-lg font-semibold tracking-[-0.01em]">{title}</h1>
+        <h1 className="min-w-0 text-title font-semibold">{title}</h1>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {meta && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">{meta}</div>}
+      {meta && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-secondary text-muted">{meta}</div>}
     </header>
   );
 }
@@ -53,7 +53,7 @@ export function Panel({
     >
       {title && (
         <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 id={id} className="text-[13px] font-semibold">
+          <h2 id={id} className="text-section font-semibold">
             {title}
           </h2>
           {actions}
@@ -67,8 +67,8 @@ export function Panel({
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-start gap-2 px-4 py-8">
-      <p className="text-[13px] font-medium">{title}</p>
-      <p className="max-w-md text-xs text-muted">{body}</p>
+      <p className="text-body font-medium">{title}</p>
+      <p className="max-w-md text-secondary text-muted">{body}</p>
       {action}
     </div>
   );
@@ -82,7 +82,7 @@ export function KeyValues({
   className?: string;
 }) {
   return (
-    <dl className={cn("grid grid-cols-[minmax(96px,auto)_1fr] gap-x-4 gap-y-1.5 text-[13px]", className)}>
+    <dl className={cn("grid grid-cols-[minmax(96px,auto)_1fr] gap-x-4 gap-y-1.5 text-body", className)}>
       {items.map((i) => (
         <div key={i.label} className="contents">
           <dt className="text-muted">{i.label}</dt>

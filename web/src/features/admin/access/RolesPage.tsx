@@ -45,7 +45,7 @@ function Roles({ canEdit }: { canEdit: boolean }) {
       {roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
       {roles.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -74,13 +74,13 @@ function Roles({ canEdit }: { canEdit: boolean }) {
                       >
                         {r.name}
                       </Link>
-                      <span className="font-mono text-xs text-muted">{r.key}</span>
+                      <span className="font-mono text-secondary text-muted">{r.key}</span>
                       {r.built_in ? <Badge>Built in</Badge> : <Badge tone="accent">Custom</Badge>}
                     </div>
-                    {r.description && <p className="mt-0.5 text-xs text-muted">{r.description}</p>}
+                    {r.description && <p className="mt-0.5 text-secondary text-muted">{r.description}</p>}
                   </td>
-                  <td className={`${td} text-xs`}>{scopeText[r.scope]}</td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary`}>{scopeText[r.scope]}</td>
+                  <td className={`${td} text-secondary text-muted`}>
                     {r.permissions.length === 0 ? "None: everyone signed in holds it" : r.permissions.length}
                     {r.permissions.includes("access.manage") && (
                       <Badge tone="warn" className="ml-1.5">
@@ -88,7 +88,7 @@ function Roles({ canEdit }: { canEdit: boolean }) {
                       </Badge>
                     )}
                   </td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary text-muted`}>
                     {r.key === "user"
                       ? "Everyone"
                       : r.holders === 0
@@ -181,7 +181,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
       )}
       {list.data && list.data.items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -202,7 +202,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
               {list.data.items.map((a) => (
                 <tr key={a.id ?? `${a.user.id}/${a.role.key}`}>
                   <td className={`${td} pl-4`}>
-                    {a.user.name} <span className="text-xs text-faint">{a.user.email}</span>
+                    {a.user.name} <span className="text-secondary text-faint">{a.user.email}</span>
                   </td>
                   <td className={td}>
                     <Link
@@ -213,7 +213,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                       {a.role.name}
                     </Link>
                   </td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary text-muted`}>
                     {a.fixed ? "Set by rvav" : a.created_at ? <Time iso={a.created_at} /> : ""}
                   </td>
                   <td className={`${td} text-right`}>
@@ -238,7 +238,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
           </table>
         </div>
       )}
-      <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
+      <p className="border-t border-line px-4 py-2.5 text-secondary text-muted">
         Groups of the identity provider get a role for all of rvav through a group mapping without a project, in{" "}
         <Link to="/admin/projects" className="text-accent underline underline-offset-2">
           Projects

@@ -83,7 +83,7 @@ function Item({
   return (
     <li
       className={cn(
-        "rounded-md border border-line bg-surface px-2.5 py-2 text-xs",
+        "rounded-md border border-line bg-surface px-2.5 py-2 text-secondary",
         node.problems.length > 0 && "border-warn",
         selected && "ring-2 ring-accent",
       )}
@@ -97,7 +97,7 @@ function Item({
         <NodeIcon node={node} />
         {node.badge && (
           <>
-            <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{node.badge}</span>{" "}
+            <span className="text-badge font-medium tracking-wide text-faint uppercase">{node.badge}</span>{" "}
           </>
         )}
         <span className="min-w-0 flex-1">{node.title}</span>{" "}
@@ -135,7 +135,7 @@ export function CanvasList({ graph, label, status, selected, onSelect }: ListPro
         const id = `${uid}-${n.id}-${side.taken}`;
         return (
           <div key={side.taken} className="mt-1.5 rounded-md border border-dashed border-line-strong p-2">
-            <span id={id} className="text-[11px] break-words text-muted">
+            <span id={id} className="text-caption break-words text-muted">
               {side.label}
               {side.when !== undefined && (
                 <>
@@ -170,7 +170,7 @@ export function CanvasList({ graph, label, status, selected, onSelect }: ListPro
               s.group.problems.length > 0 ? "border-warn" : "border-line-strong",
             )}
           >
-            <span id={`${uid}-${s.group.id}`} className="text-[11px] text-muted">
+            <span id={`${uid}-${s.group.id}`} className="text-caption text-muted">
               {s.group.label}
             </span>
             <Problems problems={s.group.problems} />

@@ -70,9 +70,9 @@ function periodLabel(iso: string, interval: Interval, long = false) {
 function StatTile({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-line bg-surface px-4 py-3">
-      <span className="text-xs text-muted">{label}</span>
-      <span className="text-[22px] leading-tight font-semibold">{value}</span>
-      {detail && <span className="text-[11px] text-faint">{detail}</span>}
+      <span className="text-secondary text-muted">{label}</span>
+      <span className="text-title leading-tight font-semibold">{value}</span>
+      {detail && <span className="text-caption text-faint">{detail}</span>}
     </div>
   );
 }
@@ -144,7 +144,7 @@ function RequestsChart({ report }: { report: S["Report"] }) {
   const a = active === null ? null : data[active];
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legend">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-secondary text-muted" aria-label="Legend">
         {series.map((s) => (
           <li key={s.key} className="flex items-center gap-1.5">
             <svg width="10" height="10" aria-hidden>
@@ -181,7 +181,7 @@ function RequestsChart({ report }: { report: S["Report"] }) {
                   y={8 + plotH - y(t)}
                   dy="0.32em"
                   textAnchor="end"
-                  className="tnum fill-faint text-[10px]"
+                  className="tnum fill-faint text-caption"
                 >
                   {t}
                 </text>
@@ -225,7 +225,7 @@ function RequestsChart({ report }: { report: S["Report"] }) {
                     onPointerEnter={() => setActive(i)}
                   />
                   {i % every === 0 && (
-                    <text x={x + barW / 2} y={H - 6} textAnchor="middle" className="fill-faint text-[10px]">
+                    <text x={x + barW / 2} y={H - 6} textAnchor="middle" className="fill-faint text-caption">
                       {periodLabel(d.period, report.interval)}
                     </text>
                   )}
@@ -246,7 +246,7 @@ function RequestsChart({ report }: { report: S["Report"] }) {
           <div
             id={tipId}
             role="tooltip"
-            className="pointer-events-none absolute top-0 z-10 flex min-w-[170px] flex-col gap-0.5 rounded-md border border-line bg-surface px-3 py-2 text-xs shadow-[var(--shadow)]"
+            className="pointer-events-none absolute top-0 z-10 flex min-w-[170px] flex-col gap-0.5 rounded-md border border-line bg-surface px-3 py-2 text-secondary shadow-[var(--shadow)]"
             style={{
               left: Math.min(Math.max(0, left + active * band + band / 2 - 85), Math.max(0, width - 180)),
             }}
@@ -267,10 +267,10 @@ function RequestsChart({ report }: { report: S["Report"] }) {
           </div>
         )}
       </div>
-      <details className="text-xs">
+      <details className="text-secondary">
         <summary className="cursor-pointer text-muted">Show as a table</summary>
         <div className="mt-2 max-h-64 overflow-y-auto">
-          <table className="w-full border-collapse text-xs" aria-label="Requests by period">
+          <table className="w-full border-collapse text-secondary" aria-label="Requests by period">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className="py-1 pr-3 font-medium">
@@ -327,7 +327,7 @@ function Quota({ lines }: { lines: S["ReportQuotaLine"][] }) {
     <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-x-6 gap-y-4 p-4">
       {[...groups].map(([key, ls]) => (
         <section key={key} aria-label={`Quota of ${key}`} className="flex flex-col gap-2">
-          <h3 className="text-[13px] font-medium">{key}</h3>
+          <h3 className="text-body font-medium">{key}</h3>
           {ls.map((l) => {
             const [name, unit] = resourceLabel[l.resource];
             return <Meter key={l.resource} label={name} used={l.used} total={l.limit} unit={unit} />;
@@ -483,7 +483,7 @@ export function ReportsPage() {
                 <EmptyState title="Nothing requested" body="No new deployments were requested in this period." />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[420px] border-collapse text-[13px]">
+                  <table className="w-full min-w-[420px] border-collapse text-body">
                     <thead>
                       <tr className="label">
                         <th scope="col" className={th}>
@@ -517,7 +517,7 @@ export function ReportsPage() {
               )}
             </Panel>
             <Panel title="Approvals" actions={csv("approvals")} className="min-w-0 flex-[1_1_260px]">
-              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-[13px]">
+              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-body">
                 <dt className="text-muted">Decided</dt>
                 <dd className="tnum text-right">{r.approvals.decided}</dd>
                 <dt className="text-muted">Approved</dt>
@@ -541,7 +541,7 @@ export function ReportsPage() {
               <EmptyState title="None" body="No lease ends in the next 30 days." />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] border-collapse text-[13px]">
+                <table className="w-full min-w-[560px] border-collapse text-body">
                   <thead>
                     <tr className="label">
                       <th scope="col" className={th}>

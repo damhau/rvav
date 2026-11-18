@@ -89,7 +89,7 @@ function LogStream({ requestId, step }: { requestId: string; step: Step }) {
         const el = e.currentTarget;
         follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="h-[380px] overflow-auto bg-log-bg px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]"
+      className="h-[380px] overflow-auto bg-log-bg px-3 py-2.5 font-mono text-caption leading-[1.55]"
     >
       {lines.length === 0 && !error && (
         <p className="text-log-dim">

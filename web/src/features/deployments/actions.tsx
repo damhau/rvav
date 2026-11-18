@@ -130,7 +130,10 @@ export function ActionDialog({
           }}
         >
           {action.approval.required && (
-            <p className="flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-xs text-warn" role="note">
+            <p
+              className="flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-secondary text-warn"
+              role="note"
+            >
               <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>Needs approval: {action.approval.reasons.join("; ")}. It starts once approved.</span>
             </p>
@@ -148,7 +151,7 @@ export function ActionDialog({
             />
           )}
           {action.approval.required && (
-            <div className="flex flex-col gap-1.5 text-xs">
+            <div className="flex flex-col gap-1.5 text-secondary">
               <label htmlFor="action-justification" className="font-medium">
                 Why (for the approvers)
               </label>
@@ -161,7 +164,7 @@ export function ActionDialog({
             </div>
           )}
           {mustType && (
-            <div className="flex flex-col gap-1.5 text-xs">
+            <div className="flex flex-col gap-1.5 text-secondary">
               <label htmlFor="action-confirm">
                 Type <span className="font-mono font-medium">{mustType}</span> to confirm
               </label>
@@ -175,7 +178,7 @@ export function ActionDialog({
             </div>
           )}
           {errors?.form.map((m) => (
-            <p key={m} className="text-xs text-bad" role="alert">
+            <p key={m} className="text-secondary text-bad" role="alert">
               {m}
             </p>
           ))}
@@ -266,10 +269,10 @@ function ActionItems({
                 <span className="flex min-w-0 flex-col">
                   <span>
                     {a.name}
-                    {a.approval.required && <span className="ml-1.5 text-[11px] text-warn">approval</span>}
+                    {a.approval.required && <span className="ml-1.5 text-caption text-warn">approval</span>}
                   </span>
                   {!a.enabled && a.disabled_reason && (
-                    <span className="text-[11px] leading-snug text-faint">{a.disabled_reason}</span>
+                    <span className="text-caption leading-snug text-faint">{a.disabled_reason}</span>
                   )}
                 </span>
               </MenuItem>

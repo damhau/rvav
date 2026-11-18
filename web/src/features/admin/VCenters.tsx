@@ -25,7 +25,7 @@ function TestResult({ test }: { test: S["IntegrationTest"] }) {
     <ul
       aria-label="Test"
       aria-live="polite"
-      className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-xs break-words"
+      className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-secondary break-words"
     >
       {test.checks.map((c) => (
         <li key={c.name} className="flex items-start gap-1.5">
@@ -108,7 +108,7 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
           >
             <Input
               id="vc-name"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               disabled={Boolean(vc)}
               placeholder="vc02.corp.example"
               value={f.name}
@@ -118,7 +118,7 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
           <Field label="SDK address" htmlFor="vc-url" error={errors["/url"]}>
             <Input
               id="vc-url"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder="https://vc02.corp.example/sdk"
               value={f.url}
               onChange={(e) => setF({ ...f, url: e.target.value })}
@@ -152,12 +152,12 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
           >
             <Input
               id="vc-pin"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={f.cert_sha256}
               onChange={(e) => setF({ ...f, cert_sha256: e.target.value })}
             />
           </Field>
-          <label htmlFor="vc-insecure" className="flex items-center gap-1.5 text-[13px]">
+          <label htmlFor="vc-insecure" className="flex items-center gap-1.5 text-body">
             <Checkbox id="vc-insecure" checked={f.insecure} onChange={(on) => setF({ ...f, insecure: on })} />
             Don't check its certificate
           </label>
@@ -214,7 +214,7 @@ export function VCenters() {
         </Button>
       }
     >
-      <p className="px-4 pt-3 text-xs text-muted">
+      <p className="px-4 pt-3 text-secondary text-muted">
         rvav syncs and builds in every vCenter here. A placement rule may name the one its clusters are in; a cluster
         name in two vCenters needs it.
       </p>
@@ -225,7 +225,7 @@ export function VCenters() {
       )}
       {list.data && list.data.items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-[13px]">
+          <table className="w-full min-w-[620px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={th}>
@@ -245,17 +245,17 @@ export function VCenters() {
             <tbody>
               {list.data.items.map((vc) => (
                 <tr key={vc.name}>
-                  <td className={`${td} font-mono text-xs`}>
+                  <td className={`${td} font-mono text-secondary`}>
                     {vc.name} {vc.primary && <Badge tone="neutral">The connection above</Badge>}
                   </td>
                   <td className={td}>
-                    <div className="font-mono text-xs">{vc.url}</div>
-                    <div className="text-xs text-faint">
+                    <div className="font-mono text-secondary">{vc.url}</div>
+                    <div className="text-secondary text-faint">
                       {vc.username || "no account"}
                       {vc.insecure ? " · certificate not checked" : vc.cert_sha256 ? " · certificate pinned" : ""}
                     </div>
                   </td>
-                  <td className={`${td} text-xs`}>
+                  <td className={`${td} text-secondary`}>
                     {vc.inventory
                       ? `${vc.inventory.clusters ?? 0} clusters, ${vc.inventory.vms ?? 0} VMs${
                           vc.inventory.synced_at ? ` · ${new Date(vc.inventory.synced_at).toLocaleString()}` : ""

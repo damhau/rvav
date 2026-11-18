@@ -37,8 +37,8 @@ export function NotificationLine({ n }: { n: Notification }) {
       />
       <span className="flex min-w-0 flex-col">
         <span className={cn("truncate", !n.read_at && "font-medium")}>{n.title}</span>
-        {n.body && <span className="line-clamp-2 text-xs text-muted">{n.body}</span>}
-        <span className="text-[11px] text-faint">{relative(n.created_at)}</span>
+        {n.body && <span className="line-clamp-2 text-secondary text-muted">{n.body}</span>}
+        <span className="text-caption text-faint">{relative(n.created_at)}</span>
       </span>
     </span>
   );
@@ -66,7 +66,7 @@ export function NotificationBell() {
           {unread > 0 && (
             <span
               aria-hidden
-              className="absolute -top-1 -right-1 min-w-4 rounded-full bg-bad px-1 text-[10px] leading-4 font-semibold text-white"
+              className="absolute -top-1 -right-1 min-w-4 rounded-full bg-bad px-1 text-badge leading-4 font-semibold text-white"
             >
               {unread > 99 ? "99+" : unread}
             </span>
@@ -75,7 +75,7 @@ export function NotificationBell() {
       </MenuTrigger>
       <MenuContent className="w-[min(380px,calc(100vw-32px))]">
         <MenuLabel>Notifications</MenuLabel>
-        {latest.data?.items.length === 0 && <p className="px-2 py-3 text-xs text-muted">Nothing yet.</p>}
+        {latest.data?.items.length === 0 && <p className="px-2 py-3 text-secondary text-muted">Nothing yet.</p>}
         {latest.data?.items.map((n) => (
           <MenuItem key={n.id} onSelect={() => open(n)}>
             <NotificationLine n={n} />

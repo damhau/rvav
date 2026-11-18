@@ -47,7 +47,7 @@ function TextWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, de
       readOnly={readOnly}
       aria-invalid={invalid || undefined}
       aria-describedby={describedBy}
-      className={cn(name === "role" && "font-mono text-[12px]", invalid && "border-bad")}
+      className={cn(name === "role" && "font-mono text-secondary", invalid && "border-bad")}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
     />
@@ -106,7 +106,7 @@ function NumberWidget({ id, name, schema, value, onChange, onBlur, invalid, desc
 
 function ToggleWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-[13px]">
+    <label htmlFor={id} className="flex items-center gap-2 text-body">
       <Checkbox id={id} checked={value === true} onChange={(v) => !readOnly && onChange(v)} />
       {ui.help ?? ui.label}
     </label>
@@ -132,7 +132,7 @@ function SegmentedWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
             disabled={readOnly || o.disabled}
             onClick={() => onChange(o.value)}
             className={cn(
-              "h-8 flex-1 border-l border-line-strong px-3 font-mono text-[12px] uppercase first:border-l-0",
+              "h-8 flex-1 border-l border-line-strong px-3 font-mono text-secondary uppercase first:border-l-0",
               active ? "bg-fg font-medium text-bg" : "bg-surface text-muted hover:bg-sunken",
             )}
           >
@@ -168,7 +168,7 @@ function RadioCardsWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
             )}
           >
             <span className="font-semibold">{o.label}</span>
-            {o.meta && <span className="font-mono text-[12px] text-muted">{o.meta}</span>}
+            {o.meta && <span className="font-mono text-secondary text-muted">{o.meta}</span>}
           </button>
         );
       })}
@@ -202,11 +202,11 @@ function ChecklistWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
               />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="font-medium">{o.label}</span>
-                {o.description && <span className="text-xs text-muted">{o.description}</span>}
-                {o.meta && <span className="font-mono text-[11px] text-faint">{o.meta}</span>}
+                {o.description && <span className="text-secondary text-muted">{o.description}</span>}
+                {o.meta && <span className="font-mono text-caption text-faint">{o.meta}</span>}
               </span>
               {o.disabled_reason && (
-                <span className="text-[11px] whitespace-nowrap text-faint">{o.disabled_reason}</span>
+                <span className="text-caption whitespace-nowrap text-faint">{o.disabled_reason}</span>
               )}
             </label>
           </li>
@@ -245,12 +245,12 @@ function SourcedSelectWidget({
         loading={sourced.isFetching && !sourced.data}
         disabled={readOnly || Boolean(empty)}
         placeholder={empty ? "Nothing available" : "Select…"}
-        className={cn("font-mono text-[12px]", invalid && "border-bad")}
+        className={cn("font-mono text-secondary", invalid && "border-bad")}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
       />
       {sourced.isError && (
-        <span className="text-xs text-bad">
+        <span className="text-secondary text-bad">
           Couldn't load the options. They'll be retried when you change a related field.
         </span>
       )}
@@ -269,13 +269,13 @@ function ComputedWidget({ id, name, ui, value, values, onChange, ctx, describedB
       id={id}
       htmlFor={(ui.depends_on ?? []).map((d) => `f-${d}`).join(" ") || undefined}
       aria-describedby={describedBy}
-      className="flex h-8 items-center justify-between gap-2 rounded-md border border-dashed border-line-strong bg-sunken px-2.5 font-mono text-[12px]"
+      className="flex h-8 items-center justify-between gap-2 rounded-md border border-dashed border-line-strong bg-sunken px-2.5 font-mono text-secondary"
     >
       <span className="truncate">{shown || <span className="text-faint">–</span>}</span>
       {sourced.isFetching ? (
         <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />
       ) : (
-        <span className="font-sans text-[11px] text-faint">{name === "ip_address" ? "next free" : "generated"}</span>
+        <span className="font-sans text-caption text-faint">{name === "ip_address" ? "next free" : "generated"}</span>
       )}
     </output>
   );
@@ -283,7 +283,7 @@ function ComputedWidget({ id, name, ui, value, values, onChange, ctx, describedB
 
 function InfoWidget({ ui }: WidgetProps) {
   return (
-    <p className="flex items-start gap-2 rounded-md bg-warn-soft px-2.5 py-2 text-xs text-warn" role="note">
+    <p className="flex items-start gap-2 rounded-md bg-warn-soft px-2.5 py-2 text-secondary text-warn" role="note">
       <Info className="mt-px size-3.5 shrink-0" aria-hidden />
       {ui.help ?? ui.label}
     </p>

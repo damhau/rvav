@@ -73,9 +73,9 @@ export default function DefinitionGraph({ text, name, composite, problemsFor, ca
   const what = composite ? "steps" : "topology";
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <h3 className="text-xs font-medium">{composite ? "Steps, in the order they run" : "Topology"}</h3>
+      <h3 className="text-secondary font-medium">{composite ? "Steps, in the order they run" : "Topology"}</h3>
       {drawn.reason && (
-        <p className="flex items-start gap-1.5 text-xs text-warn">
+        <p className="flex items-start gap-1.5 text-secondary text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
             {drawn.reason}
@@ -85,7 +85,7 @@ export default function DefinitionGraph({ text, name, composite, problemsFor, ca
       )}
       {graph && <Canvas graph={graph} label={`${composite ? "Steps" : "Topology"} of ${name}`} {...canvas} />}
       {lines.length > 0 && (
-        <ul aria-label={`Problems in the ${what}`} className="flex flex-col gap-0.5 text-xs text-warn">
+        <ul aria-label={`Problems in the ${what}`} className="flex flex-col gap-0.5 text-secondary text-warn">
           {lines.map((p, i) => (
             <li key={i}>
               Line {p.line}: {p.message}

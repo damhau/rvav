@@ -165,7 +165,7 @@ export function SecretsPanel() {
       )}
       {list.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-[13px]">
+          <table className="w-full min-w-[640px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className="border-b border-line px-4 py-2 font-medium">
@@ -191,14 +191,16 @@ export function SecretsPanel() {
                 return (
                   <tr key={s.name} className="hover:bg-sunken">
                     <td className="border-b border-line px-4 py-2">
-                      <div className="font-mono text-xs">{s.name}</div>
-                      {s.description && <div className="text-[11px] text-faint">{s.description}</div>}
+                      <div className="font-mono text-secondary">{s.name}</div>
+                      {s.description && <div className="text-caption text-faint">{s.description}</div>}
                     </td>
-                    <td className="border-b border-line px-3 py-2 text-xs text-muted">{kindLabel[s.kind]}</td>
-                    <td className="border-b border-line px-3 py-2 text-xs text-muted">
+                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">{kindLabel[s.kind]}</td>
+                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
                       {used.length ? used.join(", ") : "—"}
                     </td>
-                    <td className="border-b border-line px-3 py-2 text-xs text-muted">{relative(s.updated_at)}</td>
+                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
+                      {relative(s.updated_at)}
+                    </td>
                     <td className="border-b border-line px-4 py-2 text-right whitespace-nowrap">
                       <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
                         Replace

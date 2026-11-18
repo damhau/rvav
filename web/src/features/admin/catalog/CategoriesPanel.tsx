@@ -44,7 +44,7 @@ function Row({ c }: { c: AdminCatalogCategory }) {
   const changed = name !== c.name || order !== String(c.sort_order ?? 0);
   return (
     <tr className="hover:bg-sunken">
-      <td className="border-b border-line px-4 py-1.5 font-mono text-xs">{c.key}</td>
+      <td className="border-b border-line px-4 py-1.5 font-mono text-secondary">{c.key}</td>
       <td className="border-b border-line px-3 py-1.5">
         <Input aria-label={`Name of ${c.key}`} value={name} onChange={(e) => setName(e.target.value)} className="h-7" />
       </td>
@@ -57,7 +57,7 @@ function Row({ c }: { c: AdminCatalogCategory }) {
           className="h-7 w-20"
         />
       </td>
-      <td className="border-b border-line px-3 py-1.5 text-xs text-muted">{c.items ?? 0}</td>
+      <td className="border-b border-line px-3 py-1.5 text-secondary text-muted">{c.items ?? 0}</td>
       <td className="border-b border-line px-4 py-1.5 text-right whitespace-nowrap">
         <Button
           size="sm"
@@ -105,7 +105,7 @@ export function CategoriesPanel() {
       {categories.isError && <ErrorState error={categories.error} onRetry={() => void categories.refetch()} />}
       {categories.data && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-[13px]">
+          <table className="w-full min-w-[620px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className="border-b border-line px-4 py-2 font-medium">

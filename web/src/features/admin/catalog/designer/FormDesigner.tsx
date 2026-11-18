@@ -151,7 +151,7 @@ function Preview({
         </Field>
       </div>
       {users.data && list.length === 0 && (
-        <p className="text-xs text-muted">This project has no members to preview as: choose another project.</p>
+        <p className="text-secondary text-muted">This project has no members to preview as: choose another project.</p>
       )}
       {preview.isPending && asUser !== "" && <Skeleton className="h-64" />}
       {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
@@ -172,7 +172,7 @@ function Preview({
               revision,
             }}
           />
-          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted" role="status">
+          <div className="mt-3 flex items-center justify-between gap-2 text-secondary text-muted" role="status">
             <span>
               {problemCount === 0
                 ? "A request with these inputs would pass."
@@ -222,7 +222,7 @@ function SaveStatus({ item, draft, copy }: { item: AdminCatalogItem; draft: Cata
     return (
       <div
         role="alert"
-        className="flex flex-wrap items-center gap-2 rounded-md border border-warn bg-warn-soft px-3 py-2 text-xs"
+        className="flex flex-wrap items-center gap-2 rounded-md border border-warn bg-warn-soft px-3 py-2 text-secondary"
       >
         <span className="min-w-0 flex-1">
           Draft {draft.number} changed elsewhere since you opened it ({copy.error ?? "saved, published or discarded"}).
@@ -238,7 +238,7 @@ function SaveStatus({ item, draft, copy }: { item: AdminCatalogItem; draft: Cata
     );
   }
   return (
-    <p role="status" className="text-xs text-muted">
+    <p role="status" className="text-secondary text-muted">
       Draft {draft.number}:{" "}
       {
         {
@@ -309,7 +309,7 @@ function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: Catalo
     <div className="flex flex-col gap-3">
       <SaveStatus item={item} draft={draft} copy={copy} />
       {problems.other.length > 0 && (
-        <div className="text-xs text-bad">
+        <div className="text-secondary text-bad">
           <ul aria-label="Problems outside the form" className="flex flex-col gap-0.5">
             {problems.other.map((e, i) => (
               <li key={i}>

@@ -50,10 +50,10 @@ function Detail({ e }: { e: AuditEvent }) {
   if (entries.length === 0) return <span className="text-faint">—</span>;
   return (
     <details>
-      <summary className="cursor-pointer text-xs text-muted">
+      <summary className="cursor-pointer text-secondary text-muted">
         {entries.length} detail{entries.length > 1 ? "s" : ""}
       </summary>
-      <pre className="mt-1 max-w-md overflow-auto rounded bg-sunken p-2 font-mono text-[11px] whitespace-pre-wrap">
+      <pre className="mt-1 max-w-md overflow-auto rounded bg-sunken p-2 font-mono text-caption whitespace-pre-wrap">
         {JSON.stringify(e.detail, null, 2)}
       </pre>
     </details>
@@ -142,7 +142,7 @@ export function AuditPage() {
         )}
         {list.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-[13px]">
+            <table className="w-full min-w-[820px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line px-4 py-2 font-medium">
@@ -168,16 +168,16 @@ export function AuditPage() {
               <tbody>
                 {list.map((e) => (
                   <tr key={e.id} className="align-top hover:bg-sunken">
-                    <td className="border-b border-line px-4 py-2 text-xs whitespace-nowrap text-muted">
+                    <td className="border-b border-line px-4 py-2 text-secondary whitespace-nowrap text-muted">
                       {time(e.at)}
                     </td>
-                    <td className="border-b border-line px-3 py-2 text-xs">{e.actor?.name ?? "rvav"}</td>
-                    <td className="border-b border-line px-3 py-2 font-mono text-xs">{e.action}</td>
-                    <td className="border-b border-line px-3 py-2 text-xs">
+                    <td className="border-b border-line px-3 py-2 text-secondary">{e.actor?.name ?? "rvav"}</td>
+                    <td className="border-b border-line px-3 py-2 font-mono text-secondary">{e.action}</td>
+                    <td className="border-b border-line px-3 py-2 text-secondary">
                       <span className="text-faint">{e.target_type.replace("_", " ")}</span>{" "}
                       <span className="font-mono">{e.target_id}</span>
                     </td>
-                    <td className="border-b border-line px-3 py-2 text-xs">{e.project?.name ?? "—"}</td>
+                    <td className="border-b border-line px-3 py-2 text-secondary">{e.project?.name ?? "—"}</td>
                     <td className="border-b border-line px-4 py-2">
                       <Detail e={e} />
                     </td>

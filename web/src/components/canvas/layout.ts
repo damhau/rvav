@@ -50,7 +50,7 @@ export const nodeWidth: Record<CanvasNodeKind, number> = {
 };
 
 // A card: 8 px padding and a 1 px border above and below, a 20 px title
-// row, then 16 px rows (text-xs): the subtitle, each line, the problems.
+// row, then 16 px rows (text-caption): the subtitle, each line, the problems.
 const CHROME = 18;
 const TITLE = 20;
 const ROW = 16;

@@ -68,7 +68,7 @@ function Card({ item }: { item: CatalogItem }) {
   return (
     <div className="relative flex flex-col gap-2.5 rounded-lg border border-line bg-surface p-3.5 transition-colors hover:border-line-strong">
       <div className="flex items-start gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken font-mono text-[11px] font-medium text-muted">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken font-mono text-caption font-medium text-muted">
           {glyph(item)}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-px">
@@ -79,15 +79,15 @@ function Card({ item }: { item: CatalogItem }) {
           >
             {item.name}
           </Link>
-          <span className="text-[11px] text-faint">
+          <span className="text-caption text-faint">
             {itemTypeLabel[item.type]}
             {item.source.awx_template_name ? ` · ${item.source.awx_template_name}` : ""}
           </span>
         </div>
         <FavouriteButton item={item} />
       </div>
-      <p className="m-0 min-h-9 text-xs text-muted">{item.summary}</p>
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5 text-[11px] text-faint">
+      <p className="m-0 min-h-9 text-secondary text-muted">{item.summary}</p>
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5 text-caption text-faint">
         <span className="font-mono">
           {item.version.number.startsWith("AWX") ? item.version.number : `v${item.version.number}`}
         </span>
@@ -170,7 +170,7 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
                     )}
                   >
                     <span>{c.name}</span>
-                    <span className="font-mono text-[11px] text-faint">{c.item_count}</span>
+                    <span className="font-mono text-caption text-faint">{c.item_count}</span>
                   </Link>
                 );
               })}
@@ -197,7 +197,7 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
             </div>
           ) : (
             <>
-              <span className="text-xs text-muted" aria-live="polite">
+              <span className="text-secondary text-muted" aria-live="polite">
                 {items.data.items.length} {items.data.items.length === 1 ? "item" : "items"}
               </span>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,290px),1fr))] gap-3">

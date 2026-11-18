@@ -22,7 +22,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
             <li key={c.key} className="flex flex-col gap-0.5" aria-label={c.title}>
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="font-medium">{c.title}</span>
-                <span className="text-xs text-muted">
+                <span className="text-secondary text-muted">
                   {c.count === 0 ? "none" : `${c.count} VM${c.count === 1 ? "" : "s"}`}
                   {c.os_family ? ` · ${osLabel[c.os_family]}` : ""}
                 </span>
@@ -31,14 +31,14 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
               {c.count > 0 && (
                 <>
                   {c.names.length > 0 && (
-                    <span className="font-mono text-[12px] break-words">{c.names.join(", ")}</span>
+                    <span className="font-mono text-secondary break-words">{c.names.join(", ")}</span>
                   )}
-                  <span className="text-xs text-muted">
+                  <span className="text-secondary text-muted">
                     {c.vcpu} vCPU · {c.memory_gb} GB · disks {disks}
                     {where ? ` · ${where}` : ""}
                     {c.placement?.chosen ? " (chosen by rvav)" : ""}
                   </span>
-                  <span className="font-mono text-[11px] break-words text-faint">
+                  <span className="font-mono text-caption break-words text-faint">
                     {c.nics
                       .map((n) =>
                         [n.network, n.subnet, n.ipam === "dhcp" ? "DHCP" : n.address].filter(Boolean).join(" "),
@@ -46,11 +46,11 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                       .join(" · ")}
                   </span>
                   {c.tags && c.tags.length > 0 && (
-                    <span className="text-[11px] text-faint">Tags {c.tags.join(", ")}</span>
+                    <span className="text-caption text-faint">Tags {c.tags.join(", ")}</span>
                   )}
                   {/* NSX security groups (ADR-0028). */}
                   {c.nsx_groups && c.nsx_groups.length > 0 && (
-                    <span className="text-[11px] text-faint">Security groups {c.nsx_groups.join(", ")}</span>
+                    <span className="text-caption text-faint">Security groups {c.nsx_groups.join(", ")}</span>
                   )}
                 </>
               )}

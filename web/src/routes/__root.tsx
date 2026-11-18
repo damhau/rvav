@@ -44,8 +44,8 @@ function Root() {
         position="bottom-right"
         toastOptions={{
           classNames: {
-            toast: "!rounded-lg !border !border-line !bg-surface !text-fg !shadow-pop !font-sans !text-[13px]",
-            description: "!text-muted !text-xs",
+            toast: "!rounded-lg !border !border-line !bg-surface !text-fg !shadow-pop !font-sans !text-body",
+            description: "!text-muted !text-secondary",
             actionButton: "!bg-accent !text-accent-fg",
           },
         }}

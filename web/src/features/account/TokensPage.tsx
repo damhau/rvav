@@ -61,7 +61,7 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
       <Field label="Expires in" htmlFor="token-days" className="w-36">
         <Select id="token-days" value={days} onChange={setDays} options={durations} />
       </Field>
-      <label htmlFor="token-inventory" className="flex items-center gap-2 pb-2 text-[13px]">
+      <label htmlFor="token-inventory" className="flex items-center gap-2 pb-2 text-body">
         <Checkbox id="token-inventory" checked={inventoryOnly} onChange={setInventoryOnly} />
         Ansible inventory only
       </label>
@@ -99,7 +99,7 @@ export function TokensPage() {
         {made && (
           <section
             aria-label="Your new token"
-            className="mt-3 flex flex-col gap-1.5 rounded-md border border-ok bg-ok-soft p-3 text-xs"
+            className="mt-3 flex flex-col gap-1.5 rounded-md border border-ok bg-ok-soft p-3 text-secondary"
           >
             {/* Announced without the value itself. */}
             <span role="status">Copy it now: it won't be shown again.</span>
@@ -126,7 +126,7 @@ export function TokensPage() {
         flush
         actions={
           isAdmin && (
-            <label htmlFor="tokens-everyone" className="flex items-center gap-2 text-xs">
+            <label htmlFor="tokens-everyone" className="flex items-center gap-2 text-secondary">
               <Checkbox id="tokens-everyone" checked={everyone} onChange={setEveryone} />
               Everyone's
             </label>
@@ -140,7 +140,7 @@ export function TokensPage() {
         )}
         {list.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-[13px]">
+            <table className="w-full min-w-[640px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line px-4 py-2 font-medium">
@@ -167,16 +167,16 @@ export function TokensPage() {
                   <tr key={t.id} className="hover:bg-sunken">
                     <td className="border-b border-line px-4 py-2">
                       <div className="font-medium">{t.name}</div>
-                      <div className="text-[11px] text-faint">
+                      <div className="text-caption text-faint">
                         {t.scope === "inventory" ? "Ansible inventory only" : "Everything you may do"} · made{" "}
                         {relative(t.created_at)}
                       </div>
                     </td>
-                    {everyone && <td className="border-b border-line px-3 py-2 text-xs">{t.user.name}</td>}
-                    <td className="border-b border-line px-3 py-2 text-xs text-muted">
+                    {everyone && <td className="border-b border-line px-3 py-2 text-secondary">{t.user.name}</td>}
+                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
                       {t.last_used_at ? relative(t.last_used_at) : "Never"}
                     </td>
-                    <td className="border-b border-line px-3 py-2 text-xs text-muted">
+                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
                       {t.expires_at ? relative(t.expires_at) : "Never"}
                     </td>
                     <td className="border-b border-line px-4 py-2 text-right">

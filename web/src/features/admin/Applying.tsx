@@ -41,7 +41,7 @@ export function Applying({ revision }: { revision: number }) {
   return (
     <section
       aria-label="Applying the settings"
-      className="flex flex-col gap-2 rounded-md border border-line p-3 text-xs"
+      className="flex flex-col gap-2 rounded-md border border-line p-3 text-secondary"
     >
       <p role="status" className="font-medium">
         {done

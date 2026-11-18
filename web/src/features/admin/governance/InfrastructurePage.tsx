@@ -90,7 +90,7 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
             <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
               <Input
                 id="tpl-vc"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 value={f.vcenter_template}
                 onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
               />
@@ -103,7 +103,7 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
             >
               <Input
                 id="tpl-lib"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 value={f.content_library ?? ""}
                 onChange={(e) => setF({ ...f, content_library: e.target.value })}
               />
@@ -184,7 +184,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
       )}
       {templates.data && templates.data.items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -206,9 +206,9 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                 <tr key={t.key}>
                   <td className={`${td} pl-4`}>
                     <span className="font-medium">{t.label}</span>{" "}
-                    <span className="font-mono text-[11px] text-faint">{t.key}</span>
+                    <span className="font-mono text-caption text-faint">{t.key}</span>
                   </td>
-                  <td className={`${td} font-mono text-xs`}>
+                  <td className={`${td} font-mono text-secondary`}>
                     {t.content_library && <span className="text-faint">{t.content_library} / </span>}
                     {t.vcenter_template}
                     {!t.in_inventory && (
@@ -217,7 +217,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                       </Badge>
                     )}
                   </td>
-                  <td className={`${td} text-xs text-muted`}>{offersText(t.offers, projectName)}</td>
+                  <td className={`${td} text-secondary text-muted`}>{offersText(t.offers, projectName)}</td>
                   <td className={`${td} text-right whitespace-nowrap`}>
                     {canEdit && (
                       <>
@@ -366,7 +366,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
       {sizes.isPending && <SkeletonRows rows={3} cols={4} />}
       {sizes.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -388,12 +388,12 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
                 <tr key={z.key}>
                   <td className={`${td} pl-4`}>
                     <span className="font-medium">{z.label}</span>{" "}
-                    <span className="font-mono text-[11px] text-faint">{z.key}</span>
+                    <span className="font-mono text-caption text-faint">{z.key}</span>
                   </td>
-                  <td className={`${td} text-xs`}>
+                  <td className={`${td} text-secondary`}>
                     {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
                   </td>
-                  <td className={`${td} text-xs text-muted`}>{offersText(z.offers, projectName)}</td>
+                  <td className={`${td} text-secondary text-muted`}>{offersText(z.offers, projectName)}</td>
                   <td className={`${td} text-right whitespace-nowrap`}>
                     {canEdit && (
                       <>
@@ -479,7 +479,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
           <Field label="vCenter network" htmlFor="map-network">
             <Input
               id="map-network"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               disabled={Boolean(mapping)}
               value={network}
               onChange={(e) => setNetwork(e.target.value)}
@@ -489,7 +489,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
             <Field label="Subnet" htmlFor="map-subnet" error={errors["/subnet"]}>
               <Input
                 id="map-subnet"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 value={f.subnet}
                 onChange={(e) => setF({ ...f, subnet: e.target.value })}
               />
@@ -497,7 +497,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
             <Field label="Gateway" htmlFor="map-gateway" error={errors["/gateway"]}>
               <Input
                 id="map-gateway"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 value={f.gateway}
                 onChange={(e) => setF({ ...f, gateway: e.target.value })}
               />
@@ -508,7 +508,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
             <Field label="DNS servers" htmlFor="map-dns" hint="Comma-separated">
               <Input
                 id="map-dns"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 value={f.dns_servers}
                 onChange={(e) => setF({ ...f, dns_servers: e.target.value })}
               />
@@ -550,14 +550,14 @@ function Networks({ canEdit }: { canEdit: boolean }) {
         )
       }
     >
-      <p className="border-b border-line px-4 py-2 text-xs text-muted">
+      <p className="border-b border-line px-4 py-2 text-secondary text-muted">
         EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP
         doesn't say.
       </p>
       {mappings.isPending && <SkeletonRows rows={3} cols={4} />}
       {mappings.data && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-[13px]">
+          <table className="w-full min-w-[720px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -580,11 +580,11 @@ function Networks({ canEdit }: { canEdit: boolean }) {
             <tbody>
               {mappings.data.items.map((m) => (
                 <tr key={m.network}>
-                  <td className={`${td} pl-4 font-mono text-xs`}>{m.network}</td>
-                  <td className={`${td} font-mono text-xs`}>
+                  <td className={`${td} pl-4 font-mono text-secondary`}>{m.network}</td>
+                  <td className={`${td} font-mono text-secondary`}>
                     {m.subnet} <span className="text-faint">via {m.gateway}</span>
                   </td>
-                  <td className={`${td} text-xs`}>
+                  <td className={`${td} text-secondary`}>
                     {m.dns_zone} <span className="text-faint">{m.dns_servers.join(", ")}</span>
                   </td>
                   <td className={td}>

@@ -177,7 +177,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               to="/deployments"
               search={(s: DeploymentsSearch) => ({ ...s, env: toggleEnv(e) })}
               aria-current={envs.includes(e) ? "true" : undefined}
-              className={cn(chip(envs.includes(e)), "font-mono text-[11px] uppercase")}
+              className={cn(chip(envs.includes(e)), "font-mono text-caption uppercase")}
             >
               {e}
             </Link>
@@ -191,7 +191,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         >
           Lease ends ≤ 7 days
         </Link>
-        <label className="ml-auto flex items-center gap-2 text-xs text-muted">
+        <label className="ml-auto flex items-center gap-2 text-secondary text-muted">
           <input
             type="checkbox"
             checked={Boolean(search.mine)}
@@ -308,7 +308,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
                       >
                         {d.name}
                       </Link>
-                      <div className="text-[11px] text-faint">
+                      <div className="text-caption text-faint">
                         {d.catalog_item.name} · {d.version.number}
                       </div>
                     </td>
@@ -322,12 +322,12 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
                       <Dots d={d} />
                     </td>
                     <td className="border-b border-line px-3 py-2.5">
-                      <span className="font-mono text-[12px]">
+                      <span className="font-mono text-secondary">
                         {d.primary_address?.ip || "–"}
                         {d.vm_count > 1 && <span className="text-faint"> +{d.vm_count - 1}</span>}
                       </span>
                       {d.primary_address?.fqdn && (
-                        <div className="font-mono text-[11px] text-faint">{d.primary_address.fqdn}</div>
+                        <div className="font-mono text-caption text-faint">{d.primary_address.fqdn}</div>
                       )}
                     </td>
                     <td className="border-b border-line px-3 py-2.5 text-muted">{d.owner.name}</td>
@@ -349,7 +349,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
           {list.isFetchingNextPage ? "Loading…" : "Load more"}
         </Button>
       )}
-      <p className="text-xs text-faint">Power state and addresses come from vCenter and update live.</p>
+      <p className="text-secondary text-faint">Power state and addresses come from vCenter and update live.</p>
       {bulk && (
         <BulkDialog
           bulk={bulk}

@@ -66,8 +66,8 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v) ? (v as Raw) : {});
 const keyPattern = /^[a-z][a-z0-9_]{0,40}$/;
 const variablePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const panel = "flex flex-col gap-3 rounded-md border border-line bg-surface p-3 text-xs";
-const legend = "mb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase";
+const panel = "flex flex-col gap-3 rounded-md border border-line bg-surface p-3 text-secondary";
+const legend = "mb-1.5 text-caption font-medium tracking-wide text-muted uppercase";
 
 /** The definition in a text, or undefined when it doesn't parse. Shared with the graph's: read only. */
 function parseDefinition(text: string): Raw | undefined {
@@ -291,7 +291,7 @@ export default function CompositeDesigner({
     if (!def)
       return (
         <div className="flex flex-col gap-2">
-          <p role="note" className="text-xs text-warn">
+          <p role="note" className="text-secondary text-warn">
             The YAML doesn't parse: fix it in the editor to change the steps here.
           </p>
           <NodeDetails node={node} />
@@ -419,8 +419,8 @@ function useFocusAfterSelect() {
 
 function PanelHeading({ badge, children }: { badge?: string; children: ReactNode }) {
   return (
-    <h4 id="cd-heading" tabIndex={-1} className="flex items-baseline gap-1.5 text-[13px] font-medium outline-none">
-      {badge && <span className="text-[10px] tracking-wide text-faint uppercase">{badge}</span>}
+    <h4 id="cd-heading" tabIndex={-1} className="flex items-baseline gap-1.5 text-body font-medium outline-none">
+      {badge && <span className="text-badge tracking-wide text-faint uppercase">{badge}</span>}
       {children}
     </h4>
   );
@@ -458,7 +458,7 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
   return (
     <section aria-label="Selected: Done" className={panel}>
       <PanelHeading>Done</PanelHeading>
-      <div className="flex items-start gap-2 text-[13px]">
+      <div className="flex items-start gap-2 text-body">
         <Checkbox
           id="cd-rollback"
           checked={on}
@@ -467,7 +467,7 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
         />
         <div>
           <label htmlFor="cd-rollback">Undo what was built when a step fails</label>
-          <p className="text-xs text-muted">
+          <p className="text-secondary text-muted">
             The VMs built are deleted and each step done is undone by its undo, if it has one, the last first.
           </p>
         </div>
@@ -609,7 +609,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           <CommitInput
             id="cd-key"
             value={key}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             onCommit={(v) => {
               const next = v.trim();
               if (!keyPattern.test(next)) {
@@ -668,7 +668,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             <CommitInput
               id="cd-awx-name"
               value=""
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               onCommit={(v) => {
                 if (!v.trim()) return;
                 setByNameOpen(false);
@@ -693,7 +693,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             <CommitInput
               id="cd-when"
               value={str(step.when)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder={planned ? undefined : 'inputs.environment == "prd"'}
               disabled={planned && !str(step.when)}
               onCommit={(v) => apply(() => edits.setStepField(text, id, "when", v))}
@@ -879,7 +879,7 @@ function UndoEditor({
           <CommitInput
             id="cd-undo-name"
             value=""
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             onCommit={(v) => {
               if (!v.trim()) return;
               setByNameOpen(false);
@@ -1005,7 +1005,7 @@ function RestCallFields({
           <CommitInput
             id={`${prefix}-url`}
             value={str(call.url)}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             placeholder="https://cmdb.corp.example/api/ci/${steps.vm.name}"
             onCommit={(v) => onChange("url", v)}
           />
@@ -1019,7 +1019,7 @@ function RestCallFields({
           <CommitInput
             id={`${prefix}-body`}
             value={str(call.body)}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             placeholder={method === "GET" ? undefined : "{'name': steps.vm.fqdn, 'owner': inputs.owner}"}
             disabled={method === "GET" && !str(call.body)}
             onCommit={(v) => onChange("body", v)}
@@ -1052,7 +1052,7 @@ function RestCallFields({
           <CommitInput
             id={`${prefix}-accept`}
             value={accept}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             placeholder={undo ? "200, 204, 404" : "200, 201"}
             onCommit={(v) => {
               const statuses = writtenStatuses(v);
@@ -1076,7 +1076,7 @@ function RestCallFields({
             <CommitInput
               id={`${prefix}-keep`}
               value={str(call.keep)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder="$.result"
               onCommit={(v) => onChange("keep", v)}
             />
@@ -1122,7 +1122,7 @@ function WaitFields({ wait, id, reads, ctx }: { wait: Raw; id: string; reads: st
           <CommitInput
             id="cd-wait-for"
             value={str(wait.for)}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             placeholder="72h"
             onCommit={(v) => set("for", v)}
           />
@@ -1135,7 +1135,7 @@ function WaitFields({ wait, id, reads, ctx }: { wait: Raw; id: string; reads: st
           <CommitInput
             id="cd-wait-until"
             value={str(wait.until)}
-            className="font-mono text-xs"
+            className="font-mono text-secondary"
             placeholder="inputs.window"
             onCommit={(v) => set("until", v)}
           />
@@ -1188,7 +1188,7 @@ function PollFields({
             <CommitInput
               id="cd-poll-every"
               value={str(poll.every)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder="10m"
               onCommit={(v) => set("every", v)}
             />
@@ -1206,7 +1206,7 @@ function PollFields({
             <CommitInput
               id="cd-poll-until"
               value={str(poll.until)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder={`${own}.json == 'approved'`}
               onCommit={(v) => set("until", v)}
             />
@@ -1220,7 +1220,7 @@ function PollFields({
             <CommitInput
               id="cd-poll-timeout"
               value={str(poll.timeout)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder="72h"
               onCommit={(v) => set("timeout", v)}
             />
@@ -1317,7 +1317,7 @@ function BranchFields({
           const label = str(c.title) || `Case ${i + 1}`;
           return (
             <fieldset key={i} className="flex flex-col gap-2 rounded-md border border-line p-2">
-              <legend className="px-1 text-xs font-medium">Case {i + 1}</legend>
+              <legend className="px-1 text-secondary font-medium">Case {i + 1}</legend>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field
                   label="Title"
@@ -1335,7 +1335,7 @@ function BranchFields({
                   <CommitInput
                     id={`${prefix}-when`}
                     value={str(c.when)}
-                    className="font-mono text-xs"
+                    className="font-mono text-secondary"
                     placeholder="inputs.size == 'L'"
                     onCommit={(v) => apply(() => edits.setBranchCase(text, id, i, "when", v))}
                   />
@@ -1480,7 +1480,7 @@ function NotifyFields({
             <CommitInput
               id="cd-notify-users"
               value={listText(notify.users)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               onCommit={(v) => set("users", writtenUsers(v))}
             />
           </Field>
@@ -1544,7 +1544,7 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
             <CommitInput
               id="cd-ask-approvers"
               value={listText(ask.approvers)}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               onCommit={(v) => set("approvers", writtenUsers(v))}
             />
           </Field>
@@ -1609,7 +1609,7 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
             <CommitInput
               id="cd-ask-timeout"
               value={timeout}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               placeholder="48h"
               onCommit={(v) => set("timeout", v)}
             />
@@ -1639,7 +1639,7 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
                 <CommitInput
                   id="cd-ask-esc-approvers"
                   value={listText(escalate.approvers)}
-                  className="font-mono text-xs"
+                  className="font-mono text-secondary"
                   onCommit={(v) => apply(() => edits.setAskEscalate(text, id, "approvers", writtenUsers(v)))}
                 />
               </Field>
@@ -1673,14 +1673,19 @@ function AskQuestion({
   const key = str(question.key);
   return (
     <fieldset className="flex flex-col gap-2 rounded-md border border-line p-2">
-      <legend className="px-1 text-xs font-medium">Question {index + 1}</legend>
+      <legend className="px-1 text-secondary font-medium">Question {index + 1}</legend>
       <div className="grid gap-3 md:grid-cols-2">
         <Field
           label="Key"
           htmlFor={`${prefix}-key`}
           hint={key ? `Later steps read steps.${stepKey || "<key>"}.answer.${key}.` : undefined}
         >
-          <CommitInput id={`${prefix}-key`} value={key} className="font-mono text-xs" onCommit={(v) => set("key", v)} />
+          <CommitInput
+            id={`${prefix}-key`}
+            value={key}
+            className="font-mono text-secondary"
+            onCommit={(v) => set("key", v)}
+          />
         </Field>
         <Field label="Question" htmlFor={`${prefix}-label`}>
           <CommitInput id={`${prefix}-label`} value={str(question.label)} onCommit={(v) => set("label", v)} />
@@ -1773,7 +1778,7 @@ function AddVariable({
         <Input
           id={id}
           value={name}
-          className="font-mono text-xs"
+          className="font-mono text-secondary"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -1824,12 +1829,12 @@ function BindingRow({
   return (
     <div className="grid items-start gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <div className="flex min-w-0 flex-col pt-1.5">
-        <label htmlFor={id} className="text-xs font-medium text-fg">
+        <label htmlFor={id} className="text-secondary font-medium text-fg">
           {input.title}
-          {input.title !== input.name && <span className="ml-1.5 font-mono text-[11px] text-faint">{input.name}</span>}
+          {input.title !== input.name && <span className="ml-1.5 font-mono text-caption text-faint">{input.name}</span>}
         </label>
         {(missing || note || input.description) && (
-          <span id={`${id}-note`} className={cn("text-[11px]", missing ? "text-warn" : "text-muted")}>
+          <span id={`${id}-note`} className={cn("text-caption", missing ? "text-warn" : "text-muted")}>
             {missing ? "Required, and not bound." : (note ?? input.description)}
           </span>
         )}
@@ -1858,7 +1863,7 @@ function BindingRow({
               value={shown(value)}
               label={`${input.title}: value or CEL expression`}
               placeholder={'"a value" or inputs.name + "_x"'}
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               onCommit={(t) => {
                 const v = writtenBinding(t);
                 if (v === undefined) setWriting(false);
@@ -2035,7 +2040,7 @@ function AddStepDialog({
               <Input
                 id="cd-new-awx"
                 value={awxName}
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 onChange={(e) => {
                   setAwxName(e.target.value);
                   suggest(e.target.value.trim() ? { kind: "awx", ref: e.target.value.trim() } : undefined);
@@ -2053,7 +2058,7 @@ function AddStepDialog({
               <Input
                 id="cd-new-key"
                 value={key}
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 onChange={(e) => {
                   setKey(e.target.value);
                   setKeyTouched(true);
@@ -2070,10 +2075,10 @@ function AddStepDialog({
             </Field>
           </div>
           {side ? (
-            <p className="text-xs text-muted">It runs on the side {side.label}, after the steps there.</p>
+            <p className="text-secondary text-muted">It runs on the side {side.label}, after the steps there.</p>
           ) : selected ? (
-            <fieldset className="flex flex-col gap-1.5 text-[13px]">
-              <legend className="mb-1 text-xs font-medium">When it runs</legend>
+            <fieldset className="flex flex-col gap-1.5 text-body">
+              <legend className="mb-1 text-secondary font-medium">When it runs</legend>
               {places.map(([v, label]) => (
                 <label
                   key={v}
@@ -2095,7 +2100,7 @@ function AddStepDialog({
               ))}
             </fieldset>
           ) : (
-            <p className="text-xs text-muted">
+            <p className="text-secondary text-muted">
               It runs at the end. Select a step first to add one after it or beside it.
             </p>
           )}

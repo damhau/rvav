@@ -77,7 +77,7 @@ export function AccessExplained({
   }
   return (
     <div className="flex flex-col">
-      <div className="flex flex-col gap-2 border-b border-line px-4 py-3 text-[13px]">
+      <div className="flex flex-col gap-2 border-b border-line px-4 py-3 text-body">
         <p>
           {self ? "Your roles" : `${a.user.name}'s roles`} {where}, with the groups of {their} last sign-in
           {a.groups.length > 0 ? `: ${a.groups.join(", ")}.` : " (none)."}
@@ -86,11 +86,11 @@ export function AccessExplained({
           {a.roles.map((g) => (
             <li key={`${g.role.key}/${g.given}/${g.through}/${g.group ?? ""}`}>
               <RoleName role={g.role} linked={linked} />{" "}
-              <span className="text-xs text-muted">{grantText(g, a.project)}</span>
+              <span className="text-secondary text-muted">{grantText(g, a.project)}</span>
             </li>
           ))}
         </ul>
-        <p className="text-xs text-muted">
+        <p className="text-secondary text-muted">
           An API token acts with the roles given to {self ? "you" : "them"} only, never those through a group.
         </p>
       </div>
@@ -111,7 +111,7 @@ export function AccessExplained({
       <div className="overflow-x-auto">
         <table
           aria-label={`What ${self ? "you" : a.user.name} may do ${where}`}
-          className="w-full border-collapse text-[13px]"
+          className="w-full border-collapse text-body"
         >
           <thead>
             <tr className="label text-left">
@@ -130,7 +130,11 @@ export function AccessExplained({
             {[...areas.entries()].map(([area, list]) => (
               <Fragment key={area}>
                 <tr>
-                  <th scope="colgroup" colSpan={3} className={`${td} bg-sunken pl-4 text-left text-xs font-medium`}>
+                  <th
+                    scope="colgroup"
+                    colSpan={3}
+                    className={`${td} bg-sunken pl-4 text-left text-secondary font-medium`}
+                  >
                     {area}
                   </th>
                 </tr>
@@ -138,10 +142,10 @@ export function AccessExplained({
                   <tr key={p.id}>
                     <td className={`${td} pl-4`}>
                       {info.get(p.id)?.summary ?? allows(c, [p.id])[0]?.text ?? p.id}
-                      <span className="block font-mono text-xs text-muted">{p.id}</span>
+                      <span className="block font-mono text-secondary text-muted">{p.id}</span>
                     </td>
                     <td className={td}>{p.held ? <Badge tone="ok">Held</Badge> : <Badge>Not held</Badge>}</td>
-                    <td className={`${td} text-xs`}>
+                    <td className={`${td} text-secondary`}>
                       {p.granted_by.length > 0 ? (
                         <ul className="flex flex-col gap-0.5">
                           {p.granted_by.map((g) => (

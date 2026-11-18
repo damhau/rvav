@@ -27,7 +27,7 @@ function Row({ t }: { t: AwxTemplate }) {
     <tr className="hover:bg-sunken">
       <td className="border-b border-line px-4 py-2 align-top">
         <div className="font-medium">{t.name}</div>
-        <div className="font-mono text-[11px] text-faint">
+        <div className="font-mono text-caption text-faint">
           {t.workflow ? "Workflow" : "Job template"} #{t.template_id}
         </div>
       </td>
@@ -47,11 +47,11 @@ function Row({ t }: { t: AwxTemplate }) {
       <td className="border-b border-line px-3 py-2 align-top">
         <Status t={t} />
       </td>
-      <td className="border-b border-line px-3 py-2 align-top text-xs text-muted">
+      <td className="border-b border-line px-3 py-2 align-top text-secondary text-muted">
         {notes.length > 0 ? (
           <ul aria-label={`Changes and warnings for ${t.name}`} className="flex flex-col gap-0.5">
             {t.survey_diff.map((d) => (
-              <li key={d} className="font-mono text-[11px] text-fg">
+              <li key={d} className="font-mono text-caption text-fg">
                 {d}
               </li>
             ))}
@@ -63,7 +63,7 @@ function Row({ t }: { t: AwxTemplate }) {
           "—"
         )}
       </td>
-      <td className="border-b border-line px-4 py-2 text-right align-top text-xs text-faint">
+      <td className="border-b border-line px-4 py-2 text-right align-top text-secondary text-faint">
         {relative(t.synced_at)}
       </td>
     </tr>
@@ -106,7 +106,7 @@ export function AwxTemplatesPanel() {
       )}
       {items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] border-collapse text-[13px]">
+          <table className="w-full min-w-[880px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className="border-b border-line px-4 py-2 font-medium">

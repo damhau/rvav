@@ -170,14 +170,14 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           save.mutate();
         }}
       >
-        <p className="max-w-3xl text-xs text-muted">
+        <p className="max-w-3xl text-secondary text-muted">
           Everyone but the local administrator signs in here, and gets roles from the group mappings in{" "}
           <Link to="/admin/projects" className="text-accent underline underline-offset-2">
             Projects
           </Link>
           . A saved provider applies without a restart. The local administrator still signs in when it is down.
         </p>
-        <div className="flex max-w-3xl flex-col gap-1 rounded-md border border-line px-3 py-2 text-xs">
+        <div className="flex max-w-3xl flex-col gap-1 rounded-md border border-line px-3 py-2 text-secondary">
           <span className="font-medium">Redirect URI, to register at the provider</span>
           <CopyText value={redirectUri()} />
           <span className="text-faint">
@@ -207,7 +207,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
               >
                 <Input
                   id={id}
-                  className="font-mono text-xs"
+                  className="font-mono text-secondary"
                   spellCheck={false}
                   disabled={lock !== null}
                   placeholder={s.placeholder}
@@ -229,14 +229,14 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
             <ExternalLink aria-hidden /> {waiting ? "Signing in…" : "Try signing in"}
           </Button>
           {it.updated_at && (
-            <span className="text-xs text-faint">
+            <span className="text-secondary text-faint">
               Saved {new Date(it.updated_at).toLocaleString()}
               {it.updated_by ? ` by ${it.updated_by.name}` : ""}
             </span>
           )}
         </div>
         {!canTry && (
-          <p className="text-xs text-faint">
+          <p className="text-secondary text-faint">
             Test the provider first: the trial sign-in uses the settings above, before they are saved, in a window of
             its own.
           </p>
@@ -245,7 +245,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           <section
             aria-label="Identity provider test"
             aria-live="polite"
-            className="flex flex-col gap-1 rounded-md border border-line p-3 text-xs"
+            className="flex flex-col gap-1 rounded-md border border-line p-3 text-secondary"
           >
             <p className="font-medium">{test.data.ok ? "Every check passed: try signing in." : "A check failed."}</p>
             <ul className="flex flex-col gap-0.5">
@@ -266,7 +266,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           </section>
         )}
         {waiting && (
-          <p role="status" className="text-xs text-muted">
+          <p role="status" className="text-secondary text-muted">
             Sign in at the provider in the new window.{" "}
             <button
               type="button"
@@ -278,7 +278,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           </p>
         )}
         {trialError && (
-          <p role="alert" className="rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-xs text-bad">
+          <p role="alert" className="rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary text-bad">
             {trialError}
           </p>
         )}
@@ -294,7 +294,7 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
     <section
       aria-label="Trial sign-in"
       aria-live="polite"
-      className="flex flex-col gap-3 rounded-md border border-line p-3 text-xs"
+      className="flex flex-col gap-3 rounded-md border border-line p-3 text-secondary"
     >
       <p className="flex items-start gap-1.5 font-medium">
         {r.accepted ? (
@@ -342,7 +342,7 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
       </dl>
       <details>
         <summary className="cursor-pointer text-muted">The token's claims</summary>
-        <pre className="mt-1 max-h-72 overflow-auto rounded-sm bg-sunken p-2 font-mono text-[11px]">
+        <pre className="mt-1 max-h-72 overflow-auto rounded-sm bg-sunken p-2 font-mono text-caption">
           {JSON.stringify(r.claims, null, 2)}
         </pre>
       </details>

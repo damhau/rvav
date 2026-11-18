@@ -25,10 +25,10 @@ export function Drafts() {
     <Panel title="Your drafts" flush>
       <ul aria-label="Your drafts" className="divide-y divide-line">
         {items.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-[13px]">
+          <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-body">
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{d.name}</span>
-              <span className="text-xs text-muted">
+              <span className="text-secondary text-muted">
                 {d.catalog_item.name} · {d.project.name} · {d.draft.environment}
                 {d.on_behalf_of ? ` · for ${d.on_behalf_of.name}` : ""} · saved <Time iso={d.updated_at} />
               </span>

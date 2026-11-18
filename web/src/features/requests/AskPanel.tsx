@@ -41,14 +41,14 @@ function Question({
   if (field.type === "boolean")
     return (
       <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-xs font-medium">
+        <div className="flex items-center gap-2 text-secondary font-medium">
           <Checkbox id={id} checked={value === true} onChange={onChange} />
           <label htmlFor={id}>{field.label}</label>
         </div>
-        {error && <p className="text-xs text-bad">{error}</p>}
+        {error && <p className="text-secondary text-bad">{error}</p>}
       </div>
     );
-  const required = field.required ? <span className="text-xs text-faint">Required</span> : undefined;
+  const required = field.required ? <span className="text-secondary text-faint">Required</span> : undefined;
   if (field.type === "choice")
     return (
       <Field label={field.label} htmlFor={id} error={error} aside={required}>
@@ -156,11 +156,11 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
         answer.mutate("approve");
       }}
     >
-      <div className="flex flex-col gap-0.5 text-[13px]">
+      <div className="flex flex-col gap-0.5 text-body">
         <span className="font-medium">{approval.level.name}</span>
         {question?.message && <p className="whitespace-pre-wrap">{question.message}</p>}
         {approval.due_at && (
-          <span className="text-xs text-muted">
+          <span className="text-secondary text-muted">
             Due <Time iso={approval.due_at} />
             {dueText(approval) && `, ${dueText(approval)}`}
           </span>
@@ -183,7 +183,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
         label="Comment"
         htmlFor={commentId}
         error={errors["/comment"]}
-        aside={<span className="text-xs text-faint">{form.length > 0 ? "Optional" : "Required to reject"}</span>}
+        aside={<span className="text-secondary text-faint">{form.length > 0 ? "Optional" : "Required to reject"}</span>}
       >
         <Textarea
           id={commentId}

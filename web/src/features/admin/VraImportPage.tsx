@@ -72,13 +72,13 @@ const busyKey = ["vra"];
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 function Notes({ notes }: { notes: S["VraNote"][] }) {
-  if (notes.length === 0) return <p className="text-xs text-faint">Nothing to note.</p>;
+  if (notes.length === 0) return <p className="text-secondary text-faint">Nothing to note.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
       {notes.map((n, i) => (
-        <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+        <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-secondary">
           <Badge tone={levels[n.level][1]}>{levels[n.level][0]}</Badge>
-          <code className="font-mono text-[11px] text-faint">{n.where}</code>
+          <code className="font-mono text-caption text-faint">{n.where}</code>
           <span className="min-w-0 basis-full sm:basis-auto">{n.text}</span>
         </li>
       ))}
@@ -113,8 +113,8 @@ function Summary({ plan }: { plan: Plan }) {
   const s = plan.summary;
   const stat = (label: string, n: number, tone?: string) => (
     <div className="flex flex-col">
-      <span className={"tnum text-lg font-semibold " + (tone ?? "")}>{n}</span>
-      <span className="text-xs text-muted">{label}</span>
+      <span className={"tnum text-title font-semibold " + (tone ?? "")}>{n}</span>
+      <span className="text-secondary text-muted">{label}</span>
     </div>
   );
   return (
@@ -157,7 +157,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
   const namesake = (name: string) => projects.data?.items.find((x) => x.name.toLowerCase() === name.toLowerCase());
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-[13px]" aria-label="vRA projects">
+      <table className="w-full min-w-[640px] border-collapse text-body" aria-label="vRA projects">
         <thead>
           <tr className="label text-left">
             <th scope="col" className={th}>
@@ -179,7 +179,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
             <tr key={p.vra_id}>
               <td className={td}>
                 <span className="font-medium">{p.name}</span>
-                <div className="font-mono text-[11px] text-faint">{p.vra_id}</div>
+                <div className="font-mono text-caption text-faint">{p.vra_id}</div>
               </td>
               <td className={td}>
                 <Select
@@ -206,7 +206,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
         </tbody>
       </table>
       {projects.isError && (
-        <p className="px-4 py-2 text-xs text-bad">
+        <p className="px-4 py-2 text-secondary text-bad">
           rvav's projects couldn't be loaded, so only "by name" and "stays in vRA" can be chosen.{" "}
           <Button size="sm" variant="ghost" onClick={() => void projects.refetch()}>
             Retry
@@ -224,7 +224,7 @@ function ItemsTab({ plan }: { plan: Plan }) {
   );
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] border-collapse text-[13px]" aria-label="Cloud templates">
+      <table className="w-full min-w-[820px] border-collapse text-body" aria-label="Cloud templates">
         <thead>
           <tr className="label text-left">
             <th scope="col" className={th}>
@@ -250,7 +250,7 @@ function ItemsTab({ plan }: { plan: Plan }) {
               <tr>
                 <td className={td}>
                   <span className="font-medium">{it.name}</span>
-                  <div className="font-mono text-[11px] text-faint">
+                  <div className="font-mono text-caption text-faint">
                     {it.slug}
                     {it.version ? ` · ${it.version}` : ""}
                   </div>
@@ -260,9 +260,9 @@ function ItemsTab({ plan }: { plan: Plan }) {
                 </td>
                 <td className={td}>
                   <Badge tone={actions[it.action][1]}>{actions[it.action][0]}</Badge>
-                  {it.reason && <div className="mt-1 max-w-64 text-xs text-muted">{it.reason}</div>}
+                  {it.reason && <div className="mt-1 max-w-64 text-secondary text-muted">{it.reason}</div>}
                 </td>
-                <td className={td + " text-xs"}>
+                <td className={td + " text-secondary"}>
                   {it.share_add.length > 0 && (
                     <div>Adds {it.share_add.map((id) => names.get(id) ?? id).join(", ")}</div>
                   )}
@@ -301,7 +301,7 @@ function DeploymentsTab({ plan }: { plan: Plan }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] border-collapse text-[13px]" aria-label="vRA deployments">
+      <table className="w-full min-w-[820px] border-collapse text-body" aria-label="vRA deployments">
         <thead>
           <tr className="label text-left">
             <th scope="col" className={th}>
@@ -329,19 +329,19 @@ function DeploymentsTab({ plan }: { plan: Plan }) {
                 <tr>
                   <td className={td}>
                     <span className="font-medium">{d.name}</span>
-                    <div className="text-[11px] text-faint">
+                    <div className="text-caption text-faint">
                       {d.vra_project}
                       {d.environment ? ` · ${d.environment}` : ""}
                       {d.rvav_name && d.rvav_name !== d.name ? ` · ${d.rvav_name} in rvav` : ""}
                     </div>
                   </td>
-                  <td className={td + " text-xs"}>{d.owner}</td>
-                  <td className={td + " font-mono text-xs"}>
+                  <td className={td + " text-secondary"}>{d.owner}</td>
+                  <td className={td + " font-mono text-secondary"}>
                     {(d.vms ?? []).map((v) => v.name).join(", ") || <span className="text-faint">none found</span>}
                   </td>
                   <td className={td}>
                     <Badge tone={adoption[d.status][1]}>{adoption[d.status][0]}</Badge>
-                    {why && <div className="mt-1 max-w-72 text-xs text-muted">{why.text}</div>}
+                    {why && <div className="mt-1 max-w-72 text-secondary text-muted">{why.text}</div>}
                   </td>
                   <td className={td}>
                     <NotesButton
@@ -371,18 +371,18 @@ function DeploymentsTab({ plan }: { plan: Plan }) {
 function PoliciesTab({ plan }: { plan: Plan }) {
   return (
     <div className="flex flex-col gap-3 p-4">
-      <p className="max-w-3xl text-xs text-muted">
+      <p className="max-w-3xl text-secondary text-muted">
         Policies decide who may do what, so the import doesn't change rvav's: set each where it says, with the values
         below.
       </p>
       {plan.policies.map((p) => (
         <section key={p.vra_id} className="rounded-md border border-line p-3" aria-label={p.name}>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[13px] font-medium">{p.name}</h3>
+            <h3 className="text-body font-medium">{p.name}</h3>
             <Badge tone="outline">{p.type}</Badge>
-            <span className="text-xs text-muted">{p.vra_project ? `In ${p.vra_project}` : "Every project"}</span>
+            <span className="text-secondary text-muted">{p.vra_project ? `In ${p.vra_project}` : "Every project"}</span>
           </div>
-          <p className="mt-1 mb-2 text-xs">Becomes: {p.becomes}</p>
+          <p className="mt-1 mb-2 text-secondary">Becomes: {p.becomes}</p>
           <Notes notes={p.notes} />
         </section>
       ))}
@@ -403,7 +403,7 @@ function VroTab({ plan }: { plan: Plan }) {
   });
   return (
     <div className="flex flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 text-secondary">
         {Object.entries(groups).map(([g, [label, tone]]) => (
           <span key={g} className="flex items-center gap-1.5">
             <Badge tone={tone}>{label}</Badge>
@@ -422,7 +422,7 @@ function VroTab({ plan }: { plan: Plan }) {
         </Button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-[13px]" aria-label="vRO workflows and actions">
+        <table className="w-full min-w-[900px] border-collapse text-body" aria-label="vRO workflows and actions">
           <thead>
             <tr className="label text-left">
               <th scope="col" className={th}>
@@ -447,13 +447,13 @@ function VroTab({ plan }: { plan: Plan }) {
               <tr key={it.kind + it.id}>
                 <td className={td}>
                   <span className="font-medium">{it.name}</span>
-                  <div className="text-[11px] text-faint">
+                  <div className="text-caption text-faint">
                     {kinds[it.kind] ?? it.kind}
                     {it.category && it.kind === "workflow" ? ` · ${it.category}` : ""}
                     {it.systems.length > 0 ? ` · ${it.systems.join(", ")}` : ""}
                   </div>
                 </td>
-                <td className={td + " text-xs"}>
+                <td className={td + " text-secondary"}>
                   {it.used_by.length === 0 && <span className="text-faint">Nothing</span>}
                   {it.used_by.map((u, i) => (
                     <div key={i} className={u.disabled ? "text-faint" : ""}>
@@ -462,14 +462,14 @@ function VroTab({ plan }: { plan: Plan }) {
                     </div>
                   ))}
                 </td>
-                <td className={td + " text-xs whitespace-nowrap"}>
+                <td className={td + " text-secondary whitespace-nowrap"}>
                   {it.kind !== "workflow" ? "–" : it.last_run ? <Time iso={it.last_run} /> : "never"}
                 </td>
                 <td className={td}>
                   <Badge tone={groups[it.group]?.[1] ?? "neutral"}>{groups[it.group]?.[0] ?? it.group}</Badge>
-                  <div className="mt-1 text-[11px] text-muted">{it.becomes}</div>
+                  <div className="mt-1 text-caption text-muted">{it.becomes}</div>
                 </td>
-                <td className={td + " max-w-md text-xs"}>{it.reasons.join(" ")}</td>
+                <td className={td + " max-w-md text-secondary"}>{it.reasons.join(" ")}</td>
               </tr>
             ))}
           </tbody>
@@ -510,7 +510,7 @@ function MoveDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent title={`Move ${project.name} to rvav`} className="w-[min(520px,calc(100vw-32px))]">
         <form
-          className="flex flex-col gap-3 text-[13px]"
+          className="flex flex-col gap-3 text-body"
           onSubmit={(e) => {
             e.preventDefault();
             move.mutate();
@@ -563,7 +563,7 @@ function UndoDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
   return (
     <Dialog open onOpenChange={(o) => !o && !undo.isPending && onClose()}>
       <DialogContent title={`${project.name} not moved`} className="w-[min(480px,calc(100vw-32px))]">
-        <div className="flex flex-col gap-3 text-[13px]">
+        <div className="flex flex-col gap-3 text-body">
           <p>
             Its move date and note are cleared; marking it moved again starts the "Nothing new in vRA" check from then.
             Its adopted deployments stay in rvav.
@@ -616,7 +616,7 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
     plan.deployments.filter((d) => d.vra_project === cp.name && d.status === "adopt").length;
   return (
     <div className="flex flex-col gap-3 p-4">
-      <p className="text-[13px]" aria-live="polite">
+      <p className="text-body" aria-live="polite">
         <span className="font-medium">
           {c.moved} of {plural(c.total, "project")} moved
         </span>
@@ -636,8 +636,8 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
       {c.projects.map((cp) => (
         <section key={cp.vra_id} className="rounded-md border border-line" aria-label={cp.name}>
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            <h3 className="text-[13px] font-medium">{cp.name}</h3>
-            {cp.rvav_project_name && <span className="text-xs text-muted">→ {cp.rvav_project_name}</span>}
+            <h3 className="text-body font-medium">{cp.name}</h3>
+            {cp.rvav_project_name && <span className="text-secondary text-muted">→ {cp.rvav_project_name}</span>}
             {cp.moved_at ? (
               <Badge tone="ok">
                 Moved <Time iso={cp.moved_at} />
@@ -677,12 +677,12 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
               )}
             </span>
           </div>
-          {cp.note && <p className="px-3 pt-2 text-xs text-muted">{cp.note}</p>}
+          {cp.note && <p className="px-3 pt-2 text-secondary text-muted">{cp.note}</p>}
           <ul className="flex flex-col gap-1.5 px-3 py-2">
             {cp.checks.map((ch) => {
               const [Icon, tone, label] = checkIcons[ch.state] ?? notYet;
               return (
-                <li key={ch.key} className="flex items-start gap-2 text-xs">
+                <li key={ch.key} className="flex items-start gap-2 text-secondary">
                   <Icon className={"mt-px size-3.5 shrink-0 " + tone} aria-label={label} role="img" />
                   <span>
                     <span className="font-medium">{ch.label}.</span> {ch.detail}
@@ -733,27 +733,27 @@ function ImportDialog({
             run.mutate();
           }}
         >
-          <label htmlFor="vra-catalog" className="flex items-start gap-2 text-[13px]">
+          <label htmlFor="vra-catalog" className="flex items-start gap-2 text-body">
             <Checkbox id="vra-catalog" checked={catalog} onChange={setCatalog} />
             <span>
               <span className="font-medium">Catalog items</span>
-              <span className="block text-xs text-muted">
+              <span className="block text-secondary text-muted">
                 {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
                 {plural(s.shares_add, "share")} to add (an item offered to one more project).
               </span>
             </span>
           </label>
-          <label htmlFor="vra-deployments" className="flex items-start gap-2 text-[13px]">
+          <label htmlFor="vra-deployments" className="flex items-start gap-2 text-body">
             <Checkbox id="vra-deployments" checked={deployments} onChange={setDeployments} />
             <span>
               <span className="font-medium">Deployments</span>
-              <span className="block text-xs text-muted">
+              <span className="block text-secondary text-muted">
                 {plural(s.deployments_adopt, "deployment")} to adopt through onboarding, every project's, nothing
                 changed in vCenter or EfficientIP. To adopt one project's, use its Cutover section.
               </span>
             </span>
           </label>
-          <p className="text-xs text-muted">
+          <p className="text-secondary text-muted">
             It can run again: only what changed in vRA, or isn't yet in rvav, is imported.
           </p>
           <div className="flex justify-end gap-2">
@@ -786,7 +786,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
         </Button>
       }
     >
-      <section aria-label="Imported" className="flex flex-col gap-1 text-[13px]">
+      <section aria-label="Imported" className="flex flex-col gap-1 text-body">
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
         {r.shared > 0 && <p>{plural(r.shared, "share")} added: items offered to more projects.</p>}

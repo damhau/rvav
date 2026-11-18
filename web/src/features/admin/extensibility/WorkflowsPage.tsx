@@ -181,17 +181,17 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
           >
             <Textarea
               id="wf-schema"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               rows={8}
               value={schema}
               onChange={(e) => setSchema(e.target.value)}
             />
           </Field>
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="text-xs font-medium">Used as</legend>
+            <legend className="text-secondary font-medium">Used as</legend>
             <div className="flex flex-wrap gap-4">
               {(Object.keys(usageLabel) as Usage[]).map((u) => (
-                <label key={u} htmlFor={`wf-usage-${u}`} className="flex items-center gap-1.5 text-[13px]">
+                <label key={u} htmlFor={`wf-usage-${u}`} className="flex items-center gap-1.5 text-body">
                   <Checkbox
                     id={`wf-usage-${u}`}
                     checked={usages.includes(u)}
@@ -201,11 +201,11 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
                 </label>
               ))}
             </div>
-            {errors["/usages"] && <p className="text-xs text-bad">{errors["/usages"]}</p>}
+            {errors["/usages"] && <p className="text-secondary text-bad">{errors["/usages"]}</p>}
           </fieldset>
           {usages.includes("day2_action") && (
             <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
-              <legend className="px-1 text-xs font-medium">As the day-2 action wf.{f.key || "<key>"}</legend>
+              <legend className="px-1 text-secondary font-medium">As the day-2 action wf.{f.key || "<key>"}</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr]">
                 <Field label="Action name" htmlFor="wf-day2-name" error={errors["/day2/name"]}>
                   <Input
@@ -215,10 +215,10 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
                   />
                 </Field>
                 <fieldset className="flex flex-col gap-1.5">
-                  <legend className="text-xs font-medium">Runs on</legend>
+                  <legend className="text-secondary font-medium">Runs on</legend>
                   <div className="flex gap-4">
                     {(["vsphere.vm", "deployment"] as Day2Type[]).map((t) => (
-                      <label key={t} htmlFor={`wf-day2-${t}`} className="flex items-center gap-1.5 text-[13px]">
+                      <label key={t} htmlFor={`wf-day2-${t}`} className="flex items-center gap-1.5 text-body">
                         <Checkbox
                           id={`wf-day2-${t}`}
                           checked={day2.types.includes(t)}
@@ -228,7 +228,7 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
                       </label>
                     ))}
                   </div>
-                  {errors["/day2/types"] && <p className="text-xs text-bad">{errors["/day2/types"]}</p>}
+                  {errors["/day2/types"] && <p className="text-secondary text-bad">{errors["/day2/types"]}</p>}
                 </fieldset>
               </div>
               <Field
@@ -239,12 +239,12 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
               >
                 <Input
                   id="wf-day2-condition"
-                  className="font-mono text-xs"
+                  className="font-mono text-secondary"
                   value={day2.condition ?? ""}
                   onChange={(e) => setDay2({ ...day2, condition: e.target.value })}
                 />
               </Field>
-              <label htmlFor="wf-day2-offered" className="flex items-center gap-1.5 text-[13px]">
+              <label htmlFor="wf-day2-offered" className="flex items-center gap-1.5 text-body">
                 <Checkbox
                   id="wf-day2-offered"
                   checked={day2.offered}
@@ -255,11 +255,11 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
             </fieldset>
           )}
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="text-xs font-medium">Projects</legend>
-            <p className="text-xs text-muted">None ticked: every project may use it.</p>
+            <legend className="text-secondary font-medium">Projects</legend>
+            <p className="text-secondary text-muted">None ticked: every project may use it.</p>
             <div className="flex flex-wrap gap-x-4 gap-y-1.5">
               {(projects.data?.items ?? []).map((p) => (
-                <label key={p.id} htmlFor={`wf-project-${p.id}`} className="flex items-center gap-1.5 text-[13px]">
+                <label key={p.id} htmlFor={`wf-project-${p.id}`} className="flex items-center gap-1.5 text-body">
                   <Checkbox
                     id={`wf-project-${p.id}`}
                     checked={projectIds.includes(p.id)}
@@ -269,9 +269,11 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
                 </label>
               ))}
             </div>
-            {errorAt(errors, "/project_ids") && <p className="text-xs text-bad">{errorAt(errors, "/project_ids")}</p>}
+            {errorAt(errors, "/project_ids") && (
+              <p className="text-secondary text-bad">{errorAt(errors, "/project_ids")}</p>
+            )}
           </fieldset>
-          <label htmlFor="wf-enabled" className="flex items-center gap-1.5 text-[13px]">
+          <label htmlFor="wf-enabled" className="flex items-center gap-1.5 text-body">
             <Checkbox id="wf-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
             Enabled
           </label>
@@ -325,7 +327,7 @@ export function WorkflowsPage() {
         )}
         {list.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-[13px]">
+            <table className="w-full min-w-[860px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className={`${th} pl-4`}>
@@ -355,16 +357,18 @@ export function WorkflowsPage() {
                           Off
                         </Badge>
                       )}
-                      <div className="font-mono text-[11px] text-faint">{w.key}</div>
-                      {w.used_by.length > 0 && <div className="text-xs text-muted">Used by {w.used_by.join(", ")}</div>}
+                      <div className="font-mono text-caption text-faint">{w.key}</div>
+                      {w.used_by.length > 0 && (
+                        <div className="text-secondary text-muted">Used by {w.used_by.join(", ")}</div>
+                      )}
                     </td>
-                    <td className={`${td} font-mono text-xs`}>
+                    <td className={`${td} font-mono text-secondary`}>
                       {w.workflow_type}
                       <div className="text-faint">
                         {w.task_queue} · {days(w.timeout_seconds)}
                       </div>
                     </td>
-                    <td className={`${td} text-xs`}>
+                    <td className={`${td} text-secondary`}>
                       {w.usages.map((u) => usageLabel[u]).join(", ")}
                       {w.day2?.offered && <div className="font-mono text-faint">wf.{w.key}</div>}
                     </td>

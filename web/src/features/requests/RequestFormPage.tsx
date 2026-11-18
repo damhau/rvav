@@ -94,7 +94,7 @@ function EnvironmentPicker({
   const list = environments.filter((e) => allowed.includes(e.key)).sort((a, b) => a.order - b.order);
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <span id="env-label" className="text-xs font-medium">
+      <span id="env-label" className="text-secondary font-medium">
         Environment
       </span>
       <div
@@ -113,7 +113,7 @@ function EnvironmentPicker({
               title={e.name}
               onClick={() => onChange(e.key)}
               className={cn(
-                "h-8 flex-1 border-l border-line-strong font-mono text-[12px] uppercase first:border-l-0",
+                "h-8 flex-1 border-l border-line-strong font-mono text-secondary uppercase first:border-l-0",
                 active ? "bg-fg font-medium text-bg" : "bg-surface text-muted hover:bg-sunken",
               )}
             >
@@ -123,9 +123,9 @@ function EnvironmentPicker({
         })}
       </div>
       {error ? (
-        <p className="text-xs text-bad">{error}</p>
+        <p className="text-secondary text-bad">{error}</p>
       ) : (
-        <p className="text-[11px] text-faint">
+        <p className="text-caption text-faint">
           {list.find((e) => e.key === value)?.production
             ? "Production: stricter policies and no lease."
             : "Placement, quota and policies follow the environment."}
@@ -201,7 +201,7 @@ function Summary({
     <div className="flex flex-col gap-3 lg:sticky lg:top-4">
       <section className="rounded-lg border border-line bg-surface" aria-label="Summary" aria-busy={fetching}>
         <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-          <h2 className="text-[13px] font-semibold">Summary</h2>
+          <h2 className="text-body font-semibold">Summary</h2>
           {fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
         </div>
         {!preview ? (
@@ -217,7 +217,7 @@ function Summary({
                 {rows.map((r) => (
                   <div key={r.label} className="contents">
                     <dt className="text-muted">{r.label}</dt>
-                    <dd className={cn("m-0 break-words", r.mono && "font-mono text-[12px]")}>{r.value}</dd>
+                    <dd className={cn("m-0 break-words", r.mono && "font-mono text-secondary")}>{r.value}</dd>
                   </div>
                 ))}
               </dl>
@@ -249,7 +249,7 @@ function Summary({
               )}
             >
               <span className="font-medium">{approval?.required ? approvalTitle(approval) : "No approval needed"}</span>
-              <span className="text-xs">
+              <span className="text-secondary">
                 {approval?.required
                   ? approvalBody(approval)
                   : scheduled
@@ -263,7 +263,7 @@ function Summary({
       {formErrors.length > 0 && (
         <ul
           role="alert"
-          className="flex flex-col gap-1 rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-xs text-bad"
+          className="flex flex-col gap-1 rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary text-bad"
         >
           {formErrors.map((e) => (
             <li key={e}>{e}</li>
@@ -277,7 +277,7 @@ function Summary({
       <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
         Save as draft
       </Button>
-      <p className="text-center text-[11px] text-faint">
+      <p className="text-center text-caption text-faint">
         You can follow every step live, including the AWX job output.
       </p>
     </div>
@@ -476,12 +476,12 @@ function RequestFormBody({
         )}
         <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
           <legend className="sr-only">Lease and reason</legend>
-          <div className="border-b border-line px-4 py-2.5 text-[13px] font-semibold" aria-hidden>
+          <div className="border-b border-line px-4 py-2.5 text-body font-semibold" aria-hidden>
             Lease and reason
           </div>
           <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="lease" className="text-xs font-medium">
+              <label htmlFor="lease" className="text-secondary font-medium">
                 Lease
               </label>
               {leaseOptions.length ? (
@@ -499,14 +499,14 @@ function RequestFormBody({
                   No expiry
                 </span>
               )}
-              <p className="text-[11px] text-faint">
+              <p className="text-caption text-faint">
                 {leaseOptions.length
                   ? "You get reminders 7 days and 1 day before. You can extend it twice."
                   : "Production deployments and AWX jobs have no lease."}
               </p>
             </div>
             <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="justification" className="text-xs font-medium">
+              <label htmlFor="justification" className="text-secondary font-medium">
                 Reason <span className="font-normal text-faint">· shown to approvers</span>
               </label>
               <Textarea
@@ -521,13 +521,13 @@ function RequestFormBody({
         </fieldset>
         <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
           <legend className="sr-only">Options</legend>
-          <div className="border-b border-line px-4 py-2.5 text-[13px] font-semibold" aria-hidden>
+          <div className="border-b border-line px-4 py-2.5 text-body font-semibold" aria-hidden>
             Options
           </div>
           <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
             {many && (
               <div className="flex min-w-0 flex-col gap-1.5">
-                <label htmlFor="count" className="text-xs font-medium">
+                <label htmlFor="count" className="text-secondary font-medium">
                   How many
                 </label>
                 <Input
@@ -540,13 +540,13 @@ function RequestFormBody({
                   onChange={(e) => setCount(e.target.value)}
                   aria-invalid={Boolean(fieldErrors.$count) || undefined}
                 />
-                <p className="text-[11px] text-faint">
+                <p className="text-caption text-faint">
                   {fieldErrors.$count ?? "Identical deployments, named one after the other (at most 20)."}
                 </p>
               </div>
             )}
             <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="start" className="text-xs font-medium">
+              <label htmlFor="start" className="text-secondary font-medium">
                 Start
               </label>
               <Select
@@ -568,17 +568,17 @@ function RequestFormBody({
                   aria-invalid={Boolean(fieldErrors.$scheduled_at) || undefined}
                 />
               )}
-              {fieldErrors.$scheduled_at && <p className="text-[11px] text-bad">{fieldErrors.$scheduled_at}</p>}
+              {fieldErrors.$scheduled_at && <p className="text-caption text-bad">{fieldErrors.$scheduled_at}</p>}
             </div>
             {canActForOthers && (
               <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
                 {onBehalfOf ? (
                   <>
-                    <span className="text-xs font-medium">For someone else</span>
-                    <div className="flex items-center gap-2 text-[13px]">
+                    <span className="text-secondary font-medium">For someone else</span>
+                    <div className="flex items-center gap-2 text-body">
                       <span>
                         On behalf of <strong>{onBehalfOf.name}</strong>{" "}
-                        <span className="text-xs text-faint">{onBehalfOf.email}</span>: they will own it.
+                        <span className="text-secondary text-faint">{onBehalfOf.email}</span>: they will own it.
                       </span>
                       <Button size="sm" variant="ghost" onClick={() => setOnBehalfOf(null)}>
                         For myself instead
@@ -588,7 +588,7 @@ function RequestFormBody({
                 ) : (
                   <UserPicker label="For someone else (optional)" id="on-behalf" onPick={setOnBehalfOf} />
                 )}
-                {fieldErrors.$on_behalf_of && <p className="text-[11px] text-bad">{fieldErrors.$on_behalf_of}</p>}
+                {fieldErrors.$on_behalf_of && <p className="text-caption text-bad">{fieldErrors.$on_behalf_of}</p>}
               </div>
             )}
           </div>
@@ -666,19 +666,19 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
   return (
     <Page>
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-faint">
+        <span className="text-secondary text-faint">
           <Link to="/catalog">Catalog</Link> / {item.data?.name ?? "…"}
         </span>
         <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface font-mono text-[11px] font-medium text-muted">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface font-mono text-caption font-medium text-muted">
             {item.data?.type === "vm_blueprint" ? "VM" : item.data ? "AWX" : ""}
           </span>
           <div className="flex min-w-0 flex-col">
-            <h1 className="text-lg font-semibold tracking-[-0.01em]">
+            <h1 className="text-title font-semibold">
               {item.data ? `Request ${item.data.name}` : <Skeleton className="h-5 w-56" />}
             </h1>
             {item.data && (
-              <span className="text-xs text-muted">
+              <span className="text-secondary text-muted">
                 {itemTypeLabel[item.data.type]} {item.data.version.number}
                 {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
                 {item.data.typical_duration_seconds

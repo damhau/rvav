@@ -17,7 +17,7 @@ export function Refusal({ error, only = REFUSED }: { error: unknown; only?: numb
       ? `${p.title}: ${p.detail}`
       : (p.detail ?? error.fieldErrors[0]?.message ?? p.title);
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-bad">
+    <p role="alert" className="flex items-start gap-1.5 text-secondary text-bad">
       <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
       {text}
     </p>
@@ -27,7 +27,7 @@ export function Refusal({ error, only = REFUSED }: { error: unknown; only?: numb
 /** What access.manage makes of whoever holds it. */
 export function AdminWarning({ who = "whoever holds this role" }: { who?: string }) {
   return (
-    <p className="flex items-start gap-1.5 rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
+    <p className="flex items-start gap-1.5 rounded-md bg-warn-soft px-3 py-2 text-secondary text-warn">
       <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
       <span>
         With <span className="font-mono">access.manage</span>, {who} is an administrator in all but name: they can give

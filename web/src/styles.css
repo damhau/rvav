@@ -13,12 +13,12 @@
   --line: #d5dbdf;
   --line-strong: #b9c2c8;
   --fg: #14191c;
-  --fg-muted: #4f5a63;
-  --fg-faint: #5f6a74;
+  --fg-muted: #47525b;
+  --fg-faint: #57626c;
   --accent: #0e6488;
   --accent-fg: #ffffff;
   --accent-soft: #dcedf4;
-  --ok: #1d7a45;
+  --ok: #1a7040;
   --ok-soft: #dff1e6;
   --warn: #8a5600;
   --warn-soft: #f8ecd3;
@@ -53,7 +53,7 @@
     --line-strong: #3a454c;
     --fg: #e4e9ec;
     --fg-muted: #a3aeb6;
-    --fg-faint: #94a0a9;
+    --fg-faint: #99a5ae;
     --accent: #4fb0d8;
     --accent-fg: #06222e;
     --accent-soft: #123344;
@@ -84,7 +84,7 @@
   --line-strong: #3a454c;
   --fg: #e4e9ec;
   --fg-muted: #a3aeb6;
-  --fg-faint: #94a0a9;
+  --fg-faint: #99a5ae;
   --accent: #4fb0d8;
   --accent-fg: #06222e;
   --accent-soft: #123344;
@@ -103,6 +103,28 @@
   --chart-other: #949a9e;
   --log-bg: #0b0e10;
   color-scheme: dark;
+}
+
+/*
+  Type scale: a 14 px body, and nothing under 12 px but badges. Tailwind's
+  default sizes are cleared so that pages use these names; typography.test.ts
+  keeps arbitrary sizes out, and lib/utils.ts tells tailwind-merge about them.
+*/
+@theme {
+  --text-*: initial;
+  --text-badge: 11px;
+  --text-badge--line-height: 16px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-secondary: 13px;
+  --text-secondary--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-section: 15px;
+  --text-section--line-height: 22px;
+  --text-title: 20px;
+  --text-title--line-height: 28px;
+  --text-title--letter-spacing: -0.012em;
 }
 
 @theme inline {
@@ -150,8 +172,8 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-body);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -184,11 +206,10 @@ h3 {
 }
 
 .label {
-  font-size: 11px;
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
+  color: var(--fg-muted);
 }
 
 @keyframes pulse-dot {

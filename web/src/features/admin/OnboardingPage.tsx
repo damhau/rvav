@@ -91,13 +91,13 @@ function AdoptDialog({
             adopt.mutate();
           }}
         >
-          <p className="text-xs text-muted">
+          <p className="text-secondary text-muted">
             Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records
             EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those.
           </p>
-          <details className="text-xs">
+          <details className="text-secondary">
             <summary className="cursor-pointer text-muted">The VMs</summary>
-            <ul aria-label="VMs to adopt" className="mt-1 max-h-32 overflow-y-auto font-mono text-[11px]">
+            <ul aria-label="VMs to adopt" className="mt-1 max-h-32 overflow-y-auto font-mono text-caption">
               {vms.map((v) => (
                 <li key={keyOf(v)}>
                   {v.name} <span className="text-faint">{v.vcenter}</span>
@@ -167,7 +167,7 @@ function AdoptDialog({
               />
             </Field>
           </div>
-          <label htmlFor="ob-one" className="flex items-center gap-1.5 text-[13px]">
+          <label htmlFor="ob-one" className="flex items-center gap-1.5 text-body">
             <Checkbox id="ob-one" checked={f.one} onChange={(on) => setF({ ...f, one: on })} />
             All in one deployment (else one each, named after its VM)
           </label>
@@ -175,7 +175,7 @@ function AdoptDialog({
             <Field label="Deployment name" htmlFor="ob-name" error={errors["/deployment_name"]}>
               <Input
                 id="ob-name"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 placeholder="erp-prd"
                 value={f.name}
                 onChange={(e) => setF({ ...f, name: e.target.value })}
@@ -183,7 +183,10 @@ function AdoptDialog({
             </Field>
           )}
           {vmErrors.length > 0 && (
-            <ul role="alert" className="flex flex-col gap-0.5 rounded-md border border-bad/40 bg-bad-soft p-3 text-xs">
+            <ul
+              role="alert"
+              className="flex flex-col gap-0.5 rounded-md border border-bad/40 bg-bad-soft p-3 text-secondary"
+            >
               {vmErrors.map((m) => (
                 <li key={m}>{m}</li>
               ))}
@@ -215,7 +218,7 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
       }
       flush
     >
-      <ul className="max-h-64 overflow-y-auto text-[13px]">
+      <ul className="max-h-64 overflow-y-auto text-body">
         {result.deployments.map((d) => (
           <li key={d.id} className="flex flex-wrap gap-x-3 border-b border-line px-4 py-1.5 last:border-0">
             <Link to="/deployments/$deploymentId" params={{ deploymentId: d.id }} className="font-medium">
@@ -319,7 +322,7 @@ export function OnboardingPage() {
               ]}
             />
           </Field>
-          <span className="ml-auto flex items-center gap-2 text-xs text-muted" aria-live="polite">
+          <span className="ml-auto flex items-center gap-2 text-secondary text-muted" aria-live="polite">
             <span>
               {list.data ? `${total} VM${total === 1 ? "" : "s"}` : ""}
               {selected.size > 0 ? ` · ${selected.size} selected` : ""}
@@ -340,7 +343,7 @@ export function OnboardingPage() {
         )}
         {vms.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-[13px]" aria-label="VMs to adopt">
+            <table className="w-full min-w-[760px] border-collapse text-body" aria-label="VMs to adopt">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className={th + " w-8"}>
@@ -389,21 +392,21 @@ export function OnboardingPage() {
                         <PowerDot on={v.power_state === "on"} />
                         <span className="flex flex-col">
                           <span className="font-medium">{v.name}</span>
-                          <span className="font-mono text-[11px] text-faint">{v.moref}</span>
+                          <span className="font-mono text-caption text-faint">{v.moref}</span>
                         </span>
                       </span>
                     </td>
-                    <td className={td + " font-mono text-xs"}>
+                    <td className={td + " font-mono text-secondary"}>
                       {v.ip_address ?? <span className="text-faint">none</span>}
-                      {v.hostname && <div className="text-[11px] text-faint">{v.hostname}</div>}
+                      {v.hostname && <div className="text-caption text-faint">{v.hostname}</div>}
                     </td>
                     <td className={td + " tnum"}>
                       {v.cpu_count} vCPU · {memory(v.memory_mb)}
                     </td>
                     <td className={td + " text-muted"}>{v.guest_os ?? ""}</td>
-                    <td className={td + " text-xs text-muted"}>
+                    <td className={td + " text-secondary text-muted"}>
                       {v.cluster ?? ""}
-                      <div className="text-[11px] text-faint">{v.vcenter}</div>
+                      <div className="text-caption text-faint">{v.vcenter}</div>
                     </td>
                   </tr>
                 ))}

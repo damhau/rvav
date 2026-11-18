@@ -179,18 +179,18 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
             type="file"
             accept=".yaml,.yml,application/yaml,text/yaml"
             aria-label="YAML file"
-            className="text-xs"
+            className="text-secondary"
             onChange={async (e) => setText((await e.target.files?.[0]?.text()) ?? "")}
           />
           <Textarea
             aria-label="YAML"
-            className="min-h-64 font-mono text-xs"
+            className="min-h-64 font-mono text-secondary"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="apiVersion: rvav.dev/v1"
           />
           {problems.length > 0 && (
-            <ul aria-label="Import problems" className="flex flex-col gap-1 text-xs text-bad">
+            <ul aria-label="Import problems" className="flex flex-col gap-1 text-secondary text-bad">
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -268,7 +268,7 @@ export function ItemsPanel() {
       {items.data && list.length === 0 && <EmptyState title="No items" body="Nothing matches these filters." />}
       {list.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-[13px]">
+          <table className="w-full min-w-[820px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -299,18 +299,18 @@ export function ItemsPanel() {
                         >
                           {it.name}
                         </Link>
-                        <div className="font-mono text-[11px] text-faint">{it.slug}</div>
+                        <div className="font-mono text-caption text-faint">{it.slug}</div>
                       </div>
                     </div>
                   </td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary text-muted`}>
                     {itemTypeLabel[it.type]}
-                    {it.source.kind === "awx" && <div className="text-[11px] text-faint">from AWX</div>}
+                    {it.source.kind === "awx" && <div className="text-caption text-faint">from AWX</div>}
                   </td>
                   <td className={td}>
                     <Status it={it} />
                   </td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary text-muted`}>
                     {it.entitlements.all_projects
                       ? "Every project"
                       : it.entitlements.project_ids.length === 0

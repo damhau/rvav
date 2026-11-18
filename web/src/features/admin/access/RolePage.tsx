@@ -48,10 +48,10 @@ function Allows({
   const sentences = allows(catalogue, permissions);
   const { scope, why } = builtInScope ? { scope: builtInScope, why: undefined } : scopeOf(catalogue, permissions);
   return (
-    <div className="flex flex-col gap-3 text-[13px]">
+    <div className="flex flex-col gap-3 text-body">
       {permissions.includes("access.manage") && <AdminWarning />}
       {sentences.length === 0 ? (
-        <p className="text-xs text-muted">Nothing on its own.</p>
+        <p className="text-secondary text-muted">Nothing on its own.</p>
       ) : (
         <ul className="flex list-disc flex-col gap-1 pl-4">
           {sentences.map((s) => (
@@ -59,14 +59,14 @@ function Allows({
           ))}
         </ul>
       )}
-      {sentences.length > 0 && <p className="text-xs text-muted">{givenText(scope, why)}</p>}
+      {sentences.length > 0 && <p className="text-secondary text-muted">{givenText(scope, why)}</p>}
     </div>
   );
 }
 
 function Uses({ role }: { role: S["Role"] }) {
   return (
-    <p className="text-xs text-muted">
+    <p className="text-secondary text-muted">
       {role.holders === 0
         ? "Given to nobody."
         : `Given ${role.holders} ${role.holders === 1 ? "time" : "times"}, to users or groups.`}
@@ -104,11 +104,11 @@ function PermissionBox({
         aria-describedby={what ? `${box}-what` : undefined}
       />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <label htmlFor={box} className={mono ? "font-mono text-xs" : "text-[13px]"}>
+        <label htmlFor={box} className={mono ? "font-mono text-secondary" : "text-body"}>
           {label}
         </label>
         {what && (
-          <p id={`${box}-what`} className="text-xs text-muted">
+          <p id={`${box}-what`} className="text-secondary text-muted">
             {what}
           </p>
         )}
@@ -159,7 +159,7 @@ function PermissionList({
       ))}
       <fieldset className="flex flex-col gap-2">
         <legend className="label mb-1">Day-2 actions</legend>
-        <p className="text-xs text-muted">
+        <p className="text-secondary text-muted">
           A group allows each of its actions, those added later included; or choose single actions.
         </p>
         {catalogue.day2.map((g) => {
@@ -298,7 +298,7 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
         </Panel>
         <Panel title="Permissions">
           {permissionsError && (
-            <p role="alert" className="mb-3 flex items-start gap-1.5 text-xs text-bad">
+            <p role="alert" className="mb-3 flex items-start gap-1.5 text-secondary text-bad">
               <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
               {permissionsError}
             </p>
@@ -347,7 +347,7 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
       <Panel title="What it allows">
         <div className="flex flex-col gap-3">
-          {role.description && <p className="text-[13px]">{role.description}</p>}
+          {role.description && <p className="text-body">{role.description}</p>}
           <Allows
             catalogue={catalogue}
             permissions={role.permissions}
@@ -368,7 +368,7 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
       </Panel>
       <div className="flex flex-col gap-2 lg:self-start">
         {role.built_in && (
-          <p className="text-xs text-muted">
+          <p className="text-secondary text-muted">
             Built in: it can&apos;t be changed or deleted.{" "}
             {canMake && "To give someone a little more or less, make a role of your own from it."}
           </p>

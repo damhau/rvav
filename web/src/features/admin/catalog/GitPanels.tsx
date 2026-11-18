@@ -54,7 +54,7 @@ const short = (sha: string) => sha.slice(0, 8);
 function Commit({ c }: { c: NonNullable<CatalogItemGit["last_commit"]> }) {
   const [line] = c.message.split("\n");
   return (
-    <span className="text-xs text-muted">
+    <span className="text-secondary text-muted">
       <span className="font-mono text-fg">{short(c.sha)}</span> {line} — {c.author}, {relative(c.when)}
     </span>
   );
@@ -62,7 +62,7 @@ function Commit({ c }: { c: NonNullable<CatalogItemGit["last_commit"]> }) {
 
 function Problems({ problems, label }: { problems: NonNullable<CatalogItemGit["problems"]>; label: string }) {
   return (
-    <ul aria-label={label} className="flex flex-col gap-0.5 text-xs text-bad">
+    <ul aria-label={label} className="flex flex-col gap-0.5 text-secondary text-bad">
       {problems.map((p) => (
         <li key={p.field + p.message}>
           {p.field && <span className="font-mono">{p.field}</span>} {p.message}
@@ -105,7 +105,7 @@ export function GitRepositoryPanel() {
       }
     >
       <div className="flex flex-col gap-3">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-[auto_1fr]">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-secondary sm:grid-cols-[auto_1fr]">
           <dt className="text-muted">Repository</dt>
           <dd className="font-mono break-all">{s.url}</dd>
           <dt className="text-muted">Branch and directory</dt>
@@ -120,11 +120,11 @@ export function GitRepositoryPanel() {
           </dd>
         </dl>
         {s.error && (
-          <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-xs">
+          <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-secondary">
             The last read failed: {s.error}
           </p>
         )}
-        <p className="text-xs text-muted">
+        <p className="text-secondary text-muted">
           {s.files.length} file{s.files.length === 1 ? "" : "s"} in the repository.{" "}
           {attention.length === 0
             ? "All in step."
@@ -154,14 +154,14 @@ function AttentionRow({ f }: { f: CatalogGitFile }) {
           <Link
             to="/admin/catalog-items/$itemId"
             params={{ itemId: f.item.slug }}
-            className="text-[13px] font-medium text-fg hover:text-accent"
+            className="text-body font-medium text-fg hover:text-accent"
           >
             {f.item.name}
           </Link>
         ) : null}
-        <span className="font-mono text-[11px] text-faint">{f.path}</span>
+        <span className="font-mono text-caption text-faint">{f.path}</span>
       </div>
-      <span className="text-xs text-muted">{f.error ?? f.note ?? needs[f.state]}</span>
+      <span className="text-secondary text-muted">{f.error ?? f.note ?? needs[f.state]}</span>
       {f.problems && <Problems problems={f.problems} label={`Problems of ${f.path}`} />}
     </li>
   );
@@ -179,7 +179,7 @@ function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
       tabIndex={0}
       className="max-h-96 overflow-auto rounded-md border border-line bg-sunken"
     >
-      <pre className="py-2 font-mono text-[11px] leading-5">
+      <pre className="py-2 font-mono text-caption leading-5">
         {lines.map((l, i) => (
           <div key={i} className={`px-3 ${tone[l.op]}`}>
             <span aria-hidden>{sign[l.op]} </span>
@@ -231,33 +231,35 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
       <div className="flex flex-col gap-3">
         <div ref={status} tabIndex={-1} className="flex flex-wrap items-center gap-2 outline-none">
           <GitBadge git={git} />
-          <span className="font-mono text-xs text-muted">{git.path}</span>
+          <span className="font-mono text-secondary text-muted">{git.path}</span>
         </div>
         {git.last_commit && (
-          <p className="flex flex-wrap gap-1 text-xs">
+          <p className="flex flex-wrap gap-1 text-secondary">
             <span className="text-muted">Last commit:</span> <Commit c={git.last_commit} />
           </p>
         )}
         {git.state === "failing" && (
-          <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-xs">
+          <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-secondary">
             Committing failed {git.attempts} time{git.attempts === 1 ? "" : "s"}: {git.error}.
             {git.next_attempt_at && <> Tried again {relative(git.next_attempt_at)}.</>}
           </p>
         )}
         {git.state === "waiting" && (
-          <p className="text-xs text-muted">rvav's change will be committed at the next read of the repository.</p>
+          <p className="text-secondary text-muted">
+            rvav's change will be committed at the next read of the repository.
+          </p>
         )}
-        {git.note && <p className="text-xs text-muted">{git.note}</p>}
+        {git.note && <p className="text-secondary text-muted">{git.note}</p>}
         {git.problems && <Problems problems={git.problems} label="Why the repository's file was refused" />}
         {ownDraft && item.draft_version && (
-          <p className="text-xs">
+          <p className="text-secondary">
             The repository's change is draft {item.draft_version.number}: review it in Versions, then publish it (rvav
             commits it back) or discard it (rvav's file is committed again).
           </p>
         )}
         {git.state === "conflict" && (
           <div className="flex flex-col gap-2">
-            <p className="text-xs">
+            <p className="text-secondary">
               {deletedThere
                 ? "The repository deleted the file: keep rvav's to add it back."
                 : "Keep rvav's file, committed over the repository's change; or take the repository's, as a draft (an open draft in rvav is discarded)."}
@@ -285,7 +287,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
         {detail.isError && <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />}
         {d && d.diff.some((l) => l.op !== "same") && (
           <div className="flex flex-col gap-1">
-            <h3 className="text-xs font-semibold">
+            <h3 className="text-secondary font-semibold">
               {git.state === "draft"
                 ? "From rvav's file to the repository's draft"
                 : "From rvav's file to the repository's"}

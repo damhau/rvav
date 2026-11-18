@@ -92,14 +92,14 @@ export function Time({ iso, className }: { iso: string; className?: string }) {
 }
 
 export function Mono({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn("font-mono text-[12px]", className)}>{children}</span>;
+  return <span className={cn("font-mono text-secondary", className)}>{children}</span>;
 }
 
 export function CopyText({ value, className }: { value: string; className?: string }) {
   const [done, setDone] = useState(false);
   return (
     <span className={cn("group inline-flex min-w-0 items-center gap-1", className)}>
-      <span className="truncate font-mono text-[12px]">{value}</span>
+      <span className="truncate font-mono text-secondary">{value}</span>
       <button
         type="button"
         aria-label={`Copy ${value}`}
@@ -131,7 +131,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
   return (
     <span
       className={cn(
-        "inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent",
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-badge font-semibold text-accent",
         className,
       )}
       aria-hidden

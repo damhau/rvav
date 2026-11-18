@@ -125,7 +125,7 @@ export function BulkDialog({
       >
         <div className="flex flex-col gap-3 px-4 py-3">
           {outcomes ? (
-            <ul className="flex max-h-72 flex-col overflow-auto text-xs" aria-label="Results">
+            <ul className="flex max-h-72 flex-col overflow-auto text-secondary" aria-label="Results">
               {outcomes.map((o, i) => (
                 <li key={i} className="flex justify-between gap-3 border-b border-line py-1.5 last:border-0">
                   <span className="font-medium">{o.name}</span>
@@ -135,9 +135,9 @@ export function BulkDialog({
             </ul>
           ) : (
             <>
-              <p className="text-xs text-muted">{deployments.map((d) => d.name).join(", ")}</p>
+              <p className="text-secondary text-muted">{deployments.map((d) => d.name).join(", ")}</p>
               {bulk.key === "snapshot_create" && (
-                <div className="flex flex-col gap-1.5 text-xs">
+                <div className="flex flex-col gap-1.5 text-secondary">
                   <label htmlFor="bulk-snapshot" className="font-medium">
                     Snapshot name
                   </label>
@@ -150,7 +150,7 @@ export function BulkDialog({
                 </div>
               )}
               {bulk.key === "delete" && (
-                <div className="flex flex-col gap-1.5 text-xs">
+                <div className="flex flex-col gap-1.5 text-secondary">
                   <label htmlFor="bulk-confirm">
                     Type <span className="font-mono font-medium">{confirmText}</span> to confirm
                   </label>

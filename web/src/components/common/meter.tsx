@@ -22,7 +22,7 @@ export function Meter({
   const fmt = (v: number) => (Number.isInteger(v) ? v : v.toFixed(1));
   if (total === undefined || total === null) {
     return (
-      <div className="flex items-baseline justify-between gap-2 text-xs">
+      <div className="flex items-baseline justify-between gap-2 text-secondary">
         <span className="text-muted">{label}</span>
         <span className="tnum">
           {fmt(after)}
@@ -35,7 +35,7 @@ export function Meter({
   const tone = after > total ? "bg-bad" : after / total > 0.85 ? "bg-warn" : "bg-accent";
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
+      <div className="flex items-baseline justify-between gap-2 text-secondary">
         <span className="text-muted">{label}</span>
         <span className="tnum">
           <span className={cn(after > total && "font-medium text-bad")}>{fmt(after)}</span>

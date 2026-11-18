@@ -122,11 +122,11 @@ export function RunDialog({
                 ]}
               />
               <section className="flex flex-col gap-2">
-                <h3 className="text-xs font-medium">Attempts</h3>
-                {r.history.length === 0 && <p className="text-xs text-muted">Not tried yet.</p>}
+                <h3 className="text-secondary font-medium">Attempts</h3>
+                {r.history.length === 0 && <p className="text-secondary text-muted">Not tried yet.</p>}
                 <ol className="flex flex-col gap-2">
                   {r.history.map((a, i) => (
-                    <li key={a.at + i} className="rounded-md border border-line p-2 text-xs">
+                    <li key={a.at + i} className="rounded-md border border-line p-2 text-secondary">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={a.ok ? "ok" : "bad"}>{a.ok ? "OK" : "Failed"}</Badge>
                         <Time iso={a.at} />
@@ -134,7 +134,7 @@ export function RunDialog({
                       </div>
                       {a.error && <p className="mt-1 text-bad">{a.error}</p>}
                       {a.response && (
-                        <pre className="mt-1 max-h-32 overflow-auto rounded bg-sunken p-2 font-mono text-[11px]">
+                        <pre className="mt-1 max-h-32 overflow-auto rounded bg-sunken p-2 font-mono text-caption">
                           {a.response}
                         </pre>
                       )}
@@ -142,9 +142,9 @@ export function RunDialog({
                   ))}
                 </ol>
               </section>
-              <details className="text-xs">
+              <details className="text-secondary">
                 <summary className="cursor-pointer text-muted">What was sent</summary>
-                <pre className="mt-1 max-h-80 overflow-auto rounded bg-sunken p-2 font-mono text-[11px]">
+                <pre className="mt-1 max-h-80 overflow-auto rounded bg-sunken p-2 font-mono text-caption">
                   {JSON.stringify(r.payload, null, 2)}
                 </pre>
               </details>
@@ -202,7 +202,7 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
       )}
       {list.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-[13px]">
+          <table className="w-full min-w-[720px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -235,9 +235,9 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
                   </td>
                   <td className={td}>
                     <RunStatus status={r.status} />
-                    {r.reason && <div className="mt-0.5 max-w-sm truncate text-xs text-muted">{r.reason}</div>}
+                    {r.reason && <div className="mt-0.5 max-w-sm truncate text-secondary text-muted">{r.reason}</div>}
                   </td>
-                  <td className={`${td} font-mono text-xs`}>{r.request?.number ?? "—"}</td>
+                  <td className={`${td} font-mono text-secondary`}>{r.request?.number ?? "—"}</td>
                   <td className={td}>{r.attempts}</td>
                   <td className={`${td} text-right`}>
                     <Button

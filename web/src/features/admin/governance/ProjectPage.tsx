@@ -87,9 +87,9 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
           />
         </Field>
         <fieldset className="flex flex-wrap gap-3 md:col-span-2">
-          <legend className="mb-1 text-xs font-medium">Environments it deploys to</legend>
+          <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
           {(envs.data?.items ?? []).map((e) => (
-            <label key={e.key} htmlFor={`p-env-${e.key}`} className="flex items-center gap-1.5 text-[13px]">
+            <label key={e.key} htmlFor={`p-env-${e.key}`} className="flex items-center gap-1.5 text-body">
               <Checkbox
                 id={`p-env-${e.key}`}
                 disabled={!isAdmin}
@@ -182,29 +182,29 @@ function RolesDialog({
           }}
         >
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1 text-xs font-medium">Given here</legend>
+            <legend className="mb-1 text-secondary font-medium">Given here</legend>
             {offered.map((r) => (
-              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-[13px]">
+              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
                 <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
                 {r.name}
-                {!r.built_in && <span className="font-mono text-xs text-muted">{r.key}</span>}
+                {!r.built_in && <span className="font-mono text-secondary text-muted">{r.key}</span>}
               </label>
             ))}
             {kept.map((r) => (
-              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-[13px]">
+              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
                 <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
                 {r.name}
-                <span className="text-xs text-muted">(you may not take it away)</span>
+                <span className="text-secondary text-muted">(you may not take it away)</span>
               </label>
             ))}
           </fieldset>
           {viaGroups.length > 0 && (
-            <p className="text-xs text-muted">
+            <p className="text-secondary text-muted">
               Through groups: {viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; ")}.
             </p>
           )}
           {keys.length === 0 && (
-            <p className="text-xs text-muted">Choose a role, or remove them from the project in the list.</p>
+            <p className="text-secondary text-muted">Choose a role, or remove them from the project in the list.</p>
           )}
           <Refusal error={save.error} />
           <div className="flex justify-end gap-2">
@@ -310,7 +310,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
       {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
       {members.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -329,7 +329,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                 <Fragment key={m.user.id}>
                   <tr>
                     <td className={`${td} pl-4`}>
-                      {m.user.name} <span className="text-xs text-faint">{m.user.email}</span>
+                      {m.user.name} <span className="text-secondary text-faint">{m.user.email}</span>
                     </td>
                     <td className={td}>
                       <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
@@ -346,7 +346,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                             ) : (
                               r.name
                             )}{" "}
-                            <span className="text-xs text-muted">{sourceText(r)}</span>
+                            <span className="text-secondary text-muted">{sourceText(r)}</span>
                           </li>
                         ))}
                       </ul>
@@ -460,7 +460,7 @@ function RuleDialog({
     <Field label={label} htmlFor={`rule-${k}`} error={errorAt(errors, `/${k}`)} hint={hint}>
       <Input
         id={`rule-${k}`}
-        className={mono ? "font-mono text-xs" : undefined}
+        className={mono ? "font-mono text-secondary" : undefined}
         value={f[k]}
         onChange={(e) => setF({ ...f, [k]: e.target.value })}
       />
@@ -470,7 +470,7 @@ function RuleDialog({
     <Field label={label} htmlFor={`rule-seg-${k}`} error={errorAt(errors, `/segments/${k}`)} hint={hint}>
       <Input
         id={`rule-seg-${k}`}
-        className="font-mono text-xs"
+        className="font-mono text-secondary"
         value={seg[k]}
         onChange={(e) => setSeg({ ...seg, [k]: e.target.value })}
       />
@@ -490,7 +490,7 @@ function RuleDialog({
             save.mutate();
           }}
         >
-          <p className="text-xs text-muted">
+          <p className="text-secondary text-muted">
             Names take * patterns and are comma-separated; tags are category/tag, all of them needed.
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -504,13 +504,13 @@ function RuleDialog({
             {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
             {field("priority", "Priority", "Lower first", false)}
           </div>
-          <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-[13px]">
+          <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-body">
             <Checkbox id="rule-seg-on" checked={segOn} onChange={setSegOn} />
             NSX segments made for deployments
           </label>
           {segOn && (
             <fieldset className="grid grid-cols-2 gap-3 rounded-md border border-line p-3">
-              <legend className="px-1 text-xs text-muted">
+              <legend className="px-1 text-secondary text-muted">
                 Items that make their own networks get segments on this Tier-1, their subnets from this block
               </legend>
               {segField("tier1", "Tier-1 gateway", "Its NSX ID, for example t1-gva-dev")}
@@ -578,7 +578,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         {here.map((r) => (
           <div
             key={r.id}
-            className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-2 text-xs last:border-b-0"
+            className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-2 text-secondary last:border-b-0"
           >
             <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-0.5">
               <dt className="text-faint">Clusters</dt>
@@ -626,7 +626,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
       <Panel title={`What ${project.name} gets in ${env}`}>
         {preview.isPending && <Skeleton className="h-24" />}
         {preview.data && (
-          <div className="flex flex-col gap-2 text-xs">
+          <div className="flex flex-col gap-2 text-secondary">
             {preview.data.problems.length > 0 && (
               <ul aria-label="What stops a request here" className="flex flex-col gap-0.5 text-warn">
                 {preview.data.problems.map((p) => (
@@ -727,10 +727,10 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
     >
       {quotas.isPending && <SkeletonRows rows={3} cols={4} />}
       {quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
-      {ready && shown.length === 0 && <p className="px-4 py-3 text-xs text-muted">No limit.</p>}
+      {ready && shown.length === 0 && <p className="px-4 py-3 text-secondary text-muted">No limit.</p>}
       {ready && shown.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>

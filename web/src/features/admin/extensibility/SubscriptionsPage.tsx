@@ -125,7 +125,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
               />
             </Field>
           </div>
-          {topic && <p className="text-xs text-muted">{topic.description}</p>}
+          {topic && <p className="text-secondary text-muted">{topic.description}</p>}
           <Field label="Description" htmlFor="sub-description">
             <Input
               id="sub-description"
@@ -143,22 +143,22 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
           >
             <Textarea
               id="sub-condition"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               rows={2}
               value={f.condition}
               onChange={(e) => setF({ ...f, condition: e.target.value })}
             />
           </Field>
           {topic && (
-            <details className="text-xs">
+            <details className="text-secondary">
               <summary className="cursor-pointer text-muted">A sample {topic.key} event</summary>
-              <pre className="mt-1 max-h-64 overflow-auto rounded bg-sunken p-2 font-mono text-[11px]">
+              <pre className="mt-1 max-h-64 overflow-auto rounded bg-sunken p-2 font-mono text-caption">
                 {JSON.stringify(topic.sample, null, 2)}
               </pre>
             </details>
           )}
           <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
-            <legend className="px-1 text-xs font-medium">Target</legend>
+            <legend className="px-1 text-secondary font-medium">Target</legend>
             <Field label="Kind of target" htmlFor="sub-kind" error={errors["/target"]}>
               <Select
                 id="sub-kind"
@@ -181,7 +181,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
                 >
                   <Input
                     id="sub-url"
-                    className="font-mono text-xs"
+                    className="font-mono text-secondary"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                   />
@@ -247,7 +247,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
             </Field>
           </div>
           <div className="flex flex-col gap-2">
-            <label htmlFor="sub-blocking" className="flex items-center gap-1.5 text-[13px]">
+            <label htmlFor="sub-blocking" className="flex items-center gap-1.5 text-body">
               <Checkbox
                 id="sub-blocking"
                 disabled={!mayBlock}
@@ -255,9 +255,9 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
                 onChange={(blocking) => setF({ ...f, blocking })}
               />
               Blocking: the request waits for the answer, which may stop it
-              {!mayBlock && <span className="text-xs text-faint">(only on .pre topics)</span>}
+              {!mayBlock && <span className="text-secondary text-faint">(only on .pre topics)</span>}
             </label>
-            {errors["/blocking"] && <p className="text-xs text-bad">{errors["/blocking"]}</p>}
+            {errors["/blocking"] && <p className="text-secondary text-bad">{errors["/blocking"]}</p>}
             {mayBlock && f.blocking && (
               <Field label="When it fails or doesn't answer" htmlFor="sub-on-failure" className="max-w-sm">
                 <Select
@@ -271,7 +271,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
                 />
               </Field>
             )}
-            <label htmlFor="sub-enabled" className="flex items-center gap-1.5 text-[13px]">
+            <label htmlFor="sub-enabled" className="flex items-center gap-1.5 text-body">
               <Checkbox id="sub-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
               Enabled
             </label>
@@ -332,7 +332,7 @@ export function SubscriptionsPage() {
         )}
         {list.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-[13px]">
+            <table className="w-full min-w-[820px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className={`${th} pl-4`}>
@@ -373,14 +373,14 @@ export function SubscriptionsPage() {
                           Off
                         </Badge>
                       )}
-                      {s.condition && <div className="font-mono text-[11px] text-faint">{s.condition}</div>}
+                      {s.condition && <div className="font-mono text-caption text-faint">{s.condition}</div>}
                     </td>
-                    <td className={`${td} font-mono text-xs`}>
+                    <td className={`${td} font-mono text-secondary`}>
                       {s.topic}
                       <div className="text-faint">priority {s.priority}</div>
                     </td>
-                    <td className={`${td} text-xs`}>{targetText(s.target)}</td>
-                    <td className={`${td} text-xs text-muted`}>
+                    <td className={`${td} text-secondary`}>{targetText(s.target)}</td>
+                    <td className={`${td} text-secondary text-muted`}>
                       {s.runs.delivered} delivered, {s.runs.failed} failed, {s.runs.pending} waiting
                     </td>
                     <td className={`${td} text-right whitespace-nowrap`}>

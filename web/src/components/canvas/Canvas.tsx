@@ -126,7 +126,7 @@ export function Canvas({
               aria-pressed={view === v}
               onClick={() => setView(v)}
               className={cn(
-                "h-6 rounded-sm px-2 text-xs font-medium",
+                "h-6 rounded-sm px-2 text-secondary font-medium",
                 view === v ? "bg-accent-soft text-accent" : "text-muted hover:text-fg",
               )}
             >
@@ -135,7 +135,7 @@ export function Canvas({
           ))}
         </div>
         {view === "graph" && (
-          <span className="text-[11px] text-faint">Arrow keys move between nodes; Enter selects one.</span>
+          <span className="text-caption text-faint">Arrow keys move between nodes; Enter selects one.</span>
         )}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
@@ -173,18 +173,18 @@ export function NodeDetails({ node, status }: { node: CanvasNode; status?: Canva
     <div
       aria-label={`Selected: ${node.title}`}
       role="region"
-      className="rounded-md border border-line bg-surface p-3 text-xs"
+      className="rounded-md border border-line bg-surface p-3 text-secondary"
     >
-      <div className="flex items-center gap-1.5 text-[13px] font-medium">
+      <div className="flex items-center gap-1.5 text-body font-medium">
         <NodeIcon node={node} />
         {node.badge && (
           <>
-            <span className="text-[10px] tracking-wide text-faint uppercase">{node.badge}</span>{" "}
+            <span className="text-badge tracking-wide text-faint uppercase">{node.badge}</span>{" "}
           </>
         )}
         {node.title}
         {status && (
-          <span className="ml-auto flex items-center gap-1 text-xs font-normal text-muted">
+          <span className="ml-auto flex items-center gap-1 text-secondary font-normal text-muted">
             <StatusIcon status={status} />
             <span aria-hidden>{statusLabel(status)}</span>
           </span>

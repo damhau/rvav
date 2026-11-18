@@ -32,13 +32,13 @@ import {
 } from "./model";
 
 const widgetOptions = Object.entries(widgetLabels).map(([value, label]) => ({ value, label }));
-const mono = "font-mono text-xs";
+const mono = "font-mono text-secondary";
 
 /** A problem the server found, under the control it is about. */
 function ProblemList({ id, list }: { id: string; list: Problem[] }) {
   if (list.length === 0) return null;
   return (
-    <ul id={id} className="flex flex-col gap-0.5 text-xs text-bad">
+    <ul id={id} className="flex flex-col gap-0.5 text-secondary text-bad">
       {list.map((p, i) => (
         <li key={i}>{p.message}</li>
       ))}
@@ -141,7 +141,7 @@ function TestSource({ name, dependsOn, test }: { name: string; dependsOn: string
         {running ? "Testing…" : "Test the source"}
       </Button>
       {result && (
-        <div id={id} role="status" className="rounded-md border border-line bg-sunken p-2 text-xs">
+        <div id={id} role="status" className="rounded-md border border-line bg-sunken p-2 text-secondary">
           {result.with && <p className="mb-1 text-faint">With {result.with}, as the preview's user</p>}
           {result.error && <p className="text-bad">{result.error}</p>}
           {result.ok && (
@@ -289,10 +289,10 @@ function SourceEditor({
       )}
       {src && others.length > 0 && (
         <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-xs font-medium">Depends on</legend>
-          <p className="text-[11px] text-faint">A change to these inputs fetches the values again.</p>
+          <legend className="mb-1 text-secondary font-medium">Depends on</legend>
+          <p className="text-caption text-faint">A change to these inputs fetches the values again.</p>
           {others.map((o) => (
-            <label key={o} htmlFor={`prop-dep-${o}`} className="flex items-center gap-2 text-xs">
+            <label key={o} htmlFor={`prop-dep-${o}`} className="flex items-center gap-2 text-secondary">
               <Checkbox
                 id={`prop-dep-${o}`}
                 checked={deps.includes(o)}
@@ -338,7 +338,7 @@ function FieldProperties({
   const ui = def.ui_schema.fields[name];
   const prop = props(def)[name];
   const [nameError, setNameError] = useState("");
-  if (!ui) return <p className="text-xs text-muted">This input has no UI field: add it in the YAML.</p>;
+  if (!ui) return <p className="text-secondary text-muted">This input has no UI field: add it in the YAML.</p>;
   const at = (p: string) => problems.filter((x) => x.at === p);
   const section = def.ui_schema.layout.sections.find((s) => s.fields.includes(name));
   const textual = ["text", "textarea", "secret"].includes(ui.widget);
@@ -400,7 +400,7 @@ function FieldProperties({
         </Field>
       </div>
       {prop && (
-        <label htmlFor="prop-required" className="flex items-center gap-2 text-[13px]">
+        <label htmlFor="prop-required" className="flex items-center gap-2 text-body">
           <Checkbox
             id="prop-required"
             checked={isRequired(def, name)}
@@ -489,7 +489,7 @@ function FieldProperties({
               onCommit={(v) => onChange(setInitial(def, name, v === "" ? undefined : numeric ? Number(v) : v))}
             />
           ) : (
-            <p className="text-xs text-faint">Set lists and objects in the YAML.</p>
+            <p className="text-secondary text-faint">Set lists and objects in the YAML.</p>
           )}
           <ProblemList id="prop-initial-problems" list={at("initial")} />
         </Field>
@@ -499,11 +499,11 @@ function FieldProperties({
       )}
       <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
         <legend className="sr-only">Rules</legend>
-        <p className="text-xs font-medium">
+        <p className="text-secondary font-medium">
           Rules <span className="font-normal text-faint">(CEL over inputs, environment, project and user)</span>
         </p>
         {ruleError && (
-          <p role="note" className="text-xs text-warn">
+          <p role="note" className="text-secondary text-warn">
             In the preview, a rule failed and its default was used: {ruleError}
           </p>
         )}
@@ -526,7 +526,7 @@ function FieldProperties({
         })}
       </fieldset>
       {prop && (
-        <fieldset className="flex flex-col gap-1.5 border-t border-line pt-3 text-xs">
+        <fieldset className="flex flex-col gap-1.5 border-t border-line pt-3 text-secondary">
           <legend className="sr-only">Handling</legend>
           {(
             [
@@ -684,7 +684,7 @@ export function Properties({
     selection?.kind === "section" ? def.ui_schema.layout.sections.findIndex((s) => s.key === selection.key) : -1;
   return (
     <Panel title={selection?.kind === "section" ? "Section" : "Properties"}>
-      {!selection && <p className="text-xs text-muted">Choose a field or a section to change it.</p>}
+      {!selection && <p className="text-secondary text-muted">Choose a field or a section to change it.</p>}
       {selection?.kind === "field" && (
         <FieldProperties
           key={selection.name}

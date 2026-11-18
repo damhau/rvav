@@ -53,7 +53,7 @@ export default function RequestTopology({
   const composite = graph.kind === "composite";
   return (
     <section aria-labelledby="request-topology" className="min-w-0 rounded-lg border border-line bg-surface">
-      <h2 id="request-topology" className="border-b border-line px-4 py-2.5 text-[13px] font-semibold">
+      <h2 id="request-topology" className="border-b border-line px-4 py-2.5 text-body font-semibold">
         {composite ? "Steps, in the order they run" : "Topology"}
       </h2>
       <div className="p-4">

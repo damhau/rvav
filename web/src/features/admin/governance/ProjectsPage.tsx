@@ -84,9 +84,9 @@ function NewProject({ onClose }: { onClose: () => void }) {
             />
           </Field>
           <fieldset className="flex flex-wrap gap-3">
-            <legend className="mb-1 text-xs font-medium">Environments it deploys to</legend>
+            <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
             {(envs.data?.items ?? []).map((e) => (
-              <label key={e.key} htmlFor={`project-env-${e.key}`} className="flex items-center gap-1.5 text-[13px]">
+              <label key={e.key} htmlFor={`project-env-${e.key}`} className="flex items-center gap-1.5 text-body">
                 <Checkbox
                   id={`project-env-${e.key}`}
                   checked={f.environments.includes(e.key)}
@@ -150,7 +150,7 @@ function Projects() {
     // The projects whose settings the caller sees: a project admin's own.
     return (
       <Panel title="Your projects">
-        <ul className="flex flex-col gap-1 text-[13px]">
+        <ul className="flex flex-col gap-1 text-body">
           {scope.map((p) => (
             <li key={p.id}>
               <Link
@@ -186,7 +186,7 @@ function Projects() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-xs">
+        <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
           <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
           Archived ones too
         </label>
@@ -196,7 +196,7 @@ function Projects() {
       {projects.data && list.length === 0 && <EmptyState title="No project" body="Nothing matches." />}
       {list.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-[13px]">
+          <table className="w-full min-w-[640px] border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -224,16 +224,16 @@ function Projects() {
                     >
                       {p.name}
                     </Link>{" "}
-                    <span className="font-mono text-[11px] text-faint">{p.code}</span>
+                    <span className="font-mono text-caption text-faint">{p.code}</span>
                     {p.archived && (
                       <Badge tone="neutral" className="ml-2">
                         Archived
                       </Badge>
                     )}
                   </td>
-                  <td className={`${td} text-xs text-muted`}>{p.environments.join(", ")}</td>
-                  <td className={`${td} text-xs text-muted`}>{p.members}</td>
-                  <td className={`${td} text-xs text-muted`}>{p.deployments}</td>
+                  <td className={`${td} text-secondary text-muted`}>{p.environments.join(", ")}</td>
+                  <td className={`${td} text-secondary text-muted`}>{p.members}</td>
+                  <td className={`${td} text-secondary text-muted`}>{p.deployments}</td>
                 </tr>
               ))}
             </tbody>
@@ -289,7 +289,7 @@ function Environments({ canEdit }: { canEdit: boolean }) {
       {envs.isPending && <SkeletonRows rows={3} cols={4} />}
       {envs.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -313,7 +313,7 @@ function Environments({ canEdit }: { canEdit: boolean }) {
               {envs.data.items.map((e) => (
                 <tr key={e.key}>
                   <td className={`${td} pl-4`}>
-                    {e.name} <span className="font-mono text-[11px] text-faint">{e.key}</span>
+                    {e.name} <span className="font-mono text-caption text-faint">{e.key}</span>
                   </td>
                   <td className={td}>
                     <Checkbox
@@ -345,7 +345,7 @@ function Environments({ canEdit }: { canEdit: boolean }) {
                       }}
                     />
                   </td>
-                  <td className={`${td} text-xs text-muted`}>
+                  <td className={`${td} text-secondary text-muted`}>
                     {e.projects ?? 0} projects, {e.deployments ?? 0} deployments
                   </td>
                   <td className={`${td} text-right`}>
@@ -443,7 +443,7 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
       {mappings.isPending && <SkeletonRows rows={3} cols={3} />}
       {mappings.data && (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-body">
             <thead>
               <tr className="label text-left">
                 <th scope="col" className={`${th} pl-4`}>
@@ -463,8 +463,8 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
             <tbody>
               {mappings.data.items.map((m) => (
                 <tr key={m.id}>
-                  <td className={`${td} pl-4 font-mono text-xs`}>{m.oidc_group}</td>
-                  <td className={`${td} text-xs`}>
+                  <td className={`${td} pl-4 font-mono text-secondary`}>{m.oidc_group}</td>
+                  <td className={`${td} text-secondary`}>
                     <Link
                       to="/admin/roles/$roleKey"
                       params={{ roleKey: m.role }}
@@ -474,7 +474,7 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
                     </Link>
                     {m.project ? ` in ${m.project.name}` : " for all of rvav"}
                   </td>
-                  <td className={`${td} text-xs text-muted`}>{m.users ?? 0}</td>
+                  <td className={`${td} text-secondary text-muted`}>{m.users ?? 0}</td>
                   <td className={`${td} text-right`}>
                     {canEdit && (
                       <Button

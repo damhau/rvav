@@ -134,7 +134,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
   return (
     <div
       className={cn(
-        "flex h-full cursor-pointer flex-col overflow-hidden rounded-md border border-line-strong bg-surface px-2.5 py-2 text-xs text-fg shadow-sm",
+        "flex h-full cursor-pointer flex-col overflow-hidden rounded-md border border-line-strong bg-surface px-2.5 py-2 text-caption text-fg shadow-sm",
         node.problems.length > 0 && "border-warn",
         status && statusBorder[status],
         status === "skipped" && "text-muted",
@@ -149,7 +149,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
         <NodeIcon node={node} />
         {node.badge && (
           <>
-            <span className="shrink-0 text-[10px] font-medium tracking-wide text-faint uppercase">
+            <span className="shrink-0 text-badge font-medium tracking-wide text-faint uppercase">
               {node.badge}
             </span>{" "}
           </>
@@ -159,7 +159,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
         </span>{" "}
         {status && (
           // Colour is never the only signal: the status has its word too.
-          <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted">
+          <span className="flex shrink-0 items-center gap-1 text-badge text-muted">
             <StatusIcon status={status} />
             <span aria-hidden>{statusLabel(status)}</span>
           </span>
@@ -197,7 +197,7 @@ export function FrameView({ data }: NodeProps<FrameNode>) {
       )}
     >
       <Handles direction={direction} />
-      <div className="flex h-[22px] items-center gap-1 px-3 text-[11px] text-muted">
+      <div className="flex h-[22px] items-center gap-1 px-3 text-caption text-muted">
         {group.label}
         {group.problems.length > 0 && (
           <span className="flex items-center gap-1 text-warn" title={group.problems.join(" ")}>

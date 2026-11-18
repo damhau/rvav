@@ -84,7 +84,10 @@ export function ServerCertificate({
     </>
   );
   return (
-    <section aria-label="Server certificate" className="flex flex-col gap-2 rounded-md border border-line p-3 text-xs">
+    <section
+      aria-label="Server certificate"
+      className="flex flex-col gap-2 rounded-md border border-line p-3 text-secondary"
+    >
       <p className="font-medium">Certificate of {cert.address}</p>
       <p className="flex items-start gap-1.5">{status}</p>
       <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">

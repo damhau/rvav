@@ -502,7 +502,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
             if (f.type === "bool")
               return (
                 <div key={f.name} className="flex flex-col gap-1 self-end">
-                  <label htmlFor={id} className="flex items-center gap-1.5 text-[13px]">
+                  <label htmlFor={id} className="flex items-center gap-1.5 text-body">
                     <Checkbox
                       id={id}
                       disabled={locked}
@@ -511,7 +511,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     />
                     {f.label}
                   </label>
-                  {locked && <span className="text-xs text-faint">{lockedHint(f)}</span>}
+                  {locked && <span className="text-secondary text-faint">{lockedHint(f)}</span>}
                 </div>
               );
             if (f.multiline)
@@ -528,7 +528,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     id={id}
                     rows={f.rows ?? 3}
                     spellCheck={false}
-                    className="font-mono text-xs"
+                    className="font-mono text-secondary"
                     disabled={locked}
                     value={String(values[f.name] ?? "")}
                     onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
@@ -539,7 +539,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
               <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
                 <Input
                   id={id}
-                  className={f.type === "string" && f.name !== "username" ? "font-mono text-xs" : undefined}
+                  className={f.type === "string" && f.name !== "username" ? "font-mono text-secondary" : undefined}
                   inputMode={f.type === "int" ? "numeric" : undefined}
                   disabled={locked}
                   value={String(values[f.name] ?? "")}
@@ -567,7 +567,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                   rows={3}
                   spellCheck={false}
                   autoComplete="off"
-                  className="font-mono text-xs [-webkit-text-security:disc]"
+                  className="font-mono text-secondary [-webkit-text-security:disc]"
                   disabled={secretLocked}
                   placeholder={it.secret_set ? "••••••••" : undefined}
                   value={secret}
@@ -619,7 +619,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
             {test.isPending ? "Testing…" : (def.test ?? "Test connection")}
           </Button>
           {it.updated_at && (
-            <span className="text-xs text-faint">
+            <span className="text-secondary text-faint">
               Saved {new Date(it.updated_at).toLocaleString()}
               {it.updated_by ? ` by ${it.updated_by.name}` : ""}
             </span>
@@ -629,7 +629,7 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
           <section
             aria-label={`${def.title} test`}
             aria-live="polite"
-            className="flex flex-col gap-1 rounded-md border border-line p-3 text-xs"
+            className="flex flex-col gap-1 rounded-md border border-line p-3 text-secondary"
           >
             <p className="font-medium">{test.data.ok ? "Every check passed." : "A check failed."}</p>
             <ul className="flex flex-col gap-0.5">

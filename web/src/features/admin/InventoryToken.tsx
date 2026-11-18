@@ -56,19 +56,19 @@ export function InventoryToken() {
           make.mutate();
         }}
       >
-        <p className="text-[13px] text-muted">
+        <p className="text-body text-muted">
           AWX&apos;s inventory source reads rvav&apos;s VMs with an API token that reads the inventory only, kept in its
           rvav API credential. rvav makes it for a user of its own, valid a year, and puts it in AWX; the one made
           before is revoked.
         </p>
         {st.locked ? (
-          <p className="inline-flex items-center gap-1 text-xs text-faint">
+          <p className="inline-flex items-center gap-1 text-secondary text-faint">
             <Lock className="size-3" aria-hidden /> Set by RVAV_INVENTORY_TOKEN: rvav awx-bootstrap puts that one in
             AWX.
           </p>
         ) : (
           <>
-            <p className="text-xs">
+            <p className="text-secondary">
               {t ? (
                 <>
                   Made <time dateTime={t.created_at}>{fullDate(t.created_at)}</time>
@@ -91,7 +91,7 @@ export function InventoryToken() {
             >
               <Input
                 id="inventory-url"
-                className="font-mono text-xs"
+                className="font-mono text-secondary"
                 placeholder={st.public_url || undefined}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -106,14 +106,14 @@ export function InventoryToken() {
                     : "Make a token and put it in AWX"}
               </Button>
               {!st.source_set && (
-                <span className="text-xs text-faint">Set the inventory source ID above, and save, first.</span>
+                <span className="text-secondary text-faint">Set the inventory source ID above, and save, first.</span>
               )}
             </div>
             {done && (
               <section
                 aria-label="Inventory token made"
                 aria-live="polite"
-                className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-xs"
+                className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-secondary"
               >
                 <p>
                   In AWX&apos;s credential <span className="font-medium">{done.credential}</span>

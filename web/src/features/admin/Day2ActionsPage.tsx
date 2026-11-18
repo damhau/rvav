@@ -81,7 +81,7 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
               aria-describedby={errors.name ? "awx-action-name-error" : undefined}
             />
             {errors.name && (
-              <p id="awx-action-name-error" className="text-xs text-bad">
+              <p id="awx-action-name-error" className="text-secondary text-bad">
                 {errors.name}
               </p>
             )}
@@ -90,18 +90,18 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
             className="flex flex-col gap-1.5"
             aria-describedby={errors.types ? "awx-action-types-error" : undefined}
           >
-            <legend className="mb-1 text-xs font-medium">Runs on</legend>
+            <legend className="mb-1 text-secondary font-medium">Runs on</legend>
             {(Object.keys(targetLabel) as Target[]).map((t) => (
-              <div key={t} className="flex items-center gap-2 text-[13px]">
+              <div key={t} className="flex items-center gap-2 text-body">
                 <Checkbox id={`awx-action-${t}`} checked={types.includes(t)} onChange={(on) => toggle(t, on)} />
                 <label htmlFor={`awx-action-${t}`}>{targetLabel[t]}</label>
-                <span className="text-xs text-faint">
+                <span className="text-secondary text-faint">
                   {t === "deployment" ? "every VM of the deployment at once" : "one VM at a time"}
                 </span>
               </div>
             ))}
             {errors.types && (
-              <p id="awx-action-types-error" className="text-xs text-bad">
+              <p id="awx-action-types-error" className="text-secondary text-bad">
                 {errors.types}
               </p>
             )}
@@ -118,19 +118,19 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
           >
             <Textarea
               id="awx-action-condition"
-              className="font-mono text-xs"
+              className="font-mono text-secondary"
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
               aria-invalid={errors.condition ? true : undefined}
               aria-describedby={errors.condition ? "awx-action-condition-error" : undefined}
             />
             {errors.condition && (
-              <p id="awx-action-condition-error" className="text-xs text-bad">
+              <p id="awx-action-condition-error" className="text-secondary text-bad">
                 {errors.condition}
               </p>
             )}
           </Field>
-          <div className="flex items-center gap-2 text-[13px]">
+          <div className="flex items-center gap-2 text-body">
             <Checkbox id="awx-action-enabled" checked={enabled} onChange={setEnabled} />
             <label htmlFor="awx-action-enabled">Offered on deployments</label>
           </div>
@@ -157,30 +157,30 @@ function Row({ a, onEdit }: { a: AwxAction; onEdit: () => void }) {
     <tr className="hover:bg-sunken">
       <td className="border-b border-line px-4 py-2 align-top">
         <div className="font-medium">{a.name}</div>
-        <div className="font-mono text-[11px] text-faint">{a.key}</div>
+        <div className="font-mono text-caption text-faint">{a.key}</div>
       </td>
       <td className="border-b border-line px-3 py-2 align-top">
-        <div className="font-mono text-xs">{a.template}</div>
-        <div className="text-[11px] text-faint">
+        <div className="font-mono text-secondary">{a.template}</div>
+        <div className="text-caption text-faint">
           {a.workflow ? "Workflow" : "Job template"} #{a.template_id}
           {a.fields && a.fields.length > 0 ? ` · ${a.fields.join(", ")}` : " · no survey"}
         </div>
       </td>
-      <td className="border-b border-line px-3 py-2 align-top text-xs">
+      <td className="border-b border-line px-3 py-2 align-top text-secondary">
         <div>{a.types.map((t) => targetLabel[t]).join(", ")}</div>
-        <div className="mt-0.5 font-mono text-[11px] text-muted">{a.condition || "Everywhere"}</div>
+        <div className="mt-0.5 font-mono text-caption text-muted">{a.condition || "Everywhere"}</div>
       </td>
       <td className="border-b border-line px-3 py-2 align-top">
         <Status a={a} />
         {a.warnings.length > 0 && (
-          <ul aria-label={`Warnings for ${a.name}`} className="mt-1 flex flex-col gap-0.5 text-xs text-muted">
+          <ul aria-label={`Warnings for ${a.name}`} className="mt-1 flex flex-col gap-0.5 text-secondary text-muted">
             {a.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
           </ul>
         )}
       </td>
-      <td className="border-b border-line px-4 py-2 text-right align-top text-xs text-faint">
+      <td className="border-b border-line px-4 py-2 text-right align-top text-secondary text-faint">
         <div>{relative(a.synced_at)}</div>
         <Button size="sm" variant="ghost" className="mt-1" onClick={onEdit} aria-label={`Edit ${a.name}`}>
           Edit
@@ -232,7 +232,7 @@ export function Day2ActionsPage() {
         )}
         {items.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] border-collapse text-[13px]">
+            <table className="w-full min-w-[880px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line px-4 py-2 font-medium">

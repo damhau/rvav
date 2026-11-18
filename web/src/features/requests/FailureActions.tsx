@@ -61,7 +61,7 @@ export function FailureActions({
       className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
     >
       <span className="font-semibold text-bad">{request.error?.message}</span>
-      <span className="text-xs">
+      <span className="text-secondary">
         {request.kind === "day2"
           ? "Retrying runs the failed step and the ones after it; the steps that were done are kept."
           : undone

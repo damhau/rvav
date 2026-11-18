@@ -9,7 +9,7 @@ import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
 const item =
-  "flex h-[30px] items-center gap-2.5 rounded-md px-2 text-[13px] text-muted hover:bg-sunken hover:text-fg [&_svg]:size-[15px] [&_svg]:shrink-0";
+  "flex h-[30px] items-center gap-2.5 rounded-md px-2 text-body text-muted hover:bg-sunken hover:text-fg [&_svg]:size-[15px] [&_svg]:shrink-0";
 const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface";
 
 // The administration pages, each for those who may use it (ADR-0020,
@@ -68,12 +68,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <Link to="/" className="flex items-center gap-2 px-1.5 py-0.5 text-fg" onClick={onNavigate}>
         <span
           aria-hidden
-          className="flex size-[22px] items-center justify-center rounded-sm bg-fg font-mono text-[11px] font-medium text-bg"
+          className="flex size-[22px] items-center justify-center rounded-sm bg-fg font-mono text-caption font-medium text-bg"
         >
           rv
         </span>
-        <span className="text-sm font-semibold tracking-[-0.01em]">rvav</span>
-        <span className="ml-auto font-mono text-[10px] text-faint">GVA</span>
+        <span className="text-body font-semibold tracking-[-0.01em]">rvav</span>
+        <span className="ml-auto text-caption text-faint">GVA</span>
       </Link>
 
       <ul className="flex flex-col gap-0.5">
@@ -95,7 +95,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <li>
           <Link to="/requests" className={item} {...linkProps}>
             <List aria-hidden /> Requests
-            {runningCount > 0 && <span className="ml-auto font-mono text-[11px] text-run">{runningCount} running</span>}
+            {runningCount > 0 && <span className="tnum ml-auto text-caption text-run">{runningCount} running</span>}
           </Link>
         </li>
         <li>
@@ -103,7 +103,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <SquareCheckBig aria-hidden /> Approvals
             {waiting > 0 && (
               <span
-                className="ml-auto min-w-[18px] rounded-full bg-warn-soft px-1.5 text-center font-mono text-[11px] font-medium text-warn"
+                className="tnum ml-auto min-w-[18px] rounded-full bg-warn-soft px-1.5 text-center text-caption font-medium text-warn"
                 aria-label={`${waiting} waiting for you`}
               >
                 {waiting}
@@ -133,7 +133,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       )}
 
-      <div className="mt-auto flex flex-col gap-1 border-t border-line px-2 pt-2.5 text-[11px] text-faint">
+      <div className="mt-auto flex flex-col gap-1 border-t border-line px-2 pt-2.5 text-caption text-faint">
         <LiveIndicator />
       </div>
     </nav>

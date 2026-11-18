@@ -17,7 +17,7 @@ interface Entry {
 }
 
 const itemClass =
-  "mx-1.5 flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] outline-none data-[selected=true]:bg-accent-soft [&_svg]:size-3.5 [&_svg]:text-faint";
+  "mx-1.5 flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5 text-body outline-none data-[selected=true]:bg-accent-soft [&_svg]:size-3.5 [&_svg]:text-faint";
 
 function Group({ heading, entries }: { heading: string; entries: Entry[] }) {
   if (entries.length === 0) return null;
@@ -31,9 +31,9 @@ function Group({ heading, entries }: { heading: string; entries: Entry[] }) {
           <e.icon aria-hidden />
           <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
             <span className="truncate">{e.label}</span>
-            {e.meta && <span className="truncate font-mono text-[11px] text-faint">{e.meta}</span>}
+            {e.meta && <span className="truncate font-mono text-caption text-faint">{e.meta}</span>}
           </span>
-          {e.hint && <span className="font-mono text-[10px] text-faint">{e.hint}</span>}
+          {e.hint && <span className="font-mono text-badge text-faint">{e.hint}</span>}
         </Command.Item>
       ))}
     </Command.Group>
@@ -126,13 +126,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         value={search}
         onValueChange={setSearch}
         placeholder="Search VMs, IPs, requests, or type a command"
-        className="h-12 w-full border-b border-line bg-transparent px-4 text-sm outline-none placeholder:text-faint"
+        className="h-12 w-full border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-faint"
       />
       <Command.List className="max-h-[60vh] overflow-y-auto py-1.5">
-        {loading && <Command.Loading className="px-4 py-2 text-xs text-faint">Searching…</Command.Loading>}
-        <Command.Empty className="px-4 py-5 text-[13px]">
+        {loading && <Command.Loading className="px-4 py-2 text-secondary text-faint">Searching…</Command.Loading>}
+        <Command.Empty className="px-4 py-5 text-body">
           <span className="block font-medium">No matches for “{search}”</span>
-          <span className="text-xs text-muted">
+          <span className="text-secondary text-muted">
             Try a VM name, an IP address such as 10.21.10.37, or a request number.
           </span>
         </Command.Empty>
@@ -142,7 +142,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         <Group heading="Go to" entries={nav} />
         <Group heading="Actions" entries={actions} />
       </Command.List>
-      <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-[11px] text-faint">
+      <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-caption text-faint">
         <span>
           <span className="font-mono">↑↓</span> move
         </span>

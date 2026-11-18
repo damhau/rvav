@@ -15,8 +15,8 @@ const buttonVariants = cva(
         "danger-solid": "bg-bad text-white hover:bg-bad/90",
       },
       size: {
-        sm: "h-7 px-2.5 text-xs",
-        md: "h-8 px-3 text-[13px]",
+        sm: "h-7 px-2.5 text-secondary",
+        md: "h-8 px-3 text-body",
         icon: "size-7",
       },
     },

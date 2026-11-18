@@ -106,18 +106,18 @@ function RunDetails({
     <div
       aria-label={`Selected: ${node.title}`}
       role="region"
-      className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3 text-xs"
+      className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3 text-secondary"
     >
-      <div className="flex items-center gap-1.5 text-[13px] font-medium">
+      <div className="flex items-center gap-1.5 text-body font-medium">
         <NodeIcon node={node} />
         {node.badge && (
           <>
-            <span className="text-[10px] tracking-wide text-faint uppercase">{node.badge}</span>{" "}
+            <span className="text-badge tracking-wide text-faint uppercase">{node.badge}</span>{" "}
           </>
         )}
         {node.title}
         {status && (
-          <span className="ml-auto flex items-center gap-1 text-xs font-normal text-muted">
+          <span className="ml-auto flex items-center gap-1 text-secondary font-normal text-muted">
             <StatusIcon status={status} />
             <span aria-hidden>{statusLabel(status)}</span>
           </span>
@@ -139,7 +139,7 @@ function RunDetails({
                 type="button"
                 onClick={() => onOpenLog(s)}
                 aria-pressed={logStep === s.id}
-                className="text-left text-xs font-medium text-accent hover:underline"
+                className="text-left text-secondary font-medium text-accent hover:underline"
               >
                 {logStep === s.id ? "Showing the output of" : "Show the output of"} {s.title}
               </button>

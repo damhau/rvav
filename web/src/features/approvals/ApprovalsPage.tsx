@@ -38,7 +38,7 @@ function ListItem({ a, selected, onSelect }: { a: ApprovalSummary; selected: boo
           selected && "bg-accent-soft hover:bg-accent-soft",
         )}
       >
-        <span className="flex items-center justify-between gap-2 text-xs">
+        <span className="flex items-center justify-between gap-2 text-secondary">
           <span className="font-mono text-muted">{a.request.number}</span>
           {a.status === "pending" && a.due_at ? (
             <span className={cn("tnum", a.overdue ? "font-medium text-bad" : "text-faint")}>
@@ -48,9 +48,9 @@ function ListItem({ a, selected, onSelect }: { a: ApprovalSummary; selected: boo
             <span className="text-faint">{a.status === "pending" ? "" : a.status}</span>
           )}
         </span>
-        <span className="text-[13px] font-medium">{a.request.title}</span>
-        {a.step_key && <span className="text-xs text-muted">A step asks: {a.level.name}</span>}
-        <span className="text-xs text-muted">{who(a)}</span>
+        <span className="text-body font-medium">{a.request.title}</span>
+        {a.step_key && <span className="text-secondary text-muted">A step asks: {a.level.name}</span>}
+        <span className="text-secondary text-muted">{who(a)}</span>
       </button>
     </li>
   );
@@ -69,13 +69,13 @@ function EditableInput({
   if (field.options?.length) {
     return (
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs font-medium">{field.label}</legend>
+        <legend className="mb-1 text-secondary font-medium">{field.label}</legend>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {field.options.map((o) => (
             <label
               key={o.value}
               className={cn(
-                "flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-2 text-[13px] hover:bg-sunken",
+                "flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-2 text-body hover:bg-sunken",
                 value === o.value && "border-accent bg-accent-soft hover:bg-accent-soft",
               )}
             >
@@ -92,7 +92,7 @@ function EditableInput({
                   {o.label}
                   {o.value === field.value && <span className="text-faint"> · requested</span>}
                 </span>
-                {o.meta && <span className="text-xs text-muted">{o.meta}</span>}
+                {o.meta && <span className="text-secondary text-muted">{o.meta}</span>}
               </span>
             </label>
           ))}
@@ -105,7 +105,7 @@ function EditableInput({
       <input
         id={id}
         type="number"
-        className="h-8 w-32 rounded-md border border-line-strong bg-surface px-2.5 text-[13px]"
+        className="h-8 w-32 rounded-md border border-line-strong bg-surface px-2.5 text-body"
         min={field.minimum}
         max={field.maximum}
         value={toText(value)}
@@ -191,7 +191,7 @@ function DecisionForm({ approval, onDecided }: { approval: Approval; onDecided: 
       <Field
         label="Comment"
         htmlFor={commentId}
-        aside={<span className="text-xs text-faint">Sent to the requester; required to reject</span>}
+        aside={<span className="text-secondary text-faint">Sent to the requester; required to reject</span>}
       >
         <Textarea
           id={commentId}
@@ -205,7 +205,7 @@ function DecisionForm({ approval, onDecided }: { approval: Approval; onDecided: 
           }}
         />
         {commentError && (
-          <p id={`${commentId}-error`} className="text-xs text-bad">
+          <p id={`${commentId}-error`} className="text-secondary text-bad">
             {commentError}
           </p>
         )}
@@ -238,22 +238,22 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
   return (
     <article className="flex flex-col gap-3.5 p-4" aria-label={`Approval for ${a.request.number}`}>
       <div className="flex flex-col gap-1">
-        <span className="text-xs text-faint">
+        <span className="text-secondary text-faint">
           <span className="font-mono">{a.request.number}</span> · {a.level.name}
           {a.level.count > 1 && ` · level ${a.level.index} of ${a.level.count}`}
         </span>
-        <h2 className="text-base font-semibold">
+        <h2 className="text-section font-semibold">
           <Link to="/requests/$requestId" params={{ requestId: a.request.number }} className="text-fg">
             {a.request.title}
           </Link>
         </h2>
-        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+        <span className="flex flex-wrap items-center gap-1.5 text-secondary text-muted">
           {who(a)} <EnvBadge env={a.environment} production={a.environment === "prd"} />
         </span>
       </div>
 
       {a.step_key ? (
-        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[13px]">
+        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-body">
           <span className="font-medium">
             {a.can_decide
               ? "A step of this request waits for your answer"
@@ -262,11 +262,11 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
           {a.question?.message && <p className="mt-0.5 whitespace-pre-wrap">{a.question.message}</p>}
         </div>
       ) : (
-        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[13px]">
+        <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-body">
           <span className="font-medium">{a.can_decide ? "Why this needs you" : "Why it needs approval"}: </span>
           {a.reasons.join("; ")}
           {a.rules.length > 0 && (
-            <span className="mt-0.5 block font-mono text-[11px] break-words text-muted">{a.rules.join("  ·  ")}</span>
+            <span className="mt-0.5 block font-mono text-caption break-words text-muted">{a.rules.join("  ·  ")}</span>
           )}
         </div>
       )}
@@ -274,8 +274,8 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
       {a.facts.length > 0 && <KeyValues items={a.facts.map((f) => ({ label: f.label, value: f.value }))} />}
 
       {a.justification && (
-        <div className="flex flex-col gap-0.5 text-[13px]">
-          <span className="text-xs font-medium text-muted">Requester’s reason</span>
+        <div className="flex flex-col gap-0.5 text-body">
+          <span className="text-secondary font-medium text-muted">Requester’s reason</span>
           <p>{a.justification}</p>
         </div>
       )}
@@ -297,7 +297,7 @@ function ApprovalDetail({ id, onDecided }: { id: string; onDecided: () => void }
       )}
 
       {a.status === "pending" && a.due_at && (
-        <p className="text-xs text-faint">
+        <p className="text-secondary text-faint">
           Due <Time iso={a.due_at} />
           {dueText(a) && ` · ${dueText(a)}`}
         </p>
@@ -342,7 +342,7 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
             aria-label={decided ? "Decided approvals" : "Waiting for you"}
             className="rounded-lg border border-line bg-surface"
           >
-            <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-xs">
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-secondary">
               <span className="font-semibold">
                 {decided ? "Decided" : "Waiting for you"}
                 {list.data && <span className="font-normal text-faint"> · {list.data.total}</span>}

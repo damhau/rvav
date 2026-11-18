@@ -39,10 +39,10 @@ export function ErrorState({
     <div role="alert" className={cn("flex items-start gap-3 px-4 py-6", className)}>
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-bad" aria-hidden />
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-[13px] font-medium">{title}</p>
-        {detail && <p className="max-w-prose text-xs text-muted">{detail}</p>}
+        <p className="text-body font-medium">{title}</p>
+        {detail && <p className="max-w-prose text-secondary text-muted">{detail}</p>}
         {api && api.requestId !== "none" && (
-          <p className="text-xs text-faint">
+          <p className="text-secondary text-faint">
             Request ID <span className="font-mono select-all">{api.requestId}</span>
           </p>
         )}

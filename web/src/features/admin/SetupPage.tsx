@@ -68,7 +68,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
 };
 
 function Go({ target, disabled }: { target: Target; disabled?: string }) {
-  if (disabled) return <span className="text-xs text-faint">{disabled}</span>;
+  if (disabled) return <span className="text-secondary text-faint">{disabled}</span>;
   return (
     <Button size="sm" asChild>
       {"href" in target ? (
@@ -120,7 +120,7 @@ export function SetupPage() {
         flush
         actions={
           setup.data && (
-            <span className="flex items-center gap-2 text-xs text-muted">
+            <span className="flex items-center gap-2 text-secondary text-muted">
               <span
                 role="progressbar"
                 aria-label="Steps done"
@@ -139,7 +139,7 @@ export function SetupPage() {
         {setup.isPending && <SkeletonRows rows={8} cols={2} />}
         {setup.isError && <ErrorState error={setup.error} onRetry={() => void setup.refetch()} />}
         {setup.data?.complete && (
-          <p role="status" className="border-b border-line px-4 py-3 text-[13px]">
+          <p role="status" className="border-b border-line px-4 py-3 text-body">
             Every step is done: users can sign in and request. The checklist no longer opens at sign-in.
           </p>
         )}
@@ -161,12 +161,12 @@ export function SetupPage() {
                     <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />
                   )}
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <p className={cn("text-[13px] font-medium", s.done && "text-muted")}>
-                      <span className="mr-1.5 font-mono text-xs text-faint">{i + 1}.</span>
+                    <p className={cn("text-body font-medium", s.done && "text-muted")}>
+                      <span className="tnum mr-1.5 text-secondary text-faint">{i + 1}.</span>
                       {step.title}
                     </p>
-                    <p className="text-xs text-muted">{step.what}</p>
-                    <p className="text-xs break-words">
+                    <p className="text-secondary text-muted">{step.what}</p>
+                    <p className="text-secondary break-words">
                       <span className="text-faint">{s.done ? "Done: " : "Now: "}</span>
                       {s.detail}
                     </p>
