@@ -167,8 +167,12 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		it := planItem(e, r, st, bp, groups)
 		for _, key := range it.templates {
 			if t, ok := planned[key]; ok && t.Action == ActionSkip {
+				why := "has no source in a vCenter rvav manages"
+				if len(t.Sources) > 0 {
+					why = "opens secrets rvav doesn't have in its cloud-init"
+				}
 				it.Notes = append(it.Notes, Note{Warning, "image", fmt.Sprintf(
-					"Catalogue template %s has no source in a vCenter rvav manages, so the import doesn't make it: requests fail until an administrator makes it.", key)})
+					"Catalogue template %s %s, so the import doesn't make it: requests fail until an administrator makes it.", key, why)})
 			}
 		}
 		if s, ok := after[it.RvavItemID]; ok && len(it.ShareAdd) > 0 {

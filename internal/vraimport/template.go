@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"go.yaml.in/yaml/v3"
 
@@ -146,6 +147,13 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	// inputs are the form's (ADR-0038).
 	gs := newGroupScope(e, bp.ProjectID)
 	secrets := map[string]bool{}
+	own := slices.Clone(placementFields)
+	for _, name := range order {
+		if ref, _ := t.Inputs[name]["$ref"].(string); !strings.HasPrefix(ref, groupRefPrefix) {
+			own = append(own, name)
+		}
+	}
+	groupOf, inputOf := map[string]string{}, map[string]string{}
 	order = slices.DeleteFunc(order, func(name string) bool {
 		ref, _ := t.Inputs[name]["$ref"].(string)
 		if !strings.HasPrefix(ref, groupRefPrefix) {
@@ -158,9 +166,28 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			return true
 		}
 		key := gs.keys[g.ID]
+		// An item names a group once: two inputs of the same group, as
+		// primary and secondary, read the same answers.
+		if prev, twice := inputOf[key]; twice {
+			gs.inputs[name] = key
+			note(Unmapped, "inputs."+name, fmt.Sprintf("Inputs %s and %s are both property group %s, which an rvav item names once: "+
+				"${input.%s.x} and ${input.%s.x} are the same inputs.x, one answer for both.", prev, name, gname, prev, name))
+			return true
+		}
+		inputOf[key] = name
 		gs.inputs[name], gs.used[key] = key, true
 		for _, in := range mapGroup(*g, key).Inputs {
 			secrets[in.Name] = secrets[in.Name] || in.Secret
+			// rvav's form has one input of a name, which the save checks.
+			switch other := groupOf[in.Name]; {
+			case slices.Contains(own, in.Name):
+				note(Unmapped, "inputs."+name, fmt.Sprintf("Property group %s has input %s, as the form has: rvav refuses an item with both. "+
+					"Rename one in vRA, then import again.", gname, in.Name))
+			case other != "":
+				note(Unmapped, "inputs."+name, fmt.Sprintf("Property groups %s and %s both have input %s, which would be inputs.%s twice: "+
+					"rvav refuses an item with both. Rename one in vRA, then import again.", other, gname, in.Name, in.Name))
+			}
+			groupOf[in.Name] = gname
 		}
 		note(Info, "inputs."+name, fmt.Sprintf("Property group %s is rvav's %s: the item names it, and its inputs are in the form, "+
 			"in their own section. ${input.%s.x} is inputs.x.", gname, key, name))
@@ -255,7 +282,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 				c["template"] = img
 				note(Warning, where+".image", "Image "+img+" isn't in any image profile read: set the vCenter template.")
 			}
-			if strings.Contains(strings.ToLower(img), "win") {
+			if windowsImage(img) {
 				osFamily = "windows"
 			}
 		} else {
@@ -289,6 +316,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 		mapFlags(r.Flags, where, c, note)
 		mapFolderAndProperties(sc, r.Properties, where, c, note)
+		mapMachineOptions(r.Properties, where, c, note)
 		var cDisks []map[string]any
 		if ad, ok := r.Properties["attachedDisks"].([]any); ok {
 			for _, a := range ad {
@@ -1028,6 +1056,45 @@ func mapFlags(flags map[string]any, where string, c map[string]any, note func(le
 			note(Info, where+"."+k, fmt.Sprintf("%s %v left out: rvav's own timeouts apply.", k, v))
 		default:
 			note(Unmapped, where+"."+k, fmt.Sprintf("Resource flag %s has no rvav equivalent: left out.", k))
+		}
+	}
+}
+
+// windowsImage says whether an image's name is a Windows one: a word of it
+// starts with "win" (win2022, Windows-2019), not one that holds it
+// (rhel-twin).
+func windowsImage(name string) bool {
+	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	return slices.ContainsFunc(words, func(w string) bool { return strings.HasPrefix(w, "win") })
+}
+
+// mapMachineOptions maps the machine properties rvav has its own of:
+// linkedClone, provisioningType and storagePolicy.
+func mapMachineOptions(props map[string]any, where string, c map[string]any, note func(level, where, text string)) {
+	if v, ok := props["linkedClone"]; ok {
+		if b, isBool := v.(bool); isBool {
+			c["linked_clone"] = b
+			if b {
+				note(Info, where+".linkedClone", "The VMs are linked clones of the template's current snapshot (ADR-0037): it must have one.")
+			}
+		} else {
+			note(Unmapped, where+".linkedClone", fmt.Sprintf("linkedClone %v isn't true or false: left out, the template says.", v))
+		}
+	}
+	if v, ok := props["provisioningType"]; ok {
+		if p := diskProvisioning(v); p != "" {
+			c["provisioning"] = p
+		} else {
+			note(Unmapped, where+".provisioningType", fmt.Sprintf(
+				"Provisioning %v isn't thin, thick or eagerZeroedThick: left out, the VM's disks are provisioned as the template's.", v))
+		}
+	}
+	if v, ok := props["storagePolicy"]; ok {
+		if s, _ := v.(string); s != "" && !strings.Contains(s, "${") {
+			c["storage_policy"] = s
+			note(Info, where+".storagePolicy", "The VMs' vSphere storage policy, "+s+": vCenter must have one of that name.")
+		} else {
+			note(Unmapped, where+".storagePolicy", fmt.Sprintf("Storage policy %v is worked out by vRA: left out. Set storage_policy.", v))
 		}
 	}
 }

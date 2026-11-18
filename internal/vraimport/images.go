@@ -188,7 +188,7 @@ func PlanTemplates(e *vra.Estate, r Rvav) []TemplateImport {
 			note(Warning, "", fmt.Sprintf("Images %s and %s would both be template %s: this one is %s, and items using it bind %s.",
 				owner[base], image, base, t.Key, t.Key))
 		}
-		if strings.Contains(strings.ToLower(image), "win") {
+		if windowsImage(image) {
 			t.OSFamily = "windows"
 		}
 		ms := imageMappings(e, image)
@@ -251,10 +251,18 @@ func PlanTemplates(e *vra.Estate, r Rvav) []TemplateImport {
 				note(Unmapped, where+".constraints", pr)
 			}
 		}
+		var missing []string
+		if first != nil && t.UserData != "" {
+			missing = slices.DeleteFunc(secretsIn(first.mapping.CloudConfig), func(s string) bool { return r.Secrets[s] })
+		}
 		have, exists := r.Templates[t.Key]
 		switch {
 		case len(t.Sources) == 0:
 			t.Action = ActionSkip
+		case len(missing) > 0 && !exists:
+			t.Action = ActionSkip
+			note(Unmapped, "image_profiles."+first.profile.ID+".cloudConfig", "Its cloud-init opens secrets rvav doesn't have: store "+
+				strings.Join(missing, ", ")+" in Catalog items › Secrets, then import again. vRA never gives a secret's value.")
 		case !exists:
 			t.Action = ActionCreate
 		case sameTemplate(have, t):

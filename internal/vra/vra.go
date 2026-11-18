@@ -29,7 +29,7 @@ type Project struct {
 	Administrators        []Principal       `json:"administrators,omitempty"`
 	Members               []Principal       `json:"members,omitempty"`
 	Viewers               []Principal       `json:"viewers,omitempty"`
-	Properties            map[string]string `json:"properties,omitempty"`
+	Properties            map[string]string `json:"customProperties,omitempty"`
 	MachineNamingTemplate string            `json:"machineNamingTemplate,omitempty"`
 	// PlacementPolicy is how vRA chooses where the project's machines go:
 	// DEFAULT, SPREAD or SPREAD_MEMORY (BINPACK on a cloud zone).
