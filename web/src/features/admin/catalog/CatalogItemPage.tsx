@@ -1,7 +1,7 @@
 // A catalog item for catalog admins (ADR-0019): its versions (publish,
 // roll back, withdraw, discard, compare, export), its draft's definition as
 // YAML, its details and the projects that may request it.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -128,9 +128,17 @@ function usePublishWait(item: AdminCatalogItem | undefined, yamlDirty: boolean):
 
 type VersionAction = "publish" | "deprecate" | "discard" | "export";
 
+const versionActionKey = (itemId: string) => ["catalog-version-action", itemId];
+
+/** A version's change is running, from the header or the Versions tab: another waits for it. */
+function useVersionBusy(item: AdminCatalogItem): boolean {
+  return useIsMutating({ mutationKey: versionActionKey(item.id) }) > 0;
+}
+
 function useVersionAction(item: AdminCatalogItem) {
   const refresh = useRefresh(item.id);
   return useMutation({
+    mutationKey: versionActionKey(item.id),
     mutationFn: async ({ v, action }: { v: CatalogItemVersion; action: VersionAction }) => {
       const path = { itemId: item.id, versionId: v.id };
       switch (action) {
@@ -193,6 +201,7 @@ function VersionsTab({
   onWithdraw: () => void;
 }) {
   const act = useVersionAction(item);
+  const busy = useVersionBusy(item);
   const [comparing, setComparing] = useState(false);
   const [discarding, setDiscarding] = useState<CatalogItemVersion | null>(null);
   const columns: Column<CatalogItemVersion>[] = [
@@ -249,13 +258,17 @@ function VersionsTab({
         rowMenu={(v) => (
           <>
             {v.state === "draft" && (
-              <MenuItem disabled={Boolean(wait) || act.isPending} onSelect={() => act.mutate({ v, action: "publish" })}>
-                Publish {v.number}
+              <MenuItem disabled={Boolean(wait) || busy} onSelect={() => act.mutate({ v, action: "publish" })}>
+                {wait
+                  ? `Publish ${v.number}: save the draft's changes first`
+                  : busy
+                    ? `Publish ${v.number}: waits for the change running`
+                    : `Publish ${v.number}`}
               </MenuItem>
             )}
             {v.state === "deprecated" && (
-              <MenuItem disabled={act.isPending} onSelect={() => act.mutate({ v, action: "publish" })}>
-                Roll back to {v.number}
+              <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "publish" })}>
+                {busy ? `Roll back to ${v.number}: waits for the change running` : `Roll back to ${v.number}`}
               </MenuItem>
             )}
             {v.state === "published" && <MenuItem onSelect={onWithdraw}>Withdraw</MenuItem>}
@@ -712,6 +725,7 @@ function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "wi
 /** The page's one primary action: publish the draft, or make one. */
 function PrimaryAction({ item, wait }: { item: AdminCatalogItem; wait?: string }) {
   const act = useVersionAction(item);
+  const busy = useVersionBusy(item);
   const newDraft = useNewDraft(item);
   const draft = item.draft_version;
   if (!draft)
@@ -729,7 +743,7 @@ function PrimaryAction({ item, wait }: { item: AdminCatalogItem; wait?: string }
       )}
       <Button
         variant="primary"
-        disabled={Boolean(wait) || act.isPending}
+        disabled={Boolean(wait) || busy}
         aria-describedby={wait ? "publish-wait" : undefined}
         onClick={() => act.mutate({ v: draft, action: "publish" })}
       >
@@ -744,6 +758,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
   const item = useQuery(q.adminCatalogItem(itemId));
   const [yamlDirty, setYamlDirty] = useState(false);
   const [asking, setAsking] = useState<"withdraw" | "delete" | null>(null);
+  const [leavingFor, setLeavingFor] = useState<ItemTab | null>(null);
   const wait = usePublishWait(item.data, yamlDirty);
   if (item.isPending) {
     return (
@@ -762,6 +777,10 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
   }
   const it = item.data;
   const shown = tab === "git" && !it.git ? "versions" : tab;
+  const openTab = (next: ItemTab) => {
+    setYamlDirty(false);
+    void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId }, search: { tab: next }, replace: true });
+  };
   return (
     <Page>
       <PageHeader
@@ -798,16 +817,11 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
       />
       <Tabs
         value={shown}
+        // With YAML typed, a focused tab doesn't open: Cancel gives the focus back to the tab that asked.
+        activationMode={yamlDirty ? "manual" : "automatic"}
         onValueChange={(next) => {
-          if (shown === "definition" && yamlDirty && !window.confirm("Leave the YAML without saving your changes?"))
-            return;
-          setYamlDirty(false);
-          void navigate({
-            to: "/admin/catalog-items/$itemId",
-            params: { itemId },
-            search: { tab: next as ItemTab },
-            replace: true,
-          });
+          if (shown === "definition" && yamlDirty) setLeavingFor(next as ItemTab);
+          else openTab(next as ItemTab);
         }}
       >
         <TabsList aria-label="Item sections">
@@ -843,9 +857,20 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
         <ItemChangeDialog
           change={{ it, action: asking }}
           onClose={() => setAsking(null)}
-          onDone={() => asking === "delete" && void navigate({ to: "/admin/catalog-items" })}
+          onDone={() => (asking === "delete" ? navigate({ to: "/admin/catalog-items" }) : undefined)}
         />
       )}
+      <ConfirmDialog
+        open={leavingFor !== null}
+        onOpenChange={(o) => !o && setLeavingFor(null)}
+        title="Leave the YAML without saving?"
+        description="Your changes to the definition are lost; the draft keeps what was last saved."
+        confirmLabel="Leave without saving"
+        onConfirm={() => {
+          if (leavingFor) openTab(leavingFor);
+          setLeavingFor(null);
+        }}
+      />
     </Page>
   );
 }

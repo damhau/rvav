@@ -150,7 +150,11 @@ export function ItemDetailPage({ itemKey }: { itemKey: string }) {
             </Breadcrumbs>
           }
         />
-        <ErrorState error={item.error} className="rounded-lg border border-line bg-surface" />
+        <ErrorState
+          error={item.error}
+          onRetry={() => void item.refetch()}
+          className="rounded-lg border border-line bg-surface"
+        />
       </Page>
     );
 
@@ -214,7 +218,11 @@ export function ItemDetailPage({ itemKey }: { itemKey: string }) {
             {form.isPending && mayRequest ? (
               <Skeleton className="h-48 rounded-lg" />
             ) : form.isError ? (
-              <ErrorState error={form.error} className="rounded-lg border border-line bg-surface" />
+              <ErrorState
+                error={form.error}
+                onRetry={() => void form.refetch()}
+                className="rounded-lg border border-line bg-surface"
+              />
             ) : (
               <WhatItBuilds item={it} form={form.data} />
             )}

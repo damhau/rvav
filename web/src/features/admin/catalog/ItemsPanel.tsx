@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, type Query, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Package } from "lucide-react";
 import { useState } from "react";
@@ -19,6 +19,7 @@ import { GitBadge } from "@/features/admin/catalog/GitPanels";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemType } from "@/lib/api/types";
+import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q, type AdminItemFilters } from "@/lib/query";
 import { draftCopy } from "./designer/draftStore";
@@ -208,6 +209,12 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
 
 type Change = { it: AdminCatalogItem; action: "publish" | "withdraw" | "delete" };
 
+/** The item's own page, by its ID or its slug. */
+const itemPageOf = (it: AdminCatalogItem) => (query: Query) => {
+  const [a, b, c, id] = query.queryKey;
+  return a === "admin" && b === "catalog" && c === "item" && (id === it.id || id === it.slug);
+};
+
 function useItemChange() {
   const qc = useQueryClient();
   return useMutation({
@@ -222,7 +229,9 @@ function useItemChange() {
         : call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { params: { path } }));
     },
     onSuccess: (_, { it, action }) => {
-      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+      // A deleted item's page isn't read again: it would show the item not found before it leaves.
+      const gone = action === "delete" ? itemPageOf(it) : () => false;
+      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all, predicate: (query) => !gone(query) });
       void qc.invalidateQueries({ queryKey: keys.catalog.all });
       toast.success(
         {
@@ -256,7 +265,8 @@ export function ItemsPanel() {
   const [kind, setKind] = useState<CatalogItemType | "any">("any");
   const [sheet, setSheet] = useState<"new" | "import" | null>(null);
   const [asking, setAsking] = useState<Change | null>(null);
-  const items = useQuery(q.adminCatalogItems(filters));
+  const [text, setText] = useSearchBox(filters.q, (next) => setFilters((f) => ({ ...f, q: next })));
+  const items = useQuery({ ...q.adminCatalogItems(filters), placeholderData: keepPreviousData });
   const categories = useQuery(q.adminCatalogCategories());
   const change = useItemChange();
   const categoryName = (key: string) => categories.data?.items.find((c) => c.key === key)?.name ?? key;
@@ -340,12 +350,7 @@ export function ItemsPanel() {
         error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
         toolbar={
           <>
-            <TableSearch
-              label="Search items"
-              placeholder="Search by name or slug"
-              value={filters.q ?? ""}
-              onChange={(v) => setFilters((f) => ({ ...f, q: v || undefined }))}
-            />
+            <TableSearch label="Search items" placeholder="Search by name or slug" value={text} onChange={setText} />
             <Select
               aria-label="Kind"
               value={kind}
@@ -423,8 +428,15 @@ export function ItemsPanel() {
             )}
             {(it.draft_version || it.published_version) && <MenuSeparator />}
             {it.draft_version && (
-              <MenuItem disabled={unsavedDraft(it)} onSelect={() => change.mutate({ it, action: "publish" })}>
-                {unsavedDraft(it) ? "Publish: the designer has changes to save" : `Publish ${it.draft_version.number}`}
+              <MenuItem
+                disabled={unsavedDraft(it) || change.isPending}
+                onSelect={() => change.mutate({ it, action: "publish" })}
+              >
+                {unsavedDraft(it)
+                  ? "Publish: the designer has changes to save"
+                  : change.isPending
+                    ? `Publish ${it.draft_version.number}: waits for the change running`
+                    : `Publish ${it.draft_version.number}`}
               </MenuItem>
             )}
             {it.published_version && (
@@ -458,8 +470,10 @@ export function ItemChangeDialog({
 }: {
   change: { it: AdminCatalogItem; action: "withdraw" | "delete" };
   onClose: () => void;
-  onDone?: () => void;
+  /** Called once it is done; the deleted item's page is forgotten once what it returns settles. */
+  onDone?: () => Promise<unknown> | void;
 }) {
+  const qc = useQueryClient();
   const run = useItemChange();
   const { it, action } = change;
   const n = it.versions.length;
@@ -467,7 +481,9 @@ export function ItemChangeDialog({
     run.mutate(change, {
       onSuccess: () => {
         onClose();
-        onDone?.();
+        void Promise.resolve(onDone?.()).then(
+          () => action === "delete" && qc.removeQueries({ predicate: itemPageOf(it) }),
+        );
       },
     });
   return action === "withdraw" ? (

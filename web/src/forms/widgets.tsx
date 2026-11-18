@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
+import { cn, withUnits } from "@/lib/utils";
 import { useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -168,7 +168,7 @@ function RadioCardsWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
             )}
           >
             <span className="font-semibold">{o.label}</span>
-            {o.meta && <span className="font-mono text-secondary text-muted">{o.meta}</span>}
+            {o.meta && <span className="font-mono text-secondary text-muted">{withUnits(o.meta)}</span>}
           </button>
         );
       })}
@@ -203,7 +203,7 @@ function ChecklistWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="font-medium">{o.label}</span>
                 {o.description && <span className="text-secondary text-muted">{o.description}</span>}
-                {o.meta && <span className="font-mono text-caption text-faint">{o.meta}</span>}
+                {o.meta && <span className="font-mono text-caption text-faint">{withUnits(o.meta)}</span>}
               </span>
               {o.disabled_reason && (
                 <span className="text-caption whitespace-nowrap text-faint">{o.disabled_reason}</span>

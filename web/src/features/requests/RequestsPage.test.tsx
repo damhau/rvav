@@ -58,3 +58,31 @@ describe("the overview", () => {
     );
   });
 });
+
+describe("your drafts", () => {
+  it("asks before discarding one", async () => {
+    const user = userEvent.setup();
+    const item = db.items.find((i) => i.slug === "rhel9-server")!;
+    const project = db.projects[0]!;
+    const now = new Date().toISOString();
+    Object.assign(db, {
+      drafts: [
+        {
+          id: "drf_batch",
+          name: "Batch servers",
+          draft: { catalog_item_id: item.id, project_id: project.id, environment: "dev", inputs: {} },
+          catalog_item: { id: item.id, slug: item.slug, name: item.name },
+          project: { id: project.id, code: project.code, name: project.name },
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    });
+    renderApp("/requests");
+    await user.click(await screen.findByRole("button", { name: "Discard Batch servers" }, { timeout: 5000 }));
+    const ask = await screen.findByRole("alertdialog", { name: "Discard Batch servers?" });
+    await user.click(within(ask).getByRole("button", { name: "Discard draft" }));
+    expect(await screen.findByText("Draft discarded")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Your drafts" })).toBeNull());
+  });
+});

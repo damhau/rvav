@@ -1,7 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Inbox, Plus, SearchX } from "lucide-react";
-import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
@@ -14,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
+import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { Drafts } from "./Drafts";
@@ -81,7 +81,11 @@ const columns: Column<ServiceRequest>[] = [
 export function RequestsPage({ search }: { search: RequestsSearch }) {
   const { projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/requests/" });
-  const [text, setText] = useState(search.q ?? "");
+  // The address keeps the search, without a history entry per keystroke.
+  const [text, setText] = useSearchBox(
+    search.q,
+    (next) => void navigate({ search: (s: RequestsSearch) => ({ ...s, q: next }), replace: true }),
+  );
   const list = useInfiniteQuery(
     q.requests({
       projectId,
@@ -92,19 +96,9 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
   );
   const filtered = Boolean(search.status || search.mine || search.q);
 
-  // Keep the URL in step with the search box, without a history entry per keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const next = text.trim() || undefined;
-      if (next !== search.q) void navigate({ search: (s: RequestsSearch) => ({ ...s, q: next }), replace: true });
-    }, 250);
-    return () => clearTimeout(t);
-  }, [text, search.q, navigate]);
-
   const set = (patch: Partial<RequestsSearch>) =>
     void navigate({ search: (s: RequestsSearch) => ({ ...s, ...patch }), replace: true });
   const clear = () => {
-    setText("");
     void navigate({ search: {}, replace: true });
   };
 

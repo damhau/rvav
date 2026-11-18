@@ -86,3 +86,8 @@ export function leaseLabel(expiresAt: string | null | undefined) {
 export function newIdempotencyKey() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+/** Keeps each number on the line of the word after it, such as a unit: "60 GB" never breaks. */
+export function withUnits(text: string): string {
+  return text.replace(/(\d) (?=\p{L})/gu, "$1\u00a0");
+}

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus, SearchX, Server } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { Deployment, DeploymentStatus } from "@/lib/api/types";
+import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentFilters } from "@/lib/query";
 import { cn, daysUntil, leaseLabel } from "@/lib/utils";
@@ -136,7 +137,11 @@ const columns: Column<Deployment>[] = [
 export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const { projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
-  const [text, setText] = useState(search.q ?? "");
+  // The address keeps the search, without a history entry per keystroke.
+  const [text, setText] = useSearchBox(
+    search.q,
+    (next) => void navigate({ search: (s: DeploymentsSearch) => ({ ...s, q: next }), replace: true }),
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<(typeof bulkActions)[number] | null>(null);
   const { pick, dialog } = usePickedAction();
@@ -155,19 +160,9 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   );
   const filtered = Boolean(search.status || envs.length || search.mine || search.q || search.expiring);
 
-  // Keep the URL in step with the search box, without a history entry per keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const next = text.trim() || undefined;
-      if (next !== search.q) void navigate({ search: (s: DeploymentsSearch) => ({ ...s, q: next }), replace: true });
-    }, 250);
-    return () => clearTimeout(t);
-  }, [text, search.q, navigate]);
-
   const set = (patch: Partial<DeploymentsSearch>) =>
     void navigate({ search: (s: DeploymentsSearch) => ({ ...s, ...patch }), replace: true });
   const clear = () => {
-    setText("");
     void navigate({ search: (s: DeploymentsSearch) => ({ sort: s.sort }), replace: true });
   };
 

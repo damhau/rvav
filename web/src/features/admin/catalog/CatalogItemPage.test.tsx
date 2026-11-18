@@ -128,6 +128,30 @@ describe("the item's header and versions", () => {
     expect(await screen.findByRole("button", { name: "New draft" })).toBeInTheDocument();
   });
 
+  it("asks before leaving the YAML typed, and stays when told to", async () => {
+    const u = userEvent.setup();
+    await openDefinition();
+    type("# reviewed\n");
+    await u.click(screen.getByRole("tab", { name: "Versions" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Leave the YAML without saving?" });
+    await u.click(within(ask).getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("tab", { name: "Definition" })).toHaveAttribute("aria-selected", "true");
+    await u.click(screen.getByRole("tab", { name: "Versions" }));
+    await u.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Leave without saving" }));
+    expect(await screen.findByRole("region", { name: "Versions" })).toBeInTheDocument();
+  });
+
+  it("says in the Versions menu why Publish waits", async () => {
+    const u = userEvent.setup();
+    const { draft } = await openDefinition();
+    designerChange(draft, () => new Promise<number>(() => {}));
+    await u.click(screen.getByRole("tab", { name: "Versions" }));
+    await u.click(await screen.findByRole("button", { name: "Actions for version 3.3" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Publish 3.3: save the draft's changes first" }),
+    ).toHaveAttribute("data-disabled");
+  });
+
   it("discards a draft from its row after asking", async () => {
     const u = userEvent.setup();
     renderApp("/admin/catalog-items/rhel9-server");

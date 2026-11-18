@@ -31,6 +31,18 @@ describe("the catalog against the mock API", () => {
     expect(screen.getByRole("searchbox", { name: "Search the catalog" })).toHaveValue("");
   });
 
+  it("offers no Request to someone who may not request, and says so", async () => {
+    db.me.permissions = db.me.permissions.filter((x) => x !== "request.submit");
+    db.me.projects = db.me.projects.map((p) => ({
+      ...p,
+      permissions: p.permissions.filter((x) => x !== "request.submit"),
+    }));
+    renderApp("/catalog");
+    expect(await screen.findByRole("link", { name: "RHEL 9 server" }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Request / })).toBeNull();
+    expect(screen.getByText(/Your roles in Web Platform don't let you request/)).toBeInTheDocument();
+  });
+
   it("says when nothing is shared with the project", async () => {
     db.items.forEach((i) => (i.projectIds = []));
     renderApp("/catalog");

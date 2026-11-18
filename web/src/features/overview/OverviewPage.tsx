@@ -232,7 +232,8 @@ function Quota() {
 }
 
 function Favourites() {
-  const { projectId } = useCurrentProject();
+  const { projectId, me } = useCurrentProject();
+  const mayRequest = can(me, "request.submit", projectId);
   const favs = useQuery(q.catalog({ projectId, favourite: true }));
   return (
     <Panel
@@ -264,7 +265,7 @@ function Favourites() {
           {favs.data.items.map((i) => (
             <li key={i.id}>
               <Link
-                to="/catalog/$itemId/request"
+                to={mayRequest ? "/catalog/$itemId/request" : "/catalog/$itemId"}
                 params={{ itemId: i.slug }}
                 className="flex items-center gap-2.5 px-4 py-2 text-fg hover:bg-sunken"
               >
@@ -308,7 +309,7 @@ function SetupNotice() {
 }
 
 export function OverviewPage() {
-  const { projectId, project } = useCurrentProject();
+  const { projectId, project, me } = useCurrentProject();
   const deployments = useInfiniteQuery(q.deployments({ projectId, limit: 200 }));
   const all = deployments.data?.pages.flatMap((p) => p.items) ?? [];
   const vms = all.reduce((n, d) => n + d.vm_count, 0);
@@ -321,21 +322,28 @@ export function OverviewPage() {
         meta={
           deployments.data ? (
             <span className="flex items-center gap-1.5">
-              {project.name} · {vms} VMs in {all.length} deployments
+              {project.name} ·{" "}
+              {deployments.hasNextPage
+                ? `${vms} VMs in the first ${all.length} deployments`
+                : `${vms} VMs in ${all.length} deployments`}
               {[...envs].sort().map((e) => (
                 <EnvBadge key={e} env={e} />
               ))}
             </span>
-          ) : (
+          ) : deployments.isPending ? (
             <Skeleton className="h-3 w-64" />
+          ) : (
+            project.name
           )
         }
         actions={
-          <Button variant="primary" asChild>
-            <Link to="/catalog">
-              <Plus /> New request
-            </Link>
-          </Button>
+          can(me, "request.submit", projectId) && (
+            <Button variant="primary" asChild>
+              <Link to="/catalog">
+                <Plus /> New request
+              </Link>
+            </Button>
+          )
         }
       />
       <SetupNotice />

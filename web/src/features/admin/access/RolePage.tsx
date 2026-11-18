@@ -225,17 +225,23 @@ export function DeleteRole({
 }: {
   role: S["Role"];
   onClose: () => void;
-  onDeleted?: () => void;
+  /** Called once it is deleted; the role's page is forgotten once what it returns settles. */
+  onDeleted?: () => Promise<unknown> | void;
 }) {
   const qc = useQueryClient();
+  const own = adm.role(role.key).queryKey;
   const remove = useMutation({
     mutationFn: () => call(api.DELETE("/admin/roles/{key}", { params: { path: { key: role.key } } })),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin"] });
+      // The role's own page isn't read again: it would show the role not found before it leaves.
+      void qc.invalidateQueries({
+        queryKey: ["admin"],
+        predicate: (query) => JSON.stringify(query.queryKey) !== JSON.stringify(own),
+      });
       void qc.invalidateQueries({ queryKey: ["me"] });
       toast.success(`${role.name} deleted`);
       onClose();
-      onDeleted?.();
+      void Promise.resolve(onDeleted?.()).then(() => qc.removeQueries({ queryKey: own, exact: true }));
     },
     onError: (e) => {
       onClose();
@@ -503,11 +509,7 @@ export function RolePage({ roleKey }: { roleKey: string }) {
           <RoleView catalogue={catalogue.data} role={r} canMake={canMake} />
         ))}
       {r && deleting && (
-        <DeleteRole
-          role={r}
-          onClose={() => setDeleting(false)}
-          onDeleted={() => void navigate({ to: "/admin/roles" })}
-        />
+        <DeleteRole role={r} onClose={() => setDeleting(false)} onDeleted={() => navigate({ to: "/admin/roles" })} />
       )}
     </Page>
   );

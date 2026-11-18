@@ -4,7 +4,6 @@
 // each save (rules, sources) and the preview shows its results.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
@@ -12,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { FormRenderer } from "@/forms/FormRenderer";
-import { api, call, isApiError } from "@/lib/api/client";
+import { api, call } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, FieldStates } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
@@ -363,27 +362,12 @@ function DraftDesigner({ item, draft }: { item: AdminCatalogItem; draft: Catalog
 }
 
 export function FormDesigner({ item }: { item: AdminCatalogItem }) {
-  const qc = useQueryClient();
-  const newDraft = useMutation({
-    mutationFn: () =>
-      call(api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} })),
-    onSuccess: (v) => {
-      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      toast.success(`Draft ${v.number} made from the published version`);
-    },
-    onError: (e) => toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "No draft was made"),
-  });
   if (!item.draft_version) {
     return (
       <Panel title="Form designer">
         <EmptyState
           title="No draft to change"
-          body="The designer changes a draft. Make one from the published version; nobody sees it until you publish it."
-          action={
-            <Button variant="primary" size="sm" disabled={newDraft.isPending} onClick={() => newDraft.mutate()}>
-              New draft
-            </Button>
-          }
+          body="The designer changes a draft. Make one with New draft, at the top of the page: nobody sees it until you publish it."
         />
       </Panel>
     );

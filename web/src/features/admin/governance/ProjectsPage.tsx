@@ -1,5 +1,5 @@
 // Projects, environments and OIDC group mappings (S9, ADR-0020).
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FolderKanban, Layers, UsersRound } from "lucide-react";
 import { useState } from "react";
@@ -24,6 +24,7 @@ import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
 import { can, projectsWith } from "@/lib/can";
+import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
@@ -242,13 +243,18 @@ function QuotaUse({ projectId }: { projectId: string }) {
 
 function ProjectsPanel() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState<string>();
+  const [text, setText] = useSearchBox(search, setSearch);
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<S["AdminProject"] | null>(null);
   const { me } = useCurrentProject();
   const scope = projectsWith(me, "project.settings.read");
-  const projects = useQuery({ ...adm.projects(search, archived), enabled: scope === "all" });
+  const projects = useQuery({
+    ...adm.projects(search ?? "", archived),
+    enabled: scope === "all",
+    placeholderData: keepPreviousData,
+  });
   if (scope !== "all") {
     // The projects whose settings the caller sees: a project admin's own.
     return (
@@ -318,7 +324,7 @@ function ProjectsPanel() {
       New project
     </Button>
   );
-  const filtered = search !== "" || archived;
+  const filtered = Boolean(search) || archived;
   // With no project at all, the empty state offers New project itself.
   const none = projects.data?.items.length === 0 && !filtered;
   return (
@@ -333,7 +339,7 @@ function ProjectsPanel() {
         error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
         toolbar={
           <>
-            <TableSearch label="Search projects" value={search} onChange={setSearch} placeholder="Name or code" />
+            <TableSearch label="Search projects" value={text} onChange={setText} placeholder="Name or code" />
             <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
               <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
               Archived ones too
@@ -350,7 +356,7 @@ function ProjectsPanel() {
                 <Button
                   size="sm"
                   onClick={() => {
-                    setSearch("");
+                    setSearch(undefined);
                     setArchived(false);
                   }}
                 >

@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LayoutGrid, SearchX } from "lucide-react";
-import { useEffect, useState } from "react";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
@@ -11,6 +10,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import type { CatalogItem, CatalogItemType } from "@/lib/api/types";
+import { can } from "@/lib/can";
+import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { roughDuration } from "@/lib/utils";
@@ -23,7 +24,7 @@ export interface CatalogSearch {
   type?: CatalogItemType;
 }
 
-function Card({ item }: { item: CatalogItem }) {
+function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) {
   const duration = roughDuration(item.typical_duration_seconds);
   return (
     <div className="relative flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 transition-colors focus-within:border-line-strong hover:border-line-strong">
@@ -58,37 +59,34 @@ function Card({ item }: { item: CatalogItem }) {
             {approvalHint[item.approval]}
           </span>
         )}
-        <Button asChild size="sm" className="relative z-10 ml-auto">
-          <Link to="/catalog/$itemId/request" params={{ itemId: item.slug }}>
-            Request<span className="sr-only"> {item.name}</span>
-          </Link>
-        </Button>
+        {mayRequest && (
+          <Button asChild size="sm" className="relative z-10 ml-auto">
+            <Link to="/catalog/$itemId/request" params={{ itemId: item.slug }}>
+              Request<span className="sr-only"> {item.name}</span>
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
 export function CatalogPage({ search }: { search: CatalogSearch }) {
-  const { projectId, project } = useCurrentProject();
+  const { projectId, project, me } = useCurrentProject();
+  const mayRequest = can(me, "request.submit", projectId);
   const navigate = useNavigate({ from: "/catalog/" });
-  const [text, setText] = useState(search.q ?? "");
+  // The address keeps the search, without a history entry per keystroke.
+  const [text, setText] = useSearchBox(
+    search.q,
+    (next) => void navigate({ search: (s: CatalogSearch) => ({ ...s, q: next }), replace: true }),
+  );
   const categories = useQuery(q.categories(projectId));
   const items = useQuery(q.catalog({ projectId, category: search.category, q: search.q, type: search.type }));
   const filtered = Boolean(search.q || search.category || search.type);
 
-  // Keep the URL in step with the search box, without a history entry per keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const next = text.trim() || undefined;
-      if (next !== search.q) void navigate({ search: (s: CatalogSearch) => ({ ...s, q: next }), replace: true });
-    }, 250);
-    return () => clearTimeout(t);
-  }, [text, search.q, navigate]);
-
   const set = (patch: Partial<CatalogSearch>) =>
     void navigate({ search: (s: CatalogSearch) => ({ ...s, ...patch }), replace: true });
   const clear = () => {
-    setText("");
     void navigate({ search: {}, replace: true });
   };
   const count = items.data?.items.length;
@@ -97,7 +95,11 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
     <Page>
       <PageHeader
         title="Catalog"
-        description={`What you can request in ${project.name}. Open an item to see what it builds, then request it.`}
+        description={
+          mayRequest
+            ? `What you can request in ${project.name}. Open an item to see what it builds, then request it.`
+            : `What ${project.name} offers. Your roles in ${project.name} don't let you request: open an item to see what it builds.`
+        }
       />
       <div className="flex flex-wrap items-center gap-2">
         <TableSearch
@@ -169,7 +171,7 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
           {items.data.items.map((i) => (
-            <Card key={i.id} item={i} />
+            <Card key={i.id} item={i} mayRequest={mayRequest} />
           ))}
         </div>
       )}

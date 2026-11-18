@@ -2,22 +2,27 @@
 // discarded.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Time } from "@/components/common/misc";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
-import { api, call } from "@/lib/api/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { api, call, isApiError } from "@/lib/api/client";
 import { q } from "@/lib/query";
 
 export function Drafts() {
   const qc = useQueryClient();
   const drafts = useQuery(q.drafts());
+  const [discarding, setDiscarding] = useState<{ id: string; name: string } | null>(null);
   const discard = useMutation({
     mutationFn: (id: string) => call(api.DELETE("/me/drafts/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["me", "drafts"] });
       toast.success("Draft discarded");
+      setDiscarding(null);
     },
+    onError: (e) => toast.error(isApiError(e) ? e.problem.title : "The draft wasn't discarded"),
   });
   const items = drafts.data?.items ?? [];
   if (items.length === 0) return null;
@@ -42,14 +47,24 @@ export function Drafts() {
               size="sm"
               variant="quiet"
               aria-label={`Discard ${d.name}`}
-              disabled={discard.isPending}
-              onClick={() => discard.mutate(d.id)}
+              onClick={() => setDiscarding({ id: d.id, name: d.name })}
             >
               Discard
             </Button>
           </li>
         ))}
       </ul>
+      {discarding && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDiscarding(null)}
+          title={`Discard ${discarding.name}?`}
+          description="The values saved in it are lost; nothing was requested from it."
+          confirmLabel="Discard draft"
+          pending={discard.isPending}
+          onConfirm={() => discard.mutate(discarding.id)}
+        />
+      )}
     </Panel>
   );
 }
