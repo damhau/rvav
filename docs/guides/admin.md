@@ -533,8 +533,9 @@ A project's page has four tabs:
   approval.
 - **Details:** name, cost centre, description, environments and custom
   properties; **Archive**. Each VM built in the project gets the custom
-  properties as vSphere custom attributes and in its notes, and bindings
-  read them as `project.properties.<key>`. A key has letters, digits, `.`,
+  properties as vSphere custom attributes and in its notes. Bindings,
+  approval conditions and a composite item's steps read them as
+  `project.properties.<key>`. A key has letters, digits, `.`,
   `_` and `-`, and starts with a letter. A blueprint's own properties of
   the same key win. VMs built before a change keep the properties they
   were given.

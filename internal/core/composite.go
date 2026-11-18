@@ -542,7 +542,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 	}
 	steps, groups := flattenSteps(ev.Blueprint.Steps)
 	vars := policy.Vars{"inputs": ev.Inputs, "steps": map[string]any{}, "environment": ev.Env.Key,
-		"project": map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name}, "propgroup": groupVars(ev.Version)}
+		"project": projectVars(ev.Project), "propgroup": groupVars(ev.Version)}
 	// One step, or nil if it was refused. A step on a side of a branch runs only
 	// if its side is taken, so it can't be a VM, planned at submit.
 	var evalStep func(st blueprint.CompositeStep, group int, onSide bool) (*compositePart, error)

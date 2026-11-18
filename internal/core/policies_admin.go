@@ -183,7 +183,7 @@ func sampleVars(inputs map[string]any) policy.Vars {
 		inputs = map[string]any{}
 	}
 	return policy.Vars{"inputs": inputs, "environment": "dev",
-		"project": map[string]any{"id": "prj_sample", "code": "sample", "name": "Sample"},
+		"project": map[string]any{"id": "prj_sample", "code": "sample", "name": "Sample", "properties": map[string]any{}},
 		"item":    map[string]any{"slug": "sample", "category": "compute", "type": "vm_blueprint"},
 		"vm":      map[string]any{"vcpu": 2, "memory_gb": 4, "disk_gb": 40, "count": 1},
 		"user":    map[string]any{"id": "usr_sample", "roles": []string{"user"}, "groups": []string{}, "permissions": []string{}},
@@ -191,9 +191,9 @@ func sampleVars(inputs map[string]any) policy.Vars {
 }
 
 // checkApprovalExpr compiles an approval condition and evaluates it on
-// sample variables: it must give true or false. An input the sample lacks
-// is fine (forms differ); anything else wrong, a misspelt vm or project
-// field included, is caught now.
+// sample variables: it must give true or false. An input or a project
+// property the sample lacks is fine (forms and projects differ); anything
+// else wrong, a misspelt vm or project field included, is caught now.
 func checkApprovalExpr(expr string) error {
 	if err := policy.Check(expr); err != nil {
 		return err
@@ -202,9 +202,11 @@ func checkApprovalExpr(expr string) error {
 	if err != nil {
 		if _, key, ok := strings.Cut(err.Error(), "no such key: "); ok {
 			key = strings.TrimSpace(key)
-			if strings.Contains(expr, "inputs."+key) || strings.Contains(expr, `inputs["`+key+`"]`) ||
-				strings.Contains(expr, "inputs['"+key+"']") {
-				return nil
+			for _, m := range []string{"inputs", "properties"} {
+				if strings.Contains(expr, m+"."+key) || strings.Contains(expr, m+`["`+key+`"]`) ||
+					strings.Contains(expr, m+"['"+key+"']") {
+					return nil
+				}
 			}
 			return fmt.Errorf("there is no %s here", key)
 		}

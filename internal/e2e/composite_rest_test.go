@@ -200,7 +200,11 @@ func TestCompositeREST(t *testing.T) {
 			t.FailNow()
 		}
 
+		// A step reads its project's properties (T1.7).
 		def := restDefinition(cmdb.URL)
+		registerStep := def.Blueprint["steps"].([]any)[0].(map[string]any)["rest"].(map[string]any)
+		registerStep["body"] = strings.Replace(registerStep["body"].(string), "}", ", 'cost': project.properties.costCenter}", 1)
+		h.json("PATCH", "/api/v1/admin/projects/prj_web", admin, map[string]any{"properties": map[string]string{"costCenter": "CC-7"}}, 200, nil)
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "cmdb-register", Name: "CMDB entry",
 			Summary: "An entry in the CMDB.", Category: "compute", Type: api.Composite, Definition: &def}, 201, &item)
@@ -295,7 +299,8 @@ func TestCompositeREST(t *testing.T) {
 		if len(posted) != 1 || posted[0].path != "/api/ci/web%2001%2Fa" || posted[0].query != "env=dev" || posted[0].auth != "Bearer "+restToken {
 			t.Fatalf("the POST = %+v", posted)
 		}
-		if posted[0].body["name"] != "web 01/a" || posted[0].body["password"] != restInput || posted[0].body["source"] != "rvav-internal" {
+		if posted[0].body["name"] != "web 01/a" || posted[0].body["password"] != restInput || posted[0].body["source"] != "rvav-internal" ||
+			posted[0].body["cost"] != "CC-7" {
 			t.Fatalf("its body = %v", posted[0].body)
 		}
 		read := cmdb.seen("GET", "/api/check/")
@@ -383,7 +388,7 @@ func TestCompositeREST(t *testing.T) {
 		register := list[0].(map[string]any)
 		rest := register["rest"].(map[string]any)
 		if rest["method"] != "POST" || rest["url"] != "…${inputs.name}…${environment}" ||
-			rest["body"] != "{'…': inputs.name, '…': inputs.api_password, '…': '…'}" || rest["secret"] != nil || rest["accept"] != nil || rest["keep"] != nil {
+			rest["body"] != "{'…': inputs.name, '…': inputs.api_password, '…': '…', '…': project.properties.costCenter}" || rest["secret"] != nil || rest["accept"] != nil || rest["keep"] != nil {
 			t.Fatalf("the topology's REST call = %v", rest)
 		}
 		if undo := register["undo"].(map[string]any)["rest"].(map[string]any); undo["url"] != "…${steps.register.json.id}" || undo["method"] != "DELETE" {

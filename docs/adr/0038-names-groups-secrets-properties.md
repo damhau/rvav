@@ -109,8 +109,10 @@ own `properties` (C30).
 - The VM resource carries the properties it was built with
   (`vm.custom_properties`, kept by the inventory sync like its FQDN); VMs
   built before X1.1 have none.
-- Bindings and form rules read `project.properties.<key>` (`project` has
-  `id`, `code`, `name` and `properties`). The blueprint carries the
+- Bindings, form rules, approval conditions and composite steps read
+  `project.properties.<key>` (`project` has `id`, `code`, `name` and
+  `properties`). Saving an approval policy accepts a property its sample
+  project lacks, as it does an input. The blueprint carries the
   project as a context its bindings read besides the inputs.
 - `folder` on a blueprint or component replaces the placement rule's
   folder: from the root as it is, else below the VM folder of the rule

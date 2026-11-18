@@ -67,6 +67,19 @@ func TestApprovalConditions(t *testing.T) {
 	if _, err := policy.Bool(`inputs.missing > 1`, policy.Vars{}); err == nil {
 		t.Fatal("missing input should be an error")
 	}
+
+	// Saving: a project property is as unknown as an input; a misspelt
+	// project field isn't (T1.7).
+	for expr, ok := range map[string]bool{
+		`project.properties.tier == "gold"`:           true,
+		`project.properties["cost-centre"] == "CC-1"`: true,
+		`"tier" in project.properties`:                true,
+		`project.propertie.tier == "gold"`:            false,
+	} {
+		if err := checkApprovalExpr(expr); (err == nil) != ok {
+			t.Errorf("checkApprovalExpr(%s) = %v", expr, err)
+		}
+	}
 }
 
 func TestBlueprintBindings(t *testing.T) {

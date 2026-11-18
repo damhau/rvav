@@ -394,8 +394,8 @@ func resolveStep(in ResolveInput, vars policy.Vars) (Resolved, error) {
 }
 
 // stepVars are the CEL variables of a composite's steps: the request's
-// inputs (a secret input as its marker), the outputs of earlier steps and
-// the constants of its property groups.
+// inputs (a secret input as its marker), the outputs of earlier steps, its
+// project's properties and the constants of its property groups.
 func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[string]any) (policy.Vars, error) {
 	r, err := a.Store.GetRequest(ctx, requestID)
 	if err != nil {
@@ -413,8 +413,17 @@ func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[s
 	case err != nil && !errors.Is(err, store.ErrNotFound):
 		return nil, err
 	}
+	props := map[string]any{}
+	switch p, err := a.Store.GetProject(ctx, r.ProjectID); {
+	case err == nil:
+		for k, v := range p.Properties {
+			props[k] = v
+		}
+	case !errors.Is(err, store.ErrNotFound):
+		return nil, err
+	}
 	return policy.Vars{"inputs": inputs, "steps": steps, "environment": r.Environment,
-		"project": map[string]any{"id": r.ProjectID, "code": r.ProjectCode, "name": r.ProjectName}, "propgroup": groups}, nil
+		"project": map[string]any{"id": r.ProjectID, "code": r.ProjectCode, "name": r.ProjectName, "properties": props}, "propgroup": groups}, nil
 }
 
 // MarkStep sets a composite step's status, with why when it failed or was
