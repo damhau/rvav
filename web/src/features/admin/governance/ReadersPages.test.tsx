@@ -116,9 +116,11 @@ describe("project pickers for who holds a page's permissions alone", () => {
 
   it("OIDC group mappings maps a group in any project", async () => {
     holding("access.read", "access.manage");
-    renderApp("/admin/projects");
+    renderApp("/admin/projects?tab=groups");
     const region = await screen.findByRole("region", { name: "OIDC group mappings" });
-    expect(await optionsOf(within(region).getByRole("combobox", { name: "In project" }))).toEqual([
+    await userEvent.setup().click(await within(region).findByRole("button", { name: "Map a group" }));
+    const sheet = await screen.findByRole("dialog", { name: "Map a group" });
+    expect(await optionsOf(within(sheet).getByRole("combobox", { name: "In project" }))).toEqual([
       "For all of rvav",
       ...every,
     ]);

@@ -52,10 +52,11 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   // A quota of one VM.
   await page.getByRole("tab", { name: "Quotas" }).click();
   await page.getByRole("button", { name: "Add a limit" }).click();
-  await choose(page, "Limit 1: resource", "VMs");
-  await page.getByRole("spinbutton", { name: "Limit 1: value" }).fill("1");
-  await page.getByRole("button", { name: "Save quotas" }).click();
-  await expect(page.getByText("Quotas saved")).toBeVisible();
+  const limit = page.getByRole("dialog", { name: "New limit" });
+  await choose(page, "Resource", "VMs");
+  await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");
+  await limit.getByRole("button", { name: "Save limit" }).click();
+  await expect(page.getByText("Limit saved")).toBeVisible();
 
   // Its own naming policy.
   await nav(page, "Policies");

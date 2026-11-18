@@ -1,29 +1,50 @@
 // Projects, environments and OIDC group mappings (S9, ADR-0020).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { FolderKanban, Layers, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { api, call } from "@/lib/api/client";
+import { Sheet } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { api, call, isApiError } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
 import { can, projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
+import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
-import { failed, fieldErrors, td, th, UserPicker } from "./common";
+import { failed, fieldErrors, UserPicker } from "./common";
 
-function NewProject({ onClose }: { onClose: () => void }) {
+type S = components["schemas"];
+
+export const projectsTabs = ["projects", "environments", "groups"] as const;
+export type ProjectsTab = (typeof projectsTabs)[number];
+
+/** A project, a member, a mapping: what changes with it is everywhere, /me too. */
+function useRefreshAccess() {
   const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ["admin"] });
+    void qc.invalidateQueries({ queryKey: ["me"] });
+  };
+}
+
+function NewProjectSheet({ onClose }: { onClose: () => void }) {
+  const refresh = useRefreshAccess();
   const navigate = useNavigate();
   const envs = useQuery(q.environments());
   const [f, setF] = useState({
@@ -38,117 +59,193 @@ function NewProject({ onClose }: { onClose: () => void }) {
   const create = useMutation({
     mutationFn: () => call(api.POST("/admin/projects", { body: { ...f, project_admins: admins.map((a) => a.id) } })),
     onSuccess: (p) => {
-      void qc.invalidateQueries({ queryKey: ["admin"] });
-      void qc.invalidateQueries({ queryKey: ["me"] });
+      refresh();
       toast.success(`${p.name} created`);
       void navigate({ to: "/admin/projects/$projectId", params: { projectId: p.id } });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "The project wasn't created");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The project wasn't created");
     },
   });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title="New project" description="Its code is in VM names and can't change later.">
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            create.mutate();
-          }}
-        >
-          <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Code" htmlFor="project-code" error={errors["/code"]}>
-              <Input
-                id="project-code"
-                className="font-mono"
-                value={f.code}
-                onChange={(e) => setF({ ...f, code: e.target.value })}
-              />
-            </Field>
-            <Field label="Name" htmlFor="project-name" error={errors["/name"]}>
-              <Input id="project-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-            </Field>
-          </div>
-          <Field label="Description" htmlFor="project-description">
-            <Input
-              id="project-description"
-              value={f.description}
-              onChange={(e) => setF({ ...f, description: e.target.value })}
-            />
-          </Field>
-          <Field label="Cost centre" htmlFor="project-cost">
-            <Input
-              id="project-cost"
-              value={f.cost_center}
-              onChange={(e) => setF({ ...f, cost_center: e.target.value })}
-            />
-          </Field>
-          <fieldset className="flex flex-wrap gap-3">
-            <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
-            {(envs.data?.items ?? []).map((e) => (
-              <label key={e.key} htmlFor={`project-env-${e.key}`} className="flex items-center gap-1.5 text-body">
-                <Checkbox
-                  id={`project-env-${e.key}`}
-                  checked={f.environments.includes(e.key)}
-                  onChange={(on) =>
-                    setF({
-                      ...f,
-                      environments: on ? [...f.environments, e.key] : f.environments.filter((x) => x !== e.key),
-                    })
-                  }
-                />
-                {e.name}
-              </label>
-            ))}
-          </fieldset>
-          <UserPicker
-            label="Project admins"
-            id="project-admin-search"
-            onPick={(u) => !admins.some((a) => a.id === u.id) && setAdmins([...admins, u])}
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="New project"
+      description="Its code is in VM names and can't change later."
+      submitLabel={create.isPending ? "Creating…" : "Create"}
+      submitDisabled={!f.code || !f.name || create.isPending}
+      onSubmit={() => {
+        setErrors({});
+        create.mutate();
+      }}
+    >
+      <div className="grid grid-cols-[120px_1fr] gap-3">
+        <Field label="Code" htmlFor="project-code" error={errors["/code"]}>
+          <Input
+            id="project-code"
+            className="font-mono"
+            value={f.code}
+            onChange={(e) => setF({ ...f, code: e.target.value })}
           />
-          {admins.length > 0 && (
-            <ul aria-label="Chosen project admins" className="flex flex-wrap gap-1.5">
-              {admins.map((a) => (
-                <li key={a.id}>
-                  <Badge tone="accent">
-                    {a.name}{" "}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${a.name}`}
-                      onClick={() => setAdmins(admins.filter((x) => x.id !== a.id))}
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!f.code || !f.name || create.isPending}>
-              {create.isPending ? "Creating…" : "Create"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </Field>
+        <Field label="Name" htmlFor="project-name" error={errors["/name"]}>
+          <Input id="project-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Description" htmlFor="project-description">
+        <Input
+          id="project-description"
+          value={f.description}
+          onChange={(e) => setF({ ...f, description: e.target.value })}
+        />
+      </Field>
+      <Field label="Cost centre" htmlFor="project-cost">
+        <Input id="project-cost" value={f.cost_center} onChange={(e) => setF({ ...f, cost_center: e.target.value })} />
+      </Field>
+      <fieldset className="flex flex-wrap gap-3">
+        <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
+        {(envs.data?.items ?? []).map((e) => (
+          <label key={e.key} htmlFor={`project-env-${e.key}`} className="flex items-center gap-1.5 text-body">
+            <Checkbox
+              id={`project-env-${e.key}`}
+              checked={f.environments.includes(e.key)}
+              onChange={(on) =>
+                setF({
+                  ...f,
+                  environments: on ? [...f.environments, e.key] : f.environments.filter((x) => x !== e.key),
+                })
+              }
+            />
+            {e.name}
+          </label>
+        ))}
+      </fieldset>
+      <UserPicker
+        label="Project admins"
+        id="project-admin-search"
+        onPick={(u) => !admins.some((a) => a.id === u.id) && setAdmins([...admins, u])}
+      />
+      {admins.length > 0 && (
+        <ul aria-label="Chosen project admins" className="flex flex-wrap gap-1.5">
+          {admins.map((a) => (
+            <li key={a.id}>
+              <Badge tone="accent">
+                {a.name}{" "}
+                <button
+                  type="button"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setAdmins(admins.filter((x) => x.id !== a.id))}
+                >
+                  ×
+                </button>
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Sheet>
   );
 }
 
-function Projects() {
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Archiving asks, and so does putting back in use: either changes what its members may do. */
+export function ArchiveDialog({ project, onClose }: { project: S["AdminProject"]; onClose: () => void }) {
+  const refresh = useRefreshAccess();
+  const save = useMutation({
+    mutationFn: () =>
+      call(
+        api.PATCH("/admin/projects/{projectId}", {
+          params: { path: { projectId: project.id } },
+          body: { archived: !project.archived },
+        }),
+      ),
+    onSuccess: (p) => {
+      refresh();
+      toast.success(p.archived ? `${p.name} archived` : `${p.name} back in use`);
+      onClose();
+    },
+    onError: (e) => failed(e, "Not changed"),
+  });
+  const common = { open: true, onOpenChange: (o: boolean) => !o && onClose(), pending: save.isPending };
+  if (project.archived)
+    return (
+      <ConfirmDialog
+        {...common}
+        tone="primary"
+        title={`Put ${project.name} back in use?`}
+        description="Its members can request in it again, with its placement rules and quotas as they were."
+        confirmLabel="Put back in use"
+        onConfirm={() => save.mutate()}
+      />
+    );
+  return (
+    <ConfirmDialog
+      {...common}
+      title={`Archive ${project.name}?`}
+      description="Nobody can request anything new in it, and it leaves the project lists. You can put it back in use later."
+      consequences={
+        project.deployments > 0
+          ? `Its ${plural(project.deployments, "deployment")} go on running, and its ${plural(project.members, "member")} keep them.`
+          : "It has no deployment."
+      }
+      confirmLabel="Archive project"
+      onConfirm={() => save.mutate()}
+    />
+  );
+}
+
+const resourceLabel: Record<S["QuotaResource"], [string, string?]> = {
+  vcpu: ["vCPU"],
+  memory_gb: ["Memory", "GB"],
+  storage_gb: ["Storage", "GB"],
+  vm_count: ["VMs"],
+};
+
+type QuotaLine = S["QuotaUsage"]["lines"][number];
+
+/** What deployments and running requests take, of the limit: "12 of 64 GB". */
+export function takenText(l: QuotaLine): string {
+  const unit = resourceLabel[l.resource][1];
+  const taken = l.used + l.reserved;
+  return `${l.limit == null ? taken : `${taken} of ${l.limit}`}${unit ? ` ${unit}` : ""}`;
+}
+
+export function quotaTone(l: QuotaLine): string | undefined {
+  if (l.limit == null) return undefined;
+  const taken = l.used + l.reserved;
+  if (taken >= l.limit) return "text-bad";
+  if (taken >= 0.8 * l.limit) return "text-warn";
+  return undefined;
+}
+
+/** The project-wide limit nearest to being reached. */
+function QuotaUse({ projectId }: { projectId: string }) {
+  const quota = useQuery(q.quota(projectId));
+  if (quota.isPending) return <Skeleton className="h-4 w-24" />;
+  if (quota.isError) return <span className="text-faint">Not known</span>;
+  const tightest = quota.data.lines
+    .filter((l) => l.limit != null && l.limit > 0)
+    .sort((a, b) => (b.used + b.reserved) / b.limit! - (a.used + a.reserved) / a.limit!)[0];
+  if (!tightest) return <span className="text-muted">No project-wide limit</span>;
+  return (
+    <span className={cn("tabular-nums", quotaTone(tightest))}>
+      {resourceLabel[tightest.resource][0]} {takenText(tightest)}
+    </span>
+  );
+}
+
+function ProjectsPanel() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [archiving, setArchiving] = useState<S["AdminProject"] | null>(null);
   const { me } = useCurrentProject();
   const scope = projectsWith(me, "project.settings.read");
   const projects = useQuery({ ...adm.projects(search, archived), enabled: scope === "all" });
-  const list = projects.data?.items ?? [];
   if (scope !== "all") {
     // The projects whose settings the caller sees: a project admin's own.
     return (
@@ -169,250 +266,375 @@ function Projects() {
       </Panel>
     );
   }
-  return (
-    <Panel
-      title="Projects"
-      flush
-      actions={
-        can(me, "project.create") && (
-          <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
-            New project
-          </Button>
-        )
-      }
-    >
-      <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
-        <Input
-          aria-label="Search projects"
-          placeholder="Search"
-          className="w-56"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
-          <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
-          Archived ones too
-        </label>
-      </div>
-      {projects.isPending && <SkeletonRows rows={3} cols={4} />}
-      {projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
-      {projects.data && list.length === 0 && <EmptyState title="No project" body="Nothing matches." />}
-      {list.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Project
-                </th>
-                <th scope="col" className={th}>
-                  Environments
-                </th>
-                <th scope="col" className={th}>
-                  Members
-                </th>
-                <th scope="col" className={th}>
-                  Deployments
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((p) => (
-                <tr key={p.id} className="hover:bg-sunken">
-                  <td className={`${td} pl-4`}>
-                    <Link
-                      to="/admin/projects/$projectId"
-                      params={{ projectId: p.id }}
-                      className="font-medium hover:text-accent"
-                    >
-                      {p.name}
-                    </Link>{" "}
-                    <span className="font-mono text-caption text-faint">{p.code}</span>
-                    {p.archived && (
-                      <Badge tone="neutral" className="ml-2">
-                        Archived
-                      </Badge>
-                    )}
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>{p.environments.join(", ")}</td>
-                  <td className={`${td} text-secondary text-muted`}>{p.members}</td>
-                  <td className={`${td} text-secondary text-muted`}>{p.deployments}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  const columns: Column<S["AdminProject"]>[] = [
+    {
+      id: "project",
+      header: "Project",
+      sortValue: (p) => p.name.toLowerCase(),
+      cell: (p) => (
+        <div className="flex flex-wrap items-center gap-x-2">
+          <Link to="/admin/projects/$projectId" params={{ projectId: p.id }} className="font-medium hover:text-accent">
+            {p.name}
+          </Link>
+          <span className="font-mono text-caption text-faint">{p.code}</span>
+          {p.archived && <Badge tone="neutral">Archived</Badge>}
         </div>
-      )}
-      {creating && <NewProject onClose={() => setCreating(false)} />}
+      ),
+    },
+    {
+      id: "environments",
+      header: "Environments",
+      cell: (p) => <span className="text-secondary text-muted">{p.environments.join(", ") || "None"}</span>,
+    },
+    {
+      id: "members",
+      header: "Members",
+      align: "end",
+      sortValue: (p) => p.members,
+      cell: (p) => <span className="tabular-nums">{p.members}</span>,
+    },
+    {
+      id: "deployments",
+      header: "Deployments",
+      align: "end",
+      sortValue: (p) => p.deployments,
+      cell: (p) => <span className="tabular-nums">{p.deployments}</span>,
+    },
+    {
+      id: "quota",
+      header: "Quota use",
+      cell: (p) => (
+        <span className="text-secondary">
+          <QuotaUse projectId={p.id} />
+        </span>
+      ),
+    },
+  ];
+  const create = can(me, "project.create") && (
+    <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+      New project
+    </Button>
+  );
+  const filtered = search !== "" || archived;
+  // With no project at all, the empty state offers New project itself.
+  const none = projects.data?.items.length === 0 && !filtered;
+  return (
+    <Panel title="Projects" flush actions={none ? undefined : create}>
+      <DataTable
+        label="Projects"
+        columns={columns}
+        rows={projects.data?.items}
+        rowKey={(p) => p.id}
+        minWidth={720}
+        loading={projects.isPending}
+        error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
+        toolbar={
+          <>
+            <TableSearch label="Search projects" value={search} onChange={setSearch} />
+            <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
+              <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
+              Archived ones too
+            </label>
+          </>
+        }
+        empty={
+          filtered ? (
+            <EmptyState
+              icon={FolderKanban}
+              title="No project matches"
+              body="Search by name or code."
+              action={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSearch("");
+                    setArchived(false);
+                  }}
+                >
+                  Clear the search
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={FolderKanban}
+              title="No projects yet"
+              body="A project is who requests: its members, the environments it deploys to, where its VMs go and its quotas."
+              action={create || undefined}
+            />
+          )
+        }
+        rowMenuLabel={(p) => `Actions for ${p.name}`}
+        rowMenu={(p) => (
+          <>
+            <MenuItem onSelect={() => void navigate({ to: "/admin/projects/$projectId", params: { projectId: p.id } })}>
+              Open
+            </MenuItem>
+            {can(me, "project.update", p.id) && (
+              <>
+                <MenuSeparator />
+                <MenuItem danger={!p.archived} onSelect={() => setArchiving(p)}>
+                  {p.archived ? "Put back in use" : "Archive"}
+                </MenuItem>
+              </>
+            )}
+          </>
+        )}
+      />
+      {creating && <NewProjectSheet onClose={() => setCreating(false)} />}
+      {archiving && <ArchiveDialog project={archiving} onClose={() => setArchiving(null)} />}
     </Panel>
   );
 }
 
-function Environments({ canEdit }: { canEdit: boolean }) {
+function useRefreshEnvironments() {
   const qc = useQueryClient();
-  const envs = useQuery(adm.environments());
-  const [f, setF] = useState({ key: "", name: "" });
-  const refresh = () => {
+  return () => {
     void qc.invalidateQueries({ queryKey: ["admin", "environments"] });
     void qc.invalidateQueries({ queryKey: ["environments"] });
   };
-  const add = useMutation({
+}
+
+function EnvironmentSheet({
+  existing,
+  next,
+  onClose,
+}: {
+  existing?: S["AdminEnvironment"];
+  /** The order a new environment gets: after the last one. */
+  next: number;
+  onClose: () => void;
+}) {
+  const refresh = useRefreshEnvironments();
+  const [f, setF] = useState({
+    key: existing?.key ?? "",
+    name: existing?.name ?? "",
+    production: existing?.production ?? false,
+    snapshots: String(existing?.snapshot_max_count ?? 3),
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const snapshots = Number(f.snapshots);
+  const save = useMutation({
     mutationFn: () =>
-      call(
-        api.POST("/admin/environments", {
-          body: {
-            key: f.key,
-            name: f.name,
-            production: false,
-            order: (envs.data?.items.length ?? 0) + 1,
-            snapshot_max_count: 3,
-          },
-        }),
-      ),
+      existing
+        ? call(
+            api.PATCH("/admin/environments/{key}", {
+              params: { path: { key: existing.key } },
+              body: { name: f.name, production: f.production, snapshot_max_count: snapshots },
+            }),
+          )
+        : call(
+            api.POST("/admin/environments", {
+              body: {
+                key: f.key,
+                name: f.name,
+                production: f.production,
+                order: next,
+                snapshot_max_count: snapshots,
+              },
+            }),
+          ),
     onSuccess: () => {
       refresh();
-      toast.success(`${f.name} added`);
-      setF({ key: "", name: "" });
+      toast.success(existing ? `${f.name} saved` : `${f.name} added`);
+      onClose();
     },
-    onError: (e) => failed(e, "Not added"),
+    onError: (e) => {
+      setErrors(fieldErrors(e));
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, existing ? "Not saved" : "Not added");
+    },
   });
-  const update = useMutation({
-    mutationFn: ({ key, ...body }: { key: string; production?: boolean; snapshot_max_count?: number }) =>
-      call(api.PATCH("/admin/environments/{key}", { params: { path: { key } }, body })),
-    onSuccess: refresh,
-    onError: (e) => failed(e, "Not saved"),
-  });
+  const whole = f.snapshots.trim() !== "" && Number.isInteger(snapshots) && snapshots >= 0;
+  return (
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={existing ? `Change ${existing.name}` : "New environment"}
+      description="Projects deploy to environments; a VM's name carries its environment's key."
+      submitLabel={save.isPending ? "Saving…" : existing ? "Save environment" : "Add environment"}
+      submitDisabled={!f.key || !f.name || !whole || save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+    >
+      <Field
+        label="Key"
+        htmlFor="env-key"
+        hint="2 to 10 lower-case letters and digits. It can't change later."
+        error={errors["/key"]}
+      >
+        <Input
+          id="env-key"
+          className="font-mono"
+          placeholder="dev"
+          value={f.key}
+          disabled={Boolean(existing)}
+          onChange={(e) => setF({ ...f, key: e.target.value })}
+        />
+      </Field>
+      <Field label="Name" htmlFor="env-name" error={errors["/name"]}>
+        <Input
+          id="env-name"
+          placeholder="Development"
+          value={f.name}
+          onChange={(e) => setF({ ...f, name: e.target.value })}
+        />
+      </Field>
+      <label htmlFor="env-production" className="flex items-start gap-2 text-body">
+        <Checkbox
+          id="env-production"
+          checked={f.production}
+          onChange={(on) => setF({ ...f, production: on })}
+          className="mt-0.5"
+        />
+        <span>
+          Production
+          <span className="block text-secondary text-muted">
+            Highlighted everywhere; policies are usually stricter.
+          </span>
+        </span>
+      </label>
+      <Field label="Snapshots kept" htmlFor="env-snapshots" hint="Per VM." error={errors["/snapshot_max_count"]}>
+        <Input
+          id="env-snapshots"
+          type="number"
+          min={0}
+          className="w-24"
+          value={f.snapshots}
+          onChange={(e) => setF({ ...f, snapshots: e.target.value })}
+        />
+      </Field>
+    </Sheet>
+  );
+}
+
+function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
+  const refresh = useRefreshEnvironments();
+  const envs = useQuery(adm.environments());
+  const [editing, setEditing] = useState<S["AdminEnvironment"] | "new" | null>(null);
+  const [removing, setRemoving] = useState<S["AdminEnvironment"] | null>(null);
   const remove = useMutation({
     mutationFn: (key: string) => call(api.DELETE("/admin/environments/{key}", { params: { path: { key } } })),
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success(`${removing?.name ?? "The environment"} removed`);
+      setRemoving(null);
+    },
     onError: (e) => failed(e, "Not removed"),
   });
-  return (
-    <Panel title="Environments" flush>
-      {envs.isPending && <SkeletonRows rows={3} cols={4} />}
-      {envs.data && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Environment
-                </th>
-                <th scope="col" className={th}>
-                  Production
-                </th>
-                <th scope="col" className={th}>
-                  Snapshots kept
-                </th>
-                <th scope="col" className={th}>
-                  Used by
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {envs.data.items.map((e) => (
-                <tr key={e.key}>
-                  <td className={`${td} pl-4`}>
-                    {e.name} <span className="font-mono text-caption text-faint">{e.key}</span>
-                  </td>
-                  <td className={td}>
-                    <Checkbox
-                      id={`env-prod-${e.key}`}
-                      disabled={!canEdit}
-                      checked={e.production}
-                      onChange={(on) => update.mutate({ key: e.key, production: on })}
-                    />
-                    <label htmlFor={`env-prod-${e.key}`} className="sr-only">
-                      {e.name} is production
-                    </label>
-                  </td>
-                  <td className={td}>
-                    <Input
-                      aria-label={`Snapshots kept in ${e.name}`}
-                      type="number"
-                      min={0}
-                      className="h-7 w-20"
-                      disabled={!canEdit}
-                      defaultValue={e.snapshot_max_count}
-                      onBlur={(ev) => {
-                        // Empty or not a whole number: put the saved value back rather than save 0.
-                        const n = ev.target.valueAsNumber;
-                        if (ev.target.value.trim() === "" || !Number.isInteger(n) || n < 0) {
-                          ev.target.value = String(e.snapshot_max_count);
-                          return;
-                        }
-                        if (n !== e.snapshot_max_count) update.mutate({ key: e.key, snapshot_max_count: n });
-                      }}
-                    />
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>
-                    {e.projects ?? 0} projects, {e.deployments ?? 0} deployments
-                  </td>
-                  <td className={`${td} text-right`}>
-                    {canEdit && (
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        aria-label={`Remove ${e.name}`}
-                        disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
-                        title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
-                        onClick={() => remove.mutate(e.key)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  const list = envs.data?.items;
+  const columns: Column<S["AdminEnvironment"]>[] = [
+    {
+      id: "environment",
+      header: "Environment",
+      sortValue: (e) => e.order,
+      cell: (e) => (
+        <div className="flex flex-wrap items-center gap-x-2">
+          <span className="font-medium">{e.name}</span>
+          <span className="font-mono text-caption text-faint">{e.key}</span>
         </div>
+      ),
+    },
+    {
+      id: "production",
+      header: "Production",
+      cell: (e) => (e.production ? <Badge tone="warn">Production</Badge> : <span className="text-muted">No</span>),
+    },
+    {
+      id: "snapshots",
+      header: "Snapshots kept",
+      align: "end",
+      sortValue: (e) => e.snapshot_max_count,
+      cell: (e) => <span className="tabular-nums">{e.snapshot_max_count}</span>,
+    },
+    {
+      id: "used",
+      header: "Used by",
+      cell: (e) => (
+        <span className="text-secondary text-muted">
+          {plural(e.projects ?? 0, "project")}, {plural(e.deployments ?? 0, "deployment")}
+        </span>
+      ),
+    },
+  ];
+  const add = canEdit && (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      New environment
+    </Button>
+  );
+  const why = (e: S["AdminEnvironment"]) =>
+    (e.projects ?? 0) > 0
+      ? "Remove: projects deploy to it"
+      : (e.deployments ?? 0) > 0
+        ? "Remove: deployments are in it"
+        : undefined;
+  return (
+    <Panel
+      title="Environments"
+      description="Where projects deploy, in this order everywhere."
+      flush
+      actions={list?.length ? add : undefined}
+    >
+      <DataTable
+        label="Environments"
+        columns={columns}
+        rows={list}
+        rowKey={(e) => e.key}
+        minWidth={560}
+        loading={envs.isPending}
+        error={envs.isError && <ErrorState error={envs.error} onRetry={() => void envs.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Layers}
+            title="No environments yet"
+            body="Each project deploys to environments: add one, development for example, before the first project."
+            action={add || undefined}
+          />
+        }
+        rowMenuLabel={(e) => `Actions for ${e.name}`}
+        rowMenu={
+          canEdit
+            ? (e) => (
+                <>
+                  <MenuItem onSelect={() => setEditing(e)}>Change</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger disabled={Boolean(why(e))} onSelect={() => setRemoving(e)}>
+                    {why(e) ?? "Remove"}
+                  </MenuItem>
+                </>
+              )
+            : undefined
+        }
+      />
+      {editing && (
+        <EnvironmentSheet
+          existing={editing === "new" ? undefined : editing}
+          next={Math.max(0, ...(list ?? []).map((e) => e.order)) + 1}
+          onClose={() => setEditing(null)}
+        />
       )}
-      {canEdit && (
-        <form
-          className="flex flex-wrap gap-2 px-4 py-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <Input
-            aria-label="New environment key"
-            placeholder="key"
-            className="h-7 w-28 font-mono"
-            value={f.key}
-            onChange={(e) => setF({ ...f, key: e.target.value })}
-          />
-          <Input
-            aria-label="New environment name"
-            placeholder="Name"
-            className="h-7 w-48"
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-          />
-          <Button size="sm" type="submit" disabled={!f.key || !f.name || add.isPending}>
-            Add environment
-          </Button>
-        </form>
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.name}?`}
+          description="Projects can't be given it any more."
+          consequences="No project deploys to it and no deployment is in it."
+          confirmLabel="Remove environment"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing.key)}
+        />
       )}
     </Panel>
   );
 }
 
-function GroupMappings({ canEdit }: { canEdit: boolean }) {
-  const qc = useQueryClient();
-  const mappings = useQuery(adm.groupMappings());
+function MapGroupSheet({ onClose }: { onClose: () => void }) {
+  const refresh = useRefreshAccess();
   const projects = useQuery(adm.projectNames());
   const roles = useQuery(adm.roles());
   const [f, setF] = useState({ group: "", project: "none", role: "auditor" });
-  // A mapping changes roles' holders, members' groups, what anyone may do, and /me.
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["admin"] });
-    void qc.invalidateQueries({ queryKey: ["me"] });
-  };
   const add = useMutation({
     mutationFn: () =>
       call(
@@ -423,17 +645,10 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
     onSuccess: () => {
       refresh();
       toast.success(`${f.group} mapped`);
-      setF({ ...f, group: "" });
+      onClose();
     },
     onError: (e) => {
       if (!refused(e)) failed(e, "Not mapped");
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => call(api.DELETE("/admin/group-mappings/{id}", { params: { path: { id } } })),
-    onSuccess: refresh,
-    onError: (e) => {
-      if (!refused(e)) failed(e, "Not removed");
     },
   });
   // A role is mapped where it can be given: for all of rvav without a project, in one with it.
@@ -442,119 +657,212 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
   );
   const chosen = offered.find((r) => r.key === f.role);
   return (
-    <Panel title="OIDC group mappings" flush>
-      {mappings.isPending && <SkeletonRows rows={3} cols={3} />}
-      {mappings.data && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Group
-                </th>
-                <th scope="col" className={th}>
-                  Gives
-                </th>
-                <th scope="col" className={th}>
-                  People in it
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.data.items.map((m) => (
-                <tr key={m.id}>
-                  <td className={`${td} pl-4 font-mono text-secondary`}>{m.oidc_group}</td>
-                  <td className={`${td} text-secondary`}>
-                    <Link
-                      to="/admin/roles/$roleKey"
-                      params={{ roleKey: m.role }}
-                      className="text-accent underline underline-offset-2"
-                    >
-                      {m.role_name ?? m.role}
-                    </Link>
-                    {m.project ? ` in ${m.project.name}` : " for all of rvav"}
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>{m.users ?? 0}</td>
-                  <td className={`${td} text-right`}>
-                    {canEdit && (
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        aria-label={`Remove the mapping of ${m.oidc_group}`}
-                        onClick={() => remove.mutate(m.id)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Map a group"
+      description="Everyone in the identity provider's group gets the role, for all of rvav or in one project."
+      submitLabel={add.isPending ? "Mapping…" : "Map group"}
+      submitDisabled={!f.group || add.isPending}
+      onSubmit={() => add.mutate()}
+    >
+      <Field label="OIDC group" htmlFor="map-group" hint="As the identity provider sends it in the groups claim.">
+        <Input
+          id="map-group"
+          className="font-mono"
+          placeholder="rvav-web"
+          value={f.group}
+          onChange={(e) => setF({ ...f, group: e.target.value })}
+        />
+      </Field>
+      <Field label="In project" htmlFor="map-project">
+        <Select
+          id="map-project"
+          value={f.project}
+          onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
+          options={[
+            { value: "none", label: "For all of rvav" },
+            ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
+          ]}
+        />
+      </Field>
+      <Field label="Role" htmlFor="map-role">
+        <Select
+          id="map-role"
+          value={f.role}
+          onChange={(v) => setF({ ...f, role: v })}
+          loading={roles.isPending}
+          options={offered.map((r) => ({ value: r.key, label: r.name, group: r.built_in ? "Built in" : "Custom" }))}
+        />
+      </Field>
+      {chosen && !chosen.built_in && chosen.permissions.includes("access.manage") && (
+        <AdminWarning who={`everyone in ${f.group || "the group"}`} />
+      )}
+      <Refusal error={add.error} />
+    </Sheet>
+  );
+}
+
+function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
+  const refresh = useRefreshAccess();
+  const mappings = useQuery(adm.groupMappings());
+  const [mapping, setMapping] = useState(false);
+  const [removing, setRemoving] = useState<S["GroupMapping"] | null>(null);
+  const remove = useMutation({
+    mutationFn: (id: string) => call(api.DELETE("/admin/group-mappings/{id}", { params: { path: { id } } })),
+    onSuccess: () => {
+      refresh();
+      toast.success(`The mapping of ${removing?.oidc_group ?? "the group"} removed`);
+      setRemoving(null);
+    },
+    onError: (e) => {
+      setRemoving(null);
+      if (!refused(e)) failed(e, "Not removed");
+    },
+  });
+  const gives = (m: S["GroupMapping"]) =>
+    `${m.role_name ?? m.role}${m.project ? ` in ${m.project.name}` : " for all of rvav"}`;
+  const columns: Column<S["GroupMapping"]>[] = [
+    {
+      id: "group",
+      header: "Group",
+      sortValue: (m) => m.oidc_group,
+      cell: (m) => <span className="font-mono text-secondary">{m.oidc_group}</span>,
+    },
+    {
+      id: "gives",
+      header: "Gives",
+      sortValue: (m) => gives(m),
+      cell: (m) => (
+        <span className="text-secondary">
+          <Link
+            to="/admin/roles/$roleKey"
+            params={{ roleKey: m.role }}
+            className="text-accent underline underline-offset-2"
+          >
+            {m.role_name ?? m.role}
+          </Link>
+          {m.project ? ` in ${m.project.name}` : " for all of rvav"}
+        </span>
+      ),
+    },
+    {
+      id: "people",
+      header: "People in it",
+      align: "end",
+      sortValue: (m) => m.users ?? 0,
+      cell: (m) => <span className="tabular-nums">{m.users ?? 0}</span>,
+    },
+  ];
+  const add = canEdit && (
+    <Button size="sm" variant="primary" onClick={() => setMapping(true)}>
+      Map a group
+    </Button>
+  );
+  const list = mappings.data?.items;
+  return (
+    <Panel
+      title="OIDC group mappings"
+      description="Roles given to everyone in a group of the identity provider."
+      flush
+      actions={list?.length ? add : undefined}
+    >
+      {refused(remove.error) && (
+        <div className="border-b border-line px-4 py-3">
+          <Refusal error={remove.error} />
         </div>
       )}
-      {canEdit && (
-        <form
-          className="flex flex-wrap items-end gap-2 px-4 py-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <Input
-            aria-label="OIDC group"
-            placeholder="rvav-web"
-            className="h-7 w-44 font-mono"
-            value={f.group}
-            onChange={(e) => setF({ ...f, group: e.target.value })}
+      <DataTable
+        label="OIDC group mappings"
+        columns={columns}
+        rows={list}
+        rowKey={(m) => m.id}
+        minWidth={560}
+        loading={mappings.isPending}
+        error={mappings.isError && <ErrorState error={mappings.error} onRetry={() => void mappings.refetch()} />}
+        empty={
+          <EmptyState
+            icon={UsersRound}
+            title="No group mapped yet"
+            body="Map a group of the identity provider to admin first: the local administrator is then kept for when the provider is down."
+            action={add || undefined}
           />
-          <Select
-            aria-label="In project"
-            value={f.project}
-            onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
-            options={[
-              { value: "none", label: "For all of rvav" },
-              ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
-            ]}
-            className="w-56"
-          />
-          <Select
-            aria-label="Role"
-            value={f.role}
-            onChange={(v) => setF({ ...f, role: v })}
-            loading={roles.isPending}
-            options={offered.map((r) => ({ value: r.key, label: r.name, group: r.built_in ? "Built in" : "Custom" }))}
-            className="w-48"
-          />
-          <Button size="sm" type="submit" disabled={!f.group || add.isPending}>
-            Map group
-          </Button>
-          {chosen && !chosen.built_in && chosen.permissions.includes("access.manage") && (
-            <div className="basis-full">
-              <AdminWarning who={`everyone in ${f.group || "the group"}`} />
-            </div>
-          )}
-          <div className="basis-full empty:hidden">
-            <Refusal error={add.error} />
-            <Refusal error={remove.error} />
-          </div>
-        </form>
+        }
+        rowMenuLabel={(m) => `Actions for ${m.oidc_group}`}
+        rowMenu={
+          canEdit
+            ? (m) => (
+                <MenuItem danger onSelect={() => setRemoving(m)}>
+                  Remove
+                </MenuItem>
+              )
+            : undefined
+        }
+      />
+      {mapping && <MapGroupSheet onClose={() => setMapping(false)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove the mapping of ${removing.oidc_group}?`}
+          description={`People in ${removing.oidc_group} no longer get ${gives(removing)}, unless they hold it another way.`}
+          consequences={
+            (removing.users ?? 0) > 0
+              ? `${plural(removing.users ?? 0, "person", "people")} were in it at their last sign-in.`
+              : "Nobody in it has signed in yet."
+          }
+          confirmLabel="Remove mapping"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing.id)}
+        />
       )}
     </Panel>
   );
 }
 
-export function ProjectsPage() {
+export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
+  const navigate = useNavigate();
   const { me } = useCurrentProject();
+  const tabs = [
+    { value: "projects", label: "Projects", show: true },
+    { value: "environments", label: "Environments", show: can(me, "environments.read") },
+    { value: "groups", label: "OIDC group mappings", show: can(me, "access.read") },
+  ].filter((t) => t.show);
+  const shown = tabs.some((t) => t.value === tab) ? tab : "projects";
   return (
     <Page>
-      <PageHeader title="Projects" meta="Projects, who is in them and the environments they deploy to." />
-      <Projects />
-      {can(me, "environments.read") && <Environments canEdit={can(me, "environments.manage")} />}
-      {can(me, "access.read") && <GroupMappings canEdit={can(me, "access.manage")} />}
+      <PageHeader title="Projects" meta="Projects, the environments they deploy to, and the groups that give roles." />
+      {tabs.length === 1 ? (
+        <ProjectsPanel />
+      ) : (
+        <Tabs
+          value={shown}
+          onValueChange={(next) =>
+            void navigate({ to: "/admin/projects", search: { tab: next as ProjectsTab }, replace: true })
+          }
+        >
+          <TabsList aria-label="Projects sections">
+            {tabs.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value="projects" className="pt-4">
+            <ProjectsPanel />
+          </TabsContent>
+          {can(me, "environments.read") && (
+            <TabsContent value="environments" className="pt-4">
+              <EnvironmentsPanel canEdit={can(me, "environments.manage")} />
+            </TabsContent>
+          )}
+          {can(me, "access.read") && (
+            <TabsContent value="groups" className="pt-4">
+              <GroupMappingsPanel canEdit={can(me, "access.manage")} />
+            </TabsContent>
+          )}
+        </Tabs>
+      )}
     </Page>
   );
 }

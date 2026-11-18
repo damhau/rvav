@@ -24,16 +24,20 @@ describe("a project's members", () => {
     expect(await within(members).findByRole("list", { name: "Roles of Thomas Nguyen" })).toHaveTextContent(
       "VM operator",
     );
-    await within(members).findByRole("button", { name: "Change roles of Thomas Nguyen" });
-    expect(within(members).queryByRole("button", { name: "Remove Thomas Nguyen" })).toBeNull();
+    await user.click(await within(members).findByRole("button", { name: "Actions for Thomas Nguyen" }));
+    expect(await screen.findByRole("menuitem", { name: "Change roles" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove" })).toBeNull();
 
-    await user.click(within(members).getByRole("button", { name: "Change roles of Thomas Nguyen" }));
+    await user.click(screen.getByRole("menuitem", { name: "Change roles" }));
     expect(await screen.findByRole("dialog", { name: "Roles of Thomas Nguyen" })).toHaveTextContent(
       "VM operator(you may not take it away)",
     );
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
-    await user.click(within(members).getByRole("button", { name: "Remove Léa Martin" }));
+    await user.click(within(members).getByRole("button", { name: "Actions for Léa Martin" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Remove Léa Martin?" });
+    await user.click(within(confirm).getByRole("button", { name: "Remove member" }));
     expect(await within(members).findByRole("alert")).toHaveTextContent(
       "Web Platform would have no project admin: make someone else one first.",
     );
@@ -68,5 +72,44 @@ describe("a project's members", () => {
     await user.click(await within(members).findByRole("button", { name: /Claire Dubois/ }));
     expect(await within(members).findByRole("list", { name: "Roles of Claire Dubois" })).toHaveTextContent("Viewer");
     expect(within(members).queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("a project's placement and quotas", () => {
+  it("removes a placement rule after saying what is left", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const rules = await screen.findByRole("region", { name: "Placement rules" });
+    const menus = await within(rules).findAllByRole("button", { name: /^Actions for the rule of priority/ });
+    await user.click(menus[0]!);
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    const confirm = await screen.findByRole("alertdialog", { name: /^Remove the rule of priority \d+ in dev\?$/ });
+    expect(confirm).toHaveTextContent(/nowhere to go|other rules? stay/);
+    await user.click(within(confirm).getByRole("button", { name: "Remove rule" }));
+    expect(await screen.findByText("Placement rule removed")).toBeInTheDocument();
+  });
+
+  it("adds a limit in a sheet, refuses a second one on the same resource and place, and shows what is taken", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=quotas");
+    const quotas = await screen.findByRole("region", { name: "Quotas" });
+    const vcpu = await within(quotas).findByRole("row", { name: /^vCPU/ });
+    await waitFor(() => expect(vcpu).toHaveTextContent("112 of 160"));
+    await user.click(within(quotas).getByRole("button", { name: "Add a limit" }));
+    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    expect(within(sheet).getByText("This resource has a limit there already: change that one.")).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Save limit" })).toBeDisabled();
+    await user.click(within(sheet).getByRole("combobox", { name: "In" }));
+    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "16");
+    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    expect(await screen.findByText("Limit saved")).toBeInTheDocument();
+    expect(await within(quotas).findByRole("row", { name: /^vCPU dev 16/ })).toBeInTheDocument();
+  });
+
+  it("opens the tab the address names", async () => {
+    renderApp("/admin/projects/prj_web?tab=details");
+    expect(await screen.findByRole("region", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
   });
 });

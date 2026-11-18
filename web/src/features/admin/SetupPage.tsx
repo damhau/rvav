@@ -23,7 +23,8 @@ type Key = S["SetupStep"]["key"];
 
 type Target =
   | { to: "/admin/integrations"; tab: string; label: string }
-  | { to: "/admin/projects" | "/admin/catalog-items"; label: string }
+  | { to: "/admin/projects"; tab: "projects" | "groups"; label: string }
+  | { to: "/admin/catalog-items"; label: string }
   | { href: string; label: string };
 
 const steps: Record<Key, { title: string; what: string; target: Target }> = {
@@ -40,7 +41,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   admin_group: {
     title: "Map a group to admin",
     what: "Its members administer rvav once they sign in with the provider, so the local account is kept for when the provider is down.",
-    target: { to: "/admin/projects", label: "OIDC group mappings" },
+    target: { to: "/admin/projects", tab: "groups", label: "OIDC group mappings" },
   },
   vcenter: {
     title: "Connect vCenter",
@@ -50,7 +51,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   projects: {
     title: "Add environments and projects",
     what: "The environments VMs deploy to (development, production, …), the projects that request in them, with their members or groups, and a placement rule for each: where its VMs go.",
-    target: { to: "/admin/projects", label: "Projects" },
+    target: { to: "/admin/projects", tab: "projects", label: "Projects" },
   },
   ipam: {
     title: "Connect EfficientIP",
@@ -77,6 +78,10 @@ function Go({ target, disabled }: { target: Target; disabled?: string }) {
         <a href={target.href}>{target.label}</a>
       ) : target.to === "/admin/integrations" ? (
         <Link to="/admin/integrations" search={{ tab: target.tab }}>
+          {target.label}
+        </Link>
+      ) : target.to === "/admin/projects" ? (
+        <Link to="/admin/projects" search={{ tab: target.tab }}>
           {target.label}
         </Link>
       ) : (

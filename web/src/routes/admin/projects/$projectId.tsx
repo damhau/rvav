@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ProjectPage } from "@/features/admin/governance/ProjectPage";
+import { ProjectPage, projectTabs, type ProjectTab } from "@/features/admin/governance/ProjectPage";
+import { optEnum } from "../../-search";
 
 export const Route = createFileRoute("/admin/projects/$projectId")({
+  validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => ({ tab: optEnum(s.tab, projectTabs) }),
   component: function ProjectRoute() {
     const { projectId } = Route.useParams();
-    return <ProjectPage projectId={projectId} />;
+    const { tab } = Route.useSearch();
+    return <ProjectPage projectId={projectId} tab={tab} />;
   },
 });

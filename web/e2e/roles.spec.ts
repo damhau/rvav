@@ -128,7 +128,8 @@ test("give a custom role in a project and to a group; what it then refuses", asy
   await members.getByRole("button", { name: /Claire Dubois/ }).click();
   await expect(page.getByText("Claire Dubois added as VM operator")).toBeVisible();
   await expect(members.getByRole("list", { name: "Roles of Claire Dubois" })).toHaveText("VM operator given here");
-  await members.getByRole("button", { name: "Change roles of Thomas Nguyen" }).click();
+  await members.getByRole("button", { name: "Actions for Thomas Nguyen" }).click();
+  await page.getByRole("menuitem", { name: "Change roles" }).click();
   const dialog = page.getByRole("dialog", { name: "Roles of Thomas Nguyen" });
   await expect(dialog).toContainText("Through groups: Member (rvav-web).");
   await dialog.getByRole("checkbox", { name: "VM operator" }).check();
@@ -140,11 +141,14 @@ test("give a custom role in a project and to a group; what it then refuses", asy
 
   // A group mapped to it in the project.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
   const groups = page.getByRole("region", { name: "OIDC group mappings" });
-  await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
+  await groups.getByRole("button", { name: "Map a group" }).click();
+  const map = page.getByRole("dialog", { name: "Map a group" });
+  await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
   await choose(page, "In project", "Web Platform");
   await choose(page, "Role", "VM operator");
-  await groups.getByRole("button", { name: "Map group" }).click();
+  await map.getByRole("button", { name: "Map group" }).click();
   await expect(groups.getByRole("row", { name: /rvav-operators/ })).toContainText("VM operator in Web Platform");
 
   // Given in a project, it takes no permission for all of rvav only, and isn't deleted.

@@ -1,31 +1,41 @@
 // One project's administration (S9, ADR-0020): details, members, placement
 // with its preview, and quotas.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Fragment, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Gauge, Route as RouteIcon, UserRound } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
+import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
-import { errorAt, failed, fieldErrors, td, th, UserPicker } from "./common";
+import { errorAt, failed, fieldErrors, UserPicker } from "./common";
+import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
 
 type S = components["schemas"];
+
+export const projectTabs = ["members", "placement", "quotas", "details"] as const;
+export type ProjectTab = (typeof projectTabs)[number];
+
 const list = (s: string) =>
   s
     .split(",")
@@ -35,6 +45,7 @@ const list = (s: string) =>
 function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const qc = useQueryClient();
   const envs = useQuery(q.environments());
+  const [archiving, setArchiving] = useState(false);
   const [f, setF] = useState({
     name: project.name,
     description: project.description ?? "",
@@ -44,22 +55,31 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
   const save = useMutation({
     mutationFn: (body: S["AdminProjectUpdate"]) =>
       call(api.PATCH("/admin/projects/{projectId}", { params: { path: { projectId: project.id } }, body })),
-    onSuccess: (p, body) => {
+    onSuccess: (p) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: ["me"] });
-      toast.success(
-        body.archived === true
-          ? `${p.name} archived`
-          : body.archived === false
-            ? `${p.name} back in use`
-            : `${p.name} saved`,
-      );
+      toast.success(`${p.name} saved`);
     },
     onError: (e) => failed(e, "Not saved"),
   });
   return (
-    <Panel title="Details">
+    <Panel
+      title="Details"
+      footer={
+        isAdmin && (
+          <>
+            <Button variant={project.archived ? "secondary" : "danger"} onClick={() => setArchiving(true)}>
+              {project.archived ? "Put back in use" : "Archive"}
+            </Button>
+            <Button type="submit" form="project-details" variant="primary" disabled={save.isPending}>
+              {save.isPending ? "Saving…" : "Save details"}
+            </Button>
+          </>
+        )
+      }
+    >
       <form
+        id="project-details"
         className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
@@ -109,25 +129,8 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             </label>
           ))}
         </fieldset>
-        {isAdmin && (
-          <div className="flex gap-2 md:col-span-2">
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save details
-            </Button>
-            <Button
-              type="button"
-              variant={project.archived ? "secondary" : "danger"}
-              onClick={() =>
-                (project.archived ||
-                  window.confirm(`Archive ${project.name}? It can't request anything new; its deployments go on.`)) &&
-                save.mutate({ archived: !project.archived })
-              }
-            >
-              {project.archived ? "Put back in use" : "Archive"}
-            </Button>
-          </div>
-        )}
       </form>
+      {archiving && <ArchiveDialog project={project} onClose={() => setArchiving(false)} />}
     </Panel>
   );
 }
@@ -138,7 +141,7 @@ function sourceText(r: S["ProjectMemberRole"]): string {
 }
 
 /** The roles given to someone in the project themselves: those the caller may give, and those held already. */
-function RolesDialog({
+function RolesSheet({
   project,
   member,
   offered,
@@ -173,55 +176,42 @@ function RolesDialog({
   });
   const toggle = (key: string, on: boolean) => setKeys(on ? [...keys, key] : keys.filter((k) => k !== key));
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={`Roles of ${member.user.name}`}
-        description={`Given to them in ${project.name} themselves. A role through a group changes with its mapping.`}
-      >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate();
-          }}
-        >
-          <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1 text-secondary font-medium">Given here</legend>
-            {offered.map((r) => (
-              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
-                <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
-                {r.name}
-                {!r.built_in && <span className="font-mono text-secondary text-muted">{r.key}</span>}
-              </label>
-            ))}
-            {kept.map((r) => (
-              <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
-                <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
-                {r.name}
-                <span className="text-secondary text-muted">(you may not take it away)</span>
-              </label>
-            ))}
-          </fieldset>
-          {viaGroups.length > 0 && (
-            <p className="text-secondary text-muted">
-              Through groups: {viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; ")}.
-            </p>
-          )}
-          {keys.length === 0 && (
-            <p className="text-secondary text-muted">Choose a role, or remove them from the project in the list.</p>
-          )}
-          <Refusal error={save.error} />
-          <div className="flex justify-end gap-2">
-            <Button type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={keys.length === 0 || save.isPending}>
-              Save roles
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Roles of ${member.user.name}`}
+      description={`Given to them in ${project.name} themselves. A role through a group changes with its mapping.`}
+      submitLabel={save.isPending ? "Saving…" : "Save roles"}
+      submitDisabled={keys.length === 0 || save.isPending}
+      onSubmit={() => save.mutate()}
+    >
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-secondary font-medium">Given here</legend>
+        {offered.map((r) => (
+          <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
+            <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
+            {r.name}
+            {!r.built_in && <span className="font-mono text-secondary text-muted">{r.key}</span>}
+          </label>
+        ))}
+        {kept.map((r) => (
+          <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
+            <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
+            {r.name}
+            <span className="text-secondary text-muted">(you may not take it away)</span>
+          </label>
+        ))}
+      </fieldset>
+      {viaGroups.length > 0 && (
+        <p className="text-secondary text-muted">
+          Through groups: {viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; ")}.
+        </p>
+      )}
+      {keys.length === 0 && (
+        <p className="text-secondary text-muted">Choose a role, or remove them from the project in the list.</p>
+      )}
+      <Refusal error={save.error} />
+    </Sheet>
   );
 }
 
@@ -233,6 +223,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   const offered = useQuery({ ...adm.assignableRoles(projectId), enabled: canManage });
   const [picked, setRole] = useState("member");
   const [editing, setEditing] = useState<S["ProjectMember"] | null>(null);
+  const [removing, setRemoving] = useState<S["ProjectMember"] | null>(null);
   // Member unless the caller may not give it: then the first role they may.
   const items = offered.data?.items ?? [];
   const role = items.some((r) => r.key === picked)
@@ -260,13 +251,17 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
     },
   });
   const remove = useMutation({
-    mutationFn: (userId: string) =>
-      call(api.DELETE("/projects/{projectId}/members/{userId}", { params: { path: { projectId, userId } } })),
-    onSuccess: () => {
+    mutationFn: (m: S["ProjectMember"]) =>
+      call(
+        api.DELETE("/projects/{projectId}/members/{userId}", { params: { path: { projectId, userId: m.user.id } } }),
+      ),
+    onSuccess: (_, m) => {
       refresh();
-      toast.success("Member removed");
+      toast.success(`${m.user.name} removed`);
+      setRemoving(null);
     },
     onError: (e) => {
+      setRemoving(null);
       if (!refused(e)) failed(e, "Not removed");
     },
   });
@@ -274,121 +269,151 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   // The server refuses to take away a role the caller may not give: those not offered.
   const removable = (m: S["ProjectMember"]) =>
     m.direct && m.roles.every((r) => !r.direct || offered.data?.items.some((o) => o.key === r.key));
+  const columns: Column<S["ProjectMember"]>[] = [
+    {
+      id: "who",
+      header: "Who",
+      sortValue: (m) => m.user.name.toLowerCase(),
+      cell: (m) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{m.user.name}</span>
+          <span className="text-secondary text-faint">{m.user.email}</span>
+        </div>
+      ),
+    },
+    {
+      id: "roles",
+      header: "Roles, and where each comes from",
+      cell: (m) => (
+        <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
+          {m.roles.map((r) => (
+            <li key={r.key}>
+              {seesRoles ? (
+                <Link
+                  to="/admin/roles/$roleKey"
+                  params={{ roleKey: r.key }}
+                  className="text-accent underline underline-offset-2"
+                >
+                  {r.name}
+                </Link>
+              ) : (
+                r.name
+              )}{" "}
+              <span className="text-secondary text-muted">{sourceText(r)}</span>
+            </li>
+          ))}
+        </ul>
+      ),
+    },
+  ];
+  const kept = (m: S["ProjectMember"]) => m.roles.filter((r) => r.groups.length > 0);
   return (
     <Panel title="Members" flush>
-      {canManage && (
-        <div className="flex flex-col gap-2 border-b border-line px-4 py-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="w-72">
-              <UserPicker
-                label="Add someone"
-                id="member-search"
-                onPick={(u) => {
-                  const m = members.data?.items.find((x) => x.user.id === u.id);
-                  if (m?.direct_roles.includes(role))
-                    toast.info(`${u.name} already holds ${roleName(role)}`, {
-                      description: "Change their roles in the list.",
-                    });
-                  else add.mutate({ userId: u.id, roles: [...(m?.direct_roles ?? []), role] });
-                }}
-              />
+      {refused(remove.error) && (
+        <div className="border-b border-line px-4 py-3">
+          <Refusal error={remove.error} />
+        </div>
+      )}
+      <DataTable
+        label="Members"
+        columns={columns}
+        rows={members.data?.items}
+        rowKey={(m) => m.user.id}
+        minWidth={560}
+        loading={members.isPending}
+        error={members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
+        toolbar={
+          canManage && (
+            <div className="flex w-full flex-col gap-2">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-72">
+                  <UserPicker
+                    label="Add someone"
+                    id="member-search"
+                    onPick={(u) => {
+                      const m = members.data?.items.find((x) => x.user.id === u.id);
+                      if (m?.direct_roles.includes(role))
+                        toast.info(`${u.name} already holds ${roleName(role)}`, {
+                          description: "Change their roles in the list.",
+                        });
+                      else add.mutate({ userId: u.id, roles: [...(m?.direct_roles ?? []), role] });
+                    }}
+                  />
+                </div>
+                <Field label="As" htmlFor="member-role" className="w-48">
+                  <Select
+                    id="member-role"
+                    value={role}
+                    onChange={setRole}
+                    loading={offered.isPending}
+                    options={(offered.data?.items ?? []).map((r) => ({
+                      value: r.key,
+                      label: r.name,
+                      group: r.built_in ? "Built in" : "Custom",
+                    }))}
+                  />
+                </Field>
+              </div>
+              <Refusal error={add.error} />
             </div>
-            <Field label="As" htmlFor="member-role" className="w-48">
-              <Select
-                id="member-role"
-                value={role}
-                onChange={setRole}
-                loading={offered.isPending}
-                options={(offered.data?.items ?? []).map((r) => ({
-                  value: r.key,
-                  label: r.name,
-                  group: r.built_in ? "Built in" : "Custom",
-                }))}
-              />
-            </Field>
-          </div>
-          <Refusal error={add.error} />
-        </div>
-      )}
-      {members.isPending && <SkeletonRows rows={3} cols={3} />}
-      {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
-      {members.data && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Who
-                </th>
-                <th scope="col" className={th}>
-                  Roles, and where each comes from
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.data.items.map((m) => (
-                <Fragment key={m.user.id}>
-                  <tr>
-                    <td className={`${td} pl-4`}>
-                      {m.user.name} <span className="text-secondary text-faint">{m.user.email}</span>
-                    </td>
-                    <td className={td}>
-                      <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
-                        {m.roles.map((r) => (
-                          <li key={r.key}>
-                            {seesRoles ? (
-                              <Link
-                                to="/admin/roles/$roleKey"
-                                params={{ roleKey: r.key }}
-                                className="text-accent hover:underline"
-                              >
-                                {r.name}
-                              </Link>
-                            ) : (
-                              r.name
-                            )}{" "}
-                            <span className="text-secondary text-muted">{sourceText(r)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td className={`${td} text-right whitespace-nowrap`}>
-                      {canManage && offered.data && (
-                        <Button size="sm" variant="quiet" onClick={() => setEditing(m)}>
-                          Change roles<span className="sr-only"> of {m.user.name}</span>
-                        </Button>
-                      )}
-                      {canManage && offered.data && removable(m) && (
-                        <Button size="sm" variant="quiet" onClick={() => remove.mutate(m.user.id)}>
-                          Remove<span className="sr-only"> {m.user.name}</span>
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                  {remove.variables === m.user.id && refused(remove.error) && (
-                    <tr>
-                      <td colSpan={3} className="px-4 pb-2">
-                        <Refusal error={remove.error} />
-                      </td>
-                    </tr>
+          )
+        }
+        empty={
+          <EmptyState
+            icon={UserRound}
+            title="Nobody yet"
+            body={
+              canManage
+                ? "Add someone above, or map a group of the identity provider to a role in this project."
+                : "Nobody holds a role in this project."
+            }
+          />
+        }
+        rowMenuLabel={(m) => `Actions for ${m.user.name}`}
+        rowMenu={
+          canManage && offered.data
+            ? (m) => (
+                <>
+                  <MenuItem onSelect={() => setEditing(m)}>Change roles</MenuItem>
+                  {removable(m) && (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem danger onSelect={() => setRemoving(m)}>
+                        Remove
+                      </MenuItem>
+                    </>
                   )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </>
+              )
+            : undefined
+        }
+      />
       {editing && offered.data && (
-        <RolesDialog project={project} member={editing} offered={offered.data.items} onClose={() => setEditing(null)} />
+        <RolesSheet project={project} member={editing} offered={offered.data.items} onClose={() => setEditing(null)} />
+      )}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.user.name}?`}
+          description={`They lose the roles given to them in ${project.name}: ${removing.direct_roles.map(roleName).join(", ")}.`}
+          consequences={
+            kept(removing).length > 0
+              ? `They keep ${kept(removing)
+                  .map((r) => `${r.name} (${sourceText({ ...r, direct: false })})`)
+                  .join(", ")}: a group gives it.`
+              : "Their deployments stay in the project."
+          }
+          confirmLabel="Remove member"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing)}
+        />
       )}
     </Panel>
   );
 }
 
-function RuleDialog({
+function RuleSheet({
   project,
   env,
   rule,
@@ -481,67 +506,57 @@ function RuleDialog({
     </Field>
   );
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={`${rule ? "Change" : "New"} placement rule for ${project.name} in ${env}`}
-        className="w-[min(620px,calc(100vw-32px))]"
-      >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
-        >
-          <p className="text-secondary text-muted">
-            Names take * patterns and are comma-separated; tags are category/tag, all of them needed.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {field("clusters", "Clusters")}
-            {field("cluster_tags", "Cluster tags", "For example rvav-tier/gold")}
-            {field("datastores", "Datastores")}
-            {field("datastore_tags", "Datastore tags")}
-            {field("networks", "Networks", "For example dvpg-*-dev-*")}
-            {field("folder", "VM folder")}
-            {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
-            {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
-            {field("priority", "Priority", "Lower first", false)}
-          </div>
-          <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-body">
-            <Checkbox id="rule-seg-on" checked={segOn} onChange={setSegOn} />
-            NSX segments made for deployments
-          </label>
-          {segOn && (
-            <fieldset className="grid grid-cols-2 gap-3 rounded-md border border-line p-3">
-              <legend className="px-1 text-secondary text-muted">
-                Items that make their own networks get segments on this Tier-1, their subnets from this block
-              </legend>
-              {segField("tier1", "Tier-1 gateway", "Its NSX ID, for example t1-gva-dev")}
-              {segField("ip_block", "EfficientIP block", "Its name or range")}
-              {segField("prefix_length", "Subnet size", "Prefix length, 16 to 29")}
-              {segField("dns_zone", "DNS zone")}
-              {segField("dns_servers", "DNS servers", "Comma-separated")}
-            </fieldset>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save rule
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`${rule ? "Change" : "New"} placement rule for ${project.name} in ${env}`}
+      description="Names take * patterns and are comma-separated; tags are category/tag, all of them needed."
+      submitLabel={save.isPending ? "Saving…" : "Save rule"}
+      submitDisabled={save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+      className="w-[min(640px,100vw)]"
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {field("clusters", "Clusters")}
+        {field("cluster_tags", "Cluster tags", "For example rvav-tier/gold")}
+        {field("datastores", "Datastores")}
+        {field("datastore_tags", "Datastore tags")}
+        {field("networks", "Networks", "For example dvpg-*-dev-*")}
+        {field("folder", "VM folder")}
+        {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
+        {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
+        {field("priority", "Priority", "Lower first", false)}
+      </div>
+      <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-body">
+        <Checkbox id="rule-seg-on" checked={segOn} onChange={setSegOn} />
+        NSX segments made for deployments
+      </label>
+      {segOn && (
+        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-line p-3 sm:grid-cols-2">
+          <legend className="px-1 text-secondary text-muted">
+            Items that make their own networks get segments on this Tier-1, their subnets from this block
+          </legend>
+          {segField("tier1", "Tier-1 gateway", "Its NSX ID, for example t1-gva-dev")}
+          {segField("ip_block", "EfficientIP block", "Its name or range")}
+          {segField("prefix_length", "Subnet size", "Prefix length, 16 to 29")}
+          {segField("dns_zone", "DNS zone")}
+          {segField("dns_servers", "DNS servers", "Comma-separated")}
+        </fieldset>
+      )}
+    </Sheet>
   );
 }
+
+const names = (plain: string[], tags: string[]) => [...plain, ...tags.map((t) => `tag ${t}`)].join(", ") || "Any";
 
 function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const qc = useQueryClient();
   const [env, setEnv] = useState(project.environments[0] ?? "dev");
   const [editing, setEditing] = useState<S["PlacementRule"] | "new" | null>(null);
+  const [removing, setRemoving] = useState<S["PlacementRule"] | null>(null);
   const rules = useQuery(adm.placementRules(project.id));
   const preview = useQuery(adm.placementPreview(project.id, env));
   const remove = useMutation({
@@ -549,83 +564,113 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "placement-rules"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
+      toast.success("Placement rule removed");
+      setRemoving(null);
     },
     onError: (e) => failed(e, "Not removed"),
   });
-  const here = (rules.data?.items ?? []).filter((r) => r.environment === env);
+  const here = rules.data?.items.filter((r) => r.environment === env);
+  const columns: Column<S["PlacementRule"]>[] = [
+    {
+      id: "priority",
+      header: "Priority",
+      sortValue: (r) => r.priority,
+      cell: (r) => <span className="tabular-nums">{r.priority}</span>,
+      className: "w-20",
+    },
+    {
+      id: "clusters",
+      header: "Clusters",
+      cell: (r) => (
+        <div className="flex flex-col font-mono text-secondary">
+          <span>{names(r.clusters, r.cluster_tags)}</span>
+          {r.vcenter && <span className="text-muted">in {r.vcenter}</span>}
+        </div>
+      ),
+    },
+    {
+      id: "datastores",
+      header: "Datastores",
+      cell: (r) => (
+        <div className="flex flex-col text-secondary">
+          <span className="font-mono">{names(r.datastores, r.datastore_tags)}</span>
+          {r.storage_policy && <span className="text-muted">{r.storage_policy}</span>}
+        </div>
+      ),
+    },
+    {
+      id: "networks",
+      header: "Networks",
+      cell: (r) => (
+        <div className="flex flex-col font-mono text-secondary">
+          <span>{r.networks.join(", ") || "None"}</span>
+          {r.segments && (
+            <span className="text-muted">
+              NSX {r.segments.tier1}, {r.segments.ip_block} /{r.segments.prefix_length}, {r.segments.dns_zone}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "folder",
+      header: "VM folder",
+      cell: (r) => <span className="font-mono text-secondary break-all">{r.folder}</span>,
+    },
+  ];
+  const add = isAdmin && (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      New rule
+    </Button>
+  );
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-end gap-3">
-        <Field label="Environment" htmlFor="placement-env" className="w-48">
-          <Select
-            id="placement-env"
-            value={env}
-            onChange={setEnv}
-            options={project.environments.map((e) => ({ value: e, label: e }))}
-          />
-        </Field>
-      </div>
+      <Field label="Environment" htmlFor="placement-env" className="w-48">
+        <Select
+          id="placement-env"
+          value={env}
+          onChange={setEnv}
+          options={project.environments.map((e) => ({ value: e, label: e }))}
+        />
+      </Field>
       <Panel
-        title="Rules"
+        title="Placement rules"
+        description={`Where requests of ${project.name} in ${env} go: the first rule that fits, lowest priority first.`}
         flush
-        actions={
-          isAdmin && (
-            <Button size="sm" onClick={() => setEditing("new")}>
-              New rule
-            </Button>
-          )
-        }
+        actions={here?.length ? add : undefined}
       >
-        {here.length === 0 && (
-          <EmptyState title="No rule" body={`Requests of ${project.name} in ${env} have nowhere to go.`} />
-        )}
-        {here.map((r) => (
-          <div
-            key={r.id}
-            className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-2 text-secondary last:border-b-0"
-          >
-            <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-0.5">
-              <dt className="text-faint">Clusters</dt>
-              <dd className="font-mono">{[...r.clusters, ...r.cluster_tags.map((t) => `tag ${t}`)].join(", ")}</dd>
-              <dt className="text-faint">Datastores</dt>
-              <dd className="font-mono">{[...r.datastores, ...r.datastore_tags.map((t) => `tag ${t}`)].join(", ")}</dd>
-              <dt className="text-faint">Networks</dt>
-              <dd className="font-mono">{r.networks.join(", ")}</dd>
-              <dt className="text-faint">Folder</dt>
-              <dd className="font-mono">{r.folder}</dd>
-              {r.storage_policy && (
-                <>
-                  <dt className="text-faint">Storage policy</dt>
-                  <dd>{r.storage_policy}</dd>
-                </>
-              )}
-              {r.vcenter && (
-                <>
-                  <dt className="text-faint">vCenter</dt>
-                  <dd className="font-mono">{r.vcenter}</dd>
-                </>
-              )}
-              {r.segments && (
-                <>
-                  <dt className="text-faint">NSX segments</dt>
-                  <dd className="font-mono">
-                    {r.segments.tier1} · {r.segments.ip_block} /{r.segments.prefix_length} · {r.segments.dns_zone}
-                  </dd>
-                </>
-              )}
-            </dl>
-            {isAdmin && (
-              <div className="flex gap-1">
-                <Button size="sm" variant="quiet" onClick={() => setEditing(r)}>
-                  Change
-                </Button>
-                <Button size="sm" variant="quiet" aria-label="Remove the rule" onClick={() => remove.mutate(r.id)}>
-                  Remove
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
+        <DataTable
+          label={`Placement rules in ${env}`}
+          columns={columns}
+          rows={here}
+          rowKey={(r) => r.id}
+          minWidth={720}
+          defaultSort={{ id: "priority", desc: false }}
+          loading={rules.isPending}
+          error={rules.isError && <ErrorState error={rules.error} onRetry={() => void rules.refetch()} />}
+          empty={
+            <EmptyState
+              icon={RouteIcon}
+              title="No rule"
+              body={`Requests of ${project.name} in ${env} have nowhere to go.`}
+              action={add || undefined}
+            />
+          }
+          rowMenuLabel={(r) => `Actions for the rule of priority ${r.priority}`}
+          rowMenu={
+            isAdmin
+              ? (r) => (
+                  <>
+                    <MenuItem onSelect={() => setEditing(r)}>Change</MenuItem>
+                    <MenuSeparator />
+                    <MenuItem danger onSelect={() => setRemoving(r)}>
+                      Remove
+                    </MenuItem>
+                  </>
+                )
+              : undefined
+          }
+        />
       </Panel>
       <Panel title={`What ${project.name} gets in ${env}`}>
         {preview.isPending && <Skeleton className="h-24" />}
@@ -659,175 +704,295 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         )}
       </Panel>
       {editing && (
-        <RuleDialog
+        <RuleSheet
           project={project}
           env={env}
           rule={editing === "new" ? undefined : editing}
           onClose={() => setEditing(null)}
         />
       )}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove the rule of priority ${removing.priority} in ${env}?`}
+          description={`Requests of ${project.name} in ${env} are placed by the rules left.`}
+          consequences={
+            (here?.length ?? 0) <= 1
+              ? `It is the only rule: requests of ${project.name} in ${env} will have nowhere to go.`
+              : `${(here?.length ?? 1) - 1} other rules stay. Deployments already placed stay where they are.`
+          }
+          confirmLabel="Remove rule"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing.id)}
+        />
+      )}
     </div>
   );
 }
 
-const resources = [
+const resources: { value: S["QuotaResource"]; label: string }[] = [
   { value: "vcpu", label: "vCPU" },
   { value: "memory_gb", label: "Memory (GB)" },
   { value: "storage_gb", label: "Storage (GB)" },
   { value: "vm_count", label: "VMs" },
 ];
+const resourceName = (r: S["QuotaResource"]) => resources.find((x) => x.value === r)?.label ?? r;
+const enforcements = [
+  { value: "hard", label: "Refused" },
+  { value: "soft", label: "Needs approval" },
+];
 
-function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
+function useSaveQuotas(project: S["AdminProject"]) {
   const qc = useQueryClient();
-  const quotas = useQuery(adm.quotas(project.id));
-  const [rows, setRows] = useState<S["QuotaLimit"][] | null>(null);
-  // Saving replaces every limit: nothing is offered until the current ones are in.
-  const shown = rows ?? quotas.data?.items ?? [];
-  const ready = Boolean(quotas.data);
-  const save = useMutation({
-    mutationFn: () =>
+  return useMutation({
+    mutationFn: (items: S["QuotaLimit"][]) =>
       call(
         api.PUT("/admin/projects/{projectId}/quotas", {
           params: { path: { projectId: project.id } },
-          body: { items: shown },
+          body: { items },
         }),
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "quotas", project.id] });
-      setRows(null);
-      toast.success("Quotas saved");
+      void qc.invalidateQueries({ queryKey: ["projects", project.id, "quota"] });
     },
     onError: (e) => failed(e, "Not saved"),
   });
-  const set = (i: number, row: S["QuotaLimit"]) => setRows(shown.map((r, j) => (j === i ? row : r)));
+}
+
+/** Saving replaces every limit: the sheet saves the list with this one added or changed. */
+function LimitSheet({
+  project,
+  limits,
+  index,
+  onClose,
+}: {
+  project: S["AdminProject"];
+  limits: S["QuotaLimit"][];
+  /** The limit changed; none for a new one. */
+  index?: number;
+  onClose: () => void;
+}) {
+  const save = useSaveQuotas(project);
+  const existing = index === undefined ? undefined : limits[index];
+  const [f, setF] = useState({
+    resource: existing?.resource ?? "vcpu",
+    environment: existing?.environment ?? "",
+    limit: existing?.limit == null ? "" : String(existing.limit),
+    enforcement: existing?.enforcement ?? "hard",
+  });
+  const twin = limits.some((l, i) => i !== index && l.resource === f.resource && l.environment === f.environment);
+  const value = Number(f.limit);
+  const valid = f.limit.trim() === "" || (Number.isInteger(value) && value >= 0);
+  return (
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={existing ? "Change the limit" : "New limit"}
+      description="Requests that would pass a limit are refused, or need an approval."
+      submitLabel={save.isPending ? "Saving…" : "Save limit"}
+      submitDisabled={twin || !valid || save.isPending}
+      onSubmit={() => {
+        const row: S["QuotaLimit"] = {
+          resource: f.resource,
+          environment: f.environment,
+          limit: f.limit.trim() === "" ? null : value,
+          enforcement: f.enforcement,
+        };
+        const items = existing ? limits.map((l, i) => (i === index ? row : l)) : [...limits, row];
+        save.mutate(items, {
+          onSuccess: () => {
+            toast.success("Limit saved");
+            onClose();
+          },
+        });
+      }}
+    >
+      <Field label="Resource" htmlFor="limit-resource">
+        <Select
+          id="limit-resource"
+          value={f.resource}
+          onChange={(v) => setF({ ...f, resource: v as S["QuotaResource"] })}
+          options={resources}
+        />
+      </Field>
+      <Field
+        label="In"
+        htmlFor="limit-environment"
+        error={twin ? "This resource has a limit there already: change that one." : undefined}
+      >
+        <Select
+          id="limit-environment"
+          value={f.environment || "all"}
+          onChange={(v) => setF({ ...f, environment: v === "all" ? "" : v })}
+          options={[
+            { value: "all", label: "The whole project" },
+            ...project.environments.map((e) => ({ value: e, label: e })),
+          ]}
+        />
+      </Field>
+      <Field
+        label="Limit"
+        htmlFor="limit-value"
+        hint="Empty for no limit."
+        error={valid ? undefined : "A whole number, 0 or more."}
+      >
+        <Input
+          id="limit-value"
+          type="number"
+          min={0}
+          className="w-32"
+          value={f.limit}
+          onChange={(e) => setF({ ...f, limit: e.target.value })}
+        />
+      </Field>
+      <Field label="When passed" htmlFor="limit-enforcement">
+        <Select
+          id="limit-enforcement"
+          value={f.enforcement}
+          onChange={(v) => setF({ ...f, enforcement: v as S["QuotaLimit"]["enforcement"] })}
+          options={enforcements}
+        />
+      </Field>
+    </Sheet>
+  );
+}
+
+/** What a limit's resource takes now, in its environment or the whole project. */
+function LimitUse({ project, limit }: { project: S["AdminProject"]; limit: S["QuotaLimit"] }) {
+  const usage = useQuery(q.quota(project.id, limit.environment || undefined));
+  if (usage.isPending) return <Skeleton className="h-4 w-20" />;
+  const line = usage.data?.lines.find((l) => l.resource === limit.resource);
+  if (!line) return <span className="text-faint">Not known</span>;
+  const shown = { ...line, limit: limit.limit };
+  return <span className={cn("tabular-nums", quotaTone(shown))}>{takenText(shown)}</span>;
+}
+
+type Row = S["QuotaLimit"] & { index: number };
+
+function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
+  const quotas = useQuery(adm.quotas(project.id));
+  const save = useSaveQuotas(project);
+  const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [removing, setRemoving] = useState<Row | null>(null);
+  const limits = quotas.data?.items ?? [];
+  const where = (l: S["QuotaLimit"]) => (l.environment ? `in ${l.environment}` : "in the whole project");
+  const columns: Column<Row>[] = [
+    {
+      id: "resource",
+      header: "Resource",
+      sortValue: (l) => resourceName(l.resource),
+      cell: (l) => <span className="font-medium">{resourceName(l.resource)}</span>,
+    },
+    {
+      id: "in",
+      header: "In",
+      sortValue: (l) => l.environment,
+      cell: (l) => <span className="text-secondary">{l.environment || "The whole project"}</span>,
+    },
+    {
+      id: "limit",
+      header: "Limit",
+      align: "end",
+      sortValue: (l) => l.limit ?? -1,
+      cell: (l) => <span className="tabular-nums">{l.limit ?? "None"}</span>,
+    },
+    {
+      id: "used",
+      header: "Taken now",
+      align: "end",
+      cell: (l) => <LimitUse project={project} limit={l} />,
+    },
+    {
+      id: "enforcement",
+      header: "When passed",
+      cell: (l) => <span className="text-secondary">{enforcements.find((e) => e.value === l.enforcement)?.label}</span>,
+    },
+  ];
+  const add = isAdmin && (
+    <Button size="sm" variant="primary" disabled={!quotas.data} onClick={() => setEditing("new")}>
+      Add a limit
+    </Button>
+  );
   return (
     <Panel
       title="Quotas"
+      description="What the project's requests may take, with what its deployments and running requests take now."
       flush
-      actions={
-        isAdmin && (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="quiet"
-              disabled={!ready}
-              onClick={() =>
-                setRows([...shown, { environment: "", resource: "vcpu", limit: null, enforcement: "hard" }])
-              }
-            >
-              Add a limit
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!ready || !rows || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              Save quotas
-            </Button>
-          </div>
-        )
-      }
+      actions={limits.length ? add : undefined}
     >
-      {quotas.isPending && <SkeletonRows rows={3} cols={4} />}
-      {quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
-      {ready && shown.length === 0 && <p className="px-4 py-3 text-secondary text-muted">No limit.</p>}
-      {ready && shown.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Resource
-                </th>
-                <th scope="col" className={th}>
-                  In
-                </th>
-                <th scope="col" className={th}>
-                  Limit
-                </th>
-                <th scope="col" className={th}>
-                  When passed
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r, i) => (
-                <tr key={i}>
-                  <td className={`${td} pl-4`}>
-                    <Select
-                      aria-label={`Limit ${i + 1}: resource`}
-                      value={r.resource}
-                      onChange={(v) => set(i, { ...r, resource: v as S["QuotaResource"] })}
-                      options={resources}
-                      disabled={!isAdmin}
-                      className="w-40"
-                    />
-                  </td>
-                  <td className={td}>
-                    <Select
-                      aria-label={`Limit ${i + 1}: environment`}
-                      value={r.environment || "all"}
-                      onChange={(v) => set(i, { ...r, environment: v === "all" ? "" : v })}
-                      options={[
-                        { value: "all", label: "The whole project" },
-                        ...project.environments.map((e) => ({ value: e, label: e })),
-                      ]}
-                      disabled={!isAdmin}
-                      className="w-44"
-                    />
-                  </td>
-                  <td className={td}>
-                    <Input
-                      aria-label={`Limit ${i + 1}: value`}
-                      type="number"
-                      min={0}
-                      className="h-8 w-24"
-                      placeholder="None"
-                      disabled={!isAdmin}
-                      value={r.limit ?? ""}
-                      onChange={(e) => set(i, { ...r, limit: e.target.value === "" ? null : Number(e.target.value) })}
-                    />
-                  </td>
-                  <td className={td}>
-                    <Select
-                      aria-label={`Limit ${i + 1}: enforcement`}
-                      value={r.enforcement}
-                      onChange={(v) => set(i, { ...r, enforcement: v as S["QuotaLimit"]["enforcement"] })}
-                      options={[
-                        { value: "hard", label: "Refused" },
-                        { value: "soft", label: "Needs approval" },
-                      ]}
-                      disabled={!isAdmin}
-                      className="w-40"
-                    />
-                  </td>
-                  <td className={`${td} text-right`}>
-                    {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        aria-label={`Remove limit ${i + 1}`}
-                        onClick={() => setRows(shown.filter((_, j) => j !== i))}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <DataTable
+        label="Quota limits"
+        columns={columns}
+        rows={quotas.data && limits.map((l, index) => ({ ...l, index }))}
+        rowKey={(l) => `${l.resource}/${l.environment}/${l.index}`}
+        minWidth={640}
+        loading={quotas.isPending}
+        error={quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Gauge}
+            title="No limit"
+            body="The project's requests may take any amount. Add a limit on vCPU, memory, storage or VMs."
+            action={add || undefined}
+          />
+        }
+        rowMenuLabel={(l) => `Actions for the ${resourceName(l.resource)} limit ${where(l)}`}
+        rowMenu={
+          isAdmin
+            ? (l) => (
+                <>
+                  <MenuItem onSelect={() => setEditing(l.index)}>Change</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger onSelect={() => setRemoving(l)}>
+                    Remove
+                  </MenuItem>
+                </>
+              )
+            : undefined
+        }
+      />
+      {editing !== null && (
+        <LimitSheet
+          project={project}
+          limits={limits}
+          index={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove the ${resourceName(removing.resource)} limit ${where(removing)}?`}
+          description="Requests are no longer held to it."
+          consequences={
+            removing.environment
+              ? "A limit on the whole project still applies, if there is one."
+              : "Limits in each environment still apply."
+          }
+          confirmLabel="Remove limit"
+          pending={save.isPending}
+          onConfirm={() =>
+            save.mutate(
+              limits.filter((_, i) => i !== removing.index),
+              {
+                onSuccess: () => {
+                  toast.success("Limit removed");
+                  setRemoving(null);
+                },
+              },
+            )
+          }
+        />
       )}
     </Panel>
   );
 }
 
-export function ProjectPage({ projectId }: { projectId: string }) {
+export function ProjectPage({ projectId, tab = "members" }: { projectId: string; tab?: ProjectTab }) {
+  const navigate = useNavigate();
   const { me } = useCurrentProject();
   const project = useQuery(adm.project(projectId));
   if (project.isPending)
@@ -861,7 +1026,17 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           </>
         }
       />
-      <Tabs defaultValue="members">
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          void navigate({
+            to: "/admin/projects/$projectId",
+            params: { projectId },
+            search: { tab: next as ProjectTab },
+            replace: true,
+          })
+        }
+      >
         <TabsList aria-label="Project sections">
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="placement">Placement</TabsTrigger>

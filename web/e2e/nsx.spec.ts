@@ -16,7 +16,11 @@ test("a placement rule makes NSX segments: checked, saved and shown", async ({ p
   await open(page, "Projects", "Projects");
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }).click();
   await page.getByRole("tab", { name: "Placement" }).click();
-  await page.getByRole("button", { name: "Change" }).first().click();
+  await page
+    .getByRole("button", { name: /^Actions for the rule of priority/ })
+    .first()
+    .click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
   const rule = page.getByRole("dialog", { name: /Change placement rule/ });
   await rule.getByRole("checkbox", { name: "NSX segments made for deployments" }).check();
   await rule.getByRole("textbox", { name: "Tier-1 gateway" }).fill("t1-nope");
@@ -29,10 +33,14 @@ test("a placement rule makes NSX segments: checked, saved and shown", async ({ p
   await rule.getByRole("textbox", { name: "Tier-1 gateway" }).fill("t1-gva-dev");
   await rule.getByRole("button", { name: "Save rule" }).click();
   await expect(page.getByText("Placement rule saved")).toBeVisible();
-  await expect(page.getByText("t1-gva-dev · nsx-gva-dev /26 · corp.example")).toBeVisible();
+  await expect(page.getByText("NSX t1-gva-dev, nsx-gva-dev /26, corp.example")).toBeVisible();
 
   // Opened again, it still makes them.
-  await page.getByRole("button", { name: "Change" }).first().click();
+  await page
+    .getByRole("button", { name: /^Actions for the rule of priority/ })
+    .first()
+    .click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
   await expect(rule.getByRole("checkbox", { name: "NSX segments made for deployments" })).toBeChecked();
   await expect(rule.getByRole("textbox", { name: "Tier-1 gateway" })).toHaveValue("t1-gva-dev");
 });

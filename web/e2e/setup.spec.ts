@@ -54,15 +54,21 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   // A group mapped to admin, an environment and a project, on the Projects page.
   await step(page, "Map a group to admin").getByRole("link", { name: "OIDC group mappings" }).click();
   const groups = page.getByRole("region", { name: "OIDC group mappings" });
-  await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-admins");
+  await groups.getByRole("button", { name: "Map a group" }).click();
+  const map = page.getByRole("dialog", { name: "Map a group" });
+  await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-admins");
   await choose(page, "Role", "Administrator");
-  await groups.getByRole("button", { name: "Map group" }).click();
+  await map.getByRole("button", { name: "Map group" }).click();
   await expect(groups.getByRole("cell", { name: "rvav-admins", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
-  await envs.getByRole("textbox", { name: "New environment key" }).fill("dev");
-  await envs.getByRole("textbox", { name: "New environment name" }).fill("Development");
-  await envs.getByRole("button", { name: "Add environment" }).click();
+  await envs.getByRole("button", { name: "New environment" }).click();
+  const env = page.getByRole("dialog", { name: "New environment" });
+  await env.getByRole("textbox", { name: "Key" }).fill("dev");
+  await env.getByRole("textbox", { name: "Name" }).fill("Development");
+  await env.getByRole("button", { name: "Add environment" }).click();
   await expect(envs.getByRole("row", { name: /Development/ })).toBeVisible();
+  await page.getByRole("tab", { name: "Projects", exact: true }).click();
   await page.getByRole("button", { name: "New project" }).click();
   const dialog = page.getByRole("dialog", { name: "New project" });
   await dialog.getByRole("textbox", { name: "Code" }).fill("web");

@@ -37,8 +37,13 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await members.getByRole("textbox", { name: "Add someone" }).fill("Thomas");
   await members.getByRole("button", { name: /Thomas Nguyen/ }).click();
   await expect(page.getByText("Thomas Nguyen added as Member")).toBeVisible();
-  await members.getByRole("button", { name: "Remove Sophie Brunner" }).click();
-  await expect(page.getByText(/would have no project admin/)).toBeVisible();
+  await members.getByRole("button", { name: "Actions for Sophie Brunner" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Remove Sophie Brunner?" })
+    .getByRole("button", { name: "Remove member" })
+    .click();
+  await expect(members.getByRole("alert")).toContainText(/would have no project admin/);
 
   // Placement: nothing until a rule names networks, then the preview fills.
   await page.getByRole("tab", { name: "Placement" }).click();
@@ -57,15 +62,20 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   // Quotas.
   await page.getByRole("tab", { name: "Quotas" }).click();
   await page.getByRole("button", { name: "Add a limit" }).click();
-  await page.getByRole("spinbutton", { name: "Limit 1: value" }).fill("16");
-  await choose(page, "Limit 1: environment", "dev");
-  await page.getByRole("button", { name: "Save quotas" }).click();
-  await expect(page.getByText("Quotas saved")).toBeVisible();
+  const limit = page.getByRole("dialog", { name: "New limit" });
+  await limit.getByRole("spinbutton", { name: "Limit" }).fill("16");
+  await choose(page, "In", "dev");
+  await limit.getByRole("button", { name: "Save limit" }).click();
+  await expect(page.getByText("Limit saved")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Quotas" }).getByRole("row", { name: /^vCPU dev 16/ })).toBeVisible();
 
   // Archive it: the list hides it until archived ones are asked for.
-  page.on("dialog", (d) => void d.accept());
   await page.getByRole("tab", { name: "Details" }).click();
   await page.getByRole("button", { name: "Archive" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Archive Payments?" })
+    .getByRole("button", { name: "Archive project" })
+    .click();
   await expect(page.getByText("Payments archived")).toBeVisible();
   await page.getByRole("link", { name: "Projects" }).first().click();
   const list = page.getByRole("region", { name: "Projects" });
@@ -77,22 +87,40 @@ test("set a project up: create it, add a member, place it and give it quotas", a
 
 test("environments and OIDC group mappings", async ({ page }) => {
   await open(page, "Projects", "Projects");
+  await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
-  await envs.getByRole("textbox", { name: "New environment key" }).fill("qa");
-  await envs.getByRole("textbox", { name: "New environment name" }).fill("Quality");
-  await envs.getByRole("button", { name: "Add environment" }).click();
+  await envs.getByRole("button", { name: "New environment" }).click();
+  const env = page.getByRole("dialog", { name: "New environment" });
+  await env.getByRole("textbox", { name: "Key" }).fill("qa");
+  await env.getByRole("textbox", { name: "Name" }).fill("Quality");
+  await env.getByRole("button", { name: "Add environment" }).click();
   await expect(envs.getByRole("row", { name: /Quality/ })).toBeVisible();
-  await expect(envs.getByRole("button", { name: "Remove Production" })).toBeDisabled();
-  await envs.getByRole("button", { name: "Remove Quality" }).click();
+  await envs.getByRole("button", { name: "Actions for Production" }).click();
+  await expect(page.getByRole("menuitem", { name: "Remove: projects deploy to it" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await envs.getByRole("button", { name: "Actions for Quality" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Remove Quality?" })
+    .getByRole("button", { name: "Remove environment" })
+    .click();
   await expect(envs.getByRole("row", { name: /Quality/ })).toBeHidden();
 
+  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
   const groups = page.getByRole("region", { name: "OIDC group mappings" });
-  await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-auditors");
+  await groups.getByRole("button", { name: "Map a group" }).click();
+  const map = page.getByRole("dialog", { name: "Map a group" });
+  await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-auditors");
   await choose(page, "Role", "Auditor");
-  await groups.getByRole("button", { name: "Map group" }).click();
+  await map.getByRole("button", { name: "Map group" }).click();
   await expect(groups.getByRole("cell", { name: "rvav-auditors", exact: true })).toBeVisible();
   // Léa stays an administrator, rvav's own: the server lets the group's go.
-  await groups.getByRole("button", { name: "Remove the mapping of rvav-admins" }).click();
+  await groups.getByRole("button", { name: "Actions for rvav-admins" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Remove the mapping of rvav-admins?" })
+    .getByRole("button", { name: "Remove mapping" })
+    .click();
   await expect(groups.getByRole("cell", { name: "rvav-admins", exact: true })).toBeHidden();
   await expect(groups.getByRole("alert")).toHaveCount(0);
 });
@@ -390,19 +418,22 @@ test("an auditor reads the administration pages without changing them", async ({
     page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "New project" })).toBeHidden();
+  await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
-  await expect(envs.getByRole("checkbox", { name: "Production is production" })).toBeDisabled();
-  await expect(envs.getByRole("button", { name: "Add environment" })).toBeHidden();
-  await expect(
-    page.getByRole("region", { name: "OIDC group mappings" }).getByRole("button", { name: "Map group" }),
-  ).toBeHidden();
+  await expect(envs.getByRole("row", { name: /Production/ })).toBeVisible();
+  await expect(envs.getByRole("button", { name: "Actions for Production" })).toBeHidden();
+  await expect(envs.getByRole("button", { name: "New environment" })).toBeHidden();
+  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
+  const mappings = page.getByRole("region", { name: "OIDC group mappings" });
+  await expect(mappings.getByRole("row", { name: /rvav-admins/ })).toBeVisible();
+  await expect(mappings.getByRole("button", { name: "Map a group" })).toBeHidden();
+  await page.getByRole("tab", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }).click();
   await expect(page.getByRole("heading", { name: "Web Platform", level: 1 })).toBeVisible();
   const members = page.getByRole("region", { name: "Members" });
   await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("Member");
   await expect(members.getByRole("textbox", { name: "Add someone" })).toBeHidden();
-  await expect(members.getByRole("button", { name: /^Change roles/ })).toHaveCount(0);
-  await expect(members.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  await expect(members.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
 });
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {

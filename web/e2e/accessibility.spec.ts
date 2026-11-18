@@ -141,7 +141,8 @@ for (const theme of ["light", "dark"] as const) {
     test("axe: a member's roles changing", async ({ page }) => {
       await page.goto("/admin/projects/prj_web");
       await loaded(page);
-      await page.getByRole("button", { name: "Change roles of Thomas Nguyen" }).click();
+      await page.getByRole("button", { name: "Actions for Thomas Nguyen" }).click();
+      await page.getByRole("menuitem", { name: "Change roles" }).click();
       await expect(page.getByRole("dialog", { name: "Roles of Thomas Nguyen" })).toBeVisible();
       await scan(page, "/admin/projects/prj_web (a member's roles)");
     });

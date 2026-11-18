@@ -52,11 +52,14 @@ test("an administrator makes the operator and the auditor, and gives them", asyn
   await members.getByRole("button", { name: /Claire Dubois/ }).click();
   await expect(members.getByRole("list", { name: "Roles of Claire Dubois" })).toHaveText("VM operator given here");
   await nav(page, "Projects");
+  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
   const groups = page.getByRole("region", { name: "OIDC group mappings" });
-  await groups.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
+  await groups.getByRole("button", { name: "Map a group" }).click();
+  const map = page.getByRole("dialog", { name: "Map a group" });
+  await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");
   await choose(page, "In project", "Web Platform");
   await choose(page, "Role", "VM operator");
-  await groups.getByRole("button", { name: "Map group" }).click();
+  await map.getByRole("button", { name: "Map group" }).click();
   await expect(groups.getByRole("row", { name: /rvav-operators/ })).toContainText("VM operator in Web Platform");
 
   // The auditor: the built-in auditor's permissions, given for all of rvav.
@@ -146,18 +149,21 @@ test("the compliance auditor reads the administration and can change nothing", a
 
   await nav(page, "Projects");
   await expect(page.getByRole("button", { name: "New project" })).toBeHidden();
+  await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
-  await expect(envs.getByRole("checkbox", { name: "Production is production" })).toBeDisabled();
-  await expect(envs.getByRole("button", { name: "Add environment" })).toBeHidden();
-  await expect(
-    page.getByRole("region", { name: "OIDC group mappings" }).getByRole("button", { name: "Map group" }),
-  ).toBeHidden();
+  await expect(envs.getByRole("row", { name: /Production/ })).toBeVisible();
+  await expect(envs.getByRole("button", { name: "Actions for Production" })).toBeHidden();
+  await expect(envs.getByRole("button", { name: "New environment" })).toBeHidden();
+  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
+  const mappings = page.getByRole("region", { name: "OIDC group mappings" });
+  await expect(mappings.getByRole("row", { name: /rvav-admins/ })).toBeVisible();
+  await expect(mappings.getByRole("button", { name: "Map a group" })).toBeHidden();
+  await page.getByRole("tab", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }).click();
   const members = page.getByRole("region", { name: "Members" });
   await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("Member");
   await expect(members.getByRole("textbox", { name: "Add someone" })).toBeHidden();
-  await expect(members.getByRole("button", { name: /^Change roles/ })).toHaveCount(0);
-  await expect(members.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  await expect(members.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
 
   await nav(page, "Roles");
   await expect(
