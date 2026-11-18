@@ -226,6 +226,10 @@ export function adminState(db: Db): AdminState {
         vcenter: "",
         cluster_tags: [],
         datastore_tags: [],
+        resource_pool: "",
+        hosts: [],
+        datastore_cluster: "",
+        strategy: "most_free_memory",
       });
     }
   }
@@ -1207,6 +1211,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           errors.push(err("/environment", `${p.name} doesn't deploy to ${w.environment}.`));
         if (w.clusters.length === 0 && !w.cluster_tags?.length)
           errors.push(err("/clusters", "Name clusters, or tags they carry."));
+        if (w.datastores.length === 0 && !w.datastore_tags?.length && !w.datastore_cluster)
+          errors.push(err("/datastores", "Name datastores, tags they carry, or a datastore cluster."));
         if (w.networks.length === 0) errors.push(err("/networks", "Name the networks VMs may connect to."));
         if (!w.folder.startsWith("/"))
           errors.push(err("/folder", "A folder's path, for example /GVA/vm/rvav/web/dev."));
@@ -1237,6 +1243,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           datastore_tags: w.datastore_tags ?? [],
           storage_policy: w.storage_policy ?? "",
           vcenter: w.vcenter ?? "",
+          resource_pool: (w.resource_pool ?? "").replace(/^\/+|\/+$/g, ""),
+          hosts: w.hosts ?? [],
+          datastore_cluster: w.datastore_cluster ?? "",
+          strategy: w.strategy ?? "most_free_memory",
           ...(w.segments ? { segments: w.segments } : {}),
         };
         const rules = st().rules;

@@ -501,7 +501,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 		if err := replanVMs(ev, &plan); err != nil {
 			return nil, nil, nil, nil, err
 		}
-		plan.Placement = ev.placementNotes()
+		plan.Placement, plan.PlacementTitle = ev.placementNotes(), ev.placementTitle()
 	case blueprint.KindAWX:
 		plan.ExtraVars = ev.Inputs
 	}

@@ -4,6 +4,7 @@
 package provision
 
 import (
+	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
@@ -46,8 +47,11 @@ type Plan struct {
 	// deployments before their VMs (ADR-0028).
 	Security []SecurityUnit `json:"security,omitempty"`
 	// Placement says how constraint tags placed its VMs, and the soft
-	// constraints let go (ADR-0035), for its timeline.
-	Placement []string `json:"placement,omitempty"`
+	// constraints let go (ADR-0035), and what a placement strategy weighed
+	// (ADR-0036), for its timeline; PlacementTitle titles its step when a
+	// strategy is in it.
+	Placement      []string `json:"placement,omitempty"`
+	PlacementTitle string   `json:"placement_title,omitempty"`
 }
 
 // ComponentUnit is one component of a multi-VM blueprint's plan.
@@ -386,6 +390,14 @@ type VMUnit struct {
 	// NSXOffered are the groups it may join by a day-2 action: its
 	// deployment's, and the existing groups its item's VMs join.
 	NSXOffered []VMGroup `json:"nsx_offered,omitempty"`
+	// ResourcePool is its pool's path below the cluster's root pool, Hosts
+	// those it may start on when they are narrowed, and DatastoreCluster
+	// the datastore cluster Datastore is in, whose PodDatastores Storage
+	// DRS may choose from instead (ADR-0036).
+	ResourcePool     string   `json:"resource_pool,omitempty"`
+	Hosts            []string `json:"hosts,omitempty"`
+	DatastoreCluster string   `json:"datastore_cluster,omitempty"`
+	PodDatastores    []string `json:"pod_datastores,omitempty"`
 }
 
 // VMGroup is an NSX group a VM joins: one made for its deployment (Key),
@@ -705,7 +717,7 @@ func (p Plan) vmTitle(title string, vm VMUnit) string {
 func (p Plan) Steps(environment string) []StepDef {
 	steps := []StepDef{{Key: KeySubmit, Title: "Submitted", System: "rvav", Status: "done"}}
 	if len(p.Placement) > 0 {
-		steps = append(steps, StepDef{Key: KeyPlacement, Title: "Placed by constraint tags", Detail: strings.Join(p.Placement, "; "),
+		steps = append(steps, StepDef{Key: KeyPlacement, Title: cmp.Or(p.PlacementTitle, "Placed by constraint tags"), Detail: strings.Join(p.Placement, "; "),
 			System: "rvav", Status: "done"})
 	}
 	switch {

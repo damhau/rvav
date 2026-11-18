@@ -609,7 +609,8 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
 				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
-				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy,
+				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy, ResourcePool: in.VM.ResourcePool, Hosts: in.VM.Hosts,
+				DatastoreCluster: in.VM.DatastoreCluster, PodDatastores: in.VM.PodDatastores,
 			})
 			return err
 		})
@@ -638,6 +639,12 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 			return "", "", fmt.Errorf("vCenter tags: %w", err)
 		}
 		detail := fmt.Sprintf("%s · %s · %s", in.VM.Cluster, in.VM.Datastore, vm.Moref)
+		if in.VM.DatastoreCluster != "" {
+			detail = fmt.Sprintf("%s · %s in %s · %s", in.VM.Cluster, cmp.Or(vm.Datastore, in.VM.Datastore), in.VM.DatastoreCluster, vm.Moref)
+		}
+		if in.VM.ResourcePool != "" {
+			detail += " · pool " + in.VM.ResourcePool
+		}
 		if in.VM.StoragePolicy != "" {
 			detail += " · " + in.VM.StoragePolicy
 		}

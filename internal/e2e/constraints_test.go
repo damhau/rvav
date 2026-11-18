@@ -21,9 +21,9 @@ import (
 	"github.com/damhau/rvav/internal/vra"
 )
 
-// tagObjects attaches category/tag to vCenter clusters, datastores and
-// networks through the tagging service, making the category and the tag as
-// needed.
+// tagObjects attaches category/tag to vCenter clusters, datastores,
+// networks, hosts and datastore clusters through the tagging service,
+// making the category and the tag as needed.
 func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, objects ...string) {
 	t.Helper()
 	rc := rest.NewClient(c)
@@ -38,7 +38,7 @@ func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, 
 	if err == nil {
 		catID = cat.ID
 	} else if catID, err = m.CreateCategory(ctx, &tags.Category{Name: category, Cardinality: "MULTIPLE",
-		AssociableTypes: []string{"ClusterComputeResource", "Datastore", "Network", "DistributedVirtualPortgroup"}}); err != nil {
+		AssociableTypes: []string{"ClusterComputeResource", "HostSystem", "Datastore", "StoragePod", "Network", "DistributedVirtualPortgroup"}}); err != nil {
 		t.Fatal(err)
 	}
 	tagID, err := m.CreateTag(ctx, &tags.Tag{Name: name, CategoryID: catID})
@@ -54,8 +54,12 @@ func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, 
 			ref = ds.Reference()
 		} else if n, err := finder.Network(ctx, "/GVA/network/"+o); err == nil {
 			ref = n.Reference()
+		} else if host, err := finder.HostSystem(ctx, "/GVA/host/*/"+o); err == nil {
+			ref = host.Reference()
+		} else if pod, err := finder.DatastoreCluster(ctx, "/GVA/datastore/"+o); err == nil {
+			ref = pod.Reference()
 		} else {
-			t.Fatalf("no cluster, datastore or network %s", o)
+			t.Fatalf("no cluster, datastore, network, host or datastore cluster %s", o)
 		}
 		if err := m.AttachTag(ctx, tagID, ref); err != nil {
 			t.Fatal(err)

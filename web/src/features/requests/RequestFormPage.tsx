@@ -166,6 +166,7 @@ function Summary({
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
   const single = !oneDeployment;
+  const placement = single ? preview?.components?.[0]?.placement : undefined;
   const rows = [
     single && preview?.names?.length
       ? { label: preview.names.length > 1 ? "Names" : "Name", value: preview.names.join(", "), mono: true }
@@ -175,6 +176,25 @@ function Summary({
           label: "Placement",
           value: [preview.placement.cluster, preview.placement.datastore].filter(Boolean).join(" · "),
           mono: true,
+        }
+      : null,
+    single && (placement?.resource_pool || placement?.hosts?.length || placement?.datastore_cluster)
+      ? {
+          label: "Within",
+          value: [
+            placement.resource_pool && `pool ${placement.resource_pool}`,
+            placement.hosts?.length && `hosts ${placement.hosts.join(", ")}`,
+            placement.datastore_cluster && `datastore cluster ${placement.datastore_cluster}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          mono: true,
+        }
+      : null,
+    single && placement?.strategy && placement.strategy !== "most_free_memory"
+      ? {
+          label: "Chosen by",
+          value: placement.strategy === "binpack" ? "Binpack" : "Spread",
         }
       : null,
     single && preview?.placement?.network

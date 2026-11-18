@@ -101,6 +101,28 @@ func (s *Store) InventoryDatastoreClusters(ctx context.Context) ([]InvDatastoreC
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvDatastoreCluster])
 }
 
+// RvavVMsPerCluster counts the VMs of deployments not deleted, by
+// "vcenter/cluster" (ADR-0036).
+func (s *Store) RvavVMsPerCluster(ctx context.Context) (map[string]int, error) {
+	rows, err := s.Pool.Query(ctx, `select coalesce(r.properties->'vm'->>'vcenter', '') || '/' || coalesce(r.properties->'vm'->>'cluster', ''),
+		count(*) from resources r join deployments d on d.id = r.deployment_id
+		where r.type = 'vsphere.vm' and d.status not in ('deleting', 'deleted') group by 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var key string
+		var n int
+		if err := rows.Scan(&key, &n); err != nil {
+			return nil, err
+		}
+		out[key] = n
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) InventoryTemplates(ctx context.Context) ([]InvTemplate, error) {
 	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, guest_os, library from inv_templates order by library, name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTemplate])

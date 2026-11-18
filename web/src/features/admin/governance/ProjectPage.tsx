@@ -435,7 +435,11 @@ function RuleSheet({
     storage_policy: rule?.storage_policy ?? "",
     vcenter: rule?.vcenter ?? "",
     priority: String(rule?.priority ?? 100),
+    resource_pool: rule?.resource_pool ?? "",
+    hosts: rule?.hosts.join(", ") ?? "",
+    datastore_cluster: rule?.datastore_cluster ?? "",
   });
+  const [strategy, setStrategy] = useState<S["PlacementStrategy"]>(rule?.strategy ?? "most_free_memory");
   // NSX segments made for deployments (ADR-0028).
   const [segOn, setSegOn] = useState(Boolean(rule?.segments));
   const [seg, setSeg] = useState({
@@ -460,6 +464,10 @@ function RuleSheet({
         folder: f.folder,
         storage_policy: f.storage_policy.trim(),
         vcenter: f.vcenter.trim(),
+        resource_pool: f.resource_pool.trim(),
+        hosts: list(f.hosts),
+        datastore_cluster: f.datastore_cluster.trim(),
+        strategy,
         segments: segOn
           ? {
               tier1: seg.tier1.trim(),
@@ -522,8 +530,28 @@ function RuleSheet({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {field("clusters", "Clusters")}
         {field("cluster_tags", "Cluster tags", "For example rvav-tier/gold")}
+        {field(
+          "resource_pool",
+          "Resource pool",
+          "Its path in each cluster, for example rvav/dev; empty for the cluster's",
+        )}
+        {field("hosts", "Hosts", "Empty for any that takes new VMs")}
         {field("datastores", "Datastores")}
         {field("datastore_tags", "Datastore tags")}
+        {field("datastore_cluster", "Datastore cluster", "Its datastores only; Storage DRS chooses among them")}
+        <Field
+          label="Strategy"
+          htmlFor="rule-strategy"
+          error={errorAt(errors, "/strategy")}
+          hint="How rvav chooses among the clusters left"
+        >
+          <Select
+            id="rule-strategy"
+            value={strategy}
+            onChange={(v) => setStrategy(v as S["PlacementStrategy"])}
+            options={strategies}
+          />
+        </Field>
         {field("networks", "Networks", "For example dvpg-*-dev-*")}
         {field("folder", "VM folder")}
         {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
@@ -551,6 +579,13 @@ function RuleSheet({
 }
 
 const names = (plain: string[], tags: string[]) => [...plain, ...tags.map((t) => `tag ${t}`)].join(", ") || "Any";
+
+const strategies: { value: S["PlacementStrategy"]; label: string; meta: string }[] = [
+  { value: "most_free_memory", label: "Most free memory", meta: "The cluster with the most free memory" },
+  { value: "binpack", label: "Binpack", meta: "The least free memory that still has room" },
+  { value: "spread", label: "Spread", meta: "The fewest of rvav's VMs" },
+];
+const strategyLabel = (v: S["PlacementStrategy"] | undefined) => strategies.find((x) => x.value === v)?.label ?? "";
 
 function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const qc = useQueryClient();
@@ -585,6 +620,8 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         <div className="flex flex-col font-mono text-secondary">
           <span>{names(r.clusters, r.cluster_tags)}</span>
           {r.vcenter && <span className="text-muted">in {r.vcenter}</span>}
+          {r.resource_pool && <span className="text-muted">pool {r.resource_pool}</span>}
+          {r.hosts.length > 0 && <span className="text-muted">hosts {r.hosts.join(", ")}</span>}
         </div>
       ),
     },
@@ -593,7 +630,14 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
       header: "Datastores",
       cell: (r) => (
         <div className="flex flex-col text-secondary">
-          <span className="font-mono">{names(r.datastores, r.datastore_tags)}</span>
+          <span className="font-mono">
+            {r.datastore_cluster && !r.datastores.length && !r.datastore_tags.length
+              ? `cluster ${r.datastore_cluster}`
+              : names(r.datastores, r.datastore_tags)}
+          </span>
+          {r.datastore_cluster && (r.datastores.length > 0 || r.datastore_tags.length > 0) && (
+            <span className="font-mono text-muted">in cluster {r.datastore_cluster}</span>
+          )}
           {r.storage_policy && <span className="text-muted">{r.storage_policy}</span>}
         </div>
       ),
@@ -611,6 +655,12 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           )}
         </div>
       ),
+    },
+    {
+      id: "strategy",
+      header: "Strategy",
+      sortValue: (r) => r.strategy,
+      cell: (r) => <span className="text-secondary">{strategyLabel(r.strategy)}</span>,
     },
     {
       id: "folder",
@@ -644,7 +694,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           columns={columns}
           rows={here}
           rowKey={(r) => r.id}
-          minWidth={720}
+          minWidth={840}
           defaultSort={{ id: "priority", desc: false }}
           loading={rules.isPending}
           error={rules.isError && <ErrorState error={rules.error} onRetry={() => void rules.refetch()} />}
@@ -685,7 +735,15 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
             )}
             <p>
               <span className="text-faint">Clusters:</span>{" "}
-              {preview.data.clusters.map((c) => c.name).join(", ") || "none"}
+              {preview.data.clusters
+                .map((c) => {
+                  const how = [
+                    c.resource_pool && `pool ${c.resource_pool}`,
+                    c.strategy && c.strategy !== "most_free_memory" && strategyLabel(c.strategy).toLowerCase(),
+                  ].filter(Boolean);
+                  return how.length ? `${c.name} (${how.join(", ")})` : c.name;
+                })
+                .join(", ") || "none"}
             </p>
             <p>
               <span className="text-faint">Datastores:</span>{" "}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/url"
 	"path"
@@ -64,6 +65,16 @@ type VMSpec struct {
 	Library string
 	// StoragePolicy is the VM's (its home and disks) storage policy.
 	StoragePolicy string
+	// ResourcePool is a pool's path below the cluster's root pool, such as
+	// rvav/dev (the root pool when empty), and Hosts those it may start on
+	// (any of the cluster's when empty) (ADR-0036).
+	ResourcePool string
+	Hosts        []string
+	// DatastoreCluster is the datastore cluster Datastore is in: a clone
+	// goes to the datastore Storage DRS recommends among PodDatastores, to
+	// Datastore when it recommends none of them (ADR-0036).
+	DatastoreCluster string
+	PodDatastores    []string
 }
 
 // DiskSpec is a disk added at provisioning, on Datastore (the VM's when
@@ -646,10 +657,16 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	if err != nil {
 		return nil, err
 	}
-	w, err := cl.where(ctx, c, spec)
+	w, err := cl.where(ctx, c, spec, existing == nil && spec.Library == "")
 	if err != nil {
 		return nil, err
 	}
+	// The disks the VM's datastore holds follow it: to the one Storage DRS
+	// recommended, or the one an earlier attempt cloned it to.
+	if existing != nil && spec.DatastoreCluster != "" && existing.Datastore != "" {
+		w.datastoreName = existing.Datastore
+	}
+	spec = onDatastore(spec, w.datastoreName)
 	var ref types.ManagedObjectReference
 	switch {
 	case existing != nil:
@@ -674,17 +691,20 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	return cl.vmInfo(ctx, c, ref)
 }
 
-// placed is where a VM goes: the cluster's resource pool, a host, the
-// datastore and the folder.
+// placed is where a VM goes: the cluster's resource pool (or one below
+// it), a host, the datastore and the folder.
 type placed struct {
 	pool, host, datastore types.ManagedObjectReference
+	datastoreName         string
 	folder                *object.Folder
 }
 
-// where places a VM: on a connected host of the cluster that mounts the
-// datastore, so it never lands outside the cluster; VMs kept apart take the
-// eligible hosts in turn.
-func (cl *Client) where(ctx context.Context, c *vim25.Client, spec VMSpec) (placed, error) {
+// where places a VM: in its resource pool, on a connected host of the
+// cluster (of its hosts, when it names them) that mounts the datastore, so
+// it never lands outside the cluster; VMs kept apart take the eligible
+// hosts in turn. With sdrs, a VM in a datastore cluster goes to the
+// datastore Storage DRS recommends, when a host mounts it (ADR-0036).
+func (cl *Client) where(ctx context.Context, c *vim25.Client, spec VMSpec, sdrs bool) (placed, error) {
 	var w placed
 	clusterRef, err := findRef(ctx, c, "ClusterComputeResource", spec.Cluster)
 	if err != nil {
@@ -698,32 +718,181 @@ func (cl *Client) where(ctx context.Context, c *vim25.Client, spec VMSpec) (plac
 	if cluster.ResourcePool == nil {
 		return w, fmt.Errorf("cluster %q has no resource pool", spec.Cluster)
 	}
-	if w.datastore, err = findRef(ctx, c, "Datastore", spec.Datastore); err != nil {
+	w.pool = *cluster.ResourcePool
+	if spec.ResourcePool != "" {
+		if w.pool, err = poolAt(ctx, pc, w.pool, spec.ResourcePool); err != nil {
+			return w, fmt.Errorf("%s: %w", spec.Cluster, err)
+		}
+	}
+	if w.folder, err = ensureFolder(ctx, c, spec.Folder); err != nil {
 		return w, err
 	}
-	var ds mo.Datastore
-	if err := pc.RetrieveOne(ctx, w.datastore, []string{"host"}, &ds); err != nil {
+	hosts, err := usableHosts(ctx, pc, cluster.Host, spec.Hosts)
+	if err != nil {
 		return w, err
 	}
 	var eligible []types.ManagedObjectReference
-	for _, h := range cluster.Host {
-		for _, m := range ds.Host {
-			if m.Key == h {
-				var hm mo.HostSystem
-				if err := pc.RetrieveOne(ctx, h, []string{"runtime.connectionState", "runtime.inMaintenanceMode"}, &hm); err == nil &&
-					hm.Runtime.ConnectionState == types.HostSystemConnectionStateConnected && !hm.Runtime.InMaintenanceMode {
-					eligible = append(eligible, h)
-				}
-				break
+	if sdrs && spec.DatastoreCluster != "" {
+		name, err := recommended(ctx, c, spec, w)
+		switch {
+		case err != nil:
+			slog.Warn("Storage DRS recommends no datastore: rvav's choice is used", "vm", spec.Name, "datastore_cluster", spec.DatastoreCluster,
+				"datastore", spec.Datastore, "error", err)
+		case name == "":
+			slog.Info("Storage DRS recommends no datastore rvav allows: rvav's choice is used", "vm", spec.Name,
+				"datastore_cluster", spec.DatastoreCluster, "datastore", spec.Datastore)
+		default:
+			if w.datastore, eligible, err = mounting(ctx, c, pc, hosts, name); err != nil {
+				return w, err
+			}
+			if len(eligible) > 0 {
+				w.datastoreName = name
+				slog.Info("Storage DRS chose the datastore", "vm", spec.Name, "datastore_cluster", spec.DatastoreCluster, "datastore", name)
 			}
 		}
 	}
 	if len(eligible) == 0 {
-		return w, fmt.Errorf("no connected host in %s mounts datastore %s: %w", spec.Cluster, spec.Datastore, ErrNotFound)
+		if w.datastore, eligible, err = mounting(ctx, c, pc, hosts, spec.Datastore); err != nil {
+			return w, err
+		}
+		w.datastoreName = spec.Datastore
 	}
-	w.pool, w.host = *cluster.ResourcePool, eligible[spec.HostIndex%len(eligible)]
-	w.folder, err = ensureFolder(ctx, c, spec.Folder)
-	return w, err
+	if len(eligible) == 0 {
+		of := spec.Cluster
+		if len(spec.Hosts) > 0 {
+			of = strings.Join(spec.Hosts, ", ") + " of " + spec.Cluster
+		}
+		return w, fmt.Errorf("no connected host in %s mounts datastore %s: %w", of, spec.Datastore, ErrNotFound)
+	}
+	w.host = eligible[spec.HostIndex%len(eligible)]
+	return w, nil
+}
+
+// usableHosts are the hosts that take new VMs: connected, not in
+// maintenance, and named when names are given.
+func usableHosts(ctx context.Context, pc *property.Collector, refs []types.ManagedObjectReference, names []string) ([]types.ManagedObjectReference, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	var hosts []mo.HostSystem
+	if err := pc.Retrieve(ctx, refs, []string{"name", "runtime.connectionState", "runtime.inMaintenanceMode"}, &hosts); err != nil {
+		return nil, err
+	}
+	byRef := map[types.ManagedObjectReference]mo.HostSystem{}
+	for _, h := range hosts {
+		byRef[h.Self] = h
+	}
+	var out []types.ManagedObjectReference
+	for _, ref := range refs {
+		h := byRef[ref]
+		if h.Runtime.ConnectionState == types.HostSystemConnectionStateConnected && !h.Runtime.InMaintenanceMode &&
+			(len(names) == 0 || slices.Contains(names, h.Name)) {
+			out = append(out, ref)
+		}
+	}
+	return out, nil
+}
+
+// mounting is the datastore, and those of the hosts that mount it.
+func mounting(ctx context.Context, c *vim25.Client, pc *property.Collector, hosts []types.ManagedObjectReference, datastore string) (
+	types.ManagedObjectReference, []types.ManagedObjectReference, error) {
+	ref, err := findRef(ctx, c, "Datastore", datastore)
+	if err != nil {
+		return ref, nil, err
+	}
+	var ds mo.Datastore
+	if err := pc.RetrieveOne(ctx, ref, []string{"host"}, &ds); err != nil {
+		return ref, nil, err
+	}
+	var out []types.ManagedObjectReference
+	for _, h := range hosts {
+		if slices.ContainsFunc(ds.Host, func(m types.DatastoreHostMount) bool { return m.Key == h }) {
+			out = append(out, h)
+		}
+	}
+	return ref, out, nil
+}
+
+// poolAt is the resource pool at a path below the root pool, such as
+// rvav/dev.
+func poolAt(ctx context.Context, pc *property.Collector, root types.ManagedObjectReference, path string) (types.ManagedObjectReference, error) {
+	at := root
+	for _, name := range strings.Split(strings.Trim(path, "/"), "/") {
+		var p mo.ResourcePool
+		if err := pc.RetrieveOne(ctx, at, []string{"resourcePool"}, &p); err != nil {
+			return at, err
+		}
+		kids := slices.DeleteFunc(slices.Clone(p.ResourcePool), func(r types.ManagedObjectReference) bool { return r.Type != "ResourcePool" })
+		var pools []mo.ResourcePool
+		if len(kids) > 0 {
+			if err := pc.Retrieve(ctx, kids, []string{"name"}, &pools); err != nil {
+				return at, err
+			}
+		}
+		i := slices.IndexFunc(pools, func(k mo.ResourcePool) bool { return k.Name == name })
+		if i < 0 {
+			return at, fmt.Errorf("resource pool %s: %w", path, ErrNotFound)
+		}
+		at = pools[i].Self
+	}
+	return at, nil
+}
+
+// recommended is the datastore Storage DRS recommends for a clone in the
+// spec's datastore cluster, the first of those rvav allows ("" for none).
+func recommended(ctx context.Context, c *vim25.Client, spec VMSpec, w placed) (string, error) {
+	pod, err := findRef(ctx, c, "StoragePod", spec.DatastoreCluster)
+	if err != nil {
+		return "", err
+	}
+	tpl, err := findRef(ctx, c, "VirtualMachine", spec.Template)
+	if err != nil {
+		return "", fmt.Errorf("template: %w", err)
+	}
+	folder := w.folder.Reference()
+	res, err := object.NewStorageResourceManager(c).RecommendDatastores(ctx, types.StoragePlacementSpec{
+		Type: string(types.StoragePlacementSpecPlacementTypeClone),
+		PodSelectionSpec: types.StorageDrsPodSelectionSpec{StoragePod: &pod,
+			InitialVmConfig: []types.VmPodConfigForPlacement{{StoragePod: pod}}},
+		Vm: &tpl, CloneName: spec.Name, Folder: &folder, ResourcePool: &w.pool,
+		CloneSpec: &types.VirtualMachineCloneSpec{Location: types.VirtualMachineRelocateSpec{Pool: &w.pool}},
+	})
+	if err != nil {
+		return "", err
+	}
+	pc := property.DefaultCollector(c)
+	for _, r := range res.Recommendations {
+		for _, a := range r.Action {
+			pa, ok := a.(*types.StoragePlacementAction)
+			if !ok {
+				continue
+			}
+			var ds mo.Datastore
+			if err := pc.RetrieveOne(ctx, pa.Destination, []string{"name"}, &ds); err != nil {
+				return "", err
+			}
+			if len(spec.PodDatastores) == 0 || slices.Contains(spec.PodDatastores, ds.Name) {
+				return ds.Name, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// onDatastore is the spec with the VM on another datastore, and the disks
+// its datastore held there too.
+func onDatastore(spec VMSpec, datastore string) VMSpec {
+	if datastore == "" || datastore == spec.Datastore {
+		return spec
+	}
+	spec.Disks = slices.Clone(spec.Disks)
+	for i, d := range spec.Disks {
+		if d.Datastore == spec.Datastore {
+			spec.Disks[i].Datastore = datastore
+		}
+	}
+	spec.Datastore = datastore
+	return spec
 }
 
 // Extra config keeping how many disks and adapters the VM had before rvav

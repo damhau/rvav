@@ -5594,9 +5594,20 @@ components:
       properties:
         vcenter: { type: string }
         cluster: { type: string }
+        resource_pool: { type: string, description: "Its path below the cluster's root pool (ADR-0036); absent for the root pool." }
+        hosts:
+          type: array
+          description: The hosts its VMs start on, when the rule, a binding or host tags narrow them (ADR-0036); absent for any of the cluster's.
+          items: { type: string }
         datastore: { type: string }
+        datastore_cluster:
+          type: string
+          description: "The datastore cluster `datastore` is in, when the rule or the blueprint names one (ADR-0036). With Storage DRS on, the VMs go to the datastore it recommends."
         folder: { type: string }
         storage_policy: { type: string }
+        strategy:
+          $ref: "#/components/schemas/PlacementStrategy"
+          description: The strategy that chose the cluster; absent when it was bound.
         chosen:
           type: boolean
           description: rvav chose the cluster, a datastore or the network (they weren't given).
@@ -7525,7 +7536,8 @@ components:
         snapshot_max_age_days: { type: integer, minimum: 0, description: 0 keeps snapshots of any age. }
     PlacementRule:
       type: object
-      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy, vcenter]
+      required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy, vcenter,
+        resource_pool, hosts, datastore_cluster, strategy]
       properties:
         id: { type: string }
         project: { $ref: "#/components/schemas/ProjectRef" }
@@ -7533,11 +7545,24 @@ components:
         priority: { type: integer, description: Lower first. }
         clusters:
           type: array
-          description: Cluster or resource pool names; `*` matches any text (GVA-DEV-*).
+          description: Cluster names; `*` matches any text (GVA-DEV-*). `resource_pool` names a pool within them.
+          items: { type: string }
+        resource_pool:
+          type: string
+          description: "The resource pool VMs go to in each cluster, by its path below the cluster's root pool (ADR-0036); a cluster without it isn't used. Empty for the root pool."
+          examples: [rvav/dev]
+        hosts:
+          type: array
+          description: "Host name patterns (ADR-0036): VMs start on the connected hosts out of maintenance that match. Empty for any of the cluster's."
           items: { type: string }
         datastores:
           type: array
+          description: Datastore names; `*` matches any text.
           items: { type: string }
+        datastore_cluster:
+          type: string
+          description: "A datastore cluster whose datastores the rule allows, narrowed by `datastores` and `datastore_tags` when they're given (ADR-0036); empty for none."
+        strategy: { $ref: "#/components/schemas/PlacementStrategy" }
         networks:
           type: array
           items: { type: string }
@@ -7576,10 +7601,23 @@ components:
         datastore_tags: { type: array, items: { type: string } }
         storage_policy: { type: string }
         vcenter: { type: string }
+        resource_pool: { type: string }
+        hosts: { type: array, items: { type: string } }
+        datastore_cluster: { type: string }
+        strategy: { $ref: "#/components/schemas/PlacementStrategy" }
         segments:
           oneOf:
             - $ref: "#/components/schemas/PlacementSegments"
             - type: "null"
+    PlacementStrategy:
+      type: string
+      enum: [most_free_memory, binpack, spread]
+      default: most_free_memory
+      description: |
+        How rvav chooses among the clusters the rules and constraints leave
+        when a blueprint doesn't bind one (ADR-0036): the most free memory;
+        binpack, the least free memory that still has room for the VMs; or
+        spread, the fewest VMs of rvav's deployments.
     PlacementSegments:
       type: object
       required: [tier1, ip_block, prefix_length, dns_zone]
@@ -7620,8 +7658,10 @@ components:
       required: [name, hosts, tags]
       properties:
         name: { type: string }
-        hosts: { type: integer }
+        hosts: { type: integer, description: Those its rule allows VMs on. }
         tags: { type: array, items: { type: string } }
+        resource_pool: { type: string, description: The pool its rule puts VMs in; absent for the root pool. }
+        strategy: { $ref: "#/components/schemas/PlacementStrategy" }
     PreviewDatastore:
       type: object
       required: [name, free_gb, clusters, tags]

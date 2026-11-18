@@ -133,6 +133,31 @@ type placement struct {
 	datastores []store.InvDatastore
 	networks   []store.InvNetwork
 	subnets    map[string]store.NetworkSubnet
+	// hosts, pools and pods are every vCenter's hosts, resource pools and
+	// datastore clusters (ADR-0036); a datastore in a pod carries the
+	// pod's tags in datastores.
+	hosts []store.InvHost
+	pools []store.InvResourcePool
+	pods  []store.InvDatastoreCluster
+	// vms are rvav's VMs per vCenter and cluster, read when a rule spreads
+	// them, and planned those the request places, by its components so far.
+	vms     map[string]int
+	planned map[string]int
+}
+
+// hostCount is how many hosts VMs on the cluster may start on: those
+// narrowed, else those that take new VMs, else the cluster's.
+func (pl *placement) hostCount(cluster string, narrowed []string) int {
+	c := pl.cluster(cluster)
+	switch {
+	case narrowed != nil:
+		return len(narrowed)
+	case c != nil && pl.hostsKnown(c):
+		return len(pl.usableHosts(c, nil))
+	case c != nil:
+		return c.HostCount
+	}
+	return 0
 }
 
 func matchAny(patterns []string, name string) bool {
@@ -164,6 +189,89 @@ func allows(r store.PlacementRule, c store.InvCluster) bool {
 	return (r.VCenter == "" || r.VCenter == c.VCenter) && selects(r.ClusterPatterns, r.ClusterTags, c.Name, c.Tags)
 }
 
+// allows says whether a rule allows a cluster, which has the rule's
+// resource pool (ADR-0036).
+func (pl *placement) allows(r store.PlacementRule, c store.InvCluster) bool {
+	return allows(r, c) && (r.ResourcePool == "" || pl.pool(c, r.ResourcePool) != nil)
+}
+
+// pool is the cluster's resource pool at that path.
+func (pl *placement) pool(c store.InvCluster, path string) *store.InvResourcePool {
+	for i, p := range pl.pools {
+		if p.VCenter == c.VCenter && p.Cluster == c.Name && p.Path == path {
+			return &pl.pools[i]
+		}
+	}
+	return nil
+}
+
+// pod is the vCenter's datastore cluster of that name.
+func (pl *placement) pod(vcenter, name string) *store.InvDatastoreCluster {
+	for i, p := range pl.pods {
+		if p.VCenter == vcenter && p.Name == name {
+			return &pl.pods[i]
+		}
+	}
+	return nil
+}
+
+// inheritPodTags gives the datastores of a datastore cluster its tags too:
+// they count for storage constraints (ADR-0036).
+func inheritPodTags(datastores []store.InvDatastore, pods []store.InvDatastoreCluster) {
+	for _, p := range pods {
+		for i, d := range datastores {
+			if d.VCenter == p.VCenter && slices.Contains(p.Datastores, d.Name) {
+				datastores[i].Tags = slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(d.Tags), p.Tags...))))
+			}
+		}
+	}
+}
+
+// usable is whether a host takes new VMs.
+func usable(h store.InvHost) bool { return h.State == vsphere.HostConnected }
+
+// hostsKnown says whether the inventory has the cluster's hosts: without
+// them, placement goes by the cluster as before.
+func (pl *placement) hostsKnown(c *store.InvCluster) bool {
+	return slices.ContainsFunc(pl.hosts, func(h store.InvHost) bool { return h.VCenter == c.VCenter && h.Cluster == c.Name })
+}
+
+// usableHosts are the cluster's hosts that take new VMs, all of them or
+// those matching patterns.
+func (pl *placement) usableHosts(c *store.InvCluster, patterns []string) []store.InvHost {
+	var out []store.InvHost
+	for _, h := range pl.hosts {
+		if h.VCenter == c.VCenter && h.Cluster == c.Name && usable(h) && (len(patterns) == 0 || matchAny(patterns, h.Name)) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// hostsFor are the hosts the cluster's rule allows VMs on, only the one
+// bound when a blueprint binds one; nil when the inventory has none.
+func (pl *placement) hostsFor(c *store.InvCluster, bound string) []store.InvHost {
+	if !pl.hostsKnown(c) {
+		return nil
+	}
+	var patterns []string
+	if r := pl.rule(c.Name); r != nil {
+		patterns = r.HostPatterns
+	}
+	out := pl.usableHosts(c, patterns)
+	if bound != "" {
+		out = slices.DeleteFunc(out, func(h store.InvHost) bool { return h.Name != bound })
+	}
+	return nonNilHosts(out)
+}
+
+func nonNilHosts(list []store.InvHost) []store.InvHost {
+	if list == nil {
+		return []store.InvHost{}
+	}
+	return list
+}
+
 func (s *Service) placement(ctx context.Context, projectID, environment string) (*placement, error) {
 	rules, err := s.Store.PlacementRules(ctx, projectID, environment)
 	if err != nil {
@@ -176,13 +284,28 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 	if pl.all, err = s.Store.InventoryClusters(ctx); err != nil {
 		return nil, err
 	}
+	if pl.pools, err = s.Store.InventoryResourcePools(ctx); err != nil {
+		return nil, err
+	}
 	for _, c := range pl.all {
-		if slices.ContainsFunc(rules, func(r store.PlacementRule) bool { return allows(r, c) }) {
+		if slices.ContainsFunc(rules, func(r store.PlacementRule) bool { return pl.allows(r, c) }) {
 			pl.clusters = append(pl.clusters, c)
 		}
 	}
+	if pl.hosts, err = s.Store.InventoryESXiHosts(ctx); err != nil {
+		return nil, err
+	}
 	if pl.datastores, err = s.Store.InventoryDatastores(ctx); err != nil {
 		return nil, err
+	}
+	if pl.pods, err = s.Store.InventoryDatastoreClusters(ctx); err != nil {
+		return nil, err
+	}
+	inheritPodTags(pl.datastores, pl.pods)
+	if slices.ContainsFunc(rules, func(r store.PlacementRule) bool { return r.Strategy == store.StrategySpread }) {
+		if pl.vms, err = s.Store.RvavVMsPerCluster(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if pl.networks, err = s.Store.InventoryNetworks(ctx); err != nil {
 		return nil, err
@@ -225,25 +348,74 @@ func (pl *placement) rule(cluster string) *store.PlacementRule {
 		return nil
 	}
 	for i := range pl.rules {
-		if allows(pl.rules[i], *c) {
+		if pl.allows(pl.rules[i], *c) {
 			return &pl.rules[i]
 		}
 	}
 	return nil
 }
 
+// datastoresFor are the datastores the cluster's rule allows: those of
+// its datastore cluster, if it names one, narrowed by its patterns and
+// tags when it has any (ADR-0036).
 func (pl *placement) datastoresFor(cluster string) []store.InvDatastore {
 	c, r := pl.cluster(cluster), pl.rule(cluster)
 	if r == nil {
 		return nil
 	}
+	var members []string
+	if r.DatastoreCluster != "" {
+		pod := pl.pod(c.VCenter, r.DatastoreCluster)
+		if pod == nil {
+			return nil
+		}
+		members = pod.Datastores
+	}
 	var out []store.InvDatastore
 	for _, d := range pl.datastores {
-		if d.VCenter == c.VCenter && slices.Contains(d.Clusters, cluster) && selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags) {
+		if d.VCenter != c.VCenter || !slices.Contains(d.Clusters, cluster) {
+			continue
+		}
+		switch {
+		case r.DatastoreCluster == "":
+			if selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags) {
+				out = append(out, d)
+			}
+		case !slices.Contains(members, d.Name):
+		case (len(r.DatastorePatterns) == 0 && len(r.DatastoreTags) == 0) || selects(r.DatastorePatterns, r.DatastoreTags, d.Name, d.Tags):
 			out = append(out, d)
 		}
 	}
 	return out
+}
+
+// datastoresIn are the datastores the cluster's rule allows, only those of
+// a datastore cluster when one is named ("" for any).
+func (pl *placement) datastoresIn(cluster, pod string) []store.InvDatastore {
+	list := pl.datastoresFor(cluster)
+	if pod == "" {
+		return list
+	}
+	c := pl.cluster(cluster)
+	p := pl.pod(c.VCenter, pod)
+	return slices.DeleteFunc(list, func(d store.InvDatastore) bool { return p == nil || !slices.Contains(p.Datastores, d.Name) })
+}
+
+// podOf is the datastore cluster a VM's datastore is in, when its rule or
+// blueprint names it ("" otherwise).
+func (pl *placement) podOf(cluster, bound, datastore string) string {
+	name := bound
+	if r := pl.rule(cluster); name == "" && r != nil {
+		name = r.DatastoreCluster
+	}
+	c := pl.cluster(cluster)
+	if name == "" || c == nil {
+		return ""
+	}
+	if p := pl.pod(c.VCenter, name); p != nil && slices.Contains(p.Datastores, datastore) {
+		return name
+	}
+	return ""
 }
 
 func (pl *placement) networksFor(cluster string) []store.InvNetwork {

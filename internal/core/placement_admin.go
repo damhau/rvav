@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -26,7 +27,8 @@ func presentPlacementRule(r store.PlacementRuleRow) api.PlacementRule {
 		Environment: r.Environment, Priority: r.Priority, Clusters: nonNilStrings(r.ClusterPatterns),
 		Datastores: nonNilStrings(r.DatastorePatterns), Networks: nonNilStrings(r.NetworkPatterns), Folder: r.Folder,
 		ClusterTags: nonNilStrings(r.ClusterTags), DatastoreTags: nonNilStrings(r.DatastoreTags), StoragePolicy: r.StoragePolicy,
-		Vcenter: r.VCenter}
+		Vcenter: r.VCenter, ResourcePool: r.ResourcePool, Hosts: nonNilStrings(r.HostPatterns), DatastoreCluster: r.DatastoreCluster,
+		Strategy: api.PlacementStrategy(cmp.Or(r.Strategy, store.StrategyMostFreeMemory))}
 	if sg := r.Segments; sg != nil {
 		servers := nonNilStrings(sg.DNSServers)
 		out.Segments = &api.PlacementSegments{Tier1: sg.Tier1, IpBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DnsZone: sg.DNSZone,
@@ -136,7 +138,12 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 			return api.PlacementRule{}, ErrForbidden
 		}
 	}
-	clusterTags, datastoreTags := derefSlice(w.ClusterTags), derefSlice(w.DatastoreTags)
+	clusterTags, datastoreTags, hosts := derefSlice(w.ClusterTags), derefSlice(w.DatastoreTags), derefSlice(w.Hosts)
+	pool, datastoreCluster := strings.Trim(strings.TrimSpace(deref(w.ResourcePool)), "/"), strings.TrimSpace(deref(w.DatastoreCluster))
+	strategy := store.StrategyMostFreeMemory
+	if w.Strategy != nil {
+		strategy = string(*w.Strategy)
+	}
 	var errs []api.FieldError
 	proj, err := s.Store.GetProject(ctx, w.ProjectId)
 	switch {
@@ -150,8 +157,16 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	if len(w.Clusters) == 0 && len(clusterTags) == 0 {
 		errs = append(errs, fieldErr("/clusters", "required", "Name clusters (patterns such as GVA-DEV-*), or tags they carry."))
 	}
-	if len(w.Datastores) == 0 && len(datastoreTags) == 0 {
-		errs = append(errs, fieldErr("/datastores", "required", "Name datastores, or tags they carry."))
+	if len(w.Datastores) == 0 && len(datastoreTags) == 0 && datastoreCluster == "" {
+		errs = append(errs, fieldErr("/datastores", "required", "Name datastores, tags they carry, or a datastore cluster."))
+	}
+	if strings.Contains(pool, "//") {
+		errs = append(errs, fieldErr("/resource_pool", "pattern", "A pool's path below the cluster's, for example rvav/dev."))
+	}
+	switch strategy {
+	case store.StrategyMostFreeMemory, store.StrategyBinpack, store.StrategySpread:
+	default:
+		errs = append(errs, fieldErr("/strategy", "enum", "One of most_free_memory, binpack or spread."))
 	}
 	if len(w.Networks) == 0 {
 		errs = append(errs, fieldErr("/networks", "required", "Name the networks VMs may connect to."))
@@ -162,6 +177,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	errs = append(errs, checkPatterns(w.Clusters, "/clusters")...)
 	errs = append(errs, checkPatterns(w.Datastores, "/datastores")...)
 	errs = append(errs, checkPatterns(w.Networks, "/networks")...)
+	errs = append(errs, checkPatterns(hosts, "/hosts")...)
 	errs = append(errs, checkTags(clusterTags, "/cluster_tags")...)
 	errs = append(errs, checkTags(datastoreTags, "/datastore_tags")...)
 	// A vCenter rvav manages (ADR-0024).
@@ -199,7 +215,8 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 	}
 	r := store.PlacementRule{ID: id, ProjectID: proj.ID, Environment: w.Environment, Priority: priority,
 		ClusterPatterns: w.Clusters, DatastorePatterns: w.Datastores, NetworkPatterns: w.Networks, Folder: w.Folder,
-		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy, VCenter: vcenter, Segments: segments}
+		ClusterTags: clusterTags, DatastoreTags: datastoreTags, StoragePolicy: policy, VCenter: vcenter, Segments: segments,
+		ResourcePool: pool, HostPatterns: hosts, DatastoreCluster: datastoreCluster, Strategy: strategy}
 	if err := s.Store.SavePlacementRule(ctx, r); err != nil {
 		return api.PlacementRule{}, err
 	}
@@ -264,10 +281,36 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 	if len(pl.clusters) == 0 {
 		problem("No cluster in vCenter matches the rules.")
 	}
+	// What a rule names that vCenter lacks (ADR-0036).
+	for _, r := range pl.rules {
+		for _, c := range pl.all {
+			if r.ResourcePool != "" && allows(r, c) && !pl.allows(r, c) {
+				problem("Cluster %s has no resource pool %s: its rule leaves it out.", c.Name, r.ResourcePool)
+			}
+		}
+		if r.DatastoreCluster != "" && !slices.ContainsFunc(pl.pods, func(p store.InvDatastoreCluster) bool {
+			return p.Name == r.DatastoreCluster && (r.VCenter == "" || p.VCenter == r.VCenter)
+		}) {
+			problem("vCenter has no datastore cluster %s.", r.DatastoreCluster)
+		}
+	}
 	datastores := map[string]*api.PreviewDatastore{}
 	networks := map[string]*api.PreviewNetwork{}
 	for _, c := range pl.clusters {
-		out.Clusters = append(out.Clusters, api.PreviewCluster{Name: c.Name, Hosts: c.HostCount, Tags: nonNilStrings(c.Tags)})
+		pc := api.PreviewCluster{Name: c.Name, Hosts: pl.hostCount(c.Name, nil), Tags: nonNilStrings(c.Tags)}
+		if r := pl.rule(c.Name); r != nil {
+			if hosts := pl.hostsFor(&c, ""); hosts != nil {
+				pc.Hosts = len(hosts)
+				if len(hosts) == 0 {
+					problem("No host of cluster %s that its rule allows takes new VMs.", c.Name)
+				}
+			}
+			if r.ResourcePool != "" {
+				pc.ResourcePool = &r.ResourcePool
+			}
+			pc.Strategy = present.Ptr(api.PlacementStrategy(cmp.Or(r.Strategy, store.StrategyMostFreeMemory)))
+		}
+		out.Clusters = append(out.Clusters, pc)
 		ds := pl.datastoresFor(c.Name)
 		if len(ds) == 0 {
 			problem("Cluster %s has no datastore the rules allow.", c.Name)

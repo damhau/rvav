@@ -64,7 +64,22 @@ type PlacementRule struct {
 	// Segments: what NSX segments made for a deployment placed by the
 	// rule are (ADR-0028); nil when it makes none.
 	Segments *PlacementSegments `db:"segments"`
+	// ResourcePool is a pool's path below its clusters' root pools,
+	// HostPatterns the hosts VMs start on, DatastoreCluster a datastore
+	// cluster whose datastores it allows, and Strategy how rvav chooses a
+	// cluster (ADR-0036).
+	ResourcePool     string   `db:"resource_pool"`
+	HostPatterns     []string `db:"host_patterns"`
+	DatastoreCluster string   `db:"datastore_cluster"`
+	Strategy         string   `db:"strategy"`
 }
+
+// Placement strategies (ADR-0036).
+const (
+	StrategyMostFreeMemory = "most_free_memory"
+	StrategyBinpack        = "binpack"
+	StrategySpread         = "spread"
+)
 
 // PlacementSegments are the NSX segments made for a deployment: on a
 // Tier-1, their subnets of PrefixLength bits carved from an EfficientIP

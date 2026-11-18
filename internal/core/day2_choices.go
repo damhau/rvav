@@ -70,7 +70,8 @@ func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.De
 			return fmt.Sprintf("%s does not place VMs on %s.", proj.Name, cluster), nil
 		}
 		for _, disk := range vm.Disks {
-			if ds := deref(disk.Datastore); ds != "" && !matchAny(rule.DatastorePatterns, ds) {
+			if ds := deref(disk.Datastore); ds != "" && !matchAny(rule.DatastorePatterns, ds) &&
+				!slices.ContainsFunc(pl.datastoresFor(cluster), func(d store.InvDatastore) bool { return d.Name == ds }) {
 				return fmt.Sprintf("%s does not use datastore %s.", proj.Name, ds), nil
 			}
 		}

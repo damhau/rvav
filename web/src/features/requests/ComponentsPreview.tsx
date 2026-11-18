@@ -2,11 +2,32 @@
 // size, placement and network, as the preview says, and what its constraint
 // tags chose or ruled out (ADR-0035).
 import { Badge } from "@/components/ui/badge";
-import type { PlacementConstraint, PreviewComponent } from "@/lib/api/types";
+import type { ComponentPlacement, PlacementConstraint, PreviewComponent } from "@/lib/api/types";
 
 import { constraintText } from "./constraints";
 
 const osLabel = { linux: "Linux", windows: "Windows" } as const;
+
+/** Where the VMs go: the cluster and its resource pool, the datastore and its datastore cluster (ADR-0036). */
+export function placedAt(p?: ComponentPlacement): string {
+  if (!p) return "";
+  return [
+    p.vcenter,
+    p.cluster && (p.resource_pool ? `${p.cluster}/${p.resource_pool}` : p.cluster),
+    p.hosts?.length && `hosts ${p.hosts.join(", ")}`,
+    p.datastore && (p.datastore_cluster ? `${p.datastore} in ${p.datastore_cluster}` : p.datastore),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Who chose the cluster, when rvav did: a strategy other than the default says its name. */
+export function chosenBy(p?: ComponentPlacement): string {
+  if (!p?.chosen) return "";
+  if (p.strategy === "binpack") return "chosen by rvav, binpack";
+  if (p.strategy === "spread") return "chosen by rvav, spread";
+  return "chosen by rvav";
+}
 
 /** What constraint tags chose or ruled out, one line each. */
 export function PlacedBy({ constraints }: { constraints?: PlacementConstraint[] }) {
@@ -32,9 +53,8 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
       <ul className="flex flex-col gap-3">
         {components.map((c) => {
           const disks = c.disks.map((d) => `${d.size_gb} GB`).join(" + ");
-          const where = [c.placement?.vcenter, c.placement?.cluster, c.placement?.datastore]
-            .filter(Boolean)
-            .join(" · ");
+          const where = placedAt(c.placement);
+          const by = chosenBy(c.placement);
           return (
             <li key={c.key} className="flex flex-col gap-0.5" aria-label={c.title}>
               <span className="flex flex-wrap items-center gap-1.5">
@@ -53,7 +73,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                   <span className="text-secondary text-muted">
                     {c.vcpu} vCPU · {c.memory_gb} GB · disks {disks}
                     {where ? ` · ${where}` : ""}
-                    {c.placement?.chosen ? " (chosen by rvav)" : ""}
+                    {by ? ` (${by})` : ""}
                   </span>
                   <span className="font-mono text-caption break-words text-faint">
                     {c.nics

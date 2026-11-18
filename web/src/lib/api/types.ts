@@ -35,6 +35,7 @@ export type RequestDraft = S["RequestDraft"];
 export type RequestPreview = S["RequestPreview"];
 export type PreviewComponent = S["PreviewComponent"];
 export type PlacementConstraint = S["PlacementConstraint"];
+export type ComponentPlacement = S["ComponentPlacement"];
 export type QuotaImpact = S["QuotaImpact"];
 export type ApprovalPreview = S["ApprovalPreview"];
 export type RequestStatus = S["RequestStatus"];

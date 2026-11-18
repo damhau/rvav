@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/jackc/pgx/v5"
@@ -16,7 +17,8 @@ type PlacementRuleRow struct {
 }
 
 const placementRuleRowSelect = `select r.id, r.project_id, r.environment, r.priority, r.cluster_patterns, r.datastore_patterns,
-	r.network_patterns, r.folder, r.cluster_tags, r.datastore_tags, r.storage_policy, r.vcenter, r.segments, p.code as project_code, p.name as project_name
+	r.network_patterns, r.folder, r.cluster_tags, r.datastore_tags, r.storage_policy, r.vcenter, r.segments, r.resource_pool, r.host_patterns,
+	r.datastore_cluster, r.strategy, p.code as project_code, p.name as project_name
 	from placement_rules r join projects p on p.id = r.project_id`
 
 // AllPlacementRules lists the rules of a project, or of all ("" for all).
@@ -40,15 +42,18 @@ func (s *Store) SavePlacementRule(ctx context.Context, r PlacementRule) error {
 		segments = r.Segments
 	}
 	_, err := s.Pool.Exec(ctx, `insert into placement_rules (id, project_id, environment, priority, cluster_patterns,
-		datastore_patterns, network_patterns, folder, cluster_tags, datastore_tags, storage_policy, vcenter, segments)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		datastore_patterns, network_patterns, folder, cluster_tags, datastore_tags, storage_policy, vcenter, segments,
+		resource_pool, host_patterns, datastore_cluster, strategy)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 		on conflict (id) do update set project_id = excluded.project_id, environment = excluded.environment,
 		priority = excluded.priority, cluster_patterns = excluded.cluster_patterns, datastore_patterns = excluded.datastore_patterns,
 		network_patterns = excluded.network_patterns, folder = excluded.folder, cluster_tags = excluded.cluster_tags,
 		datastore_tags = excluded.datastore_tags, storage_policy = excluded.storage_policy, vcenter = excluded.vcenter,
-		segments = excluded.segments`,
+		segments = excluded.segments, resource_pool = excluded.resource_pool, host_patterns = excluded.host_patterns,
+		datastore_cluster = excluded.datastore_cluster, strategy = excluded.strategy`,
 		r.ID, r.ProjectID, r.Environment, r.Priority, nonNil(r.ClusterPatterns), nonNil(r.DatastorePatterns),
-		nonNil(r.NetworkPatterns), r.Folder, nonNil(r.ClusterTags), nonNil(r.DatastoreTags), r.StoragePolicy, r.VCenter, segments)
+		nonNil(r.NetworkPatterns), r.Folder, nonNil(r.ClusterTags), nonNil(r.DatastoreTags), r.StoragePolicy, r.VCenter, segments,
+		r.ResourcePool, nonNil(r.HostPatterns), r.DatastoreCluster, cmp.Or(r.Strategy, StrategyMostFreeMemory))
 	return err
 }
 

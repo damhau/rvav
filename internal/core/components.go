@@ -82,6 +82,16 @@ type vmPart struct {
 	addresses []string
 	// constraints are what its constraints did (ADR-0035).
 	constraints []constraintResult
+	// hosts are those its VMs start on when narrowed; pod is the datastore
+	// cluster its datastore is in, whose podDatastores Storage DRS may
+	// choose from when sdrs; strategy is what chose its cluster, and
+	// strategyNote what that weighed when it isn't the default (ADR-0036).
+	hosts         []string
+	pod           string
+	podDatastores []string
+	sdrs          bool
+	strategy      string
+	strategyNote  string
 }
 
 func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
@@ -320,6 +330,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 	}
 	var placedBy []constraintResult
+	plan.ResourcePool = strings.Trim(plan.ResourcePool, "/")
+	placed.ResourcePool = plan.ResourcePool
 	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.rules) > 0 {
 		// Only in a vCenter that has the template (when the inventory says).
 		hasTemplate := func(vc string) bool {
@@ -327,27 +339,59 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				return t.Name == plan.Template && t.Library == plan.Library && t.VCenter == vc
 			})
 		}
-		cl, results, why := pl.choose(placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
+		ch, results, why := pl.choose(placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
 			anyNetwork: pickNetwork, hasTemplate: hasTemplate, cons: cons, disks: disks, vmGB: vmGB})
 		placedBy = append(placedBy, results...)
 		switch {
-		case cl != nil:
-			plan.Cluster, part.chosen = cl.Name, true
+		case ch.cluster != nil:
+			plan.Cluster, part.chosen = ch.cluster.Name, true
+			part.hosts, part.strategy, part.strategyNote = ch.hosts, ch.strategy, ch.note
 		case why != "":
 			add("", "constraint", why)
+		case plan.Host != "":
+			add(field("host"), "no_room", fmt.Sprintf("Host %s is none the rules allow with room for these VMs, or it takes no new VMs.", plan.Host))
+		case plan.ResourcePool != "":
+			add(field("resource_pool"), "no_room", fmt.Sprintf("No cluster allowed here has resource pool %s, or room for these VMs there.", plan.ResourcePool))
 		default:
 			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
 		}
 	} else if cl := pl.cluster(plan.Cluster); cl != nil {
-		placedBy = append(placedBy, checkGiven(cons.of(blueprint.Compute, 0), "Cluster", cl.Name, cl.Tags,
-			func(code, msg string) { add(field("cluster"), code, msg) })...)
+		hosts, results := pl.placeOnGiven(cl, plan.Host, cons.of(blueprint.Compute, 0), func(code, msg string) {
+			if code == "not_allowed" {
+				add(field("host"), code, msg)
+			} else {
+				add(field("cluster"), code, msg)
+			}
+		})
+		part.hosts = hosts
+		placedBy = append(placedBy, results...)
+	}
+	if plan.DatastoreCluster != "" && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
+		cl := pl.cluster(plan.Cluster)
+		switch {
+		case pl.pod(cl.VCenter, plan.DatastoreCluster) == nil:
+			add(field("datastore_cluster"), "unknown", fmt.Sprintf("vCenter has no datastore cluster %s.", plan.DatastoreCluster))
+		case len(pl.datastoresIn(plan.Cluster, plan.DatastoreCluster)) == 0:
+			add(field("datastore_cluster"), "not_allowed", fmt.Sprintf("No datastore of %s can be used on %s.", plan.DatastoreCluster, plan.Cluster))
+		case !pickDatastore && !slices.Contains(pl.pod(cl.VCenter, plan.DatastoreCluster).Datastores, plan.Datastore):
+			add(field("datastore"), "not_allowed", fmt.Sprintf("Datastore %s is not in datastore cluster %s.", plan.Datastore, plan.DatastoreCluster))
+		}
 	}
 	if pickDatastore && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
-		ds, results, why := pl.pickDatastore(plan.Cluster, vmGB*part.count, cons.of(blueprint.Storage, 0))
+		ds, results, why := pl.pickDatastore(plan.Cluster, plan.DatastoreCluster, vmGB*part.count, cons.of(blueprint.Storage, 0))
 		placedBy = append(placedBy, results...)
 		switch {
 		case ds != "":
 			plan.Datastore, part.chosen = ds, true
+			// In a datastore cluster, Storage DRS may choose another of those
+			// rvav would (ADR-0036).
+			if part.pod = pl.podOf(plan.Cluster, plan.DatastoreCluster, ds); part.pod != "" {
+				cands, _, _ := pl.datastoreCands(plan.Cluster, part.pod, vmGB*part.count, cons.of(blueprint.Storage, 0))
+				for _, d := range cands {
+					part.podDatastores = append(part.podDatastores, d.Name)
+				}
+				part.sdrs = pl.pod(pl.cluster(plan.Cluster).VCenter, part.pod).SDRS
+			}
 		case why != "":
 			add("", "constraint", why)
 		default:
@@ -377,7 +421,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			continue
 		}
 		if gb, ok := disks[i+1]; ok {
-			ds, results, why := pl.pickDatastore(plan.Cluster, gb*part.count, ks)
+			ds, results, why := pl.pickDatastore(plan.Cluster, plan.DatastoreCluster, gb*part.count, ks)
 			placedBy = append(placedBy, results...)
 			switch {
 			case ds != "":
@@ -399,6 +443,22 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("cluster"), "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
 		} else {
 			part.rule, part.vcenter = pl.rule(plan.Cluster), pl.cluster(plan.Cluster).VCenter
+			// A pool the rule names, or one below it (ADR-0036).
+			if rp := part.rule.ResourcePool; rp != "" {
+				switch {
+				case plan.ResourcePool == "":
+					plan.ResourcePool = rp
+				case plan.ResourcePool != rp && !strings.HasPrefix(plan.ResourcePool, rp+"/"):
+					add(field("resource_pool"), "not_allowed", fmt.Sprintf("Resource pool %s is not within %s, where VMs go on %s.", plan.ResourcePool, rp, plan.Cluster))
+				}
+			}
+			if plan.ResourcePool != "" && pl.pool(*pl.cluster(plan.Cluster), plan.ResourcePool) == nil {
+				add(field("resource_pool"), "not_allowed", fmt.Sprintf("Cluster %s has no resource pool %s.", plan.Cluster, plan.ResourcePool))
+			}
+			if pl.planned == nil {
+				pl.planned = map[string]int{}
+			}
+			pl.planned[part.vcenter+"/"+plan.Cluster] += part.count
 			if pl.ambiguous(plan.Cluster) {
 				add(field("cluster"), "ambiguous", fmt.Sprintf("Cluster %s is in two vCenters. Ask an administrator to name the vCenter in the placement rule.", plan.Cluster))
 			}
@@ -408,9 +468,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			if placed.Network != "" && !slices.ContainsFunc(pl.networksFor(plan.Cluster), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
 				add(field("network"), "not_allowed", fmt.Sprintf("Network %s cannot be used on %s.", plan.Network, plan.Cluster))
 			}
-			if cl := pl.cluster(plan.Cluster); c.AntiAffinity && part.count > 1 && cl.HostCount > 0 && part.count > cl.HostCount {
+			if n := pl.hostCount(plan.Cluster, part.hosts); c.AntiAffinity && part.count > 1 && n > 0 && part.count > n {
 				add(field("cluster"), "too_few_hosts", fmt.Sprintf("%d VMs kept on separate hosts need %d hosts; %s has %d.",
-					part.count, part.count, plan.Cluster, cl.HostCount))
+					part.count, part.count, plan.Cluster, n))
 			}
 		}
 	}
@@ -635,7 +695,14 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			c.OsFamily = present.Ptr(api.PreviewComponentOsFamily(p.guest.OSFamily))
 		}
 		c.Placement = &api.ComponentPlacement{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore),
-			StoragePolicy: str(p.vm.StoragePolicy), Vcenter: str(p.vcenter)}
+			StoragePolicy: str(p.vm.StoragePolicy), Vcenter: str(p.vcenter), ResourcePool: str(p.vm.ResourcePool),
+			DatastoreCluster: str(p.pod)}
+		if len(p.hosts) > 0 {
+			c.Placement.Hosts = present.Ptr(slices.Clone(p.hosts))
+		}
+		if p.strategy != "" {
+			c.Placement.Strategy = present.Ptr(api.PlacementStrategy(p.strategy))
+		}
 		if len(p.constraints) > 0 {
 			c.Placement.Constraints = present.Ptr(presentConstraints(p.constraints))
 		}
@@ -719,6 +786,10 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder
+	}
+	vm.ResourcePool, vm.Hosts = p.vm.ResourcePool, p.hosts
+	if p.sdrs {
+		vm.DatastoreCluster, vm.PodDatastores = p.pod, p.podDatastores
 	}
 	// On a segment made for the deployment, its subnet is carved when the
 	// request runs (ADR-0028).

@@ -89,7 +89,7 @@ func TestCloneFinishesAnEarlierAttempt(t *testing.T) {
 			Network: "dvpg-app-dev-vl310", Folder: "/GVA/vm/rvav/web/dev", VCPU: 4, MemoryMB: 8192, DiskGB: 60,
 			ExtraConfig: map[string]string{"guestinfo.rvav.deployment": "dep_half"}, Disks: []DiskSpec{{SizeGB: 10}}}
 		// The earlier attempt: cloned only, from a template of two disks.
-		w, err := d.where(ctx, c, spec)
+		w, err := d.where(ctx, c, spec, false)
 		if err != nil {
 			t.Fatal(err)
 		}

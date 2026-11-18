@@ -293,7 +293,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | `template`, `library` | The vCenter template; with `library`, the item of that content library |
 | `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
-| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
+| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `resource_pool` (a pool's path below the cluster's root pool, such as `rvav/dev`), `host`, `datastore`, `datastore_cluster`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy`, `constraints` (the disk's own storage constraints, below) |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network` (or `segments.<key>`, a segment made for the deployment, never with DHCP), `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding, or an added adapter's `network`, names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. In a composite, a VM step's segments are made under its step, before its VMs |
@@ -310,8 +310,26 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 Without `components` the blueprint builds one VM, and a request for
 several makes one deployment per VM; with them, one deployment holding
 every component's VMs (20 at most). When a component's `cluster` isn't
-bound, rvav chooses the allowed cluster with the most free memory, and
-the datastore likewise, among those that meet its constraints.
+bound, rvav chooses among the allowed clusters that meet its constraints
+by the placement rule's strategy: the most free memory by default, the
+least free memory with room for the VMs (`binpack`), or the fewest of
+rvav's VMs (`spread`). It chooses the datastore with the most free space
+among those that meet its constraints.
+
+**Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
+placement rule may put the VMs in a resource pool, on some hosts, or in a
+datastore cluster. Bindings narrow them further, within what the rule
+allows:
+
+- `resource_pool` is the rule's pool or one below it. A bound cluster
+  without the pool is an error.
+- `host` is one of the cluster's hosts that the rule's patterns allow,
+  connected and not in maintenance. All the VMs start on it, so
+  `anti_affinity` with more than one VM is an error.
+- `datastore_cluster` takes the VMs to the datastore of that datastore
+  cluster that rvav chooses. When Storage DRS is on for it, the clone goes
+  to the datastore Storage DRS recommends, so the VMs can end up on
+  another datastore than the preview's, in the same datastore cluster.
 
 **Constraint tags** ([ADR-0035](adr/0035-constraint-tags.md)) say what
 the VMs need from vCenter, with the vSphere tags an administrator puts on
@@ -336,7 +354,9 @@ blueprint:
   request's timeline. Without `:soft` (or with `:hard`), the request fails
   before anything is made, saying which constraint nothing meets.
 - `compute` chooses the cluster, `storage` the datastore and `network` the
-  first adapter's network. rvav chooses the network only when the
+  first adapter's network. A host's tags count for `compute`: the VMs
+  start only on the hosts that carry the tag, or whose cluster does. A
+  datastore cluster's tags count for `storage` on each of its datastores. rvav chooses the network only when the
   `network` binding is absent: the first allowed network, by name, with an
   EfficientIP subnet that meets them. Network constraints don't apply to a
   segment made for the deployment.

@@ -316,6 +316,11 @@ type VMPlan struct {
 	// Groups are the NSX security groups it is in: the component's, and
 	// those its groups binding gives (ADR-0028).
 	Groups []string `json:"groups,omitempty"`
+	// ResourcePool (a path below the cluster's root pool), Host and
+	// DatastoreCluster are what the bindings name (ADR-0036).
+	ResourcePool     string `json:"resource_pool,omitempty"`
+	Host             string `json:"host,omitempty"`
+	DatastoreCluster string `json:"datastore_cluster,omitempty"`
 }
 
 // StorageGB is the VM's storage: its first disk and those added.
@@ -501,6 +506,9 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 	strField("cluster", &plan.Cluster)
 	strField("datastore", &plan.Datastore)
 	strField("network", &plan.Network)
+	strField("resource_pool", &plan.ResourcePool)
+	strField("host", &plan.Host)
+	strField("datastore_cluster", &plan.DatastoreCluster)
 	if expr, ok := b.Bindings["template"]; ok {
 		if v, err := policy.Eval(expr, vars); err == nil {
 			if s, ok := v.(string); ok && s != "" {

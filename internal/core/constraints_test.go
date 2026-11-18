@@ -102,11 +102,11 @@ func TestChooseByConstraints(t *testing.T) {
 			why: "This item needs a network tagged pci/yes with a subnet, and no cluster allowed here has one."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cl, results, why := tagged().choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 100}, count: 2, anyDatastore: true,
+			ch, results, why := tagged().choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 100}, count: 2, anyDatastore: true,
 				anyNetwork: tc.network, hasTemplate: anywhere, cons: constraints(t, tc.cons...), vmGB: 100})
 			got := ""
-			if cl != nil {
-				got = cl.Name
+			if ch.cluster != nil {
+				got = ch.cluster.Name
 			}
 			if got != tc.cluster || why != tc.why {
 				t.Fatalf("chose %q (%s), want %q (%s)", got, why, tc.cluster, tc.why)
@@ -121,37 +121,37 @@ func TestChooseByConstraints(t *testing.T) {
 func TestChooseKeepsRoomAndHosts(t *testing.T) {
 	pl := tagged()
 	// Gold on app-2 has 800 GB: three VMs of 300 GB don't fit, those of app-1 neither.
-	cl, _, why := pl.choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 300}, count: 3, anyDatastore: true,
+	ch, _, why := pl.choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 300}, count: 3, anyDatastore: true,
 		hasTemplate: func(string) bool { return true }, cons: constraints(t, "storage rvav-tier/gold"), vmGB: 300})
-	if cl != nil || why != "" {
-		t.Errorf("chose %v (%s), want no room", cl, why)
+	if ch.cluster != nil || why != "" {
+		t.Errorf("chose %v (%s), want no room", ch.cluster, why)
 	}
 	// A disk of its own on gold, the rest on bronze.
 	cons := constraints(t, "storage rvav-tier/bronze")
 	cons = append(cons, constraints(t, "storage rvav-tier/gold")...)
 	cons[1].Disk = 1
-	cl, _, _ = pl.choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 50, Disks: []blueprint.DiskPlan{{SizeGB: 300}}}, count: 2,
+	ch, _, _ = pl.choose(placementQuery{plan: blueprint.VMPlan{DiskGB: 50, Disks: []blueprint.DiskPlan{{SizeGB: 300}}}, count: 2,
 		anyDatastore: true, hasTemplate: func(string) bool { return true }, cons: cons, disks: map[int]int{1: 300}, vmGB: 50})
-	if cl == nil || cl.Name != "app-2" {
-		t.Errorf("chose %v, want app-2", cl)
+	if ch.cluster == nil || ch.cluster.Name != "app-2" {
+		t.Errorf("chose %v, want app-2", ch.cluster)
 	}
 }
 
 func TestPickDatastoreAndNetwork(t *testing.T) {
 	pl := tagged()
-	ds, results, why := pl.pickDatastore("app-2", 100, constraints(t, "storage rvav-tier/gold:soft"))
+	ds, results, why := pl.pickDatastore("app-2", "", 100, constraints(t, "storage rvav-tier/gold:soft"))
 	if ds != "app-2-gold" || why != "" || said(results) != `storage rvav-tier/gold:soft on "app-2-gold" met=true excluded=[app-2-bronze]` {
 		t.Errorf("soft met: %s %s %s", ds, why, said(results))
 	}
-	ds, results, _ = pl.pickDatastore("app-2", 1000, constraints(t, "storage rvav-tier/gold:soft"))
+	ds, results, _ = pl.pickDatastore("app-2", "", 1000, constraints(t, "storage rvav-tier/gold:soft"))
 	if ds != "app-2-bronze" || said(results) != `storage rvav-tier/gold:soft on "app-2-bronze" met=false excluded=[]` {
 		t.Errorf("soft let go: %s %s", ds, said(results))
 	}
-	if ds, _, why = pl.pickDatastore("app-2", 1000, constraints(t, "storage rvav-tier/gold")); ds != "" ||
+	if ds, _, why = pl.pickDatastore("app-2", "", 1000, constraints(t, "storage rvav-tier/gold")); ds != "" ||
 		why != "This item needs a datastore tagged rvav-tier/gold on app-2 with room for 1000 GB, and none allowed is." {
 		t.Errorf("hard: %s %s", ds, why)
 	}
-	if ds, _, _ = pl.pickDatastore("app-2", 100, constraints(t, "storage !rvav-tier/gold")); ds != "app-2-bronze" {
+	if ds, _, _ = pl.pickDatastore("app-2", "", 100, constraints(t, "storage !rvav-tier/gold")); ds != "app-2-bronze" {
 		t.Errorf("negation: %s", ds)
 	}
 	n, results, _ := pl.pickNetwork("app-1", constraints(t, "network pci/yes"))

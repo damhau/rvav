@@ -49,7 +49,15 @@ A placement rule may also name:
 A blueprint or a component may bind `resource_pool`, `host` and
 `datastore_cluster` too. The rule stays the outer bound: a bound pool is
 the rule's or one below it, a bound host matches the rule's patterns, and
-a bound datastore cluster gives only the datastores the rule allows.
+a bound datastore cluster gives only the datastores the rule allows. A
+rule's pool and patterns are checked when it is saved: a pool path is
+`a/b`, without empty parts.
+
+The administration's placement preview (`PlacementPreview`) says, per
+cluster, the pool and strategy, counts only the hosts the rule allows,
+and lists as a problem a cluster without the rule's pool, a datastore
+cluster vCenter doesn't have, and a cluster none of whose allowed hosts
+takes new VMs.
 
 ### Strategies
 - **`most_free_memory`** (the default): the cluster with the most free
@@ -63,8 +71,9 @@ a bound datastore cluster gives only the datastores the rule allows.
 - The strategy is the rule's that allows the candidate clusters; when
   rules of different strategies allow them, the first by priority wins.
 - The preview's `placement.strategy` says which strategy chose the
-  cluster. A strategy other than the default adds a note to the timeline's
-  placement step ("binpack chose GVA-DEV-CL01: the least free memory with
+  cluster, and the request form's summary names a strategy other than the
+  default. A strategy other than the default adds a note to the timeline's
+  placement step ("Binpack chose GVA-DEV-CL01: the least free memory with
   room for 2 VMs of 8 GB"), titled "Placed by rules" alone or "Placed by
   rules and constraint tags". The default adds none, so that requests
   placed the usual way keep their timelines.

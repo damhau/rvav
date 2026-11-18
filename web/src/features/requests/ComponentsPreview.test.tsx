@@ -70,4 +70,23 @@ describe("ComponentsPreview", () => {
       within(screen.getByRole("listitem", { name: "Web servers" })).queryByRole("list", { name: "Placed by tags" }),
     ).toBeNull();
   });
+
+  it("says the resource pool, datastore cluster and strategy that placed a component (ADR-0036)", () => {
+    const placed: PreviewComponent = {
+      ...db,
+      placement: {
+        cluster: "GVA-PRD-CL02",
+        resource_pool: "rvav/prd",
+        hosts: ["esx-gva-prd2-02.corp.example"],
+        datastore: "nfs-gva-dev-sdrs-01",
+        datastore_cluster: "dsc-gva-dev-01",
+        strategy: "binpack",
+        chosen: true,
+      },
+    };
+    render(<ComponentsPreview components={[placed]} />);
+    expect(screen.getByRole("listitem", { name: "Database" })).toHaveTextContent(
+      "GVA-PRD-CL02/rvav/prd · hosts esx-gva-prd2-02.corp.example · nfs-gva-dev-sdrs-01 in dsc-gva-dev-01 (chosen by rvav, binpack)",
+    );
+  });
 });

@@ -272,29 +272,63 @@ rules choose clusters and datastores by them
 a blueprint's constraints choose the clusters, datastores and networks
 whose tags it needs, for example a production cluster outside the PCI
 zone ([constraint tags](../service-catalog.md#vm-blueprints),
-[ADR-0035](../adr/0035-constraint-tags.md)). Tags on hosts aren't read.
+[ADR-0035](../adr/0035-constraint-tags.md)). It reads the tags on hosts,
+resource pools and datastore clusters too: a compute constraint is met by
+a host or its cluster, and a datastore in a datastore cluster carries the
+datastore cluster's tags ([ADR-0036](../adr/0036-placement-targets.md)).
 
 To tag vCenter objects for rvav:
 1. In the vSphere Client, open **Tags & Custom Attributes** and create a
    category, for example `rvav-tier`. Under **Associable object types**,
-   choose what its tags go on: **Cluster**, **Datastore**, **Distributed
-   Port Group** or **Network**.
+   choose what its tags go on: **Cluster**, **Host**, **Datastore**,
+   **Datastore Cluster**, **Distributed Port Group** or **Network**.
 2. Create the category's tags, for example `gold` and `bronze`. Keep `/`
    and `:` out of category and tag names: rvav writes a tag as
    `category/tag`.
-3. Assign the tags to the clusters, datastores and port groups.
+3. Assign the tags to the clusters, hosts, datastores, datastore clusters
+   and port groups.
 4. Wait for the next full read of the inventory: tags have no change
    notifications, so they come with the full read every sync interval
    (2 minutes by default).
 5. To check what rvav read, open **Administration › Templates and
    networks**, then the **vCenter objects** tab. It lists each cluster,
-   datastore and network with its tags; search by a tag to see which
-   objects carry it.
+   host, resource pool, datastore, datastore cluster and network with its
+   tags; search by a tag to see which objects carry it.
 
 rvav reads tags through vCenter's tagging service, with the vCenter
 account's credentials. When the service can't be read, the sync keeps the
 tags it read last, and the vCenter's test in **Integrations** says so
 under **Tagging service**.
+
+## Placement rules
+
+A placement rule says where a project's VMs go in an environment
+([ADR-0020](../adr/0020-administration.md)). Requests use the first rule,
+lowest priority first, that allows the cluster. To add one, open the
+project in **Administration › Projects**, then the **Placement** tab, and
+click **New rule**.
+
+| Field | What it says |
+|---|---|
+| **Clusters**, **Cluster tags** | The clusters allowed, by name pattern (`GVA-DEV-*`) or by tag; a cluster needs every tag. |
+| **Resource pool** | The pool VMs go to in each cluster, by its path below the cluster's root pool, for example `rvav/dev`. A cluster without it isn't used. Empty: the root pool. |
+| **Hosts** | Host name patterns, for example `esx-gva-dev-0[12]*`. VMs start on the connected hosts out of maintenance that match, in turn. Empty: any host of the cluster. |
+| **Datastores**, **Datastore tags** | The datastores allowed, by name pattern or by tag. |
+| **Datastore cluster** | A datastore cluster whose datastores are allowed, narrowed by the datastore patterns and tags when you give any. When Storage DRS is on, rvav asks it which datastore each VM goes to. |
+| **Strategy** | How rvav chooses the cluster when a blueprint doesn't bind one: **Most free memory** (the default), **Binpack** (the least free memory that still fits the VMs, filling clusters one after the other) or **Spread** (the fewest VMs of rvav). |
+| **Networks** | The networks allowed, by name pattern. |
+| **VM folder**, **Storage policy**, **vCenter** | Where VMs are filed, their storage policy, and the vCenter, needed when a cluster's name is in two. |
+
+A rule needs datastores, datastore tags or a datastore cluster. The
+blueprint's constraint tags choose within what the rules allow
+([constraint tags](../service-catalog.md#vm-blueprints)), and the strategy
+chooses among the clusters left. A request's preview shows the resource
+pool, hosts and strategy, and the timeline says when a strategy other
+than **Most free memory** chose the cluster.
+
+**What the project gets** under the rules lists the clusters, datastores
+and networks they allow, and what stops a request, such as a cluster
+without the rule's resource pool.
 
 ## NSX networks
 

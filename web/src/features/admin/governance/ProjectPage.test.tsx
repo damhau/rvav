@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { adminState } from "@/mocks/administration";
 import { customRoles } from "@/mocks/roles";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -87,6 +88,37 @@ describe("a project's placement and quotas", () => {
     expect(confirm).toHaveTextContent(/nowhere to go|other rules? stay/);
     await user.click(within(confirm).getByRole("button", { name: "Remove rule" }));
     expect(await screen.findByText("Placement rule removed")).toBeInTheDocument();
+  });
+
+  it("names a resource pool, hosts, a datastore cluster and a strategy in a rule (ADR-0036)", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const rules = await screen.findByRole("region", { name: "Placement rules" });
+    const menus = await within(rules).findAllByRole("button", { name: /^Actions for the rule of priority/ });
+    await user.click(menus[0]!);
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Change placement rule for Web Platform in dev" });
+    expect(within(sheet).getByRole("combobox", { name: "Strategy" })).toHaveTextContent("Most free memory");
+    await user.type(within(sheet).getByLabelText("Resource pool"), "/rvav/dev/");
+    await user.type(within(sheet).getByLabelText("Hosts"), "esx-gva-dev-0*");
+    await user.clear(within(sheet).getByLabelText("Datastores"));
+    await user.type(within(sheet).getByLabelText("Datastore cluster"), "dsc-gva-dev-01");
+    await user.click(within(sheet).getByRole("combobox", { name: "Strategy" }));
+    await user.click(await screen.findByRole("option", { name: /^Binpack/ }));
+    await user.click(within(sheet).getByRole("button", { name: "Save rule" }));
+    expect(await screen.findByText("Placement rule saved")).toBeInTheDocument();
+    const saved = adminState(db).rules.find((r) => r.id === "plc_web_dev")!;
+    expect(saved).toMatchObject({
+      resource_pool: "rvav/dev",
+      hosts: ["esx-gva-dev-0*"],
+      datastores: [],
+      datastore_cluster: "dsc-gva-dev-01",
+      strategy: "binpack",
+    });
+    const row = await within(rules).findByRole("row", { name: /pool rvav\/dev/ });
+    expect(row).toHaveTextContent("hosts esx-gva-dev-0*");
+    expect(row).toHaveTextContent("cluster dsc-gva-dev-01");
+    expect(row).toHaveTextContent("Binpack");
   });
 
   it("adds a limit in a sheet, refuses a second one on the same resource and place, and shows what is taken", async () => {

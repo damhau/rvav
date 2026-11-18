@@ -4151,9 +4151,17 @@ export interface components {
         ComponentPlacement: {
             vcenter?: string;
             cluster?: string;
+            /** @description Its path below the cluster's root pool (ADR-0036); absent for the root pool. */
+            resource_pool?: string;
+            /** @description The hosts its VMs start on, when the rule, a binding or host tags narrow them (ADR-0036); absent for any of the cluster's. */
+            hosts?: string[];
             datastore?: string;
+            /** @description The datastore cluster `datastore` is in, when the rule or the blueprint names one (ADR-0036). With Storage DRS on, the VMs go to the datastore it recommends. */
+            datastore_cluster?: string;
             folder?: string;
             storage_policy?: string;
+            /** @description The strategy that chose the cluster; absent when it was bound. */
+            strategy?: components["schemas"]["PlacementStrategy"];
             /** @description rvav chose the cluster, a datastore or the network (they weren't given). */
             chosen?: boolean;
             /** @description What its constraint tags chose or ruled out (ADR-0035), in the order they applied. */
@@ -5685,9 +5693,20 @@ export interface components {
             environment: components["schemas"]["EnvironmentKey"];
             /** @description Lower first. */
             priority: number;
-            /** @description Cluster or resource pool names; `*` matches any text (GVA-DEV-*). */
+            /** @description Cluster names; `*` matches any text (GVA-DEV-*). `resource_pool` names a pool within them. */
             clusters: string[];
+            /**
+             * @description The resource pool VMs go to in each cluster, by its path below the cluster's root pool (ADR-0036); a cluster without it isn't used. Empty for the root pool.
+             * @example rvav/dev
+             */
+            resource_pool: string;
+            /** @description Host name patterns (ADR-0036): VMs start on the connected hosts out of maintenance that match. Empty for any of the cluster's. */
+            hosts: string[];
+            /** @description Datastore names; `*` matches any text. */
             datastores: string[];
+            /** @description A datastore cluster whose datastores the rule allows, narrowed by `datastores` and `datastore_tags` when they're given (ADR-0036); empty for none. */
+            datastore_cluster: string;
+            strategy: components["schemas"]["PlacementStrategy"];
             networks: string[];
             /** @example /GVA/vm/rvav/web/dev */
             folder: string;
@@ -5714,8 +5733,21 @@ export interface components {
             datastore_tags?: string[];
             storage_policy?: string;
             vcenter?: string;
+            resource_pool?: string;
+            hosts?: string[];
+            datastore_cluster?: string;
+            strategy?: components["schemas"]["PlacementStrategy"];
             segments?: components["schemas"]["PlacementSegments"] | null;
         };
+        /**
+         * @description How rvav chooses among the clusters the rules and constraints leave
+         *     when a blueprint doesn't bind one (ADR-0036): the most free memory;
+         *     binpack, the least free memory that still has room for the VMs; or
+         *     spread, the fewest VMs of rvav's deployments.
+         * @default most_free_memory
+         * @enum {string}
+         */
+        PlacementStrategy: "most_free_memory" | "binpack" | "spread";
         PlacementSegments: {
             /**
              * @description The ID of the Tier-1 gateway they connect to.
@@ -5752,8 +5784,12 @@ export interface components {
         };
         PreviewCluster: {
             name: string;
+            /** @description Those its rule allows VMs on. */
             hosts: number;
             tags: string[];
+            /** @description The pool its rule puts VMs in; absent for the root pool. */
+            resource_pool?: string;
+            strategy?: components["schemas"]["PlacementStrategy"];
         };
         PreviewDatastore: {
             name: string;
