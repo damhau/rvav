@@ -684,7 +684,7 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 			}
 			extra = append(extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
 		}
-		if (in.Guest.CloudInit != nil || in.VM.ImageUserData != "") && in.Guest.OSFamily != "windows" {
+		if (in.Guest.CloudInit != nil || in.VM.ImageUserData != "" || in.Guest.RemoteAccess != nil) && in.Guest.OSFamily != "windows" {
 			return a.cloudInit(ctx, in, extra)
 		}
 		cu := vsphere.Customization{
@@ -830,18 +830,33 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 			return "", "", permanent("the template's cloud-init user data: %v. Ask an administrator to check the template.", err)
 		}
 	}
-	user, err := mergeUserData(image, own)
+	acc, err := a.remoteAccess(ctx, in, inputs)
+	if err != nil {
+		return "", "", err
+	}
+	user, err := userData(image, own, acc)
 	if err != nil {
 		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 	}
+	if acc != nil && acc.password != "" {
+		if meta, err = withCleanup(meta); err != nil {
+			return "", "", err
+		}
+	}
 	if err := vc.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
 		return "", "", fmt.Errorf("vCenter: %w", err)
+	}
+	if err := a.recordAccess(ctx, in, acc); err != nil {
+		return "", "", err
 	}
 	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo", in.VM.Name, in.IP, in.VM.PrefixLength)
 	if image != "" && own != "" {
 		detail += ", the template's user data merged with the item's"
 	} else if image != "" {
 		detail += ", the template's user data"
+	}
+	if acc != nil {
+		detail += ", " + acc.describe()
 	}
 	return "Wrote cloud-init metadata and user data", detail, nil
 }
@@ -1527,6 +1542,8 @@ func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (stri
 		_ = json.Unmarshal(r.Properties, &p)
 		err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)})
 		what = "released " + p.Address
+	case AccessResource:
+		err = a.Store.ForgetDeploymentKey(ctx, a.Store.Pool, r.DeploymentID, nil)
 	}
 	if err != nil {
 		return "", err
@@ -1554,8 +1571,8 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 	// then the groups they name; NSX segments after the VMs and addresses
 	// on them, their subnets last.
 	order := map[string]int{"vsphere.drs_rule": 0, "nsx.membership": 1, "vsphere.vm": 2, "dns.record": 3, "ipam.address": 4,
-		"nsx.policy": 5, "nsx.group": 6, "nsx.segment": 7, "ipam.subnet": 8}
-	for pass := 0; pass < 9; pass++ {
+		"nsx.policy": 5, "nsx.group": 6, "nsx.segment": 7, "ipam.subnet": 8, AccessResource: 9}
+	for pass := 0; pass < 10; pass++ {
 		for _, r := range list {
 			if order[r.Type] != pass {
 				continue

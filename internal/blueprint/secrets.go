@@ -114,8 +114,9 @@ func UserDataSecrets(text string) ([]SecretRef, error) {
 }
 
 // Secrets lists the stored secrets a blueprint names: a Windows guest's
-// password and domain join, user data's {{ secret "name" }}, and the
-// ${secret.name} bindings of AWX steps and their undo.
+// password and domain join, the remote access's key or password, user
+// data's {{ secret "name" }}, and the ${secret.name} bindings of AWX
+// steps and their undo.
 func (b Blueprint) Secrets() []SecretRef {
 	var refs []SecretRef
 	for i, c := range b.ComponentList() {
@@ -157,6 +158,9 @@ func guestSecrets(g Guest, at string) []SecretRef {
 	}
 	if j := g.DomainJoin; j != nil && j.Credential != "" {
 		refs = append(refs, SecretRef{Name: j.Credential, Pointer: at + "/domain_join/credential"})
+	}
+	if ra := g.RemoteAccess; ra != nil && ra.Secret != "" {
+		refs = append(refs, SecretRef{Name: ra.Secret, Pointer: at + "/remote_access/secret"})
 	}
 	if ci := g.CloudInit; ci != nil {
 		names, _ := UserDataSecrets(ci.UserData)

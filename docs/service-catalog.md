@@ -301,7 +301,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, `{bindings.<key>}` (a binding of the VMs it names, such as `inputs.app.lowerAscii()`), ending with `{seq}` or `{seq:03}` |
 | `template`, `library` | The vCenter template; with `library`, the item of that content library. The `template` binding gives the key of a template of **Templates and networks** instead (the `rvav.templates` picker): see **Templates per vCenter** below |
-| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`; a stored secret as `{{ secret "name" \| json }}`, its name in quotes, opened only when the VM is built; saving refuses a secret that doesn't exist, with its line) |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`; a stored secret as `{{ secret "name" \| json }}`, its name in quotes, opened only when the VM is built; saving refuses a secret that doesn't exist, with its line); `remote_access` (the user people sign in as: see **Remote access** below) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `resource_pool` (a pool's path below the cluster's root pool, such as `rvav/dev`), `host`, `datastore`, `datastore_cluster`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy`, `constraints` (the disk's own storage constraints, below), `provisioning` (over the blueprint's) |
@@ -352,6 +352,37 @@ the blueprint has no `cloud_init`, so the blueprint can't name a
 `linked_clone` unless the blueprint sets it: a linked clone keeps the
 template's disk size, so a `disk_gb` larger than the template's first
 disk fails the clone.
+
+**Remote access** ([ADR-0039](adr/0039-guest-access-and-networking.md)):
+`guest.remote_access` gives the VMs a user people sign in as, on the
+blueprint for every component or on a component for its own VMs:
+
+| Field | What it is |
+|---|---|
+| `kind` | `ssh_key` (a public key you give), `generated_key` (rvav makes a key pair for each deployment) or `password` |
+| `username` | The user, created on the VM with `sudo` without a password. On Linux: lowercase letters, digits, `_` and `-`, not `root` |
+| `public_key` | With `ssh_key`: the key itself (`ssh-ed25519 AAAA… ops@laptop`), or the input that holds it, as `${inputs.ssh_key}` |
+| `password` | With `password`: a secret input, as `${inputs.password}`. A plain input is refused: it is kept with the request |
+| `secret` | With `ssh_key` or `password`: a stored secret that holds the public key or the password, instead of `public_key` or `password` |
+
+```yaml
+guest:
+  os_family: linux
+  remote_access: {kind: ssh_key, username: ops, public_key: "${inputs.ssh_key}"}
+```
+
+On Linux, rvav adds the user to the VM's cloud-init user data, after the
+template's and the blueprint's `cloud_init`: as a list entry when every
+part is `#cloud-config`, else as a part of its own. The distribution's
+default user (`ubuntu`, `cloud-user`) stays unless the user data lists
+`users` itself. A password turns on SSH password sign-in and has
+cloud-init clear the user data from the VM's guestinfo once it read it.
+The VMs are configured by cloud-init, so the blueprint can't name a
+`customization_spec` with `remote_access`, and a request is refused when
+the `template` binding chooses a Windows template or one with a
+customization specification. The deployment's request shows the user
+and the key's fingerprint on its customize step, never the key or the
+password.
 
 **Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
 placement rule may put the VMs in a resource pool, on some hosts, or in a

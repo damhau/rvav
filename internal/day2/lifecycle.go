@@ -234,6 +234,8 @@ func init() {
 				{"nsx.group", "nsx.group.delete", "Delete the NSX security groups", "nsx"},
 				{"nsx.segment", "nsx.segment.delete", "Delete the NSX segments", "nsx"},
 				{"ipam.subnet", "ipam.subnet.delete", "Delete the segments' subnets", "efficientip"},
+				// A generated private key not downloaded is forgotten (ADR-0039).
+				{"guest.access", "rvav.access.forget", "Forget the remote access", "rvav"},
 			} {
 				deleteAll(typ.typ, typ.key, typ.title, typ.system)
 			}

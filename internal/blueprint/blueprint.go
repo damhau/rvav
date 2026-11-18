@@ -143,6 +143,8 @@ type Guest struct {
 	AdminPassword string      `json:"admin_password,omitempty"`
 	DomainJoin    *DomainJoin `json:"domain_join,omitempty"`
 	CloudInit     *CloudInit  `json:"cloud_init,omitempty"`
+	// RemoteAccess is the user people sign in as (ADR-0039).
+	RemoteAccess *RemoteAccess `json:"remote_access,omitempty"`
 }
 
 // DomainJoin joins a Windows VM to an Active Directory domain with the
@@ -175,6 +177,9 @@ func (g Guest) merge(o *Guest) Guest {
 	}
 	if o.CloudInit != nil {
 		g.CloudInit = o.CloudInit
+	}
+	if o.RemoteAccess != nil {
+		g.RemoteAccess = o.RemoteAccess
 	}
 	return g
 }

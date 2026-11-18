@@ -254,6 +254,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				part.image.Label, part.guest.CustomizationSpec))
 		}
 	}
+	if msg := accessProblem(part.guest, part.image); msg != "" {
+		add(field("template"), "invalid", msg)
+	}
 	part.linkedClone = part.image != nil && part.image.LinkedClone
 	if c.LinkedClone != nil {
 		part.linkedClone = *c.LinkedClone

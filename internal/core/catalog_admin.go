@@ -703,6 +703,7 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 	switch b.Kind {
 	case blueprint.KindVM:
 		errs = append(errs, checkVMBlueprint(b, ptr, publish)...)
+		errs = append(errs, checkRemoteAccess(b, fields, ptr)...)
 	case blueprint.KindWorkflow:
 		if b.Workflow == "" && publish {
 			errs = append(errs, fieldErr(ptr+"/workflow", "required", "Name the registered custom workflow it starts."))

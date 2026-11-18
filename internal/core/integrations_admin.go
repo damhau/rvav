@@ -776,5 +776,26 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 			n++
 		}
 	}
+	// Generated private keys not downloaded yet (ADR-0039).
+	keys, err := st.DeploymentKeysNotWith(ctx, box.KeyID())
+	if err != nil {
+		return n, err
+	}
+	for _, k := range keys {
+		name := store.DeploymentKeyName(k.DeploymentID)
+		plain, err := box.Open(name, deref(k.KeyID), k.Nonce, k.Ciphertext)
+		if err != nil {
+			return n, fmt.Errorf("deployment %s's private key: %w", k.DeploymentID, err)
+		}
+		keyID, nonce, ct, err := box.Seal(name, plain)
+		if err != nil {
+			return n, err
+		}
+		if done, err := st.ResealDeploymentKey(ctx, k.DeploymentID, k.Nonce, keyID, nonce, ct); err != nil {
+			return n, err
+		} else if done {
+			n++
+		}
+	}
 	return n, nil
 }
