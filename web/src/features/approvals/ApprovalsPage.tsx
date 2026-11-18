@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Textarea } from "@/components/ui/input";
+import { Field, Input, Textarea } from "@/components/ui/input";
 import { openerOf } from "@/components/ui/opener";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -195,10 +195,10 @@ function EditableInput({
   }
   return (
     <Field label={field.label} htmlFor={id}>
-      <input
+      <Input
         id={id}
         type="number"
-        className="h-8 w-32 rounded-md border border-line-strong bg-surface px-2.5 text-body"
+        className="w-32"
         min={field.minimum}
         max={field.maximum}
         value={toText(value)}

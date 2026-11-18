@@ -18,6 +18,10 @@ test("make an API token, see it once, revoke it", async ({ page }) => {
   const tokens = page.getByRole("region", { name: "Your tokens" });
   await expect(tokens.getByText("Terraform")).toBeVisible();
   await tokens.getByRole("button", { name: "Revoke Terraform" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Revoke Terraform?" })
+    .getByRole("button", { name: "Revoke token" })
+    .click();
   await expect(page.getByText("Token revoked")).toBeVisible();
   await expect(tokens.getByText("Terraform")).toBeHidden();
   await page.getByRole("checkbox", { name: "Everyone's" }).click();

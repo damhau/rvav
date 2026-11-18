@@ -576,11 +576,25 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
   );
 }
 
-function History({ deploymentId }: { deploymentId: string }) {
+function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?: string }) {
   const history = useQuery(q.deploymentHistory(deploymentId));
   if (history.isError) return <ErrorState error={history.error} onRetry={() => void history.refetch()} />;
   if (!history.data) return <SkeletonRows rows={3} cols={3} />;
-  if (history.data.items.length === 0) return <p className="text-secondary text-muted">Nothing has run on it yet.</p>;
+  if (history.data.items.length === 0)
+    return (
+      <p className="text-secondary text-muted">
+        No day-2 action has run on it yet.
+        {createdBy && (
+          <>
+            {" "}
+            <Link to="/requests/$requestId" params={{ requestId: createdBy }}>
+              {createdBy}
+            </Link>{" "}
+            created it.
+          </>
+        )}
+      </p>
+    );
   return (
     <ol className="flex flex-col">
       {history.data.items.map((r) => (
@@ -667,6 +681,8 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
               deploymentId={deploymentId}
               actions={actions}
               loading={actionsQ.isPending}
+              failed={actionsQ.isError}
+              onRetry={() => void actionsQ.refetch()}
               onPick={pick}
             />
           )
@@ -700,7 +716,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
             </TabsContent>
             <TabsContent value="history" className="pt-4">
               <Panel title="History">
-                <History deploymentId={deploymentId} />
+                <History deploymentId={deploymentId} createdBy={d?.created_by_request_id} />
               </Panel>
             </TabsContent>
             <TabsContent value="inputs" className="pt-4">

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 import { keys } from "@/lib/query";
@@ -73,24 +73,21 @@ export function FailureActions({
           {undone ? "Retry" : "Retry from the failed step"}
         </Button>
         {request.kind !== "day2" && !undone && (
-          <Dialog open={confirmRollback} onOpenChange={setConfirmRollback}>
+          <>
             <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
               Roll back
             </Button>
-            <DialogContent
+            <ConfirmDialog
+              open={confirmRollback}
+              onOpenChange={setConfirmRollback}
               title={`Roll back ${request.number}?`}
               description="Deletes what it created: the VM, its IP address and DNS records. You can retry it afterwards."
-            >
-              <div className="flex justify-end gap-2 px-4 py-3">
-                <DialogClose asChild>
-                  <Button>Keep it</Button>
-                </DialogClose>
-                <Button variant="danger-solid" onClick={() => rollback.mutate()} disabled={rollback.isPending}>
-                  Roll back
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              confirmLabel="Roll back"
+              cancelLabel="Keep it"
+              pending={rollback.isPending}
+              onConfirm={() => rollback.mutate()}
+            />
+          </>
         )}
       </div>
     </div>

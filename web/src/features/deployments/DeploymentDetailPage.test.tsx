@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -23,6 +25,28 @@ describe("a deployment's page against the mock API", () => {
     expect(within(menu).getByRole("menuitem", { name: "Delete" })).not.toHaveAttribute("data-disabled");
   });
 
+  it("says when its actions couldn't be read, and reads them again", async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    server.use(
+      http.get("*/api/v1/deployments/:id/actions", () =>
+        fail
+          ? HttpResponse.json(
+              { type: "about:blank", title: "Unavailable", status: 503, request_id: "req" },
+              { status: 503, headers: { "Content-Type": "application/problem+json" } },
+            )
+          : undefined,
+      ),
+    );
+    renderApp(`/deployments/${idOf("web-dev-api")}`);
+    await user.click(await screen.findByRole("button", { name: "Actions" }, { timeout: 5000 }));
+    expect(await screen.findByText("The actions could not be loaded", {}, { timeout: 5000 })).toBeInTheDocument();
+    fail = false;
+    await user.click(screen.getByRole("menuitem", { name: "Try again" }));
+    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    expect(await screen.findByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  });
+
   it("asks before a risky action, saying what it changes", async () => {
     const user = userEvent.setup();
     renderApp(`/deployments/${idOf("web-dev-api")}`);
@@ -32,6 +56,8 @@ describe("a deployment's page against the mock API", () => {
     expect(dialog).toHaveTextContent("Deletes the VMs and releases their IP addresses and DNS records.");
     const confirm = within(dialog).getByRole("button", { name: "Delete" });
     expect(confirm).toBeDisabled();
+    // What it asks has the focus, not Close.
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: /to confirm/ })).toHaveFocus());
     await user.type(within(dialog).getByRole("textbox", { name: /to confirm/ }), "web-dev-api");
     expect(confirm).toBeEnabled();
   });

@@ -247,7 +247,7 @@ test("approve or reject: a reject fails it, a Retry asks again, a cancel takes t
 
   // A cancel stops the wait and takes the question away.
   await page.getByRole("button", { name: "Cancel request" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel request" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel request" }).click();
   await expect(answer).toHaveCount(0);
   await expect(asked.getByText("Cancelled")).toBeVisible();
   await expect(run.getByRole("button", { name: /^Person A manager's OK\. Cancelled\./ })).toBeVisible();

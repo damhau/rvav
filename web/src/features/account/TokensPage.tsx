@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -81,12 +82,14 @@ export function TokensPage() {
   const isAdmin = can(me, "tokens.manage");
   const [everyone, setEveryone] = useState(false);
   const [made, setMade] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
   const tokens = useQuery(q.tokens(everyone));
   const revoke = useMutation({
     mutationFn: (id: string) => call(api.DELETE("/tokens/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tokens"] });
       toast.success("Token revoked");
+      setRevoking(null);
     },
     onError: (e) => toast.error(isApiError(e) ? e.problem.title : "Not revoked"),
   });
@@ -95,7 +98,7 @@ export function TokensPage() {
     <Page>
       <PageHeader
         title="API tokens"
-        meta="Scripts and pipelines call rvav's API with a token, as you. Its value is shown once."
+        description="Scripts and pipelines call rvav's API with a token, as you. Its value is shown once."
       />
       <Panel title="New token">
         <NewToken onMade={setMade} />
@@ -187,10 +190,7 @@ export function TokensPage() {
                         size="sm"
                         variant="quiet"
                         aria-label={`Revoke ${t.name}`}
-                        disabled={revoke.isPending}
-                        onClick={() =>
-                          window.confirm(`Revoke ${t.name}? What uses it stops working.`) && revoke.mutate(t.id)
-                        }
+                        onClick={() => setRevoking({ id: t.id, name: t.name })}
                       >
                         Revoke
                       </Button>
@@ -202,6 +202,18 @@ export function TokensPage() {
           </div>
         )}
       </Panel>
+      {revoking && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRevoking(null)}
+          title={`Revoke ${revoking.name}?`}
+          description="The token stops working at once. This can't be undone: make a new token to replace it."
+          consequences="Scripts and pipelines that call rvav with it are refused from now on."
+          confirmLabel="Revoke token"
+          pending={revoke.isPending}
+          onConfirm={() => revoke.mutate(revoking.id)}
+        />
+      )}
     </Page>
   );
 }

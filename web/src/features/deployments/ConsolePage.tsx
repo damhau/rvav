@@ -185,9 +185,9 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
           <p className="flex items-start gap-2 text-secondary text-muted">
             <Power className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
-              The web console is not set up here: an administrator provides VMware&apos;s HTML console client
-              (RVAV_WMKS_SDK_URLS). Open the console in VMware Remote Console instead; it needs VMRC installed and
-              access to vCenter and the ESXi hosts.
+              The web console is not set up here: an administrator can set it up in Integrations › vCenter, with
+              VMware&apos;s WebMKS SDK scripts. Open the console in VMware Remote Console instead; it needs VMRC
+              installed and access to vCenter and the ESXi hosts.
             </span>
           </p>
         </Panel>

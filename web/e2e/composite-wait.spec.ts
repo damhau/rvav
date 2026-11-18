@@ -194,7 +194,7 @@ test("a wait and a poll, filled in from the keyboard, published, requested, wait
 
   // A cancel stops it, whatever is left to wait.
   await page.getByRole("button", { name: "Cancel request" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel request" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel request" }).click();
   await expect(run.getByRole("button", { name: /^Wait Keep it three days\. Cancelled\./ })).toBeVisible();
   await expect(run.getByRole("button", { name: /^Poll The change is approved\. Skipped\./ })).toBeVisible();
   await page.getByRole("button", { name: "Timeline" }).click();
@@ -264,7 +264,7 @@ test("a poll that stays says its last check; its deadline fails it, and a time t
   await expect(selected).toContainText("Checks every 6h. Last check: GET answered 200, not yet.");
   await expect(selected).toContainText(untilWhen);
   await page.getByRole("button", { name: "Cancel request" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel request" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel request" }).click();
   await expect(run.getByRole("button", { name: /^Poll It stays\. Cancelled\./ })).toBeVisible();
 
   // Its deadline fails it; a Retry starts it again, and the deadline comes again.

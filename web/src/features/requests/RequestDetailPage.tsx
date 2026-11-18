@@ -15,7 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Timeline } from "@/components/common/timeline";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
@@ -59,28 +59,25 @@ function CancelButton({ request }: { request: ServiceRequest }) {
       }),
   });
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
       <Button variant="danger" onClick={() => setOpen(true)}>
         Cancel request
       </Button>
-      <DialogContent
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
         title={`Cancel ${request.number}?`}
         description={
           request.status === "running"
             ? "The request stops after the step that is running now. The VM, IP address and DNS records it created are removed."
             : "The request is withdrawn before anything is created."
         }
-      >
-        <div className="flex justify-end gap-2 px-4 py-3">
-          <DialogClose asChild>
-            <Button>Keep it running</Button>
-          </DialogClose>
-          <Button variant="danger-solid" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
-            Cancel request
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        confirmLabel="Cancel request"
+        cancelLabel="Keep it running"
+        pending={cancel.isPending}
+        onConfirm={() => cancel.mutate()}
+      />
+    </>
   );
 }
 

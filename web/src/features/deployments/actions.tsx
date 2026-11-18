@@ -139,6 +139,16 @@ export function ActionDialog({
             : undefined)
         }
         className="w-[min(560px,calc(100vw-32px))]"
+        onOpenAutoFocus={(e) => {
+          // What it asks first (a field, the reason, the name to type) rather than Close.
+          const field = (e.target as HTMLElement).querySelector<HTMLElement>(
+            "form :is(input, textarea, select, [role=combobox]):not([disabled]):not([readonly])",
+          );
+          if (field) {
+            e.preventDefault();
+            field.focus();
+          }
+        }}
       >
         <form
           className="flex flex-col gap-3 px-4 py-3"
@@ -253,11 +263,16 @@ export function DeploymentActionsMenu({
   deploymentId,
   actions,
   loading,
+  failed,
+  onRetry,
   onPick,
 }: {
   deploymentId: string;
   actions: Day2Action[];
   loading: boolean;
+  /** The actions couldn't be read: the menu says so, and offers to read them again. */
+  failed?: boolean;
+  onRetry?: () => void;
   onPick: (a: Day2Action) => void;
 }) {
   const vms = [
@@ -277,6 +292,11 @@ export function DeploymentActionsMenu({
       <MenuContent className="min-w-64">
         {loading ? (
           <MenuLabel>Loading…</MenuLabel>
+        ) : failed ? (
+          <>
+            <MenuLabel>The actions could not be loaded</MenuLabel>
+            {onRetry && <MenuItem onSelect={onRetry}>Try again</MenuItem>}
+          </>
         ) : (
           <>
             {(top.length > 0 || vms.length === 0) && (

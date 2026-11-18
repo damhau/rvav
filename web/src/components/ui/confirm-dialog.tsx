@@ -11,6 +11,8 @@ interface ConfirmProps {
   consequences?: React.ReactNode;
   /** Says the action, as on the button that asked: "Remove template". */
   confirmLabel: string;
+  /** The way out, when "Cancel" would read as the action: "Keep it running" next to "Cancel request". */
+  cancelLabel?: string;
   onConfirm: () => void;
   /** While the change runs: the buttons wait, and the dialog stays (Escape too) until the page closes it. */
   pending?: boolean;
@@ -40,6 +42,7 @@ function ConfirmContent({
   description,
   consequences,
   confirmLabel,
+  cancelLabel = "Cancel",
   onConfirm,
   pending,
   tone = "danger",
@@ -61,7 +64,7 @@ function ConfirmContent({
       <div className="flex flex-wrap justify-end gap-2">
         <A.Cancel asChild>
           <Button variant="secondary" disabled={pending}>
-            Cancel
+            {cancelLabel}
           </Button>
         </A.Cancel>
         <Button variant={tone === "danger" ? "danger-solid" : "primary"} disabled={pending} onClick={onConfirm}>
