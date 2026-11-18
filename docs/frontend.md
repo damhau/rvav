@@ -769,6 +769,14 @@ secret fields (`/me/drafts`). Drafts are listed at the top of Requests
 (`?from=REQ-…`): fields since removed, and masked secrets, stay out. A
 draft or request from another project switches to that project first.
 
+When the server refuses a submit (422), each error goes under its field
+and the focus moves to the first field that needs attention, or to its
+**Try again** when the field can't be filled until its options load. A
+message at the top of the form says how many inputs need attention, and
+lists the errors on inputs the form has no field for, with their names.
+The count drops as you change each input. The summary shows only what
+the form sends: no placement for a cluster it doesn't hold.
+
 ## Multi-VM items
 
 A blueprint with components builds one deployment
@@ -986,6 +994,9 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
 - The API returns RFC 9457 problem details; the client maps them to typed errors.
 - Field errors go into the form; other errors go into a toast or the route's
   error boundary, always with the `request_id` for support.
+- In mock mode, a test makes a source fail with
+  `window.__rvavMocks.faults.failFieldValues(field, times)` (`mocks/faults.ts`).
+  The client retries a 5xx twice, so `times: 3` fails one load.
 
 ## Testing strategy
 

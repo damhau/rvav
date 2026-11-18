@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { bothThemes, scan } from "./axe";
 
 // Every field type the designer offers (F1.1): a form with one of each,
 // built in the designer, passes axe in both themes in the designer's
@@ -39,39 +39,6 @@ const widgets = [
   "User",
   "Deployment",
 ];
-
-async function scan(page: Page, where: string) {
-  await expect(page.locator(".animate-pulse, [role=status][aria-label=Loading]")).toHaveCount(0);
-  await page.waitForTimeout(300);
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  const found = result.violations.map(
-    (v) =>
-      `${where}: ${v.id} (${v.impact}) ${v.help}\n    ` +
-      v.nodes
-        .slice(0, 5)
-        .map((n) => `${n.target.join(" ")}  ${n.html.slice(0, 160)}`)
-        .join("\n    "),
-  );
-  expect(found, found.join("\n")).toEqual([]);
-}
-
-// In the app: a reload would start the mock backend afresh.
-async function theme(page: Page, name: "Light" | "Dark") {
-  await page.getByRole("button", { name: /^Theme/ }).click();
-  await page.getByRole("menuitem", { name }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", name.toLowerCase());
-  await page.waitForTimeout(500);
-}
-
-async function bothThemes(page: Page, where: string) {
-  await theme(page, "Light");
-  await scan(page, `${where}, light`);
-  await theme(page, "Dark");
-  await scan(page, `${where}, dark`);
-  await theme(page, "Light");
-}
 
 test("a form with every field type, in the designer and requested", async ({ page }) => {
   test.setTimeout(180_000);

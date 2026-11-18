@@ -1,6 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import type { FieldError, FieldValuesQuery, RequestDraft } from "@/lib/api/types";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -12,6 +15,12 @@ async function openForm() {
   await screen.findByText("No approval needed", {}, { timeout: 5000 });
   await waitFor(() => expect(screen.getByLabelText("Role")).toHaveValue("app"));
   return app;
+}
+
+/** Waits until the sourced fields hold their server defaults, as the summary shows. */
+async function placed() {
+  const summary = screen.getByRole("region", { name: "Summary" });
+  await waitFor(() => expect(summary).toHaveTextContent(/Placement\S+ · \S+.*Network\S/), { timeout: 5000 });
 }
 
 describe("request form against the mock API", () => {
@@ -64,4 +73,115 @@ describe("request form against the mock API", () => {
     await screen.findByRole("heading", { name: "web-dev-app" }, { timeout: 5000 });
     expect(await screen.findByText("web-dev-app001")).toBeInTheDocument();
   }, 15000);
+});
+
+describe("request form when a value source fails or the server refuses", () => {
+  /** Fails the next `forms/values` call for the field, and keeps the bodies of `POST /requests`. */
+  function failOnce(field: string) {
+    let failed = false;
+    const sent: RequestDraft[] = [];
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.clone().json()) as FieldValuesQuery;
+        if (q.field !== field || failed) return undefined;
+        failed = true;
+        return HttpResponse.json(
+          { type: "about:blank", title: "Something went wrong on our side", status: 500, request_id: "r1" },
+          { status: 500 },
+        );
+      }),
+      http.post("*/api/v1/requests", async ({ request }) => {
+        sent.push((await request.clone().json()) as RequestDraft);
+        return undefined;
+      }),
+    );
+    return sent;
+  }
+
+  function refuse(errors: FieldError[]) {
+    server.use(
+      http.post("*/api/v1/requests", () =>
+        HttpResponse.json(
+          {
+            type: "https://rvav.dev/problems/validation",
+            title: "Some inputs need attention",
+            status: 422,
+            request_id: "r2",
+            errors,
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+  }
+
+  it("shows the failure in place, sends no value it doesn't show, and Try again recovers", async () => {
+    const user = userEvent.setup();
+    const sent = failOnce("cluster");
+    const { router } = await openForm();
+    const cluster = screen.getByRole("combobox", { name: "Cluster" });
+    await waitFor(() => expect(cluster).toHaveAccessibleDescription("Couldn't load the options."));
+    expect(cluster).toHaveTextContent("Not loaded");
+    const summary = screen.getByRole("region", { name: "Summary" });
+    await waitFor(() => expect(summary).toHaveTextContent(/Network\S/));
+    expect(summary).not.toHaveTextContent("Placement");
+
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]!.inputs).not.toHaveProperty("cluster");
+    expect(sent[0]!.inputs).not.toHaveProperty("datastore");
+    expect(await screen.findByText("2 inputs need attention.")).toBeInTheDocument();
+    expect(cluster).toHaveAttribute("aria-invalid", "true");
+    // The cluster can't be picked until its options load: the focus goes to what loads them.
+    const retry = screen.getByRole("button", { name: "Try again" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    // Recovered: the field takes the server's default, the datastore follows, and so does the summary.
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(cluster).toHaveTextContent("GVA-DEV-CL01"));
+    await waitFor(() => expect(cluster).toHaveFocus());
+    await waitFor(() => expect(summary).toHaveTextContent(/PlacementGVA-DEV-CL01 · \S+/));
+    await waitFor(() => expect(screen.queryByText(/inputs? needs? attention/)).not.toBeInTheDocument());
+    expect(cluster).not.toHaveAttribute("aria-invalid");
+
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+    expect(sent[1]!.inputs).toMatchObject({ cluster: "GVA-DEV-CL01", datastore: expect.any(String) as string });
+  }, 15_000);
+
+  it("puts a 422's errors on their fields, focuses the first, and counts them at the top", async () => {
+    const user = userEvent.setup();
+    await openForm();
+    await placed();
+    refuse([
+      { field: "/inputs/network", code: "required", message: "This field is required." },
+      { field: "/inputs/role", code: "pattern", message: "Use 2–12 lower-case letters." },
+    ]);
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    expect(await screen.findByText("2 inputs need attention.")).toBeInTheDocument();
+    const role = screen.getByLabelText("Role");
+    await waitFor(() => expect(role).toHaveFocus());
+    expect(role).toHaveAttribute("aria-invalid", "true");
+    expect(role).toHaveAccessibleDescription("Use 2–12 lower-case letters.");
+    const network = screen.getByRole("combobox", { name: "Network" });
+    expect(network).toHaveAttribute("aria-invalid", "true");
+    expect(network).toHaveAccessibleDescription("This field is required.");
+
+    // Each fix takes one off the count.
+    await user.type(role, "x");
+    expect(await screen.findByText("1 input needs attention.")).toBeInTheDocument();
+    expect(role).not.toHaveAttribute("aria-invalid");
+  }, 15_000);
+
+  it("says at the top what a 422 says of an input the form has no field for", async () => {
+    const user = userEvent.setup();
+    await openForm();
+    await placed();
+    refuse([{ field: "/inputs/zone", code: "required", message: "This field is required." }]);
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    const top = await screen.findByText("1 input needs attention.");
+    const alert = top.closest("[role=alert]");
+    expect(alert).toHaveTextContent("zone, not on this form: This field is required.");
+    await waitFor(() => expect(alert).toHaveFocus());
+  }, 15_000);
 });

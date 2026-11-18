@@ -62,6 +62,22 @@ export function fieldState(name: string, ui: UiField, schema: Schema, states?: F
   };
 }
 
+/** A section's fields that show, with their state. */
+function sectionFields(form: RequestForm, names: string[], states?: FieldStates) {
+  const schema = form.schema as Schema;
+  return names
+    .map((name) => ({ name, ui: form.ui_schema.fields[name] }))
+    .filter((f): f is { name: string; ui: UiField } => Boolean(f.ui))
+    .map((f) => ({ ...f, ui: withOwnSource(f.ui) }))
+    .map((f) => ({ ...f, state: fieldState(f.name, f.ui, schema, states) }))
+    .filter((f) => f.state.visible);
+}
+
+/** The inputs the form shows a field for, in the order they show. */
+export function shownFields(form: RequestForm, states?: FieldStates): string[] {
+  return form.ui_schema.layout.sections.flatMap((s) => sectionFields(form, s.fields, states).map((f) => f.name));
+}
+
 export function FormRenderer({
   form,
   values,
@@ -76,12 +92,7 @@ export function FormRenderer({
   return (
     <div className="flex flex-col gap-4">
       {form.ui_schema.layout.sections.map((section, i) => {
-        const fields = section.fields
-          .map((name) => ({ name, ui: form.ui_schema.fields[name] }))
-          .filter((f): f is { name: string; ui: UiField } => Boolean(f.ui))
-          .map((f) => ({ ...f, ui: withOwnSource(f.ui) }))
-          .map((f) => ({ ...f, state: fieldState(f.name, f.ui, schema, fieldStates) }))
-          .filter((f) => f.state.visible);
+        const fields = sectionFields(form, section.fields, fieldStates);
         if (fields.length === 0 && !(i === 0 && leading)) return null;
         return (
           <Panel key={section.key} as="fieldset" title={section.title} description={section.description}>
@@ -98,7 +109,11 @@ export function FormRenderer({
                 );
                 const value = state.computed !== undefined ? state.computed : values[name];
                 return (
-                  <div key={name} className={cn("flex min-w-0 flex-col gap-1.5", wide && "md:col-span-full")}>
+                  <div
+                    key={name}
+                    data-field={name}
+                    className={cn("flex min-w-0 flex-col gap-1.5", wide && "md:col-span-full")}
+                  >
                     {!selfLabelled.includes(ui.widget) && (
                       <div className="flex items-baseline justify-between gap-2">
                         <label id={`${id}-label`} htmlFor={id} className="text-secondary font-medium">

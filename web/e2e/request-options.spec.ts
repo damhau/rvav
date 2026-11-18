@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { bothThemes } from "./axe";
 
 // Request options against the mock backend (S11.6): drafts, how many, a
 // later start, on behalf of someone, and asking again.
@@ -56,3 +57,42 @@ test("request for someone else, later, then ask again", async ({ page }) => {
   await expect(page.getByText(/On behalf of\s+Thomas Nguyen/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("a value source that fails says so in place, and a refused submit points at what to fix", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/catalog");
+  const open = page.getByRole("link", { name: "Request RHEL 9 server" });
+  await expect(open).toBeVisible();
+  // Three calls: the first and the client's two retries.
+  await page.evaluate(() => (window as unknown as MockWindow).__rvavMocks.faults.failFieldValues("cluster", 3));
+  await open.click();
+  const cluster = page.getByRole("combobox", { name: "Cluster" });
+  const summary = page.getByRole("region", { name: "Summary" });
+  await expect(page.getByText("Couldn't load the options.")).toBeVisible({ timeout: 15_000 });
+  await expect(cluster).toHaveText("Not loaded");
+  await expect(summary).toContainText("Network");
+  await expect(summary).not.toContainText("Placement");
+
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page.getByText("2 inputs need attention.")).toBeVisible();
+  await expect(cluster).toHaveAttribute("aria-invalid", "true");
+  const retry = page.getByRole("button", { name: "Try again" });
+  await expect(retry).toBeFocused();
+  await bothThemes(page, "request form refused, a source failed");
+
+  await retry.focus();
+  await page.keyboard.press("Enter");
+  await expect(cluster).toHaveText("GVA-DEV-CL01");
+  await expect(cluster).toBeFocused();
+  await expect(summary).toContainText(/PlacementGVA-DEV-CL01 · \S/);
+  await expect(page.getByText(/needs? attention/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
+  expect(errors).toEqual([]);
+});
+
+interface MockWindow {
+  __rvavMocks: { faults: { failFieldValues(field: string, times: number): void } };
+}

@@ -16,7 +16,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { UserPicker } from "@/features/admin/governance/common";
-import { FormRenderer } from "@/forms/FormRenderer";
+import { FormRenderer, shownFields } from "@/forms/FormRenderer";
+import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
 import type {
@@ -46,6 +47,30 @@ const quotaLabel: Record<QuotaResource, [string, string]> = {
 };
 
 type ApprovalPreview = RequestPreview["approval"];
+
+/** The request's own options, by the key their errors map to (`mapFieldErrors`). */
+const requestOptions: Record<string, string> = {
+  $environment: "Environment",
+  $count: "How many",
+  $scheduled_at: "Start at",
+  $on_behalf_of: "For someone else",
+};
+
+/** The control that fixes an input's problem. */
+function controlOf(name: string): HTMLElement | null {
+  switch (name) {
+    case "$environment":
+      return document.querySelector('[aria-labelledby="env-label"] [aria-checked="true"]');
+    case "$count":
+      return document.getElementById("count");
+    case "$scheduled_at":
+      return document.getElementById("start-at");
+    case "$on_behalf_of":
+      return document.getElementById("on-behalf");
+    default:
+      return fieldControl(name);
+  }
+}
 
 /** Where a form starts from: a saved draft, or a past request asked again. */
 export interface FormStart {
@@ -143,8 +168,13 @@ function Summary({
   scheduled,
   oneDeployment,
   composite,
+  previewError,
+  onRetryPreview,
 }: {
   preview: RequestPreview | undefined;
+  /** Why the summary couldn't be worked out, when it couldn't. */
+  previewError: unknown;
+  onRetryPreview: () => void;
   fetching: boolean;
   values: Record<string, unknown>;
   pending: boolean;
@@ -231,7 +261,9 @@ function Summary({
           </>
         }
       >
-        {!preview ? (
+        {!preview && previewError ? (
+          <ErrorState error={previewError} onRetry={onRetryPreview} />
+        ) : !preview ? (
           <div className="flex flex-col gap-2 p-4">
             <Skeleton className="h-3 w-3/4" />
             <Skeleton className="h-3 w-1/2" />
@@ -350,6 +382,9 @@ function RequestFormBody({
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<MappedErrors | null>(null);
+  // Counts the server's refusals: each moves the focus to the first input to fix.
+  const [refused, setRefused] = useState(0);
+  const attentionRef = useRef<HTMLDivElement>(null);
   const [justification, setJustification] = useState(start?.justification ?? "");
   const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
   const [count, setCount] = useState(String(start?.count ?? 1));
@@ -423,8 +458,11 @@ function RequestFormBody({
     onError: (e) => {
       setSubmitted(true);
       if (isApiError(e) && e.status === 422) {
-        setServerErrors(mapFieldErrors(e.fieldErrors));
-        toast.error(e.problem.title, { description: e.problem.detail });
+        const mapped = mapFieldErrors(e.fieldErrors);
+        if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
+          mapped.form.push(e.problem.detail ?? e.problem.title);
+        setServerErrors(mapped);
+        setRefused((n) => n + 1);
         return;
       }
       toast.error(isApiError(e) ? e.problem.title : "The request was not sent", {
@@ -454,12 +492,45 @@ function RequestFormBody({
   const fieldErrors: Record<string, string> = {};
   for (const [name, msg] of Object.entries(previewErrors.fields))
     if (submitted || touched.has(name)) fieldErrors[name] = msg;
-  Object.assign(fieldErrors, serverErrors?.fields ?? {});
+  // A server error goes once its input changes (cleared to "").
+  for (const [name, msg] of Object.entries(serverErrors?.fields ?? {})) if (msg) fieldErrors[name] = msg;
   const formErrors = submitted ? [...new Set([...(serverErrors?.form ?? []), ...previewErrors.form])] : [];
 
+  // The inputs the page has a control for, in its order: the rest are said at the top.
+  const placed = [
+    "$environment",
+    ...shownFields(form, preview.data?.fields),
+    ...(many ? ["$count"] : []),
+    ...(later ? ["$scheduled_at"] : []),
+    ...(canActForOthers ? ["$on_behalf_of"] : []),
+  ];
+  const attention = submitted ? Object.keys(fieldErrors) : [];
+  const unplaced: Unplaced[] = attention
+    .filter((name) => !placed.includes(name))
+    .map((name) => ({
+      key: name,
+      ...(requestOptions[name] ? { label: requestOptions[name] } : { label: name, code: true }),
+      message: fieldErrors[name]!,
+    }));
+  const focusFirst = () => {
+    for (const name of placed) {
+      const control = fieldErrors[name] ? controlOf(name) : null;
+      if (control) return control.focus();
+    }
+    attentionRef.current?.focus();
+  };
+  const focusFirstRef = useRef(focusFirst);
+  focusFirstRef.current = focusFirst;
+  useEffect(() => {
+    if (refused) focusFirstRef.current();
+  }, [refused]);
+
+  const clearServerError = (name: string) => {
+    if (serverErrors?.fields[name]) setServerErrors((s) => s && { ...s, fields: { ...s.fields, [name]: "" } });
+  };
   const setValue = (name: string, value: unknown) => {
     setValues((v) => (v[name] === value ? v : { ...v, [name]: value }));
-    if (serverErrors?.fields[name]) setServerErrors((s) => s && { ...s, fields: { ...s.fields, [name]: "" } });
+    clearServerError(name);
   };
 
   // What the item builds, drawn when there is more to it than one VM on a
@@ -477,12 +548,13 @@ function RequestFormBody({
   return (
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
+        {attention.length > 0 && <Attention ref={attentionRef} count={attention.length} unplaced={unplaced} />}
         <FormRenderer
           form={form}
           values={values}
           onChange={setValue}
           onBlur={(name) => setTouched((t) => (t.has(name) ? t : new Set(t).add(name)))}
-          errors={Object.fromEntries(Object.entries(fieldErrors).filter(([, m]) => m))}
+          errors={fieldErrors}
           ctx={{ versionId: form.version_id, projectId: project.id, environment }}
           fieldStates={preview.data?.fields}
           leading={
@@ -493,6 +565,7 @@ function RequestFormBody({
               onChange={(e) => {
                 setEnvironment(e);
                 setLeaseDays(null);
+                clearServerError("$environment");
               }}
               error={fieldErrors.$environment}
             />
@@ -552,7 +625,10 @@ function RequestFormBody({
                   max={20}
                   className="w-24"
                   value={count}
-                  onChange={(e) => setCount(e.target.value)}
+                  onChange={(e) => {
+                    setCount(e.target.value);
+                    clearServerError("$count");
+                  }}
                 />
               </Field>
             )}
@@ -579,7 +655,10 @@ function RequestFormBody({
                     id="start-at"
                     type="datetime-local"
                     value={startAt}
-                    onChange={(e) => setStartAt(e.target.value)}
+                    onChange={(e) => {
+                      setStartAt(e.target.value);
+                      clearServerError("$scheduled_at");
+                    }}
                   />
                 </Field>
               )}
@@ -594,13 +673,27 @@ function RequestFormBody({
                         On behalf of <strong>{onBehalfOf.name}</strong>{" "}
                         <span className="text-secondary text-muted">{onBehalfOf.email}</span>: they will own it.
                       </span>
-                      <Button size="sm" variant="quiet" onClick={() => setOnBehalfOf(null)}>
+                      <Button
+                        size="sm"
+                        variant="quiet"
+                        onClick={() => {
+                          setOnBehalfOf(null);
+                          clearServerError("$on_behalf_of");
+                        }}
+                      >
                         For myself instead
                       </Button>
                     </div>
                   </>
                 ) : (
-                  <UserPicker label="For someone else (optional)" id="on-behalf" onPick={setOnBehalfOf} />
+                  <UserPicker
+                    label="For someone else (optional)"
+                    id="on-behalf"
+                    onPick={(u) => {
+                      setOnBehalfOf(u);
+                      clearServerError("$on_behalf_of");
+                    }}
+                  />
                 )}
                 <FieldNote error={fieldErrors.$on_behalf_of} />
               </div>
@@ -611,6 +704,8 @@ function RequestFormBody({
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col self-stretch">
         <Summary
           preview={preview.data}
+          previewError={preview.error}
+          onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
           values={values}
           pending={submit.isPending}
