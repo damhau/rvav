@@ -281,6 +281,8 @@ resources:
 
 // TestMapFieldTypes: each of vRA's form widgets on an input of each type
 // becomes rvav's field, or is reported; a secret keeps no default (F1.1).
+// A dual list, an object, and the text, image and link elements map to
+// rvav's own (F1.2).
 func TestMapFieldTypes(t *testing.T) {
 	e := vra.SampleEstate(time.Now())
 	bp, form := vra.SampleFieldTypes()
@@ -319,6 +321,41 @@ func TestMapFieldTypes(t *testing.T) {
 	if widget("owners") != "tags" {
 		t.Errorf("owners = %v", field("owners"))
 	}
+	teams := prop("teams")["items"].(map[string]any)
+	if widget("teams") != "dual_list" || !reflect.DeepEqual(teams["enum"], []any{"web", "net"}) || field("teams")["options"].([]map[string]any)[1]["label"] != "Network team" {
+		t.Errorf("teams = %v %v", field("teams"), prop("teams"))
+	}
+	if zones := prop("zones")["items"].(map[string]any); widget("zones") != "multiselect" || !reflect.DeepEqual(zones["enum"], []any{"dmz", "lan"}) {
+		t.Errorf("zones = %v %v", field("zones"), prop("zones"))
+	}
+	var subs []string
+	for _, c := range field("backup")["columns"].([]map[string]any) {
+		subs = append(subs, fmt.Sprintf("%s:%s:%s", c["key"], c["label"], c["widget"]))
+	}
+	backup := prop("backup")
+	if widget("backup") != "object" || !slices.Equal(subs, []string{"policy:Policy:select", "keepDays:Keep (days):number"}) ||
+		backup["type"] != "object" || !reflect.DeepEqual(backup["required"], []any{"policy"}) {
+		t.Errorf("backup = %v, sub-fields %v", backup, subs)
+	}
+	for name, want := range map[string]map[string]any{
+		"text_notice": {"widget": "info", "label": "Text", "help": "Ask the network team before you open a port."},
+		"image_zones": {"widget": "image", "label": "Network zones", "url": "https://wiki.corp.example/img/zones.png", "alt": "Network zones"},
+		"link_sizes":  {"widget": "link", "label": "VM sizes explained", "url": "https://wiki.corp.example/vm-sizes"},
+	} {
+		if _, ok := props[name]; ok || !reflect.DeepEqual(field(name), want) {
+			t.Errorf("%s = %v (a property: %v), want %v", name, field(name), ok, want)
+		}
+	}
+	if _, ok := fields["image_logo"]; ok {
+		t.Errorf("a data: image became a field: %v", field("image_logo"))
+	}
+	var shown []string
+	for _, s := range v.UISchema["layout"].(map[string]any)["sections"].([]map[string]any) {
+		shown = append(shown, s["fields"].([]string)...)
+	}
+	if !slices.Contains(shown, "image_zones") || slices.Contains(shown, "image_logo") {
+		t.Errorf("the layout shows %v", shown)
+	}
 	var cols []string
 	for _, c := range field("disks")["columns"].([]map[string]any) {
 		cols = append(cols, fmt.Sprintf("%s:%s:%s", c["key"], c["label"], c["widget"]))
@@ -343,11 +380,14 @@ func TestMapFieldTypes(t *testing.T) {
 		{Info, "inputs.adminPassword", "Encrypted in vRA"},
 		{Warning, "inputs.adminPassword", "default isn't kept"},
 		{Warning, "form.apiToken", "default isn't kept"},
-		{Unmapped, "form.owners", "Until then, it is tags"},
-		{Unmapped, "form.catalog", "valuePicker in vRA, which rvav has no widget for"},
+		{Unmapped, "form.owners", "make it a dual list again"},
+		{Unmapped, "form.catalog", "rvav's equivalent is a search field"},
+		{Warning, "form.image_zones", `its label, "Network zones"`},
+		{Unmapped, "form.image_logo", "a data: URI"},
+		{Info, "form.text_notice", "information text"},
 		{Unmapped, "form.catalog", "com.corp.cmdb/search"},
 		{Unmapped, "inputs.ports", "A list of integer values"},
-		{Unmapped, "inputs.meta", "An input of type object"},
+		{Unmapped, "inputs.meta", "An object without properties"},
 	} {
 		if !has(p, want.level, want.where, want.text) {
 			t.Errorf("no %s note at %s with %q: %+v", want.level, want.where, want.text, p.Notes)

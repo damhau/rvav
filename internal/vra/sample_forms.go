@@ -68,6 +68,24 @@ inputs:
     type: object
   catalog:
     type: string
+  backup:
+    type: object
+    required: [policy]
+    properties:
+      policy:
+        type: string
+        enum: [daily, weekly]
+      keepDays:
+        type: integer
+        minimum: 1
+  teams:
+    type: array
+    items:
+      type: string
+  zones:
+    type: array
+    items:
+      type: string
 resources:
   Cloud_vSphere_Machine_1:
     type: Cloud.vSphere.Machine
@@ -87,7 +105,14 @@ const fieldTypesForm = `{"layout":{"pages":[{"id":"page_general","title":"Server
 {"id":"features","display":"multiSelect","state":{"visible":true,"read-only":false}},
 {"id":"owners","display":"dualList","state":{"visible":true,"read-only":false}},
 {"id":"disks","display":"datagrid","state":{"visible":true,"read-only":false}},
-{"id":"catalog","display":"valuePicker","state":{"visible":true,"read-only":false}}]}]}]},
+{"id":"catalog","display":"valuePicker","state":{"visible":true,"read-only":false}},
+{"id":"backup","display":"objectField","state":{"visible":true,"read-only":false}},
+{"id":"teams","display":"dualList","state":{"visible":true,"read-only":false}},
+{"id":"zones","display":"multiValuePicker","state":{"visible":true,"read-only":false}},
+{"id":"text_notice","display":"text","state":{"visible":true,"read-only":false}},
+{"id":"image_zones","display":"image","state":{"visible":true,"read-only":false}},
+{"id":"image_logo","display":"image","state":{"visible":true,"read-only":false}},
+{"id":"link_sizes","display":"link","state":{"visible":true,"read-only":false}}]}]}]},
 "schema":{
 "environment":{"label":"Environment","type":{"dataType":"string","isMultiple":false},"valueList":[{"label":"Development","value":"dev"},{"label":"Production","value":"prd"}],"constraints":{"required":true}},
 "window":{"label":"Maintenance window","type":{"dataType":"dateTime","isMultiple":false}},
@@ -98,5 +123,12 @@ const fieldTypesForm = `{"layout":{"pages":[{"id":"page_general","title":"Server
 "features":{"label":"Features","type":{"dataType":"string","isMultiple":true},"valueList":[{"label":"Back up","value":"backup"},{"label":"Monitoring","value":"monitoring"}],"default":["backup"]},
 "owners":{"label":"Owners","type":{"dataType":"string","isMultiple":true},"valueList":{"id":"com.corp.ad/getUsers","type":"scriptAction","parameters":[]}},
 "disks":{"label":"Disks","type":{"dataType":"complex","isMultiple":true,"fields":[{"id":"size","label":"Size (GB)","type":{"dataType":"integer"}},{"id":"tier","label":"Tier","type":{"dataType":"string"}}]},"default":[{"size":20,"tier":"gold"}]},
-"catalog":{"label":"Catalog","type":{"dataType":"string","isMultiple":false},"valueList":{"id":"com.corp.cmdb/search","type":"scriptAction","parameters":[]}}},
+"catalog":{"label":"Catalog","type":{"dataType":"string","isMultiple":false},"valueList":{"id":"com.corp.cmdb/search","type":"scriptAction","parameters":[]}},
+"backup":{"label":"Backup","type":{"dataType":"complex","isMultiple":false,"fields":[{"id":"policy","label":"Policy","type":{"dataType":"string"}},{"id":"keepDays","label":"Keep (days)","type":{"dataType":"integer"}}]}},
+"teams":{"label":"Teams","type":{"dataType":"string","isMultiple":true},"valueList":[{"label":"Web team","value":"web"},{"label":"Network team","value":"net"}]},
+"zones":{"label":"Zones","type":{"dataType":"string","isMultiple":true},"valueList":[{"label":"DMZ","value":"dmz"},{"label":"LAN","value":"lan"}]},
+"text_notice":{"label":"Text","type":{"dataType":"string","isMultiple":false},"default":"Ask the network team before you open a port."},
+"image_zones":{"label":"Network zones","type":{"dataType":"string","isMultiple":false},"default":"https://wiki.corp.example/img/zones.png"},
+"image_logo":{"label":"Logo","type":{"dataType":"string","isMultiple":false},"default":"data:image/png;base64,iVBORw0KGgo="},
+"link_sizes":{"label":"VM sizes explained","type":{"dataType":"string","isMultiple":false},"default":"https://wiki.corp.example/vm-sizes"}},
 "options":{"externalValidations":[]}}`

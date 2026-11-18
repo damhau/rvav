@@ -40,6 +40,7 @@ func TestVRAFormFieldTypes(t *testing.T) {
 		plan := res.Plan.Items[i]
 		for _, want := range []struct{ level, where, text string }{
 			{"unmapped", "form.catalog", "valuePicker"},
+			{"unmapped", "form.image_logo", "a data: URI"},
 			{"unmapped", "form.owners", "it is tags"},
 			{"unmapped", "inputs.ports", "A list of integer values"},
 			{"warning", "form.apiToken", "default isn't kept"},
@@ -62,7 +63,9 @@ func TestVRAFormFieldTypes(t *testing.T) {
 		}
 		for name, want := range map[string]api.UiWidget{"window": api.UiWidgetDatetime, "ratio": api.UiWidgetNumber,
 			"adminPassword": api.UiWidgetSecret, "apiToken": api.UiWidgetSecret, "labels": api.UiWidgetTags,
-			"features": api.UiWidgetMultiselect, "owners": api.UiWidgetTags, "disks": api.UiWidgetDatagrid, "catalog": api.UiWidgetText} {
+			"features": api.UiWidgetMultiselect, "owners": api.UiWidgetTags, "disks": api.UiWidgetDatagrid, "catalog": api.UiWidgetText,
+			"backup": api.UiWidgetObject, "teams": api.UiWidgetDualList, "zones": api.UiWidgetMultiselect, "text_notice": api.UiWidgetInfo,
+			"image_zones": api.UiWidgetImage, "link_sizes": api.UiWidgetLink} {
 			if widgets[name] != want {
 				t.Errorf("%s is a %s field, want %s", name, widgets[name], want)
 			}

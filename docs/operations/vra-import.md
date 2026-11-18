@@ -128,7 +128,8 @@ check it) or *unmapped* (left out).
 |---|---|
 | Released versions | The catalog item's versions, imported as drafts (`1` becomes `1.0`). Unreleased versions are left out. |
 | `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `format: date-time`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field, without its default, which the requester types. An input without a default is required. |
-| List inputs (`type: array`) | Text items are tags; text items with `enum` or `oneOf` a multi-select of those choices; object items a table, with a column per property: text, a number, a boolean, or text with choices (a select column). `minItems`, `maxItems`, `uniqueItems` and the rows' `required` are kept. Lists of numbers or booleans, rows with a list or an object, and `object` inputs are reported, and left out. |
+| List inputs (`type: array`) | Text items are tags; text items with `enum` or `oneOf` a multi-select of those choices; object items a table, with a column per property: text, a number, a boolean, or text with choices (a select column). `minItems`, `maxItems`, `uniqueItems` and the rows' `required` are kept. Lists of numbers or booleans, and rows with a list or an object, are reported, and left out. |
+| Object inputs (`type: object`) | A group of fields, with a sub-field per property: text, a number, a boolean, or text with choices (a select). The object's `required` is kept. An object without properties, or with a list or an object in it, is reported, and left out. |
 | An input named `environment` or `env` | rvav's own request environment, not a field. |
 | `Cloud.vSphere.Machine` (or `Cloud.Machine`) | The VM. Several machines, or a `count`, make a multi-VM item with a component each (ADR-0024), its key the machine's name in lower-case letters and digits (`web_server` is `webserver`). |
 | `count` | The component's count: a number, or CEL over the inputs (`${input.ha ? 2 : 1}` is `inputs.ha ? 2 : 1`). A count that reads a machine is reported, and left out. |
@@ -223,16 +224,18 @@ them to keep the version the items name.
 |---|---|
 | Labels, placeholders, signposts (help), defaults | The fields'. |
 | Static value lists | Choices. |
-| `textField`, `textArea`, `dropDown`, `radio`, `checkbox`, `integerField`, `decimalField`, `passwordField`, `datetime`, `multiSelect`, `dualList`, `datagrid` | text, textarea, select, radio cards, toggle, number, number (a decimal on a `number` input), secret, datetime, multiselect, multiselect, table. |
+| `textField`, `textArea`, `dropDown`, `radio`, `checkbox`, `integerField`, `decimalField`, `passwordField`, `datetime`, `multiSelect`, `multiValuePicker`, `dualList`, `datagrid`, `objectField` | text, textarea, select, radio cards, toggle, number, number (a decimal on a `number` input), secret, datetime, multiselect, multiselect, dual list, table, group of fields. |
 | `datetime` on a date input | date: a `date` input keeps `format: date`, a `date-time` one `format: date-time`, which the server checks. |
 | `tagField` on an array input | tags, a list of strings. Its value list gives suggestions, not a limit. |
-| A `datagrid`'s columns | The table's columns take their labels and order; the properties the form doesn't name come after. |
+| A `datagrid`'s columns, an `objectField`'s fields | The table's columns, or the group's sub-fields, take their labels and order; the properties the form doesn't name come after. |
+| `text`, `image` and `link` elements | Information text, an image and a link, showing the element's constant value. An image's text alternative is its label, as vRA has none (a warning: say what the picture shows). An image from another site loads only if that site is in `RVAV_WEB_IMAGE_SOURCES`. An element whose value isn't a constant, and an image or a link whose address isn't `https://` or `http://`, such as a `data:` URI, are reported, and left out: upload such a picture in the designer. |
+| `valuePicker` | Reported (unmapped): rvav's equivalent is a search field, which needs a value source that searches (REST or CEL). The field stays text until you give it one. |
 | `passwordField` | A secret. A default, in the form or the template, isn't kept, since anyone who reads the item would see it: the requester types the secret (a warning). |
 | A widget that can't edit the input as rvav typed it | A warning: the field keeps the widget of its type. |
-| A widget rvav has none of, such as `valuePicker` or `treeView` | Reported (unmapped): the field keeps the widget of its type. |
+| A widget rvav has none of, such as `treeView` | Reported (unmapped): the field keeps the widget of its type. |
 | Pages and sections | The layout (a wizard when there are several pages). |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
-| Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). A `multiSelect` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select again. |
+| Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
 | Conditions on visibility or read-only | Reported: write an rvav rule (CEL). |
 
 ## Deployments

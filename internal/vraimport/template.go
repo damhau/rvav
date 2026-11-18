@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"sort"
@@ -522,11 +523,18 @@ func mapInput(name string, in map[string]any, note func(level, where, text strin
 		if !mapList(where, in, prop, field, note) {
 			return nil, nil, false, nil
 		}
+	case "object":
+		cols, sub, why := mapRows(in, objectProps)
+		if why != "" {
+			note(Unmapped, where, why)
+			return nil, nil, false, nil
+		}
+		prop, field["widget"], field["columns"] = sub, "object", cols
 	default:
 		note(Unmapped, where, fmt.Sprintf("An input of type %s: left out of the form.", typ))
 		return nil, nil, false, nil
 	}
-	if vals, opts := choices(in); vals != nil && typ != "array" {
+	if vals, opts := choices(in); vals != nil && typ != "array" && typ != "object" {
 		prop["enum"], field["widget"], field["options"] = vals, "select", opts
 	}
 	def = in["default"]
@@ -584,7 +592,7 @@ func mapList(where string, in, prop, field map[string]any, note func(level, wher
 		}
 		return true
 	case "object":
-		cols, rows, why := mapRows(items)
+		cols, rows, why := mapRows(items, tableRows)
 		if why != "" {
 			note(Unmapped, where, why)
 			return false
@@ -596,13 +604,24 @@ func mapList(where string, in, prop, field map[string]any, note func(level, wher
 	return false
 }
 
-// mapRows are a table's columns and its rows' schema, from a list's object
-// items: a column per property of text, a number or a boolean. why says
-// what rvav can't show.
-func mapRows(items map[string]any) (cols []map[string]any, rows map[string]any, why string) {
+// rowsOf says what mapRows reads: a table's rows or an object's
+// properties, for what it reports.
+type rowsOf struct{ empty, cell string }
+
+var (
+	tableRows = rowsOf{"A list of objects without properties: rvav's table needs a column per property.",
+		"Its rows' %s is of type %v: rvav's table columns hold text, numbers, booleans or choices."}
+	objectProps = rowsOf{"An object without properties: rvav's group of fields needs a sub-field per property.",
+		"Its property %s is of type %v: rvav's sub-fields hold text, numbers, booleans or choices."}
+)
+
+// mapRows are the columns and schema of objects, a list's items (a table's
+// rows) or an object input (a group of fields): a column per property of
+// text, a number or a boolean. why says what rvav can't show.
+func mapRows(items map[string]any, of rowsOf) (cols []map[string]any, rows map[string]any, why string) {
 	cells, _ := items["properties"].(map[string]any)
 	if len(cells) == 0 {
-		return nil, nil, "A list of objects without properties: rvav's table needs a column per property. Left out of the form."
+		return nil, nil, of.empty + " Left out of the form."
 	}
 	props := map[string]any{}
 	for _, k := range slices.Sorted(maps.Keys(cells)) {
@@ -625,7 +644,7 @@ func mapRows(items map[string]any) (cols []map[string]any, rows map[string]any, 
 		case "boolean":
 			col["widget"] = "toggle"
 		default:
-			return nil, nil, fmt.Sprintf("Its rows' %s is of type %v: rvav's table columns hold text, numbers, booleans or choices. Left out of the form.", k, c["type"])
+			return nil, nil, fmt.Sprintf(of.cell+" Left out of the form.", k, c["type"])
 		}
 		props[k], cols = cell, append(cols, col)
 	}
@@ -792,7 +811,7 @@ func fitWidget(w string, prop map[string]any) (string, bool) {
 		return w, prop["type"] == "boolean"
 	case "secret":
 		return w, prop["type"] == "string"
-	case "multiselect", "tags":
+	case "multiselect", "tags", "dual_list":
 		if prop["type"] != "array" {
 			return w, false
 		}
@@ -803,12 +822,60 @@ func fitWidget(w string, prop map[string]any) (string, bool) {
 		return w, items["type"] == "string"
 	case "datagrid":
 		return w, prop["type"] == "array" && items["type"] == "object"
+	case "object":
+		return w, prop["type"] == "object"
 	}
-	return w, prop["type"] != "array"
+	return w, prop["type"] != "array" && prop["type"] != "object"
 }
 
-// formColumns orders and labels a table's columns as the form's datagrid
-// does.
+// shownElement is the field for a vRA form's text, image or link element,
+// which no input backs: information text, an image or a link showing the
+// element's constant value. nil for any other element, or one rvav can't
+// show.
+func shownElement(display string, sch map[string]any, where string, note func(level, where, text string)) map[string]any {
+	widget, ok := map[string]string{"text": "info", "image": "image", "link": "link"}[display]
+	if !ok {
+		return nil
+	}
+	value, _ := sch["default"].(string)
+	value = strings.TrimSpace(value)
+	if value == "" {
+		note(Unmapped, where, fmt.Sprintf("A %s element whose value isn't a constant in vRA: left out. Add an rvav %s field by hand.", display, widget))
+		return nil
+	}
+	label, _ := sch["label"].(string)
+	if label == "" {
+		label = humanize(display)
+	}
+	field := map[string]any{"widget": widget, "label": label}
+	if widget == "info" {
+		field["help"] = value
+		note(Info, where, "vRA's text element: information text.")
+		return field
+	}
+	u, err := url.Parse(value)
+	if err != nil || !(u.Scheme == "https" || u.Scheme == "http") || u.Host == "" {
+		how := "Add an rvav link field by hand."
+		if widget == "image" {
+			how = "Add an rvav image field by hand, and upload its picture in the designer."
+		}
+		note(Unmapped, where, fmt.Sprintf("A %s element whose address isn't https:// or http:// (a data: URI, say), which rvav doesn't show: left out. %s",
+			display, how))
+		return nil
+	}
+	field["url"] = value
+	if widget == "image" {
+		field["alt"] = label
+		note(Warning, where, fmt.Sprintf("vRA's image element: an image whose text alternative is its label, %q, as vRA has none. "+
+			"Say what the picture shows. It loads only if %s is in RVAV_WEB_IMAGE_SOURCES, or upload it in the designer.", label, u.Scheme+"://"+u.Host))
+		return field
+	}
+	note(Info, where, "vRA's link element: a link, which opens in a new tab.")
+	return field
+}
+
+// formColumns orders and labels a table's columns, or an object's
+// sub-fields, as the form's datagrid or object field does.
 func formColumns(field, sch map[string]any) {
 	typ, _ := sch["type"].(map[string]any)
 	defs, _ := typ["fields"].([]any)
@@ -855,7 +922,11 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 	}
 	widgets := map[string]string{"textField": "text", "textArea": "textarea", "dropDown": "select", "radio": "radio_cards",
 		"checkbox": "toggle", "integerField": "number", "decimalField": "number", "passwordField": "secret", "datetime": "datetime",
-		"multiSelect": "multiselect", "dualList": "multiselect", "tagField": "tags", "datagrid": "datagrid"}
+		"multiSelect": "multiselect", "multiValuePicker": "multiselect", "dualList": "dual_list", "tagField": "tags",
+		"datagrid": "datagrid", "objectField": "object"}
+	// vRA's widgets whose rvav equivalent searches a value source, which the
+	// import can't give.
+	searched := map[string]string{"valuePicker": "a search field"}
 	var sections []map[string]any
 	seen := map[string]bool{}
 	for pi, page := range def.Layout.Pages {
@@ -865,6 +936,10 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				where := "form." + fd.ID
 				field, ok := fields[fd.ID].(map[string]any)
 				if !ok {
+					if shown := shownElement(fd.Display, def.Schema[fd.ID], where, note); shown != nil {
+						fields[fd.ID], names, seen[fd.ID] = shown, append(names, fd.ID), true
+						continue
+					}
 					if !environmentInput(fd.ID) {
 						note(Info, where, "A field of the form that is no input of the template: left out.")
 					}
@@ -892,6 +967,9 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				} else if ok {
 					note(Warning, where, fmt.Sprintf("Shown as %s in vRA, which doesn't fit an input of type %v in rvav: shown as %v.",
 						fd.Display, prop["type"], field["widget"]))
+				} else if like, ok := searched[fd.Display]; ok {
+					note(Unmapped, where, fmt.Sprintf("Shown as %s in vRA: rvav's equivalent is %s, which needs a value source that searches "+
+						"(REST or CEL). Shown as %v until you give it one.", fd.Display, like, field["widget"]))
 				} else if fd.Display != "" {
 					note(Unmapped, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
 				}
@@ -922,7 +1000,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				} else if ok {
 					initial[fd.ID] = d
 				}
-				if field["widget"] == "datagrid" {
+				if field["widget"] == "datagrid" || field["widget"] == "object" {
 					formColumns(field, sch)
 				}
 				switch vl := sch["valueList"].(type) {
@@ -941,7 +1019,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 					switch {
 					case prop == nil || field["widget"] == "tags":
 						// A tag field's choices are suggestions.
-					case field["widget"] == "multiselect":
+					case field["widget"] == "multiselect" || field["widget"] == "dual_list":
 						if items, ok := prop["items"].(map[string]any); ok {
 							items["enum"] = vals
 						}
@@ -951,9 +1029,9 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				case map[string]any:
 					text := fmt.Sprintf("Its choices come from %s %v in vRA: give the field an rvav value source (REST or CEL), or an AWX inventory.",
 						vl["type"], vl["id"])
-					if field["widget"] == "multiselect" && field["options"] == nil {
+					if was := map[any]string{"multiselect": "a multi-select", "dual_list": "a dual list"}[field["widget"]]; was != "" && field["options"] == nil {
 						field["widget"] = "tags"
-						text += " Until then, it is tags, which take any value typed: make it a multi-select again once it has a source."
+						text += " Until then, it is tags, which take any value typed: make it " + was + " again once it has a source."
 					}
 					note(Unmapped, where, text)
 				}
