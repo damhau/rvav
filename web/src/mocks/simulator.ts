@@ -21,7 +21,7 @@ import { completeDay2Step, day2Finished } from "./day2";
 import { publishedBlueprint, secretInputsOf } from "./catalogAdmin";
 import { celBool, celEval, Missing, unmodelled } from "./cel";
 import { bus } from "./events";
-import { clusters, DOMAIN, networks, sizes, templates, VCENTER, type SizeKey } from "./inventory";
+import { clusters, DOMAIN, networks, sizes, templates, VCENTER, vsphereUrl, type SizeKey } from "./inventory";
 import { multiName, multiParts } from "./components";
 import { reserveIp, summarize, vmNames } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
@@ -594,7 +594,7 @@ function completeStep(r: StoredRequest, s: Step) {
           cpu_count: size.vcpu,
           memory_mb: size.memoryGb * 1024,
           disks: [{ label: "Hard disk 1", capacity_gb: size.diskGb, datastore: text(inputs.datastore) }],
-          nics: [{ network: text(inputs.network), mac: "00:50:56:a1:7e:3c", ip_addresses: [] }],
+          nics: [{ network: text(inputs.network), mac: "00:50:56:a1:7e:3c", ip_addresses: [], dhcp: false }],
           fqdn: `${host}.${DOMAIN}`,
           cluster: text(inputs.cluster, clusters[0]!.name),
           host: `esx-gva-${d.environment}-0${multi ? (d.resources.filter((x) => x.type === "vsphere.vm").length % 3) + 1 : 3}.${DOMAIN}`,
@@ -602,6 +602,7 @@ function completeStep(r: StoredRequest, s: Step) {
           folder: `/GVA/vm/rvav/${d.project.code}/${d.environment}`,
           template: template.name,
           snapshot_count: 0,
+          vsphere_url: vsphereUrl(`vm-${db.seq.moref}`),
         },
       };
       if (multi) d.resources.push(vm);

@@ -118,7 +118,7 @@ func TestDHCP(t *testing.T) {
 				vm, _ = r.AsVmResource()
 			}
 		}
-		if vm.Vm.Dhcp == nil || !*vm.Vm.Dhcp || vm.Vm.Nics[0].IpAddresses == nil || (*vm.Vm.Nics[0].IpAddresses)[0] != dhcpLease ||
+		if vm.Vm.Dhcp == nil || !*vm.Vm.Dhcp || vm.Vm.Nics[0].Dhcp == nil || !*vm.Vm.Nics[0].Dhcp || vm.Vm.Nics[0].IpAddresses == nil || (*vm.Vm.Nics[0].IpAddresses)[0] != dhcpLease ||
 			deref(vm.Vm.Fqdn) != "web-dev-dhcp01.corp.example" {
 			t.Fatalf("the VM = %+v", vm.Vm)
 		}

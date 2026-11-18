@@ -208,12 +208,7 @@ func disk(t Target, label string) *api.VmDisk {
 	return nil
 }
 
-type vmNIC = struct {
-	IpAddresses *[]string `json:"ip_addresses,omitempty"`
-	Label       *string   `json:"label,omitempty"`
-	Mac         *string   `json:"mac,omitempty"`
-	Network     string    `json:"network"`
-}
+type vmNIC = api.VmNic
 
 func nicLabel(n vmNIC, i int) string {
 	if n.Label != nil && *n.Label != "" {

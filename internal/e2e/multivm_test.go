@@ -211,6 +211,12 @@ func TestMultiVMBlueprint(t *testing.T) {
 					vm.Vm.Disks[1].CapacityGb != 100 || deref(vm.Vm.Disks[1].Datastore) != "vsan-gva-dev-cl01" {
 					t.Fatalf("db VM = %+v / %+v", vm.Vm.Nics, vm.Vm.Disks)
 				}
+				// Fixed, fixed, then DHCP: as the blueprint gave them (X1.1).
+				for i, want := range []bool{false, false, true} {
+					if d := vm.Vm.Nics[i].Dhcp; d == nil || *d != want {
+						t.Fatalf("db VM's adapter %d DHCP = %v", i+1, d)
+					}
+				}
 			case "web":
 				if len(vm.Vm.Disks) != 2 || vm.Vm.Disks[1].CapacityGb != 20 {
 					t.Fatalf("web VM disks = %+v", vm.Vm.Disks)

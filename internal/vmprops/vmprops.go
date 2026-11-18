@@ -33,15 +33,49 @@ type Ours struct {
 	DHCP bool `json:"dhcp"`
 	// Properties are the custom properties it was built with (ADR-0038).
 	Properties map[string]string `json:"custom_properties,omitempty"`
+	// DHCPAdapters say, by adapter label, whether rvav left an adapter's
+	// address to DHCP; an adapter it doesn't know about is missing.
+	DHCPAdapters map[string]bool `json:"-"`
+}
+
+// AdapterDHCP says which of a VM rvav just built has its address from
+// DHCP: its first adapter as first says, and the adapters it added, the
+// last ones, as added says. A template's other adapters are left out.
+func AdapterDHCP(vm vsphere.VM, first bool, added []bool) map[string]bool {
+	out := map[string]bool{}
+	for i, n := range vm.NICs {
+		switch j := i - (len(vm.NICs) - len(added)); {
+		case j >= 0 && i > 0:
+			out[nicLabel(&n.Label, i)] = added[j]
+		case i == 0:
+			out[nicLabel(&n.Label, i)] = first
+		}
+	}
+	return out
 }
 
 // OursOf reads them back from stored properties.
 func OursOf(props json.RawMessage) Ours {
 	var p struct {
-		VM Ours `json:"vm"`
+		VM struct {
+			Ours
+			Nics []struct {
+				Label string `json:"label"`
+				DHCP  *bool  `json:"dhcp"`
+			} `json:"nics"`
+		} `json:"vm"`
 	}
 	_ = json.Unmarshal(props, &p)
-	return p.VM
+	out := p.VM.Ours
+	for _, n := range p.VM.Nics {
+		if n.DHCP != nil {
+			if out.DHCPAdapters == nil {
+				out.DHCPAdapters = map[string]bool{}
+			}
+			out.DHCPAdapters[n.Label] = *n.DHCP
+		}
+	}
+	return out
 }
 
 // UsageOf is the quick stats stored with a VM, nil when there are none.
@@ -132,21 +166,18 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 			p.Disks[i].Provisioning = present.Ptr(api.DiskProvisioning(d.Provisioning))
 		}
 	}
-	p.Nics = make([]struct {
-		IpAddresses *[]string `json:"ip_addresses,omitempty"`
-		Label       *string   `json:"label,omitempty"`
-		Mac         *string   `json:"mac,omitempty"`
-		Network     string    `json:"network"`
-	}, len(vm.NICs))
+	p.Nics = make([]api.VmNic, len(vm.NICs))
 	for i, n := range vm.NICs {
-		label := n.Label
-		if label == "" {
-			label = "Network adapter " + strconv.Itoa(i+1)
-		}
+		label := nicLabel(&n.Label, i)
 		p.Nics[i].Network, p.Nics[i].Mac, p.Nics[i].Label = n.Network, set(n.MAC), &label
 		if len(n.IPs) > 0 {
 			ips := append([]string{}, n.IPs...)
 			p.Nics[i].IpAddresses = &ips
+		}
+		if d, ok := ours.DHCPAdapters[label]; ok {
+			p.Nics[i].Dhcp = &d
+		} else if i == 0 && ours.Template != "" {
+			p.Nics[i].Dhcp = present.Ptr(ours.DHCP)
 		}
 	}
 	if usage != nil && (usage.CPUPct != nil || usage.MemoryPct != nil) {

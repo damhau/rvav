@@ -22,7 +22,7 @@ import type { StoredApproval } from "./approvals";
 import { factsFor } from "./approvals";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { formFor } from "./forms";
-import { DOMAIN, networks, templates, VCENTER } from "./inventory";
+import { DOMAIN, networks, templates, VCENTER, vsphereUrl } from "./inventory";
 import { builtinRoles, customRoles, heldIn, meProject, type MockRole, roleRefs } from "./roles";
 
 export interface StoredRequest {
@@ -428,13 +428,20 @@ export function createDb(now = Date.now()): Db {
               network: net,
               mac: `00:50:56:a1:${(moref % 256).toString(16).padStart(2, "0")}:3c`,
               ip_addresses: [s.ip],
+              dhcp: false,
             },
           ],
           fqdn,
           cluster: clusterFor(s.env),
           host: `esx-gva-${s.env}-0${(moref % 4) + 1}.${DOMAIN}`,
+          resource_pool: `rvav/${s.env}`,
           folder: `/GVA/vm/rvav/${s.name.split("-")[0]}/${s.env}`,
           template: tpl.name,
+          custom_properties: {
+            costCenter: s.name.startsWith("data-") ? "CC-2040" : "CC-1001",
+            app: s.name.split("-")[2]!,
+          },
+          vsphere_url: vsphereUrl(`vm-${moref}`),
           snapshot_count: s.snapshots ?? 0,
           snapshots: Array.from({ length: s.snapshots ?? 0 }, (_, i) => ({
             name: `Before change ${i + 1}`,
@@ -704,7 +711,11 @@ export function createDb(now = Date.now()): Db {
     ];
     // Its VMs' first adapter is on DHCP: no address or records rvav made.
     edge.resources = edge.resources.filter((r) => r.type !== "ipam.address" && r.type !== "dns.record");
-    for (const r of edge.resources) if (r.type === "vsphere.vm") r.vm.dhcp = true;
+    for (const r of edge.resources) {
+      if (r.type !== "vsphere.vm") continue;
+      r.vm.dhcp = true;
+      for (const nic of r.vm.nics.slice(0, 1)) nic.dhcp = true;
+    }
   }
 
   // On NSX (ADR-0028): a segment made for it, a group with the rules into it,

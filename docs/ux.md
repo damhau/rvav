@@ -103,6 +103,9 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
   each it can't run with the reason. Tabs in the address: Overview (VMs live,
   network, security groups, details, lease, placement), History, Inputs.
 - VM row: power indicator, IP and FQDN (click to copy), console button, actions menu.
+  Its name opens the VM's properties in a read-only side panel: guest, adapters,
+  disks, snapshots, ISO, placement, custom properties, and a link into the
+  vSphere Client (or why there is none yet).
 
 ### Approvals inbox
 A table in two tabs, Waiting for you and Decided, kept in the address. A row

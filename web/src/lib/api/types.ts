@@ -63,6 +63,7 @@ export type ActionForm = S["ActionForm"];
 export type Day2Action = S["Day2Action"];
 export type Day2Draft = S["Day2Draft"];
 export type VmProperties = S["VmProperties"];
+export type VmNic = S["VmNic"];
 export type IpAddressResource = S["IpAddressResource"];
 export type DnsRecordResource = S["DnsRecordResource"];
 export type DrsRuleResource = S["DrsRuleResource"];

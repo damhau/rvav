@@ -28,10 +28,13 @@ import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 import { RemoteAccessPanel } from "./RemoteAccess";
+import { VmPropertiesSheet } from "./VmProperties";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
 
 type Pick = (a: Day2Action) => void;
+/** Opens a VM's properties. */
+type Open = (vm: VmResource) => void;
 
 /** The quick power button: power on when off, shut down (or power off) when on. */
 function powerAction(actions: Day2Action[], on: boolean) {
@@ -59,11 +62,13 @@ function VmTable({
   vms,
   actions,
   onPick,
+  onOpen,
 }: {
   deploymentId: string;
   vms: VmResource[];
   actions: Day2Action[];
   onPick: Pick;
+  onOpen: Open;
 }) {
   if (vms.length === 0) {
     return (
@@ -116,7 +121,8 @@ function VmTable({
                 </th>
               </tr>
             )}
-            {list.map(({ id, name, vm }) => {
+            {list.map((r) => {
+              const { id, name, vm } = r;
               const on = vm.power_state === "on";
               const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
               const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
@@ -129,7 +135,14 @@ function VmTable({
                     <span className="flex items-center gap-2">
                       <PowerDot on={on} />
                       <span className="flex flex-col">
-                        <span className="font-medium">{name}</span>
+                        <button
+                          type="button"
+                          className="self-start text-left font-medium hover:text-accent hover:underline"
+                          onClick={() => onOpen(r)}
+                        >
+                          <span>{name}</span>
+                          <span className="sr-only"> properties</span>
+                        </button>
                         <span className="font-mono text-caption text-faint">
                           {vm.moref} ·{" "}
                           {on
@@ -548,7 +561,17 @@ function Details({ d }: { d: DeploymentDetail }) {
   return <KeyValues items={items} />;
 }
 
-function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
+function Overview({
+  d,
+  actions,
+  onPick,
+  onOpen,
+}: {
+  d: DeploymentDetail;
+  actions: Day2Action[];
+  onPick: Pick;
+  onOpen: Open;
+}) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
   if (isMulti(vms)) {
@@ -567,7 +590,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
         <Drift vms={vms} actions={actions} onPick={onPick} />
         <Panel title="Virtual machines" description="Live from vCenter" flush>
-          <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} />
+          <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} onOpen={onOpen} />
         </Panel>
         <Panel title="Network and addresses">
           <Network ips={ips} dns={dns} segments={segments} dhcp={vms.filter((v) => v.vm.dhcp)} />
@@ -649,6 +672,9 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
   const actionsQ = useQuery(q.deploymentActions(deploymentId));
   const actions = actionsQ.data?.items ?? [];
   const [picked, setPicked] = useState<Day2Action | null>(null);
+  // By ID: the sheet follows the VM as live updates replace it.
+  const [shown, setShown] = useState<string | null>(null);
+  const open: Open = (vm) => setShown(vm.id);
   const run = useRunAction(deploymentId);
   const pick: Pick = (a) => {
     if (runsDirectly(a)) {
@@ -670,6 +696,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
     );
   }
   const d = dep.data;
+  const shownVm = d?.resources.find((r): r is VmResource => r.type === "vsphere.vm" && r.id === shown);
   return (
     <Page>
       <PageHeader
@@ -730,7 +757,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         ) : (
           <>
             <TabsContent value="overview" className="pt-4">
-              <Overview d={d} actions={actions} onPick={pick} />
+              <Overview d={d} actions={actions} onPick={pick} onOpen={open} />
             </TabsContent>
             <TabsContent value="history" className="pt-4">
               <Panel title="History">
@@ -757,6 +784,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         )}
       </Tabs>
       {d && picked && <ActionDialog deployment={d} action={picked} onClose={() => setPicked(null)} />}
+      {shownVm && <VmPropertiesSheet resource={shownVm} onClose={() => setShown(null)} />}
     </Page>
   );
 }

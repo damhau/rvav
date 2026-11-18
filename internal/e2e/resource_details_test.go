@@ -60,6 +60,9 @@ func TestResourceDetails(t *testing.T) {
 			if vm.CustomProperties == nil || !maps.Equal(*vm.CustomProperties, want) {
 				t.Fatalf("%s: custom properties = %v", when, vm.CustomProperties)
 			}
+			if len(vm.Nics) != 1 || vm.Nics[0].Dhcp == nil || *vm.Nics[0].Dhcp {
+				t.Fatalf("%s: adapters = %+v", when, vm.Nics)
+			}
 			if deref(vm.ResourcePool) != "rvav/dev" || deref(vm.Cluster) != "GVA-DEV-CL01" || deref(vm.Host) == "" {
 				t.Fatalf("%s: placement = %q %q %q", when, deref(vm.ResourcePool), deref(vm.Cluster), deref(vm.Host))
 			}

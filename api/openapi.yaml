@@ -7190,6 +7190,22 @@ components:
         datastore: { type: string }
         provisioning: { $ref: "#/components/schemas/DiskProvisioning" }
 
+    VmNic:
+      type: object
+      required: [network]
+      properties:
+        label: { type: string, examples: [Network adapter 1] }
+        network: { type: string }
+        mac: { type: string }
+        ip_addresses:
+          type: array
+          items: { type: string }
+        dhcp:
+          type: boolean
+          description: >-
+            Whether rvav left its address to DHCP (true) or gave it a fixed one (false), as the VM was built
+            (ADR-0039). Absent when rvav doesn't know: an onboarded VM, or a template's adapter after its first.
+
     DiskProvisioning:
       type: string
       enum: [thin, thick_lazy_zeroed, thick_eager_zeroed]
@@ -7212,16 +7228,7 @@ components:
           items: { $ref: "#/components/schemas/VmDisk" }
         nics:
           type: array
-          items:
-            type: object
-            required: [network]
-            properties:
-              label: { type: string, examples: [Network adapter 1] }
-              network: { type: string }
-              mac: { type: string }
-              ip_addresses:
-                type: array
-                items: { type: string }
+          items: { $ref: "#/components/schemas/VmNic" }
         cpu_hot_add: { type: boolean, description: CPUs can be added while the VM runs. }
         memory_hot_add: { type: boolean, description: Memory can be added while the VM runs. }
         snapshots:

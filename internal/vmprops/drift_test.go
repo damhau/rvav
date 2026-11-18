@@ -79,3 +79,23 @@ func TestDrift(t *testing.T) {
 		t.Fatalf("no expected VM = %v", drift(t, first))
 	}
 }
+
+// What rvav built a VM with comes back from its stored properties, so the
+// inventory sync keeps it: custom properties, and which adapters are on
+// DHCP (X1.1); a template's adapter after its first stays unknown.
+func TestOursRoundTrip(t *testing.T) {
+	v := vsphere.VM{Moref: "vm-1", NICs: []vsphere.NIC{{Network: "a"}, {Network: "b"}, {Network: "c"}}}
+	dhcp := AdapterDHCP(v, false, []bool{true})
+	ours := Ours{Template: "tpl", Properties: map[string]string{"app": "shop"}, DHCPAdapters: dhcp}
+	back := OursOf(Build("vc01", v, ours, nil, 0))
+	if back.Properties["app"] != "shop" || len(back.DHCPAdapters) != 2 || back.DHCPAdapters["Network adapter 1"] ||
+		!back.DHCPAdapters["Network adapter 3"] {
+		t.Fatalf("ours = %+v", back)
+	}
+	if _, ok := back.DHCPAdapters["Network adapter 2"]; ok {
+		t.Fatal("the template's second adapter is known")
+	}
+	if !slices.Equal([]byte(Build("vc01", v, back, nil, 0)), []byte(Build("vc01", v, ours, nil, 0))) {
+		t.Fatal("rebuilt from what was stored, the properties differ")
+	}
+}

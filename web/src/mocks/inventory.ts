@@ -3,6 +3,11 @@ import type { EnvironmentKey } from "@/lib/api/types";
 
 export const DOMAIN = "corp.example";
 export const VCENTER = "vc01.corp.example";
+const VCENTER_UUID = "6f1c2a5e-0b8d-4c1e-9d2f-3a4b5c6d7e8f";
+
+/** A VM's page in the vSphere Client, as the API builds it. */
+export const vsphereUrl = (moref: string) =>
+  `https://${VCENTER}/ui/app/vm;nav=h/urn:vmomi:VirtualMachine:${moref}:${VCENTER_UUID}/summary`;
 
 export interface Cluster {
   name: string;

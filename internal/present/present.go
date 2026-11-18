@@ -365,12 +365,7 @@ func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resourc
 			p.VM.Disks = []api.VmDisk{}
 		}
 		if p.VM.Nics == nil {
-			p.VM.Nics = []struct {
-				IpAddresses *[]string `json:"ip_addresses,omitempty"`
-				Label       *string   `json:"label,omitempty"`
-				Mac         *string   `json:"mac,omitempty"`
-				Network     string    `json:"network"`
-			}{}
+			p.VM.Nics = []api.VmNic{}
 		}
 		if l, ok := links[p.VM.Vcenter]; ok && l.Host != "" && l.InstanceUUID != "" && p.VM.Moref != "" {
 			p.VM.VsphereUrl = Ptr(VSphereURL(l, p.VM.Moref))

@@ -166,6 +166,20 @@ and owner at the top, and:
   is under **Details**);
 - **Inputs:** what it was requested with.
 
+To see everything about one VM, select its name in the **Overview** list.
+Its properties open in a side panel:
+- its guest OS, power state and VMware Tools state;
+- each network adapter: network, MAC address, IPv4 and IPv6 addresses, and
+  whether the address comes from DHCP or is fixed;
+- each disk: size, datastore and provisioning;
+- its snapshots and the ISO image it has mounted;
+- where it runs: vCenter, cluster, host, resource pool, folder and
+  datastores;
+- the custom properties it was built with. A property that reads a secret
+  input shows `••••`;
+- a link that opens the VM in the vSphere Client. The link appears once rvav
+  has synced the VM's vCenter.
+
 **Actions**, at the top of the page, lists every action that applies, by
 group. For a deployment with several VMs, each VM's actions are in a
 submenu with its name, and in the **⋯** menu of its row. An action you

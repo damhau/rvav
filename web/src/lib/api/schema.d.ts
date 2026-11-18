@@ -5404,6 +5404,15 @@ export interface components {
             datastore?: string;
             provisioning?: components["schemas"]["DiskProvisioning"];
         };
+        VmNic: {
+            /** @example Network adapter 1 */
+            label?: string;
+            network: string;
+            mac?: string;
+            ip_addresses?: string[];
+            /** @description Whether rvav left its address to DHCP (true) or gave it a fixed one (false), as the VM was built (ADR-0039). Absent when rvav doesn't know: an onboarded VM, or a template's adapter after its first. */
+            dhcp?: boolean;
+        };
         /**
          * @description How a disk is provisioned (ADR-0036). Absent on a VM's disk that isn't a flat file, an RDM say.
          * @enum {string}
@@ -5423,13 +5432,7 @@ export interface components {
             cpu_count: number;
             memory_mb: number;
             disks: components["schemas"]["VmDisk"][];
-            nics: {
-                /** @example Network adapter 1 */
-                label?: string;
-                network: string;
-                mac?: string;
-                ip_addresses?: string[];
-            }[];
+            nics: components["schemas"]["VmNic"][];
             /** @description CPUs can be added while the VM runs. */
             cpu_hot_add?: boolean;
             /** @description Memory can be added while the VM runs. */
