@@ -151,7 +151,7 @@ func init() {
 				}
 			}
 			f.schema["enum"] = ok
-			help := "The project's quota and placement rules must allow it. Its costs move with it."
+			help := "The project's quota and placement rules must allow it."
 			f.ui.Help = &help
 			return form("Project", f)
 		},

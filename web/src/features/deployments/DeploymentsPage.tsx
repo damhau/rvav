@@ -9,7 +9,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tip } from "@/components/ui/tooltip";
 import type { Deployment, DeploymentStatus } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentFilters } from "@/lib/query";
@@ -80,12 +79,6 @@ function Lease({ expiresAt }: { expiresAt: string | null }) {
   );
 }
 
-const Slice2 = ({ children }: { children: React.ReactNode }) => (
-  <Tip content="Adopting existing VMs comes later">
-    <span>{children}</span>
-  </Tip>
-);
-
 export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const { projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
@@ -134,16 +127,11 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
             : `Everything created in ${project.name}`
         }
         actions={
-          <>
-            <Slice2>
-              <Button disabled>Adopt existing VMs</Button>
-            </Slice2>
-            <Button variant="primary" asChild>
-              <Link to="/catalog">
-                <Plus /> New request
-              </Link>
-            </Button>
-          </>
+          <Button variant="primary" asChild>
+            <Link to="/catalog">
+              <Plus /> New request
+            </Link>
+          </Button>
         }
       />
 

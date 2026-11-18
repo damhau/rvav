@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Plus, Power, RefreshCw, SquareTerminal } from "lucide-react";
+import { Power, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
@@ -8,6 +8,7 @@ import { Page } from "@/components/common/page";
 import { Panel } from "@/components/ui/panel";
 import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
+import { tabItem, tabStrip } from "@/components/ui/tabs";
 import { Tip } from "@/components/ui/tooltip";
 import type {
   Day2Action,
@@ -26,12 +27,6 @@ import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
-
-const Later = ({ children, what }: { children: React.ReactNode; what: string }) => (
-  <Tip content={what}>
-    <span>{children}</span>
-  </Tip>
-);
 
 type Pick = (a: Day2Action) => void;
 
@@ -409,37 +404,42 @@ const tileHint: Record<string, string> = {
 function ActionTiles({ actions, loading, onPick }: { actions: Day2Action[]; loading: boolean; onPick: Pick }) {
   if (loading) return <SkeletonRows rows={2} cols={3} />;
   if (actions.length === 0) return <p className="px-4 py-6 text-secondary text-muted">No actions apply here.</p>;
+  // Each tile draws its right and bottom lines, and the box clips those of the
+  // last column and row. A gap-px grid on a coloured background would show
+  // that colour in the cells a short last row leaves empty.
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-px bg-line">
-      {actions.map((a) => (
-        <button
-          key={`${a.key}-${a.resource_id ?? ""}`}
-          type="button"
-          disabled={!a.enabled}
-          onClick={() => onPick(a)}
-          className="flex w-full flex-col items-start gap-0.5 bg-surface px-4 py-2.5 text-left hover:bg-sunken disabled:cursor-not-allowed disabled:hover:bg-surface"
-        >
-          <span
-            className={cn(
-              "font-medium",
-              !a.enabled && "text-muted",
-              a.key === "delete" && (a.enabled ? "text-bad" : "text-bad/60"),
-            )}
+    <div className="overflow-hidden rounded-b-lg">
+      <div className="-mr-px -mb-px grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))]">
+        {actions.map((a) => (
+          <button
+            key={`${a.key}-${a.resource_id ?? ""}`}
+            type="button"
+            disabled={!a.enabled}
+            onClick={() => onPick(a)}
+            className="flex w-full flex-col items-start gap-0.5 border-r border-b border-line px-4 py-2.5 text-left hover:bg-sunken focus-visible:-outline-offset-2 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
-            {a.name}
-            {a.resource_id && (
-              <span className="ml-1.5 font-mono text-caption font-normal text-faint">{a.resource_name}</span>
-            )}
-          </span>
-          <span className="text-caption text-faint">
-            {!a.enabled
-              ? a.disabled_reason
-              : a.approval.required
-                ? `Needs approval: ${a.approval.reasons.join("; ")}`
-                : tileHint[a.key]}
-          </span>
-        </button>
-      ))}
+            <span
+              className={cn(
+                "font-medium",
+                !a.enabled && "text-muted",
+                a.key === "delete" && (a.enabled ? "text-bad" : "text-bad/60"),
+              )}
+            >
+              {a.name}
+              {a.resource_id && (
+                <span className="ml-1.5 font-mono text-caption font-normal text-faint">{a.resource_name}</span>
+              )}
+            </span>
+            <span className="text-caption text-faint">
+              {!a.enabled
+                ? a.disabled_reason
+                : a.approval.required
+                  ? `Needs approval: ${a.approval.reasons.join("; ")}`
+                  : tileHint[a.key]}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -694,29 +694,15 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         <span className="text-secondary text-faint">
           <Link to="/deployments">Deployments</Link> / {d?.name ?? "…"}
         </span>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-title font-semibold">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
-            {d && <EnvBadge env={d.environment} />}
-            {d && <DeploymentStatusBadge status={d.status} />}
-            {d && d.sync_state !== "in_sync" && (
-              <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
-                {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Later what="AWX actions come with the AWX integration">
-              <Button disabled>
-                <RefreshCw /> Patch now <span className="font-mono text-badge text-faint">AWX</span>
-              </Button>
-            </Later>
-            <Later what="Scaling out comes later">
-              <Button disabled>
-                <Plus /> Add VM
-              </Button>
-            </Later>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-title font-semibold">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
+          {d && <EnvBadge env={d.environment} />}
+          {d && <DeploymentStatusBadge status={d.status} />}
+          {d && d.sync_state !== "in_sync" && (
+            <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
+              {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
+            </span>
+          )}
         </div>
         {d && (
           <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-secondary text-muted">
@@ -741,7 +727,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
         )}
       </div>
 
-      <nav aria-label="Deployment sections" className="flex gap-4 overflow-x-auto border-b border-line">
+      <nav aria-label="Deployment sections" className={tabStrip}>
         {tabs.map(([key, label]) => (
           <Link
             key={key}
@@ -749,12 +735,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
             params={{ deploymentId }}
             search={{ tab: key === "overview" ? undefined : key }}
             aria-current={tab === key ? "page" : undefined}
-            className={cn(
-              "-mb-px border-b-2 pt-1 pb-2 whitespace-nowrap",
-              tab === key
-                ? "border-accent font-medium text-fg hover:text-fg"
-                : "border-transparent text-muted hover:text-fg",
-            )}
+            className={cn(tabItem, tab === key && "border-accent font-medium text-fg")}
           >
             {label}
           </Link>
