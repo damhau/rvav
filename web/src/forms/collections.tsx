@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { UiColumn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { useFieldValues } from "./useFieldValues";
+import { SourceFailed } from "./failed";
+import { sourceFailed, useFieldValues } from "./useFieldValues";
 import type { JsonSchemaProp, WidgetProps } from "./widgets";
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -103,7 +104,15 @@ export function TagsWidget({
           autoComplete="off"
           placeholder={full ? `${schema.maxItems} at most` : (ui.placeholder ?? "Type, then Enter")}
           aria-invalid={invalid || undefined}
-          aria-describedby={[describedBy, note ? noteId : undefined].filter(Boolean).join(" ") || undefined}
+          aria-describedby={
+            [
+              describedBy,
+              note ? noteId : undefined,
+              ui.value_source && sourceFailed(sourced) ? `${id}-source` : undefined,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           className="h-6 min-w-32 flex-1 bg-transparent px-1 text-body text-fg outline-none placeholder:text-faint"
           onChange={(e) => {
             const v = e.target.value;
@@ -130,6 +139,15 @@ export function TagsWidget({
             </option>
           ))}
         </datalist>
+      )}
+      {ui.value_source && sourceFailed(sourced) && (
+        <SourceFailed
+          id={`${id}-source`}
+          message="Couldn't load the suggestions."
+          onRetry={() => void sourced.refetch()}
+          retrying={sourced.isFetching}
+          focusTo={() => document.getElementById(id)}
+        />
       )}
       <p id={noteId} role="status" className="text-secondary text-muted empty:hidden">
         {note}

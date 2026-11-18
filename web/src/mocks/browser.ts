@@ -3,12 +3,14 @@ import { getResponse } from "msw";
 import { setupWorker } from "msw/browser";
 import { setTransport } from "@/lib/api/client";
 import { env } from "@/lib/env";
+import { faults } from "./faults";
 import { handlers, latency } from "./handlers";
 import { timing } from "./simulator";
 
 export async function startMocks() {
   timing.tickMs = env.mockTickMs;
   latency.ms = env.mockLatencyMs;
+  (window as { __rvavMocks?: { faults: typeof faults } }).__rvavMocks = { faults };
   if (env.mockTransport === "inline") {
     // No service worker (single-file build): run the handlers in-process.
     setTransport(

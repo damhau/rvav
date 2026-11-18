@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import type { Option } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import { useFieldValues } from "./useFieldValues";
+import { SourceFailed } from "./failed";
+import { sourceFailed, useFieldValues } from "./useFieldValues";
 import type { WidgetProps } from "./widgets";
 
 /** The fewest letters a search needs. */
@@ -43,6 +44,9 @@ export function UserWidget({
   const options = searching ? (found.data?.options ?? []) : [];
   const listId = `${id}-people`;
   const statusId = `${id}-people-status`;
+  // A person given another way that the source couldn't name: the box shows the ID it holds.
+  const unnamed = Boolean(picked) && !person && sourceFailed(named) && text === null;
+  const failId = `${id}-source`;
   const expanded = options.length > 0;
 
   const pick = (o: Option) => {
@@ -93,8 +97,10 @@ export function UserWidget({
         aria-autocomplete="list"
         aria-activedescendant={expanded ? `${listId}-${Math.min(active, options.length - 1)}` : undefined}
         aria-invalid={invalid || undefined}
-        aria-describedby={[describedBy, person && `${id}-person`, statusId].filter(Boolean).join(" ")}
-        value={text ?? person?.label ?? (picked && named.isFetching ? "" : (picked ?? ""))}
+        aria-describedby={[describedBy, person && `${id}-person`, unnamed && failId, statusId]
+          .filter(Boolean)
+          .join(" ")}
+        value={text ?? person?.label ?? (picked && named.isFetching && !unnamed ? "" : (picked ?? ""))}
         placeholder={picked && !person ? "Loading…" : "Name or email"}
         autoComplete="off"
         readOnly={readOnly}
@@ -111,6 +117,15 @@ export function UserWidget({
           onBlur();
         }}
       />
+      {unnamed && (
+        <SourceFailed
+          id={failId}
+          message="Couldn't look up this person."
+          onRetry={() => void named.refetch()}
+          retrying={named.isFetching}
+          focusTo={() => document.getElementById(id)}
+        />
+      )}
       {person?.meta && text === null && (
         <span id={`${id}-person`} className="text-secondary text-muted">
           {person.meta}

@@ -9,8 +9,9 @@ import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
 import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
 import { DatagridWidget, KeyValueWidget, TagsWidget } from "./collections";
+import { SourceFailed } from "./failed";
 import { UserWidget } from "./people";
-import { useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
+import { sourceFailed, useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
   id: string;
@@ -272,12 +273,15 @@ function RadioCardsWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
 /**
  * Several options picked, from the field's options or its value source. When
  * a field it depends on changes, the picks the new options no longer offer
- * are dropped.
+ * are dropped. While its source fails, it lists the picks it holds.
  */
 function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, describedBy, readOnly }: WidgetProps) {
   const sourced = useFieldValues(name, ui, values, ctx);
-  const options = ui.value_source ? (sourced.data?.options ?? []) : (ui.options ?? []);
   const picked = Array.isArray(value) ? value.map(String) : [];
+  const failed = Boolean(ui.value_source) && sourceFailed(sourced);
+  const failId = `${id}-source`;
+  const loaded = ui.value_source ? sourced.data?.options : (ui.options ?? []);
+  const options: Option[] = loaded ?? (failed ? picked.map((v) => ({ value: v, label: v })) : []);
   const selected = new Set(picked);
   // Required options (disabled with a reason) are always part of the value.
   for (const o of options) if (o.disabled && o.disabled_reason) selected.add(o.value);
@@ -298,56 +302,74 @@ function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, described
     if (kept.length < before.length) onChangeRef.current(kept.length ? kept : undefined);
   }, [offered, pickedKey]);
 
-  if (ui.value_source && !sourced.data) {
+  const failure = failed && (
+    <SourceFailed
+      id={failId}
+      message="Couldn't load the options."
+      onRetry={() => void sourced.refetch()}
+      retrying={sourced.isFetching}
+      focusTo={() => document.getElementById(`${id}-options`)?.querySelector<HTMLElement>("button")}
+    />
+  );
+  if (ui.value_source && !sourced.data && !failed) {
     return (
       <p className="text-secondary text-muted" aria-describedby={describedBy}>
-        {sourced.isError
-          ? "Couldn't load the options. They'll be retried when you change a related field."
-          : "Loading the options…"}
+        Loading the options…
       </p>
     );
   }
   if (options.length === 0) {
     return (
-      <p className="text-secondary text-muted" aria-describedby={describedBy}>
-        Nothing available.
-      </p>
+      failure || (
+        <p className="text-secondary text-muted" aria-describedby={describedBy}>
+          Nothing available.
+        </p>
+      )
     );
   }
   return (
-    <ul
-      className={cn("flex flex-col", options.length > 10 && "max-h-72 overflow-y-auto pr-1")}
-      aria-labelledby={`${id}-label`}
-      aria-describedby={describedBy}
-    >
-      {options.map((o) => {
-        const optionId = `${id}-${o.value}`;
-        return (
-          <li key={o.value} className="border-b border-line last:border-b-0">
-            <label htmlFor={optionId} className="flex cursor-pointer items-start gap-2.5 py-2">
-              <Checkbox
-                id={optionId}
-                className="mt-0.5"
-                checked={selected.has(o.value)}
-                onChange={() => !readOnly && !o.disabled && toggle(o)}
-              />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="font-medium">{o.label}</span>
-                {o.description && <span className="text-secondary text-muted">{o.description}</span>}
-                {o.meta && <span className="font-mono text-caption text-faint">{withUnits(o.meta)}</span>}
-              </span>
-              {o.disabled_reason && (
-                <span className="text-caption whitespace-nowrap text-faint">{o.disabled_reason}</span>
-              )}
-            </label>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-1">
+      <ul
+        id={`${id}-options`}
+        className={cn("flex flex-col", options.length > 10 && "max-h-72 overflow-y-auto pr-1")}
+        aria-labelledby={`${id}-label`}
+        aria-describedby={[describedBy, failed && failId].filter(Boolean).join(" ") || undefined}
+      >
+        {options.map((o) => {
+          const optionId = `${id}-${o.value}`;
+          return (
+            <li key={o.value} className="border-b border-line last:border-b-0">
+              <label htmlFor={optionId} className="flex cursor-pointer items-start gap-2.5 py-2">
+                <Checkbox
+                  id={optionId}
+                  className="mt-0.5"
+                  checked={selected.has(o.value)}
+                  onChange={() => !readOnly && !o.disabled && toggle(o)}
+                />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{o.label}</span>
+                  {o.description && <span className="text-secondary text-muted">{o.description}</span>}
+                  {o.meta && <span className="font-mono text-caption text-faint">{withUnits(o.meta)}</span>}
+                </span>
+                {o.disabled_reason && (
+                  <span className="text-caption whitespace-nowrap text-faint">{o.disabled_reason}</span>
+                )}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {failure}
+    </div>
   );
 }
 
-/** Select whose options come from static options or the server (vCenter, EfficientIP, AWX). */
+/**
+ * Select whose options come from static options or the server (vCenter,
+ * EfficientIP, AWX). It shows the value the form holds, so it sends what it
+ * shows: once its options load, a value they don't offer gives way to the
+ * server's default, or to none; while they fail, the value held stays, shown.
+ */
 function SourcedSelectWidget({
   id,
   name,
@@ -361,11 +383,21 @@ function SourcedSelectWidget({
   readOnly,
 }: WidgetProps) {
   const sourced = useFieldValues(name, ui, values, ctx);
-  const options = ui.value_source ? (sourced.data?.options ?? []) : (ui.options ?? []);
   const current = str(value);
+  const loaded = ui.value_source ? sourced.data?.options : (ui.options ?? []);
+  const failed = Boolean(ui.value_source) && sourceFailed(sourced);
+  const options = loaded ?? (failed && current ? [{ value: current, label: current }] : []);
   const valid = options.some((o) => o.value === current && !o.disabled);
-  useApplySuggestion(value, sourced.data?.default, valid, onChange);
+  const suggestion = sourced.data?.default;
+  useApplySuggestion(value, suggestion, valid, onChange);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const stale = loaded !== undefined && !valid && current !== "" && suggestion === undefined && !readOnly;
+  useEffect(() => {
+    if (stale) onChangeRef.current(undefined);
+  }, [stale]);
   const empty = ui.value_source && sourced.isSuccess && options.length === 0;
+  const failId = `${id}-source`;
   return (
     <div className="flex flex-col gap-1">
       <Select
@@ -373,17 +405,21 @@ function SourcedSelectWidget({
         value={valid ? current : ""}
         onChange={onChange}
         options={options.map((o) => ({ value: o.value, label: o.label, meta: o.meta }))}
-        loading={sourced.isFetching && !sourced.data}
-        disabled={readOnly || Boolean(empty)}
-        placeholder={empty ? "Nothing available" : "Select…"}
+        loading={sourced.isFetching && !sourced.data && !failed}
+        disabled={readOnly || Boolean(empty) || (failed && options.length === 0)}
+        placeholder={empty ? "Nothing available" : failed && options.length === 0 ? "Not loaded" : "Select…"}
         className={cn("font-mono text-secondary", invalid && "border-bad")}
         aria-invalid={invalid || undefined}
-        aria-describedby={describedBy}
+        aria-describedby={[describedBy, failed && failId].filter(Boolean).join(" ") || undefined}
       />
-      {sourced.isError && (
-        <span className="text-secondary text-bad">
-          Couldn't load the options. They'll be retried when you change a related field.
-        </span>
+      {failed && (
+        <SourceFailed
+          id={failId}
+          message="Couldn't load the options."
+          onRetry={() => void sourced.refetch()}
+          retrying={sourced.isFetching}
+          focusTo={() => document.getElementById(id)}
+        />
       )}
     </div>
   );
@@ -395,20 +431,35 @@ function ComputedWidget({ id, name, ui, value, values, onChange, ctx, describedB
   const suggestion = typeof sourced.data?.value === "string" ? sourced.data.value : undefined;
   useApplySuggestion(value, suggestion, suggestion === undefined || suggestion === value, onChange);
   const shown = str(value);
+  const failed = Boolean(ui.value_source) && sourceFailed(sourced);
+  const failId = `${id}-source`;
   return (
-    <output
-      id={id}
-      htmlFor={(ui.depends_on ?? []).map((d) => `f-${d}`).join(" ") || undefined}
-      aria-describedby={describedBy}
-      className="flex h-8 items-center justify-between gap-2 rounded-md border border-dashed border-line-strong bg-sunken px-2.5 font-mono text-secondary"
-    >
-      <span className="truncate">{shown || <span className="text-faint">–</span>}</span>
-      {sourced.isFetching ? (
-        <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />
-      ) : (
-        <span className="font-sans text-caption text-faint">{name === "ip_address" ? "next free" : "generated"}</span>
+    <div className="flex flex-col gap-1">
+      {/* Focusable from code only: Try again gives the focus back here. */}
+      <output
+        id={id}
+        tabIndex={-1}
+        htmlFor={(ui.depends_on ?? []).map((d) => `f-${d}`).join(" ") || undefined}
+        aria-describedby={[describedBy, failed && failId].filter(Boolean).join(" ") || undefined}
+        className="flex h-8 items-center justify-between gap-2 rounded-md border border-dashed border-line-strong bg-sunken px-2.5 font-mono text-secondary"
+      >
+        <span className="truncate">{shown || <span className="text-faint">–</span>}</span>
+        {sourced.isFetching ? (
+          <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />
+        ) : (
+          <span className="font-sans text-caption text-faint">{name === "ip_address" ? "next free" : "generated"}</span>
+        )}
+      </output>
+      {failed && (
+        <SourceFailed
+          id={failId}
+          message="Couldn't work out this value."
+          onRetry={() => void sourced.refetch()}
+          retrying={sourced.isFetching}
+          focusTo={() => document.getElementById(id)}
+        />
       )}
-    </output>
+    </div>
   );
 }
 

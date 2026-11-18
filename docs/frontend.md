@@ -313,6 +313,13 @@ the designer preview.
   built from its `dependsOn` values. When those values change, the query key
   changes and the options load again (with a loading state on the field, not on
   the whole form).
+- **What a field shows is what the form sends.** A source that fails says so
+  under its field, with **Try again** (`forms/failed.tsx`), and the failure
+  stays while the retry runs. Until it answers, a select shows the value it
+  holds, or **Not loaded** when it holds none, and a checklist lists the picks
+  it holds. Once the options load, a held value they don't offer gives way to
+  the server's default, or to none. A successful **Try again** gives the focus
+  to the field's control.
 - **Rules** (visible, required, read-only, computed value) are CEL expressions
   evaluated by the server: the request preview returns each field's results
   (`fields`) and the renderer shows them (`fieldStates`). The browser doesn't

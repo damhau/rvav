@@ -48,6 +48,7 @@ import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
+import { faults } from "./faults";
 import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
@@ -543,6 +544,13 @@ export const handlers = [
     await wait();
     // `environment` is not in FieldValuesQuery yet (spec gap); the web client sends it anyway.
     const body = (await request.json()) as S["FieldValuesQuery"] & { environment?: EnvironmentKey };
+    if (faults.fieldValuesFail(body.field))
+      return problem(
+        500,
+        "internal",
+        "Something went wrong on our side",
+        "The error was logged. Quote the request ID if you contact support.",
+      );
     const project = projectById(body.project_id);
     // The form designer resolves any version, as the user it previews as.
     const designer =

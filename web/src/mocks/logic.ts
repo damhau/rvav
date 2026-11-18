@@ -585,10 +585,13 @@ export function preview(db: Db, item: StoredItem, project: Project, draft: Reque
     placement:
       vms > 0 && item.type === "vm_blueprint"
         ? {
+            // As the server: a cluster input left empty places nowhere; placement chooses only where the form has none.
             cluster:
               typeof inputs.cluster === "string"
                 ? inputs.cluster
-                : clusters.find((c) => c.env === draft.environment)?.name,
+                : db.forms[item.id]?.ui_schema.fields.cluster
+                  ? undefined
+                  : clusters.find((c) => c.env === draft.environment)?.name,
             datastore: typeof inputs.datastore === "string" ? inputs.datastore : undefined,
             folder:
               placementFolder(db, project.id, draft.environment) ?? `/GVA/vm/rvav/${project.code}/${draft.environment}`,

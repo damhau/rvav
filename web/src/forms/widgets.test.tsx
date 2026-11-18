@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
-import type { FieldValuesQuery, RequestForm, UiField } from "@/lib/api/types";
+import type { FieldValuesQuery, Option, RequestForm, UiField } from "@/lib/api/types";
 import { server } from "@/mocks/node";
 import { renderWithQuery } from "@/test/render";
 import { FormRenderer } from "./FormRenderer";
@@ -375,5 +375,156 @@ describe("rvav's own records", () => {
     );
     await waitFor(() => expect(asked.map((q) => q.field)).toEqual(["deployment"]));
     expect(screen.getByRole("combobox", { name: "Web server" })).toBeEnabled();
+  });
+});
+
+describe("a value source that fails", () => {
+  /** Answers with these options per field; each field in `failing` fails once first. */
+  function source(answers: Record<string, { options: Option[]; default?: string }>, failing: string[]) {
+    const left = new Set(failing);
+    const asked: string[] = [];
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        asked.push(q.field);
+        if (left.delete(q.field))
+          return HttpResponse.json(
+            { type: "about:blank", title: "Something went wrong on our side", status: 500, request_id: "r1" },
+            { status: 500 },
+          );
+        return HttpResponse.json({ field: q.field, ...answers[q.field] });
+      }),
+    );
+    return asked;
+  }
+  const clusters = { options: [{ value: "GVA-DEV-CL01", label: "GVA-DEV-CL01" }], default: "GVA-DEV-CL01" };
+  const cluster = (initial = {}) =>
+    formOf(
+      {
+        cluster: {
+          ui: {
+            widget: "vsphere_cluster",
+            label: "Cluster",
+            value_source: { kind: "builtin", name: "vsphere.clusters" },
+          },
+          schema: { type: "string" },
+        },
+      },
+      initial,
+    );
+
+  it("leaves a select empty, says so with Try again, and Try again fills it", async () => {
+    const user = userEvent.setup();
+    source({ cluster: clusters }, ["cluster"]);
+    renderWithQuery(<Harness form={cluster()} />);
+    const select = screen.getByRole("combobox", { name: "Cluster" });
+    await waitFor(() => expect(select).toHaveAccessibleDescription("Couldn't load the options."));
+    expect(select).toHaveTextContent("Not loaded");
+    expect(select).toBeDisabled();
+    expect(values()).toEqual({});
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(select).toHaveTextContent("GVA-DEV-CL01"));
+    expect(values()).toEqual({ cluster: "GVA-DEV-CL01" });
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await waitFor(() => expect(select).toHaveFocus());
+  });
+
+  it("shows the value a select holds while its options fail, and settles it once they load", async () => {
+    const user = userEvent.setup();
+    source({ cluster: clusters }, ["cluster"]);
+    renderWithQuery(<Harness form={cluster({ cluster: "GVA-OLD-CL09" })} />);
+    const select = screen.getByRole("combobox", { name: "Cluster" });
+    await waitFor(() => expect(select).toHaveAccessibleDescription("Couldn't load the options."));
+    expect(select).toHaveTextContent("GVA-OLD-CL09");
+    expect(values()).toEqual({ cluster: "GVA-OLD-CL09" });
+
+    // No longer offered: the server's default takes its place.
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(values()).toEqual({ cluster: "GVA-DEV-CL01" }));
+    expect(select).toHaveTextContent("GVA-DEV-CL01");
+  });
+
+  it("drops a value its options no longer offer when there is no default", async () => {
+    source({ cluster: { options: [{ value: "GVA-DEV-CL01", label: "GVA-DEV-CL01" }] } }, []);
+    renderWithQuery(<Harness form={cluster({ cluster: "GVA-OLD-CL09" })} />);
+    await waitFor(() => expect(values()).toEqual({}));
+    expect(screen.getByRole("combobox", { name: "Cluster" })).toHaveTextContent("Select…");
+  });
+
+  it("lists the picks a multi-select holds while its options fail", async () => {
+    const user = userEvent.setup();
+    source(
+      {
+        zones: {
+          options: [
+            { value: "gva-a", label: "GVA-A" },
+            { value: "gva-b", label: "GVA-B" },
+          ],
+        },
+      },
+      ["zones"],
+    );
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          {
+            zones: {
+              ui: {
+                widget: "multiselect",
+                label: "Zones",
+                value_source: { kind: "rest", params: { url: "https://cmdb.corp.example/zones" } },
+              },
+              schema: { type: "array", items: { type: "string" } },
+            },
+          },
+          { zones: ["gva-a", "zrh-a"] },
+        )}
+      />,
+    );
+    expect(await screen.findByText("Couldn't load the options.")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "gva-a" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "zrh-a" })).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("checkbox", { name: "GVA-A" })).toBeChecked();
+    await waitFor(() => expect(values()).toEqual({ zones: ["gva-a"] }));
+    expect(screen.queryByText("Couldn't load the options.")).not.toBeInTheDocument();
+  });
+
+  it("says a record picker couldn't load its records, and Try again loads them", async () => {
+    const user = userEvent.setup();
+    source({ deployment: { options: [{ value: "dep_web_app", label: "web-dev-app001" }] } }, ["deployment"]);
+    renderWithQuery(
+      <Harness
+        form={formOf({ deployment: { ui: { widget: "deployment", label: "Web server" }, schema: { type: "string" } } })}
+      />,
+    );
+    const select = screen.getByRole("combobox", { name: "Web server" });
+    await waitFor(() => expect(select).toHaveAccessibleDescription("Couldn't load the options."));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveTextContent("Select…");
+  });
+
+  it("says a person given another way couldn't be looked up, and Try again names them", async () => {
+    const user = userEvent.setup();
+    source({ owner: { options: [{ value: "usr_lmartin", label: "Léa Martin", meta: "lea.martin@corp.example" }] } }, [
+      "owner",
+    ]);
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          { owner: { ui: { widget: "user", label: "Technical owner" }, schema: { type: "string" } } },
+          { owner: "usr_lmartin" },
+        )}
+      />,
+    );
+    const box = screen.getByRole("combobox", { name: "Technical owner" });
+    await waitFor(() => expect(box).toHaveAccessibleDescription(/Couldn't look up this person\./));
+    expect(box).toHaveValue("usr_lmartin");
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(box).toHaveValue("Léa Martin"));
+    expect(values()).toEqual({ owner: "usr_lmartin" });
   });
 });

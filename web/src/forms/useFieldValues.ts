@@ -69,6 +69,16 @@ export function useFieldValues(
   });
 }
 
+/**
+ * Whether a source failed and hasn't answered since, Try again running or not.
+ * A refetch after an error with no data puts the query back to pending: its
+ * error count says it failed, so the failure stays shown, focus and all, while
+ * the retry runs.
+ */
+export function sourceFailed(q: { isError: boolean; data: unknown; errorUpdateCount: number }): boolean {
+  return q.isError || (q.data === undefined && q.errorUpdateCount > 0);
+}
+
 /** Apply a server suggestion (default option or computed value) when the current value doesn't fit. */
 export function useApplySuggestion(
   value: unknown,
