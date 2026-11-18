@@ -9,7 +9,7 @@ import (
 
 // inventoryTables hold what the inventory sync reads of each vCenter.
 var inventoryTables = []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies",
-	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters", "inv_folders"}
+	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters", "inv_folders", "inv_vcenters"}
 
 // ReplaceInventory swaps the cached inventory of one vCenter for a new snapshot.
 func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
@@ -20,6 +20,9 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 			}
 		}
 		b := &pgx.Batch{}
+		if inv.InstanceUUID != "" {
+			b.Queue(`insert into inv_vcenters (vcenter, host, instance_uuid) values ($1,$2,$3)`, inv.VCenter, inv.Host, inv.InstanceUUID)
+		}
 		for _, c := range inv.Clusters {
 			b.Queue(`insert into inv_clusters (vcenter, moref, name, datacenter, host_count, cpu_total_mhz, cpu_used_mhz,
 				memory_total_mb, memory_used_mb, tags) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,

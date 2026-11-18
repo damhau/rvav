@@ -163,6 +163,9 @@ type VM struct {
 	Cluster      string
 	Host         string
 	Folder       string
+	// ResourcePool is its pool's path below its cluster's root pool, such
+	// as rvav/dev; "" in the root pool.
+	ResourcePool string
 	Datastore    string
 	Template     bool
 	// CPUHotAdd and MemoryHotAdd allow adding CPU or memory while running.
@@ -464,7 +467,7 @@ func vmRef(moref string) types.ManagedObjectReference {
 }
 
 var vmProps = []string{"name", "config", "runtime.powerState", "runtime.host", "guest", "summary.quickStats",
-	"parent", "datastore", "network", "snapshot"}
+	"parent", "datastore", "network", "snapshot", "resourcePool"}
 
 func (cl *Client) vmInfo(ctx context.Context, c *vim25.Client, ref types.ManagedObjectReference) (*VM, error) {
 	var m mo.VirtualMachine
@@ -523,6 +526,9 @@ func (cl *Client) vmInfo(ctx context.Context, c *vim25.Client, ref types.Managed
 	}
 	if m.Parent != nil {
 		vm.Folder = inventoryPath(ctx, pc, *m.Parent)
+	}
+	if m.ResourcePool != nil {
+		vm.ResourcePool = poolPath(ctx, pc, *m.ResourcePool)
 	}
 	return &vm, nil
 }

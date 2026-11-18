@@ -217,6 +217,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return bindingField(c.Bindings[key], def)
 	}
 	plan, count, missing := ev.Blueprint.EvaluateComponent(c, ev.Inputs)
+	for _, k := range ev.Blueprint.SecretProperties(c, ev.Inputs, present.SecretFields(ev.Version.UISchema)) {
+		plan.Properties[k] = hidden
+	}
 	if multi {
 		part.count = count
 		switch {

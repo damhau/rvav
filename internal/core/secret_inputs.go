@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/secretinput"
@@ -55,6 +56,22 @@ func markSecretValues(inputs map[string]any, sealed map[string]any) {
 		for field, plain := range sealed {
 			if reflect.DeepEqual(v, plain) {
 				inputs[k] = secretinput.Marker(field)
+			}
+		}
+	}
+}
+
+// maskSecretProperties masks the custom properties of a composite step's VMs
+// that hold a sealed value: a binding gave the step a secret its item's form
+// doesn't mark as one, so its own check (SecretProperties) can't see it.
+func maskSecretProperties(sub *Evaluation, sealed map[string]any) {
+	for i := range sub.Parts {
+		props := sub.Parts[i].vm.Properties
+		for k, v := range props {
+			for _, plain := range sealed {
+				if s, ok := plain.(string); ok && s != "" && strings.Contains(v, s) {
+					props[k] = hidden
+				}
 			}
 		}
 	}

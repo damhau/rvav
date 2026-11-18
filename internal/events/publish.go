@@ -107,7 +107,11 @@ func (p *Publisher) Deployment(ctx context.Context, deploymentID string) {
 
 // Resource publishes resource.updated.
 func (p *Publisher) Resource(ctx context.Context, projectID string, r store.Resource) {
-	res, ok := present.Resource(r)
+	links, err := p.Store.VCenterLinks(ctx)
+	if err != nil {
+		p.Logger.Warn("publish resource: vCenter links", "err", err)
+	}
+	res, ok := present.Resource(r, links)
 	if !ok {
 		return
 	}

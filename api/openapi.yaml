@@ -7239,11 +7239,28 @@ components:
         fqdn: { type: string }
         cluster: { type: string }
         host: { type: string }
+        resource_pool:
+          type: string
+          description: Its resource pool's path below its cluster's root pool, for example `rvav/dev`. Absent in the root pool.
         folder: { type: string }
         template: { type: string }
         component:
           type: string
           description: The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item.
+        custom_properties:
+          type: object
+          additionalProperties: { type: string }
+          description: >-
+            The custom properties it was built with: its project's, with its blueprint's and component's over them
+            (ADR-0038), as vSphere custom attributes have them. A property that reads a secret input is `"••••"`.
+            Absent for a VM built without any, or before rvav recorded them.
+        vsphere_url:
+          type: string
+          format: uri
+          description: >-
+            The VM in the vSphere Client, from its vCenter's host and instance UUID. Absent until the inventory sync
+            has read its vCenter.
+          examples: ["https://vc01.corp.example/ui/app/vm;nav=h/urn:vmomi:VirtualMachine:vm-48217:6f1c2a5e-0b8d-4c1e-9d2f-3a4b5c6d7e8f/summary"]
         dhcp:
           type: boolean
           description: >-
@@ -8990,6 +9007,9 @@ components:
             clusters: { type: integer }
             vms: { type: integer }
             synced_at: { type: [string, "null"], format: date-time }
+            instance_uuid:
+              type: string
+              description: Its instance UUID (`ServiceContent.About.InstanceUuid`), which links to its VMs in the vSphere Client name.
     VCenterWrite:
       type: object
       required: [name, url, username]

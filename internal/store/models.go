@@ -445,7 +445,11 @@ type InvVM struct {
 
 // Inventory is one full snapshot of a vCenter, written by the sync loop.
 type Inventory struct {
-	VCenter           string
+	VCenter string
+	// Host and InstanceUUID are the vCenter's own: they make its VMs'
+	// links into the vSphere Client.
+	Host              string
+	InstanceUUID      string
 	Clusters          []InvCluster
 	Datastores        []InvDatastore
 	Networks          []InvNetwork

@@ -85,6 +85,17 @@ own `properties` (C30).
   supports custom attributes, so guestinfo isn't used for them.
 - The merged properties are copied into the plan (`VMUnit.properties`,
   omitempty): a project's later change doesn't touch VMs built before.
+- A property that reads a secret input is `••••` everywhere (X1.1): in
+  the plan, the custom attribute, the notes and the VM resource. It is
+  found by working the property out again with the secret inputs replaced
+  by two stand-ins: it changes or fails with either. A composite's step
+  given a secret through a binding its item's form doesn't mark secret
+  has a property holding the sealed value masked too. Custom attributes
+  are readable by anyone who sees the VM in vCenter, so a secret has no
+  place there.
+- The VM resource carries the properties it was built with
+  (`vm.custom_properties`, kept by the inventory sync like its FQDN); VMs
+  built before X1.1 have none.
 - Bindings and form rules read `project.properties.<key>` (`project` has
   `id`, `code`, `name` and `properties`). The blueprint carries the
   project as a context its bindings read besides the inputs.

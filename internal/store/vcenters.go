@@ -103,18 +103,47 @@ func (s *Store) PlacementRulesNaming(ctx context.Context, vcenter string) (int, 
 	return n, err
 }
 
+// VCenterLink is what a vCenter's VMs' links into the vSphere Client are
+// made of, as the inventory sync last read it.
+type VCenterLink struct {
+	Host         string
+	InstanceUUID string
+}
+
+// VCenterLinks are every synced vCenter's, by name.
+func (s *Store) VCenterLinks(ctx context.Context) (map[string]VCenterLink, error) {
+	rows, err := s.Pool.Query(ctx, `select vcenter, host, instance_uuid from inv_vcenters`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]VCenterLink{}
+	for rows.Next() {
+		var name string
+		var l VCenterLink
+		if err := rows.Scan(&name, &l.Host, &l.InstanceUUID); err != nil {
+			return nil, err
+		}
+		out[name] = l
+	}
+	return out, rows.Err()
+}
+
 // VCenterInventory is what the inventory sync last read from a vCenter.
 type VCenterInventory struct {
-	Clusters int
-	VMs      int
-	SyncedAt *time.Time
+	Clusters     int
+	VMs          int
+	SyncedAt     *time.Time
+	InstanceUUID string
 }
 
 func (s *Store) VCenterInventories(ctx context.Context) (map[string]VCenterInventory, error) {
-	rows, err := s.Pool.Query(ctx, `select v.vcenter, coalesce(c.n, 0), coalesce(m.n, 0), greatest(c.at, m.at)
-		from (select vcenter from inv_clusters union select vcenter from inv_vms) v
+	rows, err := s.Pool.Query(ctx, `select v.vcenter, coalesce(c.n, 0), coalesce(m.n, 0), greatest(c.at, m.at, i.synced_at),
+			coalesce(i.instance_uuid, '')
+		from (select vcenter from inv_clusters union select vcenter from inv_vms union select vcenter from inv_vcenters) v
 		left join (select vcenter, count(*) as n, max(synced_at) as at from inv_clusters group by vcenter) c using (vcenter)
-		left join (select vcenter, count(*) as n, max(synced_at) as at from inv_vms group by vcenter) m using (vcenter)`)
+		left join (select vcenter, count(*) as n, max(synced_at) as at from inv_vms group by vcenter) m using (vcenter)
+		left join inv_vcenters i using (vcenter)`)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +152,7 @@ func (s *Store) VCenterInventories(ctx context.Context) (map[string]VCenterInven
 	for rows.Next() {
 		var name string
 		var inv VCenterInventory
-		if err := rows.Scan(&name, &inv.Clusters, &inv.VMs, &inv.SyncedAt); err != nil {
+		if err := rows.Scan(&name, &inv.Clusters, &inv.VMs, &inv.SyncedAt, &inv.InstanceUUID); err != nil {
 			return nil, err
 		}
 		out[name] = inv

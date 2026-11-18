@@ -283,14 +283,15 @@ func Deployment(d store.DeploymentRow) api.Deployment {
 	return out
 }
 
-func DeploymentDetail(d store.DeploymentRow, resources []store.Resource, secret map[string]bool) api.DeploymentDetail {
+func DeploymentDetail(d store.DeploymentRow, resources []store.Resource, secret map[string]bool,
+	links map[string]store.VCenterLink) api.DeploymentDetail {
 	b, _ := json.Marshal(Deployment(d))
 	var out api.DeploymentDetail
 	_ = json.Unmarshal(b, &out)
 	out.Inputs = RedactInputs(d.Inputs, secret)
 	out.Resources = make([]api.Resource, 0, len(resources))
 	for _, r := range resources {
-		if res, ok := Resource(r); ok {
+		if res, ok := Resource(r, links); ok {
 			out.Resources = append(out.Resources, res)
 		}
 	}
@@ -343,8 +344,16 @@ type VMResourceProps struct {
 	Drift    []api.VmDrift   `json:"drift,omitempty"`
 }
 
-// Resource maps a resource to the API union type.
-func Resource(r store.Resource) (api.Resource, bool) {
+// VSphereURL is a VM's page in the vSphere Client, as William Lam's
+// "Generating a vSphere UI link to a specific Virtual Machine" (2023) gives
+// it: VMware documents no such link.
+func VSphereURL(l store.VCenterLink, moref string) string {
+	return "https://" + l.Host + "/ui/app/vm;nav=h/urn:vmomi:VirtualMachine:" + moref + ":" + l.InstanceUUID + "/summary"
+}
+
+// Resource maps a resource to the API union type; links are the synced
+// vCenters', by name, which give VMs their vSphere Client link.
+func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resource, bool) {
 	var out api.Resource
 	switch r.Type {
 	case "vsphere.vm":
@@ -362,6 +371,9 @@ func Resource(r store.Resource) (api.Resource, bool) {
 				Mac         *string   `json:"mac,omitempty"`
 				Network     string    `json:"network"`
 			}{}
+		}
+		if l, ok := links[p.VM.Vcenter]; ok && l.Host != "" && l.InstanceUUID != "" && p.VM.Moref != "" {
+			p.VM.VsphereUrl = Ptr(VSphereURL(l, p.VM.Moref))
 		}
 		vr := api.VmResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "vsphere.vm", Vm: p.VM}
 		if len(p.Drift) > 0 && r.SyncState == "drifted" {

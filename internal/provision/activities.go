@@ -686,7 +686,7 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 
 func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput, vm *vsphere.VM) (store.Resource, error) {
 	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component,
-		DHCP: in.VM.DHCP}, nil, 0)
+		DHCP: in.VM.DHCP, Properties: in.VM.Properties}, nil, 0)
 	// The VM as rvav built it: what drift is measured from (S13.2).
 	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := vm.InstanceUUID

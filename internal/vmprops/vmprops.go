@@ -4,6 +4,7 @@ package vmprops
 
 import (
 	"encoding/json"
+	"maps"
 	"strconv"
 	"time"
 
@@ -30,6 +31,8 @@ type Ours struct {
 	Component string `json:"component"`
 	// DHCP: its first adapter's address comes from DHCP (ADR-0039).
 	DHCP bool `json:"dhcp"`
+	// Properties are the custom properties it was built with (ADR-0038).
+	Properties map[string]string `json:"custom_properties,omitempty"`
 }
 
 // OursOf reads them back from stored properties.
@@ -93,7 +96,12 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 		return &s
 	}
 	p.GuestOs, p.Cluster, p.Host, p.Folder = set(vm.GuestOS), set(vm.Cluster), set(vm.Host), set(vm.Folder)
+	p.ResourcePool = set(vm.ResourcePool)
 	p.Fqdn, p.Template, p.Component = set(ours.FQDN), set(ours.Template), set(ours.Component)
+	if len(ours.Properties) > 0 {
+		props := maps.Clone(ours.Properties)
+		p.CustomProperties = &props
+	}
 	if ours.DHCP {
 		p.Dhcp = &ours.DHCP
 	}

@@ -30,10 +30,14 @@ func presentVCenter(v store.VCenter, inv map[string]store.VCenterInventory) api.
 	}
 	if i, ok := inv[v.Name]; ok {
 		out.Inventory = &struct {
-			Clusters *int       `json:"clusters,omitempty"`
-			SyncedAt *time.Time `json:"synced_at,omitempty"`
-			Vms      *int       `json:"vms,omitempty"`
+			Clusters     *int       `json:"clusters,omitempty"`
+			InstanceUuid *string    `json:"instance_uuid,omitempty"`
+			SyncedAt     *time.Time `json:"synced_at,omitempty"`
+			Vms          *int       `json:"vms,omitempty"`
 		}{Clusters: present.Ptr(i.Clusters), Vms: present.Ptr(i.VMs), SyncedAt: i.SyncedAt}
+		if i.InstanceUUID != "" {
+			out.Inventory.InstanceUuid = &i.InstanceUUID
+		}
 	}
 	return out
 }

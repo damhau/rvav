@@ -5445,10 +5445,22 @@ export interface components {
             fqdn?: string;
             cluster?: string;
             host?: string;
+            /** @description Its resource pool's path below its cluster's root pool, for example `rvav/dev`. Absent in the root pool. */
+            resource_pool?: string;
             folder?: string;
             template?: string;
             /** @description The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item. */
             component?: string;
+            /** @description The custom properties it was built with: its project's, with its blueprint's and component's over them (ADR-0038), as vSphere custom attributes have them. A property that reads a secret input is `"••••"`. Absent for a VM built without any, or before rvav recorded them. */
+            custom_properties?: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uri
+             * @description The VM in the vSphere Client, from its vCenter's host and instance UUID. Absent until the inventory sync has read its vCenter.
+             * @example https://vc01.corp.example/ui/app/vm;nav=h/urn:vmomi:VirtualMachine:vm-48217:6f1c2a5e-0b8d-4c1e-9d2f-3a4b5c6d7e8f/summary
+             */
+            vsphere_url?: string;
             /** @description Its first adapter gets its address from DHCP (ADR-0039): rvav reserved no address and made no DNS records for it. The address is the first of `nics[0].ip_addresses`, once VMware Tools reports it. */
             dhcp?: boolean;
             snapshot_count?: number;
@@ -6878,6 +6890,8 @@ export interface components {
                 vms?: number;
                 /** Format: date-time */
                 synced_at?: string | null;
+                /** @description Its instance UUID (`ServiceContent.About.InstanceUuid`), which links to its VMs in the vSphere Client name. */
+                instance_uuid?: string;
             };
         };
         VCenterWrite: {

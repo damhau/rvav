@@ -2,6 +2,7 @@ package blueprint
 
 import (
 	"maps"
+	"slices"
 	"testing"
 
 	"github.com/damhau/rvav/internal/policy"
@@ -51,5 +52,26 @@ func TestComponentProperties(t *testing.T) {
 	if web.Folder != "apps" || !web.PreventDelete || len(missing) != 1 || missing[0] != "properties/app" ||
 		!maps.Equal(web.Properties, map[string]string{"owner": "web team", "tier": "silver"}) {
 		t.Fatalf("web = %+v, missing %v", web, missing)
+	}
+}
+
+// A property reading a secret input, directly or through a function, is
+// one to mask; one that doesn't, or whose secret wasn't given, isn't.
+func TestSecretProperties(t *testing.T) {
+	b, err := Parse([]byte(`{"kind": "vm", "template": "t",
+		"properties": {"app": "${inputs.app}", "auth": "Bearer ${inputs.token}", "long": "${size(inputs.token) > 8}",
+			"fixed": "web team"},
+		"bindings": {"cluster": "'c'", "datastore": "'d'", "network": "'n'"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := b.ComponentList()[0]
+	secret := map[string]bool{"token": true}
+	got := b.SecretProperties(c, map[string]any{"app": "shop", "token": "s3cret-token"}, secret)
+	if !slices.Equal(got, []string{"auth", "long"}) {
+		t.Fatalf("secret properties = %v", got)
+	}
+	if got := b.SecretProperties(c, map[string]any{"app": "shop"}, secret); got != nil {
+		t.Fatalf("without the secret = %v", got)
 	}
 }

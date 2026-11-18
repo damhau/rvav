@@ -34,6 +34,9 @@ type Inventory struct {
 	// LibrariesError and PoliciesError say why content library items or
 	// storage policies are missing: they couldn't be read.
 	LibrariesError, PoliciesError error
+	// InstanceUUID is the vCenter's own (ServiceContent.About): with its
+	// host, it names a VM in the vSphere Client's links.
+	InstanceUUID string
 }
 
 type Cluster struct {
@@ -184,7 +187,7 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	}
 	var vms []mo.VirtualMachine
 	if err := retrieve([]string{"VirtualMachine"}, []string{"name", "config", "runtime.powerState", "runtime.host",
-		"runtime.maxCpuUsage", "guest", "summary.quickStats", "network", "snapshot"}, &vms); err != nil {
+		"runtime.maxCpuUsage", "guest", "summary.quickStats", "network", "snapshot", "resourcePool"}, &vms); err != nil {
 		return nil, err
 	}
 
@@ -192,7 +195,7 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	hostCluster := map[types.ManagedObjectReference]string{}
 	hostName := map[types.ManagedObjectReference]string{}
 	clusterByRef := map[types.ManagedObjectReference]*Cluster{}
-	inv := &Inventory{}
+	inv := &Inventory{InstanceUUID: c.ServiceContent.About.InstanceUuid}
 	for _, cc := range clusters {
 		cluster := Cluster{Moref: cc.Self.Value, Name: cc.Name, HostCount: len(cc.Host), Datacenter: datacenterOf(ctx, pc, cc.Parent)}
 		inv.Clusters = append(inv.Clusters, cluster)
@@ -268,6 +271,7 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	for _, n := range networks {
 		netName[n.Self.Value] = n.Name
 	}
+	paths := poolPaths(pools)
 	for _, v := range vms {
 		vm := toVM(v)
 		for i := range vm.NICs {
@@ -280,6 +284,9 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 			continue
 		}
 		iv := InventoryVM{VM: vm}
+		if v.ResourcePool != nil {
+			iv.ResourcePool = paths[*v.ResourcePool]
+		}
 		if v.Runtime.Host != nil {
 			iv.Host = hostName[*v.Runtime.Host]
 			iv.Cluster = hostCluster[*v.Runtime.Host]
@@ -375,6 +382,47 @@ func resourcePools(pools []mo.ResourcePool, clusters map[types.ManagedObjectRefe
 		out = append(out, rp)
 	}
 	return out
+}
+
+// isPool says whether a parent is a resource pool, a vApp being one.
+func isPool(ref types.ManagedObjectReference) bool {
+	return ref.Type == "ResourcePool" || ref.Type == "VirtualApp"
+}
+
+// poolPaths are the paths of pools, vApps among them, below their
+// cluster's root pool: what a VM's ResourcePool says. The root's is "".
+func poolPaths(pools []mo.ResourcePool) map[types.ManagedObjectReference]string {
+	byRef := map[types.ManagedObjectReference]*mo.ResourcePool{}
+	for i := range pools {
+		byRef[pools[i].Self] = &pools[i]
+	}
+	out := map[types.ManagedObjectReference]string{}
+	for i := range pools {
+		var parts []string
+		for up := &pools[i]; up != nil && up.Parent != nil && isPool(*up.Parent) && len(parts) < 30; up = byRef[*up.Parent] {
+			parts = append([]string{up.Name}, parts...)
+		}
+		out[pools[i].Self] = strings.Join(parts, "/")
+	}
+	return out
+}
+
+// poolPath is one pool's path, as poolPaths gives it; "" when it can't be
+// read.
+func poolPath(ctx context.Context, pc *property.Collector, ref types.ManagedObjectReference) string {
+	var parts []string
+	for i := 0; i < 30; i++ {
+		var p mo.ResourcePool
+		if err := pc.RetrieveOne(ctx, ref, []string{"name", "parent"}, &p); err != nil {
+			return ""
+		}
+		if p.Parent == nil || !isPool(*p.Parent) {
+			break
+		}
+		parts = append([]string{p.Name}, parts...)
+		ref = *p.Parent
+	}
+	return strings.Join(parts, "/")
 }
 
 func countSnapshots(list []types.VirtualMachineSnapshotTree) int {

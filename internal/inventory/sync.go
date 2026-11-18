@@ -483,7 +483,7 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 		}
 		return read
 	}
-	snap := store.Inventory{VCenter: vc.Name()}
+	snap := store.Inventory{VCenter: vc.Name(), Host: vc.Host(), InstanceUUID: inv.InstanceUUID}
 	for _, c := range inv.Clusters {
 		tags := c.Tags
 		if inv.TagsError != nil {

@@ -80,6 +80,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		for _, part := range ev.Composite {
 			if part.sub != nil && len(sealed) > 0 {
 				markSecretValues(part.sub.Inputs, sealed)
+				maskSecretProperties(part.sub, sealed)
 			}
 		}
 

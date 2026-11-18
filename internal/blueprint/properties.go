@@ -3,6 +3,7 @@ package blueprint
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -94,6 +95,50 @@ func Interpolate(text string, vars policy.Vars) (string, error) {
 }
 
 var errNotScalar = errors.New("gives no text")
+
+// secretStandIns replace a secret input to see whether a property reads
+// it: no form gives them, and their lengths differ so that a property
+// reading only its length changes with one or the other.
+var secretStandIns = []string{"\x00rvav-secret\x00", "\x00"}
+
+// SecretProperties are the keys of a component's properties that read a
+// secret input, those of inputs the secret set names: worked out again with
+// those inputs replaced, they change or no longer work out. Their values
+// would reach vSphere, the plan and the API, so they are masked.
+func (b Blueprint) SecretProperties(c Component, inputs map[string]any, secret map[string]bool) []string {
+	var given []string
+	for f := range secret {
+		if v, ok := inputs[f]; ok && v != nil {
+			given = append(given, f)
+		}
+	}
+	if len(given) == 0 {
+		return nil
+	}
+	vars := b.Vars(inputs)
+	others := make([]policy.Vars, len(secretStandIns))
+	for i, standIn := range secretStandIns {
+		swapped := maps.Clone(inputs)
+		for _, f := range given {
+			swapped[f] = standIn
+		}
+		others[i] = b.Vars(swapped)
+	}
+	var out []string
+	for _, k := range slices.Sorted(maps.Keys(c.Properties)) {
+		v, err := Interpolate(c.Properties[k], vars)
+		if err != nil {
+			continue
+		}
+		for _, other := range others {
+			if w, err := Interpolate(c.Properties[k], other); err != nil || w != v {
+				out = append(out, k)
+				break
+			}
+		}
+	}
+	return out
+}
 
 // mergeProperties are under's properties with over's on top.
 func mergeProperties(under, over map[string]string) map[string]string {

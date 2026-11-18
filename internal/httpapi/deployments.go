@@ -70,7 +70,12 @@ func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymen
 		s.fail(w, r, err)
 		return
 	}
-	out := present.DeploymentDetail(d, resources, s.secretFields(r, d.VersionID))
+	links, err := s.Store.VCenterLinks(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out := present.DeploymentDetail(d, resources, s.secretFields(r, d.VersionID), links)
 	key, err := s.Store.DeploymentKey(r.Context(), s.Store.Pool, d.ID)
 	switch {
 	case err == nil:
