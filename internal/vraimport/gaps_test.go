@@ -31,11 +31,13 @@ resources:
       linkedClone: true
       provisioningType: thin
       storagePolicy: gold
+      name: app-${count.index}
+      cpuLimit: 2000
 `
 
 // What the review of T1 found the importer lost without a word (T1.7):
-// group inputs that clash, machine properties rvav has, Windows told by a
-// word of the image's name.
+// group inputs that clash, machine properties rvav has and those it hasn't,
+// Windows told by a word of the image's name.
 func TestImporterGaps(t *testing.T) {
 	e := vra.SampleEstate(time.Now())
 	e.PropertyGroups = append(e.PropertyGroups, vra.PropertyGroup{ID: "pg-alt", Name: "altInputs", Type: "INPUT",
@@ -48,6 +50,8 @@ func TestImporterGaps(t *testing.T) {
 		{"inputs.primary", "Property group corpInputs has input backup, as the form has"},
 		{"inputs.primary", "Property groups altInputs and corpInputs both have input costCenter"},
 		{"inputs.secondary", "Inputs primary and secondary are both property group corpInputs"},
+		{"resources.vm.name", "Machine name app-${count.index}: rvav names the VMs by the item's naming"},
+		{"resources.vm.cpuLimit", "cpuLimit is a vSphere machine setting rvav has no equivalent of"},
 	} {
 		if !has(p, Unmapped, want.where, want.text) {
 			t.Errorf("no note %q at %s: %+v", want.text, want.where, p.Notes)

@@ -1186,6 +1186,12 @@ var machineProps = []string{"name", "description", "image", "imageRef", "flavor"
 	"cpuLimit", "cpuReservation", "cpuShares", "cpuSharesLevel", "memoryLimitMb", "memoryReservationMb", "memoryShares",
 	"memorySharesLevel", "deploymentName", "hostName", "provisioningType", "storagePolicy"}
 
+// unreadProps are the machine schema's properties rvav has nothing for.
+var unreadProps = []string{"name", "hostName", "description", "imageRef", "flavorRef", "coreCount", "cloudConfigSettings",
+	"customizeGuestOs", "resourceGroupName", "snapshotLimit", "ovfProperties", "imageDiskConstraints", "cloneFromSnapshot",
+	"enableDiskUuid", "cpuLimit", "cpuReservation", "cpuShares", "cpuSharesLevel", "memoryLimitMb", "memoryReservationMb",
+	"memoryShares", "memorySharesLevel", "deploymentName"}
+
 // mapFolderAndProperties maps a machine's folderName to its folder and
 // its custom properties to rvav's, written to the VMs as vSphere custom
 // attributes (ADR-0038).
@@ -1209,10 +1215,17 @@ func mapFolderAndProperties(sc scope, props map[string]any, where string, c map[
 	}
 	custom := map[string]string{}
 	for _, k := range slices.Sorted(maps.Keys(props)) {
+		at := where + "." + k
+		switch {
+		case k == "name" || k == "hostName":
+			note(Unmapped, at, fmt.Sprintf("Machine %s %v: rvav names the VMs by the item's naming, whose {seq} numbers them "+
+				"across deployments, where an index would repeat (ADR-0024). Left out.", k, props[k]))
+		case slices.Contains(unreadProps, k):
+			note(Unmapped, at, k+" is a vSphere machine setting rvav has no equivalent of. Left out.")
+		}
 		if slices.Contains(machineProps, k) {
 			continue
 		}
-		at := where + "." + k
 		v, err := textOf(sc, props[k])
 		if err == nil {
 			if msg := blueprint.CheckProperty(k, v); msg != "" {
