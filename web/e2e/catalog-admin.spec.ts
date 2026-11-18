@@ -66,10 +66,14 @@ test("create an item and a category", async ({ page }) => {
   await expect(page.getByText("Not published").first()).toBeVisible();
 
   await page.getByRole("link", { name: "Catalog items" }).first().click();
+  await page.getByRole("tab", { name: "Categories" }).click();
   const categories = page.getByRole("region", { name: "Categories" });
-  await categories.getByRole("textbox", { name: "New category key" }).fill("storage");
-  await categories.getByRole("textbox", { name: "New category name" }).fill("Storage");
-  await categories.getByRole("button", { name: "Add category" }).click();
+  await categories.getByRole("button", { name: "New category" }).click();
+  const sheet = page.getByRole("dialog", { name: "New category" });
+  await sheet.getByRole("textbox", { name: "Key" }).fill("storage");
+  await sheet.getByRole("textbox", { name: "Name" }).fill("Storage");
+  await sheet.getByRole("button", { name: "Add category" }).click();
+  await expect(page.getByText("Storage added")).toBeVisible();
   await expect(categories.getByText("storage", { exact: true })).toBeVisible();
 });
 
@@ -145,7 +149,7 @@ test("build a small form in the designer", async ({ page }) => {
 test("an Ubuntu item from draft to roll back", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/admin/catalog-items");
+  await page.goto("/admin/catalog-items?tab=secrets");
   await page.getByRole("button", { name: "New secret" }).click();
   const secret = page.getByRole("dialog", { name: "New secret" });
   await secret.getByRole("textbox", { name: "Name" }).fill("cmdb");
@@ -153,6 +157,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await secret.getByRole("button", { name: "Store" }).click();
   await expect(page.getByText("cmdb stored")).toBeVisible();
 
+  await page.getByRole("tab", { name: "Items" }).click();
   await page.getByRole("button", { name: "New item" }).click();
   const dialog = page.getByRole("dialog", { name: "New item" });
   await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu web");
@@ -195,6 +200,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("1.0 published")).toBeVisible();
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog items" }).click();
+  await page.getByRole("tab", { name: "Secrets" }).click();
   await expect(page.getByRole("region", { name: "Secrets" }).getByRole("row", { name: /cmdb/ })).toContainText(
     "ubuntu-web",
   );

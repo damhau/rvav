@@ -1,30 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Package } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Panel } from "@/components/ui/panel";
-import { GitBadge } from "@/features/admin/catalog/GitPanels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
+import { GitBadge } from "@/features/admin/catalog/GitPanels";
+import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemType } from "@/lib/api/types";
+import { useCurrentProject } from "@/lib/project";
 import { keys, q, type AdminItemFilters } from "@/lib/query";
+import { draftCopy } from "./designer/draftStore";
 
-const th = "border-b border-line px-3 py-2 font-medium";
-const td = "border-b border-line px-3 py-2 align-top";
+const types = ["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const;
 
-function fieldErrors(e: unknown): Record<string, string> {
-  if (!isApiError(e)) return {};
-  return Object.fromEntries(e.fieldErrors.map((f) => [f.field.replace(/^\//, ""), f.message]));
+/** Who may request an item, in words. */
+export function openToText(it: AdminCatalogItem): string {
+  const n = it.entitlements.project_ids.length;
+  if (it.entitlements.all_projects) return "Every project";
+  return n === 0 ? "No project" : `${n} project${n > 1 ? "s" : ""}`;
 }
 
-function Status({ it }: { it: AdminCatalogItem }) {
+export function ItemState({ it }: { it: AdminCatalogItem }) {
   return (
     <div className="flex flex-wrap gap-1">
       {it.published_version ? (
@@ -38,7 +46,7 @@ function Status({ it }: { it: AdminCatalogItem }) {
   );
 }
 
-function NewItemDialog({ onClose }: { onClose: () => void }) {
+function NewItemSheet({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const categories = useQuery(q.adminCatalogCategories());
@@ -59,90 +67,76 @@ function NewItemDialog({ onClose }: { onClose: () => void }) {
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (isApiError(e) && e.status === 409) toast.error(e.problem.detail ?? e.problem.title);
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The item wasn't created");
     },
   });
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title="New item"
-        description="It starts as a draft; publish it when its form and blueprint are ready."
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="New item"
+      description="It starts as a draft 1.0; publish it when its form and blueprint are ready."
+      submitLabel={create.isPending ? "Creating…" : "Create"}
+      submitDisabled={create.isPending || !form.name || !form.slug || !form.summary}
+      onSubmit={() => {
+        setErrors({});
+        create.mutate();
+      }}
+    >
+      <Field label="Name" htmlFor="new-item-name" error={errors["/name"]}>
+        <Input id="new-item-name" value={form.name} onChange={(e) => set("name")(e.target.value)} maxLength={80} />
+      </Field>
+      <Field
+        label="Slug"
+        htmlFor="new-item-slug"
+        hint="In URLs and YAML: lower case, digits and dashes. It can't change later."
+        error={errors["/slug"]}
       >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            create.mutate();
-          }}
-        >
-          <Field label="Name" htmlFor="new-item-name" hint={errors.name}>
-            <Input id="new-item-name" value={form.name} onChange={(e) => set("name")(e.target.value)} maxLength={80} />
-          </Field>
-          <Field
-            label="Slug"
-            htmlFor="new-item-slug"
-            hint={errors.slug ?? "In URLs and YAML; lower case, digits and dashes."}
-          >
-            <Input
-              id="new-item-slug"
-              value={form.slug}
-              onChange={(e) => set("slug")(e.target.value)}
-              aria-invalid={errors.slug ? true : undefined}
-              className="font-mono"
-            />
-          </Field>
-          <Field label="Summary" htmlFor="new-item-summary" hint={errors.summary}>
-            <Textarea
-              id="new-item-summary"
-              value={form.summary}
-              onChange={(e) => set("summary")(e.target.value)}
-              maxLength={200}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Category" htmlFor="new-item-category">
-              <Select
-                id="new-item-category"
-                value={form.category}
-                onChange={set("category")}
-                options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
-              />
-            </Field>
-            <Field label="Type" htmlFor="new-item-type">
-              <Select
-                id="new-item-type"
-                value={form.type}
-                onChange={set("type")}
-                options={(["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const).map(
-                  (t) => ({
-                    value: t,
-                    label: itemTypeLabel[t],
-                  }),
-                )}
-              />
-            </Field>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={create.isPending || !form.name || !form.slug || !form.summary}
-            >
-              {create.isPending ? "Creating…" : "Create"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <Input
+          id="new-item-slug"
+          value={form.slug}
+          onChange={(e) => set("slug")(e.target.value)}
+          className="font-mono"
+        />
+      </Field>
+      <Field
+        label="Summary"
+        htmlFor="new-item-summary"
+        hint="One line on the catalog's card."
+        error={errors["/summary"]}
+      >
+        <Textarea
+          id="new-item-summary"
+          value={form.summary}
+          onChange={(e) => set("summary")(e.target.value)}
+          maxLength={200}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Category" htmlFor="new-item-category" error={errors["/category"]}>
+          <Select
+            id="new-item-category"
+            value={form.category}
+            onChange={set("category")}
+            loading={categories.isPending}
+            options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
+          />
+        </Field>
+        <Field label="Type" htmlFor="new-item-type">
+          <Select
+            id="new-item-type"
+            value={form.type}
+            onChange={set("type")}
+            options={types.map((t) => ({ value: t, label: itemTypeLabel[t] }))}
+          />
+        </Field>
+      </div>
+    </Sheet>
   );
 }
 
-function ImportDialog({ onClose }: { onClose: () => void }) {
+function ImportSheet({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [text, setText] = useState("");
@@ -169,163 +163,315 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
       ),
   });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title="Import an item"
-        description="Paste or open an item exported as YAML. It comes in as a draft; nothing is published."
-        className="w-[min(640px,calc(100vw-32px))]"
-      >
-        <div className="flex flex-col gap-3 p-4">
-          <input
-            type="file"
-            accept=".yaml,.yml,application/yaml,text/yaml"
-            aria-label="YAML file"
-            className="text-secondary"
-            onChange={async (e) => setText((await e.target.files?.[0]?.text()) ?? "")}
-          />
-          <Textarea
-            aria-label="YAML"
-            className="min-h-64 font-mono text-secondary"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="apiVersion: rvav.dev/v1"
-          />
-          {problems.length > 0 && (
-            <ul aria-label="Import problems" className="flex flex-col gap-1 text-secondary text-bad">
-              {problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button variant="primary" disabled={!text.trim() || run.isPending} onClick={() => run.mutate()}>
-              {run.isPending ? "Importing…" : "Import"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Import an item"
+      description="Paste or open an item exported as YAML. It comes in as a draft; nothing is published."
+      submitLabel={run.isPending ? "Importing…" : "Import"}
+      submitDisabled={!text.trim() || run.isPending}
+      onSubmit={() => {
+        setProblems([]);
+        run.mutate();
+      }}
+    >
+      <Field label="YAML file" htmlFor="import-file">
+        <input
+          id="import-file"
+          type="file"
+          accept=".yaml,.yml,application/yaml,text/yaml"
+          className="text-secondary"
+          onChange={async (e) => setText((await e.target.files?.[0]?.text()) ?? "")}
+        />
+      </Field>
+      <Field label="YAML" htmlFor="import-yaml">
+        <Textarea
+          id="import-yaml"
+          className="min-h-80 font-mono text-secondary"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="apiVersion: rvav.dev/v1"
+        />
+      </Field>
+      {problems.length > 0 && (
+        <ul aria-label="Import problems" className="flex flex-col gap-1 text-secondary text-bad">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+    </Sheet>
   );
 }
 
+type Change =
+  | { it: AdminCatalogItem; action: "publish" }
+  | { it: AdminCatalogItem; action: "withdraw" }
+  | { it: AdminCatalogItem; action: "delete" };
+
+function useItemChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ it, action }: Change) => {
+      const itemId = it.id;
+      if (action === "delete")
+        return call(api.DELETE("/admin/catalog/items/{itemId}", { params: { path: { itemId } } }));
+      const v = action === "publish" ? it.draft_version! : it.published_version!;
+      const path = { itemId, versionId: v.id };
+      return action === "publish"
+        ? call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", { params: { path }, body: {} }))
+        : call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { params: { path } }));
+    },
+    onSuccess: (_, { it, action }) => {
+      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
+      void qc.invalidateQueries({ queryKey: keys.catalog.all });
+      toast.success(
+        {
+          publish: `${it.name} ${it.draft_version?.number} published`,
+          withdraw: `${it.name} withdrawn`,
+          delete: `${it.name} deleted`,
+        }[action],
+      );
+    },
+    onError: (e) => failed(e, "That didn't work"),
+  });
+}
+
+/** The form designer holds changes to the draft the server hasn't taken yet: publishing waits for them. */
+function unsavedDraft(it: AdminCatalogItem): boolean {
+  return Boolean(it.draft_version && draftCopy(it.draft_version.id)?.dirty);
+}
+
 export function ItemsPanel() {
+  const navigate = useNavigate();
+  const { projectId } = useCurrentProject();
   const [filters, setFilters] = useState<AdminItemFilters>({});
-  const [dialog, setDialog] = useState<"new" | "import" | null>(null);
+  const [kind, setKind] = useState<CatalogItemType | "any">("any");
+  const [sheet, setSheet] = useState<"new" | "import" | null>(null);
+  const [asking, setAsking] = useState<Change | null>(null);
   const items = useQuery(q.adminCatalogItems(filters));
   const categories = useQuery(q.adminCatalogCategories());
-  const list = items.data?.items ?? [];
+  const change = useItemChange();
+  const categoryName = (key: string) => categories.data?.items.find((c) => c.key === key)?.name ?? key;
+  const rows = items.data?.items.filter((it) => kind === "any" || it.type === kind);
+  const filtered = Boolean(filters.q || filters.category || filters.state || kind !== "any");
+  const requestable = (it: AdminCatalogItem) =>
+    Boolean(it.published_version) &&
+    (it.entitlements.all_projects || (projectId !== undefined && it.entitlements.project_ids.includes(projectId)));
+
+  const columns: Column<AdminCatalogItem>[] = [
+    {
+      id: "item",
+      header: "Item",
+      sortValue: (it) => it.name,
+      cell: (it) => (
+        <div className="flex items-center gap-2.5">
+          <ItemIcon name={it.icon} />
+          <div className="min-w-0">
+            <Link
+              to="/admin/catalog-items/$itemId"
+              params={{ itemId: it.slug }}
+              className="font-medium text-fg hover:text-accent"
+            >
+              {it.name}
+            </Link>
+            <div className="font-mono text-caption text-muted">{it.slug}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "kind",
+      header: "Kind",
+      sortValue: (it) => itemTypeLabel[it.type],
+      cell: (it) => (
+        <span className="text-secondary">
+          {itemTypeLabel[it.type]}
+          {it.source.kind === "awx" && <span className="block text-muted">from AWX</span>}
+        </span>
+      ),
+    },
+    {
+      id: "category",
+      header: "Category",
+      sortValue: (it) => categoryName(it.category),
+      cell: (it) => <span className="text-secondary">{categoryName(it.category)}</span>,
+    },
+    { id: "state", header: "State", cell: (it) => <ItemState it={it} /> },
+    {
+      id: "open",
+      header: "Open to",
+      sortValue: (it) => openToText(it),
+      cell: (it) => <span className="text-secondary text-muted">{openToText(it)}</span>,
+    },
+  ];
+
+  const add = (
+    <Button size="sm" variant="primary" onClick={() => setSheet("new")}>
+      New item
+    </Button>
+  );
   return (
     <Panel
       title="Items"
+      description="What people can request, and the version of each they get."
       flush
       actions={
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => setDialog("import")}>
+        <>
+          <Button size="sm" onClick={() => setSheet("import")}>
             Import YAML
           </Button>
-          <Button size="sm" variant="primary" onClick={() => setDialog("new")}>
-            New item
-          </Button>
-        </div>
+          {add}
+        </>
       }
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2">
-        <Input
-          aria-label="Search items"
-          placeholder="Search"
-          className="w-56"
-          value={filters.q ?? ""}
-          onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value || undefined }))}
+      <DataTable
+        label="Items"
+        columns={columns}
+        rows={rows}
+        rowKey={(it) => it.id}
+        minWidth={820}
+        loading={items.isPending}
+        error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
+        toolbar={
+          <>
+            <TableSearch
+              label="Search items"
+              placeholder="Search by name or slug"
+              value={filters.q ?? ""}
+              onChange={(v) => setFilters((f) => ({ ...f, q: v || undefined }))}
+            />
+            <Select
+              aria-label="Kind"
+              value={kind}
+              onChange={(v) => setKind(v as CatalogItemType | "any")}
+              options={[
+                { value: "any", label: "All kinds" },
+                ...types.map((t) => ({ value: t, label: itemTypeLabel[t] })),
+              ]}
+              className="w-44"
+            />
+            <Select
+              aria-label="Category"
+              value={filters.category ?? "any"}
+              onChange={(v) => setFilters((f) => ({ ...f, category: v === "any" ? undefined : v }))}
+              options={[
+                { value: "any", label: "All categories" },
+                ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name })),
+              ]}
+              className="w-44"
+            />
+            <Select
+              aria-label="State"
+              value={filters.state ?? "any"}
+              onChange={(v) =>
+                setFilters((f) => ({ ...f, state: v === "any" ? undefined : (v as AdminItemFilters["state"]) }))
+              }
+              options={[
+                { value: "any", label: "Any state" },
+                { value: "published", label: "Published" },
+                { value: "unpublished", label: "Not published" },
+              ]}
+              className="w-40"
+            />
+          </>
+        }
+        empty={
+          filtered ? (
+            <EmptyState
+              icon={Package}
+              title="No item matches"
+              body="Nothing in the catalog has this name, kind, category and state."
+              action={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setFilters({});
+                    setKind("any");
+                  }}
+                >
+                  Clear the filters
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Package}
+              title="No items yet"
+              body="An item is what people request: a VM, an AWX job, a workflow, or several of them together."
+              action={add}
+            />
+          )
+        }
+        rowMenuLabel={(it) => `Actions for ${it.name}`}
+        rowMenu={(it) => (
+          <>
+            <MenuItem
+              onSelect={() => void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId: it.slug } })}
+            >
+              Open
+            </MenuItem>
+            {requestable(it) && (
+              <MenuItem onSelect={() => void navigate({ to: "/catalog/$itemId/request", params: { itemId: it.slug } })}>
+                Open the request form
+              </MenuItem>
+            )}
+            {(it.draft_version || it.published_version) && <MenuSeparator />}
+            {it.draft_version && (
+              <MenuItem disabled={unsavedDraft(it)} onSelect={() => change.mutate({ it, action: "publish" })}>
+                {unsavedDraft(it) ? "Publish: the designer has changes to save" : `Publish ${it.draft_version.number}`}
+              </MenuItem>
+            )}
+            {it.published_version && (
+              <MenuItem onSelect={() => setAsking({ it, action: "withdraw" })}>Withdraw</MenuItem>
+            )}
+            {!it.requested && (
+              <>
+                <MenuSeparator />
+                <MenuItem danger onSelect={() => setAsking({ it, action: "delete" })}>
+                  Delete
+                </MenuItem>
+              </>
+            )}
+          </>
+        )}
+      />
+      {sheet === "new" && <NewItemSheet onClose={() => setSheet(null)} />}
+      {sheet === "import" && <ImportSheet onClose={() => setSheet(null)} />}
+      {asking?.action === "withdraw" && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setAsking(null)}
+          title={`Withdraw ${asking.it.name}?`}
+          description={`Nobody can request it until a version is published again. Version ${asking.it.published_version?.number} stays, to roll back to.`}
+          consequences={withdrawConsequences(asking.it)}
+          confirmLabel="Withdraw"
+          pending={change.isPending}
+          onConfirm={() => change.mutate(asking, { onSuccess: () => setAsking(null) })}
         />
-        <Select
-          aria-label="Category"
-          value={filters.category ?? "any"}
-          onChange={(v) => setFilters((f) => ({ ...f, category: v === "any" ? undefined : v }))}
-          options={[
-            { value: "any", label: "All categories" },
-            ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name })),
-          ]}
-          className="w-44"
-        />
-        <Select
-          aria-label="State"
-          value={filters.state ?? "any"}
-          onChange={(v) =>
-            setFilters((f) => ({ ...f, state: v === "any" ? undefined : (v as AdminItemFilters["state"]) }))
-          }
-          options={[
-            { value: "any", label: "Any state" },
-            { value: "published", label: "Published" },
-            { value: "unpublished", label: "Not published" },
-          ]}
-          className="w-40"
-        />
-      </div>
-      {items.isPending && <SkeletonRows rows={5} cols={5} />}
-      {items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
-      {items.data && list.length === 0 && <EmptyState title="No items" body="Nothing matches these filters." />}
-      {list.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Item
-                </th>
-                <th scope="col" className={th}>
-                  Type
-                </th>
-                <th scope="col" className={th}>
-                  Versions
-                </th>
-                <th scope="col" className={th}>
-                  Open to
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((it) => (
-                <tr key={it.id} className="hover:bg-sunken">
-                  <td className={`${td} pl-4`}>
-                    <div className="flex items-start gap-2.5">
-                      <ItemIcon name={it.icon} />
-                      <div className="min-w-0">
-                        <Link
-                          to="/admin/catalog-items/$itemId"
-                          params={{ itemId: it.slug }}
-                          className="font-medium text-fg hover:text-accent"
-                        >
-                          {it.name}
-                        </Link>
-                        <div className="font-mono text-caption text-faint">{it.slug}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>
-                    {itemTypeLabel[it.type]}
-                    {it.source.kind === "awx" && <div className="text-caption text-faint">from AWX</div>}
-                  </td>
-                  <td className={td}>
-                    <Status it={it} />
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>
-                    {it.entitlements.all_projects
-                      ? "Every project"
-                      : it.entitlements.project_ids.length === 0
-                        ? "No project"
-                        : `${it.entitlements.project_ids.length} project${it.entitlements.project_ids.length > 1 ? "s" : ""}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       )}
-      {dialog === "new" && <NewItemDialog onClose={() => setDialog(null)} />}
-      {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} />}
+      {asking?.action === "delete" && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setAsking(null)}
+          title={`Delete ${asking.it.name}?`}
+          description={`The item and its ${asking.it.versions.length} version${asking.it.versions.length === 1 ? "" : "s"} are deleted. This can't be undone.`}
+          consequences={`Nobody has requested it, so no deployment depends on it. It is open to ${openToText(asking.it).toLowerCase()}${asking.it.published_version ? ", and leaves their catalog" : ""}.`}
+          confirmLabel="Delete item"
+          pending={change.isPending}
+          onConfirm={() => change.mutate(asking, { onSuccess: () => setAsking(null) })}
+        />
+      )}
     </Panel>
   );
+}
+
+/** What a withdrawal leaves: the deployments built from the version, and who loses it. */
+export function withdrawConsequences(it: AdminCatalogItem): string {
+  const n = it.published_version?.deployments ?? 0;
+  const deployments =
+    n === 0
+      ? "No deployment was built from it."
+      : `The ${n} deployment${n === 1 ? "" : "s"} built from it keep${n === 1 ? "s" : ""} running, with their day-2 actions.`;
+  return `${deployments} It leaves the catalog of ${openToText(it).toLowerCase()}.`;
 }

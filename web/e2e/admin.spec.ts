@@ -26,6 +26,7 @@ test("see an AWX template whose survey changed", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Catalog items" }).click();
   await expect(page.getByRole("heading", { name: "Catalog items" })).toBeVisible();
+  await page.getByRole("tab", { name: "AWX templates" }).click();
   const row = page.getByRole("row", { name: /install-monitoring-agent/ });
   await expect(row.getByText("Survey changed")).toBeVisible();
   await expect(row.getByText("listen_port: maximum 65535 → 32767")).toBeVisible();

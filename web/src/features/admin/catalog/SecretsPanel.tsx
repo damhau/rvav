@@ -1,15 +1,20 @@
 // Stored secrets for REST value sources and calls (ADR-0019, ADR-0033):
 // catalog admins add and replace them; their values are never shown again.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Panel } from "@/components/ui/panel";
+import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
+import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
@@ -21,7 +26,7 @@ type SecretWrite = components["schemas"]["SecretWrite"];
 const secretsKey = [...keys.catalogAdmin.all, "secrets"] as const;
 const kindLabel = { token: "Bearer token", basic: "Basic (user and password)", header: "Header" } as const;
 
-function SecretDialog({ existing, onClose }: { existing?: Secret; onClose: () => void }) {
+function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => void }) {
   const qc = useQueryClient();
   const [w, setW] = useState<SecretWrite>({
     name: existing?.name ?? "",
@@ -52,83 +57,78 @@ function SecretDialog({ existing, onClose }: { existing?: Secret; onClose: () =>
       onClose();
     },
     onError: (e) => {
-      if (isApiError(e) && e.fieldErrors.length)
-        setErrors(Object.fromEntries(e.fieldErrors.map((f) => [f.field.replace(/^\//, ""), f.message])));
-      else toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "Not stored");
+      setErrors(fieldErrors(e));
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The secret wasn't stored");
     },
   });
   const set = (k: keyof SecretWrite) => (v: string) => setW((x) => ({ ...x, [k]: v }));
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={existing ? `Replace ${existing.name}` : "New secret"}
-        description="Stored encrypted. Its value is never shown again; a REST value source names it."
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={existing ? `Replace ${existing.name}` : "New secret"}
+      description="Stored encrypted. Its value is never shown again; a REST value source or call names it."
+      submitLabel={save.isPending ? "Storing…" : existing ? "Replace" : "Store"}
+      submitDisabled={!w.name || !w.value || save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+    >
+      <Field label="Name" htmlFor="secret-name" hint="Lower case letters, digits and dashes." error={errors["/name"]}>
+        <Input
+          id="secret-name"
+          className="font-mono"
+          value={w.name}
+          disabled={Boolean(existing)}
+          onChange={(e) => set("name")(e.target.value)}
+        />
+      </Field>
+      <Field label="Kind" htmlFor="secret-kind">
+        <Select
+          id="secret-kind"
+          value={w.kind}
+          onChange={set("kind")}
+          options={Object.entries(kindLabel).map(([value, label]) => ({ value, label }))}
+        />
+      </Field>
+      {w.kind === "basic" && (
+        <Field label="User name" htmlFor="secret-username" error={errors["/username"]}>
+          <Input id="secret-username" value={w.username} onChange={(e) => set("username")(e.target.value)} />
+        </Field>
+      )}
+      {w.kind === "header" && (
+        <Field label="Header" htmlFor="secret-header" hint="For example X-API-Key." error={errors["/header"]}>
+          <Input id="secret-header" value={w.header} onChange={(e) => set("header")(e.target.value)} />
+        </Field>
+      )}
+      <Field
+        label={w.kind === "basic" ? "Password" : "Value"}
+        htmlFor="secret-value"
+        hint={existing ? "The new value replaces the stored one at once, in every item that uses it." : undefined}
+        error={errors["/value"]}
       >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
-        >
-          <Field label="Name" htmlFor="secret-name" hint={errors.name ?? "Lower case letters, digits and dashes."}>
-            <Input
-              id="secret-name"
-              className="font-mono"
-              value={w.name}
-              disabled={Boolean(existing)}
-              onChange={(e) => set("name")(e.target.value)}
-            />
-          </Field>
-          <Field label="Kind" htmlFor="secret-kind">
-            <Select
-              id="secret-kind"
-              value={w.kind}
-              onChange={set("kind")}
-              options={Object.entries(kindLabel).map(([value, label]) => ({ value, label }))}
-            />
-          </Field>
-          {w.kind === "basic" && (
-            <Field label="User name" htmlFor="secret-username" hint={errors.username}>
-              <Input id="secret-username" value={w.username} onChange={(e) => set("username")(e.target.value)} />
-            </Field>
-          )}
-          {w.kind === "header" && (
-            <Field label="Header" htmlFor="secret-header" hint={errors.header ?? "For example X-API-Key."}>
-              <Input id="secret-header" value={w.header} onChange={(e) => set("header")(e.target.value)} />
-            </Field>
-          )}
-          <Field label={w.kind === "basic" ? "Password" : "Value"} htmlFor="secret-value" hint={errors.value}>
-            <Input
-              id="secret-value"
-              type="password"
-              autoComplete="new-password"
-              value={w.value}
-              onChange={(e) => set("value")(e.target.value)}
-            />
-          </Field>
-          <Field label="Description" htmlFor="secret-description">
-            <Input
-              id="secret-description"
-              value={w.description}
-              maxLength={200}
-              onChange={(e) => set("description")(e.target.value)}
-            />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!w.name || !w.value || save.isPending}>
-              {save.isPending ? "Storing…" : existing ? "Replace" : "Store"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <Input
+          id="secret-value"
+          type="password"
+          autoComplete="new-password"
+          value={w.value}
+          onChange={(e) => set("value")(e.target.value)}
+        />
+      </Field>
+      <Field label="Description" htmlFor="secret-description">
+        <Input
+          id="secret-description"
+          value={w.description}
+          maxLength={200}
+          onChange={(e) => set("description")(e.target.value)}
+        />
+      </Field>
+    </Sheet>
   );
 }
+
+const usedBy = (s: Secret) => s.used_by ?? [];
 
 export function SecretsPanel() {
   const qc = useQueryClient();
@@ -137,94 +137,102 @@ export function SecretsPanel() {
     queryFn: ({ signal }) => call(api.GET("/admin/secrets", { signal })),
   });
   const [editing, setEditing] = useState<Secret | "new" | null>(null);
+  const [removing, setRemoving] = useState<Secret | null>(null);
   const remove = useMutation({
     mutationFn: (name: string) => call(api.DELETE("/admin/secrets/{name}", { params: { path: { name } } })),
     onSuccess: (_, name) => {
       void qc.invalidateQueries({ queryKey: secretsKey });
       toast.success(`${name} removed`);
+      setRemoving(null);
     },
-    onError: (e) => toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "Not removed"),
+    onError: (e) => failed(e, "The secret wasn't removed"),
   });
-  const list = secrets.data?.items ?? [];
+  const columns: Column<Secret>[] = [
+    {
+      id: "name",
+      header: "Name",
+      sortValue: (s) => s.name,
+      cell: (s) => (
+        <>
+          <div className="font-mono">{s.name}</div>
+          {s.description && <div className="text-caption text-muted">{s.description}</div>}
+        </>
+      ),
+    },
+    {
+      id: "kind",
+      header: "Kind",
+      sortValue: (s) => kindLabel[s.kind],
+      cell: (s) => <span className="text-secondary text-muted">{kindLabel[s.kind]}</span>,
+    },
+    {
+      id: "used",
+      header: "Used by",
+      sortValue: (s) => usedBy(s).length,
+      cell: (s) => (
+        <span className="text-secondary text-muted">{usedBy(s).length ? usedBy(s).join(", ") : "No item"}</span>
+      ),
+    },
+    {
+      id: "changed",
+      header: "Changed",
+      sortValue: (s) => s.updated_at,
+      cell: (s) => <span className="text-secondary text-muted">{relative(s.updated_at)}</span>,
+    },
+  ];
+  const add = (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      New secret
+    </Button>
+  );
+  const list = secrets.data?.items;
   return (
     <Panel
       title="Secrets"
+      description="What REST value sources and calls sign in to their service with."
       flush
-      actions={
-        <Button size="sm" onClick={() => setEditing("new")}>
-          New secret
-        </Button>
-      }
+      actions={list?.length ? add : undefined}
     >
-      {secrets.isPending && <SkeletonRows rows={2} cols={4} />}
-      {secrets.isError && <ErrorState error={secrets.error} onRetry={() => void secrets.refetch()} />}
-      {secrets.data && list.length === 0 && (
-        <EmptyState
-          title="No secrets"
-          body="REST value sources and calls sign in to their service with a stored secret."
+      <DataTable
+        label="Secrets"
+        columns={columns}
+        rows={list}
+        rowKey={(s) => s.name}
+        minWidth={640}
+        loading={secrets.isPending}
+        error={secrets.isError && <ErrorState error={secrets.error} onRetry={() => void secrets.refetch()} />}
+        empty={
+          <EmptyState
+            icon={KeyRound}
+            title="No secrets yet"
+            body="Store the token or password a REST value source or call needs; its value is never shown again."
+            action={add}
+          />
+        }
+        rowMenuLabel={(s) => `Actions for ${s.name}`}
+        rowMenu={(s) => (
+          <>
+            <MenuItem onSelect={() => setEditing(s)}>Replace the value</MenuItem>
+            <MenuSeparator />
+            <MenuItem danger disabled={usedBy(s).length > 0} onSelect={() => setRemoving(s)}>
+              {usedBy(s).length > 0 ? "Remove: items use it" : "Remove"}
+            </MenuItem>
+          </>
+        )}
+      />
+      {editing && <SecretSheet existing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.name}?`}
+          description="Its value is deleted. Storing a secret of the same name later doesn't bring it back."
+          consequences="No item's form or call uses it today."
+          confirmLabel="Remove secret"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing.name)}
         />
       )}
-      {list.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                  Name
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                  Kind
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                  Used by
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                  Changed
-                </th>
-                <th scope="col" className="border-b border-line px-4 py-2">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((s) => {
-                const used = s.used_by ?? [];
-                return (
-                  <tr key={s.name} className="hover:bg-sunken">
-                    <td className="border-b border-line px-4 py-2">
-                      <div className="font-mono text-secondary">{s.name}</div>
-                      {s.description && <div className="text-caption text-faint">{s.description}</div>}
-                    </td>
-                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">{kindLabel[s.kind]}</td>
-                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {used.length ? used.join(", ") : "—"}
-                    </td>
-                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {relative(s.updated_at)}
-                    </td>
-                    <td className="border-b border-line px-4 py-2 text-right whitespace-nowrap">
-                      <Button size="sm" variant="quiet" onClick={() => setEditing(s)}>
-                        Replace
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        aria-label={`Remove ${s.name}`}
-                        disabled={used.length > 0 || remove.isPending}
-                        title={used.length > 0 ? "Items use it" : undefined}
-                        onClick={() => remove.mutate(s.name)}
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {editing && <SecretDialog existing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
   );
 }

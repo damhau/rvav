@@ -3,16 +3,23 @@
 // page: its last commit, the repository's change, a conflict to settle.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useRef } from "react";
+import { GitBranch } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
 import type { AdminCatalogItem, CatalogGitFile, CatalogItemGit, DiffLine } from "@/lib/api/types";
+import { can } from "@/lib/can";
+import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { cn, relative } from "@/lib/utils";
+
+type CatalogGitStatus = components["schemas"]["CatalogGitStatus"];
 
 type State = CatalogItemGit["state"];
 
@@ -72,76 +79,128 @@ function Problems({ problems, label }: { problems: NonNullable<CatalogItemGit["p
   );
 }
 
-/** The catalog's repository: as last read, what needs someone, and a
- * read now. */
-export function GitRepositoryPanel() {
-  const qc = useQueryClient();
+/** The repository's address without its scheme, as people say it. */
+const where = (url: string) => url.replace(/^[a-z+]+:\/\//, "").replace(/\.git$/, "");
+
+/** The catalog's repository in a line above the items: where it is, when it
+ * was read, and how many files need someone; its details in a side panel. */
+export function GitBanner() {
   const status = useQuery(q.catalogGit());
+  const [open, setOpen] = useState(false);
+  if (status.isPending) return <Skeleton className="h-11" />;
+  if (status.isError) return <ErrorState error={status.error} onRetry={() => void status.refetch()} />;
+  const s = status.data;
+  if (!s.configured) return null;
+  const attention = s.files.filter((f) => needs[f.state]).length;
+  return (
+    <section
+      aria-label="Git repository"
+      className={cn(
+        "flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border bg-surface py-2 pr-2 pl-3.5 text-secondary",
+        s.error || attention > 0 ? "border-warn/50" : "border-line",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <GitBranch className="size-4 shrink-0 text-muted" aria-hidden />
+        <span className="min-w-0 truncate font-mono text-fg" title={s.url}>
+          {where(s.url ?? "")}
+        </span>
+      </span>
+      <span className="text-muted">
+        <span className="font-mono">{s.branch}</span>, in <span className="font-mono">{s.dir}/</span>
+      </span>
+      <span className="text-muted">{s.read_at ? `Read ${relative(s.read_at)}` : "Not read yet"}</span>
+      {s.error ? (
+        <Badge tone="bad">The last read failed</Badge>
+      ) : attention > 0 ? (
+        <Badge tone="warn">
+          {attention} file{attention === 1 ? " needs" : "s need"} you
+        </Badge>
+      ) : (
+        <span className="text-muted">All in step</span>
+      )}
+      <Button size="sm" variant="quiet" className="ml-auto" onClick={() => setOpen(true)}>
+        Details<span className="sr-only"> of the Git repository</span>
+      </Button>
+      {open && <GitSheet status={s} onClose={() => setOpen(false)} />}
+    </section>
+  );
+}
+
+/** The repository as last read, what needs someone, and a read now. */
+function GitSheet({ status: s, onClose }: { status: CatalogGitStatus; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { me } = useCurrentProject();
   const read = useMutation({
     mutationFn: () => call(api.POST("/admin/catalog/git/read")),
-    onSuccess: (s) => {
-      qc.setQueryData(keys.catalogAdmin.git, s);
+    onSuccess: (next) => {
+      qc.setQueryData(keys.catalogAdmin.git, next);
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      if (s.error) toast.error("The repository couldn't be read", { description: s.error });
-      else toast.success("Repository read", { description: s.head ? `At ${short(s.head)}` : "It is empty." });
+      if (next.error) toast.error("The repository couldn't be read", { description: next.error });
+      else toast.success("Repository read", { description: next.head ? `At ${short(next.head)}` : "It is empty." });
     },
     onError: (e) =>
       toast.error(isApiError(e) ? e.problem.title : "The read failed", {
         description: isApiError(e) ? e.problem.detail : undefined,
       }),
   });
-  if (status.isPending) return <Skeleton className="h-28" />;
-  if (status.isError) return <ErrorState error={status.error} onRetry={() => void status.refetch()} />;
-  const s = status.data;
-  if (!s.configured) return null;
-  const attention = s.files.filter((f) => needs[f.state]);
+  const latest = useQuery(q.catalogGit()).data ?? s;
+  const attention = latest.files.filter((f) => needs[f.state]);
   return (
-    <Panel
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
       title="Git repository"
-      actions={
-        <Button size="sm" onClick={() => read.mutate()} disabled={read.isPending}>
-          {read.isPending ? "Reading…" : "Read the repository now"}
-        </Button>
+      description="rvav commits each item's published version here, and reads the repository's changes back as drafts."
+      footer={
+        <>
+          {can(me, "integrations.manage") && (
+            <Button variant="quiet" asChild className="mr-auto">
+              <Link to="/admin/integrations" search={{ tab: "git" }}>
+                Change or disconnect
+              </Link>
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => read.mutate()} disabled={read.isPending}>
+            {read.isPending ? "Reading…" : "Read the repository now"}
+          </Button>
+        </>
       }
     >
-      <div className="flex flex-col gap-3">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-secondary sm:grid-cols-[auto_1fr]">
-          <dt className="text-muted">Repository</dt>
-          <dd className="font-mono break-all">{s.url}</dd>
-          <dt className="text-muted">Branch and directory</dt>
-          <dd className="font-mono">
-            {s.branch} · {s.dir}/
-          </dd>
-          <dt className="text-muted">Last read</dt>
-          <dd>
-            {s.read_at ? relative(s.read_at) : "Not yet"}
-            {s.head && <span className="font-mono text-muted"> at {short(s.head)}</span>}
-            {s.read_requested && <span className="text-muted"> · a read is on its way</span>}
-          </dd>
-        </dl>
-        {s.error && (
-          <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-secondary">
-            The last read failed: {s.error}
-          </p>
-        )}
-        <p className="text-secondary text-muted">
-          {s.files.length} file{s.files.length === 1 ? "" : "s"} in the repository.{" "}
-          {attention.length === 0
-            ? "All in step."
-            : `${attention.length} need${attention.length === 1 ? "s" : ""} you:`}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-secondary">
+        <dt className="text-muted">Repository</dt>
+        <dd className="font-mono break-all">{latest.url}</dd>
+        <dt className="text-muted">Branch</dt>
+        <dd className="font-mono">{latest.branch}</dd>
+        <dt className="text-muted">Directory</dt>
+        <dd className="font-mono">{latest.dir}/</dd>
+        <dt className="text-muted">Last read</dt>
+        <dd>
+          {latest.read_at ? relative(latest.read_at) : "Not yet"}
+          {latest.head && <span className="font-mono text-muted"> at {short(latest.head)}</span>}
+          {latest.read_requested && <span className="text-muted">, and a read is on its way</span>}
+        </dd>
+      </dl>
+      {latest.error && (
+        <p role="alert" className="rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary">
+          The last read failed: {latest.error}
         </p>
-        {attention.length > 0 && (
-          <ul
-            aria-label="Files that need you"
-            className="flex flex-col divide-y divide-line rounded-md border border-line"
-          >
-            {attention.map((f) => (
-              <AttentionRow key={f.path} f={f} />
-            ))}
-          </ul>
-        )}
-      </div>
-    </Panel>
+      )}
+      <p className="text-secondary text-muted">
+        {latest.files.length} file{latest.files.length === 1 ? "" : "s"} in the repository.{" "}
+        {attention.length === 0 ? "All in step." : `${attention.length} need${attention.length === 1 ? "s" : ""} you:`}
+      </p>
+      {attention.length > 0 && (
+        <ul
+          aria-label="Files that need you"
+          className="flex flex-col divide-y divide-line rounded-md border border-line"
+        >
+          {attention.map((f) => (
+            <AttentionRow key={f.path} f={f} />
+          ))}
+        </ul>
+      )}
+    </Sheet>
   );
 }
 

@@ -9,9 +9,18 @@ test("the catalog's repository: what needs someone, and a read now", async ({ pa
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await page.getByRole("link", { name: "Catalog items" }).click();
-  const git = page.getByRole("region", { name: "Git repository" });
+  const banner = page.getByRole("region", { name: "Git repository" });
+  await expect(banner).toContainText("git.corp.example/infra/rvav-catalog");
+  await expect(banner).toContainText("main, in catalog/");
+  await expect(banner).toContainText(/\d files need you/);
+  // The items say so too.
+  const items = page.getByRole("region", { name: "Items" });
+  await expect(items.getByRole("row", { name: /Ubuntu 24\.04 server/ })).toContainText("Conflict in Git");
+  await expect(items.getByRole("row", { name: /RHEL 9 server/ })).not.toContainText("Git");
+
+  await banner.getByRole("button", { name: "Details of the Git repository" }).click();
+  const git = page.getByRole("dialog", { name: "Git repository" });
   await expect(git).toContainText("https://git.corp.example/infra/rvav-catalog.git");
-  await expect(git).toContainText("main · catalog/");
   const attention = git.getByRole("list", { name: "Files that need you" });
   await expect(attention.getByRole("listitem").filter({ hasText: "Ubuntu 24.04 server" })).toContainText(
     "Conflict in Git",
@@ -22,15 +31,12 @@ test("the catalog's repository: what needs someone, and a read now", async ({ pa
   await expect(attention.getByRole("list", { name: "Problems of catalog/redis-cache.yaml" })).toContainText(
     'There is no category "caching"',
   );
-  // The items say so too.
-  const items = page.getByRole("region", { name: "Items" });
-  await expect(items.getByRole("row", { name: /Ubuntu 24\.04 server/ })).toContainText("Conflict in Git");
-  await expect(items.getByRole("row", { name: /RHEL 9 server/ })).not.toContainText("Git");
 
   // Read now: the failing commit goes through.
   await git.getByRole("button", { name: "Read the repository now" }).click();
   await expect(page.getByText("Repository read")).toBeVisible();
   await expect(attention.getByRole("listitem").filter({ hasText: "Windows Server 2025" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(items.getByRole("row", { name: /Windows Server 2025/ })).not.toContainText("Commit failing");
   expect(errors).toEqual([]);
 });
@@ -90,9 +96,16 @@ test("a conflict settled for rvav, and committed at the next read; a publish wai
   await expect(page.getByText("Waiting to be committed").first()).toBeVisible();
 
   await page.getByRole("link", { name: "Catalog items" }).first().click();
-  const repo = page.getByRole("region", { name: "Git repository" });
-  await repo.getByRole("button", { name: "Read the repository now" }).click();
+  await page
+    .getByRole("region", { name: "Git repository" })
+    .getByRole("button", { name: "Details of the Git repository" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Git repository" })
+    .getByRole("button", { name: "Read the repository now" })
+    .click();
   await expect(page.getByText("Repository read")).toBeVisible();
+  await page.keyboard.press("Escape");
   const items = page.getByRole("region", { name: "Items" });
   await expect(items.getByRole("row", { name: /RHEL 9 server/ })).not.toContainText("Waiting");
   await expect(items.getByRole("row", { name: /Ubuntu 24\.04 server/ })).not.toContainText("Git");
