@@ -553,6 +553,48 @@ describe("vmGraph", () => {
       "/definition/blueprint/components/0/groups/0 unknown_group",
     ]);
   });
+
+  // ADR-0024: a component reading another, or naming it in depends_on, is built after it.
+  const shop = {
+    kind: "vm",
+    guest: { cloud_init: { user_data: "#cloud-config" } },
+    components: [
+      { key: "web", title: "Web servers", bindings: { tags: "['db/' + components.db.addresses[0]]" } },
+      {
+        key: "app",
+        depends_on: ["cache", "app", "ghost"],
+        guest: { cloud_init: { user_data: "web={{ .components.web.fqdns | json }} me={{ .inputs.components.app }}" } },
+      },
+      { key: "db", title: "Database", bindings: { tags: "['n/' + string(self.index)]" } },
+      { key: "cache" },
+    ],
+  };
+
+  it("draws an edge into a component from each it is built after", () => {
+    const g = vmGraph(shop);
+    const after = g.edges.filter((e) => e.id.startsWith("after:"));
+    expect(after.map((e) => `${e.source}>${e.target} ${e.kind}`)).toEqual([
+      "component:db>component:web sequence",
+      "component:web>component:app sequence",
+      "component:cache>component:app sequence",
+    ]);
+    expect(edge(g, "after:db>web")?.description).toBe("Web servers built after Database");
+    expect(node(g, "component:web").relations).toContain("Built after Database");
+    expect(node(g, "component:db").relations).toContain("Built before Web servers");
+    expect(g.problems.map((p) => `${p.field} ${p.code}`)).toEqual([
+      "/definition/blueprint/components/1/depends_on/1 invalid",
+      "/definition/blueprint/components/1/depends_on/2 unknown_component",
+    ]);
+    // A requester's topology has the same edges, from depends_on alone.
+    const t = topologyOf(shop)!;
+    expect((t.components as Record<string, unknown>[]).map((c) => c.depends_on)).toEqual([
+      ["db"],
+      ["web", "cache"],
+      undefined,
+      undefined,
+    ]);
+    expect(vmGraph(t).edges.filter((e) => e.id.startsWith("after:"))).toEqual(after);
+  });
 });
 
 describe("blueprintGraph", () => {

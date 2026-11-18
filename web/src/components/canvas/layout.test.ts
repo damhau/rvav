@@ -120,6 +120,18 @@ describe("layoutGraph", () => {
     expect(new Set(["sg:web", "sg:app", "sg:db"].map(x)).size).toBe(1);
     expect([...l.side]).toEqual(["rule:app:0:0", "rule:db:0:0"]);
   });
+
+  it("puts a component a column after those it is built after", () => {
+    const l = layoutGraph(
+      vmGraph({
+        kind: "vm",
+        components: [{ key: "web", depends_on: ["db"] }, { key: "db" }, { key: "cache" }],
+      }),
+    );
+    const x = (id: string) => l.boxes.get(id)!.x;
+    expect(x("component:db")).toBe(x("component:cache"));
+    expect(x("component:db")).toBeLessThan(x("component:web"));
+  });
 });
 
 describe("nearest", () => {

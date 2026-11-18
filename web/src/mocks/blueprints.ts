@@ -5,6 +5,7 @@
 // deployment, each in a security group of its own, with the rules between
 // them.
 import { parseUrl } from "@/lib/composite";
+import { dependsOn } from "@/lib/dependsOn";
 import { sizes as inventorySizes, templates } from "./inventory";
 
 type Blueprint = Record<string, unknown>;
@@ -415,11 +416,21 @@ const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps:
  * What a request form gets of a blueprint to draw what the item builds, as
  * the server's blueprint.Topology gives it (ADR-0032): the part the canvas
  * draws, without guest settings, sizes, naming or a step's binding literals,
- * the string literals of its CEL masked. Checked against the server's on the
- * same blueprints (internal/seed/testdata/topology.json, topology.test.ts).
+ * the string literals of its CEL masked, with the components each component
+ * is built after. Checked against the server's on the same blueprints
+ * (internal/seed/testdata/topology.json, topology.test.ts).
  * Undefined for the kinds the canvas doesn't draw.
  */
 export function topologyOf(bp: Blueprint | undefined): Blueprint | undefined {
   const keep = bp?.kind === "vm" ? vmTopology : bp?.kind === "composite" ? compositeTopology : undefined;
-  return keep ? (keep(bp) as Blueprint) : undefined;
+  if (!keep) return undefined;
+  const out = keep(bp) as Blueprint;
+  if (bp?.kind === "vm" && Array.isArray(out.components)) {
+    const after = dependsOn(bp);
+    for (const c of out.components as Record<string, unknown>[]) {
+      const keys = after.get(String(c.key)) ?? [];
+      if (keys.length > 0) c.depends_on = keys;
+    }
+  }
+  return out;
 }

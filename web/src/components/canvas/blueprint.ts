@@ -11,10 +11,12 @@
 //   side; each side's last step leads on to what comes next, and a side
 //   with no steps goes there straight.
 // - A VM item (ADR-0024, ADR-0028), left to right: the networks and NSX
-//   segments, the components with their counts and disks, then the groups
-//   their VMs are in, the security groups' firewall rules arriving at them
-//   from Any, another group or an existing one.
+//   segments, the components with their counts and disks (an edge into one
+//   from each it is built after), then the groups their VMs are in, the
+//   security groups' firewall rules arriving at them from Any, another
+//   group or an existing one.
 import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
+import { dependsOn } from "@/lib/dependsOn";
 import type { FieldError } from "@/lib/api/types";
 import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode, CanvasSide } from "./graph";
 import { within } from "./graph";
@@ -404,6 +406,7 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
     : [{ c: {} as Raw, pointer: prefix }];
   const awx = obj(bp.awx_templates);
   const bpGuest = obj(bp.guest);
+  const byKey = new Map<string, { node: CanvasNode; title: string }>();
 
   for (const { c, pointer } of components) {
     const key = declared ? str(c.key) : "vm";
@@ -457,6 +460,7 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       },
       "component",
     );
+    if (declared) byKey.set(key, { node: comp, title });
 
     const nics = arr(c.nics ?? bp.nics).map(obj);
     const adapters = [
@@ -523,6 +527,30 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       });
       relate(comp, `In ${g.title}`);
       relate(g, `Holds ${title}`);
+    }
+  }
+
+  const after = dependsOn(bp);
+  for (const { c, pointer } of declared ? components : []) {
+    const key = str(c.key);
+    const to = byKey.get(key);
+    if (!to) continue;
+    strings(c.depends_on).forEach((d, i) => {
+      const field = `${pointer}/depends_on/${i}`;
+      if (d === key) problem(to.node, field, "invalid", "A component isn't built after itself.");
+      else if (!byKey.has(d)) problem(to.node, field, "unknown_component", `There is no component ${d}.`);
+    });
+    for (const d of after.get(key) ?? []) {
+      const from = byKey.get(d)!;
+      edges.push({
+        id: `after:${d}>${key}`,
+        source: from.node.id,
+        target: to.node.id,
+        kind: "sequence",
+        description: `${to.title} built after ${from.title}`,
+      });
+      relate(to.node, `Built after ${from.title}`);
+      relate(from.node, `Built before ${to.title}`);
     }
   }
 
