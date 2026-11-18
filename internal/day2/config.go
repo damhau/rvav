@@ -84,20 +84,27 @@ func init() {
 			if t.VM.SnapshotCount != nil && *t.VM.SnapshotCount > 0 {
 				return "Disks of a VM with snapshots can't be extended. Delete its snapshots first."
 			}
+			if len(growable(t)) == 0 {
+				return linkedDisk
+			}
 			return ""
 		},
 		Form: func(t Target, _ Choices) *api.ActionForm {
-			opts := make([]api.Option, len(t.VM.Disks))
-			for i, d := range t.VM.Disks {
+			disks := growable(t)
+			opts := make([]api.Option, len(disks))
+			for i, d := range disks {
 				meta := strconv.Itoa(d.CapacityGb) + " GB"
 				opts[i] = api.Option{Value: d.Label, Label: d.Label, Meta: &meta}
 			}
-			first := t.VM.Disks[0]
+			first := disks[0]
 			return form("Disk", choice("disk", "Disk", opts, first.Label),
 				number("size_gb", "New size (GB)", "Disks only grow. Grow the file system in the guest to use the space.", 1, maxDiskGB, first.CapacityGb))
 		},
 		Validate: func(t Target, in map[string]any) []api.FieldError {
 			d := disk(t, strInput(in, "disk"))
+			if d != nil && d.Linked != nil && *d.Linked {
+				return invalid("disk", "linked", "%s: %s", d.Label, linkedDisk)
+			}
 			if size := intInput(in, "size_gb"); d != nil && size <= d.CapacityGb {
 				return invalid("size_gb", "too_small", "%s is %d GB; choose a larger size.", d.Label, d.CapacityGb)
 			}
@@ -197,6 +204,15 @@ func coldChange(t Target, cpu, memGB int) string {
 		return "Memory hot add is off on this VM."
 	}
 	return ""
+}
+
+// linkedDisk is why a linked clone's template disk isn't extended.
+const linkedDisk = "A linked clone's disk from its template can't grow (it is a child of the template's). Add a disk instead."
+
+// growable are the VM's disks that can be extended: not a linked clone's
+// template disk.
+func growable(t Target) []api.VmDisk {
+	return slices.DeleteFunc(slices.Clone(t.VM.Disks), func(d api.VmDisk) bool { return d.Linked != nil && *d.Linked })
 }
 
 func disk(t Target, label string) *api.VmDisk {

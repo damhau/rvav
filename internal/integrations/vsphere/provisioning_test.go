@@ -45,6 +45,26 @@ func TestDiskProvisioning(t *testing.T) {
 	})
 }
 
+// A disk whose backing has a parent is a linked clone's template disk;
+// vcsim makes none, so the backing is built here (T1.7).
+func TestLinkedDisk(t *testing.T) {
+	flat := &types.VirtualDiskFlatVer2BackingInfo{}
+	child := &types.VirtualDiskFlatVer2BackingInfo{Parent: &types.VirtualDiskFlatVer2BackingInfo{}}
+	for _, c := range []struct {
+		disk *types.VirtualDisk
+		want bool
+	}{
+		{&types.VirtualDisk{VirtualDevice: types.VirtualDevice{Backing: flat}}, false},
+		{&types.VirtualDisk{VirtualDevice: types.VirtualDevice{Backing: child}}, true},
+		{&types.VirtualDisk{VirtualDevice: types.VirtualDevice{Backing: &types.VirtualDiskRawDiskMappingVer1BackingInfo{}}}, false},
+		{nil, false},
+	} {
+		if got := linkedDisk(c.disk); got != c.want {
+			t.Errorf("linkedDisk(%+v) = %v", c.disk, got)
+		}
+	}
+}
+
 // A clone converts the template's flat disks with disk locators, which vcsim
 // ignores: the clone spec is checked here.
 func TestDiskLocators(t *testing.T) {

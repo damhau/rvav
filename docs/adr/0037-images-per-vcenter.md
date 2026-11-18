@@ -114,6 +114,11 @@ source of that name gives its customization specification.
   added disks only, the template's being shared. The inventory doesn't
   read templates' disks or snapshots, so these are found at the clone,
   not at preview.
+- For the same reason, **Extend a disk** doesn't offer a linked clone's
+  template disk, and refuses it: the driver reads a disk whose flat
+  backing has a parent as `linked` (`VmDisk.linked`), and the action is
+  unavailable when every disk is (T1.7). Added disks can grow. A VM
+  recorded before T1.7 says so once the inventory sync reads it again.
 - The plan carries `VMUnit.linked_clone`; the clone step reads "Linked
   clone of tpl-rhel9.4-2026.10". vcsim ignores the snapshot and disk move
   type of a clone: the spec rvav sends is checked in the driver's test,

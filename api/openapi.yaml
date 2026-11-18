@@ -7568,6 +7568,9 @@ components:
         capacity_gb: { type: integer }
         datastore: { type: string }
         provisioning: { $ref: "#/components/schemas/DiskProvisioning" }
+        linked:
+          type: boolean
+          description: A child of its template's disk, as a linked clone's first disk is (ADR-0037). It can't be extended.
 
     VmNic:
       type: object

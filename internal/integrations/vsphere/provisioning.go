@@ -23,6 +23,13 @@ func flatBacking(d *types.VirtualDisk) *types.VirtualDiskFlatVer2BackingInfo {
 	return b
 }
 
+// linkedDisk says whether the disk is a child of another, as a linked
+// clone's template disk is (ADR-0037).
+func linkedDisk(d *types.VirtualDisk) bool {
+	b := flatBacking(d)
+	return b != nil && b.Parent != nil
+}
+
 // provisioningOf is how a disk is provisioned; "" when it isn't a flat
 // file, an RDM say.
 func provisioningOf(d *types.VirtualDisk) string {

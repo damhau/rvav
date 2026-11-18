@@ -189,6 +189,9 @@ type Disk struct {
 	// Provisioning is thin, thick_lazy_zeroed or thick_eager_zeroed; empty
 	// for a backing that isn't a flat file (an RDM, say).
 	Provisioning string
+	// Linked is a child of another disk, a linked clone's template disk:
+	// it can't grow.
+	Linked bool
 }
 
 type NIC struct {
@@ -584,7 +587,8 @@ func toVM(m mo.VirtualMachine) VM {
 						ds = p.Datastore
 					}
 				}
-				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, Provisioning: provisioningOf(dev)})
+				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, Provisioning: provisioningOf(dev),
+					Linked: linkedDisk(dev)})
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:
 				card := dev.GetVirtualEthernetCard()

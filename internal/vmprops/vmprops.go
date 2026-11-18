@@ -165,6 +165,9 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 		if d.Provisioning != "" {
 			p.Disks[i].Provisioning = present.Ptr(api.DiskProvisioning(d.Provisioning))
 		}
+		if d.Linked {
+			p.Disks[i].Linked = present.Ptr(true)
+		}
 	}
 	p.Nics = make([]api.VmNic, len(vm.NICs))
 	for i, n := range vm.NICs {

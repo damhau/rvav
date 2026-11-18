@@ -5617,6 +5617,8 @@ export interface components {
             capacity_gb: number;
             datastore?: string;
             provisioning?: components["schemas"]["DiskProvisioning"];
+            /** @description A child of its template's disk, as a linked clone's first disk is (ADR-0037). It can't be extended. */
+            linked?: boolean;
         };
         VmNic: {
             /** @example Network adapter 1 */

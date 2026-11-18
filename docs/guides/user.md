@@ -222,7 +222,8 @@ requests, with their own steps:
 - **Snapshots:** take, revert, delete.
 - **Size and hardware:**
   - resize;
-  - add or extend a disk;
+  - add or extend a disk (a linked clone's disk from its template can't
+    be extended: add a disk instead);
   - add, move or remove a network adapter;
   - mount or unmount an ISO.
 - **NSX security groups:** add the VM to a group its item offers, or
