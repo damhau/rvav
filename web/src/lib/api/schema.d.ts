@@ -4890,6 +4890,8 @@ export interface components {
         VraPlan: {
             snapshot: components["schemas"]["VraSnapshot"];
             summary: {
+                /** @description Catalogue templates to make of vRA's image mappings (ADR-0037). */
+                templates_create: number;
                 items_create: number;
                 items_update: number;
                 items_unchanged: number;
@@ -4902,6 +4904,7 @@ export interface components {
                 deployments_skipped: number;
             };
             projects: components["schemas"]["VraProjectPlan"][];
+            templates: components["schemas"]["VraTemplatePlan"][];
             items: components["schemas"]["VraItemPlan"][];
             deployments: components["schemas"]["VraDeploymentPlan"][];
             policies: components["schemas"]["VraPolicyPlan"][];
@@ -4963,6 +4966,35 @@ export interface components {
              *     (the import writes none). Absent when rvav has none.
              */
             strategy?: components["schemas"]["PlacementStrategy"];
+        };
+        /**
+         * @description The catalogue template an image name of vRA's image profiles becomes
+         *     (ADR-0037): a source in each region's vCenter rvav manages, the
+         *     first region's cloud-init and constraints (compute).
+         */
+        VraTemplatePlan: {
+            /** @description vRA's image name. */
+            image: string;
+            key: string;
+            label: string;
+            /** @enum {string} */
+            os_family: "linux" | "windows";
+            /**
+             * @description What the import does: make the template; nothing, as rvav's is
+             *     what the mappings give; nothing, as rvav has another template of
+             *     that key (the import never changes one); nothing, as no mapping
+             *     is in a vCenter rvav manages.
+             * @enum {string}
+             */
+            action: "create" | "unchanged" | "differs" | "skip";
+            sources: {
+                /** @description A name of GET /admin/vcenters; empty for the vCenter integration's. */
+                vcenter: string;
+                template: string;
+            }[];
+            user_data: string;
+            constraints: string[];
+            notes: components["schemas"]["VraNote"][];
         };
         VraItemPlan: {
             blueprint_id: string;
@@ -5041,6 +5073,8 @@ export interface components {
             projects?: string[];
         };
         VraImportResult: {
+            /** @description Catalogue templates made (their keys). */
+            templates_created: string[];
             /** @description Items made (their names). */
             created: string[];
             /** @description Items given a new draft. */

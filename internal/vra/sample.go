@@ -96,12 +96,27 @@ func SampleEstate(now time.Time) Estate {
 				map[string]any{"size": "small", "environment": "dev", "role": "leg"}, machine("vra-leg-001", "10.31.10.146", 2, 4096)),
 		},
 	}
-	img := ImageProfile{ID: "img-gva", Name: "GVA images", RegionID: "region-gva"}
-	img.ImageMappings.Mapping = map[string]ImageMapping{"rhel9": {Name: "tpl-rhel9.4-2026.10"}, "win2022": {Name: "tpl-win2025-std-2026.09"}}
+	// Geneva and Zurich, a vCenter each: RHEL is the same template in both,
+	// Windows one of each site's name on licensed clusters, Ubuntu with
+	// the agent its cloud-init installs.
+	e.Regions = []Region{{ID: "region-gva", Name: "Geneva", ExternalRegionID: "Datacenter:datacenter-2", CloudAccountID: "ca-gva"},
+		{ID: "region-zrh", Name: "Zurich", ExternalRegionID: "Datacenter:datacenter-3", CloudAccountID: "ca-zrh"}}
+	e.CloudAccounts = []CloudAccount{{ID: "ca-gva", Name: "vCenter Geneva", HostName: "vc01.corp.example"},
+		{ID: "ca-zrh", Name: "vCenter Zurich", HostName: "vc02.corp.example"}}
+	licensed := []ImageConstraint{{Mandatory: true, Expression: "license:windows"}}
+	agent := "#cloud-config\npackages: [qualys-agent]\n"
+	gva := ImageProfile{ID: "img-gva", Name: "GVA images", RegionID: "region-gva"}
+	gva.ImageMappings.Mapping = map[string]ImageMapping{"rhel9": {Name: "tpl-rhel9.4-2026.10"},
+		"win2022":  {Name: "tpl-win2025-std-2026.09", Constraints: licensed},
+		"ubuntu24": {Name: "tpl-ubuntu24.04-2026.10", CloudConfig: agent}}
+	zrh := ImageProfile{ID: "img-zrh", Name: "ZRH images", RegionID: "region-zrh"}
+	zrh.ImageMappings.Mapping = map[string]ImageMapping{"rhel9": {Name: "tpl-rhel9.4-2026.10"},
+		"win2022":  {Name: "tpl-win2025-std-zrh", Constraints: licensed},
+		"ubuntu24": {Name: "tpl-ubuntu24.04-zrh", CloudConfig: agent}}
 	flv := FlavorProfile{ID: "flv-gva", Name: "GVA sizes", RegionID: "region-gva"}
 	flv.FlavorMappings.Mapping = map[string]FlavorMapping{"small": {CPUCount: 2, MemoryInMB: 4096},
 		"medium": {CPUCount: 4, MemoryInMB: 16384}, "large": {CPUCount: 8, MemoryInMB: 32768}}
-	e.Images, e.Flavors = []ImageProfile{img}, []FlavorProfile{flv}
+	e.Images, e.Flavors = []ImageProfile{gva, zrh}, []FlavorProfile{flv}
 	sampleExtensibility(&e, days)
 	// Legacy Apps is offered the templates' whole content source, as vRA's
 	// administrators usually share.

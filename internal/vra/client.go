@@ -267,6 +267,14 @@ func (c *Client) ImageProfiles(ctx context.Context) ([]ImageProfile, error) {
 	return listTop[ImageProfile](ctx, c, "/iaas/api/image-profiles", url.Values{"apiVersion": {"2021-07-15"}})
 }
 
+func (c *Client) Regions(ctx context.Context) ([]Region, error) {
+	return listTop[Region](ctx, c, "/iaas/api/regions", url.Values{"apiVersion": {"2021-07-15"}})
+}
+
+func (c *Client) VSphereCloudAccounts(ctx context.Context) ([]CloudAccount, error) {
+	return listTop[CloudAccount](ctx, c, "/iaas/api/cloud-accounts-vsphere", url.Values{"apiVersion": {"2021-07-15"}})
+}
+
 func (c *Client) FlavorProfiles(ctx context.Context) ([]FlavorProfile, error) {
 	return listTop[FlavorProfile](ctx, c, "/iaas/api/flavor-profiles", url.Values{"apiVersion": {"2021-07-15"}})
 }
@@ -533,6 +541,12 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	if e.Flavors, err = c.FlavorProfiles(ctx); err != nil {
+		return nil, err
+	}
+	if e.Regions, err = c.Regions(ctx); err != nil {
+		return nil, err
+	}
+	if e.CloudAccounts, err = c.VSphereCloudAccounts(ctx); err != nil {
 		return nil, err
 	}
 	if e.Blueprints, err = c.Blueprints(ctx); err != nil {

@@ -172,7 +172,7 @@ function Summary({ plan }: { plan: Plan }) {
 function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
   const unplaced = plan?.projects.filter((p) => p.how === "none").length ?? 0;
   const s = plan?.summary;
-  const items = s ? s.items_create + s.items_update : 0;
+  const items = s ? s.templates_create + s.items_create + s.items_update : 0;
   const left = s ? items + s.shares_add + s.deployments_adopt : 0;
   const steps = [
     {
@@ -834,6 +834,7 @@ function ImportSheet({
         <span>
           <span className="font-medium">Catalog items</span>
           <span className="block text-secondary text-muted">
+            {s.templates_create > 0 && `${plural(s.templates_create, "template")} to make from vRA's image mappings; `}
             {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
             {plural(s.shares_add, "share")} to add (an item offered to one more project).
           </span>
@@ -871,6 +872,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
       }
     >
       <section aria-label="Imported" className="flex flex-col gap-1 text-body">
+        {line("Templates made", r.templates_created)}
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
         {r.shared > 0 && <p>{plural(r.shared, "share")} added: items offered to more projects.</p>}
@@ -880,9 +882,13 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
             {f.name}: {f.reason}
           </p>
         ))}
-        {r.created.length + r.updated.length + r.shared + r.adopted.length + r.failed.length === 0 && (
-          <p className="text-muted">Nothing new to import. What is left, and why, is in the plan below.</p>
-        )}
+        {r.templates_created.length +
+          r.created.length +
+          r.updated.length +
+          r.shared +
+          r.adopted.length +
+          r.failed.length ===
+          0 && <p className="text-muted">Nothing new to import. What is left, and why, is in the plan below.</p>}
       </section>
     </Panel>
   );

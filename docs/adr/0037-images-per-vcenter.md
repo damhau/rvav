@@ -119,6 +119,21 @@ source of that name gives its customization specification.
   type of a clone: the spec rvav sends is checked in the driver's test,
   and what only a real vCenter shows is in T1's acceptance (#140).
 
+### The importer
+- vRA's image profiles (one per region, read with the regions and the
+  vSphere cloud accounts that give each region's vCenter) become
+  catalogue templates: one per image name, a source per region's vCenter
+  that rvav manages, the first region's `cloudConfig` as user data and
+  its `constraints` as compute constraints (`:soft` when not mandatory).
+- A machine's `image` binds that template (`bindings.template`) when
+  vRA's mappings differ between regions or carry cloud-init or
+  constraints. Otherwise the item names the vCenter template, as before:
+  rvav places it where vCenter has it, and an import of an unchanged
+  estate leaves those items' hashes as they were.
+- The import makes templates rvav lacks, offered to everyone, before the
+  items; it never updates one. A template an administrator changed is
+  theirs: the plan says it differs, and the next import leaves it.
+
 ## Consequences
 - A template built per site under different names is one entry of the
   picker, and rvav places it where it exists.

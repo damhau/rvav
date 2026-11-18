@@ -68,6 +68,10 @@ type Rvav struct {
 	// (vra_links), not deleted.
 	Adopted map[string][]string
 	Now     time.Time
+	// VCenters are the vCenters rvav manages, and Templates its catalogue
+	// templates by key (ADR-0037).
+	VCenters  []RvavVCenter
+	Templates map[string]RvavTemplate
 }
 
 // DeploymentPlan is what becomes of a vRA deployment: adopted into an rvav

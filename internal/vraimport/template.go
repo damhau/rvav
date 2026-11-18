@@ -24,6 +24,8 @@ type ItemPlan struct {
 	Status      string   `json:"status"`
 	Notes       []Note   `json:"notes"`
 	Doc         *ItemDoc `json:"doc,omitempty"`
+	// Templates are the catalogue templates it binds, by key (ADR-0037).
+	Templates []string `json:"-"`
 }
 
 // tmpl is a cloud template's YAML: its inputs and resources.
@@ -105,6 +107,7 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 		doc.Versions = append(doc.Versions, vd)
 	}
 	p.Status, p.Doc = worst, doc
+	p.Templates = boundTemplates(doc.Versions[len(doc.Versions)-1].Blueprint)
 	if strings.Contains(strings.ToLower(doc.Versions[len(doc.Versions)-1].Blueprint["guest"].(map[string]any)["os_family"].(string)), "windows") {
 		doc.Metadata.Icon = "monitor"
 	}
@@ -208,6 +211,10 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		if img, _ := r.Properties["image"].(string); img != "" {
 			if strings.Contains(img, "${") {
 				note(Unmapped, where+".image", "The image comes from an input ("+img+"): an rvav item builds from one template per component. Make an item per image, or a size-like choice in a later version.")
+			} else if needsCatalogue(e, img) {
+				key := ImageKey(img)
+				bindings["template"] = strconv.Quote(key)
+				note(Info, where+".image", fmt.Sprintf("Image %s is catalogue template %s, made of vRA's image mappings: a template per vCenter, with their cloud-init and constraints (ADR-0037).", img, key))
 			} else if tpl := imageTemplate(e, img); tpl != "" {
 				c["template"] = tpl
 				note(Info, where+".image", fmt.Sprintf("Image %s is vCenter template %s (vRA's image profile).", img, tpl))
@@ -750,6 +757,25 @@ func placementUI() map[string]any {
 // environmentInput: the name vRA templates give the environment.
 func environmentInput(name string) bool {
 	return name == "environment" || name == "env"
+}
+
+// boundTemplates are the catalogue templates a blueprint's template
+// bindings name, the components' included.
+func boundTemplates(b map[string]any) []string {
+	var out []string
+	add := func(m map[string]any) {
+		bindings, _ := m["bindings"].(map[string]any)
+		raw, _ := bindings["template"].(string)
+		if key, err := strconv.Unquote(raw); err == nil && !slices.Contains(out, key) {
+			out = append(out, key)
+		}
+	}
+	add(b)
+	comps, _ := b["components"].([]map[string]any)
+	for _, c := range comps {
+		add(c)
+	}
+	return out
 }
 
 func imageTemplate(e *vra.Estate, image string) string {

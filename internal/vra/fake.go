@@ -105,6 +105,10 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		top(w, q, e.Images)
 	case p == "/iaas/api/flavor-profiles":
 		top(w, q, e.Flavors)
+	case p == "/iaas/api/regions":
+		top(w, q, e.Regions)
+	case p == "/iaas/api/cloud-accounts-vsphere":
+		top(w, q, e.CloudAccounts)
 	case p == "/blueprint/api/blueprints":
 		list := make([]Blueprint, len(e.Blueprints))
 		for i, b := range e.Blueprints {

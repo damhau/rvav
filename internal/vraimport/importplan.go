@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -65,6 +66,8 @@ type ItemImport struct {
 	// Doc and Hash are what the import sends and records.
 	Doc  *ItemDoc `json:"-"`
 	Hash string   `json:"-"`
+	// templates are the catalogue templates it binds.
+	templates []string
 }
 
 // ProjectPlan is how a vRA project maps.
@@ -84,6 +87,7 @@ type ProjectPlan struct {
 
 // Summary counts what the import would do.
 type Summary struct {
+	TemplatesCreate    int `json:"templates_create"`
 	ItemsCreate        int `json:"items_create"`
 	ItemsUpdate        int `json:"items_update"`
 	ItemsUnchanged     int `json:"items_unchanged"`
@@ -97,6 +101,7 @@ type Summary struct {
 // ImportPlan is the dry run.
 type ImportPlan struct {
 	Summary     Summary          `json:"summary"`
+	Templates   []TemplateImport `json:"templates"`
 	Projects    []ProjectPlan    `json:"projects"`
 	Items       []ItemImport     `json:"items"`
 	Deployments []DeploymentPlan `json:"deployments"`
@@ -107,7 +112,15 @@ type ImportPlan struct {
 
 // PlanImport is what importing the estate would do, nothing written.
 func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
-	p := ImportPlan{Projects: []ProjectPlan{}, Items: []ItemImport{}, Policies: PlanPolicies(e), Triage: TriageVRO(e)}
+	p := ImportPlan{Projects: []ProjectPlan{}, Items: []ItemImport{}, Policies: PlanPolicies(e), Triage: TriageVRO(e),
+		Templates: PlanTemplates(e, r)}
+	planned := map[string]TemplateImport{}
+	for _, t := range p.Templates {
+		planned[t.Key] = t
+		if t.Action == ActionCreate {
+			p.Summary.TemplatesCreate++
+		}
+	}
 	for _, vp := range e.Projects {
 		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name, PlacementPolicy: vp.PlacementPolicy, Strategy: strategyFor(vp.PlacementPolicy)}
 		proj, how := mapProject(r, vp.ID, vp.Name)
@@ -134,6 +147,12 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	}
 	for _, bp := range e.Blueprints {
 		it := planItem(e, r, st, bp)
+		for _, key := range it.templates {
+			if t, ok := planned[key]; ok && t.Action == ActionSkip {
+				it.Notes = append(it.Notes, Note{Warning, "image", fmt.Sprintf(
+					"Catalogue template %s has no source in a vCenter rvav manages, so the import doesn't make it: requests fail until an administrator makes it.", key)})
+			}
+		}
 		if s, ok := after[it.RvavItemID]; ok && len(it.ShareAdd) > 0 {
 			s.Projects = slices.Concat(s.Projects, it.ShareAdd)
 			after[it.RvavItemID] = s
@@ -177,7 +196,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImport {
 	m := MapTemplate(e, bp)
 	it := ItemImport{BlueprintID: bp.ID, Name: m.Name, Slug: m.Slug, Status: m.Status, Notes: m.Notes, ShareAdd: []string{},
-		ShareUnmapped: []string{}, Doc: m.Doc}
+		ShareUnmapped: []string{}, Doc: m.Doc, templates: m.Templates}
 	if it.Notes == nil {
 		it.Notes = []Note{}
 	}

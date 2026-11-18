@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vra"
 	"github.com/damhau/rvav/internal/vraimport"
@@ -75,6 +77,9 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 	if r.Adopted, err = s.Store.AdoptedVRADeployments(ctx); err != nil {
 		return r, err
 	}
+	if err := s.vraImages(ctx, &r); err != nil {
+		return r, err
+	}
 	// The lease policies adoption will apply.
 	r.Leases = map[string]vraimport.Lease{}
 	for _, p := range r.Projects {
@@ -89,6 +94,59 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		}
 	}
 	return r, nil
+}
+
+// vraImages gives the plan the vCenters rvav manages, by name and URL host,
+// and its catalogue templates (ADR-0037).
+func (s *Service) vraImages(ctx context.Context, r *vraimport.Rvav) error {
+	added, err := s.Store.VCenters(ctx)
+	if err != nil {
+		return err
+	}
+	if s.Config.VCenter.Name != "" || s.Config.VCenter.URL != "" {
+		r.VCenters = append(r.VCenters, vraimport.RvavVCenter{Name: s.Config.VCenter.Name, Host: vraimport.URLHost(s.Config.VCenter.URL)})
+	}
+	for _, v := range added {
+		r.VCenters = append(r.VCenters, vraimport.RvavVCenter{Name: v.Name, Host: vraimport.URLHost(v.URL)})
+	}
+	list, err := s.Store.VMTemplates(ctx)
+	if err != nil {
+		return err
+	}
+	r.Templates = map[string]vraimport.RvavTemplate{}
+	for _, t := range list {
+		rt := vraimport.RvavTemplate{UserData: t.UserData, Constraints: slices.Clone(t.Constraints.Compute)}
+		for _, src := range t.Sources {
+			tpl := src.Template
+			if src.Library != "" {
+				tpl = src.Library + "/" + tpl
+			}
+			rt.Sources = append(rt.Sources, vraimport.TemplateSource{VCenter: cmp.Or(src.VCenter, s.Config.VCenter.Name), Template: tpl})
+		}
+		// Only compute constraints come from vRA: others make it differ.
+		for _, c := range slices.Concat(t.Constraints.Storage, t.Constraints.Network) {
+			rt.Constraints = append(rt.Constraints, "other:"+c)
+		}
+		r.Templates[t.Key] = rt
+	}
+	return nil
+}
+
+// vraTemplate makes a catalogue template of vRA's image mappings, offered
+// to every project and environment as vRA's are to every project in their
+// regions.
+func (s *Service) vraTemplate(ctx context.Context, p *auth.Principal, t vraimport.TemplateImport) error {
+	sources := make([]api.VmTemplateSourceWrite, len(t.Sources))
+	for i, src := range t.Sources {
+		sources[i] = api.VmTemplateSourceWrite{Vcenter: src.VCenter, Template: src.Template}
+	}
+	_, err := s.SaveVMTemplate(ctx, p, "", api.VmTemplateWrite{Key: t.Key, Label: t.Label, OsFamily: api.VmTemplateWriteOsFamily(t.OSFamily),
+		Sources: sources, Description: present.Ptr("vRA's image mappings of " + t.Image + "."), UserData: &t.UserData,
+		Constraints: &api.TemplateConstraints{Compute: t.Constraints, Storage: []string{}, Network: []string{}}, Offers: &[]api.Offer{{}}})
+	if errors.Is(err, ErrForbidden) {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("", "forbidden", "Making catalogue templates needs the right to manage infrastructure.")}}
+	}
+	return err
 }
 
 // vraPlan is the dry run of an estate: what earlier imports made, the
@@ -427,7 +485,7 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 // (drafts) with their sharing, and, when asked, its deployments adopted.
 // It can run again: what was imported is linked, so only what changed is.
 func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraImportRequest) (api.VraImportResult, error) {
-	out := api.VraImportResult{Created: []string{}, Updated: []string{}, Adopted: []string{}}
+	out := api.VraImportResult{TemplatesCreated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
 	out.Failed = []struct {
 		Name   string `json:"name"`
 		Reason string `json:"reason"`
@@ -475,6 +533,19 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		}
 	}
 	if req.Catalog == nil || *req.Catalog {
+		// Templates first: items bind them.
+		for _, t := range plan.Templates {
+			if t.Action != vraimport.ActionCreate {
+				continue
+			}
+			if err := s.vraTemplate(ctx, p, t); isRefusal(err) {
+				fail("Template "+t.Key, err)
+				continue
+			} else if err != nil {
+				return out, err
+			}
+			out.TemplatesCreated = append(out.TemplatesCreated, t.Key)
+		}
 		for _, it := range plan.Items {
 			itemID := it.RvavItemID
 			switch it.Action {
@@ -555,7 +626,7 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 			}
 		}
 	}
-	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"created": out.Created, "updated": out.Updated,
+	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated, "created": out.Created, "updated": out.Updated,
 		"shared": out.Shared, "adopted": out.Adopted, "failed": len(out.Failed)})
 	after, _, err := s.vraPlan(ctx, e, nil)
 	if err != nil {

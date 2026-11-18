@@ -6566,13 +6566,14 @@ components:
         stays_in_vra: { type: boolean, default: false, description: "Keep it in vRA, even if rvav has a project of its name (rvav_project_id null)." }
     VraPlan:
       type: object
-      required: [snapshot, projects, items, deployments, policies, triage, summary, cutover]
+      required: [snapshot, projects, templates, items, deployments, policies, triage, summary, cutover]
       properties:
         snapshot: { $ref: "#/components/schemas/VraSnapshot" }
         summary:
           type: object
-          required: [items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
+          required: [templates_create, items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
           properties:
+            templates_create: { type: integer, description: "Catalogue templates to make of vRA's image mappings (ADR-0037)." }
             items_create: { type: integer }
             items_update: { type: integer }
             items_unchanged: { type: integer }
@@ -6584,6 +6585,9 @@ components:
         projects:
           type: array
           items: { $ref: "#/components/schemas/VraProjectPlan" }
+        templates:
+          type: array
+          items: { $ref: "#/components/schemas/VraTemplatePlan" }
         items:
           type: array
           items: { $ref: "#/components/schemas/VraItemPlan" }
@@ -6654,6 +6658,39 @@ components:
             The placement rule strategy that places as the placement policy
             does, for an administrator to set on the rvav project's rules
             (the import writes none). Absent when rvav has none.
+    VraTemplatePlan:
+      type: object
+      description: |
+        The catalogue template an image name of vRA's image profiles becomes
+        (ADR-0037): a source in each region's vCenter rvav manages, the
+        first region's cloud-init and constraints (compute).
+      required: [image, key, label, os_family, action, sources, user_data, constraints, notes]
+      properties:
+        image: { type: string, description: vRA's image name. }
+        key: { type: string }
+        label: { type: string }
+        os_family: { type: string, enum: [linux, windows] }
+        action:
+          type: string
+          enum: [create, unchanged, differs, skip]
+          description: |
+            What the import does: make the template; nothing, as rvav's is
+            what the mappings give; nothing, as rvav has another template of
+            that key (the import never changes one); nothing, as no mapping
+            is in a vCenter rvav manages.
+        sources:
+          type: array
+          items:
+            type: object
+            required: [vcenter, template]
+            properties:
+              vcenter: { type: string, description: "A name of GET /admin/vcenters; empty for the vCenter integration's." }
+              template: { type: string }
+        user_data: { type: string }
+        constraints: { type: array, items: { type: string } }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
     VraItemPlan:
       type: object
       required: [blueprint_id, name, slug, status, action, notes, share_add, share_unmapped]
@@ -6729,8 +6766,9 @@ components:
           description: "Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent."
     VraImportResult:
       type: object
-      required: [created, updated, shared, adopted, failed, plan]
+      required: [templates_created, created, updated, shared, adopted, failed, plan]
       properties:
+        templates_created: { type: array, items: { type: string }, description: "Catalogue templates made (their keys)." }
         created: { type: array, items: { type: string }, description: Items made (their names). }
         updated: { type: array, items: { type: string }, description: Items given a new draft. }
         shared: { type: integer, description: "Shares added: an item offered to one more project." }

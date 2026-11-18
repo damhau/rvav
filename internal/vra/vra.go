@@ -47,10 +47,36 @@ type ImageProfile struct {
 	} `json:"imageMappings"`
 }
 
-// ImageMapping is the template an image name stands for.
+// ImageMapping is the template an image name stands for in its profile's
+// region, with the cloud-init and constraints vRA gives its machines.
 type ImageMapping struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name"` // the vCenter template
+	ID          string            `json:"id,omitempty"`
+	Name        string            `json:"name"` // the vCenter template
+	CloudConfig string            `json:"cloudConfig,omitempty"`
+	Constraints []ImageConstraint `json:"constraints,omitempty"`
+}
+
+// ImageConstraint is a constraint tag of an image mapping, key:value; a
+// soft one when not mandatory.
+type ImageConstraint struct {
+	Mandatory  bool   `json:"mandatory"`
+	Expression string `json:"expression"`
+}
+
+// Region is a cloud account's datacenter, where an image profile's
+// templates are.
+type Region struct {
+	ID               string `json:"id"`
+	Name             string `json:"name,omitempty"`
+	ExternalRegionID string `json:"externalRegionId,omitempty"`
+	CloudAccountID   string `json:"cloudAccountId,omitempty"`
+}
+
+// CloudAccount is a vSphere cloud account: HostName is its vCenter.
+type CloudAccount struct {
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	HostName string `json:"hostName,omitempty"`
 }
 
 // FlavorProfile maps flavor names (sizes) to CPU and memory.
@@ -256,23 +282,49 @@ const MachineType = "Cloud.vSphere.Machine"
 // Estate is everything the importer reads from vRA, also what `rvav vra
 // export` writes, to import from a file.
 type Estate struct {
-	ReadAt       time.Time       `json:"read_at"`
-	URL          string          `json:"url"`
-	Projects     []Project       `json:"projects"`
-	Images       []ImageProfile  `json:"image_profiles"`
-	Flavors      []FlavorProfile `json:"flavor_profiles"`
-	Blueprints   []Blueprint     `json:"blueprints"`
-	Forms        []Form          `json:"forms"`
-	CatalogItems []CatalogItem   `json:"catalog_items"`
-	Entitlements []Entitlement   `json:"entitlements"`
-	Policies     []Policy        `json:"policies"`
-	Deployments  []Deployment    `json:"deployments"`
+	ReadAt   time.Time       `json:"read_at"`
+	URL      string          `json:"url"`
+	Projects []Project       `json:"projects"`
+	Images   []ImageProfile  `json:"image_profiles"`
+	Flavors  []FlavorProfile `json:"flavor_profiles"`
+	// Regions and the vSphere cloud accounts they are in say which
+	// vCenter an image profile's templates are in.
+	Regions       []Region       `json:"regions,omitempty"`
+	CloudAccounts []CloudAccount `json:"cloud_accounts,omitempty"`
+	Blueprints    []Blueprint    `json:"blueprints"`
+	Forms         []Form         `json:"forms"`
+	CatalogItems  []CatalogItem  `json:"catalog_items"`
+	Entitlements  []Entitlement  `json:"entitlements"`
+	Policies      []Policy       `json:"policies"`
+	Deployments   []Deployment   `json:"deployments"`
 	// What extensibility runs: vRA's subscriptions, vRO's workflows and
 	// actions (the triage report, P2.4).
 	Subscriptions   []Subscription   `json:"subscriptions"`
 	ResourceActions []ResourceAction `json:"resource_actions"`
 	Workflows       []VROWorkflow    `json:"vro_workflows"`
 	Actions         []VROAction      `json:"vro_actions"`
+}
+
+// VCenterOf is the vCenter of a region: its vSphere cloud account's host
+// name, "" when unknown.
+func (e *Estate) VCenterOf(regionID string) string {
+	i := slices.IndexFunc(e.Regions, func(r Region) bool { return r.ID == regionID })
+	if i < 0 {
+		return ""
+	}
+	j := slices.IndexFunc(e.CloudAccounts, func(a CloudAccount) bool { return a.ID == e.Regions[i].CloudAccountID })
+	if j < 0 {
+		return ""
+	}
+	return e.CloudAccounts[j].HostName
+}
+
+// RegionName is a region's name, else its ID.
+func (e *Estate) RegionName(regionID string) string {
+	if i := slices.IndexFunc(e.Regions, func(r Region) bool { return r.ID == regionID }); i >= 0 && e.Regions[i].Name != "" {
+		return e.Regions[i].Name
+	}
+	return regionID
 }
 
 // SourceOf is what a catalog item offers: the cloud template or vRO

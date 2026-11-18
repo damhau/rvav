@@ -124,7 +124,7 @@ check it) or *unmapped* (left out).
 | `count` | The component's count: a number, or CEL over the inputs (`${input.ha ? 2 : 1}` is `inputs.ha ? 2 : 1`). A count that reads a machine is reported, and left out. |
 | `dependsOn` | The component's `depends_on`, for the machines it names: it is built after them. rvav makes networks, disks and security groups before any VM; a dependency on a resource left out is reported. |
 | `tags` | vSphere tags, the key as the category: fixed ones as the component's `tags`, those with expressions as its `tags` binding. The categories must exist in vCenter. A tag reading its own machines' addresses is reported. |
-| `image` | The vCenter template of vRA's image profile. An image from an input isn't mapped. |
+| `image` | When vRA maps the image to one vCenter template in every region, with no cloud-init or constraints of its own: that template, by name. Otherwise, the catalogue template the image becomes ([Image profiles](#image-profiles)), as the `template` binding. An image from an input isn't mapped. |
 | `flavor` (fixed or from an input), `cpuCount`, `totalMemoryMB` | vCPU and memory: the flavor profile's sizes, as the item's sizes. |
 | `customizationSpec` | The guest's vCenter customization specification. |
 | `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}`, `${count.index}`, `${input.x}` (printed through `json`) and other machines' names, addresses and count are translated; functions, operators and other references are reported. |
@@ -138,6 +138,33 @@ check it) or *unmapped* (left out).
 | `Cloud.SecurityGroup`, new | A security group made for each deployment (`security_groups`), joined by the machines whose networks name it. Its inbound rules from any or another of its groups, on a service or a usual port (22, 80, 443, 1433, 3306, 3389, 5432, ICMP), carry over; outbound rules, and those from addresses or other ports, are reported. |
 | `Cloud.SecurityGroup`, existing | Reported: rvav can't tell its NSX group from vRA's constraint tags. Add it to `groups` as `nsx:<group ID>`. |
 | Load balancers, other types | Reported, left out. An AWX job in a composite item can do what they did. |
+
+### Image profiles
+
+Each image name of vRA's image profiles becomes a catalogue template
+(Administration › Templates and networks,
+[ADR-0037](../adr/0037-images-per-vcenter.md)), its key the name in
+lower-case letters, digits and dashes:
+
+| vRA | rvav |
+|---|---|
+| An image profile's region | The vCenter of the region's vSphere cloud account, matched to a vCenter rvav manages by its name or its URL's host. A region in a vCenter rvav doesn't manage is reported, and left out: add the vCenter in Administration › vCenters, then import again. |
+| The image's mapping in a region | The template's source in that vCenter. Two regions in one vCenter give one source, the first region's. |
+| The mapping's `cloudConfig` | The template's cloud-init user data, translated as a cloud template's `cloudConfig` is. On an image whose name contains `win`, it is reported and left out: rvav's Windows templates are customized by a specification. |
+| The mapping's `constraints` | The template's compute constraints, as a machine's are. A constraint that isn't mandatory is soft. One with an expression is reported, and left out. |
+| An image name containing `win` | The template's operating system, Windows. Others are Linux. |
+
+The template has one cloud-init and one set of constraints: where
+regions differ, the first region's (by name) is kept, and the plan warns.
+New templates are offered to every project and environment; restrict
+them in Administration › Templates and networks.
+
+The import makes the templates rvav doesn't have, before the items that
+use them. It never changes one rvav has: the plan marks it *differs*
+when it isn't what vRA's mappings give. An item whose image has no
+template, because none of its regions is in a vCenter rvav manages, is
+imported with a warning, and its requests fail until an administrator
+makes the template.
 
 ### Custom forms
 

@@ -36,6 +36,15 @@ const templates: { id: string; name: string; slug: string; status: S["VraItemPla
     notes: [{ level: "unmapped", where: "versions", text: "No released version: nothing to import." }] },
 ]; // prettier-ignore
 
+/** vRA's image mappings, a template per region, as catalogue templates (ADR-0037). */
+const images: Omit<S["VraTemplatePlan"], "action">[] = [
+  { image: "rhel9", key: "rhel9", label: "rhel9", os_family: "linux", sources: [{ vcenter: "vc01.corp.example", template: "tpl-rhel9.4-2026.10" }],
+    user_data: "", constraints: [], notes: [] },
+  { image: "win2022", key: "win2022", label: "win2022", os_family: "windows", sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09" }],
+    user_data: "", constraints: ["license/windows"],
+    notes: [{ level: "unmapped", where: "image_profiles.img-zrh", text: "Region Zurich is in vCenter vc02.corp.example, which rvav doesn't manage: its template tpl-win2025-std-zrh is left out. Add the vCenter in Administration › vCenters, then import again." }] },
+]; // prettier-ignore
+
 const vraProjects: { id: string; name: string; placement_policy?: string; strategy?: S["PlacementStrategy"] }[] = [
   { id: "vra-prj-web", name: "Web Platform", placement_policy: "SPREAD", strategy: "spread" },
   { id: "vra-prj-data", name: "Data Services" },
@@ -124,6 +133,10 @@ function plan(db: Db, st: State): S["VraPlan"] {
       notes: base.name === base.rvav_name ? [] : [{ level: "info", where: "name", text: `Named ${base.rvav_name} in rvav: lower-case letters, digits, dots and dashes.` }] }; // prettier-ignore
   });
   const count = (f: (x: S["VraItemPlan"]) => boolean) => items.filter(f).length;
+  const tpls: S["VraTemplatePlan"][] = images.map((t) => ({
+    ...t,
+    action: st.imported.has(`image:${t.key}`) ? "unchanged" : "create",
+  }));
   const cutover: S["VraCutover"] = {
     total: projects.length,
     moved: Object.keys(st.moved).length,
@@ -165,12 +178,13 @@ function plan(db: Db, st: State): S["VraPlan"] {
   return {
     snapshot: st.snapshot,
     summary: {
+      templates_create: tpls.filter((t) => t.action === "create").length,
       items_create: count((i) => i.action === "create"), items_update: 0, items_unchanged: count((i) => i.action === "unchanged"),
       items_blocked: count((i) => i.action === "skip" || i.action === "conflict"), shares_add: items.reduce((n, i) => n + i.share_add.length, 0),
       deployments_adopt: deployments.filter((d) => d.status === "adopt").length, deployments_adopted: deployments.filter((d) => d.status === "adopted").length,
       deployments_skipped: deployments.filter((d) => d.status === "skipped").length,
     },
-    projects, items, deployments, cutover,
+    projects, templates: tpls, items, deployments, cutover,
     policies: [
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
@@ -269,13 +283,25 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
       const st = state(db);
       const b = (await request.json()) as S["VraImportRequest"];
       const before = plan(db, st);
-      const out: S["VraImportResult"] = { created: [], updated: [], shared: 0, adopted: [], failed: [], plan: before };
+      const out: S["VraImportResult"] = {
+        templates_created: [],
+        created: [],
+        updated: [],
+        shared: 0,
+        adopted: [],
+        failed: [],
+        plan: before,
+      };
       // Only the chosen vRA projects' sharing and deployments.
       const chosen = (vraID: string) => !b.projects || b.projects.includes(vraID);
       const shareTo = new Set(
         before.projects.filter((p) => p.rvav_project_id && chosen(p.vra_id)).map((p) => p.rvav_project_id),
       );
       if (b.catalog ?? true) {
+        for (const t of before.templates.filter((x) => x.action === "create")) {
+          st.imported.add(`image:${t.key}`);
+          out.templates_created.push(t.key);
+        }
         for (const it of before.items) {
           if (it.action === "create") {
             // Imported as drafts: nothing is published.
