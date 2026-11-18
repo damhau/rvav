@@ -22,7 +22,7 @@ type S = components["schemas"];
 type Key = S["SetupStep"]["key"];
 
 type Target =
-  | { to: "/admin/integrations"; tab: string; label: string }
+  | { to: "/admin/integrations/$kind"; kind: string; label: string }
   | { to: "/admin/projects"; tab: "projects" | "groups"; label: string }
   | { to: "/admin/catalog-items"; label: string }
   | { href: string; label: string };
@@ -36,7 +36,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   provider: {
     title: "Set the identity provider",
     what: "Where users sign in: Entra ID, Keycloak, Okta or another OpenID Connect provider. Test it with a trial sign-in before saving.",
-    target: { to: "/admin/integrations", tab: "oidc", label: "Identity provider" },
+    target: { to: "/admin/integrations/$kind", kind: "oidc", label: "Identity provider" },
   },
   admin_group: {
     title: "Map a group to admin",
@@ -46,7 +46,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   vcenter: {
     title: "Connect vCenter",
     what: "Where VMs are built, with rvav's service account.",
-    target: { to: "/admin/integrations", tab: "vcenter", label: "vCenter" },
+    target: { to: "/admin/integrations/$kind", kind: "vcenter", label: "vCenter" },
   },
   projects: {
     title: "Add environments and projects",
@@ -56,12 +56,12 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   ipam: {
     title: "Connect EfficientIP",
     what: "Each VM's address and DNS records.",
-    target: { to: "/admin/integrations", tab: "efficientip", label: "EfficientIP" },
+    target: { to: "/admin/integrations/$kind", kind: "efficientip", label: "EfficientIP" },
   },
   awx: {
     title: "Connect AWX",
     what: "The jobs that configure VMs once built, and day-2 actions.",
-    target: { to: "/admin/integrations", tab: "awx", label: "AWX" },
+    target: { to: "/admin/integrations/$kind", kind: "awx", label: "AWX" },
   },
   catalog_item: {
     title: "Publish a first catalog item",
@@ -76,8 +76,8 @@ function Go({ target, disabled }: { target: Target; disabled?: string }) {
     <Button size="sm" asChild>
       {"href" in target ? (
         <a href={target.href}>{target.label}</a>
-      ) : target.to === "/admin/integrations" ? (
-        <Link to="/admin/integrations" search={{ tab: target.tab }}>
+      ) : target.to === "/admin/integrations/$kind" ? (
+        <Link to="/admin/integrations/$kind" params={{ kind: target.kind }}>
           {target.label}
         </Link>
       ) : target.to === "/admin/projects" ? (

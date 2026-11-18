@@ -19,7 +19,6 @@ import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
-import { Route as AdminIntegrationsRouteImport } from "./routes/admin/integrations"
 import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
 import { Route as AdminSetupRouteImport } from "./routes/admin/setup"
@@ -34,6 +33,8 @@ import { Route as RequestsIndexRouteImport } from "./routes/requests/index"
 import { Route as RequestsRequestIdRouteImport } from "./routes/requests/$requestId"
 import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catalog-items/index"
 import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
+import { Route as AdminIntegrationsIndexRouteImport } from "./routes/admin/integrations/index"
+import { Route as AdminIntegrationsKindRouteImport } from "./routes/admin/integrations/$kind"
 import { Route as AdminProjectsIndexRouteImport } from "./routes/admin/projects/index"
 import { Route as AdminProjectsProjectIdRouteImport } from "./routes/admin/projects/$projectId"
 import { Route as AdminRolesIndexRouteImport } from "./routes/admin/roles/index"
@@ -92,11 +93,6 @@ const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
 const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
   id: "/admin/infrastructure",
   path: "/admin/infrastructure",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
-  id: "/admin/integrations",
-  path: "/admin/integrations",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
@@ -169,6 +165,16 @@ const AdminCatalogItemsItemIdRoute = AdminCatalogItemsItemIdRouteImport.update({
   path: "/admin/catalog-items/$itemId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIntegrationsIndexRoute = AdminIntegrationsIndexRouteImport.update({
+  id: "/admin/integrations/",
+  path: "/admin/integrations/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIntegrationsKindRoute = AdminIntegrationsKindRouteImport.update({
+  id: "/admin/integrations/$kind",
+  path: "/admin/integrations/$kind",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminProjectsIndexRoute = AdminProjectsIndexRouteImport.update({
   id: "/admin/projects/",
   path: "/admin/projects/",
@@ -228,7 +234,6 @@ export interface FileRoutesByFullPath {
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -242,12 +247,14 @@ export interface FileRoutesByFullPath {
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
+  "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
+  "/admin/integrations/": typeof AdminIntegrationsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
@@ -264,7 +271,6 @@ export interface FileRoutesByTo {
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -278,12 +284,14 @@ export interface FileRoutesByTo {
   "/deployments": typeof DeploymentsIndexRoute
   "/requests": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
+  "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
+  "/admin/integrations": typeof AdminIntegrationsIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
   "/admin/roles": typeof AdminRolesIndexRoute
   "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
@@ -301,7 +309,6 @@ export interface FileRoutesById {
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/integrations": typeof AdminIntegrationsRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -315,12 +322,14 @@ export interface FileRoutesById {
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
+  "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
+  "/admin/integrations/": typeof AdminIntegrationsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
@@ -339,7 +348,6 @@ export interface FileRouteTypes {
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
-    | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/setup"
@@ -353,12 +361,14 @@ export interface FileRouteTypes {
     | "/deployments/"
     | "/requests/"
     | "/admin/catalog-items/$itemId"
+    | "/admin/integrations/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
+    | "/admin/integrations/"
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
@@ -375,7 +385,6 @@ export interface FileRouteTypes {
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
-    | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/setup"
@@ -389,12 +398,14 @@ export interface FileRouteTypes {
     | "/deployments"
     | "/requests"
     | "/admin/catalog-items/$itemId"
+    | "/admin/integrations/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items"
+    | "/admin/integrations"
     | "/admin/projects"
     | "/admin/roles"
     | "/admin/subscriptions"
@@ -411,7 +422,6 @@ export interface FileRouteTypes {
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
-    | "/admin/integrations"
     | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/setup"
@@ -425,12 +435,14 @@ export interface FileRouteTypes {
     | "/deployments/"
     | "/requests/"
     | "/admin/catalog-items/$itemId"
+    | "/admin/integrations/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
     | "/admin/catalog-items/"
+    | "/admin/integrations/"
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
@@ -448,7 +460,6 @@ export interface RootRouteChildren {
   AdminAuditRoute: typeof AdminAuditRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
-  AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminSetupRoute: typeof AdminSetupRoute
@@ -462,12 +473,14 @@ export interface RootRouteChildren {
   DeploymentsIndexRoute: typeof DeploymentsIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
   AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
+  AdminIntegrationsKindRoute: typeof AdminIntegrationsKindRoute
   AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
   AdminRolesRoleKeyRoute: typeof AdminRolesRoleKeyRoute
   AdminRolesNewRoute: typeof AdminRolesNewRoute
   AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
   AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
+  AdminIntegrationsIndexRoute: typeof AdminIntegrationsIndexRoute
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
   AdminRolesIndexRoute: typeof AdminRolesIndexRoute
   AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
@@ -544,13 +557,6 @@ declare module "@tanstack/react-router" {
       path: "/admin/infrastructure"
       fullPath: "/admin/infrastructure"
       preLoaderRoute: typeof AdminInfrastructureRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/admin/integrations": {
-      id: "/admin/integrations"
-      path: "/admin/integrations"
-      fullPath: "/admin/integrations"
-      preLoaderRoute: typeof AdminIntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin/onboarding": {
@@ -651,6 +657,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminCatalogItemsItemIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/integrations/": {
+      id: "/admin/integrations/"
+      path: "/admin/integrations"
+      fullPath: "/admin/integrations/"
+      preLoaderRoute: typeof AdminIntegrationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/integrations/$kind": {
+      id: "/admin/integrations/$kind"
+      path: "/admin/integrations/$kind"
+      fullPath: "/admin/integrations/$kind"
+      preLoaderRoute: typeof AdminIntegrationsKindRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admin/projects/": {
       id: "/admin/projects/"
       path: "/admin/projects"
@@ -728,7 +748,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
-  AdminIntegrationsRoute: AdminIntegrationsRoute,
   AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminSetupRoute: AdminSetupRoute,
@@ -742,12 +761,14 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsIndexRoute: DeploymentsIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
   AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
+  AdminIntegrationsKindRoute: AdminIntegrationsKindRoute,
   AdminProjectsProjectIdRoute: AdminProjectsProjectIdRoute,
   AdminRolesRoleKeyRoute: AdminRolesRoleKeyRoute,
   AdminRolesNewRoute: AdminRolesNewRoute,
   AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
+  AdminIntegrationsIndexRoute: AdminIntegrationsIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,

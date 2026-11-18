@@ -874,8 +874,8 @@ export function VraImportPage() {
               <span>
                 rvav reads no vRA itself: set it in{" "}
                 <Link
-                  to="/admin/integrations"
-                  search={{ tab: "vra" }}
+                  to="/admin/integrations/$kind"
+                  params={{ kind: "vra" }}
                   className="text-accent underline underline-offset-2"
                 >
                   Integrations › vRA

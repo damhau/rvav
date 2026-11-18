@@ -27,6 +27,10 @@ const pages = [
   "/admin/roles/auditor",
   "/admin/policies",
   "/admin/integrations",
+  "/admin/integrations?tab=checks",
+  "/admin/integrations/oidc",
+  "/admin/integrations/vcenter",
+  "/admin/integrations/awx",
   "/admin/infrastructure",
   "/admin/day2-actions",
   "/admin/workflows",
@@ -111,17 +115,16 @@ for (const theme of ["light", "dark"] as const) {
 
     // A connection's saved settings applying, then applied (ADR-0030).
     test("axe: a connection's settings applying", async ({ page }) => {
-      await page.goto("/admin/integrations");
+      await page.goto("/admin/integrations/awx");
       await loaded(page);
-      await page.getByRole("main").getByRole("tab", { name: "AWX" }).click();
       const awx = page.getByRole("region", { name: "AWX connection" });
       await awx.getByRole("textbox", { name: "Organisation" }).fill("rvav-test");
       await awx.getByRole("button", { name: "Save settings" }).click();
       const applying = page.getByRole("region", { name: "Applying the settings" });
       await expect(applying.getByText("Finishing its running work").first()).toBeVisible();
-      await scan(page, "/admin/integrations › AWX (applying)");
+      await scan(page, "/admin/integrations/awx (applying)");
       await expect(applying.getByRole("status")).toHaveText("Applied: every process runs with these settings.");
-      await scan(page, "/admin/integrations › AWX (applied)");
+      await scan(page, "/admin/integrations/awx (applied)");
     });
 
     // The role editor's refusals, at their fields (A1.3).

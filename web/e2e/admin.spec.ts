@@ -9,6 +9,8 @@ test("run the EfficientIP reconcile check", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Integrations" }).click();
   await expect(page.getByRole("heading", { name: "Integrations" })).toBeVisible();
+  await page.getByRole("tab", { name: "Checks" }).click();
+  await expect(page).toHaveURL(/tab=checks/);
   await page.getByRole("button", { name: "Run the check" }).click();
 
   const orphans = page.getByRole("region", { name: "Addresses no deployment owns" });

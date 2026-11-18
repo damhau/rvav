@@ -39,10 +39,10 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   );
   await page.screenshot({ path: `${shots}/setup-checklist.png`, fullPage: true });
 
-  // The identity provider, in its tab.
+  // The identity provider, on its page.
   await step(page, "Set the identity provider").getByRole("link", { name: "Identity provider" }).click();
-  await expect(page.getByRole("tab", { name: "Identity provider" })).toHaveAttribute("aria-selected", "true");
-  const idp = page.getByRole("region", { name: "Identity provider" });
+  await expect(page.getByRole("heading", { name: "Identity provider", level: 1 })).toBeVisible();
+  const idp = page.getByRole("region", { name: "Provider settings" });
   await idp.getByRole("textbox", { name: "Issuer" }).fill("https://login.corp.example/realms/rvav");
   await idp.getByRole("textbox", { name: "Client ID" }).fill("rvav");
   await idp.getByRole("button", { name: "Save settings" }).click();
@@ -91,14 +91,14 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await rule.getByRole("button", { name: "Save rule" }).click();
   await expect(rule).toBeHidden();
 
-  // vCenter, in its tab: nothing set by the environment here.
+  // vCenter, on its page: nothing set by the environment here.
   await checklist(page);
   await expect(step(page, "Map a group to admin")).toContainText("Done: rvav-admins");
   await expect(step(page, "Add environments and projects")).toContainText(
     "Done: 1 environment, 1 project, 1 placement rule",
   );
   await step(page, "Connect vCenter").getByRole("link", { name: "vCenter" }).click();
-  await expect(page.getByRole("tab", { name: "vCenter" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "vCenter", level: 1 })).toBeVisible();
   const vcenter = page.getByRole("region", { name: "vCenter connection" });
   await vcenter.getByRole("textbox", { name: "URL" }).fill("https://vc01.corp.example/sdk");
   await vcenter.getByRole("textbox", { name: "User" }).fill("svc-rvav@vsphere.local");

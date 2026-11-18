@@ -11,7 +11,7 @@ describe("vRA import", () => {
     renderApp("/admin/vra-import");
     expect(await screen.findByRole("link", { name: "Integrations › vRA" })).toHaveAttribute(
       "href",
-      "/admin/integrations?tab=vra",
+      "/admin/integrations/vra",
     );
   });
 });

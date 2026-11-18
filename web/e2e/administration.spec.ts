@@ -10,6 +10,12 @@ async function open(page: Page, link: string, heading: string) {
   await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
 }
 
+/** An integration's page, from the list of connections. */
+async function integration(page: Page, name: string) {
+  await page.getByRole("table", { name: "Connections" }).getByRole("link", { name, exact: true }).click();
+  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+}
+
 async function choose(page: Page, combobox: string, option: string) {
   await page.getByRole("combobox", { name: combobox, exact: true }).click();
   await page.getByRole("option", { name: option, exact: true }).click();
@@ -291,7 +297,7 @@ test("integration settings: locked fields, the write-only secret, test connectio
   page,
 }) => {
   await open(page, "Integrations", "Integrations");
-  await page.getByRole("tab", { name: "vCenter" }).click();
+  await integration(page, "vCenter");
   const vcenter = page.getByRole("region", { name: "vCenter connection" });
   await expect(vcenter.getByRole("textbox", { name: "URL" })).toBeDisabled();
   await expect(vcenter.getByText("Set by RVAV_VCENTER_URL")).toBeVisible();
@@ -317,7 +323,8 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await expect(vcenter.getByLabel("Password")).toHaveValue("");
   await expect(vcenter.getByRole("textbox", { name: "User" })).toHaveValue("svc-rvav2@vsphere.local");
 
-  await page.getByRole("tab", { name: "AWX" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Integrations" }).click();
+  await integration(page, "AWX");
   const awx = page.getByRole("region", { name: "AWX connection" });
   await awx.getByRole("textbox", { name: "URL" }).fill("https://unreachable.corp.example");
   // The saved token isn't sent to another address: it is asked for again.
@@ -330,16 +337,14 @@ test("integration settings: locked fields, the write-only secret, test connectio
   await awx.getByRole("textbox", { name: "URL" }).fill("awx.corp.example");
   await awx.getByRole("button", { name: "Save settings" }).click();
   await expect(awx.getByText("An http or https URL.")).toBeVisible();
-
-  await expect(page.getByRole("button", { name: "Run the check" })).toBeVisible();
 });
 
 test("the identity provider: tested, tried in a window of its own, and applied without a restart (U1.2)", async ({
   page,
 }) => {
   await open(page, "Integrations", "Integrations");
-  await expect(page.getByRole("tab", { name: "Identity provider" })).toHaveAttribute("aria-selected", "true");
-  const idp = page.getByRole("region", { name: "Identity provider" });
+  await integration(page, "Identity provider");
+  const idp = page.getByRole("region", { name: "Provider settings" });
   await expect(idp.getByText(/\/auth\/callback$/)).toBeVisible();
   const tryIt = idp.getByRole("button", { name: "Try signing in" });
   await expect(tryIt).toBeDisabled();
@@ -370,7 +375,7 @@ test("the catalog's Git repository: an SSH deploy key keeps its lines, and the t
   page,
 }) => {
   await open(page, "Integrations", "Integrations");
-  await page.getByRole("tab", { name: "Git" }).click();
+  await integration(page, "Git");
   const git = page.getByRole("region", { name: "Git connection" });
   await expect(git.getByRole("textbox", { name: "Branch" })).toHaveValue("main");
   await expect(git.getByRole("textbox", { name: "Directory" })).toHaveValue("catalog");
@@ -455,7 +460,7 @@ test("an auditor reads the administration pages without changing them", async ({
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {
   await open(page, "Integrations", "Integrations");
-  await page.getByRole("tab", { name: "vCenter" }).click();
+  await integration(page, "vCenter");
   const vcenters = page.getByRole("region", { name: "vCenters" });
   await expect(vcenters.getByRole("row", { name: /vc01\.corp\.example/ })).toContainText("The connection above");
   await vcenters.getByRole("button", { name: "Add a vCenter" }).click();

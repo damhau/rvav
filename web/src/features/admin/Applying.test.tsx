@@ -9,16 +9,15 @@ import { Applying } from "./Applying";
 // Saved settings applying (ADR-0030), against the mock API: its processes
 // drain and start again within a second or so of a connection's save.
 
-async function tab(name: string) {
+async function open(kind: string, name: string) {
   const user = userEvent.setup();
-  renderApp("/admin/integrations");
-  await user.click(await screen.findByRole("tab", { name }));
+  renderApp(`/admin/integrations/${kind}`);
   return { user, panel: await screen.findByRole("region", { name: `${name} connection` }) };
 }
 
 describe("saved settings applying", () => {
   it("shows each process draining and starting again with a connection's, then applied", async () => {
-    const { user, panel } = await tab("AWX");
+    const { user, panel } = await open("awx", "AWX");
     await user.clear(within(panel).getByRole("textbox", { name: "Organisation" }));
     await user.type(within(panel).getByRole("textbox", { name: "Organisation" }), "rvav-test");
     await user.click(within(panel).getByRole("button", { name: "Save settings" }));
@@ -64,7 +63,7 @@ describe("saved settings applying", () => {
   });
 
   it("applies a notification channel's on next use, with no process to start again", async () => {
-    const { user, panel } = await tab("Email");
+    const { user, panel } = await open("smtp", "Email");
     await user.clear(within(panel).getByRole("textbox", { name: "From" }));
     await user.type(within(panel).getByRole("textbox", { name: "From" }), "rvav <noreply@corp.example>");
     await user.click(within(panel).getByRole("button", { name: "Save settings" }));

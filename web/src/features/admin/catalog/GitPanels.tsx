@@ -157,7 +157,7 @@ function GitSheet({ status: s, onClose }: { status: CatalogGitStatus; onClose: (
         <>
           {can(me, "integrations.manage") && (
             <Button variant="quiet" asChild className="mr-auto">
-              <Link to="/admin/integrations" search={{ tab: "git" }}>
+              <Link to="/admin/integrations/$kind" params={{ kind: "git" }}>
                 Change or disconnect
               </Link>
             </Button>

@@ -54,7 +54,7 @@ describe("setup checklist", () => {
 
     const awx = screen.getByRole("listitem", { name: "Connect AWX: to do" });
     await user.click(within(awx).getByRole("link", { name: "AWX" }));
-    expect(await screen.findByRole("tab", { name: "AWX", selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "AWX" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "AWX connection" })).toBeInTheDocument();
   });
 

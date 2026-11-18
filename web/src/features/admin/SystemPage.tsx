@@ -13,7 +13,7 @@ import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/utils";
 import { roles } from "./Applying";
-import { integrationTab, integrationTitle } from "./IntegrationSettings";
+import { integrationPage, integrationTitle } from "./IntegrationSettings";
 
 type S = components["schemas"];
 
@@ -127,7 +127,7 @@ function Revisions({ system }: { system: S["System"] }) {
               {system.settings.map((r) => (
                 <tr key={r.kind}>
                   <td className={`${td} font-medium`}>
-                    <Link to="/admin/integrations" search={{ tab: integrationTab(r.kind) }}>
+                    <Link to="/admin/integrations/$kind" params={{ kind: integrationPage(r.kind) }}>
                       {integrationTitle(r.kind)}
                     </Link>
                   </td>
@@ -224,11 +224,8 @@ export function SystemPage() {
         title="System"
         meta={
           <>
-            rvav as it runs now, read only. Settings saved in{" "}
-            <Link to="/admin/integrations" search={{ tab: undefined }}>
-              Integrations
-            </Link>{" "}
-            apply as they say; install settings are changed in the environment.
+            rvav as it runs now, read only. Settings saved in <Link to="/admin/integrations">Integrations</Link> apply
+            as they say; install settings are changed in the environment.
           </>
         }
       />

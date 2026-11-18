@@ -17,6 +17,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { TRIAL_CHANNEL, type TrialMessage, openTrial, webOverrides } from "@/lib/auth";
 import { failed, fieldErrors } from "./governance/common";
+import { SavedBy } from "./IntegrationSettings";
 import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
@@ -161,8 +162,26 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
 
   const canTry = tested === key && values.issuer.trim() !== "" && values.client_id.trim() !== "";
   return (
-    <Panel title="Identity provider" actions={!it.configured && <Badge tone="warn">Not set</Badge>}>
+    <Panel
+      title="Provider settings"
+      actions={!it.configured && <Badge tone="warn">Not set</Badge>}
+      footer={
+        <>
+          <SavedBy it={it} />
+          <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+            {test.isPending ? "Testing…" : "Test provider"}
+          </Button>
+          <Button type="button" disabled={!canTry || waiting || trial.isPending} onClick={startTrial}>
+            <ExternalLink aria-hidden /> {waiting ? "Signing in…" : "Try signing in"}
+          </Button>
+          <Button type="submit" form="oidc-settings" variant="primary" disabled={save.isPending}>
+            {save.isPending ? "Saving…" : "Save settings"}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="oidc-settings"
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
@@ -217,23 +236,6 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
               </Field>
             );
           })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="primary" disabled={save.isPending}>
-            Save settings
-          </Button>
-          <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
-            {test.isPending ? "Testing…" : "Test provider"}
-          </Button>
-          <Button type="button" disabled={!canTry || waiting || trial.isPending} onClick={startTrial}>
-            <ExternalLink aria-hidden /> {waiting ? "Signing in…" : "Try signing in"}
-          </Button>
-          {it.updated_at && (
-            <span className="text-secondary text-faint">
-              Saved {new Date(it.updated_at).toLocaleString()}
-              {it.updated_by ? ` by ${it.updated_by.name}` : ""}
-            </span>
-          )}
         </div>
         {!canTry && (
           <p className="text-secondary text-faint">

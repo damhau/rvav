@@ -6,16 +6,14 @@ import { renderApp } from "@/test/render";
 // Certificates (U1.4, ADR-0030), against the mock API: a lab host's is
 // self-signed, another's issued by the corporate CA the system trusts.
 
-async function tab(name: string) {
-  const user = userEvent.setup();
-  renderApp("/admin/integrations");
-  await user.click(await screen.findByRole("tab", { name }));
-  return user;
+function open(kind: string) {
+  renderApp(`/admin/integrations/${kind}`);
+  return userEvent.setup();
 }
 
 describe("server certificates", () => {
   it("refuses a private key in the CA bundle", async () => {
-    const user = await tab("Trusted certificates");
+    const user = open("trust");
     const bundle = await screen.findByRole("region", { name: "CA bundle" });
     expect(within(bundle).queryByLabelText(/password|token|secret/i)).not.toBeInTheDocument();
     await user.click(within(bundle).getByRole("button", { name: "Check" }));
@@ -32,7 +30,7 @@ describe("server certificates", () => {
   });
 
   it("shows a trusted certificate under the test", async () => {
-    const user = await tab("NSX");
+    const user = open("nsx");
     const nsx = await screen.findByRole("region", { name: "NSX connection" });
     await user.click(within(nsx).getByRole("button", { name: "Test connection" }));
     const cert = await within(nsx).findByRole("region", { name: "Server certificate" });
@@ -43,7 +41,7 @@ describe("server certificates", () => {
   });
 
   it("pins a self-signed certificate: in the form, saved with the token, then trusted", async () => {
-    const user = await tab("AWX");
+    const user = open("awx");
     const awx = await screen.findByRole("region", { name: "AWX connection" });
     const url = within(awx).getByRole("textbox", { name: "URL" });
     await user.clear(url);
@@ -67,7 +65,7 @@ describe("server certificates", () => {
   });
 
   it("asks for the token again when a certificate is pinned", async () => {
-    const user = await tab("EfficientIP");
+    const user = open("efficientip");
     const ipam = await screen.findByRole("region", { name: "EfficientIP connection" });
     await user.type(within(ipam).getByRole("textbox", { name: "Trusted certificate (SHA-256)" }), "ab".repeat(32));
     await user.click(within(ipam).getByRole("button", { name: "Save settings" }));
@@ -83,7 +81,7 @@ describe("server certificates", () => {
   });
 
   it("adds a self-signed certificate to the CA bundle once confirmed, and the bundle lists it", async () => {
-    const user = await tab("NSX");
+    const user = open("nsx");
     const nsx = await screen.findByRole("region", { name: "NSX connection" });
     const url = within(nsx).getByRole("textbox", { name: "URL" });
     await user.clear(url);
@@ -99,7 +97,8 @@ describe("server certificates", () => {
     await user.click(within(nsx).getByRole("button", { name: "Test connection" }));
     expect(await within(nsx).findByText("A CA rvav trusts vouches for it.")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "Trusted certificates" }));
+    await user.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link"));
+    await user.click(await screen.findByRole("link", { name: "Trusted certificates" }));
     const bundle = await screen.findByRole("region", { name: "CA bundle" });
     expect(within(bundle).getByRole<HTMLTextAreaElement>("textbox", { name: "CA certificates (PEM)" }).value).toContain(
       "-----BEGIN CERTIFICATE-----",
@@ -110,7 +109,7 @@ describe("server certificates", () => {
   });
 
   it("pins an added vCenter's certificate from its test", async () => {
-    const user = await tab("vCenter");
+    const user = open("vcenter");
     await user.click(await screen.findByRole("button", { name: "Add a vCenter" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a vCenter" });
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "vc-lab.corp.example");

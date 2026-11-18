@@ -4,20 +4,17 @@ import { describe, expect, it } from "vitest";
 import { renderApp } from "@/test/render";
 
 // The settings moved into Administration with U1.4 (ADR-0030), against the
-// mock API: the console in vCenter's tab, vRA, the allowed hosts and the
+// mock API: the console on vCenter's page, vRA, the allowed hosts and the
 // sync intervals, each read on next use.
 
-async function tab(name: string) {
-  const user = userEvent.setup();
-  renderApp("/admin/integrations");
-  await user.click(await screen.findByRole("tab", { name }));
-  return user;
+function open(kind: string) {
+  renderApp(`/admin/integrations/${kind}`);
+  return userEvent.setup();
 }
 
 describe("integration settings", () => {
-  it("has the console's panel in vCenter's tab, not a tab of its own", async () => {
-    const user = await tab("vCenter");
-    expect(screen.queryByRole("tab", { name: "Console" })).not.toBeInTheDocument();
+  it("has the console's panel on vCenter's page", async () => {
+    const user = open("vcenter");
     const vcenter = await screen.findByRole("region", { name: "vCenter connection" });
     expect(within(vcenter).getByRole("textbox", { name: "Sync interval" })).toHaveValue("2m");
     const console = screen.getByRole("region", { name: "Console" });
@@ -35,7 +32,7 @@ describe("integration settings", () => {
   });
 
   it("refuses a sync interval out of range", async () => {
-    const user = await tab("AWX");
+    const user = open("awx");
     const awx = await screen.findByRole("region", { name: "AWX connection" });
     const every = within(awx).getByRole("textbox", { name: "Sync interval" });
     await user.clear(every);
@@ -46,8 +43,8 @@ describe("integration settings", () => {
   });
 
   it("lists the allowed hosts, with no secret, and checks them", async () => {
-    const user = await tab("Allowed hosts");
-    const hosts = await screen.findByRole("region", { name: "Allowed hosts" });
+    const user = open("hosts");
+    const hosts = await screen.findByRole("region", { name: "Hosts rvav may call" });
     expect(within(hosts).getByRole("textbox", { name: "REST value sources and calls" })).toHaveValue(
       "cmdb.corp.example",
     );
@@ -66,7 +63,7 @@ describe("integration settings", () => {
   });
 
   it("makes the inventory token and puts it in AWX", async () => {
-    const user = await tab("AWX");
+    const user = open("awx");
     const panel = await screen.findByRole("region", { name: "Inventory token" });
     expect(within(panel).getByText(/rvav hasn't made one/)).toBeInTheDocument();
     const address = within(panel).getByRole("textbox", { name: "rvav's address, as AWX reaches it" });
@@ -91,7 +88,7 @@ describe("integration settings", () => {
   });
 
   it("takes vRA's password or refresh token in one field", async () => {
-    const user = await tab("vRA");
+    const user = open("vra");
     const vra = await screen.findByRole("region", { name: "vRA connection" });
     await user.type(within(vra).getByRole("textbox", { name: "URL" }), "https://vra.corp.example");
     await user.type(within(vra).getByLabelText("Password or refresh token"), "a-refresh-token");

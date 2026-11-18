@@ -77,14 +77,8 @@ describe("System page", () => {
     );
     renderApp("/admin/system");
     const saved = await screen.findByRole("table", { name: "Settings saved in Administration" });
-    expect(within(saved).getByRole("link", { name: "Console" })).toHaveAttribute(
-      "href",
-      "/admin/integrations?tab=vcenter",
-    );
-    expect(within(saved).getByRole("link", { name: "vCenter" })).toHaveAttribute(
-      "href",
-      "/admin/integrations?tab=vcenter",
-    );
+    expect(within(saved).getByRole("link", { name: "Console" })).toHaveAttribute("href", "/admin/integrations/vcenter");
+    expect(within(saved).getByRole("link", { name: "vCenter" })).toHaveAttribute("href", "/admin/integrations/vcenter");
   });
 
   it("on a new install, nothing is saved in Administration yet", async () => {

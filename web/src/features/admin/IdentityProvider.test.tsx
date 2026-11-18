@@ -10,8 +10,8 @@ import { renderApp } from "@/test/render";
 afterEach(() => localStorage.clear());
 
 async function panel() {
-  renderApp("/admin/integrations");
-  return screen.findByRole("region", { name: "Identity provider" });
+  renderApp("/admin/integrations/oidc");
+  return screen.findByRole("region", { name: "Provider settings" });
 }
 
 /** The trial window, which sends its token back over the channel. */
@@ -27,9 +27,9 @@ function trialWindow(message: { token?: string; error?: string }) {
 }
 
 describe("the identity provider", () => {
-  it("comes first, with the redirect URI to register", async () => {
+  it("has the redirect URI to register", async () => {
     const p = await panel();
-    expect(screen.getAllByRole("tab")[0]).toHaveTextContent("Identity provider");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Identity provider");
     expect(within(p).getByLabelText("Issuer")).toHaveValue("https://login.corp.example/realms/rvav");
     expect(within(p).getByLabelText("Client ID")).toHaveValue("rvav");
     expect(within(p).getByText(`${location.origin}/auth/callback`)).toBeInTheDocument();

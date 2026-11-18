@@ -2,33 +2,44 @@
 // UI, an environment variable winning and locking its field; the password or
 // token is write-only. Saved, a connection applies as each process drains
 // and starts again; the console, vRA, notification channels, allowed hosts
-// and sync intervals on next use. The identity provider, first, has a panel
-// of its own; the console's is in vCenter's tab. A connection's test shows
+// and sync intervals on next use. The identity provider has a form of its
+// own; the console's is on vCenter's page. A connection's test shows
 // its server's certificate, pinned here or trusted through the CA bundle of
 // Trusted certificates (U1.4).
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { adm } from "@/lib/query";
+import { fullDate, relative } from "@/lib/utils";
 import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
-import { IdentityProvider } from "./IdentityProvider";
-import { InventoryToken } from "./InventoryToken";
 import { ServerCertificate } from "./ServerCertificate";
-import { VCenters } from "./VCenters";
 
 type S = components["schemas"];
 type Kind = Exclude<S["IntegrationKind"], "oidc">;
+
+export const integrationKinds = [
+  "oidc",
+  "vcenter",
+  "console",
+  "awx",
+  "efficientip",
+  "nsx",
+  "git",
+  "vra",
+  "smtp",
+  "teams",
+  "slack",
+  "hosts",
+  "trust",
+] as const satisfies readonly S["IntegrationKind"][];
 
 /** Read on next use, with no process to start again (ADR-0030): from when. */
 const onNextUse: Partial<Record<Kind, string>> = {
@@ -74,10 +85,19 @@ interface Setting {
 // has a second secret, its signing secret; the allowed hosts have none.
 const fields: Record<
   Kind,
-  { title: string; panel?: string; secret?: Setting; signing?: Setting; settings: Setting[]; test?: string }
+  {
+    title: string;
+    about: string;
+    panel?: string;
+    secret?: Setting;
+    signing?: Setting;
+    settings: Setting[];
+    test?: string;
+  }
 > = {
   vcenter: {
     title: "vCenter",
+    about: "Where VMs are built and read, with the console's account and the other vCenters rvav manages.",
     secret: { name: "password", label: "Password", env: "RVAV_VCENTER_PASSWORD", type: "string" },
     settings: [
       {
@@ -97,6 +117,7 @@ const fields: Record<
   // The console (ADR-0012): shown in vCenter's tab.
   console: {
     title: "Console",
+    about: "The account VM consoles open with, and the WebMKS scripts that show them in the browser.",
     panel: "Console",
     test: "Test console",
     secret: {
@@ -125,6 +146,7 @@ const fields: Record<
   },
   awx: {
     title: "AWX",
+    about: "The jobs that configure VMs once built and run day-2 actions, and the inventory token AWX reads rvav with.",
     secret: { name: "token", label: "Token", env: "RVAV_AWX_TOKEN", type: "string" },
     settings: [
       { name: "url", label: "URL", env: "RVAV_AWX_URL", type: "string" },
@@ -151,6 +173,7 @@ const fields: Record<
   },
   efficientip: {
     title: "EfficientIP",
+    about: "Each VM's IP address and DNS records, and the subnets networks get.",
     secret: { name: "password", label: "Password", env: "RVAV_EFFICIENTIP_PASSWORD", type: "string" },
     settings: [
       { name: "url", label: "URL", env: "RVAV_EFFICIENTIP_URL", type: "string" },
@@ -180,6 +203,7 @@ const fields: Record<
   // NSX networking (ADR-0028): a user and password, or a principal identity.
   nsx: {
     title: "NSX",
+    about: "Segments and security groups made for deployments, and their firewall rules.",
     secret: { name: "password", label: "Password", env: "RVAV_NSX_PASSWORD", type: "string" },
     settings: [
       {
@@ -206,6 +230,7 @@ const fields: Record<
   // key over SSH with the server's host keys.
   git: {
     title: "Git",
+    about: "The repository rvav keeps the catalog in, one file per item.",
     secret: {
       name: "credential",
       label: "Token or deploy key",
@@ -253,6 +278,7 @@ const fields: Record<
   // The vRA the importer reads (ADR-0027).
   vra: {
     title: "vRA",
+    about: "The vRA that vRA import reads its catalog and deployments from.",
     secret: {
       name: "credential",
       label: "Password or refresh token",
@@ -283,6 +309,7 @@ const fields: Record<
   // Notification channels (S11, ADR-0023).
   smtp: {
     title: "Email",
+    about: "The SMTP server notifications are sent by email through.",
     secret: { name: "password", label: "Password", env: "RVAV_SMTP_PASSWORD", type: "string" },
     settings: [
       { name: "host", label: "SMTP server", env: "RVAV_SMTP_HOST", type: "string" },
@@ -294,6 +321,7 @@ const fields: Record<
   },
   teams: {
     title: "Microsoft Teams",
+    about: "The bot that sends notifications in Teams, where approvers approve and reject.",
     secret: { name: "app_password", label: "Client secret", env: "RVAV_TEAMS_APP_PASSWORD", type: "string" },
     settings: [
       { name: "app_id", label: "Bot app ID", env: "RVAV_TEAMS_APP_ID", type: "string" },
@@ -325,6 +353,7 @@ const fields: Record<
   },
   slack: {
     title: "Slack",
+    about: "The app that sends notifications in Slack, where approvers approve and reject.",
     secret: { name: "bot_token", label: "Bot token", env: "RVAV_SLACK_BOT_TOKEN", type: "string" },
     signing: { name: "signing_secret", label: "Signing secret", env: "RVAV_SLACK_SIGNING_SECRET", type: "string" },
     settings: [
@@ -340,7 +369,8 @@ const fields: Record<
   // The hosts rvav may call on others' behalf; no secret, no test.
   hosts: {
     title: "Allowed hosts",
-    panel: "Allowed hosts",
+    about: "The hosts REST value sources, a composite's REST calls and webhooks may reach.",
+    panel: "Hosts rvav may call",
     test: "Check",
     settings: [
       {
@@ -362,6 +392,7 @@ const fields: Record<
   // The CAs every connection trusts besides the system's (U1.4); no secret.
   trust: {
     title: "Trusted certificates",
+    about: "The CAs every connection trusts besides the system's.",
     panel: "CA bundle",
     test: "Check",
     settings: [
@@ -388,8 +419,10 @@ const text = (v: unknown, type: Setting["type"]) =>
       ? String(v)
       : "";
 
-function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
+/** A connection's settings form, with its test, in a panel of its own. */
+export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   const qc = useQueryClient();
+  const formId = useId();
   const def = fields[it.kind];
   const editable = def.settings.filter((f) => !it.locked.includes(f.name));
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
@@ -483,8 +516,20 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
           {it.applying && <Badge tone="warn">Applying</Badge>}
         </div>
       }
+      footer={
+        <>
+          <SavedBy it={it} />
+          <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+            {test.isPending ? "Testing…" : (def.test ?? "Test connection")}
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
+            {save.isPending ? "Saving…" : "Save settings"}
+          </Button>
+        </>
+      }
     >
       <form
+        id={formId}
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
@@ -611,20 +656,6 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
             </Field>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="primary" disabled={save.isPending}>
-            Save settings
-          </Button>
-          <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
-            {test.isPending ? "Testing…" : (def.test ?? "Test connection")}
-          </Button>
-          {it.updated_at && (
-            <span className="text-secondary text-faint">
-              Saved {new Date(it.updated_at).toLocaleString()}
-              {it.updated_by ? ` by ${it.updated_by.name}` : ""}
-            </span>
-          )}
-        </div>
         {test.data && (
           <section
             aria-label={`${def.title} test`}
@@ -661,43 +692,26 @@ function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
   );
 }
 
-/** An integration's tab, by name. */
+/** When a form's settings were saved, and by whom, on the left of its footer. */
+export function SavedBy({ it }: { it: S["Integration"] }) {
+  if (!it.updated_at) return <span className="mr-auto">Not saved yet</span>;
+  return (
+    <span className="mr-auto">
+      Saved <span title={fullDate(it.updated_at)}>{relative(it.updated_at)}</span>
+      {it.updated_by ? ` by ${it.updated_by.name}` : ""}
+    </span>
+  );
+}
+
+/** An integration's name, as its page and the list say it. */
 export const integrationTitle = (kind: S["IntegrationKind"]) =>
   kind === "oidc" ? "Identity provider" : fields[kind].title;
 
-/** The tab an integration's panel is in: the console's is in vCenter's. */
-export const integrationTab = (kind: S["IntegrationKind"]) => (kind === "console" ? "vcenter" : kind);
+/** What an integration is for, in a sentence. */
+export const integrationAbout = (kind: S["IntegrationKind"]) =>
+  kind === "oidc"
+    ? "Where everyone but the local administrator signs in, and the groups their roles come from."
+    : fields[kind].about;
 
-export function IntegrationSettings({ tab }: { tab?: string }) {
-  const list = useQuery(adm.integrations());
-  if (list.isPending) return <Skeleton className="h-64" />;
-  if (list.isError) return <ErrorState error={list.error} onRetry={() => void list.refetch()} />;
-  // The console has its panel in vCenter's tab.
-  const console = list.data.items.find((it) => it.kind === "console");
-  const items = list.data.items.filter((it) => it.kind !== "console");
-  return (
-    <Tabs key={tab} defaultValue={items.some((it) => it.kind === tab) ? tab : items[0]?.kind}>
-      <TabsList aria-label="Integrations">
-        {items.map((it) => (
-          <TabsTrigger key={it.kind} value={it.kind}>
-            {integrationTitle(it.kind)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {items.map((it) => (
-        <TabsContent key={it.kind} value={it.kind} className="flex flex-col gap-4 pt-4">
-          {it.kind === "oidc" ? (
-            <IdentityProvider key={it.updated_at ?? "unsaved"} it={it} />
-          ) : (
-            <Integration key={it.updated_at ?? "unsaved"} it={{ ...it, kind: it.kind }} />
-          )}
-          {it.kind === "vcenter" && console && (
-            <Integration key={console.updated_at ?? "unsaved"} it={{ ...console, kind: "console" }} />
-          )}
-          {it.kind === "vcenter" && <VCenters />}
-          {it.kind === "awx" && <InventoryToken />}
-        </TabsContent>
-      ))}
-    </Tabs>
-  );
-}
+/** The page an integration's form is on: the console's is on vCenter's. */
+export const integrationPage = (kind: S["IntegrationKind"]) => (kind === "console" ? "vcenter" : kind);

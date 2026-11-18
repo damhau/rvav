@@ -80,7 +80,7 @@ describe("Catalog items", () => {
     expect(within(sheet).getByRole("list", { name: "Files that need you" })).toHaveTextContent("Conflict in Git");
     expect(within(sheet).getByRole("link", { name: "Change or disconnect" })).toHaveAttribute(
       "href",
-      "/admin/integrations?tab=git",
+      "/admin/integrations/git",
     );
     await u.click(within(sheet).getByRole("button", { name: "Read the repository now" }));
     expect(await screen.findByText("Repository read")).toBeInTheDocument();

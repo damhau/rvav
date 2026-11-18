@@ -408,14 +408,14 @@ it.
 
 - **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
   checklist, from `GET /admin/setup`, read again each time it opens. Each
-  step links to its page (an integration's tab through `?tab=`). While it
+  step links to its page (an integration's at `/admin/integrations/<kind>`). While it
   is open, an administrator lands on it from the Overview once per page
   load (`SetupLanding` in `AppShell.tsx`), and the Overview offers the way
   back. Administration pages work without a project, so an administrator
   in none can set rvav up.
 - **System** (`features/admin/SystemPage.tsx`): `GET /admin/system`,
   read every 10 seconds; read only, each saved setting linking to its
-  tab.
+  integration's page.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)
@@ -454,9 +454,12 @@ it.
   with what would stop it), **Quotas** (limits for the project or one
   environment, refused or sent to approval when passed, saved as a whole)
   and **Details** (archive, or put back in use).
-- **Policies**, in tabs: approval and day-2 policies (moved up and down
-  to order them; a condition that isn't valid CEL is refused when saved,
-  under its field), lease policies (an environment's, and projects'
+- **Policies**, in tabs (`?tab=`, one file each in
+  `features/admin/governance/policies/`), each kind a table whose row menu
+  changes a policy in a side panel and removes it after saying what
+  changes: approval and day-2 policies (moved up and down, given a
+  priority or turned off from the row menu; a condition that isn't valid
+  CEL is refused when saved, under its field), lease policies (an environment's, and projects'
   overrides), naming policies (template, counter, where offered, and a
   preview of the next names with the ones skipped because they are taken)
   and **What applies here**, which says which policy decides the approval,
@@ -466,14 +469,21 @@ it.
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP
   or by hand.
-- **Integrations**: the identity provider, the connections, vRA, the
-  notification channels, the allowed hosts and the CA bundle (Trusted
-  certificates), one tab each
-  (`features/admin/IntegrationSettings.tsx`), the console's panel in
-  vCenter's tab and the inventory token's in AWX's
+- **Integrations**, in tabs: **Connections** lists the identity provider,
+  the connections, vRA, the notification channels, the allowed hosts and
+  the CA bundle (Trusted certificates), each with what it is for, whether
+  it is configured or applying, and when it was last saved
+  (`features/admin/IntegrationsPage.tsx`); **Checks** has the EfficientIP
+  reconcile report. A row opens the integration's page,
+  `/admin/integrations/<kind>` (`features/admin/IntegrationPage.tsx`; the
+  form is in `features/admin/IntegrationSettings.tsx`), whose footer says
+  when it was saved and holds the test and **Save settings**, the primary
+  action, on the right. The console's form is on vCenter's page and the
+  inventory token's on AWX's
   (`features/admin/InventoryToken.tsx`: made, put in AWX with rvav's
   address as AWX reaches it, the one before revoked); the allowed hosts
-  have no secret. A field an environment
+  have no secret. The addresses of the tabs before V1.4
+  (`/admin/integrations?tab=vcenter`) open the integration's page. A field an environment
   variable sets is disabled and names the variable; the password or token
   is write-only (left empty, it stays as it is). **Test connection** runs
   the server's checks with the settings on screen. For a connection over
@@ -486,11 +496,10 @@ it.
   (`GET /admin/processes`) finishing its running work, then started again
   with the settings, until all have them (`features/admin/Applying.tsx`,
   ADR-0030); the console, vRA, notification channels, the allowed hosts
-  and sync intervals apply on next use. The vCenter tab
+  and sync intervals apply on next use. vCenter's page
   lists every vCenter rvav manages below its connection
   (`features/admin/VCenters.tsx`): the others are added, tested, changed
-  and removed there, with what the sync last read from each. The
-  EfficientIP reconcile report stays below.
+  and removed there, with what the sync last read from each.
 
 **What I may do** (`/access`, in the account menu) is the same
 explanation about the signed-in person, in their projects or for all of
