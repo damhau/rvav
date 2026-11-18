@@ -53,7 +53,7 @@ describe("Administration pages for who reads them alone", () => {
     holding("policies.read").approvals[0]!.project_id = "prj_qa";
     renderApp("/admin/policies");
     const region = await screen.findByRole("region", { name: "Approval policies" });
-    expect(await within(region).findByText(/^QA · priority/)).toBeInTheDocument();
+    expect(await within(region).findByText(/^QA, VM blueprints$/)).toBeInTheDocument();
     expect(within(region).queryByText(/prj_qa/)).toBeNull();
     expect(refused).toEqual([]);
   });

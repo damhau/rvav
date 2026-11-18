@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PoliciesPage } from "@/features/admin/governance/PoliciesPage";
+import { PoliciesPage, policiesTabs, type PoliciesTab } from "@/features/admin/governance/PoliciesPage";
+import { optEnum } from "../-search";
 
 export const Route = createFileRoute("/admin/policies")({
-  component: PoliciesPage,
+  validateSearch: (s: Record<string, unknown>): { tab?: PoliciesTab } => ({ tab: optEnum(s.tab, policiesTabs) }),
+  component: function PoliciesRoute() {
+    return <PoliciesPage tab={Route.useSearch().tab} />;
+  },
 });

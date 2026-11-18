@@ -126,7 +126,6 @@ test("environments and OIDC group mappings", async ({ page }) => {
 });
 
 test("approval, day-2, lease and naming policies, and what applies", async ({ page }) => {
-  page.on("dialog", (d) => void d.accept());
   await open(page, "Policies", "Policies");
 
   // Approval: a broken condition is caught when saved, under its field; so is
@@ -150,19 +149,32 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await expect(page.getByText("Big VMs saved")).toBeVisible();
   const approvals = page.getByRole("region", { name: "Approval policies" });
   // Both at priority 100: moving the first down still swaps them.
+  const move = async (region: typeof approvals, policy: string, where: "up" | "down") => {
+    await region.getByRole("button", { name: `Actions for ${policy}` }).click();
+    await page.getByRole("menuitem", { name: `Move ${where}` }).click();
+  };
   await expect(approvals.getByRole("row").nth(1)).toContainText("Production VMs");
-  await approvals.getByRole("button", { name: "Move Production VMs down" }).click();
+  await move(approvals, "Production VMs", "down");
   await expect(approvals.getByRole("row").nth(1)).toContainText("Big VMs");
   await expect(approvals.getByRole("row").nth(2)).toContainText("Production VMs");
-  await approvals.getByRole("button", { name: "Move Production VMs up" }).click();
+  await move(approvals, "Production VMs", "up");
   await expect(approvals.getByRole("row").nth(1)).toContainText("Production VMs");
 
   // Day-2: the first policy that matches decides.
   await page.getByRole("tab", { name: "Day-2" }).click();
+  await expect(page).toHaveURL(/tab=day2/);
   const day2 = page.getByRole("region", { name: "Day-2 policies" });
   await expect(day2.getByRole("row").nth(1)).toContainText("Administrators");
-  await day2.getByRole("button", { name: "Move Members operate their VMs up" }).click();
+  await move(day2, "Members operate their VMs", "up");
   await expect(day2.getByRole("row").nth(2)).toContainText("Members operate their VMs");
+  // Its priority, asked in a dialog.
+  await day2.getByRole("button", { name: "Actions for Members operate their VMs" }).click();
+  await page.getByRole("menuitem", { name: "Set priority" }).click();
+  const priority = page.getByRole("dialog", { name: "Priority of Members operate their VMs" });
+  await expect(priority.getByRole("spinbutton", { name: "Priority" })).toBeFocused();
+  await priority.getByRole("spinbutton", { name: "Priority" }).fill("99");
+  await priority.getByRole("button", { name: "Set priority" }).click();
+  await expect(day2.getByRole("row").nth(3)).toContainText("Members operate their VMs");
 
   // Lease: a project override, then removed.
   await page.getByRole("tab", { name: "Lease" }).click();
@@ -176,8 +188,15 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await lease.getByRole("button", { name: "Save lease policy" }).click();
   await expect(page.getByText("Lease policy saved")).toBeVisible();
   const leases = page.getByRole("region", { name: "Lease policies" });
-  await expect(leases.getByRole("button", { name: "Remove the lease in dev", exact: true })).toBeHidden();
-  await leases.getByRole("button", { name: "Remove the lease in dev, Web Platform" }).click();
+  await leases.getByRole("button", { name: "Actions for the lease in dev", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
+  await page.keyboard.press("Escape");
+  await leases.getByRole("button", { name: "Actions for the lease in dev, Web Platform" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Remove the lease in dev, Web Platform?" })
+    .getByRole("button", { name: "Remove lease policy" })
+    .click();
   await expect(leases.getByRole("row", { name: /Web Platform/ })).toBeHidden();
 
   // Naming: preview the next names, then save.
@@ -261,8 +280,6 @@ test("the administration pages work from the keyboard", async ({ page }) => {
   await page.getByRole("button", { name: "New day-2 policy" }).focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "New day-2 policy" });
-  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(dialog.getByRole("textbox", { name: "Name" })).toBeFocused();
   await page.keyboard.type("Snapshots");
   await page.keyboard.press("Escape");
