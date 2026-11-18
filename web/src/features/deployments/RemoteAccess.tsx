@@ -1,6 +1,6 @@
 // The users people sign in to a deployment's VMs as, and the private key
 // rvav made for it, handed to its owner once (ADR-0039).
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CopyText, Time } from "@/components/common/misc";
@@ -46,17 +46,22 @@ function KeySheet({
 }) {
   const qc = useQueryClient();
   const [key, setKey] = useState<PrivateKey | null>(null);
-  const take = useMutation({
-    mutationFn: () =>
-      call(api.POST("/deployments/{deploymentId}/private-key", { params: { path: { deploymentId: d.id } } })),
-    onSuccess: (k) => {
-      setKey(k);
-      // The key lives in this sheet only, not in the query cache.
-      take.reset();
-    },
-    onError: (e) => toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "The private key didn't come"),
-    onSettled: () => void qc.invalidateQueries({ queryKey: keys.deployments.detail(d.id) }),
-  });
+  const [taking, setTaking] = useState(false);
+  // Not a useMutation: the mutation cache keeps a result for gcTime, even
+  // after reset(), and the key must live in this sheet's state only.
+  const take = async () => {
+    setTaking(true);
+    try {
+      setKey(
+        await call(api.POST("/deployments/{deploymentId}/private-key", { params: { path: { deploymentId: d.id } } })),
+      );
+    } catch (e) {
+      toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "The private key didn't come");
+    } finally {
+      setTaking(false);
+      void qc.invalidateQueries({ queryKey: keys.deployments.detail(d.id) });
+    }
+  };
   const keyRef = useRef<HTMLTextAreaElement>(null);
   // The button that asked for it is gone: the focus goes to the key.
   useEffect(() => {
@@ -76,7 +81,7 @@ function KeySheet({
           </Button>
         ),
       }
-    : { onSubmit: () => take.mutate(), submitLabel: "Show the private key", pending: take.isPending };
+    : { onSubmit: () => void take(), submitLabel: "Show the private key", pending: taking };
   return (
     <Sheet
       open={open}

@@ -40,6 +40,23 @@ describe("a deployment's remote access", () => {
     expect(within(box).queryByRole("button", { name: "Download the private key" })).not.toBeInTheDocument();
   });
 
+  it("keeps the key out of TanStack Query's caches", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    const { client } = renderApp(`/deployments/${deployment("web-prd-front").id}`);
+    const box = await screen.findByRole("region", { name: "Remote access" }, { timeout: 5000 });
+    await user.click(within(box).getByRole("button", { name: "Download the private key" }));
+    const ask = await screen.findByRole("dialog", { name: "Download the private key" });
+    await user.click(within(ask).getByRole("button", { name: "Show the private key" }));
+    const shown = await screen.findByRole("dialog", { name: "Your private key" });
+    await user.click(within(shown).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    const mutations = client.getMutationCache().getAll();
+    const queries = client.getQueryCache().getAll();
+    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("PRIVATE KEY");
+    expect(JSON.stringify(queries.map((q) => q.state))).not.toContain("PRIVATE KEY");
+  });
+
   it("says who else may download it", async () => {
     const edge = deployment("web-prd-edge");
     edge.remote_access = [{ component: "vm", kind: "generated_key", username: "ops", fingerprint: "SHA256:abc" }];
