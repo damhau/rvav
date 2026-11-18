@@ -41,6 +41,58 @@ const storedGroup = (
   updated_at: now(),
 });
 
+const groupProp = /^[A-Za-z][A-Za-z0-9_]{0,62}$/;
+
+const ofType = (v: unknown, t: S["PropertyGroupInput"]["type"]) =>
+  typeof v === "string"
+    ? t === "string"
+    : typeof v === "boolean"
+      ? t === "boolean"
+      : typeof v === "number" && (t === "number" || (t === "integer" && Number.isInteger(v)));
+
+/** A property group's inputs and constants, checked as the server's checkGroup does. */
+function checkGroup(w: S["PropertyGroupWrite"]): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  const add = (field: string, code: string, message: string) => errors.push({ field, code, message });
+  if (!w.name?.trim()) add("/name", "required", "Give the property group a name.");
+  const names = new Set<string>();
+  (w.inputs ?? []).forEach((i, n) => {
+    const at = `/inputs/${n}`;
+    if (!groupProp.test(i.name))
+      add(
+        `${at}/name`,
+        "pattern",
+        "Letters, digits and underscores, starting with a letter: bindings read it as inputs.<name>.",
+      );
+    else if (names.has(i.name)) add(`${at}/name`, "duplicate", `The group has ${i.name} twice.`);
+    names.add(i.name);
+    if (!i.label?.trim()) add(`${at}/label`, "required", "Give the input a label.");
+    const str = i.type === "string";
+    if (!["string", "integer", "number", "boolean"].includes(i.type))
+      add(`${at}/type`, "invalid", "An input is a string, an integer, a number or a boolean.");
+    const options = i.options ?? [];
+    if (options.length > 0 && !str) add(`${at}/options`, "invalid", "Only a string input is chosen from options.");
+    if (i.secret && (!str || options.length > 0))
+      add(`${at}/secret`, "invalid", "A secret input is a string typed in, without options.");
+    if (i.default === undefined || i.default === null) return;
+    if (i.secret) add(`${at}/default`, "invalid", "A secret input has no default: the group would hold its value.");
+    else if (!ofType(i.default, i.type)) add(`${at}/default`, "invalid", `The default must be a ${i.type}.`);
+    else if (options.length > 0 && !options.includes(String(i.default)))
+      add(`${at}/default`, "invalid", "The default must be one of the options.");
+  });
+  for (const [k, v] of Object.entries(w.constants ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!groupProp.test(k))
+      add(
+        `/constants/${k}`,
+        "pattern",
+        "Letters, digits and underscores, starting with a letter: bindings read it as propgroup.<key>.<name>.",
+      );
+    else if (!["string", "number", "boolean"].includes(typeof v))
+      add(`/constants/${k}`, "invalid", "A constant is text, a number or a boolean.");
+  }
+  return errors;
+}
+
 /** A property group at a version (its latest by default), with its versions and the items whose saved versions name it. */
 function groupAt(db: Db, key: string, version = 0): S["PropertyGroup"] | undefined {
   const st = state(db);
@@ -462,19 +514,64 @@ function serve(db: Db, item: StoredItem, v: Version | undefined) {
     return;
   }
   item.version = { id: v.id, number: v.number, published_at: v.published_at };
-  db.forms[item.id] = versionForm(item, v);
+  db.forms[item.id] = versionForm(db, item, v);
+}
+
+/** A property group's input in a form: its schema and its field, as the server's store.GroupInput gives them. */
+function groupInput(i: S["PropertyGroupInput"]): [Record<string, unknown>, S["UiField"]] {
+  const options = i.options ?? [];
+  const schema: Record<string, unknown> = { type: i.type };
+  if (options.length > 0) schema.enum = options;
+  if (i.type === "string" && i.required) schema.minLength = 1;
+  const field: S["UiField"] = { label: i.label, widget: "text" };
+  if (i.secret) Object.assign(field, { widget: "secret", secret: true });
+  else if (options.length > 0)
+    Object.assign(field, { widget: "select", options: options.map((o) => ({ value: o, label: o })) });
+  else if (i.type === "boolean") field.widget = "toggle";
+  else if (i.type === "integer" || i.type === "number") field.widget = "number";
+  if (i.help) field.help = i.help;
+  return [schema, field];
+}
+
+/**
+ * A version's form with the inputs of the property groups its blueprint
+ * names, after its own, a section each, as store.WithGroups serves it to
+ * requesters and previews (ADR-0038). An input the form has keeps the form's.
+ */
+function withGroups(db: Db, d: Definition): Pick<S["RequestForm"], "schema" | "ui_schema" | "initial_values"> {
+  const refs = (d.blueprint as { property_groups?: unknown }).property_groups;
+  const own = { schema: d.form_schema, ui_schema: d.ui_schema, initial_values: d.initial_values };
+  if (!Array.isArray(refs) || refs.length === 0) return own;
+  const schema = structuredClone(d.form_schema) as { properties?: Record<string, unknown>; required?: string[] };
+  const ui = structuredClone(d.ui_schema);
+  const initial = structuredClone(d.initial_values);
+  const props = (schema.properties ??= {});
+  for (const r of refs as { key?: unknown; version?: unknown }[]) {
+    if (typeof r?.key !== "string" || typeof r.version !== "number" || r.version < 1) continue;
+    const g = groupAt(db, r.key, r.version);
+    if (!g) continue;
+    const names: string[] = [];
+    for (const i of g.inputs) {
+      if (i.name in props) continue;
+      [props[i.name], ui.fields[i.name]] = groupInput(i);
+      if (i.required) (schema.required ??= []).push(i.name);
+      if (!(i.name in initial) && i.default !== undefined && i.default !== null) initial[i.name] = i.default;
+      names.push(i.name);
+    }
+    if (names.length > 0)
+      ui.layout.sections.push({ key: `propgroup-${g.key}`, title: g.name, columns: 2, fields: names });
+  }
+  return { schema, ui_schema: ui, initial_values: initial };
 }
 
 /** A version's request form, as GET /catalog/items/{id}/form gives it. */
-function versionForm(item: StoredItem, v: Version): S["RequestForm"] {
+function versionForm(db: Db, item: StoredItem, v: Version): S["RequestForm"] {
   const bp = v.definition.blueprint;
   const topology = topologyOf(bp);
   return {
     item_id: item.id,
     version_id: v.id,
-    schema: v.definition.form_schema,
-    ui_schema: v.definition.ui_schema,
-    initial_values: v.definition.initial_values,
+    ...withGroups(db, v.definition),
     ...(bp.kind === "vm" && Array.isArray(bp.components) && bp.components.length > 0 ? { one_deployment: true } : {}),
     ...(topology ? { topology } : {}),
   };
@@ -489,7 +586,7 @@ export function designerForm(db: Db, versionId: string, projectCode: string, asU
   for (const item of db.items) {
     const v = st.versions[item.id]?.find((x) => x.id === versionId);
     if (!v) continue;
-    const form = versionForm(item, v);
+    const form = versionForm(db, item, v);
     const userId = asUserId ?? db.me.user.id;
     const member = previewMembers[projectCode]?.some((m) => m.id === userId) ?? false;
     return { item, form, member, user: { id: userId, roles: [], groups: userGroups[userId] ?? [] } };
@@ -1162,10 +1259,20 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const w = (await request.json()) as S["PropertyGroupWrite"];
       const st = state(db);
       const key = w.key ?? "";
-      if (!/^[A-Za-z][A-Za-z0-9_]{1,62}$/.test(key))
-        return problem(422, "Some inputs need attention", [
-          { field: "/key", code: "pattern", message: "Letters, digits and underscores, starting with a letter." },
-        ]);
+      const errors = [
+        ...(/^[A-Za-z][A-Za-z0-9_]{1,62}$/.test(key)
+          ? []
+          : [
+              {
+                field: "/key",
+                code: "pattern",
+                message:
+                  "Letters, digits and underscores, starting with a letter: bindings read it as propgroup.<key>.",
+              },
+            ]),
+        ...checkGroup(w),
+      ];
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
       if (st.propertyGroups.some((g) => g.key === key))
         return problem(409, "Conflict", undefined, `The property group "${key}" exists.`);
       st.propertyGroups.push(storedGroup(key, 1, w));
@@ -1183,6 +1290,13 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const st = state(db);
       const latest = groupAt(db, String(params.key));
       if (!latest) return problem(404, "Not found");
+      const errors = [
+        ...(w.key !== undefined && w.key !== latest.key
+          ? [{ field: "/key", code: "invalid", message: "A property group's key doesn't change." }]
+          : []),
+        ...checkGroup(w),
+      ];
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
       st.propertyGroups.push(storedGroup(latest.key, latest.version + 1, w));
       return HttpResponse.json(groupAt(db, latest.key));
     }),
