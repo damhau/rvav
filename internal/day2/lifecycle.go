@@ -68,6 +68,7 @@ func init() {
 	})
 	register(&Action{
 		Key: "iso_mount", Name: "Mount an ISO image", Group: GroupConfiguration, Types: []string{vmType},
+		Unavailable: func(t Target, _ Choices) string { return suspended(t) },
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			iso := text("iso", "ISO image", 500, "")
 			iso.schema["pattern"] = `^\[[^\]]+\] .+\.[iI][sS][oO]$`
@@ -90,7 +91,7 @@ func init() {
 			if t.VM.Iso == nil {
 				return "No ISO image is mounted."
 			}
-			return ""
+			return suspended(t)
 		},
 		Ops: func(t Target, _ map[string]any) []Op {
 			return []Op{vcenter("vsphere.iso_unmount", "Unmount "+deref(t.VM.Iso), "unmount_iso", nil)}
@@ -98,12 +99,7 @@ func init() {
 	})
 	register(&Action{
 		Key: "console", Name: "Open the console", Group: GroupAccess, Types: []string{vmType}, Direct: true,
-		Unavailable: func(t Target, c Choices) string {
-			if t.VM.PowerState != api.On {
-				return "The VM is powered off."
-			}
-			return ""
-		},
+		Unavailable: poweredOn,
 	})
 	register(&Action{
 		Key: "change_owner", Name: "Change owner", Group: GroupAccess, Types: []string{DeploymentType},

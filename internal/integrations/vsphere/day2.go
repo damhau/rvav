@@ -108,6 +108,28 @@ func (cl *Client) Reset(ctx context.Context, moref string) error {
 	return task.Wait(ctx)
 }
 
+// Suspend suspends a running VM: powering it on resumes it. One already
+// suspended is not an error.
+func (cl *Client) Suspend(ctx context.Context, moref string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	switch state, err := vm.PowerState(ctx); {
+	case err != nil:
+		return err
+	case state == types.VirtualMachinePowerStateSuspended:
+		return nil
+	case state != types.VirtualMachinePowerStatePoweredOn:
+		return &Refused{Msg: "The VM is powered off: only a running VM can be suspended."}
+	}
+	task, err := vm.Suspend(ctx)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
+}
+
 // Reconfigure sets the number of CPUs and the memory.
 func (cl *Client) Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error {
 	vm, err := cl.vmObject(ctx, moref)

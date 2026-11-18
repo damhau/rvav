@@ -45,11 +45,18 @@ interface MockAction {
 }
 
 const on = (vm?: VmResource) => vm?.vm.power_state === "on";
-const poweredOn = (vm?: VmResource) => (on(vm) ? null : "The VM is powered off.");
+const poweredOn = (vm?: VmResource) =>
+  on(vm)
+    ? null
+    : vm?.vm.power_state === "suspended"
+      ? "The VM is suspended. Power on resumes it."
+      : "The VM is powered off.";
+const suspended = (vm?: VmResource) =>
+  vm?.vm.power_state === "suspended" ? "The VM is suspended: power it on or off first." : null;
 const tools = (verb: string) => (vm?: VmResource) =>
   poweredOn(vm) ??
   (vm?.vm.guest_state === "running" ? null : `VMware Tools is not running, so the guest OS can't be asked to ${verb}.`);
-const power = (state: "on" | "off") => (_d: DeploymentDetail, vm?: VmResource) => {
+const power = (state: VmResource["vm"]["power_state"]) => (_d: DeploymentDetail, vm?: VmResource) => {
   if (!vm) return;
   vm.vm.power_state = state;
   vm.vm.guest_state = state === "on" ? "running" : "not_running";
@@ -152,8 +159,16 @@ export const catalogue: MockAction[] = [
     destructive: true,
     confirm:
       "Powering off is like pulling the plug: unsaved work in the guest is lost. Shut down guest stops it cleanly.",
-    unavailable: poweredOn,
+    unavailable: (vm) => (vm?.vm.power_state === "suspended" ? null : poweredOn(vm)),
     ops: (vm) => [vcenter("vsphere.power_off", `Power off ${vm?.name}`, power("off"))],
+  },
+  {
+    key: "suspend",
+    name: "Suspend",
+    group: "power",
+    confirm: "The VM stops where it is, and the connections to it are lost. Power on resumes it.",
+    unavailable: poweredOn,
+    ops: (vm) => [vcenter("vsphere.suspend", `Suspend ${vm?.name}`, power("suspended"))],
   },
   {
     key: "reset",
@@ -169,6 +184,7 @@ export const catalogue: MockAction[] = [
     key: "resize",
     name: "Resize",
     group: "configuration",
+    unavailable: suspended,
     form: (vm) =>
       form("New size", [
         [
@@ -226,6 +242,7 @@ export const catalogue: MockAction[] = [
     key: "disk_add",
     name: "Add a disk",
     group: "configuration",
+    unavailable: suspended,
     form: () =>
       form("New disk", [
         [

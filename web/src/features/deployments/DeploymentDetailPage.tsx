@@ -194,7 +194,7 @@ function VmTable({
                           </Button>
                         </Tip>
                       ) : (
-                        <Tip content={on ? (consoleAction?.disabled_reason ?? "Console") : "The VM is powered off"}>
+                        <Tip content={consoleAction?.disabled_reason ?? (on ? "Console" : "The VM is powered off")}>
                           <span>
                             <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
                               <SquareTerminal />

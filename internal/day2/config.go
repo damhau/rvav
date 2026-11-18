@@ -1,6 +1,7 @@
 package day2
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -19,6 +20,7 @@ const (
 func init() {
 	register(&Action{
 		Key: "resize", Name: "Resize", Group: GroupConfiguration, Types: []string{vmType},
+		Unavailable: func(t Target, _ Choices) string { return suspended(t) },
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			fields := []field{
 				number("cpu_count", "vCPU", hotAddHelp("CPUs", t.VM.CpuHotAdd), 1, maxCPU, t.VM.CpuCount),
@@ -57,6 +59,7 @@ func init() {
 	})
 	register(&Action{
 		Key: "disk_add", Name: "Add a disk", Group: GroupConfiguration, Types: []string{vmType},
+		Unavailable: func(t Target, _ Choices) string { return suspended(t) },
 		Form: func(Target, Choices) *api.ActionForm {
 			p := choice("provisioning", "Provisioning", diskProvisionings, asFirstDisk)
 			p.optional = true
@@ -78,6 +81,9 @@ func init() {
 	register(&Action{
 		Key: "disk_extend", Name: "Extend a disk", Group: GroupConfiguration, Types: []string{vmType},
 		Unavailable: func(t Target, _ Choices) string {
+			if reason := suspended(t); reason != "" {
+				return reason
+			}
 			if len(t.VM.Disks) == 0 {
 				return "The VM has no disk."
 			}
@@ -122,7 +128,10 @@ func init() {
 	})
 	register(&Action{
 		Key: "nic_add", Name: "Add a network adapter", Group: GroupConfiguration, Types: []string{vmType},
-		Unavailable: func(_ Target, c Choices) string {
+		Unavailable: func(t Target, c Choices) string {
+			if reason := suspended(t); reason != "" {
+				return reason
+			}
 			if len(c.Networks) == 0 {
 				return "The project's placement rules allow no network for this VM's cluster."
 			}
@@ -139,7 +148,7 @@ func init() {
 	register(&Action{
 		Key: "nic_move", Name: "Change a network adapter's network", Group: GroupConfiguration, Types: []string{vmType},
 		Unavailable: func(t Target, c Choices) string {
-			if reason := extraNICs(t); reason != "" {
+			if reason := cmp.Or(suspended(t), extraNICs(t)); reason != "" {
 				return reason
 			}
 			if len(c.Networks) < 2 {
@@ -168,7 +177,7 @@ func init() {
 	register(&Action{
 		Key: "nic_remove", Name: "Remove a network adapter", Group: GroupConfiguration, Types: []string{vmType}, Destructive: true,
 		Confirm:     "The guest loses the connection on this adapter at once.",
-		Unavailable: func(t Target, _ Choices) string { return extraNICs(t) },
+		Unavailable: func(t Target, _ Choices) string { return cmp.Or(suspended(t), extraNICs(t)) },
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			return form("Network adapter", choice("nic", "Adapter", nicOptions(t), ""))
 		},
@@ -177,6 +186,15 @@ func init() {
 			return []Op{vcenter("vsphere.nic_remove", "Remove "+label, "remove_nic", map[string]any{"nic": label})}
 		},
 	})
+}
+
+// suspended says why the VM's hardware can't change now: vCenter refuses
+// while it is suspended.
+func suspended(t Target) string {
+	if t.VM.PowerState == api.Suspended {
+		return "The VM is suspended: power it on or off first."
+	}
+	return ""
 }
 
 func hotAddHelp(what string, hotAdd *bool) string {

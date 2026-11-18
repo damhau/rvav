@@ -30,6 +30,7 @@ var day2Keys = map[string]string{
 	"Cloud.vSphere.Machine.Reboot":          "restart_guest",
 	"Cloud.vSphere.Machine.Reset":           "reset",
 	"Cloud.vSphere.Machine.Shutdown":        "shutdown_guest",
+	"Cloud.vSphere.Machine.Suspend":         "suspend",
 	"Cloud.vSphere.Machine.Resize":          "resize",
 	"Cloud.vSphere.Machine.Snapshot.Create": "snapshot_create",
 	"Cloud.vSphere.Machine.Snapshot.Delete": "snapshot_delete",

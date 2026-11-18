@@ -34,10 +34,24 @@ func init() {
 	})
 	register(&Action{
 		Key: "power_off", Name: "Power off", Group: GroupPower, Types: []string{vmType}, Destructive: true,
-		Confirm:     "Powering off is like pulling the plug: unsaved work in the guest is lost. Shut down guest stops it cleanly.",
-		Unavailable: poweredOn,
+		Confirm: "Powering off is like pulling the plug: unsaved work in the guest is lost. Shut down guest stops it cleanly.",
+		// A suspended VM can be powered off too: its suspended state is lost.
+		Unavailable: func(t Target, c Choices) string {
+			if t.VM.PowerState == api.Suspended {
+				return ""
+			}
+			return poweredOn(t, c)
+		},
 		Ops: func(t Target, _ map[string]any) []Op {
 			return []Op{vcenter("vsphere.power_off", "Power off "+t.ResourceName, "power_off", nil)}
+		},
+	})
+	register(&Action{
+		Key: "suspend", Name: "Suspend", Group: GroupPower, Types: []string{vmType},
+		Confirm:     "The VM stops where it is, and the connections to it are lost. Power on resumes it.",
+		Unavailable: poweredOn,
+		Ops: func(t Target, _ map[string]any) []Op {
+			return []Op{vcenter("vsphere.suspend", "Suspend "+t.ResourceName, "suspend", nil)}
 		},
 	})
 	register(&Action{
@@ -51,10 +65,13 @@ func init() {
 }
 
 func poweredOn(t Target, _ Choices) string {
-	if t.VM.PowerState != api.On {
-		return "The VM is powered off."
+	switch t.VM.PowerState {
+	case api.On:
+		return ""
+	case api.Suspended:
+		return "The VM is suspended. Power on resumes it."
 	}
-	return ""
+	return "The VM is powered off."
 }
 
 func needsTools(verb string) func(Target, Choices) string {

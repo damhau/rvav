@@ -133,7 +133,7 @@ func TestDay2Actions(t *testing.T) {
 		if g := a["shutdown_guest"]; g.Enabled || deref(g.DisabledReason) != "VMware Tools is not running, so the guest OS can't be asked to shut down." {
 			t.Fatalf("shutdown_guest without tools = %+v", g)
 		}
-		if a["restart_guest"].Enabled || !a["reset"].Enabled {
+		if a["restart_guest"].Enabled || !a["reset"].Enabled || !a["suspend"].Enabled || a["suspend"].Confirm == nil {
 			t.Fatalf("actions on a running VM = %+v", a)
 		}
 		d.toolsRunning()
@@ -173,16 +173,28 @@ func TestDay2Actions(t *testing.T) {
 		}
 		run("tnguyen", "power_off", 409)
 
-		// The others, in turn; guest actions once Tools runs.
+		// The others, in turn; guest actions once Tools runs. Power on
+		// resumes a suspended VM.
 		for _, step := range []struct {
 			action string
 			power  api.VmPowerState
-		}{{"power_on", api.On}, {"restart_guest", api.On}, {"reset", api.On}, {"shutdown_guest", api.Off}} {
+		}{{"power_on", api.On}, {"restart_guest", api.On}, {"reset", api.On}, {"suspend", api.Suspended}, {"power_on", api.On},
+			{"shutdown_guest", api.Off}} {
 			r := run("lmartin", step.action, 202)
 			h.runWorkflow(r.Id, nil)
 			h.waitStatus(r.Id, "lmartin", api.RequestStatusSucceeded)
 			if p := vm().PowerState; p != step.power {
 				t.Fatalf("after %s the VM is %s, want %s", step.action, p, step.power)
+			}
+			if step.power != api.Suspended {
+				continue
+			}
+			// A suspended VM: powered on or off, not reset or changed.
+			a := actions("lmartin")
+			if !a["power_on"].Enabled || !a["power_off"].Enabled || a["suspend"].Enabled ||
+				deref(a["reset"].DisabledReason) != "The VM is suspended. Power on resumes it." ||
+				deref(a["resize"].DisabledReason) != "The VM is suspended: power it on or off first." || !a["snapshot_create"].Enabled {
+				t.Fatalf("actions on a suspended VM = %+v", a)
 			}
 		}
 
@@ -224,7 +236,7 @@ func TestDay2Actions(t *testing.T) {
 		// The history: the creating request, then every action, newest first.
 		var hist api.RequestPage
 		h.json("GET", "/api/v1/deployments/"+dep+"/history", "sbrunner", nil, 200, &hist)
-		if len(hist.Items) != 7 || hist.Items[6].Id != built.Id || hist.Items[6].Kind != api.Provision {
+		if len(hist.Items) != 9 || hist.Items[8].Id != built.Id || hist.Items[8].Kind != api.Provision {
 			var order []string
 			for _, r := range hist.Items {
 				order = append(order, fmt.Sprintf("%s %s %s", r.Number, r.Kind, r.SubmittedAt.Format(time.RFC3339Nano)))
@@ -232,7 +244,7 @@ func TestDay2Actions(t *testing.T) {
 			t.Fatalf("history = %d items, newest first: %v (created by %s)", len(hist.Items), order, built.Number)
 		}
 		var n int
-		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'action.run' and target_id = $1`, dep).Scan(&n); err != nil || n != 6 {
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'action.run' and target_id = $1`, dep).Scan(&n); err != nil || n != 8 {
 			t.Fatalf("audit has %d action runs (%v)", n, err)
 		}
 	}, model)

@@ -229,6 +229,7 @@ type Driver interface {
 	WaitPoweredOff(ctx context.Context, moref string) error
 	RebootGuest(ctx context.Context, moref string) error
 	Reset(ctx context.Context, moref string) error
+	Suspend(ctx context.Context, moref string) error
 	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
 	AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error)
 	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error

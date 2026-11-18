@@ -254,7 +254,9 @@ group. For a deployment with several VMs, each VM's actions are in a
 submenu with its name, and in the **⋯** menu of its row. An action you
 can't run now says why. They depend on the VM and your role, and run as
 requests, with their own steps:
-- **Power:** on, off, shut down or restart the guest, reset.
+- **Power:** on, off, shut down or restart the guest, reset, suspend. A
+  suspended VM stops where it is: **Power on** resumes it. While it's
+  suspended, you can't change its hardware.
 - **Snapshots:** take, revert, delete.
 - **Size and hardware:**
   - resize;
