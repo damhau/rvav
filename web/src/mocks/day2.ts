@@ -243,13 +243,38 @@ export const catalogue: MockAction[] = [
     name: "Add a disk",
     group: "configuration",
     unavailable: suspended,
-    form: () =>
-      form("New disk", [
+    form: (vm) => {
+      const first = vm?.vm.disks[0]?.datastore ?? "vsan-gva-dev-cl01";
+      const datastores = [...new Set([first, "nfs-gva-bronze-01"])].sort();
+      return form("New disk", [
+        ["size_gb", { type: "integer", minimum: 1, maximum: 4096 }, { label: "Size (GB)", widget: "number" }, 50],
         [
-          "size_gb",
-          { type: "integer", minimum: 1, maximum: 4096 },
-          { label: "Size (GB)", widget: "number", help: "On the VM's datastore." },
-          50,
+          "datastore",
+          { type: "string", enum: datastores },
+          {
+            label: "Datastore",
+            widget: "select",
+            options: datastores.map((d) => ({
+              value: d,
+              label: d,
+              meta: d === first ? "2140 GB free" : "9800 GB free",
+            })),
+          },
+          first,
+        ],
+        [
+          "storage_policy",
+          { type: "string", enum: ["datastore_default", "gold", "silver"] },
+          {
+            label: "Storage policy",
+            widget: "select",
+            options: [
+              { value: "datastore_default", label: "The datastore's default" },
+              { value: "gold", label: "gold" },
+              { value: "silver", label: "silver" },
+            ],
+          },
+          "datastore_default",
         ],
         [
           "provisioning",
@@ -266,13 +291,14 @@ export const catalogue: MockAction[] = [
           },
           "as_first_disk",
         ],
-      ]),
+      ]);
+    },
     ops: (_vm, i) => [
-      vcenter("vsphere.disk_add", `Add a ${Number(i.size_gb)} GB disk`, (_d, v) => {
+      vcenter("vsphere.disk_add", `Add a ${Number(i.size_gb)} GB disk on ${String(i.datastore)}`, (_d, v) => {
         v?.vm.disks.push({
           label: `Hard disk ${(v.vm.disks.length ?? 0) + 1}`,
           capacity_gb: Number(i.size_gb),
-          datastore: v.vm.disks[0]?.datastore,
+          datastore: String(i.datastore),
         });
       }),
     ],

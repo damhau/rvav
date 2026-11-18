@@ -151,6 +151,8 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   await legacy.click();
   await page.getByRole("menuitem", { name: /^Add a disk/ }).click();
   const add = page.getByRole("dialog", { name: "Add a disk · web-dev-legacy001" });
+  await add.getByRole("combobox", { name: "Datastore" }).click();
+  await page.getByRole("option", { name: /^nfs-gva-bronze-01/ }).click();
   await add.getByRole("button", { name: "Add a disk" }).click();
   await expect(add).toBeHidden();
   await expect(page.getByText(/· 370 GB$/)).toBeVisible({ timeout: 15_000 });
@@ -161,7 +163,9 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   await expect(remove.getByText(/deleted from the datastore/)).toBeVisible();
   await remove.getByRole("combobox", { name: "Disk" }).click();
   await expect(page.getByRole("option", { name: /Hard disk 1/ })).toHaveCount(0);
-  await page.getByRole("option", { name: /^Hard disk 3/ }).click();
+  const third = page.getByRole("option", { name: "Hard disk 3", exact: true });
+  await expect(third).toContainText("50 GB on nfs-gva-bronze-01");
+  await third.click();
   await remove.getByRole("button", { name: "Remove a disk" }).click();
   await expect(remove).toBeHidden();
   await expect(page.getByText(/· 320 GB$/)).toBeVisible({ timeout: 15_000 });

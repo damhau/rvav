@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -305,10 +306,35 @@ func TestDay2Configuration(t *testing.T) {
 			t.Fatalf("hot resize: %+v, VM %d vCPU", r.Progress, d.vm().CpuCount)
 		}
 
-		// Disks.
-		d.succeed("tnguyen", "disk_add", map[string]any{"size_gb": 100})
+		// Disks: on a datastore the VM's placement rule allows, the VM's
+		// first; under a storage policy of its vCenter, or none.
+		add := d.actions("tnguyen")["disk_add"].Form
+		values := func(name string) []string {
+			var out []string
+			for _, o := range *add.UiSchema.Fields[name].Options {
+				out = append(out, o.Value)
+			}
+			return out
+		}
+		if ds := values("datastore"); !slices.Equal(ds, []string{"nfs-gva-bronze-01", "vsan-gva-dev-cl01"}) ||
+			add.InitialValues["datastore"] != "vsan-gva-dev-cl01" {
+			t.Fatalf("disk_add datastores = %v, initially %v", ds, add.InitialValues)
+		}
+		if p := values("storage_policy"); len(p) < 2 || p[0] != "datastore_default" || !slices.Contains(p, "vSAN Default Storage Policy") {
+			t.Fatalf("disk_add storage policies = %v", p)
+		}
+		d.run("tnguyen", "disk_add", map[string]any{"size_gb": 100, "datastore": "vsan-gva-prd-cl01"}, 422)
+		r = d.run("tnguyen", "disk_add", map[string]any{"size_gb": 100, "datastore": "nfs-gva-bronze-01",
+			"storage_policy": "vSAN Default Storage Policy"}, 202)
+		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", "tnguyen", nil, 200, &steps)
+		if s := steps.Items[len(steps.Items)-2]; s.Title != "Add a 100 GB disk on nfs-gva-bronze-01" ||
+			deref(s.Detail) != "Storage policy vSAN Default Storage Policy" {
+			t.Fatalf("add step = %+v", s)
+		}
+		h.runWorkflow(r.Id, nil)
+		h.waitStatus(r.Id, "tnguyen", api.RequestStatusSucceeded)
 		vm := d.vm()
-		if len(vm.Disks) != 2 || vm.Disks[1].CapacityGb != 100 {
+		if len(vm.Disks) != 2 || vm.Disks[1].CapacityGb != 100 || deref(vm.Disks[1].Datastore) != "nfs-gva-bronze-01" {
 			t.Fatalf("disks after add = %+v", vm.Disks)
 		}
 		first := vm.Disks[0]

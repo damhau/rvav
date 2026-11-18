@@ -30,10 +30,10 @@ func TestDiskProvisioning(t *testing.T) {
 			vm.Disks[2].Provisioning != ProvisionThickEager || vm.Disks[3].Provisioning != first {
 			t.Fatalf("disks = %+v", vm.Disks)
 		}
-		if _, err := d.AddDisk(ctx, vm.Moref, 4, ProvisionThickLazy); err != nil {
+		if _, err := d.AddDisk(ctx, vm.Moref, DiskSpec{SizeGB: 4, Provisioning: ProvisionThickLazy}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := d.AddDisk(ctx, vm.Moref, 2, ""); err != nil {
+		if _, err := d.AddDisk(ctx, vm.Moref, DiskSpec{SizeGB: 2}); err != nil {
 			t.Fatal(err)
 		}
 		if vm, err = d.GetVM(ctx, vm.Moref); err != nil {

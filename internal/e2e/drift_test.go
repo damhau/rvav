@@ -12,6 +12,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 )
 
@@ -123,7 +124,7 @@ func TestDrift(t *testing.T) {
 		expect()
 
 		// A disk added and the adapter moved in vCenter, then accepted.
-		label, err := h.vc.AddDisk(ctx, d.vm().Moref, 20, "")
+		label, err := h.vc.AddDisk(ctx, d.vm().Moref, vsphere.DiskSpec{SizeGB: 20})
 		if err != nil {
 			t.Fatal(err)
 		}

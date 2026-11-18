@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -219,4 +220,36 @@ func renamedFQDN(t day2.Target, name string) string {
 		}
 	}
 	return ""
+}
+
+// diskChoices are where a disk added to the VM may go: the datastores its
+// cluster's placement rule allows, under that rule's storage policy, else
+// one of its vCenter's. A VM no rule places is offered none: its disks go
+// on its datastore.
+func (s *Service) diskChoices(ctx context.Context, pl *placement, t day2.Target, c *day2.Choices) error {
+	r := pl.rule(*t.VM.Cluster)
+	if r == nil {
+		return nil
+	}
+	datastores := pl.datastoresFor(*t.VM.Cluster)
+	slices.SortFunc(datastores, func(a, b store.InvDatastore) int { return cmp.Compare(a.Name, b.Name) })
+	for _, d := range datastores {
+		meta := fmt.Sprintf("%d GB free", d.FreeGB)
+		c.Datastores = append(c.Datastores, api.Option{Value: d.Name, Label: d.Name, Meta: &meta})
+	}
+	if c.RulePolicy = r.StoragePolicy; c.RulePolicy != "" {
+		c.StoragePolicies = []string{r.StoragePolicy}
+		return nil
+	}
+	policies, err := s.Store.InventoryStoragePolicies(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range policies {
+		if p.VCenter == t.VM.Vcenter && !slices.Contains(c.StoragePolicies, p.Name) {
+			c.StoragePolicies = append(c.StoragePolicies, p.Name)
+		}
+	}
+	slices.Sort(c.StoragePolicies)
+	return nil
 }

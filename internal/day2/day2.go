@@ -63,6 +63,12 @@ const DeploymentType = "deployment"
 type Choices struct {
 	// Networks the VM may be connected to.
 	Networks []string
+	// Datastores a disk added to the VM may go on, their free space as
+	// meta, and the StoragePolicies it may take: only RulePolicy when the
+	// VM's placement rule names one.
+	Datastores      []api.Option
+	StoragePolicies []string
+	RulePolicy      string
 	// Environment is the deployment's environment name, for messages.
 	Environment string
 	// SnapshotMaxCount and SnapshotMaxAgeDays are the snapshot retention

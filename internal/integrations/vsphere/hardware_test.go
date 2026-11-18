@@ -98,7 +98,7 @@ func TestCloneFinishesAnEarlierAttempt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := d.AddDisk(ctx, ref.Value, 5, ""); err != nil {
+		if _, err := d.AddDisk(ctx, ref.Value, DiskSpec{SizeGB: 5}); err != nil {
 			t.Fatal(err)
 		}
 		vm, err := d.CloneVM(ctx, spec)

@@ -260,8 +260,12 @@ requests, with their own steps:
 - **Snapshots:** take, revert, delete.
 - **Size and hardware:**
   - resize;
-  - add or extend a disk (a linked clone's disk from its template can't
-    be extended: add a disk instead);
+  - add a disk, on a datastore the VM's placement rule allows (the VM's
+    first disk's by default) and under a storage policy: the rule's when
+    it names one, else any of the VM's vCenter, or the datastore's
+    default;
+  - extend a disk (a linked clone's disk from its template can't be
+    extended: add a disk instead);
   - remove a disk: its file and data are deleted from the datastore. You
     can't remove the boot disk, a linked clone's disk from its template,
     or a disk of a VM with snapshots. Unmount the disk's file systems in

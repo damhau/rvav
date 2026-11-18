@@ -1,7 +1,6 @@
 package vsphere
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -143,14 +142,15 @@ func (cl *Client) Reconfigure(ctx context.Context, moref string, cpus, memoryMB 
 	return task.Wait(ctx)
 }
 
-// AddDisk adds a disk on the VM's datastore and returns its label. It is
-// provisioned as provisioning says, as the VM's first disk when empty
-// (ADR-0036).
-func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error) {
-	vm, err := cl.vmObject(ctx, moref)
+// AddDisk adds a disk and returns its label: on its datastore, the VM's for
+// none, under its storage policy, provisioned as it says or as the VM's
+// first disk (ADR-0036). A datastore or policy vCenter lacks is refused.
+func (cl *Client) AddDisk(ctx context.Context, moref string, d DiskSpec) (string, error) {
+	c, err := cl.client(ctx)
 	if err != nil {
 		return "", err
 	}
+	vm := object.NewVirtualMachine(c, vmRef(moref))
 	devices, err := vm.Device(ctx)
 	if err != nil {
 		return "", err
@@ -159,14 +159,19 @@ func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int, provisi
 	if err != nil {
 		return "", err
 	}
+	if d.Datastore != "" {
+		if _, err := findRef(ctx, c, "Datastore", d.Datastore); errors.Is(err, ErrNotFound) {
+			return "", &Refused{Msg: "Datastore " + d.Datastore + " is not in vCenter."}
+		}
+	}
+	if _, err := policyID(ctx, c, d.StoragePolicy); errors.Is(err, ErrNotFound) {
+		return "", &Refused{Msg: "Storage policy " + d.StoragePolicy + " is not in vCenter."}
+	}
 	before := map[int32]bool{}
 	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
 		before[d.GetVirtualDevice().Key] = true
 	}
-	disk := devices.CreateDisk(controller, types.ManagedObjectReference{}, "")
-	disk.CapacityInKB = int64(sizeGB) * 1024 * 1024
-	provision(disk, cmp.Or(provisioning, provisioningOf(firstDisk(devices))))
-	if err := vm.AddDevice(ctx, disk); err != nil {
+	if _, err := addDisk(ctx, c, vm, devices, controller, d); err != nil {
 		return "", err
 	}
 	if devices, err = vm.Device(ctx); err == nil {

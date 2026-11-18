@@ -67,3 +67,33 @@ func TestRemoveDisk(t *testing.T) {
 		t.Errorf("with snapshots: %q", why)
 	}
 }
+
+// TestAddDiskChoices: a new disk goes with the VM's first by default; the
+// placement rule's storage policy is the only one offered when it names
+// one; without datastores to choose, it goes on the VM's (X1.3).
+func TestAddDiskChoices(t *testing.T) {
+	a := Get("disk_add")
+	ds := "ds-b"
+	vm := Target{Type: vmType, VM: api.VmProperties{Disks: []api.VmDisk{{Label: "Hard disk 1", CapacityGb: 40, Datastore: &ds}}}}
+	c := Choices{Datastores: []api.Option{{Value: "ds-a", Label: "ds-a"}, {Value: "ds-b", Label: "ds-b"}},
+		StoragePolicies: []string{"Gold", "Silver"}}
+
+	f := a.Form(vm, c)
+	if f.InitialValues["datastore"] != "ds-b" || f.InitialValues["storage_policy"] != datastoreDefault ||
+		len(*f.UiSchema.Fields["storage_policy"].Options) != 3 {
+		t.Errorf("form = %+v, %+v", f.InitialValues, f.UiSchema.Fields["storage_policy"])
+	}
+	c.RulePolicy, c.StoragePolicies = "Gold", []string{"Gold"}
+	f = a.Form(vm, c)
+	if opts := *f.UiSchema.Fields["storage_policy"].Options; len(opts) != 1 || f.InitialValues["storage_policy"] != "Gold" {
+		t.Errorf("with the rule's policy: %+v", opts)
+	}
+	ops := a.Ops(vm, map[string]any{"size_gb": 10.0, "datastore": "ds-a", "storage_policy": "Gold", "provisioning": "thin"})
+	if len(ops) != 1 || ops[0].Args["datastore"] != "ds-a" || ops[0].Args["storage_policy"] != "Gold" || ops[0].Detail != "Thin · Storage policy Gold" {
+		t.Errorf("ops = %+v", ops)
+	}
+	f = a.Form(vm, Choices{})
+	if _, ok := f.UiSchema.Fields["datastore"]; ok || deref(f.UiSchema.Fields["size_gb"].Help) != "On the VM's datastore." {
+		t.Errorf("without choices: %+v", f.UiSchema.Fields)
+	}
+}

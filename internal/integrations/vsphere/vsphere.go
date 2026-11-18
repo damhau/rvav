@@ -233,7 +233,7 @@ type Driver interface {
 	Reset(ctx context.Context, moref string) error
 	Suspend(ctx context.Context, moref string) error
 	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
-	AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error)
+	AddDisk(ctx context.Context, moref string, d DiskSpec) (string, error)
 	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error
 	RemoveDisk(ctx context.Context, moref, label, file string) error
 	AddNIC(ctx context.Context, moref, network string) error
@@ -1194,27 +1194,9 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 			return err
 		}
 		for _, d := range missing {
-			var ds types.ManagedObjectReference
-			if d.Datastore != "" {
-				if ds, err = findRef(ctx, c, "Datastore", d.Datastore); err != nil {
-					return err
-				}
-			}
-			disk := devices.CreateDisk(controller, ds, "")
-			provision(disk, cmp.Or(d.Provisioning, provisioningOf(firstDisk(devices))))
-			if d.Datastore != "" {
-				// "[datastore]" alone: vCenter names the file, in the VM's
-				// folder on that datastore (CreateDisk would make it
-				// "[datastore].vmdk", one file for every VM).
-				disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo).FileName = "[" + d.Datastore + "]"
-			}
-			disk.CapacityInKB = int64(d.SizeGB) * 1024 * 1024
-			id, err := policyID(ctx, c, cmp.Or(d.StoragePolicy, spec.StoragePolicy))
+			d.StoragePolicy = cmp.Or(d.StoragePolicy, spec.StoragePolicy)
+			disk, err := addDisk(ctx, c, vm, devices, controller, d)
 			if err != nil {
-				return err
-			}
-			// A disk at a time: each one's file is named when it is made.
-			if err := vm.AddDeviceWithProfile(ctx, profile(id), disk); err != nil {
 				return err
 			}
 			// The next one takes the next unit number on the controller.
@@ -1225,6 +1207,34 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 		return nil
 	}
 	return vm.AddDevice(ctx, add...)
+}
+
+// addDisk adds a disk on its datastore (the VM's for none), provisioned as
+// it says or as the VM's first disk, under its storage policy. A disk at a
+// time: each one's file is named when it is made.
+func addDisk(ctx context.Context, c *vim25.Client, vm *object.VirtualMachine, devices object.VirtualDeviceList,
+	controller types.BaseVirtualController, d DiskSpec) (*types.VirtualDisk, error) {
+	var ds types.ManagedObjectReference
+	if d.Datastore != "" {
+		var err error
+		if ds, err = findRef(ctx, c, "Datastore", d.Datastore); err != nil {
+			return nil, err
+		}
+	}
+	disk := devices.CreateDisk(controller, ds, "")
+	provision(disk, cmp.Or(d.Provisioning, provisioningOf(firstDisk(devices))))
+	if d.Datastore != "" {
+		// "[datastore]" alone: vCenter names the file, in the VM's folder
+		// on that datastore (CreateDisk would make it "[datastore].vmdk",
+		// one file for every VM).
+		disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo).FileName = "[" + d.Datastore + "]"
+	}
+	disk.CapacityInKB = int64(d.SizeGB) * 1024 * 1024
+	id, err := policyID(ctx, c, d.StoragePolicy)
+	if err != nil {
+		return nil, err
+	}
+	return disk, vm.AddDeviceWithProfile(ctx, profile(id), disk)
 }
 
 // reconfigure sets CPU, memory, annotation and extra config, grows the

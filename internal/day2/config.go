@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/damhau/rvav/internal/api"
 )
@@ -60,21 +61,43 @@ func init() {
 	register(&Action{
 		Key: "disk_add", Name: "Add a disk", Group: GroupConfiguration, Types: []string{vmType},
 		Unavailable: func(t Target, _ Choices) string { return suspended(t) },
-		Form: func(Target, Choices) *api.ActionForm {
+		Form: func(t Target, c Choices) *api.ActionForm {
+			help := "On the VM's datastore."
+			if len(c.Datastores) > 0 {
+				help = ""
+			}
+			fields := []field{number("size_gb", "Size (GB)", help, 1, maxDiskGB, 50)}
+			if len(c.Datastores) > 0 {
+				fields = append(fields, choice("datastore", "Datastore", c.Datastores, firstDatastore(t, c)))
+			}
+			if len(c.StoragePolicies) > 0 {
+				fields = append(fields, policyField(c))
+			}
 			p := choice("provisioning", "Provisioning", diskProvisionings, asFirstDisk)
 			p.optional = true
-			return form("New disk", number("size_gb", "Size (GB)", "On the VM's datastore.", 1, maxDiskGB, 50), p)
+			return form("New disk", append(fields, p)...)
 		},
 		Ops: func(_ Target, in map[string]any) []Op {
-			size, p := intInput(in, "size_gb"), strInput(in, "provisioning")
+			size, p, ds, policy := intInput(in, "size_gb"), strInput(in, "provisioning"), strInput(in, "datastore"), strInput(in, "storage_policy")
 			args := map[string]any{"size_gb": size}
+			title := fmt.Sprintf("Add a %d GB disk", size)
+			if ds != "" {
+				args["datastore"] = ds
+				title += " on " + ds
+			}
+			var detail []string
 			if p != "" && p != asFirstDisk {
 				args["provisioning"] = p
 			}
-			op := vcenter("vsphere.disk_add", fmt.Sprintf("Add a %d GB disk", size), "add_disk", args)
 			if i := slices.IndexFunc(diskProvisionings, func(o api.Option) bool { return o.Value == args["provisioning"] }); i >= 0 {
-				op.Detail = diskProvisionings[i].Label
+				detail = append(detail, diskProvisionings[i].Label)
 			}
+			if policy != "" && policy != datastoreDefault {
+				args["storage_policy"] = policy
+				detail = append(detail, "Storage policy "+policy)
+			}
+			op := vcenter("vsphere.disk_add", title, "add_disk", args)
+			op.Detail = strings.Join(detail, " · ")
 			return []Op{op}
 		},
 	})
@@ -317,6 +340,36 @@ func extraNICs(t Target) string {
 		return "The VM has only its first network adapter, which carries its address and DNS records."
 	}
 	return ""
+}
+
+// firstDatastore is where the form puts a new disk first: with the VM's
+// first disk when the VM's rule allows it there.
+func firstDatastore(t Target, c Choices) string {
+	if len(t.VM.Disks) > 0 && t.VM.Disks[0].Datastore != nil {
+		if ds := *t.VM.Disks[0].Datastore; slices.ContainsFunc(c.Datastores, func(o api.Option) bool { return o.Value == ds }) {
+			return ds
+		}
+	}
+	return c.Datastores[0].Value
+}
+
+// datastoreDefault is the Add a disk form's choice of no storage policy:
+// the datastore's default applies.
+const datastoreDefault = "datastore_default"
+
+// policyField offers the storage policies a new disk may take: the VM's
+// placement rule's alone when it names one.
+func policyField(c Choices) field {
+	if c.RulePolicy != "" {
+		return choice("storage_policy", "Storage policy", []api.Option{{Value: c.RulePolicy, Label: c.RulePolicy}}, c.RulePolicy)
+	}
+	opts := []api.Option{{Value: datastoreDefault, Label: "The datastore's default"}}
+	for _, p := range c.StoragePolicies {
+		opts = append(opts, api.Option{Value: p, Label: p})
+	}
+	f := choice("storage_policy", "Storage policy", opts, datastoreDefault)
+	f.optional = true
+	return f
 }
 
 // asFirstDisk is the Add a disk form's choice of no provisioning: the new

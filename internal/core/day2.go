@@ -104,7 +104,7 @@ func (s *Service) choices(ctx context.Context, p *auth.Principal, d store.Deploy
 	for _, n := range pl.networksFor(*t.VM.Cluster) {
 		c.Networks = append(c.Networks, n.Name)
 	}
-	return c, nil
+	return c, s.diskChoices(ctx, pl, t, &c)
 }
 
 // Actions lists, per resource, the actions that apply and whether the
