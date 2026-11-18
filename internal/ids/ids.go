@@ -31,6 +31,8 @@ const (
 	// Notifications (ADR-0023).
 	Notification = "ntf"
 	Draft        = "drf"
+	// Saved views of a list.
+	View = "viw"
 	// What the vRA importer read (ADR-0027).
 	VRASnapshot = "vrs"
 )

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -65,76 +66,108 @@ func (s *Store) DeploymentsForRequest(ctx context.Context, requestID string) ([]
 }
 
 type DeploymentFilter struct {
-	Projects           []string // nil means all projects
-	ProjectID          string
-	Statuses           []string
-	Environments       []string
+	Projects     []string // nil means all projects
+	ProjectID    string
+	Statuses     []string
+	Expired      bool // or its lease has ended, whatever its status
+	Environments []string
+	// Items are catalog items by ID or slug; Templates VM templates by name.
+	Items              []string
+	Templates          []string
 	OwnerID            string
 	LeaseExpiresBefore *time.Time
 	Search             string
-	Sort               string // name, -name, created_at, -created_at, lease_expires_at, -lease_expires_at
+	Sort               string // a key of deploymentSorts
 	IncludeDeleted     bool
 	Limit              int
 	After              *Cursor
 }
 
-var deploymentSorts = map[string]struct {
-	expr string
-	desc bool
-}{
-	"name":              {"d.name", false},
-	"-name":             {"d.name", true},
-	"created_at":        {"to_char(d.created_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US')", false},
-	"-created_at":       {"to_char(d.created_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US')", true},
-	"lease_expires_at":  {"coalesce(to_char(d.lease_expires_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US'), '9999')", false},
-	"-lease_expires_at": {"coalesce(to_char(d.lease_expires_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US'), '9999')", true},
+const isoTime = `'YYYY-MM-DD"T"HH24:MI:SS.US'`
+
+// deploymentSorts are each sort's key over the listed row d0; all but the
+// name sort break ties by name. A descending sort reverses both.
+var deploymentSorts = map[string]string{
+	"name":             "d0.name",
+	"created_at":       "to_char(d0.created_at at time zone 'UTC', " + isoTime + ")",
+	"lease_expires_at": "coalesce(to_char(d0.lease_expires_at at time zone 'UTC', " + isoTime + "), '9999')",
+	"status":           "d0.status",
+	"environment":      "d0.environment",
+	"owner":            "d0.owner_name",
+	"item":             "d0.item_name",
+	"project":          "d0.project_name",
+	"vm_count":         "lpad(d0.vm_count::text, 6, '0')",
+}
+
+// sortOf is a sort's key expression and direction; an unknown sort is
+// the default's.
+func sortOf(sorts map[string]string, sort, fallback string) (key string, then bool, desc bool) {
+	desc = strings.HasPrefix(sort, "-")
+	field := strings.TrimPrefix(sort, "-")
+	key, ok := sorts[field]
+	if !ok {
+		field, desc, key = fallback, false, sorts[fallback]
+	}
+	return key, field != fallback, desc
+}
+
+// keyset is the ordering and the "after the cursor" condition of a list
+// sorted by sort_key, then then_key, then id, all in one direction.
+func keyset(desc bool, from int) (where, order string) {
+	cmp, dir := ">", "asc"
+	if desc {
+		cmp, dir = "<", "desc"
+	}
+	return fmt.Sprintf(`($%d = '' or (sort_key, then_key, id) %s ($%d, $%d, $%d))`, from, cmp, from, from+1, from+2),
+		fmt.Sprintf(`order by sort_key %s, then_key %s, id %s`, dir, dir, dir)
 }
 
 // ListDeployments filters and sorts deployments with keyset pagination. The
-// sort key is compared as text so one cursor format covers every sort.
+// sort keys are compared as text so one cursor format covers every sort.
 func (s *Store) ListDeployments(ctx context.Context, f DeploymentFilter) (Page[DeploymentRow], error) {
-	sort, ok := deploymentSorts[f.Sort]
-	if !ok {
-		sort = deploymentSorts["name"]
-	}
-	cmp, dir := ">", "asc"
-	if sort.desc {
-		cmp, dir = "<", "desc"
+	key, byName, desc := sortOf(deploymentSorts, f.Sort, "name")
+	then := "''"
+	if byName {
+		then = "d0.name"
 	}
 	after := Cursor{}
 	if f.After != nil {
 		after = *f.After
 	}
-	q := fmt.Sprintf(`select * from (%s
+	where, order := keyset(desc, 13)
+	q := fmt.Sprintf(`select * from (select d0.*, %s as sort_key, %s as then_key from (%s
 		where ($1 or d.project_id = any($2))
 		  and ($3 = '' or d.project_id = $3)
-		  and (cardinality($4::text[]) = 0 or d.status = any($4))
-		  and (cardinality($5::text[]) = 0 or d.environment = any($5))
-		  and ($6 = '' or d.owner_id = $6)
-		  and ($7::timestamptz is null or d.lease_expires_at < $7)
-		  and ($8 = '' or d.name ilike $8 or u.name ilike $8 or exists (
+		  and ((cardinality($4::text[]) = 0 and not $5) or d.status = any($4) or ($5 and d.lease_expires_at <= now()))
+		  and (cardinality($6::text[]) = 0 or d.environment = any($6))
+		  and ($7 = '' or d.owner_id = $7)
+		  and ($8::timestamptz is null or d.lease_expires_at < $8)
+		  and ($9 = '' or d.name ilike $9 or u.name ilike $9 or exists (
 		        select 1 from resources r where r.deployment_id = d.id
-		        and (r.name ilike $8 or r.properties->>'address' ilike $8 or r.properties->'vm'->>'fqdn' ilike $8)))
-		  and ($9 or d.status <> 'deleted')
-		) d0, lateral (select %s as sort_key from deployments d where d.id = d0.id) k
-		where ($10 = '' or (k.sort_key, d0.id) %s ($10, $11))
-		order by k.sort_key %s, d0.id %s limit $12`,
-		deploymentRowSelect, sort.expr, cmp, dir, dir)
-	rows, err := s.Pool.Query(ctx, q, f.Projects == nil, f.Projects, f.ProjectID, nonNil(f.Statuses),
+		        and (r.name ilike $9 or r.properties->>'address' ilike $9 or r.properties->'vm'->>'fqdn' ilike $9)))
+		  and ($10 or d.status <> 'deleted')
+		  and (cardinality($11::text[]) = 0 or d.item_id = any($11) or i.slug = any($11))
+		  and (cardinality($12::text[]) = 0 or exists (select 1 from resources r where r.deployment_id = d.id
+		        and r.type = 'vsphere.vm' and r.properties->'vm'->>'template' = any($12)))
+		) d0) d1
+		where %s %s limit $16`,
+		key, then, deploymentRowSelect, where, order)
+	rows, err := s.Pool.Query(ctx, q, f.Projects == nil, f.Projects, f.ProjectID, nonNil(f.Statuses), f.Expired,
 		nonNil(f.Environments), f.OwnerID, f.LeaseExpiresBefore, SearchText(f.Search), f.IncludeDeleted,
-		after.Value, after.ID, f.Limit+1)
+		nonNil(f.Items), nonNil(f.Templates), after.Value, after.Then, after.ID, f.Limit+1)
 	if err != nil {
 		return Page[DeploymentRow]{}, err
 	}
 	type withKey struct {
 		DeploymentRow
 		SortKey string `db:"sort_key"`
+		ThenKey string `db:"then_key"`
 	}
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[withKey])
 	if err != nil {
 		return Page[DeploymentRow]{}, err
 	}
-	page := paginate(list, f.Limit, func(w withKey) Cursor { return Cursor{Value: w.SortKey, ID: w.ID} })
+	page := paginate(list, f.Limit, func(w withKey) Cursor { return Cursor{Value: w.SortKey, Then: w.ThenKey, ID: w.ID} })
 	out := Page[DeploymentRow]{Next: page.Next, Items: make([]DeploymentRow, len(page.Items))}
 	for i, w := range page.Items {
 		out.Items[i] = w.DeploymentRow

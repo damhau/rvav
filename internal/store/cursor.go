@@ -10,7 +10,9 @@ import (
 // row of the previous page. It is opaque to API clients.
 type Cursor struct {
 	Value string `json:"v"`
-	ID    string `json:"id"`
+	// Then is the second sort value, for sorts that break ties by name.
+	Then string `json:"t,omitempty"`
+	ID   string `json:"id"`
 }
 
 var ErrBadCursor = errors.New("invalid cursor")

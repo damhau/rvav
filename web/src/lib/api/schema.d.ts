@@ -327,6 +327,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's saved views of a list, by name
+         * @description A saved view is a list's filters, sort and layout under a name: the
+         *     query of the list's address. It is only the caller's; to share one,
+         *     share its address, which shows each person what they may see.
+         */
+        get: operations["listSavedViews"];
+        put?: never;
+        /** Save a list's filters, sort and layout under a name */
+        post: operations["createSavedView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a saved view, or save the list's current query in it */
+        put: operations["updateSavedView"];
+        post?: never;
+        /** Delete a saved view */
+        delete: operations["deleteSavedView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/environments": {
         parameters: {
             query?: never;
@@ -844,8 +887,77 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Deployments visible to the caller */
+        /**
+         * Deployments visible to the caller
+         * @description Without `project_id`, the deployments of every project the caller
+         *     sees (`project.see`). Filters with several values match any of them;
+         *     different filters must all match. Deleted deployments are left out
+         *     unless `status` names `deleted`.
+         */
         get: operations["listDeployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The values the caller's deployments have, to filter them by
+         * @description The catalog items, VM templates and environments of the deployments
+         *     `listDeployments` would list with this `project_id`, deleted ones
+         *     left out: a filter offers only what matches something.
+         */
+        get: operations["getDeploymentFacets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/vms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The VMs of the deployments the caller sees, across deployments
+         * @description Each VM of a deployment that isn't deleted, in the projects the
+         *     caller sees (`project.see`), with its deployment, project and
+         *     environment. Its disks and network adapters are in `vm`. Filters
+         *     with several values match any of them; different filters must all
+         *     match.
+         */
+        get: operations["listVms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/vms/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vCenters, clusters and networks of the caller's VMs, to filter them by */
+        get: operations["getVmFacets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1686,7 +1798,9 @@ export interface paths {
          * @description Everyone who has signed in at least once (or was seeded). Any signed-in
          *     user may search: approvers delegate to people outside their projects.
          *     By name; someone the identity provider gave a new subject has a record
-         *     per subject, and the one seen last comes first.
+         *     per subject, and the one seen last comes first. `q` matches part of
+         *     a name or email, or a whole user ID, so a page that holds an ID in
+         *     its address can name the person.
          */
         get: operations["searchUsers"];
         put?: never;
@@ -4788,6 +4902,75 @@ export interface components {
         };
         /** @enum {string} */
         DeploymentStatus: "provisioning" | "ready" | "updating" | "failed" | "deleting" | "deleted";
+        /**
+         * @description A deployment status, or `expired`: its lease has ended (its VMs are
+         *     powered off and it waits for deletion), whatever its status.
+         * @enum {string}
+         */
+        DeploymentStatusFilter: "provisioning" | "ready" | "updating" | "failed" | "deleting" | "deleted" | "expired";
+        DeploymentFacets: {
+            /** @description Catalog items, by name. */
+            items: {
+                id: string;
+                slug: string;
+                name: string;
+            }[];
+            /** @description The VM templates their VMs were cloned from, by name. */
+            templates: string[];
+            environments: components["schemas"]["EnvironmentKey"][];
+        };
+        VmListItem: components["schemas"]["VmResource"] & {
+            deployment: {
+                id: string;
+                name: string;
+                status: components["schemas"]["DeploymentStatus"];
+            };
+            project: components["schemas"]["ProjectRef"];
+            environment: components["schemas"]["EnvironmentKey"];
+            /**
+             * @description Its IPv4 and IPv6 addresses, each once: those rvav reserved
+             *     for it first, then those VMware Tools reports.
+             */
+            addresses: string[];
+        };
+        VmPage: components["schemas"]["PageInfo"] & {
+            items: components["schemas"]["VmListItem"][];
+        };
+        VmFacets: {
+            /** @description The vCenters the VMs run in, by name, each with its clusters. */
+            vcenters: {
+                name: string;
+                clusters: string[];
+            }[];
+            /** @description The networks their adapters are on, by name. */
+            networks: string[];
+        };
+        /**
+         * @description The list a saved view is of.
+         * @enum {string}
+         */
+        ViewList: "deployments" | "resources";
+        SavedViewWrite: {
+            list: components["schemas"]["ViewList"];
+            name: string;
+            /**
+             * @description The list's address query, such as `{"status": "failed", "sort":
+             *     "-lease_expires_at"}`: the page reads it back as its own.
+             */
+            query: {
+                [key: string]: string;
+            };
+        };
+        SavedView: components["schemas"]["SavedViewWrite"] & {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SavedViewList: {
+            items: components["schemas"]["SavedView"][];
+        };
         Deployment: {
             id: string;
             name: string;
@@ -7837,6 +8020,106 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listSavedViews: {
+        parameters: {
+            query: {
+                list: components["schemas"]["ViewList"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listEnvironments: {
         parameters: {
             query?: never;
@@ -8555,15 +8838,25 @@ export interface operations {
     listDeployments: {
         parameters: {
             query?: {
-                project_id?: components["parameters"]["ProjectIdQuery"];
-                status?: components["schemas"]["DeploymentStatus"][];
+                /** @description One project's deployments. Omit it for every project the caller sees. */
+                project_id?: string;
+                status?: components["schemas"]["DeploymentStatusFilter"][];
                 environment?: components["schemas"]["EnvironmentKey"][];
+                /** @description Catalog items, by ID or slug. */
+                item?: string[];
+                /** @description VM templates, by name in vCenter (a VM's `template`): deployments with a VM cloned from one. */
+                template?: string[];
                 /** @description `me`, or a user ID. */
                 owner?: string;
                 lease_expires_before?: string;
-                /** @description Free-text search. */
-                q?: components["parameters"]["Search"];
-                sort?: "name" | "-name" | "created_at" | "-created_at" | "lease_expires_at" | "-lease_expires_at";
+                /** @description Part of the deployment's name, its owner's name, or a VM's name, address or FQDN. */
+                q?: string;
+                /**
+                 * @description A field, descending with a leading `-`. `owner`, `item` and
+                 *     `project` sort by name; a deployment with no lease sorts after
+                 *     every lease end. Ties are broken by name.
+                 */
+                sort?: "name" | "-name" | "created_at" | "-created_at" | "lease_expires_at" | "-lease_expires_at" | "status" | "-status" | "environment" | "-environment" | "owner" | "-owner" | "item" | "-item" | "project" | "-project" | "vm_count" | "-vm_count";
                 limit?: components["parameters"]["Limit"];
                 /** @description The `next_cursor` from the previous page. */
                 cursor?: components["parameters"]["Cursor"];
@@ -8581,6 +8874,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getDeploymentFacets: {
+        parameters: {
+            query?: {
+                /** @description One project's deployments. Omit it for every project the caller sees. */
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentFacets"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listVms: {
+        parameters: {
+            query?: {
+                /** @description One project's VMs. Omit it for every project the caller sees. */
+                project_id?: string;
+                environment?: components["schemas"]["EnvironmentKey"][];
+                power_state?: components["schemas"]["VmPowerState"][];
+                /** @description Its vCenter's name. */
+                vcenter?: string;
+                /** @description Its cluster's name. */
+                cluster?: string;
+                /** @description A network (port group) one of its adapters is on. */
+                network?: string;
+                /** @description Part of the VM's name or FQDN, or of one of its addresses. */
+                q?: string;
+                /** @description A field, descending with a leading `-`. `deployment` and `project` sort by name; ties are broken by name. */
+                sort?: "name" | "-name" | "deployment" | "-deployment" | "project" | "-project" | "environment" | "-environment" | "power_state" | "-power_state" | "cpu_count" | "-cpu_count" | "memory_mb" | "-memory_mb" | "disk_gb" | "-disk_gb";
+                limit?: components["parameters"]["Limit"];
+                /** @description The `next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getVmFacets: {
+        parameters: {
+            query?: {
+                /** @description One project's VMs. Omit it for every project the caller sees. */
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmFacets"];
                 };
             };
             401: components["responses"]["Unauthorized"];

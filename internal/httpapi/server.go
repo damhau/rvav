@@ -387,6 +387,13 @@ func deref(s *string) string {
 	return *s
 }
 
+func derefAll[T any](s *[]T) []T {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
 // StopStreams ends the event streams, which an HTTP server's Shutdown
 // doesn't: their clients reconnect where the next process serves them.
 func (s *Server) StopStreams() {

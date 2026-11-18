@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"errors"
+	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -18,7 +20,8 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 		return
 	}
 	f := store.DeploymentFilter{Projects: p.Projects(auth.ProjectSee), ProjectID: deref(params.ProjectId), Search: deref(params.Q),
-		LeaseExpiresBefore: params.LeaseExpiresBefore, Limit: limitOf(params.Limit), After: after, Sort: "name"}
+		LeaseExpiresBefore: params.LeaseExpiresBefore, Limit: limitOf(params.Limit), After: after, Sort: "name",
+		Environments: derefAll(params.Environment), Items: derefAll(params.Item), Templates: derefAll(params.Template)}
 	if f.Projects != nil && len(f.Projects) == 0 {
 		writeJSON(w, http.StatusOK, api.DeploymentPage{Items: []api.Deployment{}})
 		return
@@ -26,16 +29,16 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 	if params.Sort != nil {
 		f.Sort = string(*params.Sort)
 	}
-	if params.Status != nil {
-		for _, st := range *params.Status {
+	for _, st := range derefAll(params.Status) {
+		switch st {
+		case api.DeploymentStatusFilterExpired:
+			f.Expired = true
+		case api.DeploymentStatusFilterDeleted:
+			f.IncludeDeleted = true
+			fallthrough
+		default:
 			f.Statuses = append(f.Statuses, string(st))
-			if st == api.DeploymentStatusDeleted {
-				f.IncludeDeleted = true
-			}
 		}
-	}
-	if params.Environment != nil {
-		f.Environments = *params.Environment
 	}
 	switch o := deref(params.Owner); o {
 	case "":
@@ -54,6 +57,127 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 		out.Items[i] = present.Deployment(d)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) GetDeploymentFacets(w http.ResponseWriter, r *http.Request, params api.GetDeploymentFacetsParams) {
+	projects := principal(r).Projects(auth.ProjectSee)
+	out := api.DeploymentFacets{Templates: []string{}, Environments: []api.EnvironmentKey{}}
+	out.Items = []struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}{}
+	if projects != nil && len(projects) == 0 {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	f, err := s.Store.DeploymentFacets(r.Context(), projects, deref(params.ProjectId))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, i := range f.Items {
+		out.Items = append(out.Items, struct {
+			Id   string `json:"id"`
+			Name string `json:"name"`
+			Slug string `json:"slug"`
+		}{Id: i.ID, Name: i.Name, Slug: i.Slug})
+	}
+	out.Templates, out.Environments = f.Templates, f.Environments
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) ListVms(w http.ResponseWriter, r *http.Request, params api.ListVmsParams) {
+	p := principal(r)
+	after, err := cursorOf(params.Cursor)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	f := store.VMFilter{Projects: p.Projects(auth.ProjectSee), ProjectID: deref(params.ProjectId),
+		Environments: derefAll(params.Environment), VCenter: deref(params.Vcenter), Cluster: deref(params.Cluster),
+		Network: deref(params.Network), Search: deref(params.Q), Limit: limitOf(params.Limit), After: after}
+	if params.Sort != nil {
+		f.Sort = string(*params.Sort)
+	}
+	for _, st := range derefAll(params.PowerState) {
+		f.PowerStates = append(f.PowerStates, string(st))
+	}
+	out := api.VmPage{Items: []api.VmListItem{}}
+	if f.Projects != nil && len(f.Projects) == 0 {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	page, err := s.Store.ListVMs(r.Context(), f)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	links, err := s.Store.VCenterLinks(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, v := range page.Items {
+		if item, ok := present.VMListItem(v, links); ok {
+			out.Items = append(out.Items, item)
+		}
+	}
+	out.NextCursor = nextCursor(page.Next)
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) GetVmFacets(w http.ResponseWriter, r *http.Request, params api.GetVmFacetsParams) {
+	projects := principal(r).Projects(auth.ProjectSee)
+	out := api.VmFacets{Networks: []string{}}
+	out.Vcenters = []struct {
+		Clusters []string `json:"clusters"`
+		Name     string   `json:"name"`
+	}{}
+	if projects != nil && len(projects) == 0 {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	f, err := s.Store.VMFacets(r.Context(), projects, deref(params.ProjectId))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, name := range slices.Sorted(maps.Keys(f.Clusters)) {
+		out.Vcenters = append(out.Vcenters, struct {
+			Clusters []string `json:"clusters"`
+			Name     string   `json:"name"`
+		}{Clusters: f.Clusters[name], Name: name})
+	}
+	out.Networks = f.Networks
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) ListSavedViews(w http.ResponseWriter, r *http.Request, params api.ListSavedViewsParams) {
+	items, err := s.Core.SavedViews(r.Context(), principal(r), params.List)
+	s.reply(w, r, http.StatusOK, api.SavedViewList{Items: items}, err)
+}
+
+func (s *Server) CreateSavedView(w http.ResponseWriter, r *http.Request) {
+	var b api.SavedViewWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	v, err := s.Core.SaveView(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, v, err)
+}
+
+func (s *Server) UpdateSavedView(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	var b api.SavedViewWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	v, err := s.Core.SaveView(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, v, err)
+}
+
+func (s *Server) DeleteSavedView(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	s.replyEmpty(w, r, s.Core.DeleteSavedView(r.Context(), principal(r), id))
 }
 
 func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymentID string) {

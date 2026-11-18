@@ -422,6 +422,75 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /me/views:
+    get:
+      tags: [deployments]
+      operationId: listSavedViews
+      summary: The caller's saved views of a list, by name
+      description: |
+        A saved view is a list's filters, sort and layout under a name: the
+        query of the list's address. It is only the caller's; to share one,
+        share its address, which shows each person what they may see.
+      parameters:
+        - name: list
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/ViewList" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedViewList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [deployments]
+      operationId: createSavedView
+      summary: Save a list's filters, sort and layout under a name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedViewWrite" }
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/views/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [deployments]
+      operationId: updateSavedView
+      summary: Rename a saved view, or save the list's current query in it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedViewWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [deployments]
+      operationId: deleteSavedView
+      summary: Delete a saved view
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /environments:
     get:
       tags: [projects]
@@ -1000,15 +1069,23 @@ paths:
       tags: [deployments]
       operationId: listDeployments
       summary: Deployments visible to the caller
+      description: |
+        Without `project_id`, the deployments of every project the caller
+        sees (`project.see`). Filters with several values match any of them;
+        different filters must all match. Deleted deployments are left out
+        unless `status` names `deleted`.
       parameters:
-        - { $ref: "#/components/parameters/ProjectIdQuery" }
+        - name: project_id
+          in: query
+          description: One project's deployments. Omit it for every project the caller sees.
+          schema: { type: string }
         - name: status
           in: query
           style: form
           explode: false
           schema:
             type: array
-            items: { $ref: "#/components/schemas/DeploymentStatus" }
+            items: { $ref: "#/components/schemas/DeploymentStatusFilter" }
         - name: environment
           in: query
           style: form
@@ -1016,6 +1093,24 @@ paths:
           schema:
             type: array
             items: { $ref: "#/components/schemas/EnvironmentKey" }
+        - name: item
+          in: query
+          description: Catalog items, by ID or slug.
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 20
+            items: { type: string }
+        - name: template
+          in: query
+          description: "VM templates, by name in vCenter (a VM's `template`): deployments with a VM cloned from one."
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 20
+            items: { type: string }
         - name: owner
           in: query
           description: "`me`, or a user ID."
@@ -1023,12 +1118,24 @@ paths:
         - name: lease_expires_before
           in: query
           schema: { type: string, format: date-time }
-        - { $ref: "#/components/parameters/Search" }
+        - name: q
+          in: query
+          description: Part of the deployment's name, its owner's name, or a VM's name, address or FQDN.
+          schema: { type: string, maxLength: 200 }
         - name: sort
           in: query
+          description: |
+            A field, descending with a leading `-`. `owner`, `item` and
+            `project` sort by name; a deployment with no lease sorts after
+            every lease end. Ties are broken by name.
           schema:
             type: string
-            enum: [name, -name, created_at, -created_at, lease_expires_at, -lease_expires_at]
+            enum: [name, -name, created_at, -created_at, lease_expires_at, -lease_expires_at, status, -status,
+              environment, -environment, owner, -owner, item, -item, project, -project, vm_count, -vm_count]
+            x-enum-varnames: [Name, MinusName, CreatedAt, MinusCreatedAt, LeaseExpiresAt, MinusLeaseExpiresAt,
+              DeploymentSortStatus, DeploymentSortMinusStatus, DeploymentSortEnvironment, DeploymentSortMinusEnvironment,
+              DeploymentSortOwner, DeploymentSortMinusOwner, DeploymentSortItem, DeploymentSortMinusItem,
+              DeploymentSortProject, DeploymentSortMinusProject, DeploymentSortVmCount, DeploymentSortMinusVmCount]
             default: name
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Cursor" }
@@ -1038,6 +1145,107 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DeploymentPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /deployments/facets:
+    get:
+      tags: [deployments]
+      operationId: getDeploymentFacets
+      summary: The values the caller's deployments have, to filter them by
+      description: |
+        The catalog items, VM templates and environments of the deployments
+        `listDeployments` would list with this `project_id`, deleted ones
+        left out: a filter offers only what matches something.
+      parameters:
+        - name: project_id
+          in: query
+          description: One project's deployments. Omit it for every project the caller sees.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentFacets" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /resources/vms:
+    get:
+      tags: [deployments]
+      operationId: listVms
+      summary: The VMs of the deployments the caller sees, across deployments
+      description: |
+        Each VM of a deployment that isn't deleted, in the projects the
+        caller sees (`project.see`), with its deployment, project and
+        environment. Its disks and network adapters are in `vm`. Filters
+        with several values match any of them; different filters must all
+        match.
+      parameters:
+        - name: project_id
+          in: query
+          description: One project's VMs. Omit it for every project the caller sees.
+          schema: { type: string }
+        - name: environment
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/EnvironmentKey" }
+        - name: power_state
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/VmPowerState" }
+        - { name: vcenter, in: query, description: Its vCenter's name., schema: { type: string } }
+        - { name: cluster, in: query, description: Its cluster's name., schema: { type: string } }
+        - name: network
+          in: query
+          description: A network (port group) one of its adapters is on.
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Part of the VM's name or FQDN, or of one of its addresses.
+          schema: { type: string, maxLength: 200 }
+        - name: sort
+          in: query
+          description: A field, descending with a leading `-`. `deployment` and `project` sort by name; ties are broken by name.
+          schema:
+            type: string
+            enum: [name, -name, deployment, -deployment, project, -project, environment, -environment,
+              power_state, -power_state, cpu_count, -cpu_count, memory_mb, -memory_mb, disk_gb, -disk_gb]
+            x-enum-varnames: [VmSortName, VmSortMinusName, VmSortDeployment, VmSortMinusDeployment, VmSortProject,
+              VmSortMinusProject, VmSortEnvironment, VmSortMinusEnvironment, VmSortPowerState, VmSortMinusPowerState,
+              VmSortCpuCount, VmSortMinusCpuCount, VmSortMemoryMb, VmSortMinusMemoryMb, VmSortDiskGb, VmSortMinusDiskGb]
+            default: name
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VmPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /resources/vms/facets:
+    get:
+      tags: [deployments]
+      operationId: getVmFacets
+      summary: The vCenters, clusters and networks of the caller's VMs, to filter them by
+      parameters:
+        - name: project_id
+          in: query
+          description: One project's VMs. Omit it for every project the caller sees.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VmFacets" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /deployments/{deploymentId}:
@@ -2101,7 +2309,9 @@ paths:
         Everyone who has signed in at least once (or was seeded). Any signed-in
         user may search: approvers delegate to people outside their projects.
         By name; someone the identity provider gave a new subject has a record
-        per subject, and the one seen last comes first.
+        per subject, and the one seen last comes first. `q` matches part of
+        a name or email, or a whole user ID, so a page that holds an ID in
+        its address can name the person.
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - { $ref: "#/components/parameters/Limit" }
@@ -6456,6 +6666,125 @@ components:
     DeploymentStatus:
       type: string
       enum: [provisioning, ready, updating, failed, deleting, deleted]
+
+    DeploymentStatusFilter:
+      type: string
+      description: |
+        A deployment status, or `expired`: its lease has ended (its VMs are
+        powered off and it waits for deletion), whatever its status.
+      enum: [provisioning, ready, updating, failed, deleting, deleted, expired]
+
+    DeploymentFacets:
+      type: object
+      required: [items, templates, environments]
+      properties:
+        items:
+          type: array
+          description: Catalog items, by name.
+          items:
+            type: object
+            required: [id, slug, name]
+            properties:
+              id: { type: string }
+              slug: { type: string }
+              name: { type: string }
+        templates:
+          type: array
+          description: The VM templates their VMs were cloned from, by name.
+          items: { type: string }
+        environments:
+          type: array
+          items: { $ref: "#/components/schemas/EnvironmentKey" }
+
+    VmListItem:
+      allOf:
+        - $ref: "#/components/schemas/VmResource"
+        - type: object
+          required: [deployment, project, environment, addresses]
+          properties:
+            deployment:
+              type: object
+              required: [id, name, status]
+              properties:
+                id: { type: string }
+                name: { type: string }
+                status: { $ref: "#/components/schemas/DeploymentStatus" }
+            project: { $ref: "#/components/schemas/ProjectRef" }
+            environment: { $ref: "#/components/schemas/EnvironmentKey" }
+            addresses:
+              type: array
+              description: |
+                Its IPv4 and IPv6 addresses, each once: those rvav reserved
+                for it first, then those VMware Tools reports.
+              items: { type: string }
+
+    VmPage:
+      allOf:
+        - $ref: "#/components/schemas/PageInfo"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/VmListItem" }
+
+    VmFacets:
+      type: object
+      required: [vcenters, networks]
+      properties:
+        vcenters:
+          type: array
+          description: The vCenters the VMs run in, by name, each with its clusters.
+          items:
+            type: object
+            required: [name, clusters]
+            properties:
+              name: { type: string }
+              clusters:
+                type: array
+                items: { type: string }
+        networks:
+          type: array
+          description: The networks their adapters are on, by name.
+          items: { type: string }
+
+    ViewList:
+      type: string
+      description: The list a saved view is of.
+      enum: [deployments, resources]
+      x-enum-varnames: [ViewListDeployments, ViewListResources]
+
+    SavedViewWrite:
+      type: object
+      required: [list, name, query]
+      properties:
+        list: { $ref: "#/components/schemas/ViewList" }
+        name: { type: string, minLength: 1, maxLength: 60 }
+        query:
+          type: object
+          description: |
+            The list's address query, such as `{"status": "failed", "sort":
+            "-lease_expires_at"}`: the page reads it back as its own.
+          maxProperties: 20
+          additionalProperties: { type: string, maxLength: 400 }
+
+    SavedView:
+      allOf:
+        - $ref: "#/components/schemas/SavedViewWrite"
+        - type: object
+          required: [id, created_at, updated_at]
+          properties:
+            id: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    SavedViewList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SavedView" }
 
     Deployment:
       type: object

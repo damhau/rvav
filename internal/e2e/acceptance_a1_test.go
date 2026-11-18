@@ -290,6 +290,9 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 
 	var draft api.SavedDraft
 	h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: vm.draft}, 201, &draft)
+	var view api.SavedView
+	h.json("POST", "/api/v1/me/views", "tnguyen", api.SavedViewWrite{List: api.ViewListDeployments, Name: "Production",
+		Query: map[string]string{"environment": "prd"}}, 201, &view)
 	var token api.ApiTokenCreated
 	h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "Thomas's pipeline"}, 201, &token)
 	h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "a1-token", Kind: api.SecretWriteKindToken, Value: new("x")}, 201, nil)
@@ -325,6 +328,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 
 	return map[string]string{
 		"drafts/{id}":                draft.Id,
+		"views/{id}":                 view.Id,
 		"projects/{projectId}":       "prj_web",
 		"items/{itemId}":             "rhel9-server",
 		"requests/{requestId}":       vm.h.firstRequest(vm.id),
@@ -396,6 +400,7 @@ var (
 	a1Own = map[string]bool{
 		"markNotificationsRead": true, "setNotificationPreferences": true, "testNotificationChannel": true,
 		"addFavourite": true, "removeFavourite": true, "createApiToken": true, "changePassword": true, "signOut": true,
+		"createSavedView": true,
 	}
 	a1Reads = map[string]bool{"resolveFieldValues": true, "previewRequest": true, "explainPolicies": true}
 )
@@ -576,8 +581,9 @@ func (w a1Walk) compare() {
 			if cc < 400 {
 				t.Errorf("%s with no credential of its own = %d %s", o, cc, cb)
 			}
-		case cc == http.StatusNotFound && slices.Contains([]string{"updateRequestDraft", "deleteRequestDraft", "revokeApiToken"}, o.id):
-			// Someone else's draft or token: an auditor doesn't see them.
+		case cc == http.StatusNotFound && slices.Contains([]string{"updateRequestDraft", "deleteRequestDraft", "revokeApiToken",
+			"updateSavedView", "deleteSavedView"}, o.id):
+			// Someone else's draft, token or view: an auditor doesn't see them.
 		case cc == http.StatusUnprocessableEntity && slices.Contains([]string{"createRequestDraft", "updateRequestDraft"}, o.id) &&
 			strings.Contains(cb, `"field":"/draft/project_id"`) && strings.Count(cb, `"field"`) == 1:
 			// A draft is refused, as the request would be, for a project one doesn't request in.
@@ -610,7 +616,9 @@ func (w a1Walk) compare() {
 		cc, cb := w.call(o, w.custom.login, w.body(o))
 		switch o.id {
 		case "createApiToken":
-			b, cb = w.withoutToken(b), w.withoutToken(cb)
+			b, cb = w.without(b, "id", "token", "created_at"), w.without(cb, "id", "token", "created_at")
+		case "createSavedView":
+			b, cb = w.without(b, "id", "created_at", "updated_at"), w.without(cb, "id", "created_at", "updated_at")
 		case "explainPolicies":
 			// Day-2 policies may name a custom role (ADR-0034), so the
 			// explanation lists it among the caller's roles here; they
@@ -644,6 +652,8 @@ func (w a1Walk) body(o a1Op) any {
 		return w.draft
 	case "createRequestDraft", "updateRequestDraft":
 		return api.SavedDraftWrite{Draft: w.draft}
+	case "createSavedView", "updateSavedView":
+		return api.SavedViewWrite{List: api.ViewListDeployments, Name: "Expired", Query: map[string]string{"status": "expired"}}
 	case "runDeploymentAction":
 		return api.Day2Draft{Action: "power_off", ResourceId: new(w.ids["resources/{resourceId}"]), Inputs: map[string]any{}}
 	}
@@ -683,12 +693,13 @@ func (w a1Walk) withoutFailedSignIns(body string) string {
 	return string(b)
 }
 
-func (w a1Walk) withoutToken(body string) string {
+// without is a JSON object without the keys that differ each time it is made.
+func (w a1Walk) without(body string, keys ...string) string {
 	var made map[string]any
 	if json.Unmarshal([]byte(body), &made) != nil {
 		return body
 	}
-	for _, k := range []string{"id", "token", "created_at"} {
+	for _, k := range keys {
 		delete(made, k)
 	}
 	b, _ := json.Marshal(made)

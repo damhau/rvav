@@ -496,6 +496,34 @@ func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resourc
 	return out, false
 }
 
+// VMListItem is a VM of the Resources list, with its deployment, project
+// and addresses: the ones reserved for it, then the ones it reports.
+func VMListItem(v store.VMRow, links map[string]store.VCenterLink) (api.VmListItem, bool) {
+	res, ok := Resource(v.Resource, links)
+	if !ok {
+		return api.VmListItem{}, false
+	}
+	vr, err := res.AsVmResource()
+	if err != nil {
+		return api.VmListItem{}, false
+	}
+	out := api.VmListItem{Id: vr.Id, Name: vr.Name, SyncState: vr.SyncState, Type: "vsphere.vm", Vm: vr.Vm, Drift: vr.Drift,
+		Environment: v.Environment, Project: ProjectRef(v.ProjectID, v.ProjectCode, v.ProjectName), Addresses: []string{}}
+	out.Deployment.Id, out.Deployment.Name, out.Deployment.Status = v.DeploymentID, v.DeploymentName, api.DeploymentStatus(v.DeploymentStatus)
+	reported := []string{}
+	for _, n := range vr.Vm.Nics {
+		if n.IpAddresses != nil {
+			reported = append(reported, *n.IpAddresses...)
+		}
+	}
+	for _, a := range append(slices.Clone(v.Reserved), reported...) {
+		if a != "" && !slices.Contains(out.Addresses, a) {
+			out.Addresses = append(out.Addresses, a)
+		}
+	}
+	return out, true
+}
+
 // actionName is a day-2 request's action name as it was asked for, from
 // its plan (older plans don't have it: the catalogue's name then).
 func actionName(r store.RequestRow) string {

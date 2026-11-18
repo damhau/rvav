@@ -268,13 +268,13 @@ func (s *Store) DeleteEnvironment(ctx context.Context, key string) error {
 	})
 }
 
-// SearchUsers finds users by name or email, by name: people, not the users
+// SearchUsers finds users by name, email or ID, by name: people, not the users
 // rvav acts as itself (system:). Someone the identity provider gave a new
 // subject has a record per subject, which nothing else tells apart: the one
 // seen last comes first.
 func (s *Store) SearchUsers(ctx context.Context, q string, limit int) ([]User, error) {
 	rows, _ := s.Pool.Query(ctx, `select id, subject, name, email, title, global_roles from users
-		where ($1 = '' or name ilike '%' || $1 || '%' or email ilike '%' || $1 || '%') and subject not like 'system:%'
+		where ($1 = '' or name ilike '%' || $1 || '%' or email ilike '%' || $1 || '%' or id = $1) and subject not like 'system:%'
 		order by name, last_seen_at desc nulls last, id limit $2`, q, limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[User])
 }
