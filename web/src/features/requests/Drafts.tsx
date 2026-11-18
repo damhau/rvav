@@ -33,7 +33,7 @@ export function Drafts() {
                 {d.on_behalf_of ? ` · for ${d.on_behalf_of.name}` : ""} · saved <Time iso={d.updated_at} />
               </span>
             </div>
-            <Button size="sm" variant="primary" asChild>
+            <Button size="sm" asChild>
               <Link to="/catalog/$itemId/request" params={{ itemId: d.catalog_item.slug }} search={{ draft: d.id }}>
                 Resume
               </Link>

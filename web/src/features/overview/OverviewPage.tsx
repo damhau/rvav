@@ -16,6 +16,7 @@ import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
 import { leaseLabel, roughDuration } from "@/lib/utils";
+import { versionLabel } from "@/features/catalog/facts";
 import { ProgressSegments } from "@/features/requests/ProgressBar";
 
 const quotaLabel: Record<QuotaResource, [string, string]> = {
@@ -188,10 +189,10 @@ function OpenRequests() {
         <EmptyState
           icon={Inbox}
           title="No open requests"
-          body="Requests that are running or waiting for approval appear here."
+          body="Requests that are running or waiting for approval show here, with the step they are at."
           action={
             <Button size="sm" asChild>
-              <Link to="/catalog">Browse the catalog</Link>
+              <Link to="/catalog">Request something from the catalog</Link>
             </Button>
           }
         />
@@ -234,7 +235,15 @@ function Favourites() {
   const { projectId } = useCurrentProject();
   const favs = useQuery(q.catalog({ projectId, favourite: true }));
   return (
-    <Panel title="Your favourites" flush>
+    <Panel
+      title="Your favourites"
+      flush
+      actions={
+        <Button size="sm" variant="quiet" asChild>
+          <Link to="/catalog">Catalog</Link>
+        </Button>
+      }
+    >
       {favs.isPending ? (
         <SkeletonRows rows={3} cols={1} />
       ) : favs.isError ? (
@@ -243,10 +252,10 @@ function Favourites() {
         <EmptyState
           icon={Star}
           title="No favourites yet"
-          body="Star items in the catalog to request them again from here."
+          body="Star the items you use often in the catalog, to request them again from here."
           action={
             <Button size="sm" asChild>
-              <Link to="/catalog">Browse the catalog</Link>
+              <Link to="/catalog">Open the catalog</Link>
             </Button>
           }
         />
@@ -259,11 +268,11 @@ function Favourites() {
                 params={{ itemId: i.slug }}
                 className="flex items-center gap-2.5 px-4 py-2 text-fg hover:bg-sunken"
               >
-                <ItemIcon name={i.icon} className="size-7" />
+                <ItemIcon name={i.icon} type={i.type} className="size-7" />
                 <span className="min-w-0">
                   <span className="block font-medium">{i.name}</span>
-                  <span className="text-caption text-faint">
-                    {itemTypeLabel[i.type]} · {i.version.number}
+                  <span className="text-caption text-muted">
+                    {itemTypeLabel[i.type]} · {versionLabel(i)}
                     {i.typical_duration_seconds ? ` · ${roughDuration(i.typical_duration_seconds)}` : ""}
                   </span>
                 </span>
@@ -308,6 +317,7 @@ export function OverviewPage() {
     <Page>
       <PageHeader
         title="Overview"
+        description="What needs you, what is running, and what you have left to use."
         meta={
           deployments.data ? (
             <span className="flex items-center gap-1.5">
@@ -331,11 +341,12 @@ export function OverviewPage() {
       <SetupNotice />
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
-          <Panel title="Needs your attention" flush>
+          <Panel title="Needs your attention" description="Failed requests, approvals and leases that end soon" flush>
             <Attention />
           </Panel>
           <Panel
             title="Open requests"
+            description="Running, scheduled or waiting for approval"
             flush
             actions={
               <Button size="sm" variant="quiet" asChild>

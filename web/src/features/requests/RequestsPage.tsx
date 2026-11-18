@@ -1,44 +1,100 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Inbox, Plus, SearchX } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import type { RequestStatus } from "@/lib/api/types";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
+import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { cn } from "@/lib/utils";
 import { Drafts } from "./Drafts";
 import { ProgressSegments } from "./ProgressBar";
 
+export const requestFilters = ["open", "pending_approval", "failed", "succeeded"] as const;
+
 export interface RequestsSearch {
-  status?: string;
+  status?: (typeof requestFilters)[number];
   mine?: boolean;
   q?: string;
 }
 
-const filters: { key: string; label: string; statuses?: RequestStatus[] }[] = [
-  { key: "all", label: "All" },
-  { key: "open", label: "Open", statuses: ["pending_approval", "scheduled", "queued", "running", "cancelling"] },
-  { key: "pending_approval", label: "Awaiting approval", statuses: ["pending_approval"] },
-  { key: "failed", label: "Failed", statuses: ["failed"] },
-  { key: "succeeded", label: "Succeeded", statuses: ["succeeded"] },
+const statuses: Record<(typeof requestFilters)[number], { label: string; statuses: RequestStatus[] }> = {
+  open: { label: "Open", statuses: ["pending_approval", "scheduled", "queued", "running", "cancelling"] },
+  pending_approval: { label: "Awaiting approval", statuses: ["pending_approval"] },
+  failed: { label: "Failed", statuses: ["failed"] },
+  succeeded: { label: "Succeeded", statuses: ["succeeded"] },
+};
+
+const columns: Column<ServiceRequest>[] = [
+  {
+    id: "request",
+    header: "Request",
+    sortValue: (r) => r.title,
+    cell: (r) => (
+      <div className="flex min-w-0 flex-col">
+        <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium text-fg">
+          {r.title}
+        </Link>
+        <span className="font-mono text-caption text-muted">{r.number}</span>
+      </div>
+    ),
+  },
+  { id: "status", header: "Status", sortValue: (r) => r.status, cell: (r) => <RequestStatusBadge status={r.status} /> },
+  { id: "env", header: "Environment", sortValue: (r) => r.environment, cell: (r) => <EnvBadge env={r.environment} /> },
+  {
+    id: "step",
+    header: "Step",
+    cell: (r) => (
+      <div className="flex flex-col gap-1">
+        <span className="text-muted">
+          {r.current_step?.title ??
+            (r.status === "failed" ? r.error?.message : `${r.progress.done} of ${r.progress.total} steps`)}
+        </span>
+        {(r.status === "running" || r.status === "cancelling") && <ProgressSegments request={r} />}
+      </div>
+    ),
+  },
+  {
+    id: "requester",
+    header: "Requested by",
+    sortValue: (r) => r.requester.name,
+    className: "whitespace-nowrap text-muted",
+    cell: (r) => r.requester.name,
+  },
+  {
+    id: "submitted",
+    header: "Submitted",
+    align: "end",
+    sortValue: (r) => r.submitted_at,
+    className: "whitespace-nowrap text-muted",
+    cell: (r) => <Time iso={r.submitted_at} />,
+  },
 ];
 
 export function RequestsPage({ search }: { search: RequestsSearch }) {
   const { projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/requests/" });
   const [text, setText] = useState(search.q ?? "");
-  const active = filters.find((f) => f.key === (search.status ?? "all")) ?? filters[0]!;
   const list = useInfiniteQuery(
-    q.requests({ projectId, status: active.statuses, requester: search.mine ? "me" : undefined, q: search.q }),
+    q.requests({
+      projectId,
+      status: search.status ? statuses[search.status].statuses : undefined,
+      requester: search.mine ? "me" : undefined,
+      q: search.q,
+    }),
   );
+  const filtered = Boolean(search.status || search.mine || search.q);
 
+  // Keep the URL in step with the search box, without a history entry per keystroke.
   useEffect(() => {
     const t = setTimeout(() => {
       const next = text.trim() || undefined;
@@ -47,133 +103,106 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
     return () => clearTimeout(t);
   }, [text, search.q, navigate]);
 
-  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  const set = (patch: Partial<RequestsSearch>) =>
+    void navigate({ search: (s: RequestsSearch) => ({ ...s, ...patch }), replace: true });
+  const clear = () => {
+    setText("");
+    void navigate({ search: {}, replace: true });
+  };
+
   return (
     <Page>
-      <PageHeader title="Requests" meta={`Everything requested in ${project.name}, newest first.`} />
-      <Drafts />
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="requests-search" className="sr-only">
-          Filter requests
-        </label>
-        <Input
-          id="requests-search"
-          type="search"
-          placeholder="Number, title or person"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="w-64 max-w-full"
-        />
-        <div role="group" aria-label="Status" className="flex flex-wrap gap-1.5">
-          {filters.map((f) => (
-            <Link
-              key={f.key}
-              to="/requests"
-              search={(s: RequestsSearch) => ({ ...s, status: f.key === "all" ? undefined : f.key })}
-              aria-current={f.key === active.key ? "true" : undefined}
-              className={cn(
-                "inline-flex h-7 items-center rounded-full border px-2.5",
-                f.key === active.key
-                  ? "border-fg bg-fg text-bg hover:text-bg"
-                  : "border-line bg-surface text-muted hover:border-line-strong hover:text-fg",
-              )}
-            >
-              {f.label}
+      <PageHeader
+        title="Requests"
+        description={`Everything requested in ${project.name}, newest first.`}
+        actions={
+          <Button variant="primary" asChild>
+            <Link to="/catalog">
+              <Plus /> New request
             </Link>
-          ))}
-        </div>
-        <label className="ml-auto flex items-center gap-2 text-secondary text-muted">
-          <input
-            type="checkbox"
-            checked={Boolean(search.mine)}
-            onChange={(e) =>
-              void navigate({ search: (s: RequestsSearch) => ({ ...s, mine: e.target.checked || undefined }) })
-            }
-            className="size-3.5 accent-[var(--accent)]"
-          />
-          Only mine
-        </label>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        {list.isPending ? (
-          <SkeletonRows rows={6} cols={5} />
-        ) : list.isError ? (
-          <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-        ) : items.length === 0 ? (
-          <EmptyState
-            title="No requests match"
-            body="Clear the search or choose “All” to see every request in this project."
-          />
-        ) : (
-          <table className="w-full min-w-[880px] border-collapse">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className="border-b border-line px-4 py-2.5 font-medium">
-                  Request
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Env
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Step
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Requested by
-                </th>
-                <th scope="col" className="border-b border-line px-4 py-2.5 text-right font-medium">
-                  Submitted
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <tr key={r.id} className="hover:bg-sunken">
-                  <td className="border-b border-line px-4 py-2.5">
-                    <Link
-                      to="/requests/$requestId"
-                      params={{ requestId: r.number }}
-                      className="font-medium text-fg hover:text-accent"
-                    >
-                      {r.title}
-                    </Link>
-                    <div className="font-mono text-caption text-faint">{r.number}</div>
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5">
-                    <RequestStatusBadge status={r.status} />
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5">
-                    <EnvBadge env={r.environment} />
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted">
-                        {r.current_step?.title ??
-                          (r.status === "failed"
-                            ? r.error?.message
-                            : `${r.progress.done} of ${r.progress.total} steps`)}
-                      </span>
-                      {(r.status === "running" || r.status === "cancelling") && <ProgressSegments request={r} />}
-                    </div>
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5 whitespace-nowrap text-muted">{r.requester.name}</td>
-                  <td className="border-b border-line px-4 py-2.5 text-right text-muted">
-                    <Time iso={r.submitted_at} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {list.hasNextPage && (
-        <Button className="self-start" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-          {list.isFetchingNextPage ? "Loading…" : "Load more"}
-        </Button>
-      )}
+          </Button>
+        }
+      />
+      <Drafts />
+      <Panel
+        flush
+        footer={
+          list.hasNextPage && (
+            <Button size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
+              {list.isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          )
+        }
+      >
+        <DataTable
+          label="Requests"
+          columns={columns}
+          rows={list.data?.pages.flatMap((p) => p.items)}
+          rowKey={(r) => r.id}
+          rowLinks
+          minWidth={880}
+          loading={list.isPending}
+          error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
+          toolbar={
+            <>
+              <TableSearch
+                label="Search requests"
+                placeholder="Number, title or person"
+                value={text}
+                onChange={setText}
+              />
+              <Select
+                aria-label="Status"
+                value={search.status ?? "any"}
+                onChange={(v) => set({ status: v === "any" ? undefined : (v as RequestsSearch["status"]) })}
+                options={[
+                  { value: "any", label: "All statuses" },
+                  ...requestFilters.map((k) => ({ value: k, label: statuses[k].label })),
+                ]}
+                className="w-48"
+              />
+              <span className="flex items-center gap-2 text-body">
+                <Checkbox
+                  id="requests-mine"
+                  checked={Boolean(search.mine)}
+                  onChange={(v) => set({ mine: v || undefined })}
+                />
+                <label htmlFor="requests-mine">Only mine</label>
+              </span>
+              {filtered && (
+                <Button variant="quiet" onClick={clear}>
+                  Clear filters
+                </Button>
+              )}
+            </>
+          }
+          empty={
+            filtered ? (
+              <EmptyState
+                icon={SearchX}
+                title="No requests match"
+                body="Try other words, or another status."
+                action={
+                  <Button size="sm" onClick={clear}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Inbox}
+                title={`Nothing requested in ${project.name} yet`}
+                body="Requests show here from the moment they are submitted, with each step as it runs."
+                action={
+                  <Button size="sm" asChild>
+                    <Link to="/catalog">Request something from the catalog</Link>
+                  </Button>
+                }
+              />
+            )
+          }
+        />
+      </Panel>
     </Page>
   );
 }
