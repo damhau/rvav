@@ -2,24 +2,29 @@
 // those administrators add, each with its account (the password sealed),
 // synced and placed like the first.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleX } from "lucide-react";
-import { useState } from "react";
+import { CircleCheck, CircleX, Server } from "lucide-react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Panel } from "@/components/ui/panel";
+import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
+import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
+import { fullDate, relative } from "@/lib/utils";
 import { failed, fieldErrors } from "./governance/common";
 import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
+type VCenter = S["VCenter"];
 
 function TestResult({ test }: { test: S["IntegrationTest"] }) {
   return (
@@ -44,8 +49,9 @@ function TestResult({ test }: { test: S["IntegrationTest"] }) {
   );
 }
 
-function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void }) {
+function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
   const qc = useQueryClient();
+  const formId = useId();
   const [f, setFNow] = useState({
     name: vc?.name ?? "",
     url: vc?.url ?? "",
@@ -91,112 +97,164 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
     test.reset();
   };
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={vc ? `Change ${vc.name}` : "Add a vCenter"} className="w-[min(560px,calc(100vw-32px))]">
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={vc ? `Change ${vc.name}` : "Add a vCenter"}
+      description="rvav syncs its inventory and builds VMs in it with this account."
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+            {test.isPending ? "Testing…" : "Test connection"}
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
+            {save.isPending ? "Saving…" : "Save vCenter"}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setErrors({});
+          save.mutate();
+        }}
+      >
+        <Field
+          label="Name"
+          htmlFor="vc-name"
+          hint={vc ? "Fixed once added" : "How rvav calls it: placement rules and VMs name it"}
+          error={errors["/name"]}
         >
+          <Input
+            id="vc-name"
+            className="font-mono text-secondary"
+            disabled={Boolean(vc)}
+            placeholder="vc02.corp.example"
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+          />
+        </Field>
+        <Field label="SDK address" htmlFor="vc-url" error={errors["/url"]}>
+          <Input
+            id="vc-url"
+            className="font-mono text-secondary"
+            placeholder="https://vc02.corp.example/sdk"
+            value={f.url}
+            onChange={(e) => setF({ ...f, url: e.target.value })}
+          />
+        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Account" htmlFor="vc-user" error={errors["/username"]}>
+            <Input id="vc-user" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
+          </Field>
           <Field
-            label="Name"
-            htmlFor="vc-name"
-            hint="How rvav calls it: placement rules and VMs name it"
-            error={errors["/name"]}
+            label="Password"
+            htmlFor="vc-password"
+            error={errors["/password"]}
+            hint={vc?.password_set ? "Set; type a new one to replace it" : undefined}
           >
             <Input
-              id="vc-name"
-              className="font-mono text-secondary"
-              disabled={Boolean(vc)}
-              placeholder="vc02.corp.example"
-              value={f.name}
-              onChange={(e) => setF({ ...f, name: e.target.value })}
+              id="vc-password"
+              type="password"
+              autoComplete="new-password"
+              placeholder={vc?.password_set ? "••••••••" : undefined}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
-          <Field label="SDK address" htmlFor="vc-url" error={errors["/url"]}>
-            <Input
-              id="vc-url"
-              className="font-mono text-secondary"
-              placeholder="https://vc02.corp.example/sdk"
-              value={f.url}
-              onChange={(e) => setF({ ...f, url: e.target.value })}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Account" htmlFor="vc-user" error={errors["/username"]}>
-              <Input id="vc-user" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
-            </Field>
-            <Field
-              label="Password"
-              htmlFor="vc-password"
-              error={errors["/password"]}
-              hint={vc?.password_set ? "Set; type a new one to replace it" : undefined}
-            >
-              <Input
-                id="vc-password"
-                type="password"
-                autoComplete="new-password"
-                placeholder={vc?.password_set ? "••••••••" : undefined}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Field>
-          </div>
-          <Field
-            label="Trusted certificate (SHA-256)"
-            htmlFor="vc-pin"
-            error={errors["/cert_sha256"]}
-            hint="A self-signed one, trusted besides the CAs: Trust this certificate, after a test, sets it"
-          >
-            <Input
-              id="vc-pin"
-              className="font-mono text-secondary"
-              value={f.cert_sha256}
-              onChange={(e) => setF({ ...f, cert_sha256: e.target.value })}
-            />
-          </Field>
-          <label htmlFor="vc-insecure" className="flex items-center gap-1.5 text-body">
-            <Checkbox id="vc-insecure" checked={f.insecure} onChange={(on) => setF({ ...f, insecure: on })} />
-            Don't check its certificate
-          </label>
-          {test.data && <TestResult test={test.data} />}
-          {test.data?.certificate && (
-            <ServerCertificate
-              cert={test.data.certificate}
-              onTrust={(sha256) => {
-                // The settings change: test again with them.
-                setF({ ...f, cert_sha256: sha256, insecure: false });
-                toast.info("Its SHA-256 is in the form", { description: "Test again, then save the vCenter." });
-              }}
-            />
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
-              {test.isPending ? "Testing…" : "Test"}
-            </Button>
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save vCenter
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+        <Field
+          label="Trusted certificate (SHA-256)"
+          htmlFor="vc-pin"
+          error={errors["/cert_sha256"]}
+          hint="A self-signed one, trusted besides the CAs: Trust this certificate, after a test, sets it"
+        >
+          <Input
+            id="vc-pin"
+            className="font-mono text-secondary"
+            value={f.cert_sha256}
+            onChange={(e) => setF({ ...f, cert_sha256: e.target.value })}
+          />
+        </Field>
+        <label htmlFor="vc-insecure" className="flex items-center gap-1.5 text-body">
+          <Checkbox id="vc-insecure" checked={f.insecure} onChange={(on) => setF({ ...f, insecure: on })} />
+          Don't check its certificate
+        </label>
+        {test.data && <TestResult test={test.data} />}
+        {test.data?.certificate && (
+          <ServerCertificate
+            cert={test.data.certificate}
+            onTrust={(sha256) => {
+              // The settings change: test again with them.
+              setF({ ...f, cert_sha256: sha256, insecure: false });
+              toast.info("Its SHA-256 is in the form", { description: "Test again, then save the vCenter." });
+            }}
+          />
+        )}
+      </form>
+    </Sheet>
   );
 }
 
-const th = "border-b border-line px-4 py-2 font-medium";
-const td = "border-b border-line px-4 py-2 align-top";
+const columns: Column<VCenter>[] = [
+  {
+    id: "name",
+    header: "Name",
+    sortValue: (vc) => vc.name,
+    cell: (vc) => (
+      <>
+        <span className="font-mono text-secondary">{vc.name}</span>
+        {vc.primary && (
+          <Badge tone="neutral" className="ml-2">
+            The connection above
+          </Badge>
+        )}
+      </>
+    ),
+  },
+  {
+    id: "address",
+    header: "Address and account",
+    cell: (vc) => (
+      <>
+        <div className="font-mono text-secondary">{vc.url}</div>
+        <div className="text-secondary text-muted">
+          {vc.username || "no account"}
+          {vc.insecure ? " · certificate not checked" : vc.cert_sha256 ? " · certificate pinned" : ""}
+        </div>
+      </>
+    ),
+  },
+  {
+    id: "inventory",
+    header: "Inventory",
+    cell: (vc) =>
+      vc.inventory ? (
+        <span className="text-secondary">
+          {vc.inventory.clusters ?? 0} clusters, {vc.inventory.vms ?? 0} VMs
+          {vc.inventory.synced_at && (
+            <span className="block text-muted" title={fullDate(vc.inventory.synced_at)}>
+              Synced {relative(vc.inventory.synced_at)}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span className="text-secondary text-muted">Not synced yet</span>
+      ),
+  },
+];
 
 export function VCenters() {
   const qc = useQueryClient();
   const list = useQuery(adm.vcenters());
-  const [editing, setEditing] = useState<S["VCenter"] | "new" | null>(null);
+  const [editing, setEditing] = useState<VCenter | "new" | null>(null);
+  const [removing, setRemoving] = useState<VCenter | null>(null);
   const remove = useMutation({
     mutationFn: (name: string) => call(api.DELETE("/admin/vcenters/{name}", { params: { path: { name } } })),
     onSuccess: (_, name) => {
@@ -208,93 +266,55 @@ export function VCenters() {
   return (
     <Panel
       title="vCenters"
+      description="rvav syncs and builds in every vCenter here. A placement rule may name the one its clusters are in; a cluster name in two vCenters needs it."
       flush
       actions={
-        <Button size="sm" onClick={() => setEditing("new")}>
+        <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
           Add a vCenter
         </Button>
       }
     >
-      <p className="px-4 pt-3 text-secondary text-muted">
-        rvav syncs and builds in every vCenter here. A placement rule may name the one its clusters are in; a cluster
-        name in two vCenters needs it.
-      </p>
-      {list.isPending && <SkeletonRows rows={2} cols={4} />}
-      {list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
-      {list.data && list.data.items.length === 0 && (
-        <EmptyState title="No vCenter yet" body="Set the vCenter connection above, then add others here." />
+      <DataTable
+        label="vCenters"
+        columns={columns}
+        rows={list.data?.items}
+        rowKey={(vc) => vc.name}
+        minWidth={640}
+        loading={list.isPending}
+        error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Server}
+            title="No vCenter yet"
+            body="Set the vCenter connection above, then add others here."
+          />
+        }
+        rowMenuLabel={(vc) => `Actions for ${vc.name}`}
+        rowMenu={(vc) =>
+          vc.primary ? null : (
+            <>
+              <MenuItem onSelect={() => setEditing(vc)}>Change</MenuItem>
+              <MenuSeparator />
+              <MenuItem danger onSelect={() => setRemoving(vc)}>
+                Remove
+              </MenuItem>
+            </>
+          )
+        }
+      />
+      {editing && <VCenterSheet vc={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Stop managing ${removing.name}?`}
+          description="rvav stops syncing it and building in it, and forgets its inventory."
+          consequences="It is refused while a deployment has VMs there or a placement rule names it. Its VMs stay in vCenter."
+          confirmLabel="Stop managing it"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(removing.name, { onSuccess: () => setRemoving(null) })}
+        />
       )}
-      {list.data && list.data.items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={th}>
-                  Name
-                </th>
-                <th scope="col" className={th}>
-                  Address and account
-                </th>
-                <th scope="col" className={th}>
-                  Inventory
-                </th>
-                <th scope="col" className={`${th} text-right`}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.items.map((vc) => (
-                <tr key={vc.name}>
-                  <td className={`${td} font-mono text-secondary`}>
-                    {vc.name} {vc.primary && <Badge tone="neutral">The connection above</Badge>}
-                  </td>
-                  <td className={td}>
-                    <div className="font-mono text-secondary">{vc.url}</div>
-                    <div className="text-secondary text-faint">
-                      {vc.username || "no account"}
-                      {vc.insecure ? " · certificate not checked" : vc.cert_sha256 ? " · certificate pinned" : ""}
-                    </div>
-                  </td>
-                  <td className={`${td} text-secondary`}>
-                    {vc.inventory
-                      ? `${vc.inventory.clusters ?? 0} clusters, ${vc.inventory.vms ?? 0} VMs${
-                          vc.inventory.synced_at ? ` · ${new Date(vc.inventory.synced_at).toLocaleString()}` : ""
-                        }`
-                      : "Not synced yet"}
-                  </td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {!vc.primary && (
-                      <span className="inline-flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Change ${vc.name}`}
-                          onClick={() => setEditing(vc)}
-                        >
-                          Change
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Remove ${vc.name}`}
-                          onClick={() =>
-                            window.confirm(`Stop managing ${vc.name}? Its inventory is forgotten.`) &&
-                            remove.mutate(vc.name)
-                          }
-                        >
-                          Remove
-                        </Button>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {editing && <VCenterDialog vc={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
   );
 }

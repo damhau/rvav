@@ -473,14 +473,29 @@ test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => 
   await expect(add.getByText("Give the account's password.")).toBeVisible();
   await add.getByRole("textbox", { name: "SDK address" }).fill("https://vc02.corp.example/sdk");
   await add.getByLabel("Password").fill("s3cret");
-  await add.getByRole("button", { name: "Test" }).click();
+  await add.getByRole("button", { name: "Test connection" }).click();
   await expect(add.getByRole("list", { name: "Test" })).toContainText("Signed in to https://vc02.corp.example/sdk");
   await add.getByRole("button", { name: "Save vCenter" }).click();
+  await expect(add).toBeHidden();
   const row = vcenters.getByRole("row", { name: /vc02\.corp\.example/ });
   await expect(row).toContainText("svc-rvav@vsphere.local");
   await expect(row).toContainText("Not synced yet");
+  await expect(vcenters.getByRole("button", { name: "Actions for vc01.corp.example" })).toHaveCount(0);
 
-  page.once("dialog", (d) => void d.accept());
-  await vcenters.getByRole("button", { name: "Remove vc02.corp.example" }).click();
+  const menu = vcenters.getByRole("button", { name: "Actions for vc02.corp.example" });
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
+  const change = page.getByRole("dialog", { name: "Change vc02.corp.example" });
+  await expect(change.getByRole("textbox", { name: "Name" })).toBeDisabled();
+  await expect(change.getByRole("textbox", { name: "SDK address" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeFocused();
+
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Stop managing vc02.corp.example?" });
+  await expect(confirm).toContainText("Its VMs stay in vCenter.");
+  await confirm.getByRole("button", { name: "Stop managing it" }).click();
   await expect(row).toBeHidden();
+  await expect(page.getByText("vc02.corp.example removed")).toBeVisible();
 });

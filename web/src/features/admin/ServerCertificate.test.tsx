@@ -116,12 +116,12 @@ describe("server certificates", () => {
     await user.type(within(dialog).getByRole("textbox", { name: "SDK address" }), "https://vc-lab.corp.example/sdk");
     await user.type(within(dialog).getByRole("textbox", { name: "Account" }), "rvav");
     await user.type(within(dialog).getByLabelText("Password"), "pw");
-    await user.click(within(dialog).getByRole("button", { name: "Test" }));
+    await user.click(within(dialog).getByRole("button", { name: "Test connection" }));
     const cert = await within(dialog).findByRole("region", { name: "Server certificate" });
     await user.click(within(cert).getByRole("button", { name: "Trust this certificate" }));
     const pin = within(dialog).getByRole<HTMLInputElement>("textbox", { name: "Trusted certificate (SHA-256)" });
     expect(pin.value).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
-    await user.click(within(dialog).getByRole("button", { name: "Test" }));
+    await user.click(within(dialog).getByRole("button", { name: "Test connection" }));
     expect(await within(dialog).findByText(/pinned for this connection\./)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Save vCenter" }));
     expect((await screen.findAllByText(/· certificate pinned/)).length).toBeGreaterThan(0);
