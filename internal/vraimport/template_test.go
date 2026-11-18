@@ -56,8 +56,25 @@ func TestMapTemplates(t *testing.T) {
 		v.InitialValues["size"] != "small" {
 		t.Fatalf("size field = %+v, initial %v", size, v.InitialValues)
 	}
-	if !has(rhel, Warning, "resources.Cloud_vSphere_Machine_1.constraints", "env:${input.environment}") {
+	// Placed by its constraint tags (ADR-0035): the form asks for no
+	// cluster, datastore or network.
+	cons := bp["constraints"].(map[string]any)
+	if !slices.Equal(cons["compute"].([]any), []any{"env/${environment}", "!rvav-zone/pci"}) ||
+		!slices.Equal(cons["storage"].([]any), []any{"rvav-tier/gold:soft"}) || !slices.Equal(cons["network"].([]any), []any{"net/app"}) {
+		t.Fatalf("rhel constraints = %+v", cons)
+	}
+	for _, f := range []string{"cluster", "datastore", "network"} {
+		if _, ok := props[f]; ok || bp["bindings"].(map[string]any)[f] != nil {
+			t.Fatalf("rhel still asks for its %s: %+v, %+v", f, props, bp["bindings"])
+		}
+	}
+	if !has(rhel, Info, "resources.Cloud_vSphere_Machine_1.constraints", "Placed by its constraint tags") {
 		t.Fatalf("rhel notes = %+v", rhel.Notes)
+	}
+	for _, s := range v.UISchema["layout"].(map[string]any)["sections"].([]map[string]any) {
+		if s["key"] == "placement" {
+			t.Fatalf("rhel's form has a placement section: %+v", s)
+		}
 	}
 
 	win := ps["bp-win"]
@@ -72,6 +89,12 @@ func TestMapTemplates(t *testing.T) {
 	if app.Status != Partial || len(comps) != 2 || comps[1]["count"] != "inputs.webCount" ||
 		comps[0]["disks"].([]map[string]any)[0]["size_gb"] != 200 || !has(app, Unmapped, "resources.lb", "Cloud.NSX.LoadBalancer") {
 		t.Fatalf("app = %s %+v %+v", app.Status, comps, app.Notes)
+	}
+	// The database's disk has its own constraint; its network none, so the
+	// form still asks where the VMs go.
+	if d := comps[0]["disks"].([]map[string]any)[0]; !slices.Equal(d["constraints"].([]any), []any{"rvav-tier/gold"}) ||
+		comps[0]["bindings"].(map[string]any)["cluster"] != "inputs.cluster" || !has(app, Warning, "resources.db.constraints", "no constraint tags") {
+		t.Fatalf("app's db = %+v, notes %+v", comps[0], app.Notes)
 	}
 
 	db := ps["bp-db"]

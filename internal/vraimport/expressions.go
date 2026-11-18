@@ -22,10 +22,12 @@ type machineRef struct {
 }
 
 // scope is where an expression is translated: the template's machines by
-// resource name, and the machine whose property holds it.
+// resource name, and the machine whose property holds it. environment says
+// rvav's environment can be read there, as constraints can (ADR-0035).
 type scope struct {
-	machines map[string]machineRef
-	self     string
+	machines    map[string]machineRef
+	self        string
+	environment bool
 }
 
 // What an expression gives, when rvav can tell.
@@ -237,6 +239,11 @@ func (s scope) celOf(toks []token, t *translated) (string, valueKind, error) {
 			case "index", "self":
 				t.self = true
 			case "input":
+				if environmentInput(r.name) && s.environment {
+					b.WriteString(tk.pre + "environment")
+					kind = kindString
+					continue
+				}
 				if environmentInput(r.name) {
 					return "", 0, fmt.Errorf("input.%s is the environment, which rvav's bindings don't read", r.name)
 				}

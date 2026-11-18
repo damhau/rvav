@@ -18,8 +18,8 @@ test("see the dry run, map projects, import, and import again", async ({ page })
   const rhel = templates.getByRole("row", { name: /RHEL 9 Server/ });
   await expect(rhel.getByText("Unchanged")).toBeVisible();
   await expect(rhel.getByText("Not Data Services, Legacy Apps: not mapped")).toBeVisible();
-  await rhel.getByRole("button", { name: "Notes on RHEL 9 Server: 1 to check" }).click();
-  await expect(templates.getByText(/write an rvav placement rule/)).toBeVisible();
+  await rhel.getByRole("button", { name: "Notes on RHEL 9 Server: 2 notes" }).click();
+  await expect(templates.getByText(/Placed by its constraint tags/)).toBeVisible();
   await expect(templates.getByRole("row", { name: /Windows Server 2022/ }).getByText("Create")).toBeVisible();
   await expect(templates.getByRole("row", { name: /Work in progress/ }).getByText("Not imported")).toBeVisible();
 

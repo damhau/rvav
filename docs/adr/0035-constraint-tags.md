@@ -106,8 +106,20 @@ they don't allow.
 ### The vRA importer
 vRA's constraints on machines, disks and networks become rvav's:
 `key:value` becomes `key/value`, `:hard`, `:soft` and `!` are kept, and
-`${input.x}` becomes `${inputs.x}`. A key-only tag has no rvav form and is
-listed as not mapped.
+`${input.x}` becomes `${inputs.x}` (`${input.environment}`,
+`${environment}`). A machine's are its `compute` constraints, its
+`storage.constraints` its `storage` ones, an attached disk's the disk's
+own, and its first adapter's existing network's its `network` ones.
+
+- A machine with constraints is placed by rvav: the item no longer asks
+  for its cluster, datastore and network, as the importer did before.
+- When its first adapter is on an existing network without constraints,
+  rvav can't choose that network. The item keeps asking for all three,
+  checked against the constraints, and the import says so (a warning).
+- An on-demand network's constraints chose vRA's network profile; rvav's
+  placement rule says where its segment goes, so they aren't mapped.
+- A key-only tag, a tag that is one expression (vRA's `key:value` at
+  request time), and a tag reading a machine are listed as not mapped.
 
 ## Consequences
 - Blueprints say what their VMs need, and administrators say what vCenter

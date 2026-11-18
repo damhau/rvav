@@ -25,7 +25,7 @@ interface State {
 const templates: { id: string; name: string; slug: string; status: S["VraItemPlan"]["status"]; version?: string; shared: string[]; notes: S["VraNote"][] }[] = [
   { id: "bp-rhel9", name: "RHEL 9 Server", slug: "rhel-9-server", status: "complete", version: "2.0", shared: ["vra-prj-web", "vra-prj-data", "vra-prj-legacy"],
     notes: [{ level: "info", where: "naming", text: "vRA's machine naming of Web Platform: web-{environment}-{inputs.role}{seq:03}." },
-      { level: "warning", where: "resources.Cloud_vSphere_Machine_1.constraints", text: "Placement by the tag env:${input.environment}: write an rvav placement rule for it." }] },
+      { level: "info", where: "resources.Cloud_vSphere_Machine_1.constraints", text: "Placed by its constraint tags, within what rvav's placement rules allow: the form asks for no cluster, datastore or network." }] },
   { id: "bp-win", name: "Windows Server 2022", slug: "windows-server-2022", status: "complete", version: "3.0", shared: ["vra-prj-web", "vra-prj-legacy"],
     notes: [{ level: "warning", where: "naming", text: "The project's naming template can't be translated: rvav's default naming applies." }] },
   { id: "bp-app", name: "Three-tier application", slug: "three-tier-application", status: "partial", version: "1.0", shared: ["vra-prj-web", "vra-prj-legacy"],

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/find"
@@ -17,10 +18,12 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/vra"
 )
 
-// tagObjects attaches category/tag to vCenter clusters and datastores
-// through the tagging service, making the category and the tag as needed.
+// tagObjects attaches category/tag to vCenter clusters, datastores and
+// networks through the tagging service, making the category and the tag as
+// needed.
 func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, objects ...string) {
 	t.Helper()
 	rc := rest.NewClient(c)
@@ -35,7 +38,7 @@ func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, 
 	if err == nil {
 		catID = cat.ID
 	} else if catID, err = m.CreateCategory(ctx, &tags.Category{Name: category, Cardinality: "MULTIPLE",
-		AssociableTypes: []string{"ClusterComputeResource", "Datastore"}}); err != nil {
+		AssociableTypes: []string{"ClusterComputeResource", "Datastore", "Network", "DistributedVirtualPortgroup"}}); err != nil {
 		t.Fatal(err)
 	}
 	tagID, err := m.CreateTag(ctx, &tags.Tag{Name: name, CategoryID: catID})
@@ -49,8 +52,10 @@ func tagObjects(t *testing.T, ctx context.Context, c *vim25.Client, tag string, 
 			ref = cc.Reference()
 		} else if ds, err := finder.Datastore(ctx, "/GVA/datastore/"+o); err == nil {
 			ref = ds.Reference()
+		} else if n, err := finder.Network(ctx, "/GVA/network/"+o); err == nil {
+			ref = n.Reference()
 		} else {
-			t.Fatalf("no cluster or datastore %s", o)
+			t.Fatalf("no cluster, datastore or network %s", o)
 		}
 		if err := m.AttachTag(ctx, tagID, ref); err != nil {
 			t.Fatal(err)
@@ -83,10 +88,41 @@ func taggedItem() api.CatalogVersionDefinition {
 	return def
 }
 
+// vraTagged is taggedItem's constraints as vRA writes them.
+const vraTagged = `formatVersion: 1
+inputs:
+  role:
+    type: string
+  backup:
+    type: string
+resources:
+  vm:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: small
+      constraints:
+        - tag: rvav-env:prod
+        - tag: '!rvav-zone:pci'
+      storage:
+        constraints:
+          - tag: rvav-backup:${input.backup}
+          - tag: rvav-tier:platinum:soft
+      networks:
+        - network: ${resource.net.id}
+  net:
+    type: Cloud.vSphere.Network
+    properties:
+      networkType: existing
+      constraints:
+        - tag: '!rvav-zone:dmz'
+`
+
 // TestConstraintTags places a VM by the vSphere tags of the clusters,
 // datastores and networks its placement rules allow: hard constraints rule
 // out, a negation too, a soft one nothing meets is let go with a note on
-// the timeline, and a hard one nothing meets fails before any clone
+// the timeline, and a hard one nothing meets fails before any clone. A vRA
+// template with the same constraint tags, imported, is placed the same way
 // (T1.2, ADR-0035).
 func TestConstraintTags(t *testing.T) {
 	if testing.Short() {
@@ -167,25 +203,40 @@ func TestConstraintTags(t *testing.T) {
 
 		// Built where the constraints said, with the soft one's fallback on
 		// the timeline.
-		var req api.Request
-		h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
-		h.runWorkflow(req.Id, nil)
-		h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
-		if req.Status != api.RequestStatusSucceeded {
-			t.Fatalf("request = %s %s", req.Status, errorOf(req))
+		placedAsSaid := func(draft api.RequestDraft) {
+			t.Helper()
+			var req api.Request
+			h.json("POST", "/api/v1/requests", "tnguyen", draft, 202, &req, "Idempotency-Key", uuid.NewString())
+			h.runWorkflow(req.Id, nil)
+			h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
+			if req.Status != api.RequestStatusSucceeded {
+				t.Fatalf("request = %s %s", req.Status, errorOf(req))
+			}
+			vm := (&vmDeployment{h: h, id: (*req.DeploymentIds)[0], viewer: "tnguyen"}).vm()
+			if deref(vm.Cluster) != "GVA-PRD-CL01" || len(vm.Disks) == 0 || deref(vm.Disks[0].Datastore) != "nfs-gva-silver-02" ||
+				len(vm.Nics) == 0 || vm.Nics[0].Network != "dvpg-app-prd-vl220" {
+				t.Fatalf("VM landed on %s / %+v / %+v", deref(vm.Cluster), vm.Disks, vm.Nics)
+			}
+			var steps struct{ Items []api.Step }
+			h.json("GET", "/api/v1/requests/"+req.Id+"/steps", "tnguyen", nil, 200, &steps)
+			i := slices.IndexFunc(steps.Items, func(s api.Step) bool { return s.Key == "placement" })
+			if i != 1 || steps.Items[i].Status != api.StepStatusDone || !strings.Contains(deref(steps.Items[i].Detail),
+				"Placed by rvav-env/prod, !rvav-zone/pci, rvav-backup/daily, !rvav-zone/dmz; soft constraint rvav-tier/platinum not met: placed on nfs-gva-silver-02 without it") {
+				t.Fatalf("timeline = %+v", steps.Items)
+			}
 		}
-		vm := (&vmDeployment{h: h, id: (*req.DeploymentIds)[0], viewer: "tnguyen"}).vm()
-		if deref(vm.Cluster) != "GVA-PRD-CL01" || len(vm.Disks) == 0 || deref(vm.Disks[0].Datastore) != "nfs-gva-silver-02" ||
-			len(vm.Nics) == 0 || vm.Nics[0].Network != "dvpg-app-prd-vl220" {
-			t.Fatalf("VM landed on %s / %+v / %+v", deref(vm.Cluster), vm.Disks, vm.Nics)
-		}
-		var steps struct{ Items []api.Step }
-		h.json("GET", "/api/v1/requests/"+req.Id+"/steps", "tnguyen", nil, 200, &steps)
-		i := slices.IndexFunc(steps.Items, func(s api.Step) bool { return s.Key == "placement" })
-		if i != 1 || steps.Items[i].Status != api.StepStatusDone || !strings.Contains(deref(steps.Items[i].Detail),
-			"Placed by rvav-env/prod, !rvav-zone/pci, rvav-backup/daily, !rvav-zone/dmz; soft constraint rvav-tier/platinum not met: placed on nfs-gva-silver-02 without it") {
-			t.Fatalf("timeline = %+v", steps.Items)
-		}
+		placedAsSaid(draft)
+
+		// The same constraints in a vRA template, imported: the form asks
+		// for no cluster, datastore or network, and the VM goes to the same
+		// place.
+		e := vra.SampleEstate(time.Now())
+		e.Blueprints = []vra.Blueprint{{ID: "bp-tagged", Name: "Tagged in vRA", Versions: []vra.BlueprintVersion{
+			{Version: "1", Status: "RELEASED", Content: vraTagged}}}}
+		res := importVRAItems(h, &e)["bp-tagged"]
+		imported := api.RequestDraft{CatalogItemId: res.ItemId, VersionId: publishVRAItem(h, res), ProjectId: "prj_web",
+			Environment: "dev", Inputs: map[string]any{"role": "vra", "backup": "daily"}}
+		placedAsSaid(imported)
 
 		// A backup no datastore has: refused before any clone, saying why.
 		weekly := draft

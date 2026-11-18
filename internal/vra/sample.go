@@ -171,6 +171,10 @@ resources:
         - network: ${resource.Cloud_vSphere_Network_1.id}
       constraints:
         - tag: env:${input.environment}
+        - tag: '!rvav-zone:pci'
+      storage:
+        constraints:
+          - tag: rvav-tier:gold:soft
 `
 	if cloudInit {
 		t += `      cloudConfig: |
@@ -241,6 +245,8 @@ resources:
     type: Cloud.vSphere.Disk
     properties:
       capacityGb: 200
+      constraints:
+        - tag: rvav-tier:gold
   app_net:
     type: Cloud.vSphere.Network
     properties:

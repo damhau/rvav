@@ -177,6 +177,21 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		_, many := t.Resources[name].Properties["count"]
 		machineRefs[name] = machineRef{key: resourceKey(name, "vm", keys), many: many}
 	}
+	// Constraint tags are rvav's constraints (ADR-0035): an existing
+	// network's are those of the machines whose first adapter is on it.
+	cs := scope{machines: machineRefs, environment: true}
+	netConstraints := map[string][]any{}
+	for _, name := range slices.Sorted(maps.Keys(t.Resources)) {
+		r := t.Resources[name]
+		if !slices.Contains(networkTypes, r.Type) || r.Properties["constraints"] == nil {
+			continue
+		}
+		if _, onSegment := nx.segments[name]; onSegment {
+			note(Info, "resources."+name+".constraints", "Its constraint tags chose vRA's network profile: rvav's placement rule says where the segment is made.")
+			continue
+		}
+		netConstraints[name] = cs.constraintsOf(r.Properties["constraints"], "resources."+name+".constraints", note)
+	}
 
 	// Each machine is a component; one machine without a count is the
 	// item's VM itself.
@@ -229,7 +244,11 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 				src, _ := a.(map[string]any)["source"].(string)
 				ref := resourceRef(src)
 				if d, ok := disks[ref]; ok {
-					cDisks = append(cDisks, map[string]any{"size_gb": d["capacityGb"]})
+					disk := map[string]any{"size_gb": d["capacityGb"]}
+					if l := cs.constraintsOf(d["constraints"], "resources."+ref+".constraints", note); len(l) > 0 {
+						disk["constraints"] = l
+					}
+					cDisks = append(cDisks, disk)
 					delete(disks, ref)
 				} else {
 					note(Unmapped, where+".attachedDisks", "Disk "+src+" isn't a disk of this template: left out.")
@@ -239,19 +258,11 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		if len(cDisks) > 0 {
 			c["disks"] = cDisks
 		}
-		if cons, ok := r.Properties["constraints"].([]any); ok && len(cons) > 0 {
-			var tags []string
-			for _, x := range cons {
-				if m, ok := x.(map[string]any); ok {
-					tags = append(tags, fmt.Sprint(m["tag"]))
-				}
-			}
-			note(Warning, where+".constraints", "vRA placed it by constraint tags ("+strings.Join(tags, ", ")+"): the item asks for cluster, datastore and network, within what rvav's placement rules allow. Write a placement rule for those tags.")
-		}
 		for _, k := range placementFields {
 			bindings[k] = "inputs." + k
 		}
 		nx.machine(r.Properties, where, c, bindings, note)
+		placeByConstraints(cs, r.Properties, netConstraints, where, c, bindings, note)
 		sc.tags(r.Properties["tags"], where+".tags", c, bindings, note)
 		c["bindings"] = bindings
 		if count, ok := r.Properties["count"]; ok {
@@ -271,21 +282,20 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		note(Unmapped, "resources."+name, "A disk attached to no machine: left out.")
 	}
 
-	// The placement inputs rvav's VM items ask for: no network when every
-	// VM is on a segment made for the deployment.
-	placed := placementFields
-	if !slices.ContainsFunc(comps, func(c map[string]any) bool {
-		return !strings.HasPrefix(fmt.Sprint(c["bindings"].(map[string]any)["network"]), "segments.")
-	}) {
-		placed = []string{"cluster", "datastore"}
+	// The placement inputs rvav's VM items ask for, those a VM reads: no
+	// network when every VM is on a segment made for the deployment, none
+	// when constraint tags place them all.
+	var placed []string
+	for _, f := range placementFields {
+		if slices.ContainsFunc(comps, func(c map[string]any) bool { return c["bindings"].(map[string]any)[f] == "inputs."+f }) {
+			placed = append(placed, f)
+		}
 	}
+	placementUI := placementUI()
 	for _, f := range placed {
 		props[f] = map[string]any{"type": "string", "minLength": 1}
 		required = append(required, f)
-	}
-	maps.Copy(fields, placementUI())
-	if len(placed) < len(placementFields) {
-		delete(fields, "network")
+		fields[f] = placementUI[f]
 	}
 
 	blueprint := map[string]any{"kind": "vm", "naming": naming(e, bp, order, note),
@@ -320,18 +330,61 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	order = append(order, placed...)
 	vd.FormSchema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
 		"additionalProperties": false, "required": required, "properties": props}
-	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": []map[string]any{
-		{"key": "inputs", "title": "Request", "columns": 2, "fields": slices.DeleteFunc(slices.Clone(order), func(f string) bool {
-			return slices.Contains(placed, f)
-		})},
-		{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placed},
-	}}}
+	sections := []map[string]any{{"key": "inputs", "title": "Request", "columns": 2,
+		"fields": slices.DeleteFunc(slices.Clone(order), func(f string) bool { return slices.Contains(placed, f) })}}
+	if len(placed) > 0 {
+		sections = append(sections, map[string]any{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placed})
+	}
+	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": sections}}
 	if withForm && form != nil {
 		applyForm(form, props, fields, &required, initial, ui, note)
 		vd.FormSchema["required"] = required
 	}
 	vd.UISchema, vd.InitialValues, vd.Blueprint = ui, initial, blueprint
 	return vd, true
+}
+
+// placeByConstraints maps a machine's constraint tags, its storage's and
+// its first network's. With them, rvav places its VMs within its placement
+// rules and the form asks for no cluster, datastore or network; unless the
+// first network is an existing one without constraints, which rvav can't
+// choose (ADR-0035).
+func placeByConstraints(cs scope, props map[string]any, netConstraints map[string][]any, where string, c, bindings map[string]any,
+	note func(level, where, text string)) {
+	cons := map[string]any{}
+	if l := cs.constraintsOf(props["constraints"], where+".constraints", note); len(l) > 0 {
+		cons["compute"] = l
+	}
+	if st, ok := props["storage"].(map[string]any); ok {
+		if l := cs.constraintsOf(st["constraints"], where+".storage.constraints", note); len(l) > 0 {
+			cons["storage"] = l
+		}
+	}
+	if nets, _ := props["networks"].([]any); len(nets) > 0 {
+		n, _ := nets[0].(map[string]any)
+		if l := netConstraints[resourceRef(fmt.Sprint(n["network"]))]; len(l) > 0 {
+			cons["network"] = l
+		}
+	}
+	disks, _ := c["disks"].([]map[string]any)
+	ownDisks := slices.ContainsFunc(disks, func(d map[string]any) bool { return d["constraints"] != nil })
+	if len(cons) == 0 && !ownDisks {
+		return
+	}
+	if len(cons) > 0 {
+		c["constraints"] = cons
+	}
+	_, byNetwork := cons["network"]
+	if !byNetwork && !strings.HasPrefix(fmt.Sprint(bindings["network"]), "segments.") {
+		note(Warning, where+".constraints", "Its network has no constraint tags, and rvav can't choose one without: the form asks for cluster, datastore and network, checked against the constraints.")
+		return
+	}
+	delete(bindings, "cluster")
+	delete(bindings, "datastore")
+	if byNetwork {
+		delete(bindings, "network")
+	}
+	note(Info, where+".constraints", "Placed by its constraint tags, within what rvav's placement rules allow: the form asks for no cluster, datastore or network.")
 }
 
 // mapInput turns a template input into a form property and field; nil
@@ -646,9 +699,14 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 	}
 	// Inputs the form doesn't show come after its sections.
 	var rest []string
+	var placement map[string]any
 	for _, s := range ui["layout"].(map[string]any)["sections"].([]map[string]any) {
+		if s["key"] == "placement" {
+			placement = s
+			continue
+		}
 		for _, f := range s["fields"].([]string) {
-			if !seen[f] && !slices.Contains(placementFields, f) {
+			if !seen[f] {
 				rest = append(rest, f)
 			}
 		}
@@ -656,7 +714,9 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 	if len(rest) > 0 {
 		sections = append(sections, map[string]any{"key": "more", "title": "More", "columns": 2, "fields": rest})
 	}
-	sections = append(sections, map[string]any{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placementFields})
+	if placement != nil {
+		sections = append(sections, placement)
+	}
 	kind := "page"
 	if len(def.Layout.Pages) > 1 {
 		kind = "wizard"

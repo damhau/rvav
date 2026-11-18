@@ -17,6 +17,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/vra"
 	"github.com/damhau/rvav/internal/vraimport"
 )
@@ -24,13 +25,20 @@ import (
 // TestVRATemplates: the sample vRA's cloud templates mapped to catalog
 // items import through the catalog's own YAML import as drafts; the RHEL
 // one, published, makes a valid request named by the project's vRA naming
-// template, sized from vRA's flavors (P2.2).
+// template, sized from vRA's flavors (P2.2), and placed by its constraint
+// tags on the cluster and network tagged in vCenter (T1.2).
 func TestVRATemplates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
 	}
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := setup(t, ctx, c)
+		tagObjects(t, ctx, c, "env/dev", "GVA-DEV-CL01")
+		tagObjects(t, ctx, c, "net/app", "dvpg-app-dev-vl310")
+		sync := &inventory.Syncer{Store: h.store, VSphere: h.vc, Events: h.acts.Events, Log: h.acts.Log}
+		if err := sync.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
 		e := vra.SampleEstate(time.Now())
 		imported := importVRAItems(h, &e)
 		if len(imported) != 4 {
@@ -39,19 +47,21 @@ func TestVRATemplates(t *testing.T) {
 
 		rhel := imported["bp-rhel9"]
 		draft := struct{ Id string }{publishVRAItem(h, rhel)}
+		in := api.RequestDraft{CatalogItemId: rhel.ItemId, VersionId: draft.Id, ProjectId: "prj_web", Environment: "dev",
+			Inputs: map[string]any{"size": "medium", "role": "api"}}
 		var pv api.RequestPreview
-		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: rhel.ItemId, VersionId: draft.Id,
-			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"size": "medium", "role": "api",
-				"cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}, 200, &pv,
-			"Idempotency-Key", uuid.NewString())
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", in, 200, &pv, "Idempotency-Key", uuid.NewString())
 		if !pv.Valid || pv.Names == nil || len(*pv.Names) != 1 || (*pv.Names)[0] != "web-dev-api001" {
 			t.Fatalf("preview: valid %v, names %v, errors %+v", pv.Valid, pv.Names, pv.Errors)
 		}
+		// env:${input.environment} is env/dev; the gold datastore is
+		// preferred (rvav-tier:gold:soft); net:app chooses the network.
+		if pl := (*pv.Components)[0].Placement; deref(pl.Cluster) != "GVA-DEV-CL01" || deref(pl.Datastore) != "vsan-gva-dev-cl01" ||
+			pl.Constraints == nil || len(*pl.Constraints) != 4 {
+			t.Fatalf("placement = %+v", pl)
+		}
 		var req api.Request
-		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: rhel.ItemId, VersionId: draft.Id,
-			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"size": "medium", "role": "api",
-				"cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}, 202, &req,
-			"Idempotency-Key", uuid.NewString())
+		h.json("POST", "/api/v1/requests", "tnguyen", in, 202, &req, "Idempotency-Key", uuid.NewString())
 		// Its guest is cloud-init (vRA's cloudConfig): vcsim has none, so
 		// the test sets the address, as the guest would.
 		h.runWorkflow(req.Id, cloudInitGuest(h, c))
@@ -66,6 +76,10 @@ func TestVRATemplates(t *testing.T) {
 		}
 		if vm.Name != "web-dev-api001" || vm.Config.Hardware.NumCPU != 4 || vm.Config.Hardware.MemoryMB != 16384 {
 			t.Fatalf("the VM is %s with %d vCPU, %d MB", vm.Name, vm.Config.Hardware.NumCPU, vm.Config.Hardware.MemoryMB)
+		}
+		placed := (&vmDeployment{h: h, id: (*done.DeploymentIds)[0], viewer: "tnguyen"}).vm()
+		if deref(placed.Cluster) != "GVA-DEV-CL01" || len(placed.Nics) == 0 || placed.Nics[0].Network != "dvpg-app-dev-vl310" {
+			t.Fatalf("the VM landed on %s / %+v", deref(placed.Cluster), placed.Nics)
 		}
 	})
 }
