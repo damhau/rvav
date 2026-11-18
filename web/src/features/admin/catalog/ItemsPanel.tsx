@@ -204,10 +204,7 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-type Change =
-  | { it: AdminCatalogItem; action: "publish" }
-  | { it: AdminCatalogItem; action: "withdraw" }
-  | { it: AdminCatalogItem; action: "delete" };
+type Change = { it: AdminCatalogItem; action: "publish" | "withdraw" | "delete" };
 
 function useItemChange() {
   const qc = useQueryClient();
@@ -242,6 +239,14 @@ function unsavedDraft(it: AdminCatalogItem): boolean {
   return Boolean(it.draft_version && draftCopy(it.draft_version.id)?.dirty);
 }
 
+/** The item has a request form for the project you are in. */
+export function requestableIn(it: AdminCatalogItem, projectId: string | undefined): boolean {
+  return (
+    Boolean(it.published_version) &&
+    (it.entitlements.all_projects || (projectId !== undefined && it.entitlements.project_ids.includes(projectId)))
+  );
+}
+
 export function ItemsPanel() {
   const navigate = useNavigate();
   const { projectId } = useCurrentProject();
@@ -255,9 +260,7 @@ export function ItemsPanel() {
   const categoryName = (key: string) => categories.data?.items.find((c) => c.key === key)?.name ?? key;
   const rows = items.data?.items.filter((it) => kind === "any" || it.type === kind);
   const filtered = Boolean(filters.q || filters.category || filters.state || kind !== "any");
-  const requestable = (it: AdminCatalogItem) =>
-    Boolean(it.published_version) &&
-    (it.entitlements.all_projects || (projectId !== undefined && it.entitlements.project_ids.includes(projectId)));
+  const requestable = (it: AdminCatalogItem) => requestableIn(it, projectId);
 
   const columns: Column<AdminCatalogItem>[] = [
     {
@@ -438,36 +441,60 @@ export function ItemsPanel() {
       />
       {sheet === "new" && <NewItemSheet onClose={() => setSheet(null)} />}
       {sheet === "import" && <ImportSheet onClose={() => setSheet(null)} />}
-      {asking?.action === "withdraw" && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setAsking(null)}
-          title={`Withdraw ${asking.it.name}?`}
-          description={`Nobody can request it until a version is published again. Version ${asking.it.published_version?.number} stays, to roll back to.`}
-          consequences={withdrawConsequences(asking.it)}
-          confirmLabel="Withdraw"
-          pending={change.isPending}
-          onConfirm={() => change.mutate(asking, { onSuccess: () => setAsking(null) })}
-        />
-      )}
-      {asking?.action === "delete" && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setAsking(null)}
-          title={`Delete ${asking.it.name}?`}
-          description={`The item and its ${asking.it.versions.length} version${asking.it.versions.length === 1 ? "" : "s"} are deleted. This can't be undone.`}
-          consequences={`Nobody has requested it, so no deployment depends on it. It is open to ${openToText(asking.it).toLowerCase()}${asking.it.published_version ? ", and leaves their catalog" : ""}.`}
-          confirmLabel="Delete item"
-          pending={change.isPending}
-          onConfirm={() => change.mutate(asking, { onSuccess: () => setAsking(null) })}
-        />
+      {asking && asking.action !== "publish" && (
+        <ItemChangeDialog change={{ it: asking.it, action: asking.action }} onClose={() => setAsking(null)} />
       )}
     </Panel>
   );
 }
 
+/** Asks before an item is withdrawn or deleted, saying what depends on it. */
+export function ItemChangeDialog({
+  change,
+  onClose,
+  onDone,
+}: {
+  change: { it: AdminCatalogItem; action: "withdraw" | "delete" };
+  onClose: () => void;
+  onDone?: () => void;
+}) {
+  const run = useItemChange();
+  const { it, action } = change;
+  const n = it.versions.length;
+  const confirm = () =>
+    run.mutate(change, {
+      onSuccess: () => {
+        onClose();
+        onDone?.();
+      },
+    });
+  return action === "withdraw" ? (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Withdraw ${it.name}?`}
+      description={`Nobody can request it until a version is published again. Version ${it.published_version?.number} stays, to roll back to.`}
+      consequences={withdrawConsequences(it)}
+      confirmLabel="Withdraw"
+      pending={run.isPending}
+      onConfirm={confirm}
+    />
+  ) : (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Delete ${it.name}?`}
+      description={`The item and its ${n} version${n === 1 ? "" : "s"} are deleted. This can't be undone.`}
+      consequences={`Nobody has requested it, so no deployment depends on it. It is open to ${openToText(it).toLowerCase()}${it.published_version ? ", and leaves their catalog" : ""}.`}
+      confirmLabel="Delete item"
+      pending={run.isPending}
+      onConfirm={confirm}
+    />
+  );
+}
+
 /** What a withdrawal leaves: the deployments built from the version, and who loses it. */
-export function withdrawConsequences(it: AdminCatalogItem): string {
+function withdrawConsequences(it: AdminCatalogItem): string {
   const n = it.published_version?.deployments ?? 0;
   const deployments =
     n === 0

@@ -116,8 +116,8 @@ test("a composite's step added, published, requested and followed, with the keyb
   await tabTo(page, page.getByRole("button", { name: "New draft" }));
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
-  // The tabs, above the button gone.
-  await tabTo(page, page.getByRole("tab", { name: "Versions" }), "Shift+Tab");
+  // The tabs, below the button gone.
+  await tabTo(page, page.getByRole("tab", { name: "Versions" }), "Tab");
   await selectTab(page, "Definition", "ArrowRight");
   const editor = page.getByRole("textbox", { name: /^Definition of PostgreSQL 16 cluster/ });
   const steps = page.getByRole("region", { name: "Steps of PostgreSQL 16 cluster" });

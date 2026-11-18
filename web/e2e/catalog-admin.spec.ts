@@ -37,7 +37,8 @@ test("draft, publish and roll back a version of an item", async ({ page }) => {
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("3.3 published")).toBeVisible();
-  await page.getByRole("button", { name: "Roll back to 3.2" }).click();
+  await page.getByRole("button", { name: "Actions for version 3.2" }).click();
+  await page.getByRole("menuitem", { name: "Roll back to 3.2" }).click();
   await expect(page.getByText("Rolled back to 3.2")).toBeVisible();
   await page.getByRole("button", { name: "Compare" }).click();
   const compare = page.getByRole("dialog", { name: "Compare versions" });
@@ -237,7 +238,8 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await expect(page.getByText("1.1 published")).toBeVisible();
   await requestForm("Backup schedule", "1.1");
   await backToItem();
-  await page.getByRole("button", { name: "Roll back to 1.0" }).click();
+  await page.getByRole("button", { name: "Actions for version 1.0" }).click();
+  await page.getByRole("menuitem", { name: "Roll back to 1.0" }).click();
   await expect(page.getByText("Rolled back to 1.0")).toBeVisible();
   await requestForm("Backup policy", "1.0");
   expect(errors).toEqual([]);

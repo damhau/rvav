@@ -2,8 +2,9 @@
 // roll back, withdraw, discard, compare, export), its draft's definition as
 // YAML, its details and the projects that may request it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Ellipsis } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
@@ -12,17 +13,22 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail, FieldError } from "@/lib/api/types";
+import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { GitBadge, ItemGitTab } from "./GitPanels";
+import { ItemChangeDialog, requestableIn } from "./ItemsPanel";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
 import { FormDesigner } from "./designer/FormDesigner";
@@ -41,6 +47,10 @@ class YamlProblems extends Error {
 }
 
 const stateTone = { draft: "accent", published: "ok", deprecated: "neutral" } as const;
+const stateLabel = { draft: "Draft", published: "Published", deprecated: "Deprecated" } as const;
+
+export const itemTabs = ["versions", "designer", "definition", "details", "entitlements", "git"] as const;
+export type ItemTab = (typeof itemTabs)[number];
 
 function useRefresh(itemId: string) {
   const qc = useQueryClient();
@@ -105,24 +115,23 @@ function CompareDialog({ item, onClose }: { item: AdminCatalogItem; onClose: () 
   );
 }
 
-function VersionsTab({ item }: { item: AdminCatalogItem }) {
-  const refresh = useRefresh(item.id);
-  const [comparing, setComparing] = useState(false);
-  // The designer's working copy: publishing waits until the server has it.
-  const copy = useDraftCopy(item.draft_version?.id);
-  const unsaved = copy?.dirty
-    ? copy.state === "saving"
+/** Why publishing the draft waits: the designer's copy isn't saved, or YAML is typed and not saved. */
+function usePublishWait(item: AdminCatalogItem | undefined, yamlDirty: boolean): string | undefined {
+  const copy = useDraftCopy(item?.draft_version?.id);
+  if (copy?.dirty)
+    return copy.state === "saving"
       ? "The designer is still saving the draft."
-      : "The designer has changes the server refused or couldn't save: see the Form designer tab."
-    : undefined;
-  const act = useMutation({
-    mutationFn: async ({
-      v,
-      action,
-    }: {
-      v: CatalogItemVersion;
-      action: "publish" | "deprecate" | "discard" | "export";
-    }) => {
+      : "The designer has changes the server refused or couldn't save: see the Form designer tab.";
+  if (yamlDirty) return "Save or undo your changes to the YAML first.";
+  return undefined;
+}
+
+type VersionAction = "publish" | "deprecate" | "discard" | "export";
+
+function useVersionAction(item: AdminCatalogItem) {
+  const refresh = useRefresh(item.id);
+  return useMutation({
+    mutationFn: async ({ v, action }: { v: CatalogItemVersion; action: VersionAction }) => {
       const path = { itemId: item.id, versionId: v.id };
       switch (action) {
         case "publish":
@@ -158,7 +167,11 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
     },
     onError: (e) => toastError(e, "That didn't work"),
   });
-  const newDraft = useMutation({
+}
+
+function useNewDraft(item: AdminCatalogItem) {
+  const refresh = useRefresh(item.id);
+  return useMutation({
     mutationFn: () =>
       call(api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} })),
     onSuccess: (v) => {
@@ -167,125 +180,116 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
     },
     onError: (e) => toastError(e, "No draft was made"),
   });
+}
+
+function VersionsTab({
+  item,
+  wait,
+  onWithdraw,
+}: {
+  item: AdminCatalogItem;
+  /** Why the draft can't be published yet. */
+  wait?: string;
+  onWithdraw: () => void;
+}) {
+  const act = useVersionAction(item);
+  const [comparing, setComparing] = useState(false);
+  const [discarding, setDiscarding] = useState<CatalogItemVersion | null>(null);
+  const columns: Column<CatalogItemVersion>[] = [
+    {
+      id: "version",
+      header: "Version",
+      cell: (v) => (
+        <div className="flex items-center gap-2">
+          <span className="font-mono font-medium">{v.number}</span>
+          <Badge tone={stateTone[v.state]}>{stateLabel[v.state]}</Badge>
+        </div>
+      ),
+    },
+    {
+      id: "changelog",
+      header: "Changelog",
+      cell: (v) => <span className="text-secondary text-muted">{v.changelog || "None"}</span>,
+    },
+    {
+      id: "made",
+      header: "Made",
+      cell: (v) => (
+        <span className="text-secondary text-muted">
+          {v.created_by ? `${v.created_by.name}, ` : ""}
+          {relative(v.published_at ?? v.created_at)}
+        </span>
+      ),
+    },
+    {
+      id: "deployments",
+      header: "Deployments",
+      align: "end",
+      cell: (v) => <span className="tabular-nums">{v.deployments}</span>,
+    },
+  ];
   return (
     <Panel
       title="Versions"
+      description="Requests keep the version they were made with; the published one is what people get now."
       flush
       actions={
-        <div className="flex gap-2">
-          <Button size="sm" disabled={item.versions.length < 2} onClick={() => setComparing(true)}>
-            Compare
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={Boolean(item.draft_version) || newDraft.isPending}
-            onClick={() => newDraft.mutate()}
-          >
-            New draft
-          </Button>
-        </div>
+        <Button size="sm" disabled={item.versions.length < 2} onClick={() => setComparing(true)}>
+          Compare
+        </Button>
       }
     >
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-body">
-          <thead>
-            <tr className="label text-left">
-              <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                Version
-              </th>
-              <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                Changelog
-              </th>
-              <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                Deployments
-              </th>
-              <th scope="col" className="border-b border-line px-4 py-2">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {item.versions.map((v) => (
-              <tr key={v.id} className="hover:bg-sunken">
-                <td className="border-b border-line px-4 py-2 align-top">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-medium">{v.number}</span>
-                    <Badge tone={stateTone[v.state]}>{v.state}</Badge>
-                  </div>
-                  <div className="text-caption text-faint">
-                    {v.created_by ? `${v.created_by.name}, ` : ""}
-                    {relative(v.published_at ?? v.created_at)}
-                  </div>
-                </td>
-                <td className="border-b border-line px-3 py-2 align-top text-secondary text-muted">
-                  {v.changelog || "—"}
-                </td>
-                <td className="border-b border-line px-3 py-2 align-top text-secondary text-muted">{v.deployments}</td>
-                <td className="border-b border-line px-4 py-2 text-right align-top whitespace-nowrap">
-                  {v.state === "draft" && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        disabled={act.isPending || Boolean(unsaved)}
-                        title={unsaved}
-                        onClick={() => act.mutate({ v, action: "publish" })}
-                      >
-                        Publish
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        disabled={act.isPending}
-                        onClick={() =>
-                          window.confirm(`Discard draft ${v.number}? Its changes are lost.`) &&
-                          act.mutate({ v, action: "discard" })
-                        }
-                      >
-                        Discard
-                      </Button>
-                    </>
-                  )}
-                  {v.state === "deprecated" && (
-                    <Button
-                      size="sm"
-                      disabled={act.isPending}
-                      onClick={() => act.mutate({ v, action: "publish" })}
-                      aria-label={`Roll back to ${v.number}`}
-                    >
-                      Roll back to this
-                    </Button>
-                  )}
-                  {v.state === "published" && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={act.isPending}
-                      onClick={() =>
-                        window.confirm(
-                          `Withdraw ${item.name}? Nobody can request it until a version is published again; deployments keep theirs.`,
-                        ) && act.mutate({ v, action: "deprecate" })
-                      }
-                    >
-                      Withdraw
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    onClick={() => act.mutate({ v, action: "export" })}
-                    aria-label={`Export ${v.number} as YAML`}
-                  >
-                    Export
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        label="Versions"
+        columns={columns}
+        rows={item.versions}
+        rowKey={(v) => v.id}
+        minWidth={640}
+        rowMenuLabel={(v) => `Actions for version ${v.number}`}
+        rowMenu={(v) => (
+          <>
+            {v.state === "draft" && (
+              <MenuItem disabled={Boolean(wait) || act.isPending} onSelect={() => act.mutate({ v, action: "publish" })}>
+                Publish {v.number}
+              </MenuItem>
+            )}
+            {v.state === "deprecated" && (
+              <MenuItem disabled={act.isPending} onSelect={() => act.mutate({ v, action: "publish" })}>
+                Roll back to {v.number}
+              </MenuItem>
+            )}
+            {v.state === "published" && <MenuItem onSelect={onWithdraw}>Withdraw</MenuItem>}
+            <MenuItem onSelect={() => act.mutate({ v, action: "export" })}>Export {v.number} as YAML</MenuItem>
+            {v.state === "draft" && (
+              <>
+                <MenuSeparator />
+                <MenuItem danger onSelect={() => setDiscarding(v)}>
+                  Discard
+                </MenuItem>
+              </>
+            )}
+          </>
+        )}
+      />
       {comparing && <CompareDialog item={item} onClose={() => setComparing(false)} />}
+      {discarding && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDiscarding(null)}
+          title={`Discard draft ${discarding.number}?`}
+          description="Its changes are lost, in the form designer and the YAML alike."
+          consequences={
+            item.git?.state === "draft"
+              ? "The draft came from the repository: rvav commits its own file there again."
+              : item.published_version
+                ? `People keep getting ${item.published_version.number}.`
+                : "The item has no published version: nobody can request it."
+          }
+          confirmLabel="Discard draft"
+          pending={act.isPending}
+          onConfirm={() => act.mutate({ v: discarding, action: "discard" }, { onSuccess: () => setDiscarding(null) })}
+        />
+      )}
     </Panel>
   );
 }
@@ -513,8 +517,17 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
   });
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD((x) => ({ ...x, [k]: v }));
   return (
-    <Panel title="Details">
+    <Panel
+      title="Details"
+      description="How the item shows in the catalog. Saved at once, in every version."
+      footer={
+        <Button type="submit" form="item-details" variant="primary" disabled={save.isPending}>
+          {save.isPending ? "Saving…" : "Save details"}
+        </Button>
+      }
+    >
       <form
+        id="item-details"
         className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
@@ -582,11 +595,6 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
             ))}
           </div>
         </fieldset>
-        <div className="md:col-span-2">
-          <Button type="submit" variant="primary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save details"}
-          </Button>
-        </div>
       </form>
     </Panel>
   );
@@ -612,7 +620,14 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
   });
   const projects = item.entitlements.projects ?? [];
   return (
-    <Panel title="Who may request it">
+    <Panel
+      title="Who may request it"
+      footer={
+        <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? "Saving…" : "Save entitlements"}
+        </Button>
+      }
+    >
       <div className="flex max-w-xl flex-col gap-3 text-body">
         <div role="radiogroup" aria-label="Open to" className="flex flex-col gap-1.5">
           {[
@@ -648,23 +663,88 @@ function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
             ))}
           </ul>
         )}
-        <div>
-          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? "Saving…" : "Save entitlements"}
-          </Button>
-        </div>
       </div>
     </Panel>
   );
 }
 
-export function CatalogItemPage({ itemId }: { itemId: string }) {
+/** What concerns the whole item: its request form, its YAML, withdrawing and deleting it. */
+function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "withdraw" | "delete") => void }) {
+  const navigate = useNavigate();
+  const { projectId } = useCurrentProject();
+  const exportAll = useMutation({
+    mutationFn: async () => {
+      const text = await call(
+        api.GET("/admin/catalog/items/{itemId}/export", { params: { path: { itemId: item.id } }, parseAs: "text" }),
+      );
+      download(`${item.slug}.yaml`, String(text));
+    },
+    onError: (e) => toastError(e, "The export failed"),
+  });
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <IconButton label={`More actions for ${item.name}`} variant="secondary" className="size-8">
+          <Ellipsis />
+        </IconButton>
+      </MenuTrigger>
+      <MenuContent>
+        {requestableIn(item, projectId) && (
+          <MenuItem onSelect={() => void navigate({ to: "/catalog/$itemId/request", params: { itemId: item.slug } })}>
+            Open the request form
+          </MenuItem>
+        )}
+        <MenuItem onSelect={() => exportAll.mutate()}>Export every version as YAML</MenuItem>
+        {item.published_version && <MenuItem onSelect={() => onAsk("withdraw")}>Withdraw</MenuItem>}
+        {!item.requested && (
+          <>
+            <MenuSeparator />
+            <MenuItem danger onSelect={() => onAsk("delete")}>
+              Delete item
+            </MenuItem>
+          </>
+        )}
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/** The page's one primary action: publish the draft, or make one. */
+function PrimaryAction({ item, wait }: { item: AdminCatalogItem; wait?: string }) {
+  const act = useVersionAction(item);
+  const newDraft = useNewDraft(item);
+  const draft = item.draft_version;
+  if (!draft)
+    return (
+      <Button variant="primary" disabled={newDraft.isPending} onClick={() => newDraft.mutate()}>
+        New draft
+      </Button>
+    );
+  return (
+    <>
+      {wait && (
+        <span id="publish-wait" className="max-w-72 text-secondary text-muted">
+          {wait}
+        </span>
+      )}
+      <Button
+        variant="primary"
+        disabled={Boolean(wait) || act.isPending}
+        aria-describedby={wait ? "publish-wait" : undefined}
+        onClick={() => act.mutate({ v: draft, action: "publish" })}
+      >
+        {act.isPending ? "Publishing…" : `Publish ${draft.number}`}
+      </Button>
+    </>
+  );
+}
+
+export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; tab?: ItemTab }) {
+  const navigate = useNavigate();
   const item = useQuery(q.adminCatalogItem(itemId));
-  const [tab, setTab] = useState("versions");
-  const yamlDirty = useRef(false);
-  const onYamlDirty = useCallback((dirty: boolean) => {
-    yamlDirty.current = dirty;
-  }, []);
+  const [yamlDirty, setYamlDirty] = useState(false);
+  const [asking, setAsking] = useState<"withdraw" | "delete" | null>(null);
+  const wait = usePublishWait(item.data, yamlDirty);
   if (item.isPending) {
     return (
       <Page>
@@ -681,6 +761,7 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
     );
   }
   const it = item.data;
+  const shown = tab === "git" && !it.git ? "versions" : tab;
   return (
     <Page>
       <PageHeader
@@ -708,18 +789,25 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
             {it.git && it.git.state !== "synced" && <GitBadge git={it.git} />}
           </>
         }
+        actions={
+          <>
+            <ItemMenu item={it} onAsk={setAsking} />
+            <PrimaryAction item={it} wait={wait} />
+          </>
+        }
       />
       <Tabs
-        value={tab}
+        value={shown}
         onValueChange={(next) => {
-          if (
-            tab === "definition" &&
-            yamlDirty.current &&
-            !window.confirm("Leave the YAML without saving your changes?")
-          )
+          if (shown === "definition" && yamlDirty && !window.confirm("Leave the YAML without saving your changes?"))
             return;
-          yamlDirty.current = false;
-          setTab(next);
+          setYamlDirty(false);
+          void navigate({
+            to: "/admin/catalog-items/$itemId",
+            params: { itemId },
+            search: { tab: next as ItemTab },
+            replace: true,
+          });
         }}
       >
         <TabsList aria-label="Item sections">
@@ -731,13 +819,13 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
           {it.git && <TabsTrigger value="git">Git</TabsTrigger>}
         </TabsList>
         <TabsContent value="versions" className="pt-4">
-          <VersionsTab item={it} />
+          <VersionsTab item={it} wait={wait} onWithdraw={() => setAsking("withdraw")} />
         </TabsContent>
         <TabsContent value="designer" className="pt-4">
           <FormDesigner item={it} />
         </TabsContent>
         <TabsContent value="definition" className="pt-4">
-          <DefinitionTab item={it} onDirty={onYamlDirty} />
+          <DefinitionTab item={it} onDirty={setYamlDirty} />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <DetailsTab key={it.id + it.name + it.icon} item={it} />
@@ -751,6 +839,13 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
           </TabsContent>
         )}
       </Tabs>
+      {asking && (
+        <ItemChangeDialog
+          change={{ it, action: asking }}
+          onClose={() => setAsking(null)}
+          onDone={() => asking === "delete" && void navigate({ to: "/admin/catalog-items" })}
+        />
+      )}
     </Page>
   );
 }

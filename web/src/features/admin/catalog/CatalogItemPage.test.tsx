@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
@@ -110,5 +110,63 @@ describe("the Definition tab", () => {
     expect(warnings).toHaveTextContent(
       /^Line \d+: No cluster in vCenter is tagged rvav-env\/test yet: requests fail until one is\.$/,
     );
+  });
+});
+
+describe("the item's header and versions", () => {
+  it("publishes the draft from the header once the YAML typed is saved or undone", async () => {
+    const u = userEvent.setup();
+    await openDefinition();
+    type("# reviewed\n");
+    const publish = await screen.findByRole("button", { name: "Publish 3.3" });
+    await waitFor(() => expect(publish).toBeDisabled());
+    expect(publish).toHaveAccessibleDescription("Save or undo your changes to the YAML first.");
+    await u.click(screen.getByRole("button", { name: "Undo changes" }));
+    await waitFor(() => expect(publish).toBeEnabled());
+    await u.click(publish);
+    expect(await screen.findByText("3.3 published")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New draft" })).toBeInTheDocument();
+  });
+
+  it("discards a draft from its row after asking", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/rhel9-server");
+    await u.click(await screen.findByRole("button", { name: "New draft" }));
+    await u.click(await screen.findByRole("button", { name: "Actions for version 3.3" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Discard" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Discard draft 3.3?" });
+    expect(confirm).toHaveTextContent("People keep getting 3.2.");
+    await u.click(within(confirm).getByRole("button", { name: "Discard draft" }));
+    expect(await screen.findByText("Draft 3.3 discarded")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Actions for version 3.3" })).toBeNull());
+  });
+
+  it("withdraws the published version after saying who loses it", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/rhel9-server");
+    await u.click(await screen.findByRole("button", { name: "Actions for version 3.2" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Withdraw" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Withdraw RHEL 9 server?" });
+    expect(confirm).toHaveTextContent("It leaves the catalog of 2 projects.");
+    await u.click(within(confirm).getByRole("button", { name: "Withdraw" }));
+    expect(await screen.findByText("RHEL 9 server withdrawn")).toBeInTheDocument();
+    expect(await screen.findByText("Not published")).toBeInTheDocument();
+  });
+
+  it("deletes an item nobody requested from its menu, then goes back to the list", async () => {
+    const u = userEvent.setup();
+    const { router } = renderApp("/admin/catalog-items/windows-server");
+    await u.click(await screen.findByRole("button", { name: "More actions for Windows Server 2025" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Delete item" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Delete Windows Server 2025?" });
+    await u.click(within(confirm).getByRole("button", { name: "Delete item" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/catalog-items"));
+    expect(await screen.findByText("Windows Server 2025 deleted")).toBeInTheDocument();
+  });
+
+  it("opens the tab the address names", async () => {
+    renderApp("/admin/catalog-items/rhel9-server?tab=entitlements");
+    expect(await screen.findByRole("region", { name: "Who may request it" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Entitlements" })).toHaveAttribute("aria-selected", "true");
   });
 });
