@@ -317,8 +317,7 @@ func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte
 	}
 	if len(errs) == 0 {
 		for i, d := range defs {
-			errs = append(errs, checkDefinition(it.Type, d, "/versions/"+strconv.Itoa(i), false)...)
-			refs, err := s.checkSourceRefs(ctx, d, "/versions/"+strconv.Itoa(i))
+			refs, err := s.checkVersion(ctx, it.Type, d, "/versions/"+strconv.Itoa(i), false)
 			if err != nil {
 				return api.CatalogImportResult{}, err
 			}

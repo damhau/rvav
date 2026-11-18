@@ -287,6 +287,35 @@ func (s *Service) checkGroupRefs(ctx context.Context, d api.CatalogVersionDefini
 	return errs, nil
 }
 
+// groupFields are the UI fields of the inputs of the property groups d's
+// blueprint names, as GetVersion adds them to its form. A group that isn't
+// there adds none: checkGroupRefs says so.
+func (s *Service) groupFields(ctx context.Context, d api.CatalogVersionDefinition) (map[string]api.UiField, error) {
+	raw, _ := json.Marshal(d.Blueprint)
+	var groups []store.PropertyGroup
+	for _, r := range store.GroupRefs(raw) {
+		if r.Version < 1 {
+			continue
+		}
+		g, err := s.Store.GetPropertyGroup(ctx, r.Key, r.Version)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	var ui api.UiSchema
+	if err := json.Unmarshal(store.WithGroups(store.ItemVersion{}, groups).UISchema, &ui); err != nil {
+		return nil, err
+	}
+	return ui.Fields, nil
+}
+
 // wholeNumber reads a JSON or YAML number that is a whole one.
 func wholeNumber(v any) (int, bool) {
 	switch n := v.(type) {

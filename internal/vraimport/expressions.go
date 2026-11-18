@@ -30,6 +30,8 @@ type scope struct {
 	environment bool
 	// groups are the property groups it reads; nil where none can be.
 	groups *groupScope
+	// secrets are the secret inputs, the template's and its groups'.
+	secrets map[string]bool
 }
 
 // What an expression gives, when rvav can tell.

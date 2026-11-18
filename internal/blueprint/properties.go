@@ -96,6 +96,32 @@ func Interpolate(text string, vars policy.Vars) (string, error) {
 
 var errNotScalar = errors.New("gives no text")
 
+// SecretInputsIn are the secret inputs text's ${CEL} reads, as written:
+// all of them when one reads inputs other than as inputs.<name>.
+func SecretInputsIn(text string, secret map[string]bool) []string {
+	exprs, err := ExprsOf(text)
+	if err != nil || len(secret) == 0 {
+		return nil
+	}
+	var out []string
+	for _, e := range exprs {
+		rd, err := policy.ReadsOf(e)
+		if err != nil {
+			continue
+		}
+		for _, in := range rd.Inputs {
+			if secret[in] {
+				out = append(out, in)
+			}
+		}
+		if rd.AllInputs {
+			out = append(out, slices.Collect(maps.Keys(secret))...)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // secretStandIns replace a secret input to see whether a property reads
 // it: no form gives them, and their lengths differ so that a property
 // reading only its length changes with one or the other.

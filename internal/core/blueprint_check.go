@@ -382,6 +382,30 @@ func checkPropertiesAndFolder(ptr string, props map[string]string, folder string
 	return errs
 }
 
+// checkSecretFolders refuses a folder that reads a secret input: it would
+// name a vCenter folder, and be kept with the request. A property may read
+// one: it is masked everywhere (ADR-0038).
+func checkSecretFolders(b blueprint.Blueprint, fields map[string]api.UiField, ptr string) []api.FieldError {
+	secret := map[string]bool{}
+	for name, f := range fields {
+		if f.Secret != nil && *f.Secret || f.Widget == api.UiWidgetSecret {
+			secret[name] = true
+		}
+	}
+	var errs []api.FieldError
+	check := func(at, folder string) {
+		if read := blueprint.SecretInputsIn(folder, secret); len(read) > 0 {
+			errs = append(errs, fieldErr(at, "invalid", fmt.Sprintf("The folder reads secret input %s: it would name a vCenter folder, "+
+				"and be kept with the request.", strings.Join(read, ", "))))
+		}
+	}
+	check(ptr+"/folder", b.Folder)
+	for i, c := range b.Components {
+		check(fmt.Sprintf("%s/components/%d/folder", ptr, i), c.Folder)
+	}
+	return errs
+}
+
 // checkProvisioning checks a disk provisioning (ADR-0036).
 func checkProvisioning(ptr, p string) []api.FieldError {
 	if p == "" || slices.Contains(blueprint.Provisionings, p) {

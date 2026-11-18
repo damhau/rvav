@@ -145,6 +145,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	// An input that is a property group: the item names the group, whose
 	// inputs are the form's (ADR-0038).
 	gs := newGroupScope(e, bp.ProjectID)
+	secrets := map[string]bool{}
 	order = slices.DeleteFunc(order, func(name string) bool {
 		ref, _ := t.Inputs[name]["$ref"].(string)
 		if !strings.HasPrefix(ref, groupRefPrefix) {
@@ -158,6 +159,9 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 		key := gs.keys[g.ID]
 		gs.inputs[name], gs.used[key] = key, true
+		for _, in := range mapGroup(*g, key).Inputs {
+			secrets[in.Name] = secrets[in.Name] || in.Secret
+		}
 		note(Info, "inputs."+name, fmt.Sprintf("Property group %s is rvav's %s: the item names it, and its inputs are in the form, "+
 			"in their own section. ${input.%s.x} is inputs.x.", gname, key, name))
 		return true
@@ -168,6 +172,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			continue
 		}
 		props[name], fields[name] = prop, field
+		secrets[name] = field["secret"] == true
 		if req {
 			required = append(required, name)
 		}
@@ -233,7 +238,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	for _, name := range machines {
 		r := t.Resources[name]
 		where := "resources." + name
-		sc := scope{machines: machineRefs, self: name, groups: gs}
+		sc := scope{machines: machineRefs, self: name, groups: gs, secrets: secrets}
 		c := map[string]any{"key": machineRefs[name].key, "title": name}
 		bindings := map[string]any{}
 		if img, _ := r.Properties["image"].(string); img != "" {
@@ -1046,6 +1051,8 @@ func mapFolderAndProperties(sc scope, props map[string]any, where string, c map[
 		if err == nil {
 			if msg := blueprint.CheckFolder(folder); msg != "" {
 				err = errors.New(msg)
+			} else if read := blueprint.SecretInputsIn(folder, sc.secrets); len(read) > 0 {
+				err = fmt.Errorf("it reads secret input %s, which would name a vCenter folder", strings.Join(read, ", "))
 			}
 		}
 		if err != nil {
@@ -1065,6 +1072,9 @@ func mapFolderAndProperties(sc scope, props map[string]any, where string, c map[
 		if err == nil {
 			if msg := blueprint.CheckProperty(k, v); msg != "" {
 				err = errors.New(msg)
+			} else if read := blueprint.SecretInputsIn(v, sc.secrets); len(read) > 0 {
+				err = fmt.Errorf("it reads secret input %s, which rvav would show as •••• in vCenter. "+
+					"Give the secret to the VM in cloud-init user data or to an AWX step instead", strings.Join(read, ", "))
 			}
 		}
 		switch {

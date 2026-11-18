@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -161,8 +162,7 @@ func (s *Service) CreateCatalogItem(ctx context.Context, p *auth.Principal, c ap
 	if c.Definition != nil {
 		def = *c.Definition
 	}
-	errs = append(errs, checkDefinition(string(c.Type), def, "/definition", false)...)
-	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	refs, err := s.checkVersion(ctx, string(c.Type), def, "/definition", false)
 	if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
@@ -322,12 +322,11 @@ func (s *Service) CreateCatalogItemVersion(ctx context.Context, p *auth.Principa
 	default:
 		def = starterDefinition(it.Type, it.Name)
 	}
-	errs := checkDefinition(it.Type, def, "/definition", false)
-	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	errs, err := s.checkVersion(ctx, it.Type, def, "/definition", false)
 	if err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
-	if errs = append(errs, refs...); len(errs) > 0 {
+	if len(errs) > 0 {
 		return api.CatalogItemVersionDetail{}, &ValidationError{Errors: errs}
 	}
 	versions, err := s.Store.ItemVersions(ctx, it.ID)
@@ -360,12 +359,11 @@ func (s *Service) UpdateCatalogItemVersion(ctx context.Context, p *auth.Principa
 	if _, _, err := s.itemVersion(ctx, it, versionID); err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
-	errs := checkDefinition(it.Type, u.Definition, "/definition", false)
-	refs, err := s.checkSourceRefs(ctx, u.Definition, "/definition")
+	errs, err := s.checkVersion(ctx, it.Type, u.Definition, "/definition", false)
 	if err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
-	if errs = append(errs, refs...); len(errs) > 0 {
+	if len(errs) > 0 {
 		return api.CatalogItemVersionDetail{}, &ValidationError{Errors: errs}
 	}
 	_, err = s.Store.SaveDraft(ctx, versionID, u.Number, u.Changelog, storeDef(u.Definition), u.BaseRevision)
@@ -421,12 +419,11 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	errs := checkDefinition(it.Type, def, "/definition", true)
-	refs, err := s.checkSourceRefs(ctx, def, "/definition")
+	errs, err := s.checkVersion(ctx, it.Type, def, "/definition", true)
 	if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	if errs = append(errs, refs...); len(errs) > 0 {
+	if len(errs) > 0 {
 		return api.AdminCatalogItem{}, &ValidationError{Errors: errs}
 	}
 	// The revision checked above must be the one published.
@@ -598,10 +595,23 @@ var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere
 	"rvav.templates", "rvav.sizes", "rvav.projects", "rvav.users", "rvav.deployments", "rvav.vms",
 	"nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services"}
 
+// checkVersion checks a version's definition with what it depends on: its
+// property groups' inputs, its sources' hosts and the secrets it names.
+func (s *Service) checkVersion(ctx context.Context, itemType string, d api.CatalogVersionDefinition, prefix string, publish bool) ([]api.FieldError, error) {
+	groups, err := s.groupFields(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	errs := checkDefinition(itemType, d, groups, prefix, publish)
+	refs, err := s.checkSourceRefs(ctx, d, prefix)
+	return append(errs, refs...), err
+}
+
 // checkDefinition checks a version's definition as a whole, with pointers
-// under prefix. A draft may be incomplete (no template named yet); to
-// publish, it must be complete.
-func checkDefinition(itemType string, d api.CatalogVersionDefinition, prefix string, publish bool) []api.FieldError {
+// under prefix; groups are the fields of its property groups' inputs. A
+// draft may be incomplete (no template named yet); to publish, it must be
+// complete.
+func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map[string]api.UiField, prefix string, publish bool) []api.FieldError {
 	var errs []api.FieldError
 	add := func(ptr, code, msg string) { errs = append(errs, fieldErr(prefix+ptr, code, msg)) }
 
@@ -674,7 +684,12 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, prefix str
 			add("/initial_values/"+name, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
 		}
 	}
-	errs = append(errs, checkBlueprint(itemType, d.Blueprint, d.UiSchema.Fields, prefix+"/blueprint", publish)...)
+	fields := maps.Clone(groups)
+	if fields == nil {
+		fields = map[string]api.UiField{}
+	}
+	maps.Copy(fields, d.UiSchema.Fields)
+	errs = append(errs, checkBlueprint(itemType, d.Blueprint, fields, prefix+"/blueprint", publish)...)
 	return errs
 }
 
@@ -692,6 +707,8 @@ func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
 	return nil
 }
 
+// checkBlueprint checks a definition's blueprint; fields are its form's,
+// its property groups' inputs among them.
 func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.UiField, ptr string, publish bool) []api.FieldError {
 	raw, _ := json.Marshal(bp)
 	b, err := blueprint.Parse(raw)
@@ -707,6 +724,7 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 	case blueprint.KindVM:
 		errs = append(errs, checkVMBlueprint(b, ptr, publish)...)
 		errs = append(errs, checkRemoteAccess(b, fields, ptr)...)
+		errs = append(errs, checkSecretFolders(b, fields, ptr)...)
 	case blueprint.KindWorkflow:
 		if b.Workflow == "" && publish {
 			errs = append(errs, fieldErr(ptr+"/workflow", "required", "Name the registered custom workflow it starts."))

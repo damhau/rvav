@@ -102,7 +102,12 @@ own `properties` (C30).
 - `folder` on a blueprint or component replaces the placement rule's
   folder: from the root as it is, else below the VM folder of the rule
   folder's datacenter (`/GVA/vm`), or below the rule's folder when it
-  isn't in a datacenter's VM folder. `${CEL}` is allowed; `..` is not.
+  isn't in a datacenter's VM folder. `${CEL}` is allowed; `..` is not,
+  and neither is a secret input, the form's or a group's (T1.7): a
+  folder's name is in vCenter and the plan, and masking it would put the
+  VMs in a folder named `••••`. Saving refuses it, and the vRA importer
+  leaves out a folder or a custom property that reads an encrypted input,
+  since a masked property is no use to the VM.
   Missing folders are created, as for the rule's. **Move to another
   project** still moves VMs to the new project's rule folder.
 

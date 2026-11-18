@@ -18,6 +18,9 @@ inputs:
   app:
     type: string
     title: Application
+  apiKey:
+    type: string
+    encrypted: true
 resources:
   Cloud_vSphere_Machine_1:
     type: Cloud.vSphere.Machine
@@ -32,6 +35,7 @@ resources:
       folderName: apps/${input.app}-${input.environment}
       costCenter: CC-2002
       owner: ${input.app}-team
+      apiAuth: Bearer ${input.apiKey}
       replicas: 3
       backupPolicies: [daily, weekly]
       peer: ${self.resourceName}
@@ -89,6 +93,7 @@ func TestMapKeptTemplate(t *testing.T) {
 		{Unmapped, "resources.Cloud_vSphere_Machine_1.backupPolicies", "a list or a map"},
 		{Unmapped, "resources.Cloud_vSphere_Machine_1.peer", "reads the machines"},
 		{Unmapped, "resources.Cloud_vSphere_Machine_1.bad key", "A key of up to 64"},
+		{Unmapped, "resources.Cloud_vSphere_Machine_1.apiAuth", "reads secret input apiKey"},
 		{Info, "resources.Cloud_vSphere_Machine_1.properties", "costCenter, owner, replicas"},
 		{Warning, "resources.Cloud_vSphere_Machine_1.cloudConfig", "secret root-password"},
 		{Warning, "resources.Cloud_vSphere_Machine_1.cloudConfig", "secret api-token"},
@@ -115,6 +120,48 @@ func TestSecretOutsideCloudInit(t *testing.T) {
 		if got := SecretName(in); got != want {
 			t.Errorf("SecretName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestSecretInputsLeftOut: a folder or a custom property reading a secret
+// input is left out (T1.7).
+func TestSecretInputsLeftOut(t *testing.T) {
+	var notes []Note
+	note := func(level, where, text string) { notes = append(notes, Note{level, where, text}) }
+	c := map[string]any{}
+	sc := scope{secrets: map[string]bool{"pw": true, "app": false}}
+	mapFolderAndProperties(sc, map[string]any{"folderName": "apps/${input.pw}", "auth": "${input.pw}", "app": "${input.app}"},
+		"m", c, note)
+	if _, ok := c["folder"]; ok {
+		t.Errorf("folder = %v", c["folder"])
+	}
+	if props, _ := c["properties"].(map[string]string); len(props) != 1 || props["app"] != "${inputs.app}" {
+		t.Errorf("properties = %v", c["properties"])
+	}
+	for _, where := range []string{"m.folderName", "m.auth"} {
+		if !slices.ContainsFunc(notes, func(n Note) bool {
+			return n.Level == Unmapped && n.Where == where && strings.Contains(n.Text, "reads secret input pw")
+		}) {
+			t.Errorf("no note at %s in %+v", where, notes)
+		}
+	}
+
+	// A property group's secret input.
+	e := groupedEstate()
+	for i, g := range e.PropertyGroups {
+		if g.Name == "corpInputs" {
+			e.PropertyGroups[i].Properties["token"] = map[string]any{"type": "string", "encrypted": true}
+		}
+	}
+	bp := &e.Blueprints[len(e.Blueprints)-1]
+	bp.Versions[0].Content = strings.Replace(bp.Versions[0].Content, "      flavor: medium\n",
+		"      flavor: medium\n      auth: ${input.corp.token}\n", 1)
+	p := MapTemplate(&e, *bp)
+	if props := p.Doc.Versions[0].Blueprint["properties"].(map[string]string); props["auth"] != "" || props["costCenter"] == "" {
+		t.Errorf("properties = %v", props)
+	}
+	if !has(p, Unmapped, "resources.Cloud_vSphere_Machine_1.auth", "reads secret input token") {
+		t.Errorf("notes = %+v", p.Notes)
 	}
 }
 
