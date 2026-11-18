@@ -288,6 +288,15 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.waitStatus(waiting.Id, "tnguyen", api.RequestStatusPendingApproval)
 	inbox := h.waitInbox(admin, 1)
 
+	// A file the VM's request keeps, which only its requester, approvers
+	// and project admins download.
+	const attached = "fil_a1rules"
+	if _, err := h.store.Pool.Exec(h.ctx, `insert into request_files (id, owner_id, request_id, name, content_type, size, sha256, content)
+		select $1, requester_id, id, 'rules.csv', 'text/csv', 4, 'a1', 'a,b
+' from requests where id = $2`, attached, vm.h.firstRequest(vm.id)); err != nil {
+		t.Fatal(err)
+	}
+
 	var draft api.SavedDraft
 	h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: vm.draft}, 201, &draft)
 	var view api.SavedView
@@ -363,6 +372,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"subscription-runs/{id}":     run.Id,
 		"workflows/{key}":            "a1-report",
 		"tokens/{id}":                token.Id,
+		"files/{fileId}":             attached,
 	}
 }
 
@@ -444,7 +454,8 @@ func (w a1Walk) fill(template string, params openapi3.Parameters) string {
 		}
 	}
 	values := map[string]string{"project_id": "prj_web", "user_id": seed.UserID("tnguyen"), "environment": "dev",
-		"from": w.ids["versions/{versionId}"], "to": w.ids["versions/{versionId}"], "topics": "deployments"}
+		"from": w.ids["versions/{versionId}"], "to": w.ids["versions/{versionId}"], "topics": "deployments",
+		"version_id": w.ids["versions/{versionId}"], "field": "cluster", "name": "rules.csv"}
 	var query []string
 	for _, ref := range params {
 		p := ref.Value

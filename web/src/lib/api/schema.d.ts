@@ -561,6 +561,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/forms/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a file to a form's file field, before the request is submitted
+         * @description The body is the file's content as it is. rvav checks it against the
+         *     field: its size, its name's extension and what its content is, read
+         *     from its first bytes. The file waits a day for a request: submit
+         *     one with the returned record as the field's value, and it is kept
+         *     with that request. Someone may have 20 files waiting at most.
+         */
+        post: operations["uploadFormFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{fileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a file attached to a request
+         * @description For the requester and the request's owner, its approvers, and its
+         *     project's admins; a file still waiting for its request, for the
+         *     one who attached it. Always a download, never shown in the browser.
+         */
+        get: operations["downloadFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/preview": {
         parameters: {
             query?: never;
@@ -4175,7 +4221,7 @@ export interface components {
             fields: string[];
         };
         /** @enum {string} */
-        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "search" | "tree" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
+        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "search" | "tree" | "file" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
         UiField: {
             widget: components["schemas"]["UiWidget"];
             /** @description The field's label; a `link` field's link text. */
@@ -4190,6 +4236,17 @@ export interface components {
             url?: string;
             /** @description An `image` field's text alternative, read out in its place to those who can't see it. Needed to publish. */
             alt?: string;
+            /**
+             * @description A `file` field's types: extensions (`.pdf`), MIME types (`application/pdf`) or a family of them (`image/*`), among those rvav knows. A file's name must have one of them and its content must be what its extension says. Needed to publish.
+             * @example [
+             *       ".csv",
+             *       "application/pdf",
+             *       "image/*"
+             *     ]
+             */
+            accept?: string[];
+            /** @description The largest file a `file` field takes, in MB (10 by default). */
+            max_size_mb?: number;
             /** @description Static options. Ignored when `value_source` is set. */
             options?: components["schemas"]["Option"][];
             value_source?: components["schemas"]["ValueSource"];
@@ -4290,6 +4347,26 @@ export interface components {
              *     not among the options is at the top.
              */
             parent?: string;
+        };
+        /**
+         * @description A file attached to a `file` field: the input's value, which AWX,
+         *     a workflow and the events get in place of the content. Download
+         *     the content with `GET /files/{id}`.
+         */
+        FileRef: {
+            /** @example fil_7f3k2a9q */
+            id: string;
+            /** @example firewall-rules.csv */
+            name: string;
+            /**
+             * Format: int64
+             * @description In bytes.
+             */
+            size: number;
+            /** @example text/csv */
+            content_type: string;
+            /** @description The content's SHA-256, in hex. */
+            sha256: string;
         };
         FieldValuesQuery: {
             version_id: string;
@@ -7511,6 +7588,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description The file is of a type the operation doesn't take, or its content isn't what its name says */
+        UnsupportedMediaType: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
         ProjectIdPath: string;
@@ -8414,6 +8500,71 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    uploadFormFile: {
+        parameters: {
+            query: {
+                version_id: string;
+                project_id: string;
+                /** @description The file field's input name. */
+                field: string;
+                /** @description The file's name. */
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Kept, waiting for its request */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRef"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+        };
+    };
+    downloadFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    /** @description `attachment`, with the file's name. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     previewRequest: {

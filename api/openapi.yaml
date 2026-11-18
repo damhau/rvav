@@ -700,6 +700,66 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /forms/files:
+    post:
+      tags: [forms]
+      operationId: uploadFormFile
+      summary: Attach a file to a form's file field, before the request is submitted
+      description: |
+        The body is the file's content as it is. rvav checks it against the
+        field: its size, its name's extension and what its content is, read
+        from its first bytes. The file waits a day for a request: submit
+        one with the returned record as the field's value, and it is kept
+        with that request. Someone may have 20 files waiting at most.
+      parameters:
+        - { name: version_id, in: query, required: true, schema: { type: string } }
+        - { name: project_id, in: query, required: true, schema: { type: string } }
+        - { name: field, in: query, required: true, description: The file field's input name., schema: { type: string } }
+        - { name: name, in: query, required: true, description: The file's name., schema: { type: string, maxLength: 255 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Kept, waiting for its request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileRef" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  /files/{fileId}:
+    get:
+      tags: [requests]
+      operationId: downloadFile
+      summary: Download a file attached to a request
+      description: |
+        For the requester and the request's owner, its approvers, and its
+        project's admins; a file still waiting for its request, for the
+        one who attached it. Always a download, never shown in the browser.
+      parameters:
+        - { name: fileId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The file
+          headers:
+            Content-Disposition:
+              description: "`attachment`, with the file's name."
+              schema: { type: string }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /requests/preview:
     post:
       tags: [requests]
@@ -4514,6 +4574,12 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
 
+    UnsupportedMediaType:
+      description: The file is of a type the operation doesn't take, or its content isn't what its name says
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
   schemas:
     # ── Ansible ───────────────────────────────────────────────────────────
     AnsibleInventory:
@@ -5685,6 +5751,7 @@ components:
         - checklist
         - search
         - tree
+        - file
         - date
         - datetime
         - tags
@@ -5740,6 +5807,21 @@ components:
           description: >-
             An `image` field's text alternative, read out in its place to
             those who can't see it. Needed to publish.
+        accept:
+          type: array
+          maxItems: 30
+          items: { type: string, maxLength: 100 }
+          description: >-
+            A `file` field's types: extensions (`.pdf`), MIME types
+            (`application/pdf`) or a family of them (`image/*`), among those
+            rvav knows. A file's name must have one of them and its content
+            must be what its extension says. Needed to publish.
+          examples: [[".csv", "application/pdf", "image/*"]]
+        max_size_mb:
+          type: integer
+          minimum: 1
+          maximum: 25
+          description: The largest file a `file` field takes, in MB (10 by default).
         options:
           type: array
           description: Static options. Ignored when `value_source` is set.
@@ -5874,6 +5956,20 @@ components:
             The value of the option this one sits under: a `tree` field
             shows the options as a hierarchy. An option whose parent is
             not among the options is at the top.
+
+    FileRef:
+      type: object
+      description: |
+        A file attached to a `file` field: the input's value, which AWX,
+        a workflow and the events get in place of the content. Download
+        the content with `GET /files/{id}`.
+      required: [id, name, size, content_type, sha256]
+      properties:
+        id: { type: string, examples: [fil_7f3k2a9q] }
+        name: { type: string, examples: [firewall-rules.csv] }
+        size: { type: integer, format: int64, description: In bytes. }
+        content_type: { type: string, examples: [text/csv] }
+        sha256: { type: string, description: "The content's SHA-256, in hex." }
 
     FieldValuesQuery:
       type: object

@@ -769,6 +769,19 @@ An item's tabs:
     JSONPath, and a CEL source's options give `parent`. With the
     `vsphere.folders` source, a tree shows each VM folder under its
     parent folder. On submit, rvav refuses a node the field doesn't offer;
+  - a file upload takes **Accepted types**, comma-separated extensions or
+    MIME types such as `.csv, .pdf, image/*`, which it needs to be
+    published, and its **Largest file (MB)**, from 1 to 25 (10 if empty).
+    rvav refuses a file over that size, of another type, or whose content
+    isn't what its name says, and never takes HTML or SVG. The request
+    keeps the file; its requester, its approvers and the project's
+    administrators download it from the request's page. AWX gets the
+    file's record (`id`, `name`, `size`, `content_type`, `sha256`): a
+    playbook that needs the content downloads `GET /api/v1/files/{id}`
+    with a token of an account allowed to, such as one that is the
+    project's administrator. A file field can't be secret, editable by
+    approvers, or have an initial value
+    ([ADR-0040](../adr/0040-file-fields.md));
   - a vSphere folder lists the VM folders of the datacenters the
     project's placement uses: bind the blueprint's `folder` to it;
   - a project, user, deployment or vSphere VM lists only what the

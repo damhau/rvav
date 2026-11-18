@@ -42,6 +42,7 @@ import { catalogGitHandlers } from "./catalogGit";
 import { administrationHandlers } from "./administration";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
+import { fileHandlers } from "./files";
 import { reportHandlers } from "./reports";
 import { governanceHandlers } from "./governance";
 import { extensibilityHandlers } from "./extensibility";
@@ -356,6 +357,7 @@ export const handlers = [
   ...administrationHandlers(db, base, wait),
   ...onboardingHandlers(db, base, wait),
   ...vraHandlers(db, base, wait),
+  ...fileHandlers(db, base, wait),
   ...reportHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),

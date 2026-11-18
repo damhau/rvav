@@ -15,6 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Timeline } from "@/components/common/timeline";
 import { Button } from "@/components/ui/button";
+import { FileDownload, isFileRef } from "@/forms/file";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
@@ -309,7 +310,13 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 {Object.entries(r.inputs ?? {}).map(([k, v]) => (
                   <div key={k} className="contents">
                     <dt className="font-mono text-secondary text-muted">{k}</dt>
-                    <dd className="m-0 font-mono text-secondary break-words">{formatValue(v)}</dd>
+                    {isFileRef(v) ? (
+                      <dd className="m-0 min-w-0 text-secondary">
+                        <FileDownload file={v} />
+                      </dd>
+                    ) : (
+                      <dd className="m-0 font-mono text-secondary break-words">{formatValue(v)}</dd>
+                    )}
                   </div>
                 ))}
                 {r.justification && (

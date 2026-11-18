@@ -26,6 +26,7 @@ var widgetShapes = map[api.UiWidget]struct {
 	api.UiWidgetObject:   {types: []string{"object"}, what: "type: object, with properties"},
 	api.UiWidgetSearch:   {types: []string{"string"}, what: "type: string"},
 	api.UiWidgetTree:     {types: []string{"string"}, what: "type: string"},
+	api.UiWidgetFile:     {types: []string{"object"}, what: "type: object"},
 }
 
 // columned are the widgets that edit properties through ui.columns: a

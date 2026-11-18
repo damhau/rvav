@@ -147,6 +147,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
 			return err
 		}
+		if err := s.attachFiles(ctx, tx, req.ID, p.User.ID, ev); err != nil {
+			return err
+		}
 		if err := s.Store.InsertSteps(ctx, tx, stepsOf(req.ID, plan.Steps(ev.Env.Name))); err != nil {
 			return err
 		}

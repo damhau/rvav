@@ -189,6 +189,16 @@ describe("form designer model", () => {
     expect(prop(def, "link")).toEqual({ type: "string" });
   });
 
+  it("gives a file field an object of its own, and its limits only while it is one", () => {
+    let def = updateUi(addField(empty, "object").def, "object", { approver_editable: true });
+    def = setWidget(def, "object", "file");
+    expect(prop(def, "object")).toEqual({ type: "object" });
+    expect(def.ui_schema.fields.object?.approver_editable).toBeUndefined();
+    def = setWidget(updateUi(def, "object", { accept: [".pdf"], max_size_mb: 2 }), "object", "key_value");
+    expect(def.ui_schema.fields.object).toEqual({ widget: "key_value", label: "Group of fields" });
+    expect(prop(def, "object")).toMatchObject({ additionalProperties: { type: "string" } });
+  });
+
   it("round-trips every field type through the YAML view", () => {
     let def = empty;
     for (const w of Object.keys(widgetLabels) as UiWidget[]) def = addField(def, w).def;
@@ -211,6 +221,8 @@ describe("form designer model", () => {
       ],
     });
     expect(prop(def, "tree")).toEqual({ type: "string" });
+    def = updateUi(def, "file", { accept: [".csv", "application/pdf"], max_size_mb: 5 });
+    expect(prop(def, "file")).toEqual({ type: "object" });
     const back = fromYaml(toYaml(def));
     expect(back.problems).toEqual([]);
     expect(back.def).toEqual(def);

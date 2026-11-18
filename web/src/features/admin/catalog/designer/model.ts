@@ -22,6 +22,7 @@ export const widgetLabels: Record<UiWidget, string> = {
   checklist: "Checklist",
   search: "Search",
   tree: "Tree",
+  file: "File upload",
   date: "Date",
   datetime: "Date and time",
   tags: "Tags",
@@ -130,6 +131,8 @@ export function schemaFor(widget: UiWidget): Prop | null {
       return { type: "array", uniqueItems: true, items: { type: "string" } };
     case "object":
       return { type: "object", properties: { value: { type: "string" } } };
+    case "file":
+      return { type: "object" };
     case "key_value":
       return { type: "object", additionalProperties: { type: "string" }, propertyNames: { minLength: 1 } };
     case "datagrid":
@@ -312,6 +315,7 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
     const before = widgetSource[ui.widget];
     // Columns edit the properties they name: another columned widget starts afresh.
     const columnsChange = columnWidgets.includes(widget) && ui.widget !== widget;
+    const fileChange = (widget === "file") !== (ui.widget === "file");
     ui.widget = widget;
     const schema = schemaFor(widget);
     const current = p[name];
@@ -322,7 +326,7 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       const fs = d.form_schema as { required?: string[] };
       if (fs.required) fs.required = fs.required.filter((r) => r !== name);
       if (fs.required?.length === 0) delete fs.required;
-    } else if (columnsChange || !sameShape(current, schema)) {
+    } else if (columnsChange || fileChange || !sameShape(current, schema)) {
       p[name] = schema;
       delete d.initial_values[name];
     }
@@ -330,6 +334,11 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
     else if (!columnWidgets.includes(widget)) delete ui.columns;
     if (widget !== "image" && widget !== "link") delete ui.url;
     if (widget !== "image") delete ui.alt;
+    if (widget === "file") delete ui.approver_editable;
+    else {
+      delete ui.accept;
+      delete ui.max_size_mb;
+    }
     // A widget's own source follows the widget; a source the author chose stays.
     const source = widgetSource[widget];
     const own = ui.value_source?.kind === "builtin" && ui.value_source.name === before;

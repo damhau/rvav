@@ -3,7 +3,8 @@ import { bothThemes, scan } from "./axe";
 
 // Every field type the designer offers (F1.1, F1.2): a form with one of each,
 // built in the designer, passes axe in both themes in the designer's
-// preview and as members request it, and the new types work by keyboard.
+// preview and as members request it, and the new types work by keyboard. A
+// file attached comes back from the request's page as a download.
 
 const widgets = [
   "Text",
@@ -18,6 +19,7 @@ const widgets = [
   "Checklist",
   "Search",
   "Tree",
+  "File upload",
   "Date",
   "Date and time",
   "Tags",
@@ -78,6 +80,10 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await props.getByRole("textbox", { name: "Options" }).fill("dmz | DMZ\ndmz-web | Web zone | dmz\nlan | LAN");
   await props.getByRole("textbox", { name: "Options" }).press("Tab");
   await expect(preview.getByRole("treeitem", { name: "DMZ", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await fields.getByRole("button", { name: /^File upload/ }).click();
+  await props.getByRole("textbox", { name: "Accepted types" }).fill(".csv, .txt");
+  await props.getByRole("textbox", { name: "Accepted types" }).press("Enter");
+  await expect(preview.getByText("Takes .csv, .txt, 10 MB at most.")).toBeVisible();
   await fields.getByRole("button", { name: /^Search/ }).click();
   await props.getByRole("combobox", { name: "Value source" }).click();
   await page.getByRole("option", { name: "REST service" }).click();
@@ -162,6 +168,13 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await expect(tree.getByRole("treeitem", { name: "Web zone" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(tree).toHaveAccessibleDescription("Chosen: DMZ › Web zone");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File upload Choose a file" }).press("Enter");
+  await (
+    await chooser
+  ).setFiles({ name: "rules.csv", mimeType: "text/csv", buffer: Buffer.from("port,source\n443,10.0.0.0/8\n") });
+  await expect(page.getByRole("button", { name: "File upload Replace" })).toBeVisible();
+  await expect(page.getByText("rules.csv", { exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "Deployment" }).click();
   await page.getByRole("option", { name: /^web-dev-api/ }).click();
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("every");
@@ -169,5 +182,8 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await page.getByRole("button", { name: "Submit request" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
   await expect(page.getByText("hunter2")).toHaveCount(0);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "rules.csv 27 B" }).click();
+  expect((await download).suggestedFilename()).toBe("rules.csv");
   expect(errors).toEqual([]);
 });

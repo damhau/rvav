@@ -681,6 +681,8 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		prop, _ := props[name].(map[string]any)
 		errs = append(errs, checkFieldShape(name, f, prop, prefix)...)
 		errs = append(errs, checkSearch(name, f, prefix, publish)...)
+		_, initial := d.InitialValues[name]
+		errs = append(errs, checkFile(name, f, initial, prefix, publish)...)
 	}
 	for _, name := range sortedKeys(props) {
 		if _, ok := d.UiSchema.Fields[name]; !ok {

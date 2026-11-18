@@ -544,6 +544,7 @@ function FieldProperties({
           <ProblemList id="prop-alt-problems" list={at("alt")} />
         </Field>
       )}
+      {ui.widget === "file" && <FileLimits def={def} name={name} onChange={onChange} problems={problems} />}
       <Field label={helpLabels[ui.widget] ?? "Help"} htmlFor="prop-help">
         <Textarea
           id="prop-help"
@@ -671,7 +672,7 @@ function FieldProperties({
           />
         </Field>
       )}
-      {prop && ui.widget !== "computed" && (
+      {prop && ui.widget !== "computed" && ui.widget !== "file" && (
         <Field label="Initial value" htmlFor="prop-initial">
           {prop.type === "boolean" ? (
             <Checkbox
@@ -692,7 +693,7 @@ function FieldProperties({
           <ProblemList id="prop-initial-problems" list={at("initial")} />
         </Field>
       )}
-      {!shownWidgets.includes(ui.widget) && (
+      {!shownWidgets.includes(ui.widget) && ui.widget !== "file" && (
         <SourceEditor name={name} def={def} onChange={onChange} problems={problems} test={test} />
       )}
       <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
@@ -732,16 +733,18 @@ function FieldProperties({
               ["expose_to_inventory", "A host variable in the AWX inventory"],
               ["approver_editable", "Approvers may change it"],
             ] as const
-          ).map(([k, label]) => (
-            <label key={k} htmlFor={`prop-${k}`} className="flex items-start gap-2">
-              <Checkbox
-                id={`prop-${k}`}
-                checked={Boolean(ui[k])}
-                onChange={(on) => onChange(updateUi(def, name, { [k]: on || undefined }))}
-              />
-              {label}
-            </label>
-          ))}
+          )
+            .filter(([k]) => ui.widget !== "file" || k === "expose_to_inventory")
+            .map(([k, label]) => (
+              <label key={k} htmlFor={`prop-${k}`} className="flex items-start gap-2">
+                <Checkbox
+                  id={`prop-${k}`}
+                  checked={Boolean(ui[k])}
+                  onChange={(on) => onChange(updateUi(def, name, { [k]: on || undefined }))}
+                />
+                {label}
+              </label>
+            ))}
         </fieldset>
       )}
       <div className="border-t border-line pt-3">
@@ -762,6 +765,66 @@ function FieldProperties({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** What a file field takes: its types, which it must name to be published, and its largest file. */
+function FileLimits({
+  def,
+  name,
+  onChange,
+  problems,
+}: {
+  def: Def;
+  name: string;
+  onChange: (d: Def) => void;
+  problems: Problem[];
+}) {
+  const ui = def.ui_schema.fields[name];
+  if (!ui) return null;
+  const types = problems.filter((p) => p.at === "accept" || p.at.startsWith("accept/"));
+  const size = problems.filter((p) => p.at === "max_size_mb");
+  return (
+    <>
+      <Field
+        label="Accepted types"
+        htmlFor="prop-accept"
+        hint="Extensions or MIME types, comma-separated: .csv, .pdf, image/*. Needed to publish."
+      >
+        <CommitInput
+          id="prop-accept"
+          className={mono}
+          value={(ui.accept ?? []).join(", ")}
+          invalid={types.length > 0}
+          describedBy={types.length ? "prop-accept-problems" : undefined}
+          onCommit={(v) => {
+            const list = v
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean);
+            onChange(updateUi(def, name, { accept: list.length ? list : undefined }));
+          }}
+        />
+        <ProblemList id="prop-accept-problems" list={types} />
+      </Field>
+      <Field label="Largest file (MB)" htmlFor="prop-max-size" hint="From 1 to 25 MB; 10 if left empty.">
+        <Input
+          id="prop-max-size"
+          type="number"
+          min={1}
+          max={25}
+          step={1}
+          placeholder="10"
+          value={ui.max_size_mb ?? ""}
+          aria-invalid={size.length > 0 || undefined}
+          aria-describedby={size.length ? "prop-max-size-problems" : undefined}
+          onChange={(e) =>
+            onChange(updateUi(def, name, { max_size_mb: e.target.value ? Number(e.target.value) : undefined }))
+          }
+        />
+        <ProblemList id="prop-max-size-problems" list={size} />
+      </Field>
+    </>
   );
 }
 

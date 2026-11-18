@@ -2,10 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
-import type { FieldValuesQuery, Option, RequestForm, UiField } from "@/lib/api/types";
+import { describe, expect, it, vi } from "vitest";
+import type { FieldValuesQuery, FileRef, Option, RequestForm, UiField } from "@/lib/api/types";
 import { server } from "@/mocks/node";
 import { renderWithQuery } from "@/test/render";
+import { FileDownload } from "./file";
 import { FormRenderer } from "./FormRenderer";
 
 function formOf(fields: Record<string, { ui: UiField; schema: Record<string, unknown> }>, initial = {}): RequestForm {
@@ -927,5 +928,120 @@ describe("a value source that fails", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(box).toHaveValue("Léa Martin"));
     expect(values()).toEqual({ owner: "usr_lmartin" });
+  });
+});
+
+describe("file fields", () => {
+  const rules = (ui: Partial<UiField> = {}) =>
+    formOf({
+      rules: {
+        ui: { widget: "file", label: "Firewall rules", accept: [".csv", ".pdf"], max_size_mb: 1, ...ui },
+        schema: { type: "object" },
+      },
+    });
+  const kept: FileRef = { id: "fil_rules", name: "rules.csv", size: 27, content_type: "text/csv", sha256: "ab" };
+  const chooser = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+  it("send the chosen file to rvav and keep its record, until removed", async () => {
+    const sent: { query: Record<string, string>; body: string; type: string | null }[] = [];
+    server.use(
+      http.post("*/api/v1/forms/files", async ({ request }) => {
+        sent.push({
+          query: Object.fromEntries(new URL(request.url).searchParams),
+          body: await request.text(),
+          type: request.headers.get("Content-Type"),
+        });
+        return HttpResponse.json(kept, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={rules()} />);
+    const choose = screen.getByRole("button", { name: "Firewall rules Choose a file" });
+    expect(choose).toHaveAccessibleDescription("Takes .csv, .pdf, 1 MB at most.");
+    expect(chooser()).toHaveAttribute("accept", ".csv,.pdf");
+
+    await user.upload(chooser(), new File(["port,source\n443,10.0.0.0/8\n"], "rules.csv", { type: "text/csv" }));
+    await waitFor(() => expect(values()).toEqual({ rules: kept }));
+    expect(sent).toEqual([
+      {
+        query: { version_id: "ver_test", project_id: "prj_web", field: "rules", name: "rules.csv" },
+        body: "port,source\n443,10.0.0.0/8\n",
+        type: "application/octet-stream",
+      },
+    ]);
+    expect(screen.getByText("rules.csv")).toBeVisible();
+    expect(screen.getByText("27 B")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Firewall rules Replace" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Remove rules.csv" }));
+    expect(values()).toEqual({});
+    expect(screen.queryByText("rules.csv")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Firewall rules Choose a file" })).toHaveFocus();
+  });
+
+  it("say why a file isn't taken: too large before it is sent, the server's reason after", async () => {
+    let calls = 0;
+    server.use(
+      http.post("*/api/v1/forms/files", () => {
+        calls++;
+        return HttpResponse.json(
+          {
+            type: "https://rvav.dev/problems/unsupported-type",
+            title: "This type of file isn't taken",
+            status: 415,
+            detail: "rules.csv isn't what a .csv file holds: its content is application/pdf.",
+          },
+          { status: 415, headers: { "Content-Type": "application/problem+json" } },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={rules()} />);
+    await user.upload(chooser(), new File([new Uint8Array(1024 * 1024 + 1)], "big.csv"));
+    const choose = screen.getByRole("button", { name: "Firewall rules Choose a file" });
+    expect(choose).toHaveAccessibleDescription("big.csv is 1.0 MB: Firewall rules takes 1 MB at most.");
+    expect(choose).toHaveAttribute("aria-invalid", "true");
+    expect(calls).toBe(0);
+
+    await user.upload(chooser(), new File(["%PDF-1.7"], "rules.csv"));
+    await waitFor(() =>
+      expect(choose).toHaveAccessibleDescription(
+        "rules.csv isn't what a .csv file holds: its content is application/pdf.",
+      ),
+    );
+    expect(calls).toBe(1);
+    expect(values()).toEqual({});
+  });
+
+  it("show a kept file read-only, and download a request's file as itself", async () => {
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          { rules: { ui: { widget: "file", label: "Rules" }, schema: { type: "object", readOnly: true } } },
+          { rules: kept },
+        )}
+      />,
+    );
+    expect(screen.getByText("rules.csv")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Replace/ })).not.toBeInTheDocument();
+
+    server.use(
+      http.get(
+        "*/api/v1/files/fil_rules",
+        () => new HttpResponse("port,source\n", { headers: { "Content-Type": "application/octet-stream" } }),
+      ),
+    );
+    const made = vi.fn((_: Blob) => "blob:rules");
+    Object.assign(URL, { createObjectURL: made, revokeObjectURL: vi.fn() });
+    const clicked: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(`${this.download} ${this.href}`);
+    });
+    const user = userEvent.setup();
+    renderWithQuery(<FileDownload file={kept} />);
+    await user.click(screen.getByRole("button", { name: "rules.csv 27 B" }));
+    await waitFor(() => expect(clicked).toEqual(["rules.csv blob:rules"]));
+    expect(await made.mock.calls[0]![0].text()).toBe("port,source\n");
+    click.mockRestore();
   });
 });

@@ -35,6 +35,8 @@ const (
 	View = "viw"
 	// What the vRA importer read (ADR-0027).
 	VRASnapshot = "vrs"
+	// A file attached to a request (ADR-0040).
+	File = "fil"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

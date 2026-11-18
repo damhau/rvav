@@ -11,6 +11,7 @@ import { cn, localInput, shownUrl, withOffset, withUnits, zoneLabel } from "@/li
 import { DatagridWidget, KeyValueWidget, ObjectWidget, TagsWidget } from "./collections";
 import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
+import { FileWidget } from "./file";
 import { UserWidget } from "./people";
 import { SearchWidget } from "./search";
 import { TreeWidget } from "./tree";
@@ -546,6 +547,7 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   multiselect: ChecklistWidget,
   search: SearchWidget,
   tree: TreeWidget,
+  file: FileWidget,
   computed: ComputedWidget,
   info: InfoWidget,
   image: ImageWidget,

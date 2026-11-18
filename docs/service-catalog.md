@@ -640,6 +640,7 @@ as a list.
 | `object` | `object` with `properties`, with `ui.columns` | `{"policy": "daily", "keep_days": 14}` |
 | `search` | `string` | `app-003`: an option its value source finds for the text typed |
 | `tree` | `string` | `/GVA/vm/rvav/web`: a node of a hierarchy its options or value source offer |
+| `file` | `object` | `{"id": "fil_8k2…", "name": "rules.csv", "size": 2048, "content_type": "text/csv", "sha256": "9f86…"}`: the record of a file the requester attached, not its content |
 | `project` | `string` | A project's ID, `prj_web`: one the requester may request in |
 | `user` | `string` | A person's ID, `usr_lmartin`, found by typing their name or email |
 | `deployment` | `string` | A deployment's ID, `dep_7f3k2`: one of the project's, not deleted |
@@ -954,6 +955,44 @@ ui_schema:
         - { value: lan, label: LAN }
 ```
 
+A file field (`file`) takes one file the requester attaches
+([ADR-0040](adr/0040-file-fields.md)). `accept` lists the types it takes:
+extensions (`.csv`), MIME types (`application/pdf`) or a family
+(`image/*`). An extension stands for its type, so `.jpg` takes `.jpeg`
+files too. `max_size_mb` is its largest file, from 1 to 25 MB, 10 if left
+out. rvav takes PDF, PNG, JPEG, GIF, WebP, text and logs, CSV, Markdown,
+JSON, YAML, XML, shell and PowerShell scripts, PEM, CRT and CER
+certificates, ZIP, gzip, and Word, Excel and PowerPoint (`.docx`, `.xlsx`,
+`.pptx`) files; never HTML or SVG. A type outside the list is refused on
+save, and a file field without `accept` can't be published. A file field
+can't be secret, editable by approvers, or have an initial value.
+
+The file goes to rvav when the requester chooses it, before the request
+(`POST /forms/files`). rvav checks its size, its extension, and that its
+content is what the extension says, whatever type the browser claims: a
+`.csv` that holds a PDF is refused. It keeps the file in its database with
+the request. A file attached but never requested goes after a day. AWX's
+extra variables, workflows and events get the file's record. A playbook
+that needs the content downloads it with `GET /api/v1/files/{id}` and a
+token of an account allowed to: the requester, the request's approvers,
+and its project's administrators. rvav always sends a file as a download,
+never shown in the browser:
+
+```yaml
+form_schema:
+  required: [rules]
+  properties:
+    rules: { type: object }
+ui_schema:
+  fields:
+    rules:
+      widget: file
+      label: Firewall rules
+      help: The export of the rules to open, one per line.
+      accept: [.csv, .xlsx]
+      max_size_mb: 2
+```
+
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:
   - built-in sources (vSphere inventory cache, EfficientIP, AWX, app data),
@@ -983,6 +1022,9 @@ ui_schema:
   inputs it depends on change. A search field passes its text to the
   source (`${search}`, `search`) or keeps the options that contain it. A
   tree field's options name their `parent`.
+- File fields: the file is checked (types, size, content sniffed) and kept
+  with its request; its requester, approvers and project administrators
+  download it from the request's page.
 - NSX's ([ADR-0028](adr/0028-nsx-networking.md)): `nsx.segments` (existing
   segments, by the port group name a `network` binding takes; `tier1` to
   keep one Tier-1's), `nsx.tier1s`, `nsx.groups` (groups VMs can join by
@@ -1002,7 +1044,7 @@ ui_schema:
   `awx.credentials` pickers, so a requester's choice is checked as the
   item's form checks it.
 
-Not built yet: tabs and wizard steps (forms render as sections), file upload, async
+Not built yet: tabs and wizard steps (forms render as sections), async
 server-side validation rules, and the group and AWX host pickers.
 
 ## 4. Requesting

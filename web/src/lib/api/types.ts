@@ -30,6 +30,7 @@ export type UiColumn = S["UiColumn"];
 export type UiRules = S["UiRules"];
 export type ValueSource = S["ValueSource"];
 export type Option = S["Option"];
+export type FileRef = S["FileRef"];
 export type FieldValuesQuery = S["FieldValuesQuery"];
 export type FieldValues = S["FieldValues"];
 export type RequestDraft = S["RequestDraft"];

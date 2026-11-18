@@ -114,6 +114,16 @@ arrow key. To choose a node, select it, or move to it with the arrow keys
 and press Enter. You can also type a letter to move to the next node that
 starts with it. Under the tree, **Chosen** shows the path to your choice.
 
+To attach a file, select **Choose a file**, or drop the file on the field.
+Under the field, rvav says which types it takes and how large a file may
+be. rvav checks the file as soon as you choose it and says why it refuses
+one: too large, of another type, or not what its name says. To change the
+file, select **Replace**; to remove it, select the cross beside its name.
+A file you attach but don't request is deleted after a day. Once you
+submit, the request keeps the file: select its name on the request's page
+to download it. The request's approvers and the project's administrators
+can download it too.
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

@@ -277,6 +277,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		ve  *core.ValidationError
 		ce  *core.ConflictError
 		be  *core.BadRequestError
+		te  *core.TooLargeError
+		me  *core.UnsupportedTypeError
 		ue  *core.UpstreamError
 		msg = err.Error()
 	)
@@ -295,6 +297,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		s.problem(w, r, http.StatusConflict, "conflict", "Not possible right now", ce.Msg, nil)
 	case errors.As(err, &be):
 		s.problem(w, r, http.StatusBadRequest, "bad-request", "The request is not valid", be.Msg, nil)
+	case errors.As(err, &te):
+		s.problem(w, r, http.StatusRequestEntityTooLarge, "too-large", "The file is too large", te.Msg, nil)
+	case errors.As(err, &me):
+		s.problem(w, r, http.StatusUnsupportedMediaType, "unsupported-type", "This type of file isn't taken", me.Msg, nil)
 	case errors.Is(err, store.ErrBadCursor):
 		s.problem(w, r, http.StatusBadRequest, "bad-request", "The request is not valid", "The cursor is not valid. Start again from the first page.", nil)
 	case errors.As(err, &ue):

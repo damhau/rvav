@@ -12,6 +12,7 @@ import { celCheck } from "./cel";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
+import { fileProblems } from "./files";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -375,6 +376,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
   errors.push(...tableProblems(def, props, prefix));
   errors.push(...shownProblems(def, prefix, false));
   errors.push(...searchProblems(def, prefix, false));
+  errors.push(...fileProblems(def, prefix, false));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))
@@ -1009,6 +1011,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const incomplete = [
         ...shownProblems(v.definition, "/definition", true),
         ...searchProblems(v.definition, "/definition", true),
+        ...fileProblems(v.definition, "/definition", true),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       for (const x of versionsOf(item))
@@ -1358,7 +1361,6 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
   ];
 }
 
-/** What an image or a link shows, as the server checks it (checkShown in internal/core/formfields.go). */
 /** As the server: where a search field finds its choices, and a source told to search reads the text. */
 function searchProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
@@ -1408,6 +1410,7 @@ function searchProblems(def: Definition, prefix: string, publish: boolean): S["F
   return errors;
 }
 
+/** What an image or a link shows, as the server checks it (checkShown in internal/core/formfields.go). */
 function shownProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};

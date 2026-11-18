@@ -42,6 +42,17 @@ type UpstreamError struct {
 func (e *UpstreamError) Error() string { return fmt.Sprintf("%s: %v", e.System, e.Err) }
 func (e *UpstreamError) Unwrap() error { return e.Err }
 
+// TooLargeError is a body larger than the operation takes (HTTP 413).
+type TooLargeError struct{ Msg string }
+
+func (e *TooLargeError) Error() string { return e.Msg }
+
+// UnsupportedTypeError is a file of a type the operation doesn't take, or
+// whose content isn't what its name says (HTTP 415).
+type UnsupportedTypeError struct{ Msg string }
+
+func (e *UnsupportedTypeError) Error() string { return e.Msg }
+
 // BadRequestError is a malformed request (HTTP 400).
 type BadRequestError struct{ Msg string }
 

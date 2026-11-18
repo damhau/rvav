@@ -185,6 +185,9 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	var initial map[string]any
 	_ = json.Unmarshal(ev.Version.InitialValues, &initial)
 	ruleErrs := applyStates(ev.Fields, ui, initial, ev.Inputs)
+	if err := s.evaluateFiles(ctx, p, ev, ui, ofRequest); err != nil {
+		return nil, err
+	}
 	fieldErrs, err := validateInputs(ev.Version.ID, ev.Version.FormSchema, ev.Inputs)
 	if err != nil {
 		return nil, err
