@@ -49,15 +49,21 @@ test("choose where an AWX day-2 action is offered", async ({ page }) => {
   await expect(row.getByText("resource.os_family == 'linux'")).toBeVisible();
   await expect(page.getByRole("row", { name: /Patch now/ }).getByText("Off")).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit Install monitoring agent" }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit Install monitoring agent" });
+  await page.getByRole("button", { name: "Actions for Install monitoring agent" }).click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change Install monitoring agent" });
   const condition = dialog.getByRole("textbox", { name: "Condition" });
   await condition.fill("resource.os_family == 'linux' && (environment.production");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save action" }).click();
   await expect(dialog.getByText(/This condition is not valid/)).toBeVisible();
   await condition.fill("resource.os_family == 'linux' && !environment.production");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save action" }).click();
   await expect(dialog).toBeHidden();
   await expect(row.getByText("resource.os_family == 'linux' && !environment.production")).toBeVisible();
+
+  await page.getByRole("button", { name: "Actions for Patch now" }).click();
+  await page.getByRole("menuitem", { name: "Offer on deployments" }).click();
+  await expect(page.getByText("Patch now is offered")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Patch now/ }).getByText("Check settings")).toBeVisible();
   expect(errors).toEqual([]);
 });

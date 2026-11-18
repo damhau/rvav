@@ -535,19 +535,24 @@ Subscriptions and custom workflows ([ADR-0021](adr/0021-event-subscriptions.md),
 `features/admin/extensibility/`. Administrators change them; auditors read
 them.
 
-- **Subscriptions**: each one's topic, condition, target and last 30 days.
-  The dialog shows the topic's description and sample event (what the
-  condition sees). Blocking is only offered on `.pre` topics, and then
-  what happens when the target fails. **Test** sends the sample and opens
-  the run. A subscription's page (`/admin/subscriptions/$subscriptionId`)
-  lists its runs by status. A run (`runs.tsx`) shows its answer, the
-  properties it set, each attempt with what came back, the event sent,
-  and **Try again** when it failed.
-- **Custom workflows**: registered and changed in one dialog (type, task
-  queue, timeout in days, input schema as JSON, usages, projects, and the
-  day-2 action when that usage is ticked). The list says what uses each
-  one and how many runs haven't ended; removing one in use shows the
-  server's refusal.
+- **Subscriptions**: a table of each one's topic, condition, target and
+  last 30 days; a row opens its page, and its row menu sends a test
+  event, changes it, turns it off or on, and removes it after saying what
+  stops. The side panel shows the topic's description and sample event
+  (what the condition sees). Blocking is only offered on `.pre` topics,
+  and then what happens when the target fails. **Send a test event**
+  sends the sample and opens the run. A subscription's page
+  (`/admin/subscriptions/$subscriptionId`) has **Change subscription** in
+  its header, the rest in its ⋯ menu, and its runs in a table filtered by
+  status. A run (`runs.tsx`) shows its answer, the properties it set, each
+  attempt with what came back, the event sent, and **Try again** when it
+  failed.
+- **Custom workflows**: registered and changed in one side panel (type,
+  task queue, timeout in days, input schema as JSON, usages, projects, and
+  the day-2 action when that usage is ticked). The table says what uses
+  each one and how many runs haven't ended; the row menu turns one off,
+  and its Remove says why it can't while runs haven't ended or something
+  uses it. The server also refuses one that requests ran.
 - **Composite items** are written in the item's Definition tab, in the
   YAML or on the canvas beside it, the composite designer (see Catalog
   administration): groups, parallel steps, conditions, what each runs,

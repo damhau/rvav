@@ -30,7 +30,8 @@ test("a webhook subscription: checked, saved, tested; a failed run tried again",
   await expect(page.getByText("Inventory feed saved")).toBeVisible();
 
   // Tested with the topic's sample event.
-  await page.getByRole("button", { name: "Test Inventory feed" }).click();
+  await page.getByRole("button", { name: "Actions for Inventory feed" }).click();
+  await page.getByRole("menuitem", { name: "Send a test event" }).click();
   const tested = page.getByRole("dialog", { name: "Test delivery" });
   await expect(tested.getByText("Delivered")).toBeVisible();
   await expect(tested.getByText(/HTTP 200/)).toBeVisible();
@@ -54,7 +55,6 @@ test("a webhook subscription: checked, saved, tested; a failed run tried again",
 test("register a custom workflow; one still running can't be removed", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("dialog", (d) => void d.accept());
   await page.goto("/");
   await page.getByRole("link", { name: "Custom workflows" }).click();
   await expect(page.getByRole("heading", { name: "Custom workflows" })).toBeVisible();
@@ -75,9 +75,21 @@ test("register a custom workflow; one still running can't be removed", async ({ 
   await expect(page.getByText("CMDB sync saved")).toBeVisible();
   await expect(page.getByRole("row", { name: /CMDB sync/ })).toContainText("Subscription target");
 
-  await page.getByRole("button", { name: "Remove Decommission an application" }).click();
-  await expect(page.getByText("Runs of it haven't ended")).toBeVisible();
-  await expect(page.getByRole("row", { name: /Decommission an application/ })).toBeVisible();
+  // Still running: Remove says why it can't, and turning it off is offered.
+  const decommission = page.getByRole("row", { name: /Decommission an application/ });
+  await decommission.getByRole("button", { name: "Actions for Decommission an application" }).click();
+  await expect(page.getByRole("menuitem", { name: "Remove: runs haven't ended" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Turn off" }).click();
+  await expect(page.getByText("Decommission an application is off")).toBeVisible();
+  await expect(decommission.getByText("Off", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Actions for CMDB sync" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Remove CMDB sync?" });
+  await expect(confirm).toContainText("It is no longer offered as subscription target.");
+  await confirm.getByRole("button", { name: "Remove workflow" }).click();
+  await expect(page.getByText("CMDB sync removed")).toBeVisible();
+  await expect(page.getByRole("row", { name: /CMDB sync/ })).toBeHidden();
   expect(errors).toEqual([]);
 });
 

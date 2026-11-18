@@ -2,10 +2,12 @@
 // every attempt and what came back; failed runs can be tried again.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { History } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { KeyValues } from "@/components/common/page";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
 import { Mono, Time } from "@/components/common/misc";
@@ -16,7 +18,8 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
-import { failed, td, th } from "../governance/common";
+import { fullDate, relative } from "@/lib/utils";
+import { failed } from "../governance/common";
 
 type S = components["schemas"];
 
@@ -178,92 +181,107 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
   const [status, setStatus] = useState("any");
   const [open, setOpen] = useState<string | null>(null);
   const runs = useInfiniteQuery(adm.subscriptionRuns(subscriptionId, status));
-  const list = runs.data?.pages.flatMap((p) => p.items) ?? [];
+  const columns: Column<S["SubscriptionRun"]>[] = [
+    {
+      id: "when",
+      header: "When",
+      sortValue: (r) => r.created_at,
+      cell: (r) => (
+        <>
+          <button type="button" className="font-medium text-fg hover:text-accent" onClick={() => setOpen(r.id)}>
+            <span className="sr-only">Open the run from </span>
+            {relative(r.created_at)}
+          </button>
+          {r.test && (
+            <Badge tone="outline" className="ml-2">
+              Test
+            </Badge>
+          )}
+          <div className="text-secondary text-faint">{fullDate(r.created_at)}</div>
+        </>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (r) => (
+        <>
+          <RunStatus status={r.status} />
+          {r.reason && <div className="mt-0.5 max-w-sm truncate text-secondary text-muted">{r.reason}</div>}
+        </>
+      ),
+    },
+    {
+      id: "request",
+      header: "Request",
+      cell: (r) =>
+        r.request ? (
+          <Link
+            to="/requests/$requestId"
+            params={{ requestId: r.request.id }}
+            className="font-mono text-secondary text-fg hover:text-accent"
+          >
+            {r.request.number}
+          </Link>
+        ) : (
+          <span className="text-secondary text-faint">None</span>
+        ),
+    },
+    { id: "attempts", header: "Attempts", align: "end", sortValue: (r) => r.attempts, cell: (r) => r.attempts },
+  ];
+  const statusLabelOf = statuses.find((s) => s.value === status)?.label ?? "";
   return (
     <Panel
       title="Runs"
+      description="One for each event it heard about. Open one to see what was sent and what came back."
       flush
-      actions={
-        <Select
-          id="runs-status"
-          aria-label="Status"
-          value={status}
-          onChange={setStatus}
-          options={statuses}
-          className="w-44"
-        />
+      footer={
+        runs.hasNextPage && (
+          <Button size="sm" disabled={runs.isFetchingNextPage} onClick={() => void runs.fetchNextPage()}>
+            {runs.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        )
       }
     >
-      {runs.isPending && <SkeletonRows rows={4} cols={5} />}
-      {runs.isError && <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />}
-      {runs.data && list.length === 0 && (
-        <EmptyState
-          title="No run"
-          body="It runs for each event that matches once it exists; Test sends it the sample."
-        />
-      )}
-      {list.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  When
-                </th>
-                <th scope="col" className={th}>
-                  Status
-                </th>
-                <th scope="col" className={th}>
-                  Request
-                </th>
-                <th scope="col" className={th}>
-                  Attempts
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Open</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r) => (
-                <tr key={r.id}>
-                  <td className={`${td} pl-4`}>
-                    <Time iso={r.created_at} />
-                    {r.test && (
-                      <Badge tone="outline" className="ml-2">
-                        Test
-                      </Badge>
-                    )}
-                  </td>
-                  <td className={td}>
-                    <RunStatus status={r.status} />
-                    {r.reason && <div className="mt-0.5 max-w-sm truncate text-secondary text-muted">{r.reason}</div>}
-                  </td>
-                  <td className={`${td} font-mono text-secondary`}>{r.request?.number ?? "—"}</td>
-                  <td className={td}>{r.attempts}</td>
-                  <td className={`${td} text-right`}>
-                    <Button
-                      size="sm"
-                      variant="quiet"
-                      aria-label={`Open the run of ${r.created_at}`}
-                      onClick={() => setOpen(r.id)}
-                    >
-                      Open
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {runs.hasNextPage && (
-        <div className="flex justify-center p-3">
-          <Button size="sm" disabled={runs.isFetchingNextPage} onClick={() => void runs.fetchNextPage()}>
-            Load more
-          </Button>
-        </div>
-      )}
+      <DataTable
+        label="Runs"
+        columns={columns}
+        rows={runs.data?.pages.flatMap((p) => p.items)}
+        rowKey={(r) => r.id}
+        minWidth={720}
+        loading={runs.isPending}
+        error={runs.isError && <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />}
+        toolbar={
+          <Select
+            id="runs-status"
+            aria-label="Status"
+            value={status}
+            onChange={setStatus}
+            options={statuses}
+            className="w-48"
+          />
+        }
+        empty={
+          status === "any" ? (
+            <EmptyState
+              icon={History}
+              title="No run yet"
+              body="It runs for each event that matches. To see one now, send it a test event from the menu above."
+            />
+          ) : (
+            <EmptyState
+              icon={History}
+              title={`No run with the status ${statusLabelOf}`}
+              body="Other runs may have another status."
+              action={
+                <Button size="sm" onClick={() => setStatus("any")}>
+                  Show every run
+                </Button>
+              }
+            />
+          )
+        }
+      />
       {open && <RunDialog runId={open} canRetry={canRetry} onClose={() => setOpen(null)} />}
     </Panel>
   );
