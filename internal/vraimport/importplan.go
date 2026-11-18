@@ -76,6 +76,10 @@ type ProjectPlan struct {
 	How             string `json:"how"`
 	Items           int    `json:"items"`
 	Deployments     int    `json:"deployments"`
+	// PlacementPolicy is vRA's, and Strategy the placement rule strategy
+	// that places as it does (ADR-0036); "" when rvav has none.
+	PlacementPolicy string `json:"placement_policy,omitempty"`
+	Strategy        string `json:"strategy,omitempty"`
 }
 
 // Summary counts what the import would do.
@@ -105,7 +109,7 @@ type ImportPlan struct {
 func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	p := ImportPlan{Projects: []ProjectPlan{}, Items: []ItemImport{}, Policies: PlanPolicies(e), Triage: TriageVRO(e)}
 	for _, vp := range e.Projects {
-		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name}
+		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name, PlacementPolicy: vp.PlacementPolicy, Strategy: strategyFor(vp.PlacementPolicy)}
 		proj, how := mapProject(r, vp.ID, vp.Name)
 		pp.How = how
 		if proj != nil {

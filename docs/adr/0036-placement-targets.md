@@ -127,13 +127,17 @@ without hosts in the inventory are matched by their own tags, as before.
 - A VM's disks (`VmDisk`) say their `provisioning`, read from vCenter.
 
 ### The vRA importer
-- A project's `placementPolicy` (DEFAULT, BINPACK, SPREAD) becomes the
-  strategy of the placement rules the import plan proposes for its rvav
-  project. vRA's SPREAD counts VMs per host, rvav's per cluster; the
-  import plan says so.
+- The import writes no placement rule: rvav's rules name vCenter objects
+  vRA's projects don't. The import plan gives each project's
+  `placementPolicy` and the strategy that places as it does, for the
+  administrator to set on the rvav project's rules: DEFAULT and
+  SPREAD_MEMORY are most free memory (the nearest: vRA's lowest memory
+  use), SPREAD is spread, and a cloud zone's BINPACK binpack. vRA's
+  SPREAD counts machines per zone, rvav's VMs per cluster.
 - A disk's `provisioningType` (`thin`, `thick`, `eagerZeroedThick`)
   becomes its `provisioning` (`thin`, `thick_lazy_zeroed`,
-  `thick_eager_zeroed`).
+  `thick_eager_zeroed`). Another value, or an expression, is reported as
+  unmapped: the disk is provisioned as the template's first disk.
 
 ## Consequences
 - Administrators can carve a cluster into pools per project or

@@ -6633,6 +6633,13 @@ components:
         how: { type: string, enum: [mapped, same_name, stays, none], description: "Mapped by an administrator, by the same name, kept in vRA by an administrator, or not at all." }
         items: { type: integer, description: Catalog items shared with it in vRA. }
         deployments: { type: integer }
+        placement_policy: { type: string, description: "vRA's placement policy: DEFAULT, SPREAD or SPREAD_MEMORY." }
+        strategy:
+          $ref: "#/components/schemas/PlacementStrategy"
+          description: |
+            The placement rule strategy that places as the placement policy
+            does, for an administrator to set on the rvav project's rules
+            (the import writes none). Absent when rvav has none.
     VraItemPlan:
       type: object
       required: [blueprint_id, name, slug, status, action, notes, share_add, share_unmapped]

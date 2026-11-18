@@ -31,6 +31,9 @@ type Project struct {
 	Viewers               []Principal       `json:"viewers,omitempty"`
 	Properties            map[string]string `json:"properties,omitempty"`
 	MachineNamingTemplate string            `json:"machineNamingTemplate,omitempty"`
+	// PlacementPolicy is how vRA chooses where the project's machines go:
+	// DEFAULT, SPREAD or SPREAD_MEMORY (BINPACK on a cloud zone).
+	PlacementPolicy string `json:"placementPolicy,omitempty"`
 }
 
 // ImageProfile maps image names (what templates ask for) to a region's

@@ -4945,6 +4945,14 @@ export interface components {
             /** @description Catalog items shared with it in vRA. */
             items: number;
             deployments: number;
+            /** @description vRA's placement policy: DEFAULT, SPREAD or SPREAD_MEMORY. */
+            placement_policy?: string;
+            /**
+             * @description The placement rule strategy that places as the placement policy
+             *     does, for an administrator to set on the rvav project's rules
+             *     (the import writes none). Absent when rvav has none.
+             */
+            strategy?: components["schemas"]["PlacementStrategy"];
         };
         VraItemPlan: {
             blueprint_id: string;

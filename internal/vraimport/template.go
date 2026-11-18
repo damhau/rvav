@@ -248,6 +248,14 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 					if l := cs.constraintsOf(d["constraints"], "resources."+ref+".constraints", note); len(l) > 0 {
 						disk["constraints"] = l
 					}
+					if pt, ok := d["provisioningType"]; ok {
+						if p := diskProvisioning(pt); p != "" {
+							disk["provisioning"] = p
+						} else {
+							note(Unmapped, "resources."+ref+".provisioningType", fmt.Sprintf(
+								"Provisioning %v isn't thin, thick or eagerZeroedThick: left out, the disk is provisioned as the template's first disk.", pt))
+						}
+					}
 					cDisks = append(cDisks, disk)
 					delete(disks, ref)
 				} else {

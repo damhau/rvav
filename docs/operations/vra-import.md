@@ -54,6 +54,19 @@ to the item it became:
 Policies aren't imported: they decide who may do what, so an
 administrator sets each from what the plan says.
 
+Placement rules aren't imported either: they name vCenter objects that
+vRA's projects don't. The **Projects** tab gives each project's
+**Placement strategy**, the one that places as vRA's `placementPolicy`
+does ([ADR-0036](../adr/0036-placement-targets.md)). Set it on the rvav
+project's placement rules:
+
+| vRA `placementPolicy` | Placement rule strategy |
+|---|---|
+| `DEFAULT` | **Most free memory**, rvav's default. vRA takes zones by priority: rvav takes rules by priority. |
+| `SPREAD` | **Spread**. vRA counts machines per zone, rvav counts its VMs per cluster. |
+| `SPREAD_MEMORY` | **Most free memory**, the nearest: vRA takes the zone with the lowest memory use. |
+| `BINPACK` (a cloud zone's) | **Binpack**. |
+
 **Import…** adopts every project's deployments; the Cutover tab adopts
 one project's (`projects` in the API).
 
@@ -113,6 +126,7 @@ check it) or *unmapped* (left out).
 | `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}`, `${count.index}`, `${input.x}` (printed through `json`) and other machines' names, addresses and count are translated; functions, operators and other references are reported. |
 | Expressions in `count` and `tags` | CEL. `${input.x}` is `inputs.x`, `${count.index}` is `self.index`, `${self.address}` is `self.address`. Another machine's `address` (or `networks[0].address`), `resourceName` (or `name`) and `count`: `${resource.db.address}` is `components.db.addresses[0]`, or the list `components.db.addresses` for a machine with a `count`; `${resource.db[0].address}` is `components.db.vms[0].address`; `${resource.db[*].address}` is the list. `to_lower`, `to_upper`, `replace`, `join`, `split` and `substring` are CEL's `lowerAscii`, `upperAscii`, `replace`, `join`, `split` and `substring` (`${to_lower(input.app)}` is `inputs.app.lowerAscii()`). Other functions and references (`env.*`, a disk's or a network's properties) are reported. |
 | `Cloud.vSphere.Disk` attached by `attachedDisks` | An added disk of its `capacityGb`, with its constraint tags as its own `constraints`. |
+| A disk's `provisioningType` | The disk's `provisioning` ([ADR-0036](../adr/0036-placement-targets.md)): `thin` is `thin`, `thick` is `thick_lazy_zeroed`, `eagerZeroedThick` is `thick_eager_zeroed`. Another value, or an expression, is reported, and the disk is provisioned as the template's first disk. |
 | `Cloud.vSphere.Network` (existing) | Without constraint tags, the item asks for cluster, datastore and network, within rvav's placement rules. A machine's other adapters on existing networks are reported (a warning): add them to the blueprint's `nics`. |
 | `constraints` on a machine, its `storage`, a disk and an existing network | rvav's constraints ([ADR-0035](../adr/0035-constraint-tags.md)): the machine's are the component's `compute` constraints, its `storage.constraints` its `storage` ones, a disk's the disk's own, and those of its first adapter's network its `network` ones. `key:value` is `category/tag` (`env:prod` is `env/prod`); `:soft`, `:hard` and `!` are kept; `${input.x}` is `${inputs.x}`, and `${input.environment}` is rvav's `${environment}`. rvav then places the VMs within its placement rules, and the form asks for no cluster, datastore or network. When the first adapter's network is an existing one without constraint tags, rvav can't choose it: the form asks for all three, and rvav checks the choice against the constraints (a warning). A tag without a value, a tag that is one expression, and a tag that reads a machine are reported. The tags must exist on the vCenter objects ([Tags on vCenter objects](../guides/admin.md#tags-on-vcenter-objects)). |
 | The project's machine naming template | The item's naming, when every part of it translates. |

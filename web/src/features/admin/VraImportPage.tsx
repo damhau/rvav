@@ -41,6 +41,11 @@ const mapping: Record<S["VraItemPlan"]["status"], [string, Tone]> = {
   partial: ["Partial", "warn"],
   skipped: ["Nothing maps", "outline"],
 };
+const strategyLabels: Record<S["PlacementStrategy"], string> = {
+  most_free_memory: "Most free memory",
+  binpack: "Binpack",
+  spread: "Spread",
+};
 const adoption: Record<S["VraDeploymentPlan"]["status"], [string, Tone]> = {
   adopt: ["To adopt", "accent"],
   adopted: ["Adopted", "ok"],
@@ -170,6 +175,9 @@ function ProjectsTab({ plan }: { plan: Plan }) {
               rvav project
             </th>
             <th scope="col" className={th}>
+              Placement strategy
+            </th>
+            <th scope="col" className={th}>
               Items shared
             </th>
             <th scope="col" className={th}>
@@ -201,6 +209,12 @@ function ProjectsTab({ plan }: { plan: Plan }) {
                     ...(projects.data?.items ?? []).map((x) => ({ value: x.id, label: x.name })),
                   ]}
                 />
+              </td>
+              <td className={td}>
+                {p.strategy ? strategyLabels[p.strategy] : <span className="text-faint">None</span>}
+                {p.placement_policy && (
+                  <div className="font-mono text-caption text-faint">vRA: {p.placement_policy}</div>
+                )}
               </td>
               <td className={td + " tnum"}>{p.items}</td>
               <td className={td + " tnum"}>{p.deployments}</td>

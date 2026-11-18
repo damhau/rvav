@@ -36,8 +36,8 @@ const templates: { id: string; name: string; slug: string; status: S["VraItemPla
     notes: [{ level: "unmapped", where: "versions", text: "No released version: nothing to import." }] },
 ]; // prettier-ignore
 
-const vraProjects = [
-  { id: "vra-prj-web", name: "Web Platform" },
+const vraProjects: { id: string; name: string; placement_policy?: string; strategy?: S["PlacementStrategy"] }[] = [
+  { id: "vra-prj-web", name: "Web Platform", placement_policy: "SPREAD", strategy: "spread" },
   { id: "vra-prj-data", name: "Data Services" },
   { id: "vra-prj-legacy", name: "Legacy Apps" },
 ];
@@ -85,7 +85,8 @@ function plan(db: Db, st: State): S["VraPlan"] {
     const [how, id, name] = rvavOf(db, st, v);
     const items = templates.filter((t) => t.shared.includes(v.id)).length;
     const deployments = vraDeployments.filter((d) => d.project === v.id).length;
-    return { vra_id: v.id, name: v.name, how, rvav_project_id: id, rvav_project_name: name, items, deployments };
+    return { vra_id: v.id, name: v.name, how, rvav_project_id: id, rvav_project_name: name, items, deployments,
+      placement_policy: v.placement_policy, strategy: v.strategy }; // prettier-ignore
   });
   const project = (id: string) => projects.find((p) => p.vra_id === id)!;
   const items: S["VraItemPlan"][] = templates.map((t) => {

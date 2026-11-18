@@ -86,6 +86,11 @@ func TestVRAImport(t *testing.T) {
 		for _, x := range p.Projects {
 			proj[x.VraId] = x
 		}
+		// Web Platform's vRA placement policy spreads: rvav's spread strategy.
+		if web := proj["vra-prj-web"]; web.Strategy == nil || *web.Strategy != api.Spread || deref(web.PlacementPolicy) != "SPREAD" ||
+			proj["vra-prj-data"].Strategy != nil {
+			t.Fatalf("placement = %+v", p.Projects)
+		}
 		if proj["vra-prj-web"].How != "same_name" || deref(proj["vra-prj-web"].RvavProjectId) != "prj_web" ||
 			proj["vra-prj-data"].How != "none" || p.Summary.ItemsCreate != 4 || p.Summary.ItemsBlocked != 1 ||
 			len(p.Policies) != 5 || p.Triage.Groups["C"] != 1 || p.Summary.DeploymentsAdopt != 0 {
