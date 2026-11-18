@@ -660,6 +660,8 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, prefix str
 		if src := f.ValueSource; src != nil {
 			errs = append(errs, checkValueSource(*src, prefix+ptr+"/value_source")...)
 		}
+		prop, _ := props[name].(map[string]any)
+		errs = append(errs, checkFieldShape(name, f, prop, prefix)...)
 	}
 	for _, name := range sortedKeys(props) {
 		if _, ok := d.UiSchema.Fields[name]; !ok {

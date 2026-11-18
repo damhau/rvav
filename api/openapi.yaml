@@ -5510,6 +5510,12 @@ components:
           type: array
           description: Inputs whose change re-resolves this field's value source and rules.
           items: { type: string }
+        columns:
+          type: array
+          description: >-
+            A table's (`datagrid`) columns, in order: each edits one property
+            of the rows, whose type and checks are in the schema's `items`.
+          items: { $ref: "#/components/schemas/UiColumn" }
         rules: { $ref: "#/components/schemas/UiRules" }
         secret:
           type: boolean
@@ -5525,6 +5531,22 @@ components:
         approver_editable:
           type: boolean
           description: Approvers may change this input, within its schema, when they approve.
+
+    UiColumn:
+      type: object
+      required: [key, label, widget]
+      properties:
+        key:
+          type: string
+          description: The property of each row it edits.
+        label: { type: string }
+        widget:
+          type: string
+          enum: [text, number, toggle, select]
+        options:
+          type: array
+          description: A `select` column's choices.
+          items: { $ref: "#/components/schemas/Option" }
 
     UiRules:
       type: object

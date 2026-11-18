@@ -1,7 +1,7 @@
 // The form designer's edits to a version's definition (ADR-0019): pure
 // functions over the form schema, UI schema and initial values, so the three
 // stay in step. The server checks the result when the draft is saved.
-import type { CatalogVersionDefinition, FieldError, UiField, UiWidget } from "@/lib/api/types";
+import type { CatalogVersionDefinition, FieldError, UiColumn, UiField, UiWidget } from "@/lib/api/types";
 
 export type Def = CatalogVersionDefinition;
 export type Prop = Record<string, unknown>;
@@ -94,12 +94,13 @@ export function schemaFor(widget: UiWidget): Prop | null {
       return { type: "string", format: "date-time" };
     case "multiselect":
     case "checklist":
-    case "tags":
       return { type: "array", items: { type: "string" } };
+    case "tags":
+      return { type: "array", uniqueItems: true, items: { type: "string" } };
     case "key_value":
-      return { type: "object", additionalProperties: { type: "string" } };
+      return { type: "object", additionalProperties: { type: "string" }, propertyNames: { minLength: 1 } };
     case "datagrid":
-      return { type: "array", items: { type: "object" } };
+      return { type: "array", items: { type: "object", properties: { value: { type: "string" } } } };
     default:
       return { type: "string" };
   }
@@ -146,6 +147,7 @@ export function addField(def: Def, widget: UiWidget, sectionKey?: string): { def
     const ui: UiField = { widget, label: widgetLabels[widget] };
     const source = widgetSource[widget];
     if (source) ui.value_source = { kind: "builtin", name: source };
+    if (widget === "datagrid") ui.columns = [...firstColumns];
     d.ui_schema.fields[name] = ui;
     const sections = d.ui_schema.layout.sections;
     if (sections.length === 0) sections.push({ key: "main", title: "Details", columns: 2, fields: [] });
@@ -289,6 +291,8 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       p[name] = schema;
       delete d.initial_values[name];
     }
+    if (widget === "datagrid") ui.columns ??= [...firstColumns];
+    else delete ui.columns;
     // A widget's own source follows the widget; a source the author chose stays.
     const source = widgetSource[widget];
     const own = ui.value_source?.kind === "builtin" && ui.value_source.name === before;
@@ -325,6 +329,99 @@ export function setDecimal(def: Def, name: string, decimal: boolean): Def {
     for (const k of ["minimum", "maximum"]) if (!Number.isInteger(prop[k] ?? 0)) delete prop[k];
     const v = d.initial_values[name];
     if (typeof v === "number" && !Number.isInteger(v)) delete d.initial_values[name];
+  });
+}
+
+const firstColumns: UiColumn[] = [{ key: "value", label: "Value", widget: "text" }];
+
+/** The JSON Schema of a table column's cells. */
+function cellFor(column: UiColumn, current?: Prop): Prop {
+  switch (column.widget) {
+    case "number":
+      return current && numeric(current.type) ? current : { type: "integer" };
+    case "toggle":
+      return { type: "boolean" };
+    case "select": {
+      const values = (column.options ?? []).map((o) => o.value);
+      return values.length ? { type: "string", enum: values } : { type: "string" };
+    }
+    default:
+      return current?.type === "string" && !current.enum ? current : { type: "string" };
+  }
+}
+
+/** A table's rows: their properties and which are required. */
+function rowsOf(p: Prop): { properties: Record<string, Prop>; required?: string[] } {
+  p.items ??= { type: "object" };
+  const items = p.items as { properties?: Record<string, Prop>; required?: string[] };
+  items.properties ??= {};
+  return items as { properties: Record<string, Prop>; required?: string[] };
+}
+
+export function isColumnRequired(def: Def, name: string, key: string): boolean {
+  const items = props(def)[name]?.items as { required?: string[] } | undefined;
+  return items?.required?.includes(key) ?? false;
+}
+
+/** Adds a text column to a table, and its property to the rows. */
+export function addColumn(def: Def, name: string): Def {
+  return edit(def, (d, p) => {
+    const ui = d.ui_schema.fields[name];
+    const prop = p[name];
+    if (!ui || !prop) return;
+    const rows = rowsOf(prop);
+    const columns = (ui.columns ??= []);
+    let n = columns.length + 1;
+    while (columns.some((c) => c.key === `column_${n}`) || `column_${n}` in rows.properties) n++;
+    const column: UiColumn = { key: `column_${n}`, label: `Column ${n}`, widget: "text" };
+    columns.push(column);
+    rows.properties[column.key] = cellFor(column);
+  });
+}
+
+/**
+ * Changes a table column, its cells' schema with it: a new key renames the
+ * property, a widget or options change its type, and required adds it to
+ * what every row must have.
+ */
+export function updateColumn(
+  def: Def,
+  name: string,
+  index: number,
+  patch: Partial<UiColumn> & { required?: boolean },
+): Def {
+  return edit(def, (d, p) => {
+    const column = d.ui_schema.fields[name]?.columns?.[index];
+    const prop = p[name];
+    if (!column || !prop) return;
+    const rows = rowsOf(prop);
+    const { required: req, ...ui } = patch;
+    const before = column.key;
+    Object.assign(column, ui);
+    if (column.widget !== "select") delete column.options;
+    else if (column.options?.length === 0) delete column.options;
+    const cell = rows.properties[before];
+    delete rows.properties[before];
+    rows.properties[column.key] = cellFor(column, cell);
+    let required = (rows.required ?? []).map((r) => (r === before ? column.key : r));
+    if (req === true && !required.includes(column.key)) required.push(column.key);
+    if (req === false) required = required.filter((r) => r !== column.key);
+    if (required.length) rows.required = required;
+    else delete rows.required;
+  });
+}
+
+export function removeColumn(def: Def, name: string, index: number): Def {
+  return edit(def, (d, p) => {
+    const ui = d.ui_schema.fields[name];
+    const column = ui?.columns?.[index];
+    const prop = p[name];
+    if (!ui?.columns || !column || !prop) return;
+    ui.columns.splice(index, 1);
+    const rows = rowsOf(prop);
+    delete rows.properties[column.key];
+    rows.required = rows.required?.filter((r) => r !== column.key);
+    if (!rows.required?.length) delete rows.required;
   });
 }
 

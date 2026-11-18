@@ -142,3 +142,116 @@ describe("numbers", () => {
     expect(values()).toEqual({ ratio: 1.75 });
   });
 });
+
+describe("tags", () => {
+  it("are typed as chips and removed, by keyboard", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Harness
+        form={formOf({
+          tags: {
+            ui: { widget: "tags", label: "vSphere tags", options: [{ value: "backup/daily", label: "Daily backup" }] },
+            schema: { type: "array", uniqueItems: true, maxItems: 3, items: { type: "string" } },
+          },
+        })}
+      />,
+    );
+    const input = screen.getByLabelText("vSphere tags");
+    expect(input).toHaveAttribute("list", "f-tags-suggestions");
+    await user.type(input, "backup/daily{Enter}tier/gold,");
+    expect(values()).toEqual({ tags: ["backup/daily", "tier/gold"] });
+    await user.type(input, "tier/gold{Enter}");
+    expect(screen.getByRole("status")).toHaveTextContent("tier/gold is already there.");
+    expect(values()).toEqual({ tags: ["backup/daily", "tier/gold"] });
+    await user.clear(input);
+    await user.keyboard("{Backspace}");
+    expect(values()).toEqual({ tags: ["backup/daily"] });
+    await user.click(screen.getByRole("button", { name: "Remove backup/daily" }));
+    expect(values()).toEqual({});
+    expect(input).toHaveFocus();
+  });
+});
+
+describe("key and value pairs", () => {
+  it("are added, edited and removed, and a key can't be given twice", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          {
+            labels: {
+              ui: { widget: "key_value", label: "Labels" },
+              schema: { type: "object", additionalProperties: { type: "string" } },
+            },
+          },
+          { labels: { app: "billing" } },
+        )}
+      />,
+    );
+    expect(screen.getByRole("group", { name: "Labels" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Key 1")).toHaveValue("app");
+    await user.click(screen.getByRole("button", { name: "Add a pair" }));
+    expect(screen.getByLabelText("Key 2")).toHaveFocus();
+    await user.keyboard("app");
+    await user.type(screen.getByLabelText("Value 2"), "ops");
+    expect(screen.getByLabelText("Key 2")).toHaveAccessibleDescription(/app is already a key above/);
+    expect(values()).toEqual({ labels: { app: "billing" } });
+    await user.type(screen.getByLabelText("Key 2"), "-owner");
+    expect(values()).toEqual({ labels: { app: "billing", "app-owner": "ops" } });
+    await user.click(screen.getByRole("button", { name: "Remove pair 1" }));
+    expect(values()).toEqual({ labels: { "app-owner": "ops" } });
+    expect(screen.getByLabelText("Key 1")).toHaveFocus();
+  });
+});
+
+describe("tables", () => {
+  const disks = () =>
+    formOf({
+      disks: {
+        ui: {
+          widget: "datagrid",
+          label: "Extra disks",
+          columns: [
+            { key: "size_gb", label: "Size (GB)", widget: "number" },
+            { key: "tier", label: "Tier", widget: "select", options: [{ value: "gold", label: "Gold" }] },
+            { key: "thin", label: "Thin", widget: "toggle" },
+            { key: "mount", label: "Mount point", widget: "text" },
+          ],
+        },
+        schema: {
+          type: "array",
+          minItems: 1,
+          maxItems: 2,
+          items: {
+            type: "object",
+            properties: {
+              size_gb: { type: "integer" },
+              tier: { type: "string", enum: ["gold"] },
+              thin: { type: "boolean" },
+              mount: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+
+  it("add rows up to the most, and remove them down to the least", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={disks()} />);
+    expect(screen.getByText("1 to 2 rows")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add a row" }));
+    expect(screen.getByLabelText("Size (GB), row 1")).toHaveFocus();
+    await user.keyboard("50");
+    await user.click(screen.getByRole("checkbox", { name: "Thin, row 1" }));
+    await user.type(screen.getByLabelText("Mount point, row 1"), "/data");
+    expect(values()).toEqual({ disks: [{ size_gb: 50, thin: true, mount: "/data" }] });
+    expect(screen.getByRole("button", { name: "Remove row 1" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Add a row" }));
+    expect(screen.getByRole("button", { name: "Add a row" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Size (GB), row 2"), "20");
+    await user.click(screen.getByRole("button", { name: "Remove row 1" }));
+    expect(values()).toEqual({ disks: [{ size_gb: 20 }] });
+    expect(screen.getByLabelText("Size (GB), row 1")).toHaveFocus();
+    expect(screen.getByRole("columnheader", { name: "Tier" })).toBeInTheDocument();
+  });
+});

@@ -73,6 +73,18 @@ your browser's time zone, which the field names beside it; rvav keeps the
 time zone with the value, so the moment you meant is the one the
 automation gets.
 
+Some fields take several values:
+- **Tags:** type a tag, then press Enter or type a comma. The field may
+  suggest tags as you type. To remove a tag, select its cross, or press
+  Backspace in the empty field to remove the last one.
+- **Key and value pairs:** select **Add a pair**, then type the key and its
+  value. A key can be given only once: if you repeat one, the field says so
+  and leaves that pair out until you change it.
+- **Tables:** select **Add a row**, then fill in its cells; the first cell
+  takes the focus. Each row has a delete button. The table may need a
+  number of rows, which it says beside **Add a row**. A problem names its
+  row and column, for example "Row 2, Size (GB): Enter 10 or more."
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

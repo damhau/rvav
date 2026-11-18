@@ -189,7 +189,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if err != nil {
 		return nil, err
 	}
-	fieldErrs = hiddenErrors(ev.Fields, fieldErrs)
+	fieldErrs = locateNested(ui, hiddenErrors(ev.Fields, fieldErrs))
 	for _, e := range ruleErrs {
 		if !slices.ContainsFunc(fieldErrs, func(f api.FieldError) bool { return f.Field == e.Field }) {
 			fieldErrs = append(fieldErrs, e)

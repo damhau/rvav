@@ -730,7 +730,12 @@ An item's tabs:
   ([field types](../service-catalog.md#field-types)):
   - a number can **Allow decimals**, with a minimum, a maximum and a step;
   - a date, or a date and time, takes the **Earliest** and **Latest** it
-    accepts, a time in your browser's time zone.
+    accepts, a time in your browser's time zone;
+  - tags take **Suggestions** and the **Fewest tags** and **Most tags**;
+  - a table takes the **Fewest rows** and **Most rows**, and its
+    **Columns**: each has a key (the property of its rows), a label, a
+    widget (text, number, toggle or dropdown, with its **Choices**) and
+    whether every row needs it.
 - **Definition:** the whole version as YAML, to review or paste. A VM
   blueprint's or a composite's graph is beside it (below it on a narrow
   screen), drawn from the YAML as you type: a VM item's components (how

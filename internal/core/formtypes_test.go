@@ -2,8 +2,11 @@ package core
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/damhau/rvav/internal/api"
 )
 
 // fieldProblems validates one input against one property's schema and
@@ -77,5 +80,121 @@ func TestDecimalInputs(t *testing.T) {
 		if got := fieldProblems(t, ratio, value); want == "" && got != "" || !strings.HasPrefix(got, want) {
 			t.Errorf("%v: %q, want %q", value, got, want)
 		}
+	}
+}
+
+func TestListAndTableInputs(t *testing.T) {
+	labels := map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
+		"propertyNames": map[string]any{"minLength": 1}}
+	tags := map[string]any{"type": "array", "uniqueItems": true, "maxItems": 3,
+		"items": map[string]any{"type": "string", "pattern": "^[^/]+/[^/]+$"}}
+	disks := map[string]any{"type": "array", "minItems": 1, "maxItems": 2, "items": map[string]any{
+		"type": "object", "required": []any{"size_gb"}, "additionalProperties": false,
+		"properties": map[string]any{
+			"size_gb": map[string]any{"type": "integer", "minimum": 10},
+			"tier":    map[string]any{"type": "string", "enum": []any{"gold", "silver"}},
+			"thin":    map[string]any{"type": "boolean"},
+		}}}
+	for _, c := range []struct {
+		prop  map[string]any
+		value any
+		want  string
+	}{
+		{labels, map[string]any{"app": "billing", "owner": "ops"}, ""},
+		{labels, map[string]any{"app": 3}, "/inputs/f/app type: Enter text."},
+		{labels, map[string]any{"": "x"}, `/inputs/f key: Give every pair a key.`},
+		{tags, []any{"backup/daily", "tier/gold"}, ""},
+		{tags, []any{"backup/daily", "backup/daily"}, "/inputs/f unique:"},
+		{tags, []any{"a/1", "b/2", "c/3", "d/4"}, "/inputs/f max_items: Keep it to 3 at most."},
+		{tags, []any{"daily"}, "/inputs/f/0 pattern:"},
+		{disks, []any{map[string]any{"size_gb": 50, "tier": "gold", "thin": true}}, ""},
+		{disks, []any{}, "/inputs/f min_items: Add at least 1."},
+		{disks, []any{map[string]any{"size_gb": 50}, map[string]any{"size_gb": 5}}, "/inputs/f/1/size_gb minimum: Enter 10 or more."},
+		{disks, []any{map[string]any{"tier": "bronze"}}, "/inputs/f/0/size_gb required"},
+		{disks, []any{map[string]any{"size_gb": 50, "extra": 1}}, "/inputs/f/0/extra unknown_field"},
+	} {
+		if got := fieldProblems(t, c.prop, c.value); c.want == "" && got != "" || !strings.Contains(got, c.want) {
+			t.Errorf("%v: %q, want %q", c.value, got, c.want)
+		}
+	}
+}
+
+func TestKeyProblemAmongOtherInputs(t *testing.T) {
+	props := map[string]any{"labels": map[string]any{"type": "object", "propertyNames": map[string]any{"minLength": 1}}}
+	in := map[string]any{"labels": map[string]any{"": "x"}}
+	for _, n := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		props[n] = map[string]any{"type": "string"}
+		in[n] = "v"
+	}
+	b, _ := json.Marshal(map[string]any{"type": "object", "properties": props})
+	s, err := compileSchemaUncached(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		raw, _ := json.Marshal(in)
+		errs, err := validateWith(s, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(errs) != 1 || errs[0].Field != "/inputs/labels" {
+			t.Fatalf("errors = %+v, want one under /inputs/labels", errs)
+		}
+	}
+}
+
+func TestFieldShapes(t *testing.T) {
+	cols := []api.UiColumn{{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber},
+		{Key: "tier", Label: "Tier", Widget: api.UiColumnWidgetSelect, Options: &[]api.Option{{Value: "gold", Label: "Gold"}}}}
+	rows := func(props map[string]any) map[string]any {
+		return map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": props}}
+	}
+	good := rows(map[string]any{"size_gb": map[string]any{"type": "integer"}, "tier": map[string]any{"type": "string", "enum": []any{"gold"}}})
+	for _, c := range []struct {
+		f    api.UiField
+		prop map[string]any
+		want []string
+	}{
+		{api.UiField{Widget: api.UiWidgetDatagrid, Columns: &cols}, good, nil},
+		{api.UiField{Widget: api.UiWidgetDatagrid}, good, []string{"/ui_schema/fields/f/columns required"}},
+		{api.UiField{Widget: api.UiWidgetDatagrid, Columns: &cols}, rows(map[string]any{"size_gb": map[string]any{"type": "string"},
+			"tier": map[string]any{"type": "string"}, "extra": map[string]any{"type": "string"}}),
+			[]string{"/ui_schema/fields/f/columns/0/widget widget_mismatch", "/ui_schema/fields/f/columns/1/options required",
+				"/ui_schema/fields/f/columns/1/options/0 enum", "/form_schema/properties/f/items/properties/extra no_ui_field"}},
+		{api.UiField{Widget: api.UiWidgetDatagrid, Columns: &cols}, map[string]any{"type": "string"},
+			[]string{"/form_schema/properties/f widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetDatetime}, map[string]any{"type": "string"}, []string{"/form_schema/properties/f widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetTags}, map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, nil},
+		{api.UiField{Widget: api.UiWidgetKeyValue}, map[string]any{"type": "array"}, []string{"/form_schema/properties/f widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetText, Columns: &cols}, map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/columns invalid"}},
+	} {
+		var got []string
+		for _, e := range checkFieldShape("f", c.f, c.prop, "") {
+			got = append(got, e.Field+" "+*e.Code)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s over %v: %v, want %v", c.f.Widget, c.prop, got, c.want)
+		}
+	}
+}
+
+func TestLocateNested(t *testing.T) {
+	cols := []api.UiColumn{{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber}}
+	ui := api.UiSchema{Fields: map[string]api.UiField{"disks": {Widget: api.UiWidgetDatagrid, Columns: &cols},
+		"labels": {Widget: api.UiWidgetKeyValue}, "tags": {Widget: api.UiWidgetTags}}}
+	errs := locateNested(ui, []api.FieldError{
+		fieldErr("/inputs/disks/1/size_gb", "minimum", "Enter 10 or more."),
+		fieldErr("/inputs/disks/0", "invalid", "Wrong."),
+		fieldErr("/inputs/labels/team~1app", "type", "Enter text."),
+		fieldErr("/inputs/tags/2", "pattern", "Not category/tag."),
+		fieldErr("/inputs/tags", "unique", "Twice."),
+	})
+	var got []string
+	for _, e := range errs {
+		got = append(got, e.Message)
+	}
+	want := []string{"Row 2, Size (GB): Enter 10 or more.", "Row 1: Wrong.", "team/app: Enter text.", "Item 3: Not category/tag.", "Twice."}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%q, want %q", got, want)
 	}
 }

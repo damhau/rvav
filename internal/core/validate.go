@@ -114,6 +114,14 @@ func validateWith(s *jsonschema.Schema, b []byte) ([]api.FieldError, error) {
 			out = append(out, fieldErr("/inputs"+pointer(e.InstanceLocation), "contains", "A required option is missing from this list."))
 			return
 		}
+		if k, ok := e.ErrorKind.(*kind.PropertyNames); ok {
+			msg := "Give every pair a key."
+			if k.Property != "" {
+				msg = fmt.Sprintf("%q can't be a key here.", k.Property)
+			}
+			out = append(out, fieldErr(keysAt(e.SchemaURL), "key", msg))
+			return
+		}
 		if len(e.Causes) > 0 {
 			for _, c := range e.Causes {
 				walk(c)
@@ -148,6 +156,12 @@ func validateWith(s *jsonschema.Schema, b []byte) ([]api.FieldError, error) {
 			out = append(out, fieldErr(ptr, "maximum", "Enter "+ratText(k.Want)+" or less."))
 		case *kind.MultipleOf:
 			out = append(out, fieldErr(ptr, "multiple_of", "Enter a multiple of "+ratText(k.Want)+"."))
+		case *kind.MinItems:
+			out = append(out, fieldErr(ptr, "min_items", fmt.Sprintf("Add at least %d.", k.Want)))
+		case *kind.MaxItems:
+			out = append(out, fieldErr(ptr, "max_items", fmt.Sprintf("Keep it to %d at most.", k.Want)))
+		case *kind.UniqueItems:
+			out = append(out, fieldErr(ptr, "unique", "The same value is in the list twice."))
 		case *tooEarly, *tooLate:
 			out = append(out, fieldErr(ptr, "out_of_range", e.ErrorKind.LocalizedString(printer)))
 		default:
@@ -200,6 +214,18 @@ func ratText(r *big.Rat) string {
 	}
 	f, _ := r.Float64()
 	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// keysAt is where a propertyNames problem is, from its schema: v6.0.3 gives
+// the error its location stack itself, which the properties after it then
+// overwrite. A pair field is a top-level input, so its name is enough.
+func keysAt(schemaURL string) string {
+	_, frag, _ := strings.Cut(schemaURL, "#")
+	if rest, ok := strings.CutPrefix(frag, "/properties/"); ok {
+		name, _, _ := strings.Cut(rest, "/")
+		return "/inputs/" + name
+	}
+	return "/inputs"
 }
 
 func pointer(parts []string) string {

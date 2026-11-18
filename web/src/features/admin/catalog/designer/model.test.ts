@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { UiWidget } from "@/lib/api/types";
+import { fromYaml, toYaml } from "../definitionYaml";
 import {
+  addColumn,
   addField,
   addSection,
+  isColumnRequired,
   isDecimal,
   moveField,
+  removeColumn,
   removeField,
   renameField,
   setDecimal,
@@ -12,7 +17,9 @@ import {
   setRule,
   setWidget,
   sortProblems,
+  updateColumn,
   updateProp,
+  widgetLabels,
   type Def,
 } from "./model";
 
@@ -103,6 +110,48 @@ describe("form designer model", () => {
     n = setDecimal(n, "number", false);
     expect(prop(n, "number")).toEqual({ type: "integer", maximum: 4 });
     expect(n.initial_values).toEqual({});
+  });
+
+  it("keeps a table's columns and its rows' schema in step", () => {
+    let def = addField(empty, "datagrid").def;
+    expect(def.ui_schema.fields.datagrid?.columns).toEqual([{ key: "value", label: "Value", widget: "text" }]);
+    def = addColumn(def, "datagrid");
+    def = updateColumn(def, "datagrid", 1, { key: "size_gb", label: "Size (GB)", widget: "number", required: true });
+    def = updateColumn(def, "datagrid", 0, {
+      key: "tier",
+      widget: "select",
+      options: [{ value: "gold", label: "Gold" }],
+    });
+    expect(prop(def, "datagrid")).toEqual({
+      type: "array",
+      items: {
+        type: "object",
+        properties: { tier: { type: "string", enum: ["gold"] }, size_gb: { type: "integer" } },
+        required: ["size_gb"],
+      },
+    });
+    def = updateColumn(def, "datagrid", 1, { key: "disk_gb" });
+    expect(isColumnRequired(def, "datagrid", "disk_gb")).toBe(true);
+    def = removeColumn(def, "datagrid", 1);
+    expect((prop(def, "datagrid") as { items: unknown }).items).toEqual({
+      type: "object",
+      properties: { tier: { type: "string", enum: ["gold"] } },
+    });
+    def = setWidget(def, "datagrid", "tags");
+    expect(def.ui_schema.fields.datagrid?.columns).toBeUndefined();
+    expect(prop(def, "datagrid")).toEqual({ type: "array", uniqueItems: true, items: { type: "string" } });
+  });
+
+  it("round-trips every field type through the YAML view", () => {
+    let def = empty;
+    for (const w of Object.keys(widgetLabels) as UiWidget[]) def = addField(def, w).def;
+    def = updateProp(def, "number", { minimum: 0.5, multipleOf: 0.25 });
+    def = setDecimal(def, "number", true);
+    def = updateProp(def, "datetime", { formatMinimum: "2026-12-01T00:00:00+01:00" });
+    def = addColumn(def, "datagrid");
+    const back = fromYaml(toYaml(def));
+    expect(back.problems).toEqual([]);
+    expect(back.def).toEqual(def);
   });
 
   it("sorts the server's problems by field and section", () => {

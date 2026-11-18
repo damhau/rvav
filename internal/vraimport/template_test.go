@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -8,6 +9,34 @@ import (
 
 	"github.com/damhau/rvav/internal/vra"
 )
+
+func TestFitWidget(t *testing.T) {
+	for _, c := range []struct {
+		widget string
+		prop   map[string]any
+		want   string
+		fits   bool
+		after  map[string]any
+	}{
+		{"datetime", map[string]any{"type": "string", "format": "date"}, "date", true, map[string]any{"type": "string", "format": "date"}},
+		{"datetime", map[string]any{"type": "string"}, "datetime", true, map[string]any{"type": "string", "format": "date-time"}},
+		{"datetime", map[string]any{"type": "integer"}, "datetime", false, nil},
+		{"number", map[string]any{"type": "number"}, "number", true, nil},
+		{"toggle", map[string]any{"type": "string"}, "toggle", false, nil},
+		{"tags", map[string]any{"type": "array"}, "tags", true, map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+		{"tags", map[string]any{"type": "array", "items": map[string]any{"type": "object"}}, "tags", false, nil},
+		{"tags", map[string]any{"type": "string"}, "tags", false, nil},
+		{"multiselect", map[string]any{"type": "array"}, "multiselect", true, nil},
+	} {
+		got, fits := fitWidget(c.widget, c.prop)
+		if got != c.want || fits != c.fits {
+			t.Errorf("%s on %v = %s %v, want %s %v", c.widget, c.prop, got, fits, c.want, c.fits)
+		}
+		if c.after != nil && !reflect.DeepEqual(c.prop, c.after) {
+			t.Errorf("%s: the input became %v, want %v", c.widget, c.prop, c.after)
+		}
+	}
+}
 
 func plans(t *testing.T) map[string]ItemPlan {
 	t.Helper()

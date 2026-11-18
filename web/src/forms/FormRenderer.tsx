@@ -92,7 +92,9 @@ export function FormRenderer({
                 const error = errors[name];
                 const help = selfLabelled.includes(ui.widget) ? undefined : ui.help;
                 const noteId = error || help ? `${id}-note` : undefined;
-                const wide = ["radio_cards", "checklist", "info", "multiselect"].includes(ui.widget);
+                const wide = ["radio_cards", "checklist", "info", "multiselect", "key_value", "datagrid"].includes(
+                  ui.widget,
+                );
                 const value = state.computed !== undefined ? state.computed : values[name];
                 return (
                   <div key={name} className={cn("flex min-w-0 flex-col gap-1.5", wide && "md:col-span-full")}>

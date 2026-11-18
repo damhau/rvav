@@ -26,6 +26,7 @@ export type UiSchema = S["UiSchema"];
 export type UiSection = S["UiSection"];
 export type UiWidget = S["UiWidget"];
 export type UiField = S["UiField"];
+export type UiColumn = S["UiColumn"];
 export type UiRules = S["UiRules"];
 export type ValueSource = S["ValueSource"];
 export type Option = S["Option"];

@@ -210,6 +210,9 @@ that the group has the inputs and constants the item reads.
 | Labels, placeholders, signposts (help), defaults | The fields'. |
 | Static value lists | Choices. |
 | `textField`, `textArea`, `dropDown`, `radio`, `checkbox`, `integerField`, `passwordField`, `datetime`, `multiSelect` | text, textarea, select, radio cards, toggle, number, secret, datetime, multiselect. |
+| `datetime` on a date input | date: a `date` input keeps `format: date`, a `date-time` one `format: date-time`, which the server checks. |
+| `tagField` on an array input | tags, a list of strings. |
+| A widget that can't edit the input as rvav typed it | A warning: the field keeps the widget of its type. |
 | Pages and sections | The layout (a wizard when there are several pages). |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
 | Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). |

@@ -5,17 +5,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { isApiError } from "@/lib/api/client";
-import type { FieldStates, FieldValues, UiWidget, ValueSource } from "@/lib/api/types";
+import type { FieldStates, FieldValues, UiColumn, UiWidget, ValueSource } from "@/lib/api/types";
 import { cn, localInput, withOffset, zoneLabel } from "@/lib/utils";
 import { focusLater, type Selection } from "./FieldList";
 import {
+  addColumn,
   builtinSources,
   choiceWidgets,
+  isColumnRequired,
   isDecimal,
   isRequired,
   moveToSection,
   namePattern,
   props,
+  removeColumn,
   removeField,
   removeSection,
   renameField,
@@ -24,6 +27,7 @@ import {
   setRequired,
   setRule,
   setWidget,
+  updateColumn,
   updateProp,
   updateSection,
   updateUi,
@@ -491,6 +495,42 @@ function FieldProperties({
       {(ui.widget === "date" || ui.widget === "datetime") && prop && (
         <DateBounds def={def} name={name} time={ui.widget === "datetime"} onChange={onChange} />
       )}
+      {(ui.widget === "datagrid" || ui.widget === "tags") && prop && (
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              ["minItems", ui.widget === "datagrid" ? "Fewest rows" : "Fewest tags"],
+              ["maxItems", ui.widget === "datagrid" ? "Most rows" : "Most tags"],
+            ] as const
+          ).map(([k, label]) => (
+            <Field key={k} label={label} htmlFor={`prop-${k}`}>
+              <Input
+                id={`prop-${k}`}
+                type="number"
+                min={0}
+                step={1}
+                value={typeof prop[k] === "number" ? prop[k] : ""}
+                onChange={(e) =>
+                  onChange(updateProp(def, name, { [k]: e.target.value ? Number(e.target.value) : undefined }))
+                }
+              />
+            </Field>
+          ))}
+        </div>
+      )}
+      {ui.widget === "datagrid" && <ColumnsEditor def={def} name={name} onChange={onChange} problems={problems} />}
+      {ui.widget === "tags" && !ui.value_source && (
+        <Field
+          label="Suggestions"
+          htmlFor="prop-options"
+          hint="One per line: value | label. Requesters can type others too."
+        >
+          <OptionsInput
+            value={optionsText(ui.options)}
+            onCommit={(t) => onChange(updateUi(def, name, { options: parseOptions(t) }))}
+          />
+        </Field>
+      )}
       {choiceWidgets.includes(ui.widget) && !ui.value_source && (
         <Field label="Options" htmlFor="prop-options" hint="One per line: value | label.">
           <OptionsInput
@@ -617,6 +657,129 @@ function OptionsInput({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onCommit(draft)}
       {...described}
+    />
+  );
+}
+
+const columnWidgets = [
+  { value: "text", label: "Text" },
+  { value: "number", label: "Number" },
+  { value: "toggle", label: "Toggle" },
+  { value: "select", label: "Dropdown" },
+];
+
+/** A table's columns: each one's key, label, widget, choices and whether every row needs it. */
+function ColumnsEditor({
+  def,
+  name,
+  onChange,
+  problems,
+}: {
+  def: Def;
+  name: string;
+  onChange: (d: Def) => void;
+  problems: Problem[];
+}) {
+  const columns = def.ui_schema.fields[name]?.columns ?? [];
+  const [keyError, setKeyError] = useState<{ index: number; message: string }>();
+  return (
+    <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
+      <legend className="text-secondary font-medium">Columns</legend>
+      <ProblemList id="prop-columns-problems" list={problems.filter((p) => p.at.startsWith("columns"))} />
+      {columns.map((c, i) => {
+        const at = `prop-column-${i}`;
+        const error = keyError?.index === i ? keyError.message : undefined;
+        return (
+          <div key={i} className="flex flex-col gap-2 rounded-md border border-line p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Key" htmlFor={`${at}-key`} error={error}>
+                <CommitInput
+                  id={`${at}-key`}
+                  value={c.key}
+                  className={mono}
+                  onCommit={(to) => {
+                    if (to === c.key) return;
+                    if (!namePattern.test(to))
+                      return setKeyError({ index: i, message: "A lower-case letter, then letters, digits and _." });
+                    if (columns.some((x) => x.key === to))
+                      return setKeyError({ index: i, message: `"${to}" is taken.` });
+                    setKeyError(undefined);
+                    onChange(updateColumn(def, name, i, { key: to }));
+                  }}
+                />
+              </Field>
+              <Field label="Label" htmlFor={`${at}-label`}>
+                <Input
+                  id={`${at}-label`}
+                  value={c.label}
+                  onChange={(e) => onChange(updateColumn(def, name, i, { label: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 items-end gap-2">
+              <Field label="Widget" htmlFor={`${at}-widget`}>
+                <Select
+                  id={`${at}-widget`}
+                  value={c.widget}
+                  onChange={(w) => onChange(updateColumn(def, name, i, { widget: w as UiColumn["widget"] }))}
+                  options={columnWidgets}
+                />
+              </Field>
+              <label htmlFor={`${at}-required`} className="flex h-8 items-center gap-2 text-body">
+                <Checkbox
+                  id={`${at}-required`}
+                  checked={isColumnRequired(def, name, c.key)}
+                  onChange={(on) => onChange(updateColumn(def, name, i, { required: on }))}
+                />
+                Required
+              </label>
+            </div>
+            {c.widget === "select" && (
+              <Field label="Choices" htmlFor={`${at}-options`} hint="One per line: value | label.">
+                <ColumnOptions
+                  id={`${at}-options`}
+                  value={optionsText(c.options)}
+                  onCommit={(t) => onChange(updateColumn(def, name, i, { options: parseOptions(t) }))}
+                />
+              </Field>
+            )}
+            <div>
+              <Button size="sm" variant="quiet" onClick={() => onChange(removeColumn(def, name, i))}>
+                Remove column {c.label || c.key}
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+      <div>
+        <Button
+          size="sm"
+          onClick={() => {
+            onChange(addColumn(def, name));
+            focusLater(`prop-column-${columns.length}-key`);
+          }}
+        >
+          Add a column
+        </Button>
+      </div>
+    </fieldset>
+  );
+}
+
+function ColumnOptions({ id, value, onCommit }: { id: string; value: string; onCommit: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const [shown, setShown] = useState(value);
+  if (shown !== value) {
+    setShown(value);
+    setDraft(value);
+  }
+  return (
+    <Textarea
+      id={id}
+      className={cn("min-h-16", mono)}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft !== value && onCommit(draft)}
     />
   );
 }

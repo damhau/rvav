@@ -221,6 +221,7 @@ type JsonSchema = {
   type?: string;
   properties?: Record<string, JsonSchema>;
   additionalProperties?: JsonSchema | boolean;
+  propertyNames?: { minLength?: number };
   required?: string[];
   pattern?: string;
   minLength?: number;
@@ -293,13 +294,18 @@ function checkValue(
     if (prop.minItems && v.length < prop.minItems)
       return add(at, "minItems", `Pick at least ${prop.minItems} for ${label}.`);
     if (prop.maxItems !== undefined && v.length > prop.maxItems)
-      return add(at, "maxItems", `${label} takes at most ${prop.maxItems}.`);
+      return add(at, "max_items", `Keep it to ${prop.maxItems} at most.`);
     if (prop.uniqueItems && new Set(v.map((x) => JSON.stringify(x))).size < v.length)
-      return add(at, "unique", `${label} has the same value twice.`);
+      return add(at, "unique", "The same value is in the list twice.");
     if (prop.items) v.forEach((x, i) => checkValue(prop.items!, x, `${at}/${i}`, label, add));
   }
   if (prop.type === "object" && v && typeof v === "object" && !Array.isArray(v)) {
     const obj = v as Record<string, unknown>;
+    if (prop.propertyNames?.minLength && Object.keys(obj).some((k) => k.length < prop.propertyNames!.minLength!))
+      add(at, "key", "Give every pair a key.");
+    if (prop.additionalProperties === false)
+      for (const k of Object.keys(obj))
+        if (!prop.properties?.[k]) add(`${at}/${k}`, "unknown_field", `This form has no field named ${k}.`);
     for (const r of prop.required ?? []) if (empty(obj[r])) add(`${at}/${r}`, "required", "This field is required.");
     for (const [k, x] of Object.entries(obj)) {
       const sub =
@@ -329,7 +335,20 @@ export function validateInputs(
     if (v === undefined || v === null || v === "" || prop.readOnly) continue;
     checkValue(prop, v, name, fieldLabel(form, name), add);
   }
-  return errors;
+  return errors.map((e) => ({ ...e, message: locate(form, e.field, e.message) }));
+}
+
+/** A problem inside a list, table or pairs, prefixed with the item, row and column, or key it is in (as the server does). */
+function locate(form: RequestForm | undefined, field: string, message: string): string {
+  const [name = "", at, column] = field.replace(/^\/inputs\//, "").split("/");
+  const ui = form?.ui_schema.fields[name];
+  if (!ui || at === undefined) return message;
+  if (ui.widget === "key_value") return `${at.replace(/~1/g, "/").replace(/~0/g, "~")}: ${message}`;
+  if (!/^\d+$/.test(at)) return message;
+  const n = Number(at) + 1;
+  if (ui.widget !== "datagrid") return `Item ${n}: ${message}`;
+  const label = column && (ui.columns?.find((c) => c.key === column)?.label ?? column);
+  return `Row ${n}${label ? `, ${label}` : ""}: ${message}`;
 }
 
 export function vmCount(item: StoredItem, count: number, inputs: Inputs = {}) {

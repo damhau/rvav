@@ -31,11 +31,30 @@ func TestFormFieldTypes(t *testing.T) {
 				"formatMinimum": "2026-12-01T00:00:00+01:00", "formatMaximum": "2026-12-31T23:59:59+01:00"},
 			"cutover": map[string]any{"type": "string", "format": "date", "formatMinimum": "2026-12-01"},
 			"ratio":   map[string]any{"type": "number", "minimum": 0.5, "maximum": 4, "multipleOf": 0.25},
+			"tags": map[string]any{"type": "array", "uniqueItems": true, "maxItems": 3,
+				"items": map[string]any{"type": "string", "pattern": "^[^/]+/[^/]+$"}},
+			"labels": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
+				"propertyNames": map[string]any{"minLength": 1}},
+			"disks": map[string]any{"type": "array", "minItems": 1, "maxItems": 3, "items": map[string]any{
+				"type": "object", "required": []any{"size_gb"}, "additionalProperties": false, "properties": map[string]any{
+					"size_gb": map[string]any{"type": "integer", "minimum": 10},
+					"tier":    map[string]any{"type": "string", "enum": []any{"gold", "silver"}},
+					"thin":    map[string]any{"type": "boolean"},
+					"mount":   map[string]any{"type": "string"},
+				}}},
 		}
 		fields := map[string]api.UiField{
 			"window":  {Widget: api.UiWidgetDatetime, Label: "Maintenance window"},
 			"cutover": {Widget: api.UiWidgetDate, Label: "Cut-over day"},
 			"ratio":   {Widget: api.UiWidgetNumber, Label: "CPU ratio"},
+			"tags":    {Widget: api.UiWidgetTags, Label: "vSphere tags"},
+			"labels":  {Widget: api.UiWidgetKeyValue, Label: "Labels"},
+			"disks": {Widget: api.UiWidgetDatagrid, Label: "Extra disks", Columns: &[]api.UiColumn{
+				{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber},
+				{Key: "tier", Label: "Tier", Widget: api.UiColumnWidgetSelect, Options: &[]api.Option{{Value: "gold", Label: "Gold"}, {Value: "silver", Label: "Silver"}}},
+				{Key: "thin", Label: "Thin", Widget: api.UiColumnWidgetToggle},
+				{Key: "mount", Label: "Mount point", Widget: api.UiColumnWidgetText},
+			}},
 		}
 		def := api.CatalogVersionDefinition{
 			FormSchema: map[string]any{"type": "object", "required": []any{"window"}, "properties": props},
@@ -44,6 +63,24 @@ func TestFormFieldTypes(t *testing.T) {
 		}
 		def.UiSchema.Layout.Kind = api.Page
 		def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Change", Fields: slices.Sorted(maps.Keys(fields))}}
+		// A table needs columns that edit its rows' properties, of their types.
+		bad := def
+		bad.UiSchema.Fields = maps.Clone(fields)
+		grid := fields["disks"]
+		grid.Columns = &[]api.UiColumn{{Key: "size_gb", Label: "Size", Widget: api.UiColumnWidgetToggle}}
+		bad.UiSchema.Fields["disks"] = grid
+		var refused struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "bad-grid", Name: "Bad grid",
+			Summary: "A table whose columns don't fit.", Category: "compute", Type: api.AwxJobTemplate, Definition: &bad}, 422, &refused)
+		var got []string
+		for _, e := range refused.Errors {
+			got = append(got, e.Field)
+		}
+		if want := []string{"/definition/ui_schema/fields/disks/columns/0/widget", "/definition/form_schema/properties/disks/items/properties/mount",
+			"/definition/form_schema/properties/disks/items/properties/thin", "/definition/form_schema/properties/disks/items/properties/tier"}; !slices.Equal(got, want) {
+			t.Errorf("a table with the wrong columns: %v, want %v", got, want)
+		}
+
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "every-field", Name: "Every field type",
 			Summary: "Each type the designer offers.", Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, 201, &item)
@@ -54,7 +91,10 @@ func TestFormFieldTypes(t *testing.T) {
 			return api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id, ProjectId: "prj_web",
 				Environment: "dev", Inputs: inputs}
 		}
-		valid := map[string]any{"window": "2026-12-10T14:30:00+01:00", "cutover": "2026-12-12", "ratio": 1.75}
+		valid := map[string]any{"window": "2026-12-10T14:30:00+01:00", "cutover": "2026-12-12", "ratio": 1.75,
+			"tags": []any{"backup/daily", "tier/gold"}, "labels": map[string]any{"app": "billing", "cost-centre": "4410"},
+			"disks": []any{map[string]any{"size_gb": float64(50), "tier": "gold", "thin": true, "mount": "/data"},
+				map[string]any{"size_gb": float64(20)}}}
 
 		// Refused, each with what is wrong under its field.
 		for _, c := range []struct {
@@ -68,6 +108,14 @@ func TestFormFieldTypes(t *testing.T) {
 			{"cutover", "12/12/2026", "format"},
 			{"ratio", 1.3, "multiple_of"},
 			{"ratio", 4.25, "maximum"},
+			{"tags", []any{"backup/daily", "backup/daily"}, "unique"},
+			{"tags", []any{"daily"}, "pattern"},
+			{"labels", map[string]any{"app": 3}, "type"},
+			{"labels", map[string]any{"": "x"}, "key"},
+			{"disks", []any{}, "min_items"},
+			{"disks", []any{map[string]any{"size_gb": 50}, map[string]any{"size_gb": 5}}, "minimum"},
+			{"disks", []any{map[string]any{"size_gb": 50, "tier": "bronze"}}, "enum"},
+			{"disks", []any{map[string]any{"tier": "gold"}}, "required"},
 		} {
 			inputs := maps.Clone(valid)
 			inputs[c.field] = c.value
@@ -78,6 +126,14 @@ func TestFormFieldTypes(t *testing.T) {
 			}) {
 				t.Errorf("%s = %v: %+v, want a %s problem", c.field, c.value, problem.Errors, c.code)
 			}
+		}
+		// A row's problem says which row and column.
+		inputs := maps.Clone(valid)
+		inputs["disks"] = []any{map[string]any{"size_gb": 50}, map[string]any{"size_gb": 5}}
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/requests/preview", requester, draft(inputs), 200, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Message != "Row 2, Size (GB): Enter 10 or more." {
+			t.Errorf("the preview of a row too small: %+v", problem.Errors)
 		}
 
 		var req api.Request

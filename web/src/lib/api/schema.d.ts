@@ -4070,6 +4070,8 @@ export interface components {
             value_source?: components["schemas"]["ValueSource"];
             /** @description Inputs whose change re-resolves this field's value source and rules. */
             depends_on?: string[];
+            /** @description A table's (`datagrid`) columns, in order: each edits one property of the rows, whose type and checks are in the schema's `items`. */
+            columns?: components["schemas"]["UiColumn"][];
             rules?: components["schemas"]["UiRules"];
             /** @description Stored encrypted, never returned by the API, and kept out of the request's plan and workflow history (a `{"$secret": "<field>"}` marker stands for it there): given only to the AWX job at launch and to cloud-init user data. The `secret` widget makes a field secret too. */
             secret?: boolean;
@@ -4077,6 +4079,15 @@ export interface components {
             expose_to_inventory?: boolean;
             /** @description Approvers may change this input, within its schema, when they approve. */
             approver_editable?: boolean;
+        };
+        UiColumn: {
+            /** @description The property of each row it edits. */
+            key: string;
+            label: string;
+            /** @enum {string} */
+            widget: "text" | "number" | "toggle" | "select";
+            /** @description A `select` column's choices. */
+            options?: components["schemas"]["Option"][];
         };
         /**
          * @description CEL expressions over `inputs`, `project`, `user`, `environment` and

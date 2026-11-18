@@ -308,6 +308,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         code: "no_ui_field",
         message: `"${name}" has no UI field, so nobody could fill it in.`,
       });
+  errors.push(...tableProblems(def, props, prefix));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))
@@ -1221,4 +1222,65 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       return HttpResponse.json({ form: found.form, fields, errors } satisfies S["DesignerPreview"]);
     }),
   ];
+}
+
+const columnTypes: Record<string, string[]> = {
+  text: ["string"],
+  number: ["integer", "number"],
+  toggle: ["boolean"],
+  select: ["string"],
+};
+
+type Cells = { items?: { properties?: Record<string, { type?: string; enum?: unknown[] }> } };
+
+/** A table's columns against its rows' properties, as the server checks them (internal/core/formfields.go). */
+function tableProblems(def: Definition, props: Record<string, unknown>, prefix: string): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  for (const [name, f] of Object.entries(def.ui_schema.fields)) {
+    if (f.widget !== "datagrid") continue;
+    const at = `${prefix}/ui_schema/fields/${name}`;
+    const cells = (props[name] as Cells | undefined)?.items?.properties ?? {};
+    const columns = f.columns ?? [];
+    if (columns.length === 0) {
+      errors.push({
+        field: `${at}/columns`,
+        code: "required",
+        message: "Give the table its columns, one per property of its rows.",
+      });
+      continue;
+    }
+    columns.forEach((c, i) => {
+      const cell = cells[c.key];
+      const cat = `${at}/columns/${i}`;
+      const types = columnTypes[c.widget] ?? [];
+      if (!cell)
+        errors.push({
+          field: `${cat}/key`,
+          code: "unknown_input",
+          message: `The rows have no property "${c.key}": add it to the schema's items.`,
+        });
+      else if (!c.label.trim())
+        errors.push({ field: `${cat}/label`, code: "required", message: "Give the column a label." });
+      else if (!types.includes(cell.type ?? ""))
+        errors.push({
+          field: `${cat}/widget`,
+          code: "widget_mismatch",
+          message: `A ${c.widget} column edits ${types.join(" or ")}, and "${c.key}" is ${cell.type ?? "untyped"}.`,
+        });
+      else if (c.widget === "select" && !cell.enum?.length)
+        errors.push({
+          field: `${cat}/options`,
+          code: "required",
+          message: `A select column's property needs its choices as an enum, so the server checks them: "${c.key}" has none.`,
+        });
+    });
+    for (const k of Object.keys(cells).sort())
+      if (!columns.some((c) => c.key === k))
+        errors.push({
+          field: `${prefix}/form_schema/properties/${name}/items/properties/${k}`,
+          code: "no_ui_field",
+          message: `"${k}" has no column, so nobody could fill it in.`,
+        });
+  }
+  return errors;
 }

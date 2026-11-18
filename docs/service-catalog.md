@@ -627,6 +627,9 @@ as a list.
 | `date` | `string`, `format: date` | `2026-12-24` |
 | `datetime` | `string`, `format: date-time` | `2026-12-24T14:30:00+01:00`: ISO 8601 with the requester's time zone |
 | `number`, `slider` | `integer`, or `number` for decimals | `4`, `1.75` |
+| `tags` | `array` of `string`, `uniqueItems: true` | `["backup/daily", "tier/gold"]` |
+| `key_value` | `object`, `additionalProperties: {type: string}` | `{"app": "billing", "owner": "ops"}` |
+| `datagrid` | `array` of `object`, with `ui.columns` | `[{"size_gb": 50, "tier": "gold"}]` |
 
 A date or a time takes its bounds in `formatMinimum` and `formatMaximum`,
 written in the input's format; a time without a time zone is refused. A
@@ -646,6 +649,72 @@ ui_schema:
     window: { widget: datetime, label: Maintenance window }
     cpu_ratio: { widget: number, label: CPU ratio }
 ```
+
+Tags are typed and removed as chips. The field's `options`, or its value
+source, suggest tags; requesters can type others unless `items.enum` lists
+the only ones allowed. `maxItems` caps the count. For vSphere tags, the
+blueprint's `tags:` takes `category/tag` strings, so give the items that
+pattern and bind the input, for example `tags: ${inputs.tags}`:
+
+```yaml
+form_schema:
+  properties:
+    tags:
+      type: array
+      uniqueItems: true
+      maxItems: 5
+      items: { type: string, pattern: "^[^/]+/[^/]+$" }
+ui_schema:
+  fields:
+    tags:
+      widget: tags
+      label: vSphere tags
+      options: [{ value: backup/daily, label: Daily backup }]
+```
+
+Key and value pairs make an object of strings. A key can be given once: the
+form flags a repeated key and leaves that pair out until it changes, and
+`propertyNames: {minLength: 1}` makes the server refuse an empty key.
+
+A table (`datagrid`) is a list of rows. Each column in `ui.columns` edits one
+property of the rows' schema (`items.properties`), with a `text`, `number`,
+`toggle` or `select` widget that fits the property's type. A `select`
+column's property lists its choices in an `enum`, which the server checks.
+`minItems` and `maxItems` bound the rows, and `items.required` names the
+cells every row needs. The server checks every row and says where a problem
+is: "Row 2, Size (GB): Enter 10 or more."
+
+```yaml
+form_schema:
+  properties:
+    disks:
+      type: array
+      minItems: 1
+      maxItems: 4
+      items:
+        type: object
+        required: [size_gb]
+        additionalProperties: false
+        properties:
+          size_gb: { type: integer, minimum: 10 }
+          tier: { type: string, enum: [gold, silver] }
+          thin: { type: boolean }
+ui_schema:
+  fields:
+    disks:
+      widget: datagrid
+      label: Extra disks
+      columns:
+        - { key: size_gb, label: Size (GB), widget: number }
+        - key: tier
+          label: Tier
+          widget: select
+          options: [{ value: gold, label: Gold }, { value: silver, label: Silver }]
+        - { key: thin, label: Thin, widget: toggle }
+```
+
+A column with no property, a property with no column, or a widget that
+doesn't fit its type is refused when the version is saved.
 
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:

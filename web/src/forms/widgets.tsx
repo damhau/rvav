@@ -8,6 +8,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
 import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
+import { DatagridWidget, KeyValueWidget, TagsWidget } from "./collections";
 import { useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -38,6 +39,11 @@ export interface JsonSchemaProp {
   formatMaximum?: string;
   enum?: unknown[];
   readOnly?: boolean;
+  items?: JsonSchemaProp;
+  properties?: Record<string, JsonSchemaProp>;
+  required?: string[];
+  minItems?: number;
+  maxItems?: number;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -383,6 +389,9 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   slider: NumberWidget,
   date: DateWidget,
   datetime: DateTimeWidget,
+  tags: TagsWidget,
+  key_value: KeyValueWidget,
+  datagrid: DatagridWidget,
   toggle: ToggleWidget,
   select: SourcedSelectWidget,
   segmented: SegmentedWidget,

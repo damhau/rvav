@@ -468,9 +468,9 @@ func mapInput(name string, in map[string]any, note func(level, where, text strin
 		}
 		switch in["format"] {
 		case "date":
-			field["widget"] = "date"
+			field["widget"], prop["format"] = "date", "date"
 		case "date-time":
-			field["widget"] = "datetime"
+			field["widget"], prop["format"] = "datetime", "date-time"
 		}
 		if enc, _ := in["encrypted"].(bool); enc {
 			field["widget"], field["secret"] = "secret", true
@@ -640,6 +640,42 @@ func mapDependsOn(t tmpl, name string, machines map[string]machineRef, unmapped 
 	}
 }
 
+// fitWidget is the rvav widget for a vRA form's, if it can edit the input
+// as rvav typed it: vRA's date and time picker is a date picker on a date
+// input, and gives any other text input the date-time format.
+func fitWidget(w string, prop map[string]any) (string, bool) {
+	if prop == nil {
+		return w, true
+	}
+	switch w {
+	case "datetime":
+		if prop["type"] != "string" {
+			return w, false
+		}
+		if prop["format"] == "date" {
+			return "date", true
+		}
+		prop["format"] = "date-time"
+	case "number":
+		return w, prop["type"] == "integer" || prop["type"] == "number"
+	case "toggle":
+		return w, prop["type"] == "boolean"
+	case "multiselect":
+		return w, prop["type"] == "array"
+	case "tags":
+		if prop["type"] != "array" {
+			return w, false
+		}
+		items, _ := prop["items"].(map[string]any)
+		if items == nil {
+			prop["items"] = map[string]any{"type": "string"}
+			return w, true
+		}
+		return w, items["type"] == "string"
+	}
+	return w, true
+}
+
 // applyForm takes a custom form's labels, help, choices, defaults,
 // requirements and layout. Its dynamic parts (vRO actions, external
 // sources, conditions) are reported.
@@ -683,11 +719,16 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 					continue
 				}
 				names, seen[fd.ID] = append(names, fd.ID), true
-				if w, ok := widgets[fd.Display]; ok {
-					field["widget"] = w
-					if w == "secret" {
+				prop, _ := props[fd.ID].(map[string]any)
+				w, ok := widgets[fd.Display]
+				if fit, fits := fitWidget(w, prop); ok && fits {
+					field["widget"] = fit
+					if fit == "secret" {
 						field["secret"] = true
 					}
+				} else if ok {
+					note(Warning, where, fmt.Sprintf("Shown as %s in vRA, which doesn't fit an input of type %v in rvav: shown as %v.",
+						fd.Display, prop["type"], field["widget"]))
 				} else if fd.Display != "" {
 					note(Warning, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
 				}
@@ -716,7 +757,6 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				if d, ok := sch["default"]; ok {
 					initial[fd.ID] = d
 				}
-				prop, _ := props[fd.ID].(map[string]any)
 				switch vl := sch["valueList"].(type) {
 				case []any:
 					var vals []any
