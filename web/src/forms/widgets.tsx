@@ -1,6 +1,8 @@
 // Widgets for the request form renderer, keyed by `ui:widget`. Each takes the
 // same props so the renderer can pick one from the registry.
-import { Info, LoaderCircle } from "lucide-react";
+import { Eye, EyeOff, Info, LoaderCircle } from "lucide-react";
+import { useState } from "react";
+import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -51,6 +53,39 @@ function TextWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, de
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
     />
+  );
+}
+
+/** A secret typed in: hidden until its button shows it, and never offered to the browser's autofill. */
+function SecretWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <Input
+        id={id}
+        name={name}
+        type={shown ? "text" : "password"}
+        autoComplete="new-password"
+        spellCheck={false}
+        value={str(value)}
+        placeholder={ui.placeholder}
+        maxLength={schema.maxLength}
+        readOnly={readOnly}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        className={cn("font-mono", invalid && "border-bad")}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      />
+      <IconButton
+        label={`Show ${ui.label}`}
+        aria-pressed={shown}
+        aria-controls={id}
+        onClick={() => setShown((s) => !s)}
+      >
+        {shown ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
+      </IconButton>
+    </div>
   );
 }
 
@@ -303,7 +338,7 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   multiselect: ChecklistWidget,
   computed: ComputedWidget,
   info: InfoWidget,
-  secret: TextWidget,
+  secret: SecretWidget,
   vsphere_cluster: SourcedSelectWidget,
   vsphere_datastore: SourcedSelectWidget,
   vsphere_network: SourcedSelectWidget,
@@ -319,6 +354,12 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   user: SourcedSelectWidget,
   deployment: SourcedSelectWidget,
 };
+
+/** The widget a field renders with: a text marked secret is masked like the secret widget. */
+export function widgetFor(ui: UiField): React.ComponentType<WidgetProps> {
+  if (ui.secret && (ui.widget === "text" || ui.widget === "textarea")) return SecretWidget;
+  return widgets[ui.widget] ?? TextWidget;
+}
 
 /** Widgets that render their own label text (no separate label element). */
 export const selfLabelled: UiWidget[] = ["info", "toggle"];

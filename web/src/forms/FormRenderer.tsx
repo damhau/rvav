@@ -7,7 +7,7 @@ import { Panel } from "@/components/ui/panel";
 import type { FieldStates, RequestForm, UiField } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import type { FormContext } from "./useFieldValues";
-import { selfLabelled, widgets, type JsonSchemaProp } from "./widgets";
+import { selfLabelled, widgetFor, type JsonSchemaProp } from "./widgets";
 
 export interface FormRendererProps {
   form: RequestForm;
@@ -87,7 +87,7 @@ export function FormRenderer({
             <div className={cn("grid grid-cols-1 gap-4", gridCols[section.columns ?? 2])}>
               {i === 0 && leading}
               {fields.map(({ name, ui, state }) => {
-                const Widget = widgets[ui.widget] ?? widgets.text!;
+                const Widget = widgetFor(ui);
                 const id = `f-${name}`;
                 const error = errors[name];
                 const help = selfLabelled.includes(ui.widget) ? undefined : ui.help;

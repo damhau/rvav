@@ -802,8 +802,7 @@ func (s *Service) editableFields(ctx context.Context, l loadedLevel) ([]api.Appr
 		} `json:"properties"`
 	}
 	_ = json.Unmarshal(version.FormSchema, &schema)
-	inputs := map[string]any{}
-	_ = json.Unmarshal(l.req.Inputs, &inputs)
+	inputs := present.RedactInputs(l.req.Inputs, present.SecretFields(version.UISchema))
 	out := []api.ApprovalEditableField{}
 	for _, name := range sortedKeys(ui.Fields) {
 		f := ui.Fields[name]

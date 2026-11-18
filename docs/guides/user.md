@@ -62,7 +62,9 @@ one to ask your project admin or administrator for.
    under the field.
 
 A form you leave can be kept as a **draft** (Resume or Discard it later).
-A draft never keeps passwords or other secret fields. Secret fields are
+A draft never keeps passwords or other secret fields. A secret field
+hides what you type: to check it, select the eye button beside it (or tab
+to it and press Space), and select it again to hide it. Secret fields are
 never shown again after you submit: they go only to the automation that
 needs them.
 

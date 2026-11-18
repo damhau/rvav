@@ -90,6 +90,49 @@ func TestSecretInputs(t *testing.T) {
 			if b, _ := json.Marshal(info); err != nil || strings.Contains(string(b), password) {
 				t.Fatalf("the workflow's plan has the password: %v", err)
 			}
+			// Every view of the request and what it made, as its requester
+			// and an approver see them, and the audit log.
+			views := []string{"/api/v1/requests/" + id, "/api/v1/requests/" + id + "/steps", "/api/v1/requests/" + id + "/topology",
+				"/api/v1/requests/" + id + "/approvals", "/api/v1/requests?limit=100", "/api/v1/audit?limit=200"}
+			deps, err := h.store.DeploymentsForRequest(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range deps {
+				views = append(views, "/api/v1/deployments/"+d.ID, "/api/v1/deployments/"+d.ID+"/history")
+			}
+			seen := 0
+			for _, view := range views {
+				for _, who := range []string{"tnguyen", "mkeller"} {
+					code, body, _ := h.do("GET", view, who, nil)
+					if code == 200 && strings.Contains(string(body), password) {
+						t.Fatalf("GET %s as %s shows the password", view, who)
+					}
+					if code == 200 {
+						seen++
+					}
+				}
+			}
+			if seen < len(views) {
+				t.Fatalf("only %d of %d views answered", seen, 2*len(views))
+			}
+			// Temporal's history, its payloads' bytes as they are kept: the
+			// marker is there, the value isn't.
+			marked := false
+			for iter := ts.Client().GetWorkflowHistory(ctx, provision.WorkflowID(id), "", false, 0); iter.HasNext(); {
+				ev, err := iter.Next()
+				if err != nil {
+					t.Fatal(err)
+				}
+				text := ev.String()
+				if strings.Contains(text, password) {
+					t.Fatalf("history event %d (%s) holds the password", ev.GetEventId(), ev.GetEventType())
+				}
+				marked = marked || strings.Contains(text, "$secret")
+			}
+			if !marked {
+				t.Fatal("no history event holds the secret's marker: the search found nothing to look in")
+			}
 		}
 		launched := func(id string) map[string]any {
 			t.Helper()
@@ -131,6 +174,11 @@ func TestSecretInputs(t *testing.T) {
 			_ = h.store.Pool.QueryRow(ctx, `select id from approvals where request_id = $1 and status = 'pending'`, req.Id).Scan(&level)
 			if time.Now().After(deadline) {
 				t.Fatal("no approval level opened")
+			}
+		}
+		for _, view := range []string{"/api/v1/approvals/" + level, "/api/v1/approvals?limit=100"} {
+			if code, body, _ := h.do("GET", view, "mkeller", nil); code != 200 || strings.Contains(string(body), password) {
+				t.Fatalf("GET %s: %d, or it shows the password", view, code)
 			}
 		}
 		// The secrets key is rotated while the request waits: its password
