@@ -63,6 +63,9 @@ web:
   # Origins the browser may load the VM console's SDK from (the origins of
   # config.RVAV_WMKS_SDK_URLS), for the Content-Security-Policy.
   scriptSources: ""
+  # Origins the browser may load forms' images from, besides rvav's own
+  # site, for the Content-Security-Policy.
+  imageSources: ""
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }

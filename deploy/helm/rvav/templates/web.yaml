@@ -42,6 +42,7 @@ spec:
             - { name: RVAV_WEB_OIDC_CLIENT_ID, value: {{ .Values.web.oidcClientId | quote }} }
             - { name: RVAV_WEB_OIDC_SCOPE, value: {{ .Values.web.oidcScope | quote }} }
             - { name: RVAV_WEB_SCRIPT_SOURCES, value: {{ .Values.web.scriptSources | quote }} }
+            - { name: RVAV_WEB_IMAGE_SOURCES, value: {{ .Values.web.imageSources | quote }} }
           ports:
             - { name: http, containerPort: 8080 }
           readinessProbe:

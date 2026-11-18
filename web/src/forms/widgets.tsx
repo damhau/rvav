@@ -1,13 +1,13 @@
 // Widgets for the request form renderer, keyed by `ui:widget`. Each takes the
 // same props so the renderer can pick one from the registry.
-import { Eye, EyeOff, Info, LoaderCircle } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, ImageOff, Info, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
-import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
+import { cn, localInput, shownUrl, withOffset, withUnits, zoneLabel } from "@/lib/utils";
 import { DatagridWidget, KeyValueWidget, ObjectWidget, TagsWidget } from "./collections";
 import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
@@ -473,6 +473,57 @@ function InfoWidget({ ui }: WidgetProps) {
   );
 }
 
+/** A picture the form shows, with its text alternative and, from help, a caption. */
+function ImageWidget({ id, ui }: WidgetProps) {
+  const src = shownUrl(ui.url);
+  const [broken, setBroken] = useState(false);
+  return (
+    <figure id={id} className="flex flex-col gap-1.5">
+      {src && !broken ? (
+        <img
+          src={src}
+          alt={ui.alt ?? ""}
+          className="max-h-96 max-w-full self-start rounded-md border border-line"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <p className="flex items-center gap-2 rounded-md border border-dashed border-line px-3 py-6 text-secondary text-muted">
+          <ImageOff className="size-4 shrink-0" aria-hidden />
+          {src ? `The image didn't load: ${ui.alt ?? ui.label}` : `No image yet: ${ui.alt ?? ui.label}`}
+        </p>
+      )}
+      {ui.help && <figcaption className="text-secondary text-muted">{ui.help}</figcaption>}
+    </figure>
+  );
+}
+
+/** A link the form shows: its label is the link's text, and it opens in a new tab. */
+function LinkWidget({ id, ui }: WidgetProps) {
+  const href = shownUrl(ui.url);
+  return (
+    <div className="flex flex-col gap-0.5">
+      {href ? (
+        <a
+          id={id}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 self-start text-body text-accent underline underline-offset-2"
+        >
+          {ui.label}
+          <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+          <span className="sr-only">(opens in a new tab)</span>
+        </a>
+      ) : (
+        <span id={id} className="text-body text-muted">
+          {ui.label} <span className="text-faint">(no address yet)</span>
+        </span>
+      )}
+      {ui.help && <p className="text-secondary text-muted">{ui.help}</p>}
+    </div>
+  );
+}
+
 export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>> = {
   text: TextWidget,
   textarea: TextareaWidget,
@@ -493,6 +544,8 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   multiselect: ChecklistWidget,
   computed: ComputedWidget,
   info: InfoWidget,
+  image: ImageWidget,
+  link: LinkWidget,
   secret: SecretWidget,
   vsphere_cluster: SourcedSelectWidget,
   vsphere_datastore: SourcedSelectWidget,
@@ -517,4 +570,4 @@ export function widgetFor(ui: UiField): React.ComponentType<WidgetProps> {
 }
 
 /** Widgets that render their own label text (no separate label element). */
-export const selfLabelled: UiWidget[] = ["info", "toggle"];
+export const selfLabelled: UiWidget[] = ["info", "image", "link", "toggle"];

@@ -745,6 +745,12 @@ An item's tabs:
     whether every row needs it;
   - a group of fields takes its **Sub-fields**, set as a table's columns
     are: each edits one property of the object;
+  - an image takes its **Address**, its **Text alternative** (what it
+    shows, for those who can't see it) and a **Caption**; a link takes
+    its **Address**, and its label is the link's text. An address starts
+    with `https://` or `http://`, or is a path on this site. To publish,
+    give the address, and an image's text alternative. An image from
+    another site loads only if that site is in `RVAV_WEB_IMAGE_SOURCES`;
   - a multiple choice dropdown, a checklist or a dual list takes its
     choices from its options or a value source, as a dropdown does; a
     dual list also takes the **Fewest picks** and **Most picks**, and

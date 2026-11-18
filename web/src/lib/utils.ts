@@ -128,3 +128,19 @@ export function newIdempotencyKey() {
 export function withUnits(text: string): string {
   return text.replace(/(\d) (?=\p{L})/gu, "$1\u00a0");
 }
+
+/**
+ * An address a form may show or link to, as the server checks it: http(s),
+ * or a path on this site. Anything else (javascript:, data:) isn't used.
+ */
+export function shownUrl(url: string | undefined): string | undefined {
+  const u = url?.trim();
+  if (!u) return undefined;
+  if (u.startsWith("/")) return u.startsWith("//") || u.includes("\\") ? undefined : u;
+  try {
+    const parsed = new URL(u);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.host ? u : undefined;
+  } catch {
+    return undefined;
+  }
+}

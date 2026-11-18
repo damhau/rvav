@@ -94,6 +94,8 @@ Some fields take several values:
   chosen list counts: to change it, select **Move up** or **Move down**,
   or press Alt+Up or Alt+Down in that list.
 
+A link in a form opens in a new tab, so what you typed stays.
+
 A group of fields is one value made of several sub-fields, each with its
 own label. A problem names its sub-field, for example "Keep (days): Enter
 1 or more."

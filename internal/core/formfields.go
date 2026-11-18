@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -116,6 +117,59 @@ func checkFieldShape(name string, f api.UiField, prop map[string]any, ptr string
 		}
 	}
 	return errs
+}
+
+// shownOnly are the fields that show something and take no input.
+var shownOnly = map[api.UiWidget]bool{api.UiWidgetInfo: true, api.UiWidgetImage: true, api.UiWidgetLink: true}
+
+// checkShown checks what an image or a link shows. An address must be
+// http(s) or a path on rvav's own site whatever the draft, so a saved form
+// can't run a script (javascript:) or embed a document (data:); to
+// publish, the address and an image's text alternative must be given.
+func checkShown(name string, f api.UiField, input bool, ptr string, publish bool) []api.FieldError {
+	var errs []api.FieldError
+	at := ptr + "/ui_schema/fields/" + name
+	media := f.Widget == api.UiWidgetImage || f.Widget == api.UiWidgetLink
+	if f.Url != nil && !media {
+		errs = append(errs, fieldErr(at+"/url", "invalid", "Only an image or a link has an address (url)."))
+	}
+	if f.Alt != nil && f.Widget != api.UiWidgetImage {
+		errs = append(errs, fieldErr(at+"/alt", "invalid", "Only an image has a text alternative (alt)."))
+	}
+	if !media {
+		return errs
+	}
+	what := map[api.UiWidget]string{api.UiWidgetImage: "An image", api.UiWidgetLink: "A link"}[f.Widget]
+	if input {
+		errs = append(errs, fieldErr(ptr+"/form_schema/properties/"+name, "widget_mismatch",
+			fmt.Sprintf("%s takes no input: remove %q from the form's schema.", what, name)))
+	}
+	switch u := strings.TrimSpace(deref(f.Url)); {
+	case u == "" && publish:
+		errs = append(errs, fieldErr(at+"/url", "required", fmt.Sprintf("%s needs its address (url).", what)))
+	case u != "" && !shownURL(u):
+		errs = append(errs, fieldErr(at+"/url", "invalid",
+			"Give an address that starts with https:// or http://, or a path on this site that starts with /."))
+	}
+	if f.Widget == api.UiWidgetImage && strings.TrimSpace(deref(f.Alt)) == "" && publish {
+		errs = append(errs, fieldErr(at+"/alt", "required",
+			"Describe the image for those who can't see it: give its text alternative (alt)."))
+	}
+	return errs
+}
+
+// shownURL is an address a form may show or link to: absolute http(s), or
+// a path on this site. Browsers read "//host" and "/\host" as another
+// site's, so neither is a path.
+func shownURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "" {
+		return u.Host == "" && strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "//") && !strings.Contains(s, `\`)
+	}
+	return (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
 }
 
 // locateNested says where in a table, a list, an object or a set of pairs

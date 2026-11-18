@@ -295,3 +295,4 @@ fields in Administration.
 | `RVAV_WEB_OIDC_CLIENT_ID` | the API's | | install | The browser's client. |
 | `RVAV_WEB_OIDC_SCOPE` | the API's | | install | The scopes it asks for. |
 | `RVAV_WEB_SCRIPT_SOURCES` | none | | install | Where the browser may load scripts from besides the web app and the origins of the console's SDK the API says (`RVAV_WMKS_SDK_URLS`, or set in Administration): for the Content-Security-Policy, when nginx can't ask the API (`https://vc01.corp.example`). Add `'unsafe-eval'` only if the console's SDK needs it. |
+| `RVAV_WEB_IMAGE_SOURCES` | none | | install | Where the browser may load forms' images from besides rvav's own site, for the Content-Security-Policy: the origins of the image fields' addresses (`https://wiki.corp.example`). An image from another origin doesn't load, and the form says so in its place. |

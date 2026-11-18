@@ -5479,6 +5479,8 @@ components:
         - object
         - secret
         - info
+        - image
+        - link
         - computed
         - vsphere_cluster
         - vsphere_datastore
@@ -5500,9 +5502,29 @@ components:
       required: [widget, label]
       properties:
         widget: { $ref: "#/components/schemas/UiWidget" }
-        label: { type: string }
-        help: { type: string }
+        label:
+          type: string
+          description: The field's label; a `link` field's link text.
+        help:
+          type: string
+          description: Help under the field; an `info` field's text, an `image` field's caption.
         placeholder: { type: string }
+        url:
+          type: string
+          maxLength: 2000
+          description: >-
+            An `image` field's picture or a `link` field's target: an
+            `https://` or `http://` address, or a path on rvav's own site
+            (`/...`). Other schemes, such as `javascript:`, are refused.
+            Needed to publish. Image, link and info fields show and take
+            no input.
+          examples: ["https://wiki.corp.example/vm-sizes"]
+        alt:
+          type: string
+          maxLength: 500
+          description: >-
+            An `image` field's text alternative, read out in its place to
+            those who can't see it. Needed to publish.
         options:
           type: array
           description: Static options. Ignored when `value_source` is set.

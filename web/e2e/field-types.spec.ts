@@ -25,6 +25,8 @@ const widgets = [
   "Group of fields",
   "Secret",
   "Information text",
+  "Image",
+  "Link",
   "Computed value",
   "vSphere cluster",
   "vSphere datastore",
@@ -70,6 +72,15 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await props.getByRole("textbox", { name: "Options" }).fill("web | Web team\ndb | Database team\nnet | Network team");
   await props.getByRole("textbox", { name: "Options" }).press("Tab");
   await expect(preview.getByRole("option", { name: "Database team" })).toBeVisible();
+  await fields.getByRole("button", { name: /^Image/ }).click();
+  await props.getByRole("textbox", { name: "Address" }).fill("/favicon.svg");
+  await props.getByRole("textbox", { name: "Address" }).press("Tab");
+  await props.getByRole("textbox", { name: "Text alternative" }).fill("The rvav logo");
+  await expect(preview.getByRole("img", { name: "The rvav logo" })).toBeVisible();
+  await fields.getByRole("button", { name: /^Link/ }).click();
+  await props.getByRole("textbox", { name: "Address" }).fill("/requests");
+  await props.getByRole("textbox", { name: "Address" }).press("Tab");
+  await expect(preview.getByRole("link", { name: "Link (opens in a new tab)" })).toHaveAttribute("href", "/requests");
   await expect(status).toHaveText("Draft 1.0: saved");
   await expect(preview.getByLabel("Secret", { exact: true })).toBeVisible();
   await bothThemes(page, "designer");

@@ -4059,12 +4059,21 @@ export interface components {
             fields: string[];
         };
         /** @enum {string} */
-        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
+        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
         UiField: {
             widget: components["schemas"]["UiWidget"];
+            /** @description The field's label; a `link` field's link text. */
             label: string;
+            /** @description Help under the field; an `info` field's text, an `image` field's caption. */
             help?: string;
             placeholder?: string;
+            /**
+             * @description An `image` field's picture or a `link` field's target: an `https://` or `http://` address, or a path on rvav's own site (`/...`). Other schemes, such as `javascript:`, are refused. Needed to publish. Image, link and info fields show and take no input.
+             * @example https://wiki.corp.example/vm-sizes
+             */
+            url?: string;
+            /** @description An `image` field's text alternative, read out in its place to those who can't see it. Needed to publish. */
+            alt?: string;
             /** @description Static options. Ignored when `value_source` is set. */
             options?: components["schemas"]["Option"][];
             value_source?: components["schemas"]["ValueSource"];

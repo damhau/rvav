@@ -3,7 +3,8 @@
 # the page's Content-Security-Policy lets the browser reach the identity
 # provider's origins the API says, and the one RVAV_WEB_OIDC_AUTHORITY sets,
 # and load the console's SDK from where the API says it is besides
-# RVAV_WEB_SCRIPT_SOURCES; a header that isn't a list of origins is dropped;
+# RVAV_WEB_SCRIPT_SOURCES, and forms' images from RVAV_WEB_IMAGE_SOURCES; a
+# header that isn't a list of origins is dropped;
 # when the API is down the
 # page is still served, without them. Runs the stock nginx image with the
 # template, a stand-in page and a stand-in API (nginx too): no build.
@@ -93,7 +94,15 @@ expect_scripts() { # path, what script-src holds after 'self'
 	esac
 }
 
-web() { # RVAV_WEB_OIDC_AUTHORITY, RVAV_WEB_SCRIPT_SOURCES
+expect_images() { # path, what img-src holds after 'self' data: blob:
+	got=$(csp "$1")
+	case "$got" in
+	*"img-src 'self' data: blob:${2:+ $2};"*) echo "ok: $1: images ${2:-none}" ;;
+	*) fail "$1: expected img-src 'self' data: blob:${2:+ $2}, got: $got" ;;
+	esac
+}
+
+web() { # RVAV_WEB_OIDC_AUTHORITY, RVAV_WEB_SCRIPT_SOURCES, RVAV_WEB_IMAGE_SOURCES
 	docker rm -f "$run-web" >/dev/null 2>&1 || true
 	docker run -d --name "$run-web" --network "$net" \
 		-e RVAV_API_UPSTREAM=http://api:8080 \
@@ -103,6 +112,7 @@ web() { # RVAV_WEB_OIDC_AUTHORITY, RVAV_WEB_SCRIPT_SOURCES
 		-e RVAV_WEB_OIDC_CLIENT_ID= \
 		-e RVAV_WEB_OIDC_SCOPE= \
 		-e RVAV_WEB_SCRIPT_SOURCES="$2" \
+		-e RVAV_WEB_IMAGE_SOURCES="${3:-}" \
 		-v "$here/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
 		-v "$work/html:/usr/share/nginx/html:ro" "$image" >/dev/null
 	for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -113,12 +123,13 @@ web() { # RVAV_WEB_OIDC_AUTHORITY, RVAV_WEB_SCRIPT_SOURCES
 }
 
 docker network create "$net" >/dev/null
-web https://web.example/realms/rvav https://env.example
+web https://web.example/realms/rvav https://env.example "https://cdn.corp.example https://wiki.corp.example"
 
 # The API isn't there: the page is served, with the web container's origin only.
 headers /deployments | grep -q 'HTTP/1.1 200' || fail "the page isn't served while the API is down"
 expect_csp /deployments "https://web.example"
 expect_scripts /deployments "https://env.example"
+expect_images /deployments "https://cdn.corp.example https://wiki.corp.example"
 
 # The API says the provider's origin and one being tried.
 api "https://login.microsoftonline.com https://idp.corp.example:8443"
@@ -147,6 +158,7 @@ docker rm -f "$run-api" >/dev/null 2>&1 || true
 web "" ""
 expect_csp /deployments ""
 expect_scripts /deployments ""
+expect_images /deployments ""
 api "http://localhost:28081" "https://vc01.corp.example"
 expect_csp /deployments "http://localhost:28081"
 expect_scripts /deployments "https://vc01.corp.example"
@@ -154,4 +166,4 @@ api "https://login.microsoftonline.com https://idp.corp.example:8443 "
 expect_csp /deployments "https://login.microsoftonline.com https://idp.corp.example:8443"
 expect_scripts /deployments ""
 
-echo "nginx: the Content-Security-Policy follows the API's identity provider and console SDK"
+echo "nginx: the Content-Security-Policy follows the API's identity provider and console SDK, and forms' image sources"

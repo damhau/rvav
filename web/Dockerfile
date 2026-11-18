@@ -34,12 +34,13 @@ COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 # The sign-in settings at run time (/config.js), the build's by default and
 # empty unless set: the API's then; the origins of the console's SDK
-# scripts, for the Content-Security-Policy.
+# scripts and of forms' images, for the Content-Security-Policy.
 ENV RVAV_API_UPSTREAM=http://api:8080 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     RVAV_WEB_AUTH_MODE=${VITE_AUTH_MODE} \
     RVAV_WEB_OIDC_AUTHORITY=${VITE_OIDC_AUTHORITY} \
     RVAV_WEB_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID} \
     RVAV_WEB_OIDC_SCOPE=${VITE_OIDC_SCOPE} \
-    RVAV_WEB_SCRIPT_SOURCES=
+    RVAV_WEB_SCRIPT_SOURCES= \
+    RVAV_WEB_IMAGE_SOURCES=
 EXPOSE 8080

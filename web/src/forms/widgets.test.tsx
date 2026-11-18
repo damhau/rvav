@@ -391,6 +391,62 @@ describe("groups of fields", () => {
   });
 });
 
+describe("images and links", () => {
+  it("show a picture with its text alternative and caption, and a link that opens in a new tab", () => {
+    renderWithQuery(
+      <Harness
+        form={formOf({
+          diagram: {
+            ui: {
+              widget: "image",
+              label: "Diagram",
+              url: "https://wiki.corp.example/net.png",
+              alt: "The three network zones",
+              help: "Where each tier runs.",
+            },
+            schema: {},
+          },
+          sizes: {
+            ui: {
+              widget: "link",
+              label: "VM sizes explained",
+              url: "https://wiki.corp.example/sizes",
+              help: "On the wiki.",
+            },
+            schema: {},
+          },
+        })}
+      />,
+    );
+    const img = screen.getByRole("img", { name: "The three network zones" });
+    expect(img).toHaveAttribute("src", "https://wiki.corp.example/net.png");
+    expect(img.closest("figure")?.querySelector("figcaption")).toHaveTextContent("Where each tier runs.");
+    const link = screen.getByRole("link", { name: "VM sizes explained (opens in a new tab)" });
+    expect(link).toHaveAttribute("href", "https://wiki.corp.example/sizes");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText("On the wiki.")).toBeInTheDocument();
+    expect(screen.queryByText("Optional")).not.toBeInTheDocument();
+  });
+
+  it("never use an address that isn't http(s) or this site's", () => {
+    renderWithQuery(
+      <Harness
+        form={formOf({
+          bad: { ui: { widget: "link", label: "Click me", url: "javascript:alert(1)" }, schema: {} },
+          other: { ui: { widget: "link", label: "Elsewhere", url: "//evil.example/" }, schema: {} },
+          here: { ui: { widget: "link", label: "My requests", url: "/requests" }, schema: {} },
+          pic: { ui: { widget: "image", label: "Pic", url: "data:image/svg+xml,<svg/>", alt: "A dot" }, schema: {} },
+        })}
+      />,
+    );
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/requests"]);
+    expect(screen.getByText("Click me")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("No image yet: A dot")).toBeInTheDocument();
+  });
+});
+
 describe("multi-select from a value source", () => {
   it("offers the source's options, and drops the picks a dependency change takes away", async () => {
     const user = userEvent.setup();

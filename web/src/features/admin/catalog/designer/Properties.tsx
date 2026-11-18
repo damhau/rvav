@@ -29,6 +29,7 @@ import {
   setRequired,
   setRule,
   setWidget,
+  shownWidgets,
   updateColumn,
   updateProp,
   updateSection,
@@ -467,7 +468,44 @@ function FieldProperties({
           Required
         </label>
       )}
-      <Field label={ui.widget === "info" ? "Text" : "Help"} htmlFor="prop-help">
+      {(ui.widget === "image" || ui.widget === "link") && (
+        <Field
+          label="Address"
+          htmlFor="prop-url"
+          hint={
+            ui.widget === "image"
+              ? "The picture's address: https://…, or a path on this site."
+              : "Where the link goes: https://…, or a path on this site. It opens in a new tab."
+          }
+        >
+          <CommitInput
+            id="prop-url"
+            className={mono}
+            value={ui.url ?? ""}
+            invalid={at("url").length > 0}
+            describedBy={at("url").length ? "prop-url-problems" : undefined}
+            onCommit={(v) => onChange(updateUi(def, name, { url: v.trim() || undefined }))}
+          />
+          <ProblemList id="prop-url-problems" list={at("url")} />
+        </Field>
+      )}
+      {ui.widget === "image" && (
+        <Field
+          label="Text alternative"
+          htmlFor="prop-alt"
+          hint="What the image shows, read out in its place to those who can't see it."
+        >
+          <Input
+            id="prop-alt"
+            value={ui.alt ?? ""}
+            onChange={(e) => onChange(updateUi(def, name, { alt: e.target.value || undefined }))}
+            aria-invalid={at("alt").length > 0 || undefined}
+            aria-describedby={at("alt").length ? "prop-alt-problems" : undefined}
+          />
+          <ProblemList id="prop-alt-problems" list={at("alt")} />
+        </Field>
+      )}
+      <Field label={helpLabels[ui.widget] ?? "Help"} htmlFor="prop-help">
         <Textarea
           id="prop-help"
           value={ui.help ?? ""}
@@ -611,7 +649,7 @@ function FieldProperties({
           <ProblemList id="prop-initial-problems" list={at("initial")} />
         </Field>
       )}
-      {ui.widget !== "info" && (
+      {!shownWidgets.includes(ui.widget) && (
         <SourceEditor name={name} def={def} onChange={onChange} problems={problems} test={test} />
       )}
       <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
@@ -711,6 +749,9 @@ function OptionsInput({
     />
   );
 }
+
+/** What a field's help is, where it isn't help under the field. */
+const helpLabels: Partial<Record<UiWidget, string>> = { info: "Text", image: "Caption" };
 
 /** What a list field counts, for its fewest and most. */
 const countNouns: Partial<Record<UiWidget, string>> = { datagrid: "rows", tags: "tags", dual_list: "picks" };

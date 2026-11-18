@@ -614,7 +614,7 @@ behaviour). The designer edits both visually; a code view shows the YAML.
 text, textarea, number, slider, toggle, dropdown, multi-select, dual list,
 radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
 of fields (one object), secret, file upload,
-Markdown or info block, and resource pickers:
+Markdown or info block, image, link, and resource pickers:
 - vSphere: cluster, datastore, network, folder, template, existing VM
 - EfficientIP: subnet, free IP, DNS zone
 - AWX: inventory, credential, host
@@ -797,6 +797,37 @@ ui_schema:
         - { key: keep_days, label: Keep (days), widget: number }
         - { key: offsite, label: Copy off site, widget: toggle }
 ```
+
+Information text (`info`), an image (`image`) and a link (`link`) show
+something and take no input: they have a field in the UI schema and no
+property in the form's schema, and an image or a link given a property is
+refused. An image shows the picture at its `url` with its text alternative,
+`alt`, which screen readers read in its place; its `help` is the caption. A
+link's `label` is its text, and it opens its `url` in a new tab; its `help`
+shows under it. An address starts with `https://` or `http://`, or is a
+path on rvav's own site (`/...`): any other, such as `javascript:` or
+`data:`, is refused when the version is saved. A draft may leave the
+address and the text alternative out; to publish, give them:
+
+```yaml
+ui_schema:
+  fields:
+    zones:
+      widget: image
+      label: Network zones
+      url: https://wiki.corp.example/img/zones.png
+      alt: The web, app and data zones, each behind its own firewall
+      help: Each tier runs in its own zone.
+    sizes:
+      widget: link
+      label: VM sizes explained
+      url: https://wiki.corp.example/vm-sizes
+```
+
+The browser loads an image from another site only if the web server's
+Content-Security-Policy allows that site: list its origin in
+`RVAV_WEB_IMAGE_SOURCES` ([configuration](operations/configuration.md)).
+Otherwise the form says the image didn't load, with its text alternative.
 
 The `vsphere_folder` widget offers the VM folders of the datacenters whose
 clusters the project's placement allows in the environment, by path from

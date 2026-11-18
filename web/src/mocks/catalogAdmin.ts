@@ -4,6 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
+import { shownUrl } from "@/lib/utils";
 import { ownSources } from "@/forms/useFieldValues";
 import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
@@ -298,7 +299,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         code: "required",
         message: "Give the field a label.",
       });
-    if (!(name in props) && f.widget !== "info")
+    if (!(name in props) && !["info", "image", "link"].includes(f.widget))
       errors.push({
         field: `${prefix}/ui_schema/fields/${name}`,
         code: "unknown_input",
@@ -370,6 +371,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         message: `"${name}" has no UI field, so nobody could fill it in.`,
       });
   errors.push(...tableProblems(def, props, prefix));
+  errors.push(...shownProblems(def, prefix, false));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))
@@ -1000,6 +1002,8 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         request.headers.get("content-length") === "0"
           ? {}
           : ((await request.json().catch(() => ({}))) as S["CatalogItemVersionPublish"]);
+      const incomplete = shownProblems(v.definition, "/definition", true);
+      if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       for (const x of versionsOf(item))
         if (x.state === "published") Object.assign(x, { state: "deprecated", deprecated_at: now() });
       if (v.state === "draft" && body.changelog !== undefined) v.changelog = body.changelog;
@@ -1345,6 +1349,44 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       return HttpResponse.json({ form: found.form, fields, errors } satisfies S["DesignerPreview"]);
     }),
   ];
+}
+
+/** What an image or a link shows, as the server checks it (checkShown in internal/core/formfields.go). */
+function shownProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};
+  for (const [name, f] of Object.entries(def.ui_schema.fields)) {
+    const at = `${prefix}/ui_schema/fields/${name}`;
+    const media = f.widget === "image" || f.widget === "link";
+    if (f.url !== undefined && !media)
+      errors.push({ field: `${at}/url`, code: "invalid", message: "Only an image or a link has an address (url)." });
+    if (f.alt !== undefined && f.widget !== "image")
+      errors.push({ field: `${at}/alt`, code: "invalid", message: "Only an image has a text alternative (alt)." });
+    if (!media) continue;
+    const what = f.widget === "image" ? "An image" : "A link";
+    if (name in props)
+      errors.push({
+        field: `${prefix}/form_schema/properties/${name}`,
+        code: "widget_mismatch",
+        message: `${what} takes no input: remove "${name}" from the form's schema.`,
+      });
+    const url = f.url?.trim() ?? "";
+    if (!url && publish)
+      errors.push({ field: `${at}/url`, code: "required", message: `${what} needs its address (url).` });
+    if (url && !shownUrl(url))
+      errors.push({
+        field: `${at}/url`,
+        code: "invalid",
+        message: "Give an address that starts with https:// or http://, or a path on this site that starts with /.",
+      });
+    if (f.widget === "image" && !f.alt?.trim() && publish)
+      errors.push({
+        field: `${at}/alt`,
+        code: "required",
+        message: "Describe the image for those who can't see it: give its text alternative (alt).",
+      });
+  }
+  return errors;
 }
 
 const columnTypes: Record<string, string[]> = {

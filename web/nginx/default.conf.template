@@ -33,6 +33,11 @@ map "${RVAV_WEB_SCRIPT_SOURCES} $rvav_script_origins" $rvav_csp_script_origins {
     "~^\s*(?<sources>\S(.*\S)?)\s*$" " $sources";
     default "";
 }
+# Where forms' images may come from besides this site (RVAV_WEB_IMAGE_SOURCES).
+map "${RVAV_WEB_IMAGE_SOURCES}" $rvav_csp_image_sources {
+    "~^\s*(?<sources>\S(.*\S)?)\s*$" " $sources";
+    default "";
+}
 
 server {
     listen 8080;
@@ -55,10 +60,10 @@ server {
 
     # What the page may load (S14.6): its own files, tokens from the identity
     # provider (and its silent sign-in frame, which comes back to this
-    # origin), and the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES and where
-    # the API says it is. The UI libraries insert style elements. HSTS takes
-    # effect over HTTPS only.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'$rvav_csp_script_origins; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'$rvav_csp_idp_origins; frame-src 'self'$rvav_csp_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
+    # origin), the VM console's SDK from RVAV_WEB_SCRIPT_SOURCES and where
+    # the API says it is, and forms' images from RVAV_WEB_IMAGE_SOURCES. The
+    # UI libraries insert style elements. HSTS takes effect over HTTPS only.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'$rvav_csp_script_origins; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:$rvav_csp_image_sources; font-src 'self'; connect-src 'self'$rvav_csp_idp_origins; frame-src 'self'$rvav_csp_idp_origins; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;

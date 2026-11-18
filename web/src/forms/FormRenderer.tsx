@@ -83,6 +83,7 @@ const wideWidgets: UiWidget[] = [
   "radio_cards",
   "checklist",
   "info",
+  "image",
   "multiselect",
   "key_value",
   "datagrid",

@@ -178,6 +178,17 @@ describe("form designer model", () => {
     expect(prop(def, "dual_list")).toEqual({ type: "array", uniqueItems: true, items: { type: "string" } });
   });
 
+  it("gives images and links no input, and drops their address with the widget", () => {
+    let def = addField(empty, "link").def;
+    expect(prop(def, "link")).toBeUndefined();
+    def = updateUi(def, "link", { url: "https://wiki.corp.example/sizes" });
+    def = setWidget(def, "link", "image");
+    expect(def.ui_schema.fields.link?.url).toBe("https://wiki.corp.example/sizes");
+    def = setWidget(updateUi(def, "link", { alt: "Sizes" }), "link", "text");
+    expect(def.ui_schema.fields.link).toEqual({ widget: "text", label: "Link" });
+    expect(prop(def, "link")).toEqual({ type: "string" });
+  });
+
   it("round-trips every field type through the YAML view", () => {
     let def = empty;
     for (const w of Object.keys(widgetLabels) as UiWidget[]) def = addField(def, w).def;
@@ -187,6 +198,7 @@ describe("form designer model", () => {
     def = addColumn(def, "datagrid");
     def = updateColumn(addColumn(def, "object"), "object", 1, { key: "on", label: "On", widget: "toggle" });
     def = updateUi(def, "dual_list", { options: [{ value: "a", label: "A" }] });
+    def = updateUi(def, "image", { url: "/favicon.svg", alt: "rvav" });
     const back = fromYaml(toYaml(def));
     expect(back.problems).toEqual([]);
     expect(back.def).toEqual(def);

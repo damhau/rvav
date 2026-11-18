@@ -29,6 +29,8 @@ export const widgetLabels: Record<UiWidget, string> = {
   object: "Group of fields",
   secret: "Secret",
   info: "Information text",
+  image: "Image",
+  link: "Link",
   computed: "Computed value",
   vsphere_cluster: "vSphere cluster",
   vsphere_datastore: "vSphere datastore",
@@ -98,10 +100,15 @@ export const choiceWidgets: UiWidget[] = [
 /** Widgets that edit properties through `columns`: a table its rows', an object its own. */
 export const columnWidgets: UiWidget[] = ["datagrid", "object"];
 
-/** The JSON Schema of an input a widget edits; none for information text. */
+/** Widgets that show something and take no input. */
+export const shownWidgets: UiWidget[] = ["info", "image", "link"];
+
+/** The JSON Schema of an input a widget edits; none for information text, an image or a link. */
 export function schemaFor(widget: UiWidget): Prop | null {
   switch (widget) {
     case "info":
+    case "image":
+    case "link":
       return null;
     case "number":
     case "slider":
@@ -318,6 +325,8 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
     }
     if (columnsChange) ui.columns = [...firstColumns];
     else if (!columnWidgets.includes(widget)) delete ui.columns;
+    if (widget !== "image" && widget !== "link") delete ui.url;
+    if (widget !== "image") delete ui.alt;
     // A widget's own source follows the widget; a source the author chose stays.
     const source = widgetSource[widget];
     const own = ui.value_source?.kind === "builtin" && ui.value_source.name === before;

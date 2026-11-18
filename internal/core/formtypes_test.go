@@ -204,6 +204,44 @@ func TestFieldShapes(t *testing.T) {
 	}
 }
 
+func TestShownFields(t *testing.T) {
+	for _, c := range []struct {
+		f       api.UiField
+		input   bool
+		publish bool
+		want    []string
+	}{
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("https://wiki.corp.example/sizes")}, false, true, nil},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("/requests")}, false, true, nil},
+		{api.UiField{Widget: api.UiWidgetImage, Url: new("http://cdn.corp.example/a.png"), Alt: new("The network")}, false, true, nil},
+		{api.UiField{Widget: api.UiWidgetLink}, false, false, nil},
+		{api.UiField{Widget: api.UiWidgetLink}, false, true, []string{"/ui_schema/fields/f/url required"}},
+		{api.UiField{Widget: api.UiWidgetImage, Url: new("https://cdn.corp.example/a.png")}, false, true, []string{"/ui_schema/fields/f/alt required"}},
+		{api.UiField{Widget: api.UiWidgetImage, Url: new("https://cdn.corp.example/a.png")}, false, false, nil},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("javascript:alert(1)")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new(" JavaScript:alert(1)")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("java\tscript:alert(1)")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetImage, Url: new("data:image/svg+xml,<svg/>"), Alt: new("x")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("//evil.example/")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("/\\evil.example/")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("ftp://files.corp.example/")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("https:///no-host")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("wiki.corp.example")}, false, false, []string{"/ui_schema/fields/f/url invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("https://wiki.corp.example")}, true, false, []string{"/form_schema/properties/f widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetText, Url: new("https://x.example"), Alt: new("x")}, true, false,
+			[]string{"/ui_schema/fields/f/url invalid", "/ui_schema/fields/f/alt invalid"}},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("https://x.example"), Alt: new("x")}, false, false, []string{"/ui_schema/fields/f/alt invalid"}},
+	} {
+		var got []string
+		for _, e := range checkShown("f", c.f, c.input, "", c.publish) {
+			got = append(got, e.Field+" "+*e.Code)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s %q (publish %v): %v, want %v", c.f.Widget, deref(c.f.Url), c.publish, got, c.want)
+		}
+	}
+}
+
 func TestLocateNested(t *testing.T) {
 	cols := []api.UiColumn{{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber}}
 	ui := api.UiSchema{Fields: map[string]api.UiField{"disks": {Widget: api.UiWidgetDatagrid, Columns: &cols},

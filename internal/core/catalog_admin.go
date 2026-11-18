@@ -649,9 +649,11 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 	for _, name := range sortedKeys(d.UiSchema.Fields) {
 		f := d.UiSchema.Fields[name]
 		ptr := "/ui_schema/fields/" + name
-		if _, ok := props[name]; !ok && f.Widget != api.UiWidgetInfo {
+		if _, ok := props[name]; !ok && !shownOnly[f.Widget] {
 			add(ptr, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
 		}
+		_, input := props[name]
+		errs = append(errs, checkShown(name, f, input, prefix, publish)...)
 		if _, ok := placed[name]; !ok {
 			add(ptr, "not_placed", fmt.Sprintf("%q is in no section, so it would never show.", name))
 		}
