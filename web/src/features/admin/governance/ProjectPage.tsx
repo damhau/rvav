@@ -762,6 +762,16 @@ function useSaveQuotas(project: S["AdminProject"]) {
 }
 
 /** Saving replaces every limit: the sheet saves the list with this one added or changed. */
+/** The first resource and place without a limit yet, so a new limit doesn't open on a twin. */
+function firstFree(limits: S["QuotaLimit"][], environments: string[]) {
+  const places = ["", ...environments];
+  for (const { value: resource } of resources)
+    for (const environment of places)
+      if (!limits.some((l) => l.resource === resource && l.environment === environment))
+        return { resource, environment };
+  return { resource: resources[0]!.value, environment: "" };
+}
+
 function LimitSheet({
   project,
   limits,
@@ -776,12 +786,13 @@ function LimitSheet({
 }) {
   const save = useSaveQuotas(project);
   const existing = index === undefined ? undefined : limits[index];
-  const [f, setF] = useState({
-    resource: existing?.resource ?? "vcpu",
-    environment: existing?.environment ?? "",
+  const [f, setF] = useState(() => ({
+    ...(existing
+      ? { resource: existing.resource, environment: existing.environment ?? "" }
+      : firstFree(limits, project.environments)),
     limit: existing?.limit == null ? "" : String(existing.limit),
     enforcement: existing?.enforcement ?? "hard",
-  });
+  }));
   const twin = limits.some((l, i) => i !== index && l.resource === f.resource && l.environment === f.environment);
   const value = Number(f.limit);
   const valid = f.limit.trim() === "" || (Number.isInteger(value) && value >= 0);

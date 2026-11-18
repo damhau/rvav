@@ -97,7 +97,14 @@ describe("a project's placement and quotas", () => {
     await waitFor(() => expect(vcpu).toHaveTextContent("112 of 160"));
     await user.click(within(quotas).getByRole("button", { name: "Add a limit" }));
     const sheet = await screen.findByRole("dialog", { name: "New limit" });
-    expect(within(sheet).getByText("This resource has a limit there already: change that one.")).toBeInTheDocument();
+    // Every resource has a project-wide limit: it opens on the first place free.
+    expect(within(sheet).getByRole("combobox", { name: "Resource" })).toHaveTextContent("vCPU");
+    expect(within(sheet).getByRole("combobox", { name: "In" })).toHaveTextContent("dev");
+    const twin = "This resource has a limit there already: change that one.";
+    expect(within(sheet).queryByText(twin)).toBeNull();
+    await user.click(within(sheet).getByRole("combobox", { name: "In" }));
+    await user.click(await screen.findByRole("option", { name: "The whole project" }));
+    expect(within(sheet).getByText(twin)).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Save limit" })).toBeDisabled();
     await user.click(within(sheet).getByRole("combobox", { name: "In" }));
     await user.click(await screen.findByRole("option", { name: "dev" }));

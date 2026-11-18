@@ -187,9 +187,11 @@ export function ArchiveDialog({ project, onClose }: { project: S["AdminProject"]
       title={`Archive ${project.name}?`}
       description="Nobody can request anything new in it, and it leaves the project lists. You can put it back in use later."
       consequences={
-        project.deployments > 0
-          ? `Its ${plural(project.deployments, "deployment")} go on running, and its ${plural(project.members, "member")} keep them.`
-          : "It has no deployment."
+        project.deployments === 0
+          ? "It has no deployment."
+          : project.deployments === 1
+            ? "Its deployment goes on running, and its members keep it."
+            : `Its ${project.deployments} deployments go on running, and its members keep them.`
       }
       confirmLabel="Archive project"
       onConfirm={() => save.mutate()}
@@ -330,7 +332,7 @@ function ProjectsPanel() {
         error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
         toolbar={
           <>
-            <TableSearch label="Search projects" value={search} onChange={setSearch} />
+            <TableSearch label="Search projects" value={search} onChange={setSearch} placeholder="Name or code" />
             <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
               <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
               Archived ones too
@@ -808,7 +810,7 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
           description={`People in ${removing.oidc_group} no longer get ${gives(removing)}, unless they hold it another way.`}
           consequences={
             (removing.users ?? 0) > 0
-              ? `${plural(removing.users ?? 0, "person", "people")} were in it at their last sign-in.`
+              ? `${plural(removing.users ?? 0, "person", "people")} ${removing.users === 1 ? "was" : "were"} in it at their last sign-in.`
               : "Nobody in it has signed in yet."
           }
           confirmLabel="Remove mapping"

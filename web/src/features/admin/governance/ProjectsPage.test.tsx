@@ -52,7 +52,7 @@ describe("the projects list", () => {
     await user.click(within(list).getByRole("button", { name: "Actions for Data Engineering" }));
     await user.click(await screen.findByRole("menuitem", { name: "Archive" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Archive Data Engineering?" });
-    expect(confirm).toHaveTextContent(/go on running/);
+    expect(confirm).toHaveTextContent("Its deployment goes on running, and its members keep it.");
     await user.click(within(confirm).getByRole("button", { name: "Archive project" }));
     expect(await screen.findByText("Data Engineering archived")).toBeInTheDocument();
     await waitFor(() => expect(within(list).queryByRole("link", { name: "Data Engineering" })).toBeNull());
