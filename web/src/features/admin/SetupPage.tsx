@@ -109,7 +109,7 @@ export function SetupPage() {
   const done = setup.data?.steps.filter((s) => s.done).length ?? 0;
   const total = setup.data?.steps.length ?? 8;
   const blocked = (s: S["SetupStep"]) =>
-    s.key === "password" && !s.done && !me.local ? "Sign in as admin to change it." : undefined;
+    s.key === "password" && !s.done && !me.local ? "Sign in with the local admin account to change it." : undefined;
   // The first step this administrator can do from here.
   const now = setup.data?.steps.find((s) => !s.done && !blocked(s))?.key;
   return (
@@ -165,12 +165,12 @@ export function SetupPage() {
                   aria-label={`${step.title}: ${s.done ? "done" : "to do"}`}
                   aria-current={state === "now" ? "step" : undefined}
                   className={cn(
-                    "flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0",
+                    "flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3 last:border-b-0 sm:flex-nowrap",
                     state === "now" && stepNow,
                   )}
                 >
                   <StepMark n={i + 1} state={state} className="-mt-px" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <div className="flex min-w-0 flex-[1_1_calc(100%-3rem)] flex-col gap-0.5 sm:flex-1">
                     <p className={cn("text-body font-medium", s.done && "text-muted")}>{step.title}</p>
                     <p className="text-secondary text-muted">{step.what}</p>
                     <p className="text-secondary break-words">
@@ -178,7 +178,9 @@ export function SetupPage() {
                       {s.detail}
                     </p>
                   </div>
-                  <Go target={step.target} disabled={blocked(s)} state={state} />
+                  <div className="pl-9 sm:pl-0">
+                    <Go target={step.target} disabled={blocked(s)} state={state} />
+                  </div>
                 </li>
               );
             })}

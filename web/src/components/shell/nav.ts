@@ -157,6 +157,11 @@ export const adminGroups: AdminGroup[] = [
   },
 ];
 
+/** The administration page an address is on: the page itself or one below it, such as an item of Catalog items. */
+export function adminPageAt(path: string): AdminPage | undefined {
+  return adminGroups.flatMap((g) => g.pages).find((p) => path === p.to || path.startsWith(`${p.to}/`));
+}
+
 /** The administration pages someone may open, by group; a group with none is left out. */
 export function adminMenu(me: Me): AdminGroup[] {
   return adminGroups.map((g) => ({ ...g, pages: g.pages.filter((p) => p.show(me)) })).filter((g) => g.pages.length > 0);

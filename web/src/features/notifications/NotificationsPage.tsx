@@ -1,7 +1,7 @@
 // Notifications (S11, ADR-0023): everything that concerned the caller, read
 // or not, and the channels they want each kind on, in their language.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -257,19 +257,32 @@ function Preferences() {
   );
 }
 
-export function NotificationsPage() {
+export const notificationsTabs = ["all", "preferences"] as const;
+export type NotificationsTab = (typeof notificationsTabs)[number];
+
+export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
+  const navigate = useNavigate();
   return (
     <Page>
-      <PageHeader title="Notifications" meta="What concerns you, and where you want to hear about it." />
-      <Tabs defaultValue="all">
-        <TabsList>
+      <PageHeader title="Notifications" description="What concerns you, and where you want to hear about it." />
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          void navigate({
+            to: "/notifications",
+            search: { tab: next === "all" ? undefined : (next as NotificationsTab) },
+            replace: true,
+          })
+        }
+      >
+        <TabsList aria-label="Notifications sections">
           <TabsTrigger value="all">Notifications</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
-        <TabsContent value="all">
+        <TabsContent value="all" className="pt-4">
           <List />
         </TabsContent>
-        <TabsContent value="preferences">
+        <TabsContent value="preferences" className="pt-4">
           <Preferences />
         </TabsContent>
       </Tabs>

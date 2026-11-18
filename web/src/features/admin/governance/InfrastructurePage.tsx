@@ -1,6 +1,7 @@
 // VM templates, size presets and network mappings (S9, ADR-0020): what
 // blueprints' template and size pickers offer, and the subnet each vCenter
 // network deploys into; and the vCenter objects' tags (ADR-0035).
+import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, Network, Server, X } from "lucide-react";
 import { useState } from "react";
@@ -1067,8 +1068,12 @@ function Inventory() {
   );
 }
 
-export function InfrastructurePage() {
+export const infrastructureTabs = ["templates", "sizes", "networks", "inventory"] as const;
+export type InfrastructureTab = (typeof infrastructureTabs)[number];
+
+export function InfrastructurePage({ tab = "templates" }: { tab?: InfrastructureTab }) {
   const { me } = useCurrentProject();
+  const navigate = useNavigate();
   const canEdit = can(me, "infrastructure.manage");
   return (
     <Page>
@@ -1076,7 +1081,12 @@ export function InfrastructurePage() {
         title="Templates and networks"
         description="What blueprints' template and size pickers offer, the subnet each network deploys into, and the tags of vCenter objects."
       />
-      <Tabs defaultValue="templates">
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          void navigate({ to: "/admin/infrastructure", search: { tab: next as InfrastructureTab }, replace: true })
+        }
+      >
         <TabsList aria-label="Infrastructure sections">
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="sizes">Sizes</TabsTrigger>

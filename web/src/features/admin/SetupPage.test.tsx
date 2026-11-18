@@ -35,7 +35,7 @@ describe("setup checklist", () => {
     expect(steps[1]).toHaveTextContent("Now: None: only the local administrator can sign in.");
     expect(steps[4]).toHaveTextContent("Now: 0 environments, 0 projects, 0 placement rules");
     // Signed in with the provider (the mock's identity), not as admin.
-    expect(steps[0]).toHaveTextContent("Sign in as admin to change it.");
+    expect(steps[0]).toHaveTextContent("Sign in with the local admin account to change it.");
   });
 
   it("ticks a step once its page has what it needs, and links each to its page", async () => {

@@ -1,10 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { Toaster } from "sonner";
+import { PageNotFound } from "@/components/common/blocked";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LiveProvider } from "@/lib/live/LiveProvider";
@@ -58,16 +57,7 @@ function Root() {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   component: Root,
-  notFoundComponent: () => (
-    <Page>
-      <PageHeader title="Page not found" />
-      <Panel>
-        <p className="text-muted">
-          This address doesn't match anything in rvav. Go back to the <Link to="/">overview</Link>.
-        </p>
-      </Panel>
-    </Page>
-  ),
+  notFoundComponent: PageNotFound,
   errorComponent: ({ error, reset }) => (
     <Page>
       <ErrorState error={error} onRetry={reset} className="rounded-lg border border-line bg-surface" />

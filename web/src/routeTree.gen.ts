@@ -11,11 +11,12 @@
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as AccessRouteImport } from "./routes/access"
+import { Route as AdminRouteRouteImport } from "./routes/admin/route"
 import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as NotificationsRouteImport } from "./routes/notifications"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as TokensRouteImport } from "./routes/tokens"
-import { Route as AdminSectionRouteImport } from "./routes/admin/$section"
+import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
@@ -56,6 +57,11 @@ const AccessRoute = AccessRouteImport.update({
   path: "/access",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: "/admin",
+  path: "/admin",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: "/approvals",
   path: "/approvals",
@@ -76,55 +82,55 @@ const TokensRoute = TokensRouteImport.update({
   path: "/tokens",
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminSectionRoute = AdminSectionRouteImport.update({
-  id: "/admin/$section",
-  path: "/admin/$section",
-  getParentRoute: () => rootRouteImport,
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
-  id: "/admin/audit",
-  path: "/admin/audit",
-  getParentRoute: () => rootRouteImport,
+  id: "/audit",
+  path: "/audit",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
-  id: "/admin/day2-actions",
-  path: "/admin/day2-actions",
-  getParentRoute: () => rootRouteImport,
+  id: "/day2-actions",
+  path: "/day2-actions",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
-  id: "/admin/infrastructure",
-  path: "/admin/infrastructure",
-  getParentRoute: () => rootRouteImport,
+  id: "/infrastructure",
+  path: "/infrastructure",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
-  id: "/admin/onboarding",
-  path: "/admin/onboarding",
-  getParentRoute: () => rootRouteImport,
+  id: "/onboarding",
+  path: "/onboarding",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
-  id: "/admin/policies",
-  path: "/admin/policies",
-  getParentRoute: () => rootRouteImport,
+  id: "/policies",
+  path: "/policies",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSetupRoute = AdminSetupRouteImport.update({
-  id: "/admin/setup",
-  path: "/admin/setup",
-  getParentRoute: () => rootRouteImport,
+  id: "/setup",
+  path: "/setup",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSystemRoute = AdminSystemRouteImport.update({
-  id: "/admin/system",
-  path: "/admin/system",
-  getParentRoute: () => rootRouteImport,
+  id: "/system",
+  path: "/system",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminVraImportRoute = AdminVraImportRouteImport.update({
-  id: "/admin/vra-import",
-  path: "/admin/vra-import",
-  getParentRoute: () => rootRouteImport,
+  id: "/vra-import",
+  path: "/vra-import",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminWorkflowsRoute = AdminWorkflowsRouteImport.update({
-  id: "/admin/workflows",
-  path: "/admin/workflows",
-  getParentRoute: () => rootRouteImport,
+  id: "/workflows",
+  path: "/workflows",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const ApprovalsApprovalIdRoute = ApprovalsApprovalIdRouteImport.update({
   id: "/approvals_/$approvalId",
@@ -157,60 +163,60 @@ const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminCatalogItemsIndexRoute = AdminCatalogItemsIndexRouteImport.update({
-  id: "/admin/catalog-items/",
-  path: "/admin/catalog-items/",
-  getParentRoute: () => rootRouteImport,
+  id: "/catalog-items/",
+  path: "/catalog-items/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminCatalogItemsItemIdRoute = AdminCatalogItemsItemIdRouteImport.update({
-  id: "/admin/catalog-items/$itemId",
-  path: "/admin/catalog-items/$itemId",
-  getParentRoute: () => rootRouteImport,
+  id: "/catalog-items/$itemId",
+  path: "/catalog-items/$itemId",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminIntegrationsIndexRoute = AdminIntegrationsIndexRouteImport.update({
-  id: "/admin/integrations/",
-  path: "/admin/integrations/",
-  getParentRoute: () => rootRouteImport,
+  id: "/integrations/",
+  path: "/integrations/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminIntegrationsKindRoute = AdminIntegrationsKindRouteImport.update({
-  id: "/admin/integrations/$kind",
-  path: "/admin/integrations/$kind",
-  getParentRoute: () => rootRouteImport,
+  id: "/integrations/$kind",
+  path: "/integrations/$kind",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminProjectsIndexRoute = AdminProjectsIndexRouteImport.update({
-  id: "/admin/projects/",
-  path: "/admin/projects/",
-  getParentRoute: () => rootRouteImport,
+  id: "/projects/",
+  path: "/projects/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminProjectsProjectIdRoute = AdminProjectsProjectIdRouteImport.update({
-  id: "/admin/projects/$projectId",
-  path: "/admin/projects/$projectId",
-  getParentRoute: () => rootRouteImport,
+  id: "/projects/$projectId",
+  path: "/projects/$projectId",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminRolesIndexRoute = AdminRolesIndexRouteImport.update({
-  id: "/admin/roles/",
-  path: "/admin/roles/",
-  getParentRoute: () => rootRouteImport,
+  id: "/roles/",
+  path: "/roles/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminRolesRoleKeyRoute = AdminRolesRoleKeyRouteImport.update({
-  id: "/admin/roles/$roleKey",
-  path: "/admin/roles/$roleKey",
-  getParentRoute: () => rootRouteImport,
+  id: "/roles/$roleKey",
+  path: "/roles/$roleKey",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminRolesNewRoute = AdminRolesNewRouteImport.update({
-  id: "/admin/roles/new",
-  path: "/admin/roles/new",
-  getParentRoute: () => rootRouteImport,
+  id: "/roles/new",
+  path: "/roles/new",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSubscriptionsIndexRoute = AdminSubscriptionsIndexRouteImport.update({
-  id: "/admin/subscriptions/",
-  path: "/admin/subscriptions/",
-  getParentRoute: () => rootRouteImport,
+  id: "/subscriptions/",
+  path: "/subscriptions/",
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSubscriptionsSubscriptionIdRoute =
   AdminSubscriptionsSubscriptionIdRouteImport.update({
-    id: "/admin/subscriptions/$subscriptionId",
-    path: "/admin/subscriptions/$subscriptionId",
-    getParentRoute: () => rootRouteImport,
+    id: "/subscriptions/$subscriptionId",
+    path: "/subscriptions/$subscriptionId",
+    getParentRoute: () => AdminRouteRoute,
   } as any)
 const CatalogItemIdIndexRoute = CatalogItemIdIndexRouteImport.update({
   id: "/catalog/$itemId/",
@@ -231,12 +237,12 @@ const DeploymentsDeploymentIdConsoleResourceIdRoute =
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
+  "/admin": typeof AdminRouteRouteWithChildren
   "/access": typeof AccessRoute
   "/approvals": typeof ApprovalsRoute
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
-  "/admin/$section": typeof AdminSectionRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -249,6 +255,7 @@ export interface FileRoutesByFullPath {
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
+  "/admin/": typeof AdminIndexRoute
   "/catalog/": typeof CatalogIndexRoute
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
@@ -274,7 +281,6 @@ export interface FileRoutesByTo {
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
-  "/admin/$section": typeof AdminSectionRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -287,6 +293,7 @@ export interface FileRoutesByTo {
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
+  "/admin": typeof AdminIndexRoute
   "/catalog": typeof CatalogIndexRoute
   "/deployments": typeof DeploymentsIndexRoute
   "/requests": typeof RequestsIndexRoute
@@ -308,12 +315,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
+  "/admin": typeof AdminRouteRouteWithChildren
   "/access": typeof AccessRoute
   "/approvals": typeof ApprovalsRoute
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/tokens": typeof TokensRoute
-  "/admin/$section": typeof AdminSectionRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -326,6 +333,7 @@ export interface FileRoutesById {
   "/approvals_/$approvalId": typeof ApprovalsApprovalIdRoute
   "/deployments/$deploymentId": typeof DeploymentsDeploymentIdRoute
   "/requests/$requestId": typeof RequestsRequestIdRoute
+  "/admin/": typeof AdminIndexRoute
   "/catalog/": typeof CatalogIndexRoute
   "/deployments/": typeof DeploymentsIndexRoute
   "/requests/": typeof RequestsIndexRoute
@@ -348,12 +356,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/"
+    | "/admin"
     | "/access"
     | "/approvals"
     | "/notifications"
     | "/reports"
     | "/tokens"
-    | "/admin/$section"
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
@@ -366,6 +374,7 @@ export interface FileRouteTypes {
     | "/approvals/$approvalId"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
+    | "/admin/"
     | "/catalog/"
     | "/deployments/"
     | "/requests/"
@@ -391,7 +400,6 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/reports"
     | "/tokens"
-    | "/admin/$section"
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
@@ -404,6 +412,7 @@ export interface FileRouteTypes {
     | "/approvals/$approvalId"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
+    | "/admin"
     | "/catalog"
     | "/deployments"
     | "/requests"
@@ -424,12 +433,12 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/"
+    | "/admin"
     | "/access"
     | "/approvals"
     | "/notifications"
     | "/reports"
     | "/tokens"
-    | "/admin/$section"
     | "/admin/audit"
     | "/admin/day2-actions"
     | "/admin/infrastructure"
@@ -442,6 +451,7 @@ export interface FileRouteTypes {
     | "/approvals_/$approvalId"
     | "/deployments/$deploymentId"
     | "/requests/$requestId"
+    | "/admin/"
     | "/catalog/"
     | "/deployments/"
     | "/requests/"
@@ -463,39 +473,19 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AccessRoute: typeof AccessRoute
   ApprovalsRoute: typeof ApprovalsRoute
   NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
   TokensRoute: typeof TokensRoute
-  AdminSectionRoute: typeof AdminSectionRoute
-  AdminAuditRoute: typeof AdminAuditRoute
-  AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
-  AdminInfrastructureRoute: typeof AdminInfrastructureRoute
-  AdminOnboardingRoute: typeof AdminOnboardingRoute
-  AdminPoliciesRoute: typeof AdminPoliciesRoute
-  AdminSetupRoute: typeof AdminSetupRoute
-  AdminSystemRoute: typeof AdminSystemRoute
-  AdminVraImportRoute: typeof AdminVraImportRoute
-  AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   ApprovalsApprovalIdRoute: typeof ApprovalsApprovalIdRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   DeploymentsIndexRoute: typeof DeploymentsIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
-  AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
-  AdminIntegrationsKindRoute: typeof AdminIntegrationsKindRoute
-  AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
-  AdminRolesRoleKeyRoute: typeof AdminRolesRoleKeyRoute
-  AdminRolesNewRoute: typeof AdminRolesNewRoute
-  AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
-  AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
-  AdminIntegrationsIndexRoute: typeof AdminIntegrationsIndexRoute
-  AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
-  AdminRolesIndexRoute: typeof AdminRolesIndexRoute
-  AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
   CatalogItemIdIndexRoute: typeof CatalogItemIdIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -514,6 +504,13 @@ declare module "@tanstack/react-router" {
       path: "/access"
       fullPath: "/access"
       preLoaderRoute: typeof AccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin": {
+      id: "/admin"
+      path: "/admin"
+      fullPath: "/admin"
+      preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/approvals": {
@@ -544,75 +541,75 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof TokensRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/admin/$section": {
-      id: "/admin/$section"
-      path: "/admin/$section"
-      fullPath: "/admin/$section"
-      preLoaderRoute: typeof AdminSectionRouteImport
-      parentRoute: typeof rootRouteImport
+    "/admin/": {
+      id: "/admin/"
+      path: "/"
+      fullPath: "/admin/"
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/audit": {
       id: "/admin/audit"
-      path: "/admin/audit"
+      path: "/audit"
       fullPath: "/admin/audit"
       preLoaderRoute: typeof AdminAuditRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/day2-actions": {
       id: "/admin/day2-actions"
-      path: "/admin/day2-actions"
+      path: "/day2-actions"
       fullPath: "/admin/day2-actions"
       preLoaderRoute: typeof AdminDay2ActionsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/infrastructure": {
       id: "/admin/infrastructure"
-      path: "/admin/infrastructure"
+      path: "/infrastructure"
       fullPath: "/admin/infrastructure"
       preLoaderRoute: typeof AdminInfrastructureRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/onboarding": {
       id: "/admin/onboarding"
-      path: "/admin/onboarding"
+      path: "/onboarding"
       fullPath: "/admin/onboarding"
       preLoaderRoute: typeof AdminOnboardingRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/policies": {
       id: "/admin/policies"
-      path: "/admin/policies"
+      path: "/policies"
       fullPath: "/admin/policies"
       preLoaderRoute: typeof AdminPoliciesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/setup": {
       id: "/admin/setup"
-      path: "/admin/setup"
+      path: "/setup"
       fullPath: "/admin/setup"
       preLoaderRoute: typeof AdminSetupRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/system": {
       id: "/admin/system"
-      path: "/admin/system"
+      path: "/system"
       fullPath: "/admin/system"
       preLoaderRoute: typeof AdminSystemRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/vra-import": {
       id: "/admin/vra-import"
-      path: "/admin/vra-import"
+      path: "/vra-import"
       fullPath: "/admin/vra-import"
       preLoaderRoute: typeof AdminVraImportRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/workflows": {
       id: "/admin/workflows"
-      path: "/admin/workflows"
+      path: "/workflows"
       fullPath: "/admin/workflows"
       preLoaderRoute: typeof AdminWorkflowsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/approvals_/$approvalId": {
       id: "/approvals_/$approvalId"
@@ -658,80 +655,80 @@ declare module "@tanstack/react-router" {
     }
     "/admin/catalog-items/": {
       id: "/admin/catalog-items/"
-      path: "/admin/catalog-items"
+      path: "/catalog-items"
       fullPath: "/admin/catalog-items/"
       preLoaderRoute: typeof AdminCatalogItemsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/catalog-items/$itemId": {
       id: "/admin/catalog-items/$itemId"
-      path: "/admin/catalog-items/$itemId"
+      path: "/catalog-items/$itemId"
       fullPath: "/admin/catalog-items/$itemId"
       preLoaderRoute: typeof AdminCatalogItemsItemIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/integrations/": {
       id: "/admin/integrations/"
-      path: "/admin/integrations"
+      path: "/integrations"
       fullPath: "/admin/integrations/"
       preLoaderRoute: typeof AdminIntegrationsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/integrations/$kind": {
       id: "/admin/integrations/$kind"
-      path: "/admin/integrations/$kind"
+      path: "/integrations/$kind"
       fullPath: "/admin/integrations/$kind"
       preLoaderRoute: typeof AdminIntegrationsKindRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/projects/": {
       id: "/admin/projects/"
-      path: "/admin/projects"
+      path: "/projects"
       fullPath: "/admin/projects/"
       preLoaderRoute: typeof AdminProjectsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/projects/$projectId": {
       id: "/admin/projects/$projectId"
-      path: "/admin/projects/$projectId"
+      path: "/projects/$projectId"
       fullPath: "/admin/projects/$projectId"
       preLoaderRoute: typeof AdminProjectsProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/roles/": {
       id: "/admin/roles/"
-      path: "/admin/roles"
+      path: "/roles"
       fullPath: "/admin/roles/"
       preLoaderRoute: typeof AdminRolesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/roles/$roleKey": {
       id: "/admin/roles/$roleKey"
-      path: "/admin/roles/$roleKey"
+      path: "/roles/$roleKey"
       fullPath: "/admin/roles/$roleKey"
       preLoaderRoute: typeof AdminRolesRoleKeyRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/roles/new": {
       id: "/admin/roles/new"
-      path: "/admin/roles/new"
+      path: "/roles/new"
       fullPath: "/admin/roles/new"
       preLoaderRoute: typeof AdminRolesNewRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/subscriptions/": {
       id: "/admin/subscriptions/"
-      path: "/admin/subscriptions"
+      path: "/subscriptions"
       fullPath: "/admin/subscriptions/"
       preLoaderRoute: typeof AdminSubscriptionsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/admin/subscriptions/$subscriptionId": {
       id: "/admin/subscriptions/$subscriptionId"
-      path: "/admin/subscriptions/$subscriptionId"
+      path: "/subscriptions/$subscriptionId"
       fullPath: "/admin/subscriptions/$subscriptionId"
       preLoaderRoute: typeof AdminSubscriptionsSubscriptionIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     "/catalog/$itemId/": {
       id: "/catalog/$itemId/"
@@ -757,14 +754,31 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AccessRoute: AccessRoute,
-  ApprovalsRoute: ApprovalsRoute,
-  NotificationsRoute: NotificationsRoute,
-  ReportsRoute: ReportsRoute,
-  TokensRoute: TokensRoute,
-  AdminSectionRoute: AdminSectionRoute,
+interface AdminRouteRouteChildren {
+  AdminAuditRoute: typeof AdminAuditRoute
+  AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
+  AdminInfrastructureRoute: typeof AdminInfrastructureRoute
+  AdminOnboardingRoute: typeof AdminOnboardingRoute
+  AdminPoliciesRoute: typeof AdminPoliciesRoute
+  AdminSetupRoute: typeof AdminSetupRoute
+  AdminSystemRoute: typeof AdminSystemRoute
+  AdminVraImportRoute: typeof AdminVraImportRoute
+  AdminWorkflowsRoute: typeof AdminWorkflowsRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+  AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
+  AdminIntegrationsKindRoute: typeof AdminIntegrationsKindRoute
+  AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
+  AdminRolesRoleKeyRoute: typeof AdminRolesRoleKeyRoute
+  AdminRolesNewRoute: typeof AdminRolesNewRoute
+  AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
+  AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
+  AdminIntegrationsIndexRoute: typeof AdminIntegrationsIndexRoute
+  AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
+  AdminRolesIndexRoute: typeof AdminRolesIndexRoute
+  AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
@@ -774,24 +788,39 @@ const rootRouteChildren: RootRouteChildren = {
   AdminSystemRoute: AdminSystemRoute,
   AdminVraImportRoute: AdminVraImportRoute,
   AdminWorkflowsRoute: AdminWorkflowsRoute,
-  ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,
-  DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
-  RequestsRequestIdRoute: RequestsRequestIdRoute,
-  CatalogIndexRoute: CatalogIndexRoute,
-  DeploymentsIndexRoute: DeploymentsIndexRoute,
-  RequestsIndexRoute: RequestsIndexRoute,
+  AdminIndexRoute: AdminIndexRoute,
   AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
   AdminIntegrationsKindRoute: AdminIntegrationsKindRoute,
   AdminProjectsProjectIdRoute: AdminProjectsProjectIdRoute,
   AdminRolesRoleKeyRoute: AdminRolesRoleKeyRoute,
   AdminRolesNewRoute: AdminRolesNewRoute,
   AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
-  CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   AdminIntegrationsIndexRoute: AdminIntegrationsIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
+
+const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
+  AccessRoute: AccessRoute,
+  ApprovalsRoute: ApprovalsRoute,
+  NotificationsRoute: NotificationsRoute,
+  ReportsRoute: ReportsRoute,
+  TokensRoute: TokensRoute,
+  ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,
+  DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,
+  RequestsRequestIdRoute: RequestsRequestIdRoute,
+  CatalogIndexRoute: CatalogIndexRoute,
+  DeploymentsIndexRoute: DeploymentsIndexRoute,
+  RequestsIndexRoute: RequestsIndexRoute,
+  CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
   CatalogItemIdIndexRoute: CatalogItemIdIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,

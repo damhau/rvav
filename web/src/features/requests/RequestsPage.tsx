@@ -34,11 +34,11 @@ const statuses: Record<(typeof requestFilters)[number], { label: string; statuse
   succeeded: { label: "Succeeded", statuses: ["succeeded"] },
 };
 
+// No sortable column: the list loads page by page, newest first, and the API doesn't sort it otherwise.
 const columns: Column<ServiceRequest>[] = [
   {
     id: "request",
     header: "Request",
-    sortValue: (r) => r.title,
     cell: (r) => (
       <div className="flex min-w-0 flex-col">
         <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium text-fg">
@@ -48,8 +48,8 @@ const columns: Column<ServiceRequest>[] = [
       </div>
     ),
   },
-  { id: "status", header: "Status", sortValue: (r) => r.status, cell: (r) => <RequestStatusBadge status={r.status} /> },
-  { id: "env", header: "Environment", sortValue: (r) => r.environment, cell: (r) => <EnvBadge env={r.environment} /> },
+  { id: "status", header: "Status", cell: (r) => <RequestStatusBadge status={r.status} /> },
+  { id: "env", header: "Environment", cell: (r) => <EnvBadge env={r.environment} /> },
   {
     id: "step",
     header: "Step",
@@ -66,7 +66,6 @@ const columns: Column<ServiceRequest>[] = [
   {
     id: "requester",
     header: "Requested by",
-    sortValue: (r) => r.requester.name,
     className: "whitespace-nowrap text-muted",
     cell: (r) => r.requester.name,
   },
@@ -74,7 +73,6 @@ const columns: Column<ServiceRequest>[] = [
     id: "submitted",
     header: "Submitted",
     align: "end",
-    sortValue: (r) => r.submitted_at,
     className: "whitespace-nowrap text-muted",
     cell: (r) => <Time iso={r.submitted_at} />,
   },

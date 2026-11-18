@@ -74,6 +74,26 @@ describe("sidebar", () => {
     expect(adminMenuOf(await mainNav())).toEqual({ Governance: ["Projects"], Operations: ["Audit log"] });
   });
 
+  it("says so on an administration page someone may not open, its items' pages too", async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    renderApp("/admin/catalog-items/rhel9-server");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "You can't open this page" }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Catalog items needs a role you don't have")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the overview" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("button", { name: /New draft/ })).toBeNull();
+  });
+
+  it("finds no page at an address under Administration that isn't one", async () => {
+    renderApp("/admin/nonsense");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Page not found" }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the overview" })).toHaveAttribute("href", "/");
+  });
+
   it("shows a custom role only its groups and pages", async () => {
     // A VM operator holds nothing of the administration; a custom role adds
     // what workflows, subscriptions and the templates take, read only.
