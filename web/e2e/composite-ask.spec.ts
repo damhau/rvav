@@ -61,7 +61,7 @@ async function publishAndOpen(page: Page, name: string) {
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-  await page.getByRole("link", { name: new RegExp(`^${name}`) }).click();
+  await page.getByRole("link", { name: new RegExp(`^Request ${name}`) }).click();
 }
 
 async function submit(page: Page) {

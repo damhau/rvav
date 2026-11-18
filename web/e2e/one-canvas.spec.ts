@@ -180,7 +180,7 @@ test("a composite's step added, published, requested and followed, with the keyb
   await tabTo(page, page.getByRole("link", { name: "Catalog", exact: true }), "Shift+Tab");
   await page.keyboard.press("Enter");
   await skipToContent(page);
-  await tabTo(page, page.getByRole("link", { name: /^PostgreSQL 16 cluster/ }));
+  await tabTo(page, page.getByRole("link", { name: "Request PostgreSQL 16 cluster" }));
   await page.keyboard.press("Enter");
   await tabTo(page, page.getByRole("textbox", { name: "Database name" }));
   await page.keyboard.type("ledger");

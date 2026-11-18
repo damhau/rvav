@@ -1,112 +1,68 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, Star } from "lucide-react";
+import { LayoutGrid, SearchX } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { itemTypeLabel } from "@/components/common/misc";
+import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { Button } from "@/components/ui/button";
+import { TableSearch } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
-import { Input } from "@/components/ui/input";
-import { api, call, isApiError } from "@/lib/api/client";
-import type { CatalogItem, CatalogItemPage } from "@/lib/api/types";
+import { Select } from "@/components/ui/select";
+import type { CatalogItem, CatalogItemType } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
-import { keys, q } from "@/lib/query";
-import { cn, roughDuration } from "@/lib/utils";
+import { q } from "@/lib/query";
+import { roughDuration } from "@/lib/utils";
+import { approvalHint, catalogKinds, versionLabel } from "./facts";
+import { FavouriteStar } from "./favourite";
 
 export interface CatalogSearch {
   category?: string;
   q?: string;
-}
-
-const glyph = (i: CatalogItem) => (i.type === "vm_blueprint" ? "VM" : i.type === "composite" ? "SET" : "AWX");
-
-const approvalText = { never: "No approval", conditional: "Approval in production", always: "Needs approval" } as const;
-
-function FavouriteButton({ item }: { item: CatalogItem }) {
-  const qc = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (fav: boolean) =>
-      call(
-        fav
-          ? api.PUT("/catalog/items/{itemId}/favourite", { params: { path: { itemId: item.id } } })
-          : api.DELETE("/catalog/items/{itemId}/favourite", { params: { path: { itemId: item.id } } }),
-      ),
-    onMutate: async (fav) => {
-      await qc.cancelQueries({ queryKey: keys.catalog.lists() });
-      const snapshot = qc.getQueriesData<CatalogItemPage>({ queryKey: keys.catalog.lists() });
-      qc.setQueriesData<CatalogItemPage>({ queryKey: keys.catalog.lists() }, (old) =>
-        old ? { ...old, items: old.items.map((i) => (i.id === item.id ? { ...i, favourite: fav } : i)) } : old,
-      );
-      return { snapshot };
-    },
-    onError: (e, _fav, ctx) => {
-      ctx?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
-      toast.error("Couldn't update your favourites", {
-        description: isApiError(e) ? `Request ID ${e.requestId}` : undefined,
-      });
-    },
-    onSettled: () => void qc.invalidateQueries({ queryKey: keys.catalog.lists() }),
-  });
-  return (
-    <button
-      type="button"
-      aria-pressed={item.favourite}
-      aria-label={item.favourite ? `Remove ${item.name} from favourites` : `Add ${item.name} to favourites`}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        mutation.mutate(!item.favourite);
-      }}
-      className="relative z-10 -m-1 rounded-sm p-1 text-faint hover:text-warn"
-    >
-      <Star className={cn("size-3.5", item.favourite && "fill-warn text-warn")} aria-hidden />
-    </button>
-  );
+  type?: CatalogItemType;
 }
 
 function Card({ item }: { item: CatalogItem }) {
+  const duration = roughDuration(item.typical_duration_seconds);
   return (
-    <div className="relative flex flex-col gap-2.5 rounded-lg border border-line bg-surface p-3.5 transition-colors hover:border-line-strong">
-      <div className="flex items-start gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken font-mono text-caption font-medium text-muted">
-          {glyph(item)}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-px">
+    <div className="relative flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 transition-colors focus-within:border-line-strong hover:border-line-strong">
+      <div className="flex items-start gap-3">
+        <ItemIcon name={item.icon} type={item.type} className="size-9" />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <Link
-            to="/catalog/$itemId/request"
+            to="/catalog/$itemId"
             params={{ itemId: item.slug }}
-            className="font-semibold text-fg after:absolute after:inset-0 after:content-[''] hover:text-fg"
+            className="font-semibold break-words text-fg after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:underline hover:underline-offset-2"
           >
             {item.name}
           </Link>
-          <span className="text-caption text-faint">
+          <span className="text-caption text-muted">
             {itemTypeLabel[item.type]}
             {item.source.awx_template_name ? ` · ${item.source.awx_template_name}` : ""}
           </span>
         </div>
-        <FavouriteButton item={item} />
+        <FavouriteStar item={item} />
       </div>
-      <p className="m-0 min-h-9 text-secondary text-muted">{item.summary}</p>
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5 text-caption text-faint">
-        <span className="font-mono">
-          {item.version.number.startsWith("AWX") ? item.version.number : `v${item.version.number}`}
-        </span>
-        {item.typical_duration_seconds ? (
+      <p className="line-clamp-2 min-h-10 text-secondary text-muted">{item.summary}</p>
+      <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-3 text-caption text-muted">
+        <span className="font-mono">{versionLabel(item)}</span>
+        {duration && (
           <>
             <span aria-hidden>·</span>
-            <span>{roughDuration(item.typical_duration_seconds)}</span>
+            <span>{duration}</span>
           </>
-        ) : null}
-        <span
-          className={cn(
-            "ml-auto",
-            item.approval !== "never" && "rounded-sm bg-warn-soft px-1.5 py-px font-medium text-warn",
-          )}
-        >
-          {approvalText[item.approval]}
-        </span>
+        )}
+        {item.approval !== "never" && (
+          <span className="rounded-sm bg-warn-soft px-1.5 py-px font-medium text-warn">
+            {approvalHint[item.approval]}
+          </span>
+        )}
+        <Button asChild size="sm" className="relative z-10 ml-auto">
+          <Link to="/catalog/$itemId/request" params={{ itemId: item.slug }}>
+            Request<span className="sr-only"> {item.name}</span>
+          </Link>
+        </Button>
       </div>
     </div>
   );
@@ -117,7 +73,8 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
   const navigate = useNavigate({ from: "/catalog/" });
   const [text, setText] = useState(search.q ?? "");
   const categories = useQuery(q.categories(projectId));
-  const items = useQuery(q.catalog({ projectId, category: search.category, q: search.q }));
+  const items = useQuery(q.catalog({ projectId, category: search.category, q: search.q, type: search.type }));
+  const filtered = Boolean(search.q || search.category || search.type);
 
   // Keep the URL in step with the search box, without a history entry per keystroke.
   useEffect(() => {
@@ -128,89 +85,94 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
     return () => clearTimeout(t);
   }, [text, search.q, navigate]);
 
-  const total = categories.data?.items.reduce((n, c) => n + c.item_count, 0);
-  const cats = [{ key: undefined, name: "All", item_count: total ?? 0 }, ...(categories.data?.items ?? [])];
+  const set = (patch: Partial<CatalogSearch>) =>
+    void navigate({ search: (s: CatalogSearch) => ({ ...s, ...patch }), replace: true });
+  const clear = () => {
+    setText("");
+    void navigate({ search: {}, replace: true });
+  };
+  const count = items.data?.items.length;
 
   return (
     <Page>
       <PageHeader
         title="Catalog"
-        meta={`Items shared with ${project.name}. VM blueprints run in rvav; AWX items launch job templates in AWX.`}
-        actions={
-          <span className="relative flex items-center">
-            <Search className="pointer-events-none absolute left-2.5 size-3.5 text-faint" aria-hidden />
-            <label htmlFor="catalog-search" className="sr-only">
-              Filter the catalog
-            </label>
-            <Input
-              id="catalog-search"
-              type="search"
-              placeholder="Filter items"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              className="w-60 max-w-[60vw] pl-8"
-            />
-          </span>
-        }
+        description={`What you can request in ${project.name}. Open an item to see what it builds, then request it.`}
       />
-      <div className="flex flex-wrap items-start gap-5">
-        <div role="group" aria-label="Categories" className="flex max-w-full flex-[1_1_180px] flex-wrap gap-0.5">
-          <span className="label basis-full px-2 pb-1">Category</span>
-          {categories.isPending
-            ? [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-7 basis-full" />)
-            : cats.map((c) => {
-                const active = search.category === c.key;
-                return (
-                  <Link
-                    key={c.key ?? "all"}
-                    to="/catalog"
-                    search={(s: CatalogSearch) => ({ ...s, category: c.key })}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex h-[30px] flex-[1_1_160px] items-center justify-between gap-2 rounded-md px-2 text-muted hover:bg-sunken hover:text-fg",
-                      active && "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface",
-                    )}
-                  >
-                    <span>{c.name}</span>
-                    <span className="font-mono text-caption text-faint">{c.item_count}</span>
-                  </Link>
-                );
-              })}
+      <div className="flex flex-wrap items-center gap-2">
+        <TableSearch
+          label="Search the catalog"
+          placeholder="Search by name or summary"
+          value={text}
+          onChange={setText}
+          className="w-72"
+        />
+        <Select
+          aria-label="Category"
+          value={search.category ?? "any"}
+          onChange={(v) => set({ category: v === "any" ? undefined : v })}
+          loading={categories.isPending}
+          options={[
+            { value: "any", label: "All categories" },
+            ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name, meta: String(c.item_count) })),
+          ]}
+          className="w-48"
+        />
+        <Select
+          aria-label="Kind"
+          value={search.type ?? "any"}
+          onChange={(v) => set({ type: v === "any" ? undefined : (v as CatalogItemType) })}
+          options={[
+            { value: "any", label: "All kinds" },
+            ...catalogKinds.map((t) => ({ value: t, label: itemTypeLabel[t] })),
+          ]}
+          className="w-48"
+        />
+        {filtered && (
+          <Button variant="quiet" onClick={clear}>
+            Clear filters
+          </Button>
+        )}
+        <span className="ml-auto text-secondary text-muted" aria-live="polite">
+          {count === undefined ? "" : `${count} ${count === 1 ? "item" : "items"}`}
+        </span>
+      </div>
+      {items.isPending ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-40 rounded-lg" />
+          ))}
         </div>
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-2.5">
-          {items.isPending ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,290px),1fr))] gap-3">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-36 rounded-lg" />
-              ))}
-            </div>
-          ) : items.isError ? (
-            <ErrorState
-              error={items.error}
-              onRetry={() => void items.refetch()}
-              className="rounded-lg border border-line bg-surface"
+      ) : items.isError ? (
+        <ErrorState
+          error={items.error}
+          onRetry={() => void items.refetch()}
+          className="rounded-lg border border-line bg-surface"
+        />
+      ) : items.data.items.length === 0 ? (
+        <div className="rounded-lg border border-line bg-surface">
+          {filtered ? (
+            <EmptyState
+              icon={SearchX}
+              title="No items match"
+              body="Try other words or another category. Ask a catalog administrator if something you need is missing."
+              action={<Button onClick={clear}>Clear filters</Button>}
             />
-          ) : items.data.items.length === 0 ? (
-            <div className="rounded-lg border border-line bg-surface">
-              <EmptyState
-                title="No items match"
-                body="Clear the filter or pick another category. Ask a catalog admin if something you need is missing."
-              />
-            </div>
           ) : (
-            <>
-              <span className="text-secondary text-muted" aria-live="polite">
-                {items.data.items.length} {items.data.items.length === 1 ? "item" : "items"}
-              </span>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,290px),1fr))] gap-3">
-                {items.data.items.map((i) => (
-                  <Card key={i.id} item={i} />
-                ))}
-              </div>
-            </>
+            <EmptyState
+              icon={LayoutGrid}
+              title={`Nothing is shared with ${project.name} yet`}
+              body="Catalog administrators share items with projects. Ask them for what you need, or switch to another project."
+            />
           )}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
+          {items.data.items.map((i) => (
+            <Card key={i.id} item={i} />
+          ))}
+        </div>
+      )}
     </Page>
   );
 }

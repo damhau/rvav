@@ -9,6 +9,9 @@ import { expect, type Page, test } from "@playwright/test";
 const pages = [
   "/",
   "/catalog",
+  "/catalog/rhel9-server",
+  "/catalog/postgres-cluster",
+  "/catalog/db-user",
   "/catalog/rhel9-server/request",
   "/catalog/web-app/request",
   "/catalog/three-tier/request",
@@ -267,7 +270,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-      await page.getByRole("link", { name: /^Owner check/ }).click();
+      await page.getByRole("link", { name: /^Request Owner check/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       // What a requester's form says of it. A toast that is fading reads as too faint.
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
@@ -355,7 +358,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-      await page.getByRole("link", { name: /^Keep check/ }).click();
+      await page.getByRole("link", { name: /^Request Keep check/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
       await loaded(page);
@@ -445,7 +448,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-      await page.getByRole("link", { name: /^Which way/ }).click();
+      await page.getByRole("link", { name: /^Request Which way/ }).click();
       await page.getByRole("textbox", { name: "Name" }).fill("web-01");
       await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 25_000 });
       await loaded(page);
@@ -559,15 +562,22 @@ test("a VM requested with the keyboard only", async ({ page }) => {
   const skip = page.getByRole("link", { name: "Skip to content" });
   await expect(skip).toBeFocused();
   await page.keyboard.press("Enter");
-  // Tab to the RHEL 9 server's request link and open it.
-  for (let i = 0; i < 60; i++) {
-    await page.keyboard.press("Tab");
-    const name = await page.evaluate(() => document.activeElement?.textContent ?? "");
-    const href = await page.evaluate(() => document.activeElement?.getAttribute("href") ?? "");
-    if (href === "/catalog/rhel9-server/request" || (/rhel 9/i.test(name) && href.includes("rhel9-server"))) break;
-  }
+  // Tab to the RHEL 9 server's card and open its page, then its Request.
+  const tabToHref = async (want: string) => {
+    for (let i = 0; i < 60; i++) {
+      await page.keyboard.press("Tab");
+      const href = await page.evaluate(() => document.activeElement?.getAttribute("href") ?? "");
+      if (href === want) return;
+    }
+    throw new Error(`no link to ${want} within 60 tabs`);
+  };
+  await tabToHref("/catalog/rhel9-server");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/catalog\/rhel9-server/);
+  await expect(page.getByRole("heading", { name: "RHEL 9 server", level: 1 })).toBeVisible();
+  await loaded(page);
+  await tabToHref("/catalog/rhel9-server/request");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/catalog\/rhel9-server\/request$/);
   await loaded(page);
   // Every field of the form is reached by Tab, and nothing traps focus.
   const reached = new Set<string>();

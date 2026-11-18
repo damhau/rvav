@@ -373,7 +373,7 @@ test("requested, answered as the requester and followed on the graph, the side t
   await tabTo(page, page.getByRole("link", { name: "Catalog", exact: true }), "Shift+Tab");
   await page.keyboard.press("Enter");
   await skipToContent(page);
-  await tabTo(page, page.getByRole("link", { name: new RegExp(`^${item}`) }));
+  await tabTo(page, page.getByRole("link", { name: new RegExp(`^Request ${item}`) }));
   await page.keyboard.press("Enter");
   const form = page.getByRole("region", { name: `Steps of ${item}` });
   await expect(form.getByRole("button", { name: /^Branch Backed up or not\. way\./ })).toBeVisible();
@@ -436,7 +436,7 @@ for (const theme of ["light", "dark"] as const) {
 
     await publish(page);
     await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-    await page.getByRole("link", { name: new RegExp(`^${item}`) }).click();
+    await page.getByRole("link", { name: new RegExp(`^Request ${item}`) }).click();
     await page.getByRole("textbox", { name: "Name" }).fill("web-01");
     await page.getByRole("button", { name: "Submit request" }).click();
 

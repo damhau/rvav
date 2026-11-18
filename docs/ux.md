@@ -53,8 +53,11 @@ Greeting, "Continue" (drafts and running requests), approvals waiting for me,
 leases expiring soon, featured catalog items, recent activity.
 
 ### Catalog
-A grid of cards with search, category and tag filters. Clicking a card opens a
-side panel with the description and a "Request" button, without leaving the page.
+A grid of cards, with search and the category and kind filters in a toolbar
+above it. A card shows the item's icon (or its kind's), its kind, its one-line
+summary and a Request button. Clicking a card opens the item's page: its
+Markdown description, the version requests use, what it builds (the topology,
+or a composite's steps), and Request as the primary action.
 
 ### Request form
 - Wizard or single page, depending on the form layout.

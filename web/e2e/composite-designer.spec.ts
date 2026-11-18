@@ -73,7 +73,7 @@ test("a composite's steps edited on the canvas, published and requested", async 
 
   // Requested: the step is on the form's steps, then runs after the nodes.
   await page.getByRole("link", { name: "Catalog", exact: true }).click();
-  await page.getByRole("link", { name: /^PostgreSQL 16 cluster/ }).click();
+  await page.getByRole("link", { name: "Request PostgreSQL 16 cluster" }).click();
   await expect(
     page.getByRole("region", { name: "Steps of PostgreSQL 16 cluster" }).getByRole("button", {
       name: /^AWX Monitoring agent\./,

@@ -27,9 +27,16 @@ one to ask your project admin or administrator for.
 
 ## Requesting a VM
 
-1. **Catalog:** find the item by name, category or the filter. Star the
-   ones you use often.
-2. **The form:** environment first (dev, tst, prd), then what the item
+1. **Catalog:** search by name or summary, or choose a category or kind in
+   the toolbar. Each card shows what kind of item it is (a VM blueprint, a
+   composite, an AWX job template) and a line on what it gives you. Star
+   the ones you use often. **Request** on a card opens its form directly.
+2. **The item's page:** open an item to read its description, the version
+   that requests use, whether it needs approval, how long it usually takes,
+   and what it builds: its VMs, networks and groups, or a composite's steps
+   in the order they run. **Request** opens the form. If your roles in the
+   project don't let you request, the page says so.
+3. **The form:** environment first (dev, tst, prd), then what the item
    asks. The panel beside it shows what you will get, as you fill it in:
    - the VMs' names;
    - the size and the quota it uses;
@@ -44,13 +51,13 @@ one to ask your project admin or administrator for.
    follow what you fill in. **List** gives the same as a list; select a
    node to read all it says. A step that calls a REST API shows its method
    and the values it reads, not the address.
-3. **Lease and reason:** how long you need it, within what the environment
+4. **Lease and reason:** how long you need it, within what the environment
    allows. In production the reason is what approvers read.
-4. **Options:**
+5. **Options:**
    - how many;
    - when to start (now, or at a set time);
    - for someone else: they own it and are told.
-5. **Submit request.**
+6. **Submit request.**
 
 A form you leave can be kept as a **draft** (Resume or Discard it later).
 A draft never keeps passwords or other secret fields. Secret fields are

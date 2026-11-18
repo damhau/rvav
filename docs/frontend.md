@@ -213,7 +213,11 @@ it and works in both themes.
 
 `components/common` has the rest: `Page` (a page's width and padding),
 `KeyValues`, the status badges, `Timeline`, `Meter`, the skeletons and
-`ErrorState`.
+`ErrorState`. `Markdown` renders what an administrator writes in Markdown, such
+as a catalog item's description: CommonMark with its HTML and images left out,
+links opening in a new tab, and its headings moved below the section it's in
+(`headingLevel`). It loads `react-markdown`, so use it only on code-split
+routes.
 
 ### Interaction rules
 - One primary action per page, and at most one per panel.

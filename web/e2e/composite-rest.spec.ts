@@ -101,7 +101,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
 
   // A requester sees its method and what it reads: no host, path, literal or secret.
   await page.getByRole("link", { name: "Catalog", exact: true }).click();
-  await page.getByRole("link", { name: /^PostgreSQL 16 cluster/ }).click();
+  await page.getByRole("link", { name: "Request PostgreSQL 16 cluster" }).click();
   const form = page.getByRole("region", { name: "Steps of PostgreSQL 16 cluster" });
   const masked = form.getByRole("button", { name: /^REST Register in the CMDB\./ });
   await expect(masked).toBeVisible();
@@ -208,7 +208,7 @@ test("an item of only REST calls, requested and run to its end", async ({ page }
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
 
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
-  await page.getByRole("link", { name: /^CMDB entry/ }).click();
+  await page.getByRole("link", { name: /^Request CMDB entry/ }).click();
   await page.getByRole("textbox", { name: "Name" }).fill("web-01");
   await page.getByRole("button", { name: "Submit request" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);

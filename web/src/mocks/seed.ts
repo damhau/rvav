@@ -176,6 +176,17 @@ export function createDb(now = Date.now()): Db {
       slug: "rhel9-server",
       name: "RHEL 9 server",
       summary: "Red Hat Enterprise Linux 9.4 with the corporate baseline, IdM join and node_exporter.",
+      description_md: [
+        "Clones `tpl-rhel9.4-2026.10`, reserves an address in EfficientIP, creates the DNS records and runs the AWX jobs you pick.",
+        "",
+        "## What you get",
+        "",
+        "- The corporate baseline: chrony, sshd hardening, journald and Satellite registration",
+        "- The host enrolled in IdM, with the project's HBAC rules",
+        "- node_exporter on port 9100, registered in Prometheus",
+        "",
+        "Production VMs need sign-off from the infrastructure leads. See the [RHEL build standard](https://wiki.example.com/rhel9) for what the template holds.",
+      ].join("\n"),
       category: "compute",
       type: "vm_blueprint",
       icon: "server",
@@ -238,6 +249,8 @@ export function createDb(now = Date.now()): Db {
       name: "Three-tier application",
       summary:
         "Web, application and database tiers on an NSX segment of their own, with the firewall rules between them.",
+      description_md:
+        "Web servers kept on separate hosts, an application server and a database server, each tier in an NSX security group of its own. The segment, groups and rules are made for the deployment and deleted with it.",
       category: "compute",
       type: "vm_blueprint",
       icon: "layers",
@@ -253,6 +266,11 @@ export function createDb(now = Date.now()): Db {
       slug: "postgres-cluster",
       name: "PostgreSQL 16 cluster",
       summary: "Three-node Patroni cluster with etcd, an HAProxy VIP and pgBackRest backups.",
+      description_md: [
+        "Three RHEL nodes on separate hosts, each with a data disk. AWX installs PostgreSQL and forms the Patroni cluster, then the database's owner role is created.",
+        "",
+        "The owner's password goes to Vault under `secret/postgres/<cluster>`: you never see it in rvav.",
+      ].join("\n"),
       category: "databases",
       type: "composite",
       icon: "database",

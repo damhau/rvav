@@ -59,14 +59,24 @@ export const icons: Record<string, React.ElementType> = {
   activity: Activity,
 };
 
-export function ItemIcon({ name, className }: { name: string; className?: string }) {
-  const I = icons[name] ?? Server;
+/** What stands for an item whose icon isn't in the set: its kind. */
+const kindIcons: Record<CatalogItemType, React.ElementType> = {
+  vm_blueprint: Server,
+  composite: Layers,
+  awx_job_template: SquareTerminal,
+  awx_workflow: Workflow,
+  workflow: Workflow,
+};
+
+export function ItemIcon({ name, type, className }: { name: string; type?: CatalogItemType; className?: string }) {
+  const I = icons[name] ?? (type ? kindIcons[type] : Server);
   return (
     <span
       className={cn(
         "flex size-8 shrink-0 items-center justify-center rounded-md border border-line bg-sunken text-muted",
         className,
       )}
+      aria-hidden
     >
       <I className="size-4" strokeWidth={1.75} />
     </span>

@@ -31,9 +31,7 @@ describe("app shell", () => {
     // ran on awx.corp.example, on every install: a new one set up from the UI
     // has its own (and rvav can have several vCenters).
     renderApp("/catalog");
-    expect(
-      await screen.findByText(/AWX items launch job templates in AWX\./, {}, { timeout: 5000 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Create database user" }, { timeout: 5000 })).toBeInTheDocument();
     const main = screen.getByRole("navigation", { name: "Main" });
     expect(main).not.toHaveTextContent(/corp\.example/);
     expect(document.body).not.toHaveTextContent(/vc01\.corp\.example|awx\.corp\.example/);

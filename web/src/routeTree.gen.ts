@@ -42,6 +42,7 @@ import { Route as AdminRolesRoleKeyRouteImport } from "./routes/admin/roles/$rol
 import { Route as AdminRolesNewRouteImport } from "./routes/admin/roles/new"
 import { Route as AdminSubscriptionsIndexRouteImport } from "./routes/admin/subscriptions/index"
 import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/admin/subscriptions/$subscriptionId"
+import { Route as CatalogItemIdIndexRouteImport } from "./routes/catalog/$itemId.index"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
@@ -211,6 +212,11 @@ const AdminSubscriptionsSubscriptionIdRoute =
     path: "/admin/subscriptions/$subscriptionId",
     getParentRoute: () => rootRouteImport,
   } as any)
+const CatalogItemIdIndexRoute = CatalogItemIdIndexRouteImport.update({
+  id: "/catalog/$itemId/",
+  path: "/catalog/$itemId/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CatalogItemIdRequestRoute = CatalogItemIdRequestRouteImport.update({
   id: "/catalog/$itemId/request",
   path: "/catalog/$itemId/request",
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
+  "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesByTo {
@@ -295,6 +302,7 @@ export interface FileRoutesByTo {
   "/admin/projects": typeof AdminProjectsIndexRoute
   "/admin/roles": typeof AdminRolesIndexRoute
   "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
+  "/catalog/$itemId": typeof CatalogItemIdIndexRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesById {
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
+  "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRouteTypes {
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
+    | "/catalog/$itemId/"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -409,6 +419,7 @@ export interface FileRouteTypes {
     | "/admin/projects"
     | "/admin/roles"
     | "/admin/subscriptions"
+    | "/catalog/$itemId"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
     | "__root__"
@@ -446,6 +457,7 @@ export interface FileRouteTypes {
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
+    | "/catalog/$itemId/"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
 }
@@ -484,6 +496,7 @@ export interface RootRouteChildren {
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
   AdminRolesIndexRoute: typeof AdminRolesIndexRoute
   AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
+  CatalogItemIdIndexRoute: typeof CatalogItemIdIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 
@@ -720,6 +733,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminSubscriptionsSubscriptionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/catalog/$itemId/": {
+      id: "/catalog/$itemId/"
+      path: "/catalog/$itemId"
+      fullPath: "/catalog/$itemId/"
+      preLoaderRoute: typeof CatalogItemIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/catalog/$itemId/request": {
       id: "/catalog/$itemId/request"
       path: "/catalog/$itemId/request"
@@ -772,6 +792,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
+  CatalogItemIdIndexRoute: CatalogItemIdIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,
 }

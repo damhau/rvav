@@ -18,6 +18,10 @@ test("request a RHEL 9 server from the catalog and follow it to Ready", async ({
   await page.goto("/catalog");
   await expect(page.getByRole("heading", { name: "Catalog" })).toBeVisible();
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  // The item's page first: what it is and builds, then Request.
+  await expect(page.getByRole("heading", { name: "RHEL 9 server", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What it builds" })).toContainText("tpl-rhel9.4-2026.10");
+  await page.getByRole("link", { name: "Request", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   // Server-resolved defaults and the preview summary.

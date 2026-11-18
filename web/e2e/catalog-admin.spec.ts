@@ -216,7 +216,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   const requestForm = async (label: string, version: string) => {
     await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
     await expect(card.getByText(`v${version}`, { exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Ubuntu web" }).click();
+    await page.getByRole("link", { name: "Request Ubuntu web" }).click();
     await expect(page.getByRole("combobox", { name: label })).toBeVisible();
   };
   const backToItem = async () => {

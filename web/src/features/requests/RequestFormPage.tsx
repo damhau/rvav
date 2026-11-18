@@ -701,6 +701,11 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
       <div className="flex flex-col gap-1.5">
         <Breadcrumbs>
           <Link to="/catalog">Catalog</Link>
+          {item.data && (
+            <Link to="/catalog/$itemId" params={{ itemId: item.data.slug }}>
+              {item.data.name}
+            </Link>
+          )}
         </Breadcrumbs>
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface font-mono text-caption font-medium text-muted">

@@ -96,7 +96,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await page.getByRole("button", { name: /^Project/ }).click();
   await page.getByRole("menuitem", { name: /Payments/ }).click();
   await nav(page, "Catalog");
-  await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request RHEL 9 server" }).click();
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill("api");
   await expect(page.locator("#f-vm_name")).toHaveText(/paydevapi01/);
@@ -111,7 +111,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
 
   // A second VM is over the quota.
   await nav(page, "Catalog");
-  await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request RHEL 9 server" }).click();
   await page.getByRole("textbox", { name: "Role" }).fill("web");
   await expect(page.locator("#f-vm_name")).toHaveText(/paydevweb01/);
   await page.getByRole("button", { name: "Submit request" }).click();
