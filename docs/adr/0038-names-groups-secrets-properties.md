@@ -117,8 +117,9 @@ own `properties` (C30).
   00059) when the VM is recorded.
 - The deployment's **Delete** is unavailable while one of its VMs is kept,
   and says which: the action list shows the reason and a request for it
-  is refused (409). A lease's end tries **Delete** too, so it doesn't
-  delete such a deployment. Rolling back a failed request still removes
+  is refused (409). A lease's end doesn't delete such a deployment
+  either: rvav checks first, cancels none of the requests waiting on it,
+  and tells the owner once per lease (T1.7). Rolling back a failed request still removes
   the VMs it built: they never made a working deployment.
 - **Allow deletion**, a deployment action, clears the flag on all its VMs.
   It is offered only to those holding `project.update` in the project

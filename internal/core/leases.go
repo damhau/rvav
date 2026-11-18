@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -21,7 +22,9 @@ import (
 // deployment). A lease that ended without its 1-day reminder (housekeeping
 // was down, or the deployment predates leases) is moved on a day so the
 // owner is told first. Requests waiting for approval don't hold expiry up;
-// those still waiting are cancelled before a deletion. A deployment busy
+// those still waiting are cancelled before a deletion. A deployment whose
+// blueprint keeps its VMs from deletion isn't deleted, and nothing of it is
+// cancelled: its owner is told once. A deployment busy
 // with a running request waits for the next round; an expiry that failed
 // is tried again after a day. It returns the requests started.
 func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, error) {
@@ -94,6 +97,15 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 		}
 		inputs := map[string]any{}
 		if action == "delete" {
+			kept, err := s.keptFromDeletion(ctx, d)
+			if err != nil {
+				s.Log.Warn("lease expiry", "deployment", d.ID, "err", err)
+				continue
+			}
+			if kept != "" {
+				s.leaseKept(ctx, d, kept)
+				continue
+			}
 			inputs["lease"] = true
 			s.cancelWaiting(ctx, d)
 		}
@@ -110,6 +122,36 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 		started = append(started, row.ID)
 	}
 	return started, nil
+}
+
+// keptFromDeletion is why the deployment's Delete is refused, "" when it
+// isn't: its blueprint keeps a VM from deletion (ADR-0038).
+func (s *Service) keptFromDeletion(ctx context.Context, d store.DeploymentRow) (string, error) {
+	resources, err := s.Store.ListResources(ctx, d.ID)
+	if err != nil {
+		return "", err
+	}
+	del := day2.Get("delete")
+	for _, t := range targets(d, resources) {
+		if t.Type == day2.DeploymentType {
+			return del.Unavailable(t, day2.Choices{}), nil
+		}
+	}
+	return "", nil
+}
+
+// leaseKept tells the owner, once per lease, that the lease ended but rvav
+// can't delete the deployment.
+func (s *Service) leaseKept(ctx context.Context, d store.DeploymentRow, why string) {
+	if slices.Contains(d.LeaseReminded, "kept") {
+		return
+	}
+	s.notify(ctx, store.NewNotification{UserID: d.OwnerID, Kind: "lease_expired", Title: "The lease of " + d.Name + " ended, but it isn't deleted",
+		Body: why + " Extend the lease, or ask an administrator to allow the deletion.", Level: "warning",
+		DedupeKey: leaseKey(d, "lease_kept")}, d.ID)
+	if err := s.Store.SetLeaseReminded(ctx, s.Store.Pool, d.ID, *d.LeaseExpiresAt, append(slices.Clone(d.LeaseReminded), "kept")); err != nil {
+		s.Log.Warn("lease kept", "deployment", d.ID, "err", err)
+	}
 }
 
 // cancelWaiting cancels the requests on a deployment that wait for approval

@@ -241,3 +241,75 @@ func TestLeaseExpiry(t *testing.T) {
 		}
 	})
 }
+
+// TestLeaseExpiryKept: a deployment whose blueprint keeps its VMs from
+// deletion outlives its lease. rvav tells its owner once, and leaves the
+// extension waiting for approval, until an administrator allows the
+// deletion (T1.7).
+func TestLeaseExpiryKept(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		var clock atomic.Int64
+		h.acts.Now = func() time.Time { return time.Unix(0, clock.Load()) }
+		sweep := func(at time.Time, want int) {
+			t.Helper()
+			clock.Store(at.UnixNano())
+			started, err := h.svc.ExpireLeases(ctx, at)
+			if err != nil || len(started) != want {
+				t.Fatalf("expire leases at %s: %v, %v", at.Format(time.DateTime), started, err)
+			}
+			for _, id := range started {
+				h.runWorkflow(id, nil)
+				h.waitStatus(id, "tnguyen", api.RequestStatusSucceeded)
+			}
+		}
+		told := func() int {
+			var n int
+			if err := h.store.Pool.QueryRow(ctx, `select count(*) from events where type = 'notification'
+				and 'user:usr_tnguyen' = any(topics) and payload->'data'->>'title' like '% ended, but it isn''t deleted'`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+
+		d := leasedVM(h, 1)
+		if _, err := h.store.Pool.Exec(ctx, `update resources set prevent_delete = true where deployment_id = $1 and type = 'vsphere.vm'`,
+			d.id); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		sweep(now.Add(time.Hour), 0)
+		sweep(now.Add(25*time.Hour), 1) // powered off
+		var waiting api.Request
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "extend_lease",
+			Inputs: map[string]any{"days": 120}}, 202, &waiting, "Idempotency-Key", uuid.NewString())
+
+		// After the grace period, and every round after.
+		sweep(now.Add(9*24*time.Hour), 0)
+		sweep(now.Add(9*24*time.Hour+15*time.Minute), 0)
+		h.json("GET", "/api/v1/requests/"+waiting.Id, "tnguyen", nil, 200, &waiting)
+		if waiting.Status != api.RequestStatusPendingApproval {
+			t.Fatalf("the waiting extension is %s", waiting.Status)
+		}
+		if n := told(); n != 1 {
+			t.Fatalf("the owner was told %d times", n)
+		}
+
+		// The owner gives up the extension, and an administrator allows the deletion.
+		h.json("POST", "/api/v1/requests/"+waiting.Id+"/cancel", "tnguyen", nil, 202, nil)
+		var allow api.Request
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "mkeller", api.Day2Draft{Action: "allow_delete", Inputs: map[string]any{}},
+			202, &allow, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(allow.Id, nil)
+		h.waitStatus(allow.Id, "mkeller", api.RequestStatusSucceeded)
+		sweep(now.Add(9*24*time.Hour+30*time.Minute), 1)
+		var dep api.Deployment
+		h.json("GET", "/api/v1/deployments/"+d.id, "tnguyen", nil, 200, &dep)
+		if dep.Status != api.DeploymentStatusDeleted {
+			t.Fatalf("once allowed: %s", dep.Status)
+		}
+	})
+}

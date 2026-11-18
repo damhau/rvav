@@ -544,7 +544,9 @@ Each tab is in the page's address, so a link can open it, for example
 
 A deployment whose blueprint sets `prevent_delete` can't be deleted, by
 its owner, a project admin or the end of its lease: **Delete** names the
-VMs it keeps. To let it be deleted, open the deployment and select
+VMs it keeps. When its lease ends, rvav tells the owner once, and leaves
+the requests waiting on it, such as a lease extension waiting for
+approval. To let it be deleted, open the deployment and select
 **Allow deletion** in its **Actions** menu. You need `project.update` in
 its project, which administrators hold.
 
