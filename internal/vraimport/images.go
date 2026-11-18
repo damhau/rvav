@@ -69,6 +69,29 @@ func ImageKey(image string) string {
 	return k
 }
 
+// ImageKeys are the catalogue template keys of the image names vRA's
+// image profiles map, by name: ImageKey's, with -2, -3 and on for a name
+// whose key an earlier one, in name order, has.
+func ImageKeys(e *vra.Estate) map[string]string {
+	names := map[string]bool{}
+	for _, p := range e.Images {
+		for name := range p.ImageMappings.Mapping {
+			names[name] = true
+		}
+	}
+	out, taken := map[string]string{}, map[string]bool{}
+	for _, name := range slices.Sorted(maps.Keys(names)) {
+		base := ImageKey(name)
+		key := base
+		for n := 2; taken[key]; n++ {
+			suffix := fmt.Sprintf("-%d", n)
+			key = strings.TrimRight(base[:min(len(base), 41-len(suffix))], "-") + suffix
+		}
+		taken[key], out[name] = true, key
+	}
+	return out
+}
+
 // regionMapping is an image's mapping in one image profile.
 type regionMapping struct {
 	profile vra.ImageProfile
@@ -151,17 +174,20 @@ func URLHost(raw string) string {
 // first region's cloud-init and constraints. The import makes those rvav
 // hasn't; it never changes one rvav has.
 func PlanTemplates(e *vra.Estate, r Rvav) []TemplateImport {
-	names := map[string]bool{}
-	for _, p := range e.Images {
-		for name := range p.ImageMappings.Mapping {
-			names[name] = true
-		}
+	keys := ImageKeys(e)
+	owner := map[string]string{}
+	for name, key := range keys {
+		owner[key] = name
 	}
 	out := []TemplateImport{}
-	for _, image := range slices.Sorted(maps.Keys(names)) {
-		t := TemplateImport{Image: image, Key: ImageKey(image), Label: image, OSFamily: "linux", Sources: []TemplateSource{},
+	for _, image := range slices.Sorted(maps.Keys(keys)) {
+		t := TemplateImport{Image: image, Key: keys[image], Label: image, OSFamily: "linux", Sources: []TemplateSource{},
 			Constraints: []string{}, Notes: []Note{}}
 		note := func(level, where, text string) { t.Notes = append(t.Notes, Note{level, where, text}) }
+		if base := ImageKey(image); t.Key != base {
+			note(Warning, "", fmt.Sprintf("Images %s and %s would both be template %s: this one is %s, and items using it bind %s.",
+				owner[base], image, base, t.Key, t.Key))
+		}
 		if strings.Contains(strings.ToLower(image), "win") {
 			t.OSFamily = "windows"
 		}

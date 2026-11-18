@@ -85,6 +85,43 @@ func TestPlanTemplates(t *testing.T) {
 	}
 }
 
+// TestImageKeyClashes: two image names that make the same key get keys of
+// their own, said in the plan, and an item binds its image's (T1.7).
+func TestImageKeyClashes(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	const v1, v2 = "Windows Server 2019 Datacenter Core English v1", "Windows Server 2019 Datacenter Core English v2"
+	for i, p := range e.Images {
+		for _, name := range []string{v1, v2, "Ubuntu 22.04", "ubuntu-22-04"} {
+			e.Images[i].ImageMappings.Mapping[name] = vra.ImageMapping{Name: "tpl-" + ImageKey(name) + "-" + p.RegionID}
+		}
+	}
+	keys := map[string]string{}
+	var notes []Note
+	for _, ti := range PlanTemplates(&e, Rvav{}) {
+		keys[ti.Image] = ti.Key
+		notes = append(notes, ti.Notes...)
+	}
+	want := map[string]string{v1: "windows-server-2019-datacenter-core-engli", v2: "windows-server-2019-datacenter-core-eng-2",
+		"Ubuntu 22.04": "ubuntu-22-04", "ubuntu-22-04": "ubuntu-22-04-2"}
+	for name, key := range want {
+		if keys[name] != key {
+			t.Errorf("%s = %q, want %q", name, keys[name], key)
+		}
+	}
+	if !slices.ContainsFunc(notes, func(n Note) bool {
+		return n.Level == Warning && strings.Contains(n.Text, "Images "+v1+" and "+v2+" would both be template windows-server-2019-datacenter-core-engli")
+	}) {
+		t.Errorf("notes = %+v", notes)
+	}
+
+	content := strings.Replace(e.Blueprints[0].Content, "image: ", "image: "+v2+" #", 1)
+	bp := vra.Blueprint{ID: "bp-v2", Name: "v2", ProjectID: "vra-prj-web", Status: "RELEASED", Content: content,
+		Versions: []vra.BlueprintVersion{{ID: "bp-v2-v1", BlueprintID: "bp-v2", Version: "1", Status: "RELEASED", Content: content}}}
+	if p := MapTemplate(&e, bp); !slices.Equal(p.Templates, []string{want[v2]}) {
+		t.Errorf("the v2 item binds %v", p.Templates)
+	}
+}
+
 // TestImageBinding: a machine whose image is more than a template's name
 // binds its catalogue template; one that is the same template everywhere
 // keeps naming it; the plan says when the template won't be made.

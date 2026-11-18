@@ -125,6 +125,11 @@ source of that name gives its customization specification.
   catalogue templates: one per image name, a source per region's vCenter
   that rvav manages, the first region's `cloudConfig` as user data and
   its `constraints` as compute constraints (`:soft` when not mandatory).
+- A template's key is the image name in lower case, other characters as
+  dashes, at most 41 characters. Two names that give the same key, such
+  as `Ubuntu 22.04` and `ubuntu-22-04`, or two long names alike up to
+  their 41st character, get `-2`, `-3` and on, in name order, and the
+  plan says so (T1.7).
 - A machine's `image` binds that template (`bindings.template`) when
   vRA's mappings differ between regions or carry cloud-init or
   constraints. Otherwise the item names the vCenter template, as before:

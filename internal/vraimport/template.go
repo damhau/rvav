@@ -245,7 +245,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			if strings.Contains(img, "${") {
 				note(Unmapped, where+".image", "The image comes from an input ("+img+"): an rvav item builds from one template per component. Make an item per image, or a size-like choice in a later version.")
 			} else if needsCatalogue(e, img) {
-				key := ImageKey(img)
+				key := ImageKeys(e)[img]
 				bindings["template"] = strconv.Quote(key)
 				note(Info, where+".image", fmt.Sprintf("Image %s is catalogue template %s, made of vRA's image mappings: a template per vCenter, with their cloud-init and constraints (ADR-0037).", img, key))
 			} else if tpl := imageTemplate(e, img); tpl != "" {
