@@ -121,3 +121,8 @@ read it after the request.
   can't download the file.
 - No virus scanning: an installation that needs it scans in the workflow
   that reads the file.
+- A picture for image fields belongs to the rvav that keeps it: YAML and
+  Git carry its `upload:<id>`, not the picture, so another installation
+  refuses the version until the picture is uploaded there. Pictures are
+  never removed, so the table grows with what catalog administrators
+  upload, 2 MB at a time.

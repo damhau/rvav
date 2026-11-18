@@ -852,6 +852,12 @@ ui_schema:
       alt: The web, app and data zones, each behind its own firewall
 ```
 
+The picture stays in the rvav you upload it to. An item exported to YAML or
+kept in Git names it by its `upload:<id>` only, so another rvav refuses the
+version until you upload the picture there and give the image its new
+`url`. To show one picture in several installations, give its address on a
+site they can all reach instead.
+
 The `vsphere_folder` widget offers the VM folders of the datacenters whose
 clusters the project's placement allows in the environment, by path from
 the root (`vsphere.folders`). The server refuses a folder it doesn't offer.

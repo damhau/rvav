@@ -1432,15 +1432,10 @@ function shownProblems(def: Definition, prefix: string, publish: boolean): S["Fi
     const url = f.url?.trim() ?? "";
     if (!url && publish)
       errors.push({ field: `${at}/url`, code: "required", message: `${what} needs its address (url).` });
-    const problem = url.startsWith("upload:") && f.widget === "image" ? imageProblem(url, `${at}/url`) : undefined;
-    if (problem) errors.push(problem);
-    else if (url && !url.startsWith("upload:") && !shownUrl(url))
-      errors.push({
-        field: `${at}/url`,
-        code: "invalid",
-        message: "Give an address that starts with https:// or http://, or a path on this site that starts with /.",
-      });
-    else if (url.startsWith("upload:") && f.widget !== "image")
+    if (url.startsWith("upload:") && f.widget === "image") {
+      const unknown = imageProblem(url, `${at}/url`);
+      if (unknown) errors.push(unknown);
+    } else if (url && !shownUrl(url))
       errors.push({
         field: `${at}/url`,
         code: "invalid",
