@@ -612,7 +612,7 @@ behaviour). The designer edits both visually; a code view shows the YAML.
 
 ### Field types
 text, textarea, number, slider, toggle, dropdown, multi-select, dual list,
-radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
+search (type-ahead), radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
 of fields (one object), secret, file upload,
 Markdown or info block, image, link, and resource pickers:
 - vSphere: cluster, datastore, network, folder, template, existing VM
@@ -638,6 +638,7 @@ as a list.
 | `datagrid` | `array` of `object`, with `ui.columns` | `[{"size_gb": 50, "tier": "gold"}]` |
 | `dual_list` | `array` of `string`, `uniqueItems: true` | `["tnguyen", "lmartin"]`, in the order chosen |
 | `object` | `object` with `properties`, with `ui.columns` | `{"policy": "daily", "keep_days": 14}` |
+| `search` | `string` | `app-003`: an option its value source finds for the text typed |
 | `project` | `string` | A project's ID, `prj_web`: one the requester may request in |
 | `user` | `string` | A person's ID, `usr_lmartin`, found by typing their name or email |
 | `deployment` | `string` | A deployment's ID, `dep_7f3k2`: one of the project's, not deleted |
@@ -876,6 +877,39 @@ ui_schema:
       value_source: { kind: builtin, name: rvav.vms, params: { deployment: "${inputs.server}" } }
 ```
 
+A search field (`search`) finds its choices as the requester types: from
+two letters, it asks its value source with the text, a quarter of a second
+after the last key, and lists what it finds, 20 at most. A source that
+searches by the text itself takes `search: true`: a `rest` source reads the
+text as `${search}` in its URL or body, escaped as inputs are, and a `cel`
+source's `options` expression reads it as `search`. For any other source,
+built-in ones among them, rvav asks the source as for a dropdown and keeps
+the options whose value, label or detail contains the text. To publish, a
+search field needs a source that gives options.
+
+On preview and submit, the server asks the source for the field's value as
+the searched text, and refuses the value unless the source finds it. A
+source that searches must therefore find an option by its value, as well as
+by the text people type:
+
+```yaml
+ui_schema:
+  fields:
+    app:
+      widget: search
+      label: Application
+      placeholder: Name or code
+      value_source:
+        kind: rest
+        search: true
+        params:
+          url: https://cmdb.corp.example/apps?q=${search}
+          items: $.apps
+          value: $.id
+          label: $.name
+          meta: $.team
+```
+
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:
   - built-in sources (vSphere inventory cache, EfficientIP, AWX, app data),
@@ -902,7 +936,8 @@ ui_schema:
   Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`, the list a composite's REST calls share; no redirects,
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
   project, user and environment). Dependencies re-resolve a field when the
-  inputs it depends on change.
+  inputs it depends on change. A search field passes its text to the
+  source (`${search}`, `search`) or keeps the options that contain it.
 - NSX's ([ADR-0028](adr/0028-nsx-networking.md)): `nsx.segments` (existing
   segments, by the port group name a `network` binding takes; `tier1` to
   keep one Tier-1's), `nsx.tier1s`, `nsx.groups` (groups VMs can join by

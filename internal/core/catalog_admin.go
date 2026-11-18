@@ -675,6 +675,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		}
 		prop, _ := props[name].(map[string]any)
 		errs = append(errs, checkFieldShape(name, f, prop, prefix)...)
+		errs = append(errs, checkSearch(name, f, prefix, publish)...)
 	}
 	for _, name := range sortedKeys(props) {
 		if _, ok := d.UiSchema.Fields[name]; !ok {
@@ -700,6 +701,9 @@ func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
 	case api.Builtin:
 		if src.Name == nil || !slices.Contains(builtinSources, *src.Name) {
 			return []api.FieldError{fieldErr(ptr+"/name", "unknown", fmt.Sprintf("%q is not a built-in value source.", deref(src.Name)))}
+		}
+		if src.Search != nil {
+			return []api.FieldError{fieldErr(ptr+"/search", "invalid", "A built-in source searches its own way: leave search out.")}
 		}
 	case api.Rest, api.Cel:
 		return checkCustomSource(src, ptr)

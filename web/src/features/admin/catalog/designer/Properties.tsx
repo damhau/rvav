@@ -322,6 +322,28 @@ function SourceEditor({
           {param("value", "Value", "A computed value instead of options.")}
         </>
       )}
+      {ui.widget === "search" && (src?.kind === "rest" || src?.kind === "cel") && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="prop-src-search" className="flex min-h-6 items-center gap-2 text-secondary">
+            <Checkbox
+              id="prop-src-search"
+              checked={src.search === true}
+              onChange={(on) => {
+                const { search: _, ...rest } = src;
+                setSource(on ? { ...rest, search: true } : rest);
+              }}
+              aria-describedby="prop-src-search-hint"
+            />
+            The source searches by the typed text
+          </label>
+          <p id="prop-src-search-hint" className="text-caption text-faint">
+            {src.kind === "rest"
+              ? "Its URL or body reads ${search}. Otherwise rvav keeps the options that contain the text."
+              : "Its options expression reads search. Otherwise rvav keeps the options that contain the text."}
+          </p>
+          <ProblemList id="prop-src-search-problems" list={at("search")} />
+        </div>
+      )}
       {src && others.length > 0 && (
         <fieldset className="flex flex-col gap-1">
           <legend className="mb-1 text-secondary font-medium">Depends on</legend>
@@ -403,6 +425,7 @@ function FieldProperties({
   const at = (p: string) => problems.filter((x) => x.at === p);
   const section = def.ui_schema.layout.sections.find((s) => s.fields.includes(name));
   const textual = ["text", "textarea", "secret"].includes(ui.widget);
+  const placeholder = textual || ui.widget === "search";
   const numeric = prop?.type === "integer" || prop?.type === "number";
   const initial = def.initial_values[name];
   const general = problems.filter((p) => p.at === "" || p.at.startsWith("schema"));
@@ -513,7 +536,7 @@ function FieldProperties({
           onChange={(e) => onChange(updateUi(def, name, { help: e.target.value }))}
         />
       </Field>
-      {textual && (
+      {placeholder && (
         <Field label="Placeholder" htmlFor="prop-placeholder">
           <Input
             id="prop-placeholder"

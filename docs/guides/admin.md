@@ -755,6 +755,13 @@ An item's tabs:
     choices from its options or a value source, as a dropdown does; a
     dual list also takes the **Fewest picks** and **Most picks**, and
     keeps the order the requester gives;
+  - a search field finds its choices in a value source as the requester
+    types. If a REST or CEL source searches by the text itself, select
+    **The source searches by the typed text**: its URL or body reads
+    `${search}`, or its options expression reads `search`. Otherwise rvav
+    keeps the options that contain the text. On submit, rvav searches the
+    source for the value picked and refuses it unless the source finds
+    it, so the source must find an option by its value too;
   - a vSphere folder lists the VM folders of the datacenters the
     project's placement uses: bind the blueprint's `folder` to it;
   - a project, user, deployment or vSphere VM lists only what the

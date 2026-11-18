@@ -242,6 +242,73 @@ func TestShownFields(t *testing.T) {
 	}
 }
 
+func TestSearchFields(t *testing.T) {
+	rest := func(params map[string]any, search *bool) *api.ValueSource {
+		return &api.ValueSource{Kind: api.Rest, Params: &params, Search: search}
+	}
+	cel := func(params map[string]any, search *bool) *api.ValueSource {
+		return &api.ValueSource{Kind: api.Cel, Params: &params, Search: search}
+	}
+	builtin := func(name string, search *bool) *api.ValueSource {
+		return &api.ValueSource{Kind: api.Builtin, Name: &name, Search: search}
+	}
+	for _, c := range []struct {
+		what    string
+		src     *api.ValueSource
+		publish bool
+		want    []string
+	}{
+		{"no source in a draft", nil, false, nil},
+		{"no source to publish", nil, true, []string{"/ui_schema/fields/f/value_source required"}},
+		{"a REST source that searches", rest(map[string]any{"url": "https://cmdb.corp.example/apps?q=${search}"}, new(true)), true, nil},
+		{"a POST that searches", rest(map[string]any{"url": "https://cmdb.corp.example/apps", "method": "POST", "body": `{"q": "${search}"}`}, new(true)), true, nil},
+		{"a REST source that rvav filters", rest(map[string]any{"url": "https://cmdb.corp.example/apps"}, nil), true, nil},
+		{"search with no ${search}", rest(map[string]any{"url": "https://cmdb.corp.example/apps"}, new(true)), false,
+			[]string{"/ui_schema/fields/f/value_source/search invalid"}},
+		{"a CEL source that searches", cel(map[string]any{"options": `["a", "b"].filter(x, x.contains(search))`}, new(true)), true, nil},
+		{"search unread in CEL", cel(map[string]any{"options": `["a", "b"]`}, new(true)), false,
+			[]string{"/ui_schema/fields/f/value_source/search invalid"}},
+		{"a CEL value", cel(map[string]any{"value": `"a"`}, nil), false, []string{"/ui_schema/fields/f/value_source/params/options required"}},
+		{"a built-in source", builtin("dns.zones", nil), true, nil},
+		{"a built-in source told to search", builtin("dns.zones", new(false)), false, []string{"/ui_schema/fields/f/value_source/search invalid"}},
+		{"a built-in value", builtin("naming.preview", nil), false, []string{"/ui_schema/fields/f/value_source/name widget_mismatch"}},
+	} {
+		f := api.UiField{Widget: api.UiWidgetSearch, Label: "App", ValueSource: c.src}
+		var got []string
+		errs := checkSearch("f", f, "", c.publish)
+		if c.src != nil {
+			errs = append(errs, checkValueSource(*c.src, "/ui_schema/fields/f/value_source")...)
+		}
+		for _, e := range errs {
+			got = append(got, e.Field+" "+*e.Code)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.what, got, c.want)
+		}
+	}
+}
+
+func TestMatching(t *testing.T) {
+	opts := []api.Option{option("app-001", "Payroll", "Finance"), option("app-002", "Intranet", "HR"), option("app-003", "Web shop", "Sales")}
+	values := func(o []api.Option) []string {
+		var out []string
+		for _, x := range o {
+			out = append(out, x.Value)
+		}
+		return out
+	}
+	for text, want := range map[string][]string{"pay": {"app-001"}, " HR ": {"app-002"}, "APP-00": {"app-001", "app-002", "app-003"},
+		"web s": {"app-003"}, "nothing": nil} {
+		if got := values(matching(opts, text)); !slices.Equal(got, want) {
+			t.Errorf("matching %q = %v, want %v", text, got, want)
+		}
+	}
+	if !searchesItself(&api.ValueSource{Kind: api.Rest, Search: new(true)}) || searchesItself(&api.ValueSource{Kind: api.Rest}) ||
+		!searchesItself(&api.ValueSource{Kind: api.Builtin, Name: new("rvav.users")}) || searchesItself(nil) {
+		t.Error("searchesItself")
+	}
+}
+
 func TestLocateNested(t *testing.T) {
 	cols := []api.UiColumn{{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber}}
 	ui := api.UiSchema{Fields: map[string]api.UiField{"disks": {Widget: api.UiWidgetDatagrid, Columns: &cols},

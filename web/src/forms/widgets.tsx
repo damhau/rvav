@@ -12,6 +12,7 @@ import { DatagridWidget, KeyValueWidget, ObjectWidget, TagsWidget } from "./coll
 import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
 import { UserWidget } from "./people";
+import { SearchWidget } from "./search";
 import { sourceFailed, useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -542,6 +543,7 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   radio_cards: RadioCardsWidget,
   checklist: ChecklistWidget,
   multiselect: ChecklistWidget,
+  search: SearchWidget,
   computed: ComputedWidget,
   info: InfoWidget,
   image: ImageWidget,

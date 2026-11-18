@@ -547,6 +547,105 @@ describe("people", () => {
   });
 });
 
+describe("search fields", () => {
+  const apps = [
+    { value: "app-001", label: "Payroll", meta: "Finance" },
+    { value: "app-002", label: "Intranet", meta: "HR" },
+    { value: "app-003", label: "Pay slips", meta: "HR" },
+  ];
+  const app = (initial = {}) =>
+    formOf(
+      {
+        app: {
+          ui: {
+            widget: "search",
+            label: "Application",
+            value_source: { kind: "rest", search: true, params: { url: "https://cmdb.corp.example/apps?q=${search}" } },
+          },
+          schema: { type: "string" },
+        },
+      },
+      initial,
+    );
+  /** The CMDB: finds by value or label; fails as many times as asked first. */
+  function cmdb(fail = 0, list = apps) {
+    const asked: (string | undefined)[] = [];
+    let failing = fail;
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        asked.push(q.search);
+        if (failing-- > 0)
+          return HttpResponse.json(
+            { type: "about:blank", title: "Something went wrong on our side", status: 502, request_id: "r1" },
+            { status: 502 },
+          );
+        const text = (q.search ?? "").toLowerCase();
+        return HttpResponse.json({
+          field: q.field,
+          options: list.filter((a) => a.value === q.search || a.label.toLowerCase().includes(text)),
+        });
+      }),
+    );
+    return asked;
+  }
+
+  it("find choices with what is typed, picked with the keyboard", async () => {
+    const user = userEvent.setup();
+    const asked = cmdb();
+    renderWithQuery(<Harness form={app()} />);
+    const box = screen.getByRole("combobox", { name: "Application" });
+    expect(box).toHaveAttribute("placeholder", "Type to search");
+    await user.type(box, "pay");
+    expect(await screen.findByText("2 matches: use the arrow keys, then Enter.")).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "Application: matches" })).toBeVisible();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(values()).toEqual({ app: "app-003" });
+    expect(box).toHaveValue("Pay slips");
+    expect(box).toHaveAccessibleDescription(/HR/);
+    expect(asked).not.toContain("p");
+    expect(asked).toContain("pay");
+
+    await user.clear(box);
+    await user.type(box, "zz");
+    expect(await screen.findByText("No matches.")).toBeInTheDocument();
+    expect(box).toHaveAttribute("aria-expanded", "false");
+    expect(values()).toEqual({});
+  });
+
+  it("list the first 20 of more", async () => {
+    const user = userEvent.setup();
+    cmdb(
+      0,
+      Array.from({ length: 25 }, (_, i) => ({ value: `app-${i}`, label: `App ${i}`, meta: "" })),
+    );
+    renderWithQuery(<Harness form={app()} />);
+    await user.type(screen.getByRole("combobox", { name: "Application" }), "app");
+    expect(
+      await screen.findByText("25 found, the first 20 listed: type more to narrow them down."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(20);
+  });
+
+  it("say a search that failed in place, and Try again searches again", async () => {
+    const user = userEvent.setup();
+    cmdb(1);
+    renderWithQuery(<Harness form={app()} />);
+    const box = screen.getByRole("combobox", { name: "Application" });
+    await user.type(box, "intra");
+    await waitFor(() => expect(box).toHaveAccessibleDescription(/Couldn't search\./));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("option", { name: /Intranet/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  it("name the choice a form was given", async () => {
+    cmdb();
+    renderWithQuery(<Harness form={app({ app: "app-001" })} />);
+    expect(await screen.findByDisplayValue("Payroll")).toHaveAccessibleDescription(/Finance/);
+  });
+});
+
 describe("rvav's own records", () => {
   it("are offered by a deployment field that names no source", async () => {
     const asked: FieldValuesQuery[] = [];

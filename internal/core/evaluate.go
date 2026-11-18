@@ -199,6 +199,9 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if err := s.evaluatePickers(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
+	if err := s.evaluateSearches(ctx, p, ev, strict); err != nil {
+		return nil, err
+	}
 
 	ev.Count = 1
 	if d.Count != nil {
@@ -263,7 +266,7 @@ func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Ev
 	}
 	for name, f := range ui.Fields {
 		src := sourceOf(f)
-		if src == nil || src.Kind != api.Builtin || src.Name == nil {
+		if src == nil || src.Kind != api.Builtin || src.Name == nil || f.Widget == api.UiWidgetSearch {
 			continue
 		}
 		values, ok := pickedValues(ev.Inputs[name])
@@ -315,6 +318,39 @@ func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Ev
 				ev.Errors = append(ev.Errors, fieldErr("/inputs/"+name, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
 				break
 			}
+		}
+	}
+	return nil
+}
+
+// evaluateSearches checks each search field's value against what its
+// source finds when searched for that value, as the requester: a search
+// box sends any text. On submit a source that fails is an error; in the
+// preview the field is skipped.
+func (s *Service) evaluateSearches(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {
+	var ui api.UiSchema
+	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
+		return err
+	}
+	for _, name := range sortedKeys(ui.Fields) {
+		f := ui.Fields[name]
+		at := "/inputs/" + name
+		if f.Widget != api.UiWidgetSearch || f.ValueSource == nil || slices.ContainsFunc(ev.Errors, func(e api.FieldError) bool { return e.Field == at }) {
+			continue
+		}
+		value, ok := ev.Inputs[name].(string)
+		if !ok || value == "" {
+			continue
+		}
+		found, err := s.sourceValues(ctx, p, ev.Project, ev.Env.Key, ev.Version, name, f, ev.Inputs, value)
+		if err != nil {
+			if strict {
+				return err
+			}
+			continue
+		}
+		if found.Options == nil || !slices.ContainsFunc(*found.Options, func(o api.Option) bool { return o.Value == value && (o.Disabled == nil || !*o.Disabled) }) {
+			ev.Errors = append(ev.Errors, fieldErr(at, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
 		}
 	}
 	return nil

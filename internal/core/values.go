@@ -129,6 +129,52 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	if !ok {
 		return out, &BadRequestError{Msg: fmt.Sprintf("The form has no field %q.", q.Field)}
 	}
+	env := ""
+	if q.Environment != nil {
+		env = *q.Environment
+	}
+	return s.sourceValues(ctx, p, proj, env, ver, q.Field, field, q.Inputs, deref(q.Search))
+}
+
+// sourceValues resolves a field's value source for a principal requesting
+// in a project and environment. Given searched text, it keeps the options
+// whose value, label or detail contains it, unless the source finds by the
+// text itself.
+func (s *Service) sourceValues(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
+	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, error) {
+	out, err := s.resolveSource(ctx, p, proj, env, ver, name, field, inputs, search)
+	if err != nil || strings.TrimSpace(search) == "" || out.Options == nil || searchesItself(sourceOf(field)) {
+		return out, err
+	}
+	kept := matching(*out.Options, search)
+	out.Options = &kept
+	return out, nil
+}
+
+// searchesItself says whether a source finds options by the searched text
+// rather than rvav keeping those that match it.
+func searchesItself(src *api.ValueSource) bool {
+	return src != nil && (src.Search != nil && *src.Search || src.Kind == api.Builtin && deref(src.Name) == "rvav.users")
+}
+
+// matching are the options whose value, label or detail contains text,
+// ignoring case.
+func matching(opts []api.Option, text string) []api.Option {
+	want := strings.ToLower(strings.TrimSpace(text))
+	out := []api.Option{}
+	for _, o := range opts {
+		if slices.ContainsFunc([]string{o.Value, o.Label, deref(o.Meta)}, func(s string) bool {
+			return strings.Contains(strings.ToLower(s), want)
+		}) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+func (s *Service) resolveSource(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
+	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, error) {
+	out := api.FieldValues{Field: name}
 	src := sourceOf(field)
 	if src == nil {
 		if field.Options != nil {
@@ -136,17 +182,13 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		}
 		return out, nil
 	}
-	env := ""
-	if q.Environment != nil {
-		env = *q.Environment
-	}
 	raw := map[string]any{}
 	if src.Params != nil {
 		raw = *src.Params
 	}
 	switch src.Kind {
 	case api.Rest:
-		opts, cacheSeconds, err := s.REST.Options(ctx, raw, q.Inputs, func(name string) (store.Secret, string, error) {
+		opts, cacheSeconds, err := s.REST.Options(ctx, raw, inputs, search, func(name string) (store.Secret, string, error) {
 			return s.secretValue(ctx, proj.ID, name)
 		})
 		if err != nil {
@@ -155,7 +197,9 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		out.Options, out.CacheSeconds = &opts, &cacheSeconds
 		return out, nil
 	case api.Cel:
-		opts, value, err := celValues(raw, formVars(q.Inputs, proj, env, p, ver))
+		vars := formVars(inputs, proj, env, p, ver)
+		vars["search"] = search
+		opts, value, err := celValues(raw, vars)
 		if err != nil {
 			return out, err
 		}
@@ -163,9 +207,9 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		return out, nil
 	}
 	if src.Kind != api.Builtin || src.Name == nil {
-		return out, &BadRequestError{Msg: fmt.Sprintf("Value source %q of %s is not supported.", src.Kind, q.Field)}
+		return out, &BadRequestError{Msg: fmt.Sprintf("Value source %q of %s is not supported.", src.Kind, name)}
 	}
-	params := resolveParams(src.Params, q.Inputs)
+	params := resolveParams(src.Params, inputs)
 	needEnv := func() error {
 		if env == "" {
 			return &BadRequestError{Msg: "Choose an environment first: " + *src.Name + " depends on it."}
@@ -363,12 +407,12 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		if err != nil {
 			return out, err
 		}
-		prefix, err := spec.Template.Prefix(naming.Values(proj.Code, env, q.Inputs))
+		prefix, err := spec.Template.Prefix(naming.Values(proj.Code, env, inputs))
 		if err != nil {
 			return out, nil // the inputs the name needs are not filled in yet
 		}
 		zone := ""
-		if network, _ := q.Inputs["network"].(string); network != "" {
+		if network, _ := inputs["network"].(string); network != "" {
 			if sn, err := s.Store.NetworkSubnet(ctx, network); err == nil {
 				zone = sn.DNSZone
 			}
@@ -424,7 +468,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		cache(60)
 
 	case "rvav.projects", "rvav.users", "rvav.deployments", "rvav.vms":
-		opts, err := s.rvavOptions(ctx, p, proj, *src.Name, params, deref(q.Search))
+		opts, err := s.rvavOptions(ctx, p, proj, *src.Name, params, search)
 		if err != nil {
 			return out, err
 		}

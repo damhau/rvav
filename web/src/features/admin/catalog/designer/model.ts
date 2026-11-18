@@ -20,6 +20,7 @@ export const widgetLabels: Record<UiWidget, string> = {
   segmented: "Segmented choice",
   radio_cards: "Cards",
   checklist: "Checklist",
+  search: "Search",
   date: "Date",
   datetime: "Date and time",
   tags: "Tags",

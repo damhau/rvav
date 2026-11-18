@@ -104,6 +104,10 @@ To pick a person, type two letters or more of their name or email, then
 select them in the list, or move to them with the arrow keys and press
 Enter. A project, deployment or VM field lists only those you may see.
 
+A search field works the same way: type two letters or more, then pick
+what it finds. It lists 20 at most: if it finds more, type more to narrow
+them down. If the search fails, the field says so: select **Try again**.
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

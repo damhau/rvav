@@ -128,6 +128,27 @@ export function resolveField(
   designer?: { form: RequestForm; user: Record<string, unknown> },
   search = "",
 ): FieldValues | null {
+  const out = resolveSource(db, item, project, env, field, inputs, designer, search);
+  const source = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field]?.value_source;
+  const text = search.trim().toLowerCase();
+  // As the server: a source that doesn't search itself keeps what contains the text.
+  if (!out?.options || !text || source?.search || source?.name === "rvav.users") return out;
+  return {
+    ...out,
+    options: out.options.filter((o) => [o.value, o.label, o.meta ?? ""].some((s) => s.toLowerCase().includes(text))),
+  };
+}
+
+function resolveSource(
+  db: Db,
+  item: StoredItem,
+  project: Project,
+  env: EnvironmentKey,
+  field: string,
+  inputs: Inputs,
+  designer: { form: RequestForm; user: Record<string, unknown> } | undefined,
+  search: string,
+): FieldValues | null {
   const stored = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
   const ui = stored && withOwnSource(stored);
   const source = ui?.value_source;
@@ -137,6 +158,7 @@ export function resolveField(
     // Throws on a broken expression; the handler answers 400.
     const ctx = {
       inputs,
+      search,
       environment: env,
       project: { id: project.id, code: project.code, name: project.name },
       user: designer?.user ?? { id: db.me.user.id, roles: [], groups: [] },
@@ -151,10 +173,17 @@ export function resolveField(
   }
   if (source.kind === "rest") {
     const host = params.url ? new URL(params.url, "https://cmdb.corp.example").host : "the service";
-    return withDefaultOptions(field, inputs, [
+    const services = [
       { value: "svc-01", label: "Service 01", meta: `from ${host}` },
       { value: "svc-02", label: "Service 02", meta: `from ${host}` },
-    ]);
+    ];
+    // The service searches as rvav would: by what the options contain.
+    const text = search.trim().toLowerCase();
+    return withDefaultOptions(
+      field,
+      inputs,
+      source.search ? services.filter((s) => `${s.value} ${s.label}`.toLowerCase().includes(text)) : services,
+    );
   }
   const withDefault = (options: Option[]) => withDefaultOptions(field, inputs, options);
   switch (source.name) {

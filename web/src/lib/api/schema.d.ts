@@ -4061,7 +4061,7 @@ export interface components {
             fields: string[];
         };
         /** @enum {string} */
-        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
+        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "search" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
         UiField: {
             widget: components["schemas"]["UiWidget"];
             /** @description The field's label; a `link` field's link text. */
@@ -4141,6 +4141,15 @@ export interface components {
              */
             name?: string;
             /**
+             * @description For `rest` and `cel`: the source finds options by the text the
+             *     requester types in a `search` field, which its `url` or `body`
+             *     reads as `${search}` and its expressions as `search`. Without
+             *     it, rvav keeps the options whose value, label or detail
+             *     contains the text. On submit, a `search` field's value must be
+             *     one its source finds when searched for that value.
+             */
+            search?: boolean;
+            /**
              * @description Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
              *     For `rest`: `url` (on a host REST value sources may call: Allowed hosts, or RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
              *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
@@ -4176,7 +4185,11 @@ export interface components {
             inputs: {
                 [key: string]: unknown;
             };
-            /** @description Text typed in a searchable select (`rvav.users`). */
+            /**
+             * @description Text typed in a `search` or `user` field: a source with
+             *     `search` and `rvav.users` find by it; of other sources' options,
+             *     those whose value, label or detail contains it.
+             */
             search?: string;
             /**
              * @description With `catalog.manage` only: resolve as this user would (the form

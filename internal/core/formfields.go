@@ -24,6 +24,7 @@ var widgetShapes = map[api.UiWidget]struct {
 	api.UiWidgetDatagrid: {types: []string{"array"}, items: "object", what: "a list of rows (type: array, items: {type: object, properties: ...})"},
 	api.UiWidgetDualList: {types: []string{"array"}, items: "string", what: "a list of strings (type: array, items: {type: string})"},
 	api.UiWidgetObject:   {types: []string{"object"}, what: "type: object, with properties"},
+	api.UiWidgetSearch:   {types: []string{"string"}, what: "type: string"},
 }
 
 // columned are the widgets that edit properties through ui.columns: a
@@ -118,6 +119,29 @@ func checkFieldShape(name string, f api.UiField, prop map[string]any, ptr string
 	}
 	return errs
 }
+
+// checkSearch checks where a search field finds its choices: a source that
+// gives options, needed to publish.
+func checkSearch(name string, f api.UiField, ptr string, publish bool) []api.FieldError {
+	at := ptr + "/ui_schema/fields/" + name + "/value_source"
+	src := f.ValueSource
+	switch {
+	case f.Widget != api.UiWidgetSearch:
+	case src == nil && publish:
+		return []api.FieldError{fieldErr(at, "required", "A search field finds its choices in a value source: give it one.")}
+	case src == nil:
+	case src.Kind == api.Builtin && slices.Contains(valueOnlySources, deref(src.Name)):
+		return []api.FieldError{fieldErr(at+"/name", "widget_mismatch",
+			fmt.Sprintf("%s computes a value: a search field needs a source that gives choices.", deref(src.Name)))}
+	case src.Kind == api.Cel && src.Params != nil && (*src.Params)["options"] == nil && (*src.Params)["value"] != nil:
+		return []api.FieldError{fieldErr(at+"/params/options", "required", "A search field searches options: give an options expression.")}
+	}
+	return nil
+}
+
+// valueOnlySources are the built-in sources that compute a value and offer
+// no choices.
+var valueOnlySources = []string{"ipam.next_free_address", "naming.preview"}
 
 // shownOnly are the fields that show something and take no input.
 var shownOnly = map[api.UiWidget]bool{api.UiWidgetInfo: true, api.UiWidgetImage: true, api.UiWidgetLink: true}

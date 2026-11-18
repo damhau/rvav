@@ -16,6 +16,7 @@ const widgets = [
   "Segmented choice",
   "Cards",
   "Checklist",
+  "Search",
   "Date",
   "Date and time",
   "Tags",
@@ -72,6 +73,14 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await props.getByRole("textbox", { name: "Options" }).fill("web | Web team\ndb | Database team\nnet | Network team");
   await props.getByRole("textbox", { name: "Options" }).press("Tab");
   await expect(preview.getByRole("option", { name: "Database team" })).toBeVisible();
+  await fields.getByRole("button", { name: /^Search/ }).click();
+  await props.getByRole("combobox", { name: "Value source" }).click();
+  await page.getByRole("option", { name: "REST service" }).click();
+  const url = props.getByRole("textbox", { name: "URL" });
+  await url.fill("https://cmdb.corp.example/services?q=${search}");
+  await url.press("Enter");
+  await props.getByRole("checkbox", { name: "The source searches by the typed text" }).click();
+  await expect(props.getByRole("checkbox", { name: "The source searches by the typed text" })).toBeChecked();
   await fields.getByRole("button", { name: /^Image/ }).click();
   await props.getByRole("textbox", { name: "Address" }).fill("/favicon.svg");
   await props.getByRole("textbox", { name: "Address" }).press("Tab");
@@ -136,6 +145,11 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await user.press("ArrowDown");
   await user.press("Enter");
   await expect(user).toHaveValue("Thomas Nguyen");
+  const search = page.getByRole("combobox", { name: "Search", exact: true });
+  await search.pressSequentially("01", { delay: 30 });
+  await expect(page.getByRole("status").filter({ hasText: "1 match" })).toBeVisible();
+  await search.press("Enter");
+  await expect(search).toHaveValue("Service 01");
   await page.getByRole("combobox", { name: "Deployment" }).click();
   await page.getByRole("option", { name: /^web-dev-api/ }).click();
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("every");

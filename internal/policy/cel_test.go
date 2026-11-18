@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -118,5 +119,22 @@ func TestReadsOf(t *testing.T) {
 	}
 	if _, err := ReadsOf(`components.`); err == nil {
 		t.Error("a broken expression parsed")
+	}
+}
+
+func TestSourcesReadSearch(t *testing.T) {
+	expr := `["web-01", "web-02", "db-01"].filter(x, x.contains(search))`
+	if err := CheckSource(expr); err != nil {
+		t.Fatal(err)
+	}
+	if err := Check(expr); err == nil {
+		t.Error("a form rule reads search, which only value sources have")
+	}
+	got, err := EvalSource(expr, Vars{"search": "web"})
+	if err != nil || !reflect.DeepEqual(got, []any{"web-01", "web-02"}) {
+		t.Errorf("searched for web: %v %v", got, err)
+	}
+	if got, err := EvalSource(expr, Vars{}); err != nil || len(got.([]any)) != 3 {
+		t.Errorf("searched for nothing: %v %v", got, err)
 	}
 }

@@ -199,6 +199,11 @@ describe("form designer model", () => {
     def = updateColumn(addColumn(def, "object"), "object", 1, { key: "on", label: "On", widget: "toggle" });
     def = updateUi(def, "dual_list", { options: [{ value: "a", label: "A" }] });
     def = updateUi(def, "image", { url: "/favicon.svg", alt: "rvav" });
+    def = updateUi(def, "search", {
+      placeholder: "Name or code",
+      value_source: { kind: "rest", search: true, params: { url: "https://cmdb.corp.example/apps?q=${search}" } },
+    });
+    expect(prop(def, "search")).toEqual({ type: "string" });
     const back = fromYaml(toYaml(def));
     expect(back.problems).toEqual([]);
     expect(back.def).toEqual(def);

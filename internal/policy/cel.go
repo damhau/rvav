@@ -4,6 +4,7 @@ package policy
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -33,6 +34,11 @@ type set struct {
 // propgroup is the constants of the item's property groups (ADR-0038).
 var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments", "propgroup"},
 	strings: map[string]bool{"environment": true}}
+
+// sources is for `cel` value sources: what forms read, and the text typed
+// in a search field.
+var sources = &set{names: append(slices.Clone(forms.names), "search"),
+	strings: map[string]bool{"environment": true, "search": true}}
 
 // day2 is for day-2 policy conditions, where environment is an object
 // (key, name, production).
@@ -149,6 +155,15 @@ func Check(expr string) error {
 
 // Eval evaluates expr and returns its value converted to a Go value.
 func Eval(expr string, vars Vars) (any, error) { return forms.eval(expr, vars) }
+
+// CheckSource compiles a `cel` value source's expression.
+func CheckSource(expr string) error {
+	_, err := sources.program(expr)
+	return err
+}
+
+// EvalSource evaluates a `cel` value source's expression.
+func EvalSource(expr string, vars Vars) (any, error) { return sources.eval(expr, vars) }
 
 // Bool evaluates expr and requires a boolean result.
 func Bool(expr string, vars Vars) (bool, error) { return forms.boolean(expr, vars) }

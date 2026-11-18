@@ -44,7 +44,7 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 	case api.Rest:
 		if str("url") == "" {
 			errs = append(errs, fieldErr(ptr+"/params/url", "required", "Give the URL the options come from."))
-		} else if u, err := url.Parse(fill(str("url"), nil, restcall.Escape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		} else if u, err := url.Parse(fill(str("url"), nil, "", restcall.Escape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Give an http or https URL."))
 		} else if !restcall.FixedOrigin(str("url")) {
 			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Inputs may fill the URL's path and query, not its scheme, host or port."))
@@ -68,9 +68,17 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 			if expr == "" {
 				continue
 			}
-			if err := policy.Check(expr); err != nil {
+			if err := policy.CheckSource(expr); err != nil {
 				errs = append(errs, fieldErr(ptr+"/params/"+k, "invalid", fmt.Sprintf("This expression is not valid CEL: %v", err)))
 			}
+		}
+	}
+	if src.Search != nil && *src.Search {
+		if reads := strings.Contains(str("url")+str("body"), "${search}"); src.Kind == api.Rest && !reads {
+			errs = append(errs, fieldErr(ptr+"/search", "invalid", "The source searches by the typed text: put ${search} in its URL or body."))
+		}
+		if reads := strings.Contains(str("options"), "search"); src.Kind == api.Cel && !reads {
+			errs = append(errs, fieldErr(ptr+"/search", "invalid", "The source searches by the typed text: read search in its options expression."))
 		}
 	}
 	return errs
@@ -93,7 +101,7 @@ func formVars(inputs map[string]any, proj store.Project, environment string, p *
 // or of {value, label, meta}, or a computed value.
 func celValues(params map[string]any, vars policy.Vars) (opts *[]api.Option, value any, err error) {
 	if expr, _ := params["value"].(string); expr != "" {
-		if value, err = policy.Eval(expr, vars); err != nil {
+		if value, err = policy.EvalSource(expr, vars); err != nil {
 			return nil, nil, &BadRequestError{Msg: "The value expression failed: " + err.Error()}
 		}
 	}
@@ -101,7 +109,7 @@ func celValues(params map[string]any, vars policy.Vars) (opts *[]api.Option, val
 	if expr == "" {
 		return nil, value, nil
 	}
-	v, err := policy.Eval(expr, vars)
+	v, err := policy.EvalSource(expr, vars)
 	if err != nil {
 		return nil, nil, &BadRequestError{Msg: "The options expression failed: " + err.Error()}
 	}
@@ -168,17 +176,32 @@ func (r *RESTSources) Allowed(ctx context.Context, u *url.URL) bool {
 	return r != nil && r.Caller.Allowed(ctx, u)
 }
 
-var inputRef = regexp.MustCompile(`\$\{inputs\.([a-zA-Z0-9_]+)\}`)
+// sourceRef is ${inputs.x}, or ${search}: the text typed in a search field.
+var sourceRef = regexp.MustCompile(`\$\{(?:inputs\.([a-zA-Z0-9_]+)|search)\}`)
 
-// fill puts inputs into a template, each escaped by esc (empty when absent).
-func fill(tpl string, inputs map[string]any, esc func(string) string) string {
-	return inputRef.ReplaceAllStringFunc(tpl, func(m string) string {
-		v, ok := inputs[inputRef.FindStringSubmatch(m)[1]]
-		if !ok || v == nil {
+// fill puts inputs and the searched text into a template, each escaped by
+// esc (empty when absent), in one pass: a value can't add a reference.
+func fill(tpl string, inputs map[string]any, search string, esc func(string) string) string {
+	return sourceRef.ReplaceAllStringFunc(tpl, func(m string) string {
+		v, ok := refValue(sourceRef.FindStringSubmatch(m)[1], inputs, search)
+		if !ok {
 			return ""
 		}
-		return esc(fmt.Sprint(v))
+		return esc(v)
 	})
+}
+
+// refValue is what a reference of a template stands for: an input, or
+// with no input name, the searched text.
+func refValue(input string, inputs map[string]any, search string) (string, bool) {
+	if input == "" {
+		return search, true
+	}
+	v, ok := inputs[input]
+	if !ok || v == nil {
+		return "", false
+	}
+	return fmt.Sprint(v), true
 }
 
 func jsonEscape(s string) string {
@@ -187,24 +210,24 @@ func jsonEscape(s string) string {
 }
 
 // Options calls the source and maps its answer to options.
-func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any,
+func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any, search string,
 	secret func(name string) (store.Secret, string, error)) ([]api.Option, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
 	if !restcall.FixedOrigin(p("url")) {
 		return nil, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
 	}
-	for _, m := range inputRef.FindAllStringSubmatch(p("url"), -1) {
-		if v := fmt.Sprint(inputs[m[1]]); v == "." || v == ".." {
-			return nil, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", m[1], v)}
+	for _, m := range sourceRef.FindAllStringSubmatch(p("url"), -1) {
+		if v, _ := refValue(m[1], inputs, search); v == "." || v == ".." {
+			return nil, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", cmp.Or(m[1], "The search"), v)}
 		}
 	}
-	target := fill(p("url"), inputs, restcall.Escape)
+	target := fill(p("url"), inputs, search, restcall.Escape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(ctx, u) {
 		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
-	body := fill(p("body"), inputs, jsonEscape)
+	body := fill(p("body"), inputs, search, jsonEscape)
 	cacheSeconds := 60
 	if n, ok := params["cache_seconds"].(float64); ok {
 		cacheSeconds = min(max(int(n), 0), 3600)
@@ -319,7 +342,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		params := *src.Params
 		ptr := prefix + "/ui_schema/fields/" + name + "/value_source/params"
 		target, _ := params["url"].(string)
-		if u, err := url.Parse(fill(target, nil, restcall.Escape)); err == nil && !s.REST.Allowed(ctx, u) {
+		if u, err := url.Parse(fill(target, nil, "", restcall.Escape)); err == nil && !s.REST.Allowed(ctx, u) {
 			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", u.Host)))
 		}
 		if secret, _ := params["secret"].(string); secret != "" {

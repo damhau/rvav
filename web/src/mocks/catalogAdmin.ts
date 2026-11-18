@@ -374,6 +374,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
       });
   errors.push(...tableProblems(def, props, prefix));
   errors.push(...shownProblems(def, prefix, false));
+  errors.push(...searchProblems(def, prefix, false));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))
@@ -1005,7 +1006,10 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         request.headers.get("content-length") === "0"
           ? {}
           : ((await request.json().catch(() => ({}))) as S["CatalogItemVersionPublish"]);
-      const incomplete = shownProblems(v.definition, "/definition", true);
+      const incomplete = [
+        ...shownProblems(v.definition, "/definition", true),
+        ...searchProblems(v.definition, "/definition", true),
+      ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       for (const x of versionsOf(item))
         if (x.state === "published") Object.assign(x, { state: "deprecated", deprecated_at: now() });
@@ -1355,6 +1359,55 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
 }
 
 /** What an image or a link shows, as the server checks it (checkShown in internal/core/formfields.go). */
+/** As the server: where a search field finds its choices, and a source told to search reads the text. */
+function searchProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  for (const [name, f] of Object.entries(def.ui_schema.fields)) {
+    const at = `${prefix}/ui_schema/fields/${name}/value_source`;
+    const src = f.value_source;
+    const params = (src?.params ?? {}) as Record<string, unknown>;
+    const text = (k: string) => (typeof params[k] === "string" ? params[k] : "");
+    if (src?.kind === "builtin" && src.search !== undefined)
+      errors.push({
+        field: `${at}/search`,
+        code: "invalid",
+        message: "A built-in source searches its own way: leave search out.",
+      });
+    if (src?.search && src.kind === "rest" && !`${text("url")}${text("body")}`.includes("${search}"))
+      errors.push({
+        field: `${at}/search`,
+        code: "invalid",
+        message: "The source searches by the typed text: put ${search} in its URL or body.",
+      });
+    if (src?.search && src.kind === "cel" && !text("options").includes("search"))
+      errors.push({
+        field: `${at}/search`,
+        code: "invalid",
+        message: "The source searches by the typed text: read search in its options expression.",
+      });
+    if (f.widget !== "search") continue;
+    if (!src && publish)
+      errors.push({
+        field: at,
+        code: "required",
+        message: "A search field finds its choices in a value source: give it one.",
+      });
+    if (src?.kind === "builtin" && ["ipam.next_free_address", "naming.preview"].includes(src.name ?? ""))
+      errors.push({
+        field: `${at}/name`,
+        code: "widget_mismatch",
+        message: `${src.name} computes a value: a search field needs a source that gives choices.`,
+      });
+    if (src?.kind === "cel" && params.options === undefined && params.value !== undefined)
+      errors.push({
+        field: `${at}/params/options`,
+        code: "required",
+        message: "A search field searches options: give an options expression.",
+      });
+  }
+  return errors;
+}
+
 function shownProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};

@@ -5473,6 +5473,7 @@ components:
         - segmented
         - radio_cards
         - checklist
+        - search
         - date
         - datetime
         - tags
@@ -5622,6 +5623,15 @@ components:
             one deployment's). The server refuses, on submit, a value
             the requester couldn't have picked.
           examples: [vsphere.datastores]
+        search:
+          type: boolean
+          description: |
+            For `rest` and `cel`: the source finds options by the text the
+            requester types in a `search` field, which its `url` or `body`
+            reads as `${search}` and its expressions as `search`. Without
+            it, rvav keeps the options whose value, label or detail
+            contains the text. On submit, a `search` field's value must be
+            one its source finds when searched for that value.
         params:
           type: object
           description: |
@@ -5666,7 +5676,10 @@ components:
           additionalProperties: true
         search:
           type: string
-          description: Text typed in a searchable select (`rvav.users`).
+          description: |
+            Text typed in a `search` or `user` field: a source with
+            `search` and `rvav.users` find by it; of other sources' options,
+            those whose value, label or detail contains it.
         as_user_id:
           type: string
           description: |
