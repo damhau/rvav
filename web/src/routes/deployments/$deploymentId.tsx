@@ -5,7 +5,7 @@ import { optEnum } from "../-search";
 
 export const Route = createFileRoute("/deployments/$deploymentId")({
   validateSearch: (s: Record<string, unknown>): { tab?: DeploymentTab } => ({
-    tab: optEnum(s.tab, ["overview", "history", "inputs"] as const),
+    tab: optEnum(s.tab, ["overview", "topology", "history", "inputs"] as const),
   }),
   loader: ({ context, params }) => {
     void context.queryClient.prefetchQuery(q.deployment(params.deploymentId));

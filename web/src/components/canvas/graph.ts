@@ -1,7 +1,8 @@
 // The canvas's model (ADR-0032): what a blueprint is drawn as, before any
 // layout or React Flow. The catalog's topology, the composite designer and a
 // request's run all build one of these from the blueprint and draw it with
-// <Canvas>; the list view reads the same model.
+// <Canvas>, as a deployment's topology does from its resources; the list
+// view reads the same model.
 import type { FieldError, StepStatus } from "@/lib/api/types";
 
 /** TB: top to bottom (a composite's steps); LR: left to right (a VM item's topology). */
@@ -15,6 +16,7 @@ export type CanvasNodeKind =
   | "end" // a composite's result
   | "step" // a composite's step
   | "component" // a VM item's group of identical VMs
+  | "vm" // one of a deployment's VMs
   | "network" // a vSphere network an adapter is on
   | "segment" // an NSX segment made for each deployment
   | "security_group" // an NSX group made for each deployment
@@ -29,7 +31,7 @@ export interface CanvasLine {
 }
 
 export interface CanvasNode {
-  /** Stable: `step:<key>`, `component:<key>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `inputs`, `end`, `any`. */
+  /** Stable: `step:<key>`, `component:<key>`, `vm:<resource ID>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `inputs`, `end`, `any`. */
   id: string;
   kind: CanvasNodeKind;
   title: string;

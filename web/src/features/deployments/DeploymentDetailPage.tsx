@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Power, SquareTerminal } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { KeyValues, Page } from "@/components/common/page";
@@ -30,7 +30,9 @@ import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDir
 import { RemoteAccessPanel } from "./RemoteAccess";
 import { VmPropertiesSheet } from "./VmProperties";
 
-export type DeploymentTab = "overview" | "history" | "inputs";
+const DeploymentTopology = lazy(() => import("./DeploymentTopology"));
+
+export type DeploymentTab = "overview" | "topology" | "history" | "inputs";
 
 type Pick = (a: Day2Action) => void;
 /** Opens a VM's properties. */
@@ -747,6 +749,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
       >
         <TabsList aria-label="Deployment sections">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="topology">Topology</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="inputs">Inputs</TabsTrigger>
         </TabsList>
@@ -758,6 +761,17 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           <>
             <TabsContent value="overview" className="pt-4">
               <Overview d={d} actions={actions} onPick={pick} onOpen={open} />
+            </TabsContent>
+            <TabsContent value="topology" className="pt-4">
+              <Suspense
+                fallback={
+                  <div className="rounded-lg border border-line bg-surface">
+                    <SkeletonRows rows={6} cols={2} />
+                  </div>
+                }
+              >
+                <DeploymentTopology deployment={d} onOpen={open} />
+              </Suspense>
             </TabsContent>
             <TabsContent value="history" className="pt-4">
               <Panel title="History">
