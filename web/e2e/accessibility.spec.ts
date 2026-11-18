@@ -189,6 +189,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("dialog", { name: "Your private key" }).getByRole("status")).toBeVisible();
       await scan(page, "a deployment's private key (shown)");
       await page.getByRole("button", { name: "Done" }).click();
+      const sure = page.getByRole("alertdialog", { name: "Close without the private key?" });
+      await expect(sure).toBeVisible();
+      await scan(page, "a deployment's private key (closed unsaved)");
+      await sure.getByRole("button", { name: "Close without it" }).click();
       await expect(access.getByText(/downloaded the private key/)).toBeVisible();
       await scan(page, "a deployment's private key (downloaded)");
     });

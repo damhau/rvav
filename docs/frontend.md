@@ -185,6 +185,9 @@ page, and secondary text that still reads.
   status pairs (`--ok`, `--warn`, `--bad` and `--run`, each with a `-soft`
   background). In Tailwind they're `bg-surface`, `text-muted`, `border-line`,
   and so on.
+- Text on a solid accent or bad background is `text-accent-fg` or
+  `text-bad-fg`, never `text-white`: both backgrounds are light in the dark
+  theme, so their text is dark there.
 - Muted and faint text keep at least 4.5:1 contrast on every surface in both
   themes, so you can use them for any secondary text.
 - The theme follows the system until the user picks one in the top bar

@@ -17,7 +17,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { copyText, relative } from "@/lib/utils";
 
 const durations = [
   { value: "30", label: "30 days" },
@@ -113,10 +113,13 @@ export function TokensPage() {
               <code className="min-w-0 flex-1 rounded bg-surface px-2 py-1 font-mono break-all">{made}</code>
               <Button
                 size="sm"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(made);
-                  toast.success("Copied");
-                }}
+                onClick={() =>
+                  copyText(made).then(
+                    () => toast.success("Copied"),
+                    () =>
+                      toast.error("Not copied", { description: "Your browser refused: select the token and copy it." }),
+                  )
+                }
               >
                 Copy
               </Button>

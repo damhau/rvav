@@ -19,6 +19,12 @@ export function toText(v: unknown): string {
   return JSON.stringify(v);
 }
 
+/** Copies text to the clipboard; rejects where the browser has none (plain HTTP) or refuses. */
+export async function copyText(text: string): Promise<void> {
+  if (!navigator.clipboard) throw new Error("This page can't use the clipboard.");
+  await navigator.clipboard.writeText(text);
+}
+
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
 export function relative(iso: string, now = Date.now()) {

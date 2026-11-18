@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -32,7 +32,12 @@ describe("a deployment's remote access", () => {
     expect(within(shown).getByRole("button", { name: /^Save as web-prd-front\.pem$/ })).toBeVisible();
     expect(shown).toHaveTextContent("ssh -i web-prd-front.pem ops@");
 
+    await user.click(within(shown).getByRole("button", { name: "Copy" }));
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+    await expect(navigator.clipboard.readText()).resolves.toContain("OPENSSH PRIVATE KEY");
+    // Copied: Done closes without asking.
     await user.click(within(shown).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() =>
       expect(box).toHaveTextContent("Léa Martin downloaded the private key just now. rvav no longer has it."),
@@ -49,12 +54,40 @@ describe("a deployment's remote access", () => {
     await user.click(within(ask).getByRole("button", { name: "Show the private key" }));
     const shown = await screen.findByRole("dialog", { name: "Your private key" });
     await user.click(within(shown).getByRole("button", { name: "Done" }));
+    const sure = await screen.findByRole("alertdialog", { name: "Close without the private key?" });
+    await user.click(within(sure).getByRole("button", { name: "Close without it" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     const mutations = client.getMutationCache().getAll();
     const queries = client.getQueryCache().getAll();
     expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("PRIVATE KEY");
     expect(JSON.stringify(queries.map((q) => q.state))).not.toContain("PRIVATE KEY");
+  });
+
+  it("asks before the key, neither saved nor copied, is closed", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    const box = await panel("web-prd-front");
+    await user.click(within(box).getByRole("button", { name: "Download the private key" }));
+    const ask = await screen.findByRole("dialog", { name: "Download the private key" });
+    await user.click(within(ask).getByRole("button", { name: "Show the private key" }));
+    const shown = await screen.findByRole("dialog", { name: "Your private key" });
+
+    await user.keyboard("{Escape}");
+    const sure = await screen.findByRole("alertdialog", { name: "Close without the private key?" });
+    expect(sure).toHaveTextContent("no one can download it again");
+    await user.click(within(sure).getByRole("button", { name: "Back to the key" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(within(shown).getByRole("textbox", { name: "Private key" })).toBeInTheDocument();
+
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"));
+    await user.click(within(shown).getByRole("button", { name: "Copy" }));
+    expect(await screen.findByText("Not copied")).toBeInTheDocument();
+
+    await user.click(within(shown).getByRole("button", { name: "Close" }));
+    const again = await screen.findByRole("alertdialog", { name: "Close without the private key?" });
+    await user.click(within(again).getByRole("button", { name: "Close without it" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(box).toHaveTextContent("downloaded the private key just now"));
   });
 
   it("says who else may download it", async () => {

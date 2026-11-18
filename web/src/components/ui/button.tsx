@@ -15,7 +15,7 @@ const buttonVariants = cva(
         secondary: "border border-line-strong bg-surface text-fg hover:bg-sunken",
         quiet: "text-muted hover:bg-sunken hover:text-fg",
         danger: "border border-bad/40 bg-surface text-bad hover:bg-bad-soft",
-        "danger-solid": "bg-bad text-white hover:bg-bad/90",
+        "danger-solid": "bg-bad text-bad-fg hover:bg-bad/90",
       },
       size: {
         sm: "h-7 px-2.5 text-secondary [&_svg]:size-3.5",

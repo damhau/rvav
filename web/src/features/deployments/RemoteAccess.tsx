@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CopyText, Time } from "@/components/common/misc";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Textarea } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
@@ -12,6 +13,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { DeploymentDetail, GeneratedKey, PrivateKey, RemoteAccess as Access } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { keys } from "@/lib/query";
+import { copyText } from "@/lib/utils";
 
 const how: Record<Access["kind"], string> = {
   ssh_key: "With the SSH key given for it",
@@ -67,10 +69,28 @@ function KeySheet({
   useEffect(() => {
     if (key) keyRef.current?.focus();
   }, [key]);
+  // Saved or copied: closing then needs no question.
+  const [kept, setKept] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const close = (o: boolean) => {
-    if (!o) setKey(null);
+    if (!o && key && !kept) {
+      setLeaving(true);
+      return;
+    }
+    if (!o) {
+      setKey(null);
+      setKept(false);
+    }
     onOpenChange(o);
   };
+  const copy = (text: string) =>
+    copyText(text).then(
+      () => {
+        setKept(true);
+        toast.success("Copied");
+      },
+      () => toast.error("Not copied", { description: "Your browser refused: select the key and copy it, or save it." }),
+    );
   const host = d.primary_address?.fqdn ?? d.primary_address?.ip ?? "<address>";
   const file = keyFile(d);
   const shown = key
@@ -104,18 +124,19 @@ function KeySheet({
               value={key.private_key}
               className="font-mono text-caption"
               onFocus={(e) => e.currentTarget.select()}
+              onCopy={() => setKept(true)}
             />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => save(file, key.private_key)}>Save as {file}</Button>
             <Button
               onClick={() => {
-                void navigator.clipboard?.writeText(key.private_key);
-                toast.success("Copied");
+                save(file, key.private_key);
+                setKept(true);
               }}
             >
-              Copy
+              Save as {file}
             </Button>
+            <Button onClick={() => void copy(key.private_key)}>Copy</Button>
           </div>
           <div className="flex flex-col gap-1 text-secondary">
             <span className="text-muted">Then sign in with it:</span>
@@ -136,6 +157,20 @@ function KeySheet({
           </p>
         </>
       )}
+      <ConfirmDialog
+        open={leaving}
+        onOpenChange={setLeaving}
+        title="Close without the private key?"
+        description="You haven't saved or copied it, and rvav no longer has it: once you close, no one can download it again."
+        confirmLabel="Close without it"
+        cancelLabel="Back to the key"
+        onConfirm={() => {
+          setLeaving(false);
+          setKey(null);
+          setKept(false);
+          onOpenChange(false);
+        }}
+      />
     </Sheet>
   );
 }
