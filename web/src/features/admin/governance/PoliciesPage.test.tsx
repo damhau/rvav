@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 
 const rows = (region: HTMLElement) =>
@@ -131,4 +132,25 @@ describe("Policies", () => {
       expect(await within(region).findByRole("row", { name: /Hundreds/ })).toHaveTextContent("From 100, by 10");
     },
   );
+
+  it("says a cleared Start at instead of sending it as null", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    const sent: unknown[] = [];
+    server.events.on("request:start", ({ request }) => {
+      if (request.method === "POST" && request.url.includes("/admin/naming")) sent.push(request.url);
+    });
+    renderApp("/admin/policies?tab=naming");
+    const region = await screen.findByRole("region", { name: "Naming policies" });
+    await user.click(await within(region).findByRole("button", { name: "New naming policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New naming policy" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Blank");
+    const start = within(sheet).getByRole("spinbutton", { name: "Start at" });
+    await user.clear(start);
+    await user.click(within(sheet).getByRole("button", { name: "Preview names" }));
+    expect(start).toHaveAccessibleDescription(/Enter a whole number, such as 1\./);
+    await user.click(within(sheet).getByRole("button", { name: "Save naming policy" }));
+    expect(start).toHaveAccessibleDescription(/Enter a whole number, such as 1\./);
+    expect(sent).toEqual([]);
+    server.events.removeAllListeners();
+  });
 });

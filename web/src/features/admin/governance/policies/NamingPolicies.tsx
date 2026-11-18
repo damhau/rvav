@@ -41,8 +41,18 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           offers: [],
         },
   );
+  // As typed: a number box cleared is NaN, which JSON sends as null.
+  const [counts, setCounts] = useState({ start: String(f.start ?? 1), increment: String(f.increment ?? 1) });
   const [sample, setSample] = useState({ project: "", environment: "dev", role: "app" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const counted = () => {
+    const problems: Record<string, string> = {};
+    for (const k of ["start", "increment"] as const)
+      if (!/^\d+$/.test(counts[k].trim())) problems[`/${k}`] = "Enter a whole number, such as 1.";
+    setErrors(problems);
+    return Object.keys(problems).length === 0;
+  };
+  const body = { ...f, start: Number(counts.start.trim()), increment: Number(counts.increment.trim()) };
   const preview = useMutation({
     mutationFn: () =>
       call(
@@ -50,8 +60,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           body: {
             template: f.template,
             counter: f.counter,
-            start: f.start,
-            increment: f.increment,
+            start: body.start,
+            increment: body.increment,
             policy_id: policy?.id,
             project_id: sample.project || projects.items[0]?.id || "",
             environment: sample.environment,
@@ -68,8 +78,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
   const save = useMutation({
     mutationFn: () =>
       policy
-        ? call(api.PUT("/admin/naming-policies/{id}", { params: { path: { id: policy.id } }, body: f }))
-        : call(api.POST("/admin/naming-policies", { body: f })),
+        ? call(api.PUT("/admin/naming-policies/{id}", { params: { path: { id: policy.id } }, body }))
+        : call(api.POST("/admin/naming-policies", { body })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "naming"] });
       toast.success(`${f.name} saved`);
@@ -89,8 +99,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
       description="It names the VMs of the items, projects and environments it is offered to."
       submitLabel={save.isPending ? "Saving…" : "Save naming policy"}
       onSubmit={() => {
-        setErrors({});
-        save.mutate();
+        if (counted()) save.mutate();
       }}
     >
       <Field label="Name" htmlFor="nm-name" error={errors["/name"]}>
@@ -131,8 +140,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             id="nm-start"
             type="number"
             min={0}
-            value={f.start ?? 1}
-            onChange={(e) => setF({ ...f, start: e.target.valueAsNumber })}
+            value={counts.start}
+            onChange={(e) => setCounts({ ...counts, start: e.target.value })}
           />
         </Field>
         <Field label="Increment" htmlFor="nm-increment" error={errors["/increment"]}>
@@ -141,8 +150,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             type="number"
             min={1}
             max={1000}
-            value={f.increment ?? 1}
-            onChange={(e) => setF({ ...f, increment: e.target.valueAsNumber })}
+            value={counts.increment}
+            onChange={(e) => setCounts({ ...counts, increment: e.target.value })}
           />
         </Field>
       </div>
@@ -172,7 +181,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           />
         </div>
         <div>
-          <Button type="button" size="sm" disabled={preview.isPending} onClick={() => preview.mutate()}>
+          <Button type="button" size="sm" disabled={preview.isPending} onClick={() => counted() && preview.mutate()}>
             Preview names
           </Button>
         </div>
