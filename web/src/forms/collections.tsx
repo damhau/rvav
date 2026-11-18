@@ -1,5 +1,6 @@
 // Widgets whose value is a collection: tags (a list of strings), key and
-// value pairs (an object of strings) and tables (a list of rows).
+// value pairs (an object of strings), tables (a list of rows) and objects
+// (one row, its sub-fields labelled).
 import { Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
@@ -287,7 +288,8 @@ function Cell({
   column: UiColumn;
   schema: JsonSchemaProp;
   row: Row;
-  label: string;
+  /** The control's name when no label element names it (a table's cells). */
+  label?: string;
   readOnly: boolean;
   onChange: (v: unknown) => void;
 }) {
@@ -341,6 +343,61 @@ function Cell({
         />
       );
   }
+}
+
+/** One object, each sub-field (ui.columns) one of its properties. */
+export function ObjectWidget({ id, ui, schema, value, onChange, invalid, describedBy, readOnly }: WidgetProps) {
+  const obj = isRecord(value) ? value : {};
+  const props = schema.properties ?? {};
+  const required = schema.required ?? [];
+  const set = (key: string, v: unknown) => {
+    const next = { ...obj };
+    if (v === undefined) delete next[key];
+    else next[key] = v;
+    onChange(Object.keys(next).length ? next : undefined);
+  };
+  return (
+    <div
+      role="group"
+      id={id}
+      aria-labelledby={`${id}-label`}
+      aria-describedby={describedBy}
+      className={cn("grid grid-cols-1 gap-3 rounded-md border border-line p-3 sm:grid-cols-2", invalid && "border-bad")}
+    >
+      {(ui.columns ?? []).map((c) => {
+        const cellId = `${id}-${c.key}`;
+        const cell = (
+          <Cell
+            id={cellId}
+            column={c}
+            schema={props[c.key] ?? {}}
+            row={obj}
+            readOnly={readOnly}
+            onChange={(v) => set(c.key, v)}
+          />
+        );
+        if (c.widget === "toggle") {
+          return (
+            <label key={c.key} htmlFor={cellId} className="flex items-center gap-2 self-end py-1.5 text-body">
+              {cell}
+              {c.label}
+            </label>
+          );
+        }
+        return (
+          <div key={c.key} className="flex min-w-0 flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <label htmlFor={cellId} className="text-secondary font-medium">
+                {c.label}
+              </label>
+              {!required.includes(c.key) && <span className="text-caption text-faint">Optional</span>}
+            </div>
+            {cell}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /** A table of rows, each cell one of the row's properties: a list of objects, from minItems to maxItems rows. */

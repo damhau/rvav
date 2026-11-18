@@ -5475,6 +5475,8 @@ components:
         - tags
         - key_value
         - datagrid
+        - dual_list
+        - object
         - secret
         - info
         - computed
@@ -5515,6 +5517,8 @@ components:
           description: >-
             A table's (`datagrid`) columns, in order: each edits one property
             of the rows, whose type and checks are in the schema's `items`.
+            An `object` field's sub-fields, in order: each edits one of the
+            object's `properties`.
           items: { $ref: "#/components/schemas/UiColumn" }
         rules: { $ref: "#/components/schemas/UiRules" }
         secret:
@@ -5538,7 +5542,7 @@ components:
       properties:
         key:
           type: string
-          description: The property of each row it edits.
+          description: The property of each row, or of the object, it edits.
         label: { type: string }
         widget:
           type: string

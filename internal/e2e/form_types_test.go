@@ -18,7 +18,7 @@ import (
 
 // TestFormFieldTypes: each field type the designer offers reaches the AWX
 // job as the value typed, and the server refuses a value its schema
-// doesn't take, whatever the browser let through (F1.1).
+// doesn't take, whatever the browser let through (F1.1, F1.2).
 func TestFormFieldTypes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -42,6 +42,13 @@ func TestFormFieldTypes(t *testing.T) {
 					"thin":    map[string]any{"type": "boolean"},
 					"mount":   map[string]any{"type": "string"},
 				}}},
+			"owners": map[string]any{"type": "array", "uniqueItems": true, "maxItems": 3,
+				"items": map[string]any{"type": "string", "enum": []any{"lmartin", "tnguyen", "jroux"}}},
+			"backup": map[string]any{"type": "object", "required": []any{"policy"}, "additionalProperties": false, "properties": map[string]any{
+				"policy":    map[string]any{"type": "string", "enum": []any{"daily", "weekly"}},
+				"keep_days": map[string]any{"type": "integer", "minimum": 1},
+				"offsite":   map[string]any{"type": "boolean"},
+			}},
 		}
 		fields := map[string]api.UiField{
 			"window":  {Widget: api.UiWidgetDatetime, Label: "Maintenance window"},
@@ -54,6 +61,13 @@ func TestFormFieldTypes(t *testing.T) {
 				{Key: "tier", Label: "Tier", Widget: api.UiColumnWidgetSelect, Options: &[]api.Option{{Value: "gold", Label: "Gold"}, {Value: "silver", Label: "Silver"}}},
 				{Key: "thin", Label: "Thin", Widget: api.UiColumnWidgetToggle},
 				{Key: "mount", Label: "Mount point", Widget: api.UiColumnWidgetText},
+			}},
+			"owners": {Widget: api.UiWidgetDualList, Label: "Owners", Options: &[]api.Option{
+				{Value: "lmartin", Label: "Léa Martin"}, {Value: "tnguyen", Label: "Thanh Nguyen"}, {Value: "jroux", Label: "Jean Roux"}}},
+			"backup": {Widget: api.UiWidgetObject, Label: "Backup", Columns: &[]api.UiColumn{
+				{Key: "policy", Label: "Policy", Widget: api.UiColumnWidgetSelect, Options: &[]api.Option{{Value: "daily", Label: "Daily"}, {Value: "weekly", Label: "Weekly"}}},
+				{Key: "keep_days", Label: "Keep (days)", Widget: api.UiColumnWidgetNumber},
+				{Key: "offsite", Label: "Copy off site", Widget: api.UiColumnWidgetToggle},
 			}},
 		}
 		def := api.CatalogVersionDefinition{
@@ -80,6 +94,22 @@ func TestFormFieldTypes(t *testing.T) {
 			"/definition/form_schema/properties/disks/items/properties/thin", "/definition/form_schema/properties/disks/items/properties/tier"}; !slices.Equal(got, want) {
 			t.Errorf("a table with the wrong columns: %v, want %v", got, want)
 		}
+		// So does an object, with its own properties.
+		bad.UiSchema.Fields = maps.Clone(fields)
+		group := fields["backup"]
+		group.Columns = &[]api.UiColumn{{Key: "policy", Label: "Policy", Widget: api.UiColumnWidgetText}, {Key: "retention", Label: "Retention", Widget: api.UiColumnWidgetText}}
+		bad.UiSchema.Fields["backup"] = group
+		refused.Errors = nil
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "bad-group", Name: "Bad group",
+			Summary: "An object whose sub-fields don't fit.", Category: "compute", Type: api.AwxJobTemplate, Definition: &bad}, 422, &refused)
+		got = nil
+		for _, e := range refused.Errors {
+			got = append(got, e.Field)
+		}
+		if want := []string{"/definition/ui_schema/fields/backup/columns/1/key", "/definition/form_schema/properties/backup/properties/keep_days",
+			"/definition/form_schema/properties/backup/properties/offsite"}; !slices.Equal(got, want) {
+			t.Errorf("an object with the wrong sub-fields: %v, want %v", got, want)
+		}
 
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "every-field", Name: "Every field type",
@@ -94,7 +124,8 @@ func TestFormFieldTypes(t *testing.T) {
 		valid := map[string]any{"window": "2026-12-10T14:30:00+01:00", "cutover": "2026-12-12", "ratio": 1.75,
 			"tags": []any{"backup/daily", "tier/gold"}, "labels": map[string]any{"app": "billing", "cost-centre": "4410"},
 			"disks": []any{map[string]any{"size_gb": float64(50), "tier": "gold", "thin": true, "mount": "/data"},
-				map[string]any{"size_gb": float64(20)}}}
+				map[string]any{"size_gb": float64(20)}},
+			"owners": []any{"tnguyen", "lmartin"}, "backup": map[string]any{"policy": "weekly", "keep_days": float64(14), "offsite": true}}
 
 		// Refused, each with what is wrong under its field.
 		for _, c := range []struct {
@@ -116,6 +147,12 @@ func TestFormFieldTypes(t *testing.T) {
 			{"disks", []any{map[string]any{"size_gb": 50}, map[string]any{"size_gb": 5}}, "minimum"},
 			{"disks", []any{map[string]any{"size_gb": 50, "tier": "bronze"}}, "enum"},
 			{"disks", []any{map[string]any{"tier": "gold"}}, "required"},
+			{"owners", []any{"lmartin", "lmartin"}, "unique"},
+			{"owners", []any{"lmartin", "nobody"}, "enum"},
+			{"backup", map[string]any{"keep_days": 3}, "required"},
+			{"backup", map[string]any{"policy": "hourly"}, "enum"},
+			{"backup", map[string]any{"policy": "daily", "extra": 1}, "unknown_field"},
+			{"backup", []any{"daily"}, "type"},
 		} {
 			inputs := maps.Clone(valid)
 			inputs[c.field] = c.value
@@ -134,6 +171,14 @@ func TestFormFieldTypes(t *testing.T) {
 		h.json("POST", "/api/v1/requests/preview", requester, draft(inputs), 200, &problem)
 		if len(problem.Errors) != 1 || problem.Errors[0].Message != "Row 2, Size (GB): Enter 10 or more." {
 			t.Errorf("the preview of a row too small: %+v", problem.Errors)
+		}
+		// A sub-field's, which sub-field.
+		inputs = maps.Clone(valid)
+		inputs["backup"] = map[string]any{"policy": "daily", "keep_days": 0}
+		problem.Errors = nil
+		h.json("POST", "/api/v1/requests/preview", requester, draft(inputs), 200, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Message != "Keep (days): Enter 1 or more." {
+			t.Errorf("the preview of a sub-field too small: %+v", problem.Errors)
 		}
 
 		var req api.Request

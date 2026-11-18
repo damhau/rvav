@@ -8,7 +8,8 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
 import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
-import { DatagridWidget, KeyValueWidget, TagsWidget } from "./collections";
+import { DatagridWidget, KeyValueWidget, ObjectWidget, TagsWidget } from "./collections";
+import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
 import { UserWidget } from "./people";
 import { sourceFailed, useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
@@ -482,6 +483,8 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   tags: TagsWidget,
   key_value: KeyValueWidget,
   datagrid: DatagridWidget,
+  dual_list: DualListWidget,
+  object: ObjectWidget,
   toggle: ToggleWidget,
   select: SourcedSelectWidget,
   segmented: SegmentedWidget,

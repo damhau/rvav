@@ -95,6 +95,9 @@ func TestListAndTableInputs(t *testing.T) {
 			"tier":    map[string]any{"type": "string", "enum": []any{"gold", "silver"}},
 			"thin":    map[string]any{"type": "boolean"},
 		}}}
+	owners := map[string]any{"type": "array", "uniqueItems": true, "items": map[string]any{"type": "string", "enum": []any{"lmartin", "tnguyen"}}}
+	disk := map[string]any{"type": "object", "required": []any{"size_gb"}, "properties": map[string]any{
+		"size_gb": map[string]any{"type": "integer", "minimum": 10}, "tier": map[string]any{"type": "string"}}}
 	for _, c := range []struct {
 		prop  map[string]any
 		value any
@@ -112,6 +115,13 @@ func TestListAndTableInputs(t *testing.T) {
 		{disks, []any{map[string]any{"size_gb": 50}, map[string]any{"size_gb": 5}}, "/inputs/f/1/size_gb minimum: Enter 10 or more."},
 		{disks, []any{map[string]any{"tier": "bronze"}}, "/inputs/f/0/size_gb required"},
 		{disks, []any{map[string]any{"size_gb": 50, "extra": 1}}, "/inputs/f/0/extra unknown_field"},
+		{owners, []any{"lmartin", "tnguyen"}, ""},
+		{owners, []any{"lmartin", "lmartin"}, "/inputs/f unique:"},
+		{owners, []any{"nobody"}, "/inputs/f/0 enum:"},
+		{disk, map[string]any{"size_gb": 50, "tier": "gold"}, ""},
+		{disk, map[string]any{"tier": "gold"}, "/inputs/f/size_gb required"},
+		{disk, map[string]any{"size_gb": 5}, "/inputs/f/size_gb minimum: Enter 10 or more."},
+		{disk, []any{}, "/inputs/f type: Enter keys and values."},
 	} {
 		if got := fieldProblems(t, c.prop, c.value); c.want == "" && got != "" || !strings.Contains(got, c.want) {
 			t.Errorf("%v: %q, want %q", c.value, got, c.want)
@@ -174,6 +184,15 @@ func TestFieldShapes(t *testing.T) {
 			map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/value_source widget_mismatch"}},
 		{api.UiField{Widget: api.UiWidgetProject, ValueSource: &api.ValueSource{Kind: api.Cel}},
 			map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/value_source widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetDualList}, map[string]any{"type": "array", "uniqueItems": true, "items": map[string]any{"type": "string"}}, nil},
+		{api.UiField{Widget: api.UiWidgetDualList}, map[string]any{"type": "string"}, []string{"/form_schema/properties/f widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetObject, Columns: &cols}, map[string]any{"type": "object", "properties": map[string]any{
+			"size_gb": map[string]any{"type": "integer"}, "tier": map[string]any{"type": "string", "enum": []any{"gold"}}}}, nil},
+		{api.UiField{Widget: api.UiWidgetObject}, map[string]any{"type": "object"}, []string{"/ui_schema/fields/f/columns required"}},
+		{api.UiField{Widget: api.UiWidgetObject, Columns: &cols}, map[string]any{"type": "object", "properties": map[string]any{
+			"tier": map[string]any{"type": "string", "enum": []any{"gold"}}, "port": map[string]any{"type": "integer"}}},
+			[]string{"/ui_schema/fields/f/columns/0/key unknown_input", "/form_schema/properties/f/properties/port no_ui_field"}},
+		{api.UiField{Widget: api.UiWidgetObject, Columns: &cols}, good, []string{"/form_schema/properties/f widget_mismatch"}},
 	} {
 		var got []string
 		for _, e := range checkFieldShape("f", c.f, c.prop, "") {
@@ -188,8 +207,11 @@ func TestFieldShapes(t *testing.T) {
 func TestLocateNested(t *testing.T) {
 	cols := []api.UiColumn{{Key: "size_gb", Label: "Size (GB)", Widget: api.UiColumnWidgetNumber}}
 	ui := api.UiSchema{Fields: map[string]api.UiField{"disks": {Widget: api.UiWidgetDatagrid, Columns: &cols},
-		"labels": {Widget: api.UiWidgetKeyValue}, "tags": {Widget: api.UiWidgetTags}}}
+		"labels": {Widget: api.UiWidgetKeyValue}, "tags": {Widget: api.UiWidgetTags}, "disk": {Widget: api.UiWidgetObject, Columns: &cols},
+		"owners": {Widget: api.UiWidgetDualList}}}
 	errs := locateNested(ui, []api.FieldError{
+		fieldErr("/inputs/disk/size_gb", "required", "This field is required."),
+		fieldErr("/inputs/owners/1", "enum", "Choose one of the listed values."),
 		fieldErr("/inputs/disks/1/size_gb", "minimum", "Enter 10 or more."),
 		fieldErr("/inputs/disks/0", "invalid", "Wrong."),
 		fieldErr("/inputs/labels/team~1app", "type", "Enter text."),
@@ -200,7 +222,7 @@ func TestLocateNested(t *testing.T) {
 	for _, e := range errs {
 		got = append(got, e.Message)
 	}
-	want := []string{"Row 2, Size (GB): Enter 10 or more.", "Row 1: Wrong.", "team/app: Enter text.", "Item 3: Not category/tag.", "Twice."}
+	want := []string{"Size (GB): This field is required.", "Item 2: Choose one of the listed values.", "Row 2, Size (GB): Enter 10 or more.", "Row 1: Wrong.", "team/app: Enter text.", "Item 3: Not category/tag.", "Twice."}
 	if !slices.Equal(got, want) {
 		t.Fatalf("%q, want %q", got, want)
 	}

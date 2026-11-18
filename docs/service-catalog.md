@@ -611,8 +611,9 @@ A form is a **JSON Schema** (data contract) plus a **UI schema** (presentation a
 behaviour). The designer edits both visually; a code view shows the YAML.
 
 ### Field types
-text, textarea, number, slider, toggle, dropdown, multi-select, radio cards,
-date/time, tags, key-value, datagrid (rows of sub-fields), secret, file upload,
+text, textarea, number, slider, toggle, dropdown, multi-select, dual list,
+radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
+of fields (one object), secret, file upload,
 Markdown or info block, and resource pickers:
 - vSphere: cluster, datastore, network, folder, template, existing VM
 - EfficientIP: subnet, free IP, DNS zone
@@ -635,6 +636,8 @@ as a list.
 | `tags` | `array` of `string`, `uniqueItems: true` | `["backup/daily", "tier/gold"]` |
 | `key_value` | `object`, `additionalProperties: {type: string}` | `{"app": "billing", "owner": "ops"}` |
 | `datagrid` | `array` of `object`, with `ui.columns` | `[{"size_gb": 50, "tier": "gold"}]` |
+| `dual_list` | `array` of `string`, `uniqueItems: true` | `["tnguyen", "lmartin"]`, in the order chosen |
+| `object` | `object` with `properties`, with `ui.columns` | `{"policy": "daily", "keep_days": 14}` |
 | `project` | `string` | A project's ID, `prj_web`: one the requester may request in |
 | `user` | `string` | A person's ID, `usr_lmartin`, found by typing their name or email |
 | `deployment` | `string` | A deployment's ID, `dep_7f3k2`: one of the project's, not deleted |
@@ -730,6 +733,70 @@ field's `options` or its `value_source`, like a dropdown. With
 `depends_on`, a change to a field it depends on fetches the options again
 and drops the picks they no longer offer. The value is a list of the
 options' values.
+
+A dual list (`dual_list`) shows two lists: the options available and those
+chosen, in order. Requesters move an option across with **Add** and
+**Remove**, a double click, or Enter, and order the chosen ones with
+**Move up** and **Move down**, or Alt+Up and Alt+Down. Its options come
+from `options` or a `value_source`, as a multi-select's do, and a change to
+a field it depends on drops the picks the source no longer offers. The
+value is the chosen values, in the order the requester gave them, so a
+playbook can read the first as the primary. To have the server refuse a
+value that isn't an option, list the values in `items.enum`; `minItems` and
+`maxItems` bound how many are picked:
+
+```yaml
+form_schema:
+  properties:
+    owners:
+      type: array
+      uniqueItems: true
+      maxItems: 3
+      items: { type: string, enum: [lmartin, tnguyen, jroux] }
+ui_schema:
+  fields:
+    owners:
+      widget: dual_list
+      label: Owners
+      options:
+        - { value: lmartin, label: Léa Martin }
+        - { value: tnguyen, label: Thanh Nguyen }
+        - { value: jroux, label: Jean Roux }
+```
+
+A group of fields (`object`) edits one object: each sub-field edits one of
+its `properties`. Its sub-fields are `ui.columns`, as a table's columns
+are, with the same `text`, `number`, `toggle` and `select` widgets and the
+same checks, against the object's own properties rather than its rows'.
+`required` names the sub-fields the object needs. A problem says which
+sub-field it is in: "Keep (days): Enter 1 or more." Use a group of fields
+when a playbook takes one object, and a table when it takes a list of
+them:
+
+```yaml
+form_schema:
+  properties:
+    backup:
+      type: object
+      required: [policy]
+      additionalProperties: false
+      properties:
+        policy: { type: string, enum: [daily, weekly] }
+        keep_days: { type: integer, minimum: 1 }
+        offsite: { type: boolean }
+ui_schema:
+  fields:
+    backup:
+      widget: object
+      label: Backup
+      columns:
+        - key: policy
+          label: Policy
+          widget: select
+          options: [{ value: daily, label: Daily }, { value: weekly, label: Weekly }]
+        - { key: keep_days, label: Keep (days), widget: number }
+        - { key: offsite, label: Copy off site, widget: toggle }
+```
 
 The `vsphere_folder` widget offers the VM folders of the datacenters whose
 clusters the project's placement allows in the environment, by path from

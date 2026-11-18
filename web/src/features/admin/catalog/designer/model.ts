@@ -25,6 +25,8 @@ export const widgetLabels: Record<UiWidget, string> = {
   tags: "Tags",
   key_value: "Key and value pairs",
   datagrid: "Table",
+  dual_list: "Dual list",
+  object: "Group of fields",
   secret: "Secret",
   info: "Information text",
   computed: "Computed value",
@@ -84,7 +86,17 @@ const widgetSource: Partial<Record<UiWidget, string>> = {
 };
 
 /** Widgets that offer a list of options. */
-export const choiceWidgets: UiWidget[] = ["select", "multiselect", "segmented", "radio_cards", "checklist"];
+export const choiceWidgets: UiWidget[] = [
+  "select",
+  "multiselect",
+  "segmented",
+  "radio_cards",
+  "checklist",
+  "dual_list",
+];
+
+/** Widgets that edit properties through `columns`: a table its rows', an object its own. */
+export const columnWidgets: UiWidget[] = ["datagrid", "object"];
 
 /** The JSON Schema of an input a widget edits; none for information text. */
 export function schemaFor(widget: UiWidget): Prop | null {
@@ -104,7 +116,10 @@ export function schemaFor(widget: UiWidget): Prop | null {
     case "checklist":
       return { type: "array", items: { type: "string" } };
     case "tags":
+    case "dual_list":
       return { type: "array", uniqueItems: true, items: { type: "string" } };
+    case "object":
+      return { type: "object", properties: { value: { type: "string" } } };
     case "key_value":
       return { type: "object", additionalProperties: { type: "string" }, propertyNames: { minLength: 1 } };
     case "datagrid":
@@ -155,7 +170,7 @@ export function addField(def: Def, widget: UiWidget, sectionKey?: string): { def
     const ui: UiField = { widget, label: widgetLabels[widget] };
     const source = widgetSource[widget];
     if (source) ui.value_source = { kind: "builtin", name: source };
-    if (widget === "datagrid") ui.columns = [...firstColumns];
+    if (columnWidgets.includes(widget)) ui.columns = [...firstColumns];
     d.ui_schema.fields[name] = ui;
     const sections = d.ui_schema.layout.sections;
     if (sections.length === 0) sections.push({ key: "main", title: "Details", columns: 2, fields: [] });
@@ -285,6 +300,8 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
     const ui = d.ui_schema.fields[name];
     if (!ui) return;
     const before = widgetSource[ui.widget];
+    // Columns edit the properties they name: another columned widget starts afresh.
+    const columnsChange = columnWidgets.includes(widget) && ui.widget !== widget;
     ui.widget = widget;
     const schema = schemaFor(widget);
     const current = p[name];
@@ -295,12 +312,12 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       const fs = d.form_schema as { required?: string[] };
       if (fs.required) fs.required = fs.required.filter((r) => r !== name);
       if (fs.required?.length === 0) delete fs.required;
-    } else if (!sameShape(current, schema)) {
+    } else if (columnsChange || !sameShape(current, schema)) {
       p[name] = schema;
       delete d.initial_values[name];
     }
-    if (widget === "datagrid") ui.columns ??= [...firstColumns];
-    else delete ui.columns;
+    if (columnsChange) ui.columns = [...firstColumns];
+    else if (!columnWidgets.includes(widget)) delete ui.columns;
     // A widget's own source follows the widget; a source the author chose stays.
     const source = widgetSource[widget];
     const own = ui.value_source?.kind === "builtin" && ui.value_source.name === before;
@@ -358,26 +375,28 @@ function cellFor(column: UiColumn, current?: Prop): Prop {
   }
 }
 
-/** A table's rows: their properties and which are required. */
-function rowsOf(p: Prop): { properties: Record<string, Prop>; required?: string[] } {
-  p.items ??= { type: "object" };
-  const items = p.items as { properties?: Record<string, Prop>; required?: string[] };
+/** The properties a field's columns edit, and which are required: a table's rows', or an object's own. */
+function rowsOf(p: Prop, widget?: UiWidget): { properties: Record<string, Prop>; required?: string[] } {
+  if (widget !== "object") p.items ??= { type: "object" };
+  const items = (widget === "object" ? p : p.items) as { properties?: Record<string, Prop>; required?: string[] };
   items.properties ??= {};
   return items as { properties: Record<string, Prop>; required?: string[] };
 }
 
 export function isColumnRequired(def: Def, name: string, key: string): boolean {
-  const items = props(def)[name]?.items as { required?: string[] } | undefined;
-  return items?.required?.includes(key) ?? false;
+  const prop = props(def)[name];
+  const holder = (def.ui_schema.fields[name]?.widget === "object" ? prop : prop?.items) as
+    { required?: string[] } | undefined;
+  return holder?.required?.includes(key) ?? false;
 }
 
-/** Adds a text column to a table, and its property to the rows. */
+/** Adds a text column to a table (a sub-field to an object), and its property. */
 export function addColumn(def: Def, name: string): Def {
   return edit(def, (d, p) => {
     const ui = d.ui_schema.fields[name];
     const prop = p[name];
     if (!ui || !prop) return;
-    const rows = rowsOf(prop);
+    const rows = rowsOf(prop, ui.widget);
     const columns = (ui.columns ??= []);
     let n = columns.length + 1;
     while (columns.some((c) => c.key === `column_${n}`) || `column_${n}` in rows.properties) n++;
@@ -402,7 +421,7 @@ export function updateColumn(
     const column = d.ui_schema.fields[name]?.columns?.[index];
     const prop = p[name];
     if (!column || !prop) return;
-    const rows = rowsOf(prop);
+    const rows = rowsOf(prop, d.ui_schema.fields[name]?.widget);
     const { required: req, ...ui } = patch;
     const before = column.key;
     Object.assign(column, ui);
@@ -426,7 +445,7 @@ export function removeColumn(def: Def, name: string, index: number): Def {
     const prop = p[name];
     if (!ui?.columns || !column || !prop) return;
     ui.columns.splice(index, 1);
-    const rows = rowsOf(prop);
+    const rows = rowsOf(prop, ui.widget);
     delete rows.properties[column.key];
     rows.required = rows.required?.filter((r) => r !== column.key);
     if (!rows.required?.length) delete rows.required;

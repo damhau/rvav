@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
@@ -255,6 +255,139 @@ describe("tables", () => {
     expect(values()).toEqual({ disks: [{ size_gb: 20 }] });
     expect(screen.getByLabelText("Size (GB), row 1")).toHaveFocus();
     expect(screen.getByRole("columnheader", { name: "Tier" })).toBeInTheDocument();
+  });
+});
+
+describe("dual lists", () => {
+  const owners = (initial = {}) =>
+    formOf(
+      {
+        owners: {
+          ui: {
+            widget: "dual_list",
+            label: "Owners",
+            options: [
+              { value: "lmartin", label: "Léa Martin" },
+              { value: "tnguyen", label: "Thanh Nguyen" },
+              { value: "jroux", label: "Jean Roux" },
+            ],
+          },
+          schema: { type: "array", uniqueItems: true, items: { type: "string" } },
+        },
+      },
+      initial,
+    );
+
+  it("move options to the chosen list and order them, by keyboard", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={owners()} />);
+    const available = screen.getByRole("listbox", { name: "Owners Available" });
+    available.focus();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(values()).toEqual({ owners: ["tnguyen"] });
+    await user.keyboard("{Home}{Enter}");
+    expect(values()).toEqual({ owners: ["tnguyen", "lmartin"] });
+    expect(screen.getByRole("status")).toHaveTextContent("Added Léa Martin: 2 of 2.");
+    const chosen = screen.getByRole("listbox", { name: "Owners Chosen, in order" });
+    chosen.focus();
+    await user.keyboard("{End}{Alt>}{ArrowUp}{/Alt}");
+    expect(values()).toEqual({ owners: ["lmartin", "tnguyen"] });
+    expect(chosen).toHaveAttribute("aria-activedescendant", `${chosen.id}-0`);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(values()).toEqual({ owners: ["lmartin"] });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Thanh Nguyen",
+      "Jean Roux",
+      "Léa Martin",
+    ]);
+  });
+
+  it("do the same with buttons, and keep the order they were given", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={owners({ owners: ["jroux", "lmartin"] })} />);
+    expect(
+      within(screen.getByRole("listbox", { name: "Owners Chosen, in order" }))
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Jean Roux", "Léa Martin"]);
+    await user.click(screen.getByRole("button", { name: "Move down" }));
+    expect(values()).toEqual({ owners: ["lmartin", "jroux"] });
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    expect(values()).toEqual({ owners: ["lmartin", "jroux", "tnguyen"] });
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+    expect(screen.getByText("All chosen")).toBeInTheDocument();
+  });
+
+  it("take their options from a value source, and drop the picks it no longer offers", async () => {
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        return HttpResponse.json({ field: q.field, options: [{ value: "gva-a", label: "GVA-A" }] });
+      }),
+    );
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          {
+            zones: {
+              ui: {
+                widget: "dual_list",
+                label: "Zones",
+                value_source: { kind: "rest", params: { url: "https://cmdb.corp.example/zones" } },
+              },
+              schema: { type: "array", items: { type: "string" } },
+            },
+          },
+          { zones: ["gva-b", "gva-a"] },
+        )}
+      />,
+    );
+    await waitFor(() => expect(values()).toEqual({ zones: ["gva-a"] }));
+    expect(screen.getByRole("option", { name: "GVA-A" })).toBeInTheDocument();
+    expect(screen.getByText("All chosen")).toBeInTheDocument();
+  });
+});
+
+describe("groups of fields", () => {
+  it("edit one object, each sub-field under its own label", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Harness
+        form={formOf({
+          backup: {
+            ui: {
+              widget: "object",
+              label: "Backup",
+              columns: [
+                { key: "policy", label: "Policy", widget: "select", options: [{ value: "daily", label: "Daily" }] },
+                { key: "keep_days", label: "Keep (days)", widget: "number" },
+                { key: "offsite", label: "Copy off site", widget: "toggle" },
+                { key: "note", label: "Note", widget: "text" },
+              ],
+            },
+            schema: {
+              type: "object",
+              required: ["policy"],
+              properties: {
+                policy: { type: "string", enum: ["daily"] },
+                keep_days: { type: "integer" },
+                offsite: { type: "boolean" },
+                note: { type: "string" },
+              },
+            },
+          },
+        })}
+      />,
+    );
+    expect(within(screen.getByRole("group", { name: "Backup" })).getAllByText("Optional")).toHaveLength(2);
+    await user.type(screen.getByLabelText("Keep (days)"), "14");
+    await user.click(screen.getByRole("checkbox", { name: "Copy off site" }));
+    await user.type(screen.getByLabelText("Note"), "x");
+    expect(values()).toEqual({ backup: { keep_days: 14, offsite: true, note: "x" } });
+    await user.clear(screen.getByLabelText("Note"));
+    await user.click(screen.getByRole("checkbox", { name: "Copy off site" }));
+    await user.clear(screen.getByLabelText("Keep (days)"));
+    expect(values()).toEqual({});
   });
 });
 

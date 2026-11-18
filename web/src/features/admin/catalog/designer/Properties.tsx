@@ -12,6 +12,7 @@ import {
   addColumn,
   builtinSources,
   choiceWidgets,
+  columnWidgets,
   isColumnRequired,
   isDecimal,
   isRequired,
@@ -543,12 +544,12 @@ function FieldProperties({
       {(ui.widget === "date" || ui.widget === "datetime") && prop && (
         <DateBounds def={def} name={name} time={ui.widget === "datetime"} onChange={onChange} />
       )}
-      {(ui.widget === "datagrid" || ui.widget === "tags") && prop && (
+      {ui.widget in countNouns && prop && (
         <div className="grid grid-cols-2 gap-2">
           {(
             [
-              ["minItems", ui.widget === "datagrid" ? "Fewest rows" : "Fewest tags"],
-              ["maxItems", ui.widget === "datagrid" ? "Most rows" : "Most tags"],
+              ["minItems", `Fewest ${countNouns[ui.widget]}`],
+              ["maxItems", `Most ${countNouns[ui.widget]}`],
             ] as const
           ).map(([k, label]) => (
             <Field key={k} label={label} htmlFor={`prop-${k}`}>
@@ -566,7 +567,9 @@ function FieldProperties({
           ))}
         </div>
       )}
-      {ui.widget === "datagrid" && <ColumnsEditor def={def} name={name} onChange={onChange} problems={problems} />}
+      {columnWidgets.includes(ui.widget) && (
+        <ColumnsEditor def={def} name={name} onChange={onChange} problems={problems} />
+      )}
       {ui.widget === "tags" && !ui.value_source && (
         <Field
           label="Suggestions"
@@ -709,14 +712,17 @@ function OptionsInput({
   );
 }
 
-const columnWidgets = [
+/** What a list field counts, for its fewest and most. */
+const countNouns: Partial<Record<UiWidget, string>> = { datagrid: "rows", tags: "tags", dual_list: "picks" };
+
+const cellWidgets = [
   { value: "text", label: "Text" },
   { value: "number", label: "Number" },
   { value: "toggle", label: "Toggle" },
   { value: "select", label: "Dropdown" },
 ];
 
-/** A table's columns: each one's key, label, widget, choices and whether every row needs it. */
+/** A table's columns, or an object's sub-fields: each one's key, label, widget, choices and whether it's required. */
 function ColumnsEditor({
   def,
   name,
@@ -730,9 +736,11 @@ function ColumnsEditor({
 }) {
   const columns = def.ui_schema.fields[name]?.columns ?? [];
   const [keyError, setKeyError] = useState<{ index: number; message: string }>();
+  const object = def.ui_schema.fields[name]?.widget === "object";
+  const noun = object ? "sub-field" : "column";
   return (
     <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
-      <legend className="text-secondary font-medium">Columns</legend>
+      <legend className="text-secondary font-medium">{object ? "Sub-fields" : "Columns"}</legend>
       <ProblemList id="prop-columns-problems" list={problems.filter((p) => p.at.startsWith("columns"))} />
       {columns.map((c, i) => {
         const at = `prop-column-${i}`;
@@ -770,7 +778,7 @@ function ColumnsEditor({
                   id={`${at}-widget`}
                   value={c.widget}
                   onChange={(w) => onChange(updateColumn(def, name, i, { widget: w as UiColumn["widget"] }))}
-                  options={columnWidgets}
+                  options={cellWidgets}
                 />
               </Field>
               <label htmlFor={`${at}-required`} className="flex h-8 items-center gap-2 text-body">
@@ -793,7 +801,7 @@ function ColumnsEditor({
             )}
             <div>
               <Button size="sm" variant="quiet" onClick={() => onChange(removeColumn(def, name, i))}>
-                Remove column {c.label || c.key}
+                Remove {noun} {c.label || c.key}
               </Button>
             </div>
           </div>
@@ -807,7 +815,7 @@ function ColumnsEditor({
             focusLater(`prop-column-${columns.length}-key`);
           }}
         >
-          Add a column
+          Add a {noun}
         </Button>
       </div>
     </fieldset>

@@ -742,8 +742,12 @@ An item's tabs:
     **Columns**: each has a key (the property of its rows), a label, a
     widget (text, number, toggle or dropdown, with its **Choices**) and
     whether every row needs it;
-  - a multiple choice dropdown or a checklist takes its choices from its
-    options or a value source, as a dropdown does;
+  - a group of fields takes its **Sub-fields**, set as a table's columns
+    are: each edits one property of the object;
+  - a multiple choice dropdown, a checklist or a dual list takes its
+    choices from its options or a value source, as a dropdown does; a
+    dual list also takes the **Fewest picks** and **Most picks**, and
+    keeps the order the requester gives;
   - a vSphere folder lists the VM folders of the datacenters the
     project's placement uses: bind the blueprint's `folder` to it;
   - a project, user, deployment or vSphere VM lists only what the

@@ -1354,21 +1354,26 @@ const columnTypes: Record<string, string[]> = {
   select: ["string"],
 };
 
-type Cells = { items?: { properties?: Record<string, { type?: string; enum?: unknown[] }> } };
+type Props = { properties?: Record<string, { type?: string; enum?: unknown[] }> };
+type Cells = Props & { items?: Props };
 
-/** A table's columns against its rows' properties, as the server checks them (internal/core/formfields.go). */
+/** A table's columns against its rows' properties, an object's sub-fields against its own, as the server checks them (internal/core/formfields.go). */
 function tableProblems(def: Definition, props: Record<string, unknown>, prefix: string): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   for (const [name, f] of Object.entries(def.ui_schema.fields)) {
-    if (f.widget !== "datagrid") continue;
+    if (f.widget !== "datagrid" && f.widget !== "object") continue;
+    const object = f.widget === "object";
     const at = `${prefix}/ui_schema/fields/${name}`;
-    const cells = (props[name] as Cells | undefined)?.items?.properties ?? {};
+    const prop = props[name] as Cells | undefined;
+    const cells = (object ? prop?.properties : prop?.items?.properties) ?? {};
     const columns = f.columns ?? [];
     if (columns.length === 0) {
       errors.push({
         field: `${at}/columns`,
         code: "required",
-        message: "Give the table its columns, one per property of its rows.",
+        message: object
+          ? "Give the object its sub-fields, one per property."
+          : "Give the table its columns, one per property of its rows.",
       });
       continue;
     }
@@ -1380,7 +1385,9 @@ function tableProblems(def: Definition, props: Record<string, unknown>, prefix: 
         errors.push({
           field: `${cat}/key`,
           code: "unknown_input",
-          message: `The rows have no property "${c.key}": add it to the schema's items.`,
+          message: object
+            ? `The object has no property "${c.key}": add it to its properties.`
+            : `The rows have no property "${c.key}": add it to the schema's items.`,
         });
       else if (!c.label.trim())
         errors.push({ field: `${cat}/label`, code: "required", message: "Give the column a label." });
@@ -1400,7 +1407,7 @@ function tableProblems(def: Definition, props: Record<string, unknown>, prefix: 
     for (const k of Object.keys(cells).sort())
       if (!columns.some((c) => c.key === k))
         errors.push({
-          field: `${prefix}/form_schema/properties/${name}/items/properties/${k}`,
+          field: `${prefix}/form_schema/properties/${name}${object ? "" : "/items"}/properties/${k}`,
           code: "no_ui_field",
           message: `"${k}" has no column, so nobody could fill it in.`,
         });

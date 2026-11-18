@@ -19,6 +19,7 @@ import {
   sortProblems,
   updateColumn,
   updateProp,
+  updateUi,
   widgetLabels,
   type Def,
 } from "./model";
@@ -151,6 +152,32 @@ describe("form designer model", () => {
     expect(prop(def, "datagrid")).toEqual({ type: "array", uniqueItems: true, items: { type: "string" } });
   });
 
+  it("keeps an object's sub-fields and its properties in step, and a table's columns apart", () => {
+    let def = addField(empty, "object").def;
+    def = addColumn(def, "object");
+    def = updateColumn(def, "object", 1, { key: "port", label: "Port", widget: "number", required: true });
+    expect(prop(def, "object")).toEqual({
+      type: "object",
+      properties: { value: { type: "string" }, port: { type: "integer" } },
+      required: ["port"],
+    });
+    expect(isColumnRequired(def, "object", "port")).toBe(true);
+    def = removeColumn(def, "object", 0);
+    expect(prop(def, "object")).toEqual({
+      type: "object",
+      properties: { port: { type: "integer" } },
+      required: ["port"],
+    });
+    def = setWidget(def, "object", "datagrid");
+    expect(def.ui_schema.fields.object?.columns).toEqual([{ key: "value", label: "Value", widget: "text" }]);
+    expect(prop(def, "object")).toEqual({
+      type: "array",
+      items: { type: "object", properties: { value: { type: "string" } } },
+    });
+    def = setWidget(addField(empty, "dual_list").def, "dual_list", "tags");
+    expect(prop(def, "dual_list")).toEqual({ type: "array", uniqueItems: true, items: { type: "string" } });
+  });
+
   it("round-trips every field type through the YAML view", () => {
     let def = empty;
     for (const w of Object.keys(widgetLabels) as UiWidget[]) def = addField(def, w).def;
@@ -158,6 +185,8 @@ describe("form designer model", () => {
     def = setDecimal(def, "number", true);
     def = updateProp(def, "datetime", { formatMinimum: "2026-12-01T00:00:00+01:00" });
     def = addColumn(def, "datagrid");
+    def = updateColumn(addColumn(def, "object"), "object", 1, { key: "on", label: "On", widget: "toggle" });
+    def = updateUi(def, "dual_list", { options: [{ value: "a", label: "A" }] });
     const back = fromYaml(toYaml(def));
     expect(back.problems).toEqual([]);
     expect(back.def).toEqual(def);

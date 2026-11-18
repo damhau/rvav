@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { bothThemes, scan } from "./axe";
 
-// Every field type the designer offers (F1.1): a form with one of each,
+// Every field type the designer offers (F1.1, F1.2): a form with one of each,
 // built in the designer, passes axe in both themes in the designer's
 // preview and as members request it, and the new types work by keyboard.
 
@@ -21,6 +21,8 @@ const widgets = [
   "Tags",
   "Key and value pairs",
   "Table",
+  "Dual list",
+  "Group of fields",
   "Secret",
   "Information text",
   "Computed value",
@@ -63,6 +65,12 @@ test("a form with every field type, in the designer and requested", async ({ pag
     await expect(fields.getByRole("listitem")).toHaveCount(i + 2);
   }
   await expect(status).toHaveText("Draft 1.0: saved");
+  const props = page.getByRole("region", { name: "Properties" });
+  await fields.getByRole("button", { name: /^Dual list/ }).click();
+  await props.getByRole("textbox", { name: "Options" }).fill("web | Web team\ndb | Database team\nnet | Network team");
+  await props.getByRole("textbox", { name: "Options" }).press("Tab");
+  await expect(preview.getByRole("option", { name: "Database team" })).toBeVisible();
+  await expect(status).toHaveText("Draft 1.0: saved");
   await expect(preview.getByLabel("Secret", { exact: true })).toBeVisible();
   await bothThemes(page, "designer");
 
@@ -97,6 +105,19 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await page.getByRole("textbox", { name: "Value 1" }).fill("web");
   await page.getByRole("button", { name: "Add a row" }).press("Enter");
   await page.getByRole("textbox", { name: "Value, row 1" }).fill("first");
+  const available = page.getByRole("listbox", { name: "Dual list Available" });
+  await available.focus();
+  await available.press("End");
+  await available.press("Enter");
+  await available.press("Home");
+  await available.press("Enter");
+  const chosen = page.getByRole("listbox", { name: "Dual list Chosen, in order" });
+  await expect(chosen.getByRole("option")).toHaveText(["Network team", "Web team"]);
+  await chosen.focus();
+  await chosen.press("End");
+  await chosen.press("Alt+ArrowUp");
+  await expect(chosen.getByRole("option")).toHaveText(["Web team", "Network team"]);
+  await page.getByRole("group", { name: "Group of fields" }).getByRole("textbox", { name: "Value" }).fill("one");
   await page.getByLabel("Date", { exact: true }).fill("2026-12-01");
   const user = page.getByRole("combobox", { name: "User" });
   await user.pressSequentially("ngu", { delay: 30 });

@@ -87,6 +87,16 @@ Some fields take several values:
 - **Lists of choices:** select each one you want. When you change a field
   the list depends on, it may offer other choices, and the ones it no
   longer offers are cleared.
+- **Dual lists:** move what you want from **Available** to **Chosen, in
+  order**: select it and then **Add**, or double-click it. With the
+  keyboard, tab to a list, move with the arrow keys, Home and End, and
+  press Enter to move the option to the other list. The order of the
+  chosen list counts: to change it, select **Move up** or **Move down**,
+  or press Alt+Up or Alt+Down in that list.
+
+A group of fields is one value made of several sub-fields, each with its
+own label. A problem names its sub-field, for example "Keep (days): Enter
+1 or more."
 
 To pick a person, type two letters or more of their name or email, then
 select them in the list, or move to them with the arrow keys and press

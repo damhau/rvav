@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { FieldNote } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
-import type { FieldStates, RequestForm, UiField } from "@/lib/api/types";
+import type { FieldStates, RequestForm, UiField, UiWidget } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { withOwnSource, type FormContext } from "./useFieldValues";
 import { selfLabelled, widgetFor, type JsonSchemaProp } from "./widgets";
@@ -78,6 +78,18 @@ export function shownFields(form: RequestForm, states?: FieldStates): string[] {
   return form.ui_schema.layout.sections.flatMap((s) => sectionFields(form, s.fields, states).map((f) => f.name));
 }
 
+/** Widgets that take the whole width of a two-column section. */
+const wideWidgets: UiWidget[] = [
+  "radio_cards",
+  "checklist",
+  "info",
+  "multiselect",
+  "key_value",
+  "datagrid",
+  "dual_list",
+  "object",
+];
+
 export function FormRenderer({
   form,
   values,
@@ -104,9 +116,7 @@ export function FormRenderer({
                 const error = errors[name];
                 const help = selfLabelled.includes(ui.widget) ? undefined : ui.help;
                 const noteId = error || help ? `${id}-note` : undefined;
-                const wide = ["radio_cards", "checklist", "info", "multiselect", "key_value", "datagrid"].includes(
-                  ui.widget,
-                );
+                const wide = wideWidgets.includes(ui.widget);
                 const value = state.computed !== undefined ? state.computed : values[name];
                 return (
                   <div

@@ -394,6 +394,7 @@ function locate(form: RequestForm | undefined, field: string, message: string): 
   const ui = form?.ui_schema.fields[name];
   if (!ui || at === undefined) return message;
   if (ui.widget === "key_value") return `${at.replace(/~1/g, "/").replace(/~0/g, "~")}: ${message}`;
+  if (ui.widget === "object") return `${ui.columns?.find((c) => c.key === at)?.label ?? at}: ${message}`;
   if (!/^\d+$/.test(at)) return message;
   const n = Number(at) + 1;
   if (ui.widget !== "datagrid") return `Item ${n}: ${message}`;

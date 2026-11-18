@@ -4059,7 +4059,7 @@ export interface components {
             fields: string[];
         };
         /** @enum {string} */
-        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "secret" | "info" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
+        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
         UiField: {
             widget: components["schemas"]["UiWidget"];
             label: string;
@@ -4070,7 +4070,7 @@ export interface components {
             value_source?: components["schemas"]["ValueSource"];
             /** @description Inputs whose change re-resolves this field's value source and rules. */
             depends_on?: string[];
-            /** @description A table's (`datagrid`) columns, in order: each edits one property of the rows, whose type and checks are in the schema's `items`. */
+            /** @description A table's (`datagrid`) columns, in order: each edits one property of the rows, whose type and checks are in the schema's `items`. An `object` field's sub-fields, in order: each edits one of the object's `properties`. */
             columns?: components["schemas"]["UiColumn"][];
             rules?: components["schemas"]["UiRules"];
             /** @description Stored encrypted, never returned by the API, and kept out of the request's plan and workflow history (a `{"$secret": "<field>"}` marker stands for it there): given only to the AWX job at launch and to cloud-init user data. The `secret` widget makes a field secret too. */
@@ -4081,7 +4081,7 @@ export interface components {
             approver_editable?: boolean;
         };
         UiColumn: {
-            /** @description The property of each row it edits. */
+            /** @description The property of each row, or of the object, it edits. */
             key: string;
             label: string;
             /** @enum {string} */
