@@ -197,7 +197,7 @@ it and works in both themes.
 
 | Block | What it is | When to use it |
 |---|---|---|
-| `PageHeader` | The page's `h1`, a sentence on what the page is for (`description`), facts about what it shows (`meta`), `breadcrumbs` and `actions` | Once, at the top of every page. One of its actions is primary. |
+| `PageHeader` | The page's `h1`, a sentence on what the page is for (`description`), facts about what it shows (`meta`), `breadcrumbs` and `actions` | Once, at the top of every page. One of its actions is primary. The actions stay beside the title while there is room, and its `meta` wraps under it. |
 | `Breadcrumbs` | A `Breadcrumb` navigation landmark: links to the pages above this one, top-level first. The page's own title follows it, so it isn't repeated. | In `PageHeader`'s `breadcrumbs` on every page below a top-level one: a deployment, a request, a request form, a catalog item, a project, a role. Top-level pages have none. |
 | `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. |
 | `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |

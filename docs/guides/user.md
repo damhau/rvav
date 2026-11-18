@@ -72,9 +72,11 @@ drafts. Search by number, title or person, choose a status, or select
 shows the same list. Select a row to open its request. **Overview** shows
 your open requests too, with what needs you.
 
-The request's page shows each step as it runs: the address reserved, the
-DNS record, the VM cloned and customised, each AWX job with its tasks and
-output. It updates live. You are told when it is ready, or why it failed,
+The top of a request's page shows its status, number, project, who asked,
+and how many of its steps are done. **Cancel request**, **Request again** and
+**Open deployment** are beside it, when they apply. Below, the page shows
+each step as it runs: the address reserved, the DNS record, the VM cloned and
+customised, each AWX job with its tasks and output. It updates live. You are told when it is ready, or why it failed,
 in the app and on your chosen channels.
 
 A composite's request (a PostgreSQL cluster, say) shows its steps as a

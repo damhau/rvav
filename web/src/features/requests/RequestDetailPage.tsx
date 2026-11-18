@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { blueprintGraph } from "@/components/canvas/blueprint";
@@ -9,6 +9,8 @@ import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Timeline } from "@/components/common/timeline";
@@ -133,17 +135,55 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
 
   return (
     <Page>
-      <div className="flex flex-col gap-1.5">
-        <Breadcrumbs>
-          <Link to="/requests">Requests</Link>
-        </Breadcrumbs>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h1 className="text-title font-semibold">{r ? r.title : <Skeleton className="h-5 w-72" />}</h1>
-            {r && <RequestStatusBadge status={r.status} />}
-          </div>
-          {r && (
-            <div className="flex flex-wrap gap-2">
+      <PageHeader
+        breadcrumbs={
+          <Breadcrumbs>
+            <Link to="/requests">Requests</Link>
+          </Breadcrumbs>
+        }
+        title={r ? r.title : <Skeleton className="h-5 w-72" />}
+        meta={
+          r && (
+            <>
+              <RequestStatusBadge status={r.status} />
+              <span className="font-mono">{r.number}</span>
+              <span className="flex items-center gap-1.5">
+                {r.project.name} <EnvBadge env={r.environment} />
+              </span>
+              <span>Requested by {r.requester.name}</span>
+              {r.kind === "day2" && r.deployment_id ? (
+                <span>
+                  {r.action?.name} on{" "}
+                  <Link
+                    to="/deployments/$deploymentId"
+                    params={{ deploymentId: r.deployment_id }}
+                    className="text-accent underline underline-offset-2"
+                  >
+                    {r.resource?.name ?? "the deployment"}
+                  </Link>
+                </span>
+              ) : (
+                <span>
+                  {r.catalog_item.name} {r.version.number}
+                </span>
+              )}
+              <span>
+                Submitted <Time iso={r.submitted_at} />
+              </span>
+              <span className="tnum">
+                {r.status === "succeeded"
+                  ? `All ${r.progress.total} steps done`
+                  : running
+                    ? `Step ${Math.min(r.progress.total, r.progress.done + 1)} of ${r.progress.total}`
+                    : `${r.progress.done} of ${r.progress.total} steps done`}
+                {elapsed ? ` · ${elapsed}` : ""}
+              </span>
+            </>
+          )
+        }
+        actions={
+          r && (
+            <>
               {cancellable.includes(r.status) && <CancelButton request={r} />}
               {r.kind === "provision" && canRequestIn(r.project.id) && (
                 <Button variant="secondary" asChild>
@@ -163,42 +203,10 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                   </Link>
                 </Button>
               )}
-            </div>
-          )}
-        </div>
-        {r && (
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-secondary text-muted">
-            <span className="font-mono">{r.number}</span>
-            <span>Requested by {r.requester.name}</span>
-            <span className="flex items-center gap-1.5">
-              {r.project.name} <EnvBadge env={r.environment} />
-            </span>
-            {r.kind === "day2" && r.deployment_id ? (
-              <span>
-                {r.action?.name} on{" "}
-                <Link to="/deployments/$deploymentId" params={{ deploymentId: r.deployment_id }}>
-                  {r.resource?.name ?? "the deployment"}
-                </Link>
-              </span>
-            ) : (
-              <span>
-                {r.catalog_item.name} {r.version.number}
-              </span>
-            )}
-            <span>
-              Submitted <Time iso={r.submitted_at} />
-            </span>
-            <span className="tnum">
-              {r.status === "succeeded"
-                ? `All ${r.progress.total} steps done`
-                : running
-                  ? `Step ${Math.min(r.progress.total, r.progress.done + 1)} of ${r.progress.total}`
-                  : `${r.progress.done} of ${r.progress.total} steps done`}
-              {elapsed ? ` · ${elapsed}` : ""}
-            </span>
-          </div>
-        )}
-      </div>
+            </>
+          )
+        }
+      />
 
       <div className="flex flex-wrap items-start gap-4">
         <Panel
@@ -246,34 +254,36 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
         </Panel>
 
         <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-4">
-          <section className="overflow-hidden rounded-lg border border-line bg-surface">
-            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-              <h2 className="text-body font-semibold">AWX job output</h2>
-              <span className="truncate font-mono text-caption text-faint">
-                {logStep?.title.replace(/^AWX /, "") ?? "no AWX job"}
-              </span>
-            </div>
+          <Panel
+            title="AWX job output"
+            flush
+            description={logStep && <span className="font-mono break-words">{logStep.title.replace(/^AWX /, "")}</span>}
+            footer={
+              logStep?.external_ref?.url && (
+                <>
+                  <span className="mr-auto">Follows the job live.</span>
+                  <a
+                    href={logStep.external_ref.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-accent hover:underline"
+                  >
+                    Open in AWX <ExternalLink className="size-3" aria-hidden />
+                  </a>
+                </>
+              )
+            }
+          >
             {id && logStep ? (
               <LogViewer requestId={id} step={logStep} />
             ) : (
-              <p className="px-4 py-6 text-secondary text-muted">
-                This request has no AWX job, or it hasn't been planned yet.
-              </p>
+              <EmptyState
+                icon={SquareTerminal}
+                title="No AWX job"
+                body="This request has no AWX job, or it hasn't been planned yet."
+              />
             )}
-            {logStep?.external_ref?.url && (
-              <div className="flex justify-between border-t border-line px-4 py-2 text-secondary">
-                <span className="text-faint">Follows the job live.</span>
-                <a
-                  href={logStep.external_ref.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1"
-                >
-                  Open in AWX <ExternalLink className="size-3" aria-hidden />
-                </a>
-              </div>
-            )}
-          </section>
+          </Panel>
 
           {asked.length > 0 && <AskPanel rows={asked} />}
 
@@ -295,7 +305,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           )}
 
           <Panel title="What was asked for">
-            {r ? (
+            {r && Object.keys(r.inputs ?? {}).length === 0 && !r.justification ? (
+              <p className="text-secondary text-muted">Nothing: the item asks no questions.</p>
+            ) : r ? (
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5">
                 {Object.entries(r.inputs ?? {}).map(([k, v]) => (
                   <div key={k} className="contents">

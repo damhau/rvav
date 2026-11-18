@@ -22,7 +22,7 @@ export function PageHeader({
     <header className={cn("flex flex-col gap-1.5", className)}>
       {breadcrumbs && <div className="flex items-center gap-1 text-secondary text-muted">{breadcrumbs}</div>}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 flex-[1_1_20rem] flex-col gap-1">
           <h1 className="min-w-0 text-title font-semibold">{title}</h1>
           {description && <p className="max-w-[72ch] text-secondary text-muted">{description}</p>}
           {meta && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-secondary text-muted">{meta}</div>}

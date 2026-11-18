@@ -67,7 +67,10 @@ or a composite's steps), and Request as the primary action.
   page.
 
 ### Request timeline
-A vertical stepper with nested steps:
+A request's page has its status, number, project, requester and progress in
+the header, beside Cancel request, Request again and Open deployment. The
+steps (a graph, for a composite) come first; the AWX job output and what was
+asked for are beside them. The steps are a vertical stepper with nested steps:
 ```
 ✓ Submitted                         10:02:11
 ✓ Approved by Alice (Infra lead)    10:05:40
