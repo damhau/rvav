@@ -101,7 +101,27 @@ A release that can't be rolled (a contract migration together with the
 code that needs it, or a change to the workflow contract custom workflows
 use, ADR-0022) says so in its notes. It is upgraded with rvav's API and
 workers stopped for the migration, or in two steps across two releases.
-None has been needed so far.
+
+## Upgrading past migration 00057
+
+Migration 00057 (catalogue templates with a source in each vCenter, T1.4)
+can't be rolled: it moves each template's VM template name and content
+library to `vm_template_sources` and drops the two `vm_templates` columns
+the older code reads. While pods roll, an old API, worker or sync pod
+fails every read of a catalogue template, so forms, plans and builds fail
+until it stops.
+
+To upgrade a release from before T1.4 to one with migration 00057, stop
+every old process before the first new one migrates:
+
+- **Kubernetes:** scale the `<release>-api`, `<release>-worker` and
+  `<release>-sync` Deployments to 0 replicas, then run `helm upgrade`,
+  which scales them back up.
+- **VMs:** run `systemctl stop rvav` on both VMs, change `RVAV_VERSION`,
+  then run `systemctl start rvav` on each.
+
+Requests in flight wait while the workers are stopped and resume when
+the new ones start. Releases after it go back to expand, then contract.
 
 ## Upgrading to 1.0
 
