@@ -280,6 +280,13 @@ an adapter's `network` are CEL over `inputs` and `sizes` (a literal is
 quoted: `'"vsan-01"'`); numbers are themselves. The other fields are plain
 values.
 
+CEL in rvav, here as in form rules, policies, composites and
+subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
+`trim()`, `replace(old, new)`, `split(sep)`, a list's `join(sep)`,
+`substring(start, end)`, `indexOf(s)`, `lastIndexOf(s)`, `charAt(i)`,
+`reverse()`, `'%s-%d'.format([a, b])` and `strings.quote(s)`. For example,
+`inputs.app.trim().lowerAscii().replace('_', '-')`.
+
 | Field | What it is |
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, ending with `{seq}` or `{seq:03}` |

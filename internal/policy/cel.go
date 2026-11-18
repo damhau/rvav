@@ -10,6 +10,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	"github.com/google/cel-go/ext"
 )
 
 // Vars are the values an expression can read. Missing keys are bound to
@@ -41,13 +42,19 @@ var day2 = &set{names: []string{"action", "resource", "deployment", "project", "
 // (ADR-0022): its inputs and the outputs of earlier steps.
 var composite = &set{names: []string{"inputs", "steps", "environment", "project"}, strings: map[string]bool{"environment": true}}
 
+// build is for the bindings evaluated as each VM is built (ADR-0024): its
+// tags, reading the VM itself and the components built before it.
+var build = &set{names: []string{"inputs", "self", "components"}}
+
 // events is for subscription conditions (ADR-0021): the event's data.
 var events = &set{names: []string{"request", "item", "project", "environment", "production", "requester", "owner",
 	"deployment", "deployments", "resources", "inputs", "vm"}, strings: map[string]bool{"environment": true}}
 
 func (s *set) celEnv() (*cel.Env, error) {
 	s.once.Do(func() {
-		opts := make([]cel.EnvOption, 0, len(s.names))
+		// Pinned to a version, so a newer cel-go adds no function an
+		// expression saved today could clash with.
+		opts := []cel.EnvOption{ext.Strings(ext.StringsVersion(4))}
 		for _, n := range s.names {
 			if s.strings[n] {
 				opts = append(opts, cel.Variable(n, cel.StringType))
@@ -152,6 +159,16 @@ func CheckComposite(expr string) error {
 	_, err := composite.program(expr)
 	return err
 }
+
+// CheckBuild compiles a binding evaluated as each VM is built.
+func CheckBuild(expr string) error {
+	_, err := build.program(expr)
+	return err
+}
+
+// EvalBuild evaluates a binding as a VM is built: over inputs, self (the
+// VM) and components (those built before it).
+func EvalBuild(expr string, vars Vars) (any, error) { return build.eval(expr, vars) }
 
 // EventBool evaluates a subscription's condition on an event's data.
 func EventBool(expr string, vars Vars) (bool, error) { return events.boolean(expr, vars) }
