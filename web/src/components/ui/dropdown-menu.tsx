@@ -1,8 +1,14 @@
+import { ChevronRight } from "lucide-react";
 import { DropdownMenu as D } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const Menu = D.Root;
+// Not modal: a modal menu hides the rest of the page with aria-hidden while its
+// buttons stay focusable, which axe reports (aria-hidden-focus). A menu button
+// needs neither: Escape and Tab close it, and focus goes back to its button.
+export function Menu(props: React.ComponentProps<typeof D.Root>) {
+  return <D.Root modal={false} {...props} />;
+}
 export const MenuTrigger = D.Trigger;
 
 export function MenuContent({ className, ...props }: React.ComponentProps<typeof D.Content>) {
@@ -11,7 +17,10 @@ export function MenuContent({ className, ...props }: React.ComponentProps<typeof
       <D.Content
         sideOffset={4}
         align="end"
-        className={cn("z-50 min-w-44 rounded-md border border-line bg-surface p-1 shadow-pop", className)}
+        className={cn(
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-44 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-pop",
+          className,
+        )}
         {...props}
       />
     </D.Portal>
@@ -46,4 +55,37 @@ export function MenuLabel({ className, ...props }: React.ComponentProps<typeof D
 
 export function MenuSeparator() {
   return <D.Separator className="my-1 h-px bg-line" />;
+}
+
+export const MenuSub = D.Sub;
+
+/** An item that opens a submenu, such as one VM's actions in a deployment's menu. */
+export function MenuSubTrigger({ className, children, ...props }: React.ComponentProps<typeof D.SubTrigger>) {
+  return (
+    <D.SubTrigger
+      className={cn(
+        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-body outline-none select-none data-[highlighted]:bg-sunken data-[state=open]:bg-sunken",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight className="ml-auto size-3.5 text-faint" aria-hidden />
+    </D.SubTrigger>
+  );
+}
+
+export function MenuSubContent({ className, ...props }: React.ComponentProps<typeof D.SubContent>) {
+  return (
+    <D.Portal>
+      <D.SubContent
+        sideOffset={4}
+        className={cn(
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-44 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-pop",
+          className,
+        )}
+        {...props}
+      />
+    </D.Portal>
+  );
 }

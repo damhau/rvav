@@ -153,6 +153,18 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/admin/projects/prj_web (a member's roles)");
     });
 
+    test("axe: a deployment's Actions menu, a VM's submenu open", async ({ page }) => {
+      await page.goto("/deployments");
+      await page.getByRole("link", { name: "web-prd-front", exact: true }).click();
+      await loaded(page);
+      await page.getByRole("button", { name: "Actions", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "web-prd-front002" })).toBeVisible();
+      await scan(page, "a deployment's Actions menu (main)");
+      await page.getByRole("menuitem", { name: "web-prd-front002" }).click();
+      await expect(page.getByRole("menuitem", { name: /^Power off/ })).toBeVisible();
+      await scan(page, "a deployment's Actions menu");
+    });
+
     test("axe: an approval open in the inbox", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);
@@ -527,28 +539,46 @@ test.describe("structure", () => {
 // themselves.
 test.describe("reflow at 320 px", () => {
   test.use({ viewport: { width: 320, height: 640 } });
+  async function noSideways(page: Page, path: string) {
+    await loaded(page);
+    const overflow = await page.evaluate(() => {
+      const main = document.getElementById("main")!;
+      const wide = [...document.querySelectorAll("body *")]
+        .filter((e) => {
+          const r = e.getBoundingClientRect();
+          return (
+            r.right > window.innerWidth + 1 && r.width > 0 && !e.closest(".overflow-x-auto, .overflow-auto, table")
+          );
+        })
+        .slice(0, 3)
+        .map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)}`);
+      return {
+        page: document.documentElement.scrollWidth - window.innerWidth,
+        main: main.scrollWidth - main.clientWidth,
+        wide,
+      };
+    });
+    expect(overflow, `${path}: ${overflow.wide.join(", ")}`).toEqual({ page: 0, main: 0, wide: [] });
+  }
   for (const path of pages) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);
+      await noSideways(page, path);
+    });
+  }
+  for (const [list, link] of details.filter(([l]) => l === "/requests" || l === "/deployments")) {
+    test(`no sideways scrolling: a detail page from ${list}`, async ({ page }) => {
+      await page.goto(list);
       await loaded(page);
-      const overflow = await page.evaluate(() => {
-        const main = document.getElementById("main")!;
-        const wide = [...document.querySelectorAll("body *")]
-          .filter((e) => {
-            const r = e.getBoundingClientRect();
-            return (
-              r.right > window.innerWidth + 1 && r.width > 0 && !e.closest(".overflow-x-auto, .overflow-auto, table")
-            );
-          })
-          .slice(0, 3)
-          .map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)}`);
-        return {
-          page: document.documentElement.scrollWidth - window.innerWidth,
-          main: main.scrollWidth - main.clientWidth,
-          wide,
-        };
-      });
-      expect(overflow, `${path}: ${overflow.wide.join(", ")}`).toEqual({ page: 0, main: 0, wide: [] });
+      const href = (
+        await page
+          .getByRole("main")
+          .locator("a[href]")
+          .evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))
+      ).find((h) => link.test(h));
+      expect(href, `no link to a detail page on ${list}`).toBeTruthy();
+      await page.goto(href!);
+      await noSideways(page, href!);
     });
   }
 });

@@ -2,8 +2,8 @@ import { useState } from "react";
 
 /**
  * What a dialog gives the focus back to: the element that had it as the
- * dialog opened, or, for an item of a dropdown menu (which is gone by the time
- * the dialog closes), that menu's button.
+ * dialog opened, or, for an item of a dropdown menu or of its submenus (which
+ * are gone by the time the dialog closes), that menu's button.
  */
 export function openerOf(el: Element | null): HTMLElement | null {
   const menu = el?.closest('[role="menu"]');
@@ -11,7 +11,8 @@ export function openerOf(el: Element | null): HTMLElement | null {
     const trigger = [...document.querySelectorAll<HTMLElement>("[aria-controls]")].find(
       (t) => t.getAttribute("aria-controls") === menu.id,
     );
-    if (trigger) return trigger;
+    // A submenu's trigger is an item of its parent menu, gone as well: the menu's button stays.
+    if (trigger) return trigger.closest('[role="menu"]') ? openerOf(trigger) : trigger;
   }
   return el instanceof HTMLElement && el !== document.body ? el : null;
 }

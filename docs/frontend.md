@@ -208,6 +208,7 @@ it and works in both themes.
 | `DialogContent` | A centred modal | Short questions and small forms that aren't a record's: a reason, a choice, a result. |
 | `Button` | Variants `primary`, `secondary`, `quiet`, `danger` and `danger-solid`; sizes `sm`, `md` and `icon` | One `primary` per page or panel; `secondary` for the others; `quiet` in rows and toolbars; `danger` for an action that asks before it removes, and `danger-solid` for the button that confirms. |
 | `IconButton` | A button that shows only an icon, named by its `label` | Close, more actions, copy: actions whose icon is clear. |
+| `Menu` | A dropdown menu on Radix: `MenuItem`, `MenuLabel` for a group's name, `MenuSeparator`, and `MenuSub` with `MenuSubTrigger` and `MenuSubContent` for a submenu. It isn't modal, so the page behind keeps its accessibility tree, and it scrolls when it's taller than the window. | A ⋯ menu, or an **Actions** menu that holds all of a record's actions, such as a deployment's, with a submenu per VM. A disabled item says why in its text. An item that opens a dialog uses `onSelect`; the dialog gives the focus back to the menu's button, from a submenu too. |
 | `StepMark` | A step's number, a tick once done, the accent for the step to do now (`stepNow` marks its row) | A list of steps in order: the setup checklist, the vRA import's steps. The step's own text says its state to screen readers. |
 | `Field` | A control's label, a line of help, and the problem with its value, tied to the control (`aria-describedby`, `aria-invalid`) | Every form control. |
 

@@ -26,24 +26,27 @@ test("power off a VM, snapshot it, then delete the deployment", async ({ page })
   await expect(page.getByRole("menuitem", { name: /^Power off/ })).toHaveAttribute("data-disabled", "");
   await page.keyboard.press("Escape");
 
-  // A snapshot, from the Actions panel, with its form.
-  await page.getByRole("button", { name: /^Take a snapshot/ }).click();
+  // A snapshot, from the deployment's Actions menu, with its form.
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Take a snapshot/ }).click();
   const snap = page.getByRole("dialog", { name: "Take a snapshot · web-dev-api004" });
   await snap.getByRole("textbox", { name: "Name" }).fill("before-cleanup");
   await snap.getByRole("button", { name: "Take a snapshot" }).click();
   await expect(snap).toBeHidden();
 
   // The history lists both, and the creating request.
-  const sections = page.getByRole("navigation", { name: "Deployment sections" });
-  await sections.getByRole("link", { name: "History" }).click();
+  const sections = page.getByRole("tablist", { name: "Deployment sections" });
+  await sections.getByRole("tab", { name: "History" }).click();
+  await expect(page).toHaveURL(/\?tab=history$/);
   const history = page.getByRole("region", { name: "History" });
   await expect(history.getByRole("link", { name: "Power off" })).toBeVisible();
   await expect(history.getByRole("link", { name: "Take a snapshot" })).toBeVisible();
   await expect(history.getByText("Succeeded").first()).toBeVisible({ timeout: 15_000 });
 
   // Delete asks for the name.
-  await sections.getByRole("link", { name: "Overview" }).click();
-  await page.getByRole("button", { name: /^Delete/ }).click();
+  await sections.getByRole("tab", { name: "Overview" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const del = page.getByRole("dialog", { name: "Delete · web-dev-api" });
   const confirm = del.getByRole("button", { name: "Delete" });
   await expect(confirm).toBeDisabled();

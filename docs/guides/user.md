@@ -126,13 +126,18 @@ owner, choose a status or an environment, or select **Lease ends within 7
 days** or **Only mine**. The address keeps what you choose. Select a row to
 open its deployment, or its **⋯** menu for its actions. To act on several
 at once, select their checkboxes: power them on or off, shut down their
-guests, take a snapshot, or delete them. A deployment shows:
-- its VMs, their addresses and DNS records;
-- their state in vCenter, live;
-- its history.
+guests, take a snapshot, or delete them. A deployment's page shows its status
+and owner at the top, and:
+- **Overview:** its VMs, their addresses and DNS records, and their state
+  in vCenter, live; its details, lease and placement;
+- **History:** what ran on it;
+- **Inputs:** what it was requested with.
 
-**Actions** depend on the VM and your role. They run as requests, with
-their own steps:
+**Actions**, at the top of the page, lists every action that applies, by
+group. For a deployment with several VMs, each VM's actions are in a
+submenu with its name, and in the **⋯** menu of its row. An action you
+can't run now says why. They depend on the VM and your role, and run as
+requests, with their own steps:
 - **Power:** on, off, shut down or restart the guest, reset.
 - **Snapshots:** take, revert, delete.
 - **Size and hardware:**
@@ -150,8 +155,10 @@ their own steps:
   on).
 - **Delete.**
 
-Some actions need approval: deleting in production, going over a soft
-quota.
+An action that loses something, such as Delete, Power off or Revert to a
+snapshot, asks first and says what changes. Delete also asks you to type the
+deployment's name. Some actions need approval: deleting in production, going
+over a soft quota.
 
 - **Console:** opens the VM's screen in the browser, or in VMware Remote
   Console.

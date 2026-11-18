@@ -2,12 +2,22 @@
 // VM, and the dialog that confirms, asks for inputs and starts the request.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Ellipsis, ShieldCheck } from "lucide-react";
+import { ChevronDown, Ellipsis, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuSeparator,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input, Textarea } from "@/components/ui/input";
 import { FormRenderer } from "@/forms/FormRenderer";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
@@ -27,8 +37,8 @@ export const groupLabel: Record<Day2Action["group"], string> = {
 
 const groupOrder = Object.keys(groupLabel) as Day2Action["group"][];
 
-/** Actions that run without asking anything: no form, no confirmation, no approval. */
-export const runsDirectly = (a: Day2Action) => !a.form && !a.confirm && !a.approval.required;
+/** Actions that run without asking anything: no form, no confirmation, no approval, nothing lost. */
+export const runsDirectly = (a: Day2Action) => !a.form && !a.confirm && !a.approval.required && !a.destructive;
 
 /** Toast for an action that failed to start without a dialog to show it in. */
 export function actionFailed(e: unknown) {
@@ -122,7 +132,12 @@ export function ActionDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         title={`${action.name} · ${target ?? deployment.name}`}
-        description={action.confirm?.message}
+        description={
+          action.confirm?.message ||
+          (action.destructive
+            ? `${action.name} runs on ${target ?? deployment.name} as soon as you confirm.`
+            : undefined)
+        }
         className="w-[min(560px,calc(100vw-32px))]"
       >
         <form
@@ -225,6 +240,72 @@ export function ActionsMenu({
       </MenuTrigger>
       <MenuContent className="min-w-60">
         <ActionItems actions={actions} onPick={onPick} consoleLink={consoleLink} />
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/**
+ * Every action of a deployment in one menu: its own and its VM's for one VM;
+ * for several, its own, then a submenu per VM.
+ */
+export function DeploymentActionsMenu({
+  deploymentId,
+  actions,
+  loading,
+  onPick,
+}: {
+  deploymentId: string;
+  actions: Day2Action[];
+  loading: boolean;
+  onPick: (a: Day2Action) => void;
+}) {
+  const vms = [
+    ...new Map(
+      actions.filter((a) => a.resource_id).map((a) => [a.resource_id!, a.resource_name ?? a.resource_id!]),
+    ).entries(),
+  ];
+  const single = vms.length === 1 ? vms[0]![0] : undefined;
+  const top = single ? actions : actions.filter((a) => !a.resource_id);
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <Button>
+          Actions <ChevronDown />
+        </Button>
+      </MenuTrigger>
+      <MenuContent className="min-w-64">
+        {loading ? (
+          <MenuLabel>Loading…</MenuLabel>
+        ) : (
+          <>
+            {(top.length > 0 || vms.length === 0) && (
+              <ActionItems
+                actions={top}
+                onPick={onPick}
+                consoleLink={single ? { deploymentId, resourceId: single } : undefined}
+              />
+            )}
+            {!single && vms.length > 0 && (
+              <>
+                {top.length > 0 && <MenuSeparator />}
+                <MenuLabel>Virtual machines</MenuLabel>
+                {vms.map(([id, name]) => (
+                  <MenuSub key={id}>
+                    <MenuSubTrigger>{name}</MenuSubTrigger>
+                    <MenuSubContent className="min-w-60">
+                      <ActionItems
+                        actions={actions.filter((a) => a.resource_id === id)}
+                        onPick={onPick}
+                        consoleLink={{ deploymentId, resourceId: id }}
+                      />
+                    </MenuSubContent>
+                  </MenuSub>
+                ))}
+              </>
+            )}
+          </>
+        )}
       </MenuContent>
     </Menu>
   );

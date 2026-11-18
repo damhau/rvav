@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Power, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
-import { Page } from "@/components/common/page";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { Panel } from "@/components/ui/panel";
+import { KeyValues, Page } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { tabItem, tabStrip } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tip } from "@/components/ui/tooltip";
 import type {
   Day2Action,
@@ -25,7 +26,7 @@ import type {
 } from "@/lib/api/types";
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
-import { ActionDialog, ActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
+import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
 
@@ -393,58 +394,6 @@ function toYaml(value: unknown, indent = 0): string {
   return String(value);
 }
 
-const tileHint: Record<string, string> = {
-  resize: "CPU and memory, hot-add aware",
-  disk_add: "On the VM's datastore, thin or thick",
-  snapshot_create: "Kept as long as the environment allows",
-  change_owner: "Hand it to another member of the project",
-  change_project: "The new project's quota and placement are checked",
-  delete: "Releases its IP addresses and DNS records too",
-};
-
-function ActionTiles({ actions, loading, onPick }: { actions: Day2Action[]; loading: boolean; onPick: Pick }) {
-  if (loading) return <SkeletonRows rows={2} cols={3} />;
-  if (actions.length === 0) return <p className="px-4 py-6 text-secondary text-muted">No actions apply here.</p>;
-  // Each tile draws its right and bottom lines, and the box clips those of the
-  // last column and row. A gap-px grid on a coloured background would show
-  // that colour in the cells a short last row leaves empty.
-  return (
-    <div className="overflow-hidden rounded-b-lg">
-      <div className="-mr-px -mb-px grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))]">
-        {actions.map((a) => (
-          <button
-            key={`${a.key}-${a.resource_id ?? ""}`}
-            type="button"
-            disabled={!a.enabled}
-            onClick={() => onPick(a)}
-            className="flex w-full flex-col items-start gap-0.5 border-r border-b border-line px-4 py-2.5 text-left hover:bg-sunken focus-visible:-outline-offset-2 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-          >
-            <span
-              className={cn(
-                "font-medium",
-                !a.enabled && "text-muted",
-                a.key === "delete" && (a.enabled ? "text-bad" : "text-bad/60"),
-              )}
-            >
-              {a.name}
-              {a.resource_id && (
-                <span className="ml-1.5 font-mono text-caption font-normal text-faint">{a.resource_name}</span>
-              )}
-            </span>
-            <span className="text-caption text-faint">
-              {!a.enabled
-                ? a.disabled_reason
-                : a.approval.required
-                  ? `Needs approval: ${a.approval.reasons.join("; ")}`
-                  : tileHint[a.key]}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const afterExpiry = (d: DeploymentDetail) =>
   d.lease.expiry_action === "delete"
     ? "Then it is deleted."
@@ -550,17 +499,39 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
   );
 }
 
-function Overview({
-  d,
-  actions,
-  loading,
-  onPick,
-}: {
-  d: DeploymentDetail;
-  actions: Day2Action[];
-  loading: boolean;
-  onPick: Pick;
-}) {
+/** What the deployment is, each fact only when it has one. */
+function Details({ d }: { d: DeploymentDetail }) {
+  const items: { label: string; value: React.ReactNode }[] = [
+    {
+      label: "Catalog item",
+      value: (
+        <Link to="/catalog/$itemId" params={{ itemId: d.catalog_item.slug }} className="text-accent hover:underline">
+          {d.catalog_item.name}
+        </Link>
+      ),
+    },
+    { label: "Version", value: <span className="font-mono text-secondary">{d.version.number}</span> },
+    { label: "Project", value: d.project.name },
+    { label: "Created", value: <Time iso={d.created_at} /> },
+  ];
+  if (d.created_by_request_id)
+    items.push({
+      label: "Created by",
+      value: (
+        <Link
+          to="/requests/$requestId"
+          params={{ requestId: d.created_by_request_id }}
+          className="font-mono text-accent hover:underline"
+        >
+          {d.created_by_request_id}
+        </Link>
+      ),
+    });
+  if (d.vm_count > 0) items.push({ label: "VMs", value: `${d.vm_count}, ${d.vms_powered_on} powered on` });
+  return <KeyValues items={items} />;
+}
+
+function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Action[]; onPick: Pick }) {
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
   if (isMulti(vms)) {
@@ -578,34 +549,8 @@ function Overview({
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
         <Drift vms={vms} actions={actions} onPick={onPick} />
-        <Panel
-          title="Virtual machines"
-          flush
-          actions={<span className="text-caption text-faint">Live from vCenter</span>}
-        >
+        <Panel title="Virtual machines" description="Live from vCenter" flush>
           <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} />
-        </Panel>
-        <Panel
-          title="Actions"
-          flush
-          actions={<span className="text-caption text-faint">More in each VM&apos;s menu</span>}
-        >
-          <ActionTiles
-            loading={loading}
-            actions={actions.filter(
-              (a) =>
-                (a.resource_id === null || a.resource_id === undefined
-                  ? a.key in tileHint
-                  : a.resource_id === vms[0]?.id && ["resize", "disk_add", "snapshot_create"].includes(a.key)) &&
-                a.key !== "console",
-            )}
-            onPick={onPick}
-          />
-        </Panel>
-      </div>
-      <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
-        <Panel title="Placement">
-          <Placement vms={vms} rules={rules} />
         </Panel>
         <Panel title="Network and addresses">
           <Network ips={ips} dns={dns} segments={segments} />
@@ -615,8 +560,16 @@ function Overview({
             <SecurityGroups groups={groups} policies={policies} members={members} />
           </Panel>
         )}
+      </div>
+      <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+        <Panel title="Details">
+          <Details d={d} />
+        </Panel>
         <Panel title="Lease">
           <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />
+        </Panel>
+        <Panel title="Placement">
+          <Placement vms={vms} rules={rules} />
         </Panel>
       </aside>
     </div>
@@ -659,6 +612,7 @@ function History({ deploymentId }: { deploymentId: string }) {
 }
 
 export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: string; tab: DeploymentTab }) {
+  const navigate = useNavigate();
   const dep = useQuery(q.deployment(deploymentId));
   const actionsQ = useQuery(q.deploymentActions(deploymentId));
   const actions = actionsQ.data?.items ?? [];
@@ -684,86 +638,90 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
     );
   }
   const d = dep.data;
-  const tabs: [DeploymentTab, string][] = [
-    ["overview", "Overview"],
-    ["history", "History"],
-    ["inputs", "Inputs"],
-  ];
   return (
     <Page>
-      <div className="flex flex-col gap-1.5">
-        <Breadcrumbs>
-          <Link to="/deployments">Deployments</Link>
-        </Breadcrumbs>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-title font-semibold">{d?.name ?? <Skeleton className="h-5 w-48" />}</h1>
-          {d && <EnvBadge env={d.environment} />}
-          {d && <DeploymentStatusBadge status={d.status} />}
-          {d && d.sync_state !== "in_sync" && (
-            <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
-              {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
-            </span>
-          )}
-        </div>
-        {d && (
-          <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-secondary text-muted">
-            <span>
-              {d.catalog_item.name} <span className="font-mono text-caption">{d.version.number}</span>
-            </span>
-            <span>Owner {d.owner.name}</span>
-            <span>
-              Created <Time iso={d.created_at} />
-              {d.created_by_request_id && (
-                <>
-                  {" "}
-                  by{" "}
-                  <Link to="/requests/$requestId" params={{ requestId: d.created_by_request_id }}>
-                    {d.created_by_request_id}
-                  </Link>
-                </>
+      <PageHeader
+        breadcrumbs={
+          <Breadcrumbs>
+            <Link to="/deployments">Deployments</Link>
+          </Breadcrumbs>
+        }
+        title={d?.name ?? <Skeleton className="h-5 w-48" />}
+        meta={
+          d && (
+            <>
+              <DeploymentStatusBadge status={d.status} />
+              <EnvBadge env={d.environment} />
+              {d.sync_state !== "in_sync" && (
+                <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
+                  {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
+                </span>
               )}
-            </span>
-            <span>{d.lease.expires_at ? `Lease: ${leaseLabel(d.lease.expires_at).toLowerCase()}` : "No lease"}</span>
+              <span>Owner {d.owner.name}</span>
+            </>
+          )
+        }
+        actions={
+          d && (
+            <DeploymentActionsMenu
+              deploymentId={deploymentId}
+              actions={actions}
+              loading={actionsQ.isPending}
+              onPick={pick}
+            />
+          )
+        }
+      />
+
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          void navigate({
+            to: "/deployments/$deploymentId",
+            params: { deploymentId },
+            search: { tab: next === "overview" ? undefined : (next as DeploymentTab) },
+            replace: true,
+          })
+        }
+      >
+        <TabsList aria-label="Deployment sections">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="inputs">Inputs</TabsTrigger>
+        </TabsList>
+        {!d ? (
+          <div className="mt-4 rounded-lg border border-line bg-surface">
+            <SkeletonRows rows={4} cols={4} />
           </div>
+        ) : (
+          <>
+            <TabsContent value="overview" className="pt-4">
+              <Overview d={d} actions={actions} onPick={pick} />
+            </TabsContent>
+            <TabsContent value="history" className="pt-4">
+              <Panel title="History">
+                <History deploymentId={deploymentId} />
+              </Panel>
+            </TabsContent>
+            <TabsContent value="inputs" className="pt-4">
+              <Panel
+                title="Inputs"
+                description={
+                  <>
+                    Values submitted with {d.created_by_request_id ?? "the creating request"}, as passed to the
+                    blueprint and to AWX as <span className="font-mono">extra_vars</span>.
+                  </>
+                }
+                flush
+              >
+                <pre className="m-0 overflow-x-auto px-4 py-3.5 font-mono text-secondary leading-relaxed">
+                  {toYaml(d.inputs)}
+                </pre>
+              </Panel>
+            </TabsContent>
+          </>
         )}
-      </div>
-
-      <nav aria-label="Deployment sections" className={tabStrip}>
-        {tabs.map(([key, label]) => (
-          <Link
-            key={key}
-            to="/deployments/$deploymentId"
-            params={{ deploymentId }}
-            search={{ tab: key === "overview" ? undefined : key }}
-            aria-current={tab === key ? "page" : undefined}
-            className={cn(tabItem, tab === key && "border-accent font-medium text-fg")}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
-
-      {!d ? (
-        <div className="rounded-lg border border-line bg-surface">
-          <SkeletonRows rows={4} cols={4} />
-        </div>
-      ) : tab === "history" ? (
-        <Panel title="History">
-          <History deploymentId={deploymentId} />
-        </Panel>
-      ) : tab === "inputs" ? (
-        <Panel title="Inputs" flush>
-          <p className="border-b border-line px-4 py-2.5 text-secondary text-muted">
-            Values submitted with {d.created_by_request_id ?? "the creating request"}, as passed to the blueprint and to
-            AWX as <span className="font-mono">extra_vars</span>.
-          </p>
-          <pre className="m-0 overflow-x-auto px-4 py-3.5 font-mono text-secondary leading-relaxed">
-            {toYaml(d.inputs)}
-          </pre>
-        </Panel>
-      ) : (
-        <Overview d={d} actions={actions} loading={actionsQ.isPending} onPick={pick} />
-      )}
+      </Tabs>
       {d && picked && <ActionDialog deployment={d} action={picked} onClose={() => setPicked(null)} />}
     </Page>
   );

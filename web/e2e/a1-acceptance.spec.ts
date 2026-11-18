@@ -117,7 +117,9 @@ test("the operator powers a VM off and on, and is offered nothing else", async (
 
   const vm = "web-dev-api004";
   await expect(page.getByRole("button", { name: `Open the console of ${vm}` })).toBeDisabled();
-  await expect(page.getByRole("region", { name: "Actions" }).getByRole("button", { disabled: false })).toHaveCount(0);
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await expect(enabledItems(page)).toHaveText([/^Power off/]);
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: `More actions for ${vm}` }).click();
   await expect(enabledItems(page)).toHaveText([/^Power off/]);
   await expect(page.getByRole("menuitem", { name: /^Reset/ })).toContainText(

@@ -86,8 +86,10 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
 ### Deployments
 - A table with its filters in the toolbar, kept in the address; each row's
   ⋯ menu holds its actions, and selected rows get bulk actions.
-- Detail page with tabs: Overview (resources, live state), Actions, History
-  (timeline), Inputs, Lease, Audit.
+- Detail page: its status and owner in the header, beside an **Actions** menu
+  with every action that applies (a submenu per VM when there are several),
+  each it can't run with the reason. Tabs in the address: Overview (VMs live,
+  network, security groups, details, lease, placement), History, Inputs.
 - VM row: power indicator, IP and FQDN (click to copy), console button, actions menu.
 
 ### Approvals inbox
