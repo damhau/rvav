@@ -295,7 +295,10 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 `trim()`, `replace(old, new)`, `split(sep)`, a list's `join(sep)`,
 `substring(start, end)`, `indexOf(s)`, `lastIndexOf(s)`, `charAt(i)`,
 `reverse()`, `'%s-%d'.format([a, b])` and `strings.quote(s)`. For example,
-`inputs.app.trim().lowerAscii().replace('_', '-')`.
+`inputs.app.trim().lowerAscii().replace('_', '-')`. An expression fails if
+one of these functions would build a string of more than 1 MiB, or `split`
+a list of more than 100,000 items. What they build also counts against the
+expression's cost limit.
 
 | Field | What it is |
 |---|---|

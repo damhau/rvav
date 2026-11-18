@@ -10,7 +10,6 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
-	"github.com/google/cel-go/ext"
 )
 
 // Vars are the values an expression can read. Missing keys are bound to
@@ -56,7 +55,11 @@ func (s *set) celEnv() (*cel.Env, error) {
 	s.once.Do(func() {
 		// Pinned to a version, so a newer cel-go adds no function an
 		// expression saved today could clash with.
-		opts := []cel.EnvOption{ext.Strings(ext.StringsVersion(4))}
+		opts, err := boundedStrings()
+		if err != nil {
+			s.err = err
+			return
+		}
 		for _, n := range s.names {
 			if s.strings[n] {
 				opts = append(opts, cel.Variable(n, cel.StringType))
@@ -85,7 +88,7 @@ func (s *set) program(expr string) (cel.Program, error) {
 	}
 	// Bounded: an expression that would run too long (comprehensions
 	// nested over large lists) fails instead of holding a CPU (S14.6).
-	p, err := e.Program(ast, cel.CostLimit(costLimit))
+	p, err := e.Program(ast, cel.CostLimit(costLimit), builtCosts())
 	if err != nil {
 		return nil, fmt.Errorf("program %q: %w", expr, err)
 	}
