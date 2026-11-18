@@ -88,8 +88,11 @@ test("make a custom role, change it and delete it", async ({ page }) => {
   const roles = page.getByRole("region", { name: "Roles" });
   await expect(roles.getByRole("row", { name: /Power operator/ })).toContainText("Nobody");
   await roles.getByRole("link", { name: "Power operator" }).click();
-  page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: "Delete role" }).click();
+  await page.getByRole("button", { name: "More actions for Power operator" }).click();
+  await page.getByRole("menuitem", { name: "Delete role" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete Power operator?" });
+  await expect(confirm).toContainText("nobody loses a permission");
+  await confirm.getByRole("button", { name: "Delete role" }).click();
   await expect(page.getByText("Power operator deleted")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Roles", level: 1 })).toBeVisible();
   await expect(roles.getByRole("link", { name: "Power operator" })).toHaveCount(0);
@@ -116,7 +119,6 @@ test("a built-in role can't be changed: a role of your own starts from it", asyn
 
 test("give a custom role in a project and to a group; what it then refuses", async ({ page }) => {
   test.slow();
-  page.on("dialog", (d) => void d.accept());
   await page.goto("/");
   await makeRole(page, "vm-operator", "VM operator", ["project.see", "Power on", "Power off"]);
 
@@ -160,10 +162,12 @@ test("give a custom role in a project and to a group; what it then refuses", asy
   await expect(page.getByRole("region", { name: "Permissions" }).getByRole("alert")).toContainText(
     "VM operator is given in Web Platform: a permission for all of rvav only can't be added while it is.",
   );
-  await page.getByRole("button", { name: "Delete role" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "is given 3 times" })).toHaveText(
-    "VM operator is given 3 times, to users or groups: take it away first.",
-  );
+  await page.getByRole("button", { name: "More actions for VM operator" }).click();
+  await expect(page.getByRole("menuitem", { name: "Delete: given 3 times" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await openRolesFromNav(page);
+  await page.getByRole("region", { name: "Roles" }).getByRole("button", { name: "Actions for VM operator" }).click();
+  await expect(page.getByRole("menuitem", { name: "Delete: given 3 times" })).toBeDisabled();
 });
 
 test("give a role for all of rvav, refused twice, then taken away", async ({ page }) => {
@@ -181,7 +185,11 @@ test("give a role for all of rvav, refused twice, then taken away", async ({ pag
   }
   await expect(rvav.getByRole("alert")).toHaveText("Alain Favre already holds Access keeper.");
   await expect(rvav.getByRole("row", { name: /Alain Favre/ })).toContainText("Access keeper");
-  await rvav.getByRole("button", { name: "Take Access keeper away from Alain Favre" }).click();
+  await expect(rvav.getByRole("button", { name: /^Actions for .* of Léa Martin$/ })).toHaveCount(0);
+  await rvav.getByRole("button", { name: "Actions for Access keeper of Alain Favre" }).click();
+  await page.getByRole("menuitem", { name: "Take it away" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Take Access keeper away from Alain Favre?" });
+  await confirm.getByRole("button", { name: "Take it away" }).click();
   await expect(page.getByText("Access keeper taken away from Alain Favre")).toBeVisible();
   await expect(rvav.getByRole("row", { name: /Alain Favre/ })).toHaveCount(0);
 });

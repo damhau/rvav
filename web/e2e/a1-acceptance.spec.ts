@@ -174,13 +174,14 @@ test("the compliance auditor reads the administration and can change nothing", a
   await expect(page.getByRole("list", { name: "Its permissions" })).toContainText("audit.read");
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save role" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Delete role" })).toBeHidden();
+  await expect(page.getByRole("button", { name: /^More actions for/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Make a role from it" })).toBeHidden();
   await nav(page, "Roles");
   await page.getByRole("tab", { name: "For all of rvav" }).click();
   const rvav = page.getByRole("region", { name: "Given for all of rvav" });
   await expect(rvav.getByRole("row", { name: /Léa Martin/ })).toContainText("Compliance auditor");
   await expect(rvav.getByRole("textbox", { name: "Give someone" })).toBeHidden();
-  await expect(rvav.getByRole("button", { name: /^Take / })).toHaveCount(0);
+  await expect(rvav.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
 
   await nav(page, "Audit log");
   await openDeployment(page, "web-dev-api");

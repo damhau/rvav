@@ -1,9 +1,9 @@
 // One role (ADR-0034): what it allows, in the catalogue's words, and a
 // custom one's editor for those holding access.manage.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { Ellipsis, TriangleAlert } from "lucide-react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -11,8 +11,10 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -207,8 +209,65 @@ function PermissionList({
   );
 }
 
-/** A custom role's editor, or a new role's. */
-function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["Role"]; start?: string[] }) {
+/** Why a custom role can't be deleted, said in place of Delete. */
+export const cantDelete = (role: S["Role"]) =>
+  role.holders > 0
+    ? `Delete: given ${role.holders} ${role.holders === 1 ? "time" : "times"}`
+    : role.policies.length > 0
+      ? "Delete: day-2 policies name it"
+      : undefined;
+
+/** Asks before deleting a custom role, then deletes it. */
+export function DeleteRole({
+  role,
+  onClose,
+  onDeleted,
+}: {
+  role: S["Role"];
+  onClose: () => void;
+  onDeleted?: () => void;
+}) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => call(api.DELETE("/admin/roles/{key}", { params: { path: { key: role.key } } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin"] });
+      void qc.invalidateQueries({ queryKey: ["me"] });
+      toast.success(`${role.name} deleted`);
+      onClose();
+      onDeleted?.();
+    },
+    onError: (e) => {
+      onClose();
+      failed(e, "Not deleted");
+    },
+  });
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Delete ${role.name}?`}
+      description="Nobody can be given it any more."
+      consequences="Nobody holds it now, and no day-2 policy names it: nobody loses a permission."
+      confirmLabel="Delete role"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
+  );
+}
+
+/** A custom role's editor, or a new role's; its submit button is in the page's header. */
+function RoleForm({
+  formId,
+  catalogue,
+  role,
+  start,
+}: {
+  formId: string;
+  catalogue: Catalogue;
+  role?: S["Role"];
+  start?: string[];
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [f, setF] = useState({
@@ -222,6 +281,7 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
     void qc.invalidateQueries({ queryKey: ["me"] });
   };
   const save = useMutation({
+    mutationKey: saveKey,
     mutationFn: () => {
       const body = { name: f.name, description: f.description, permissions: inOrder(catalogue, f.permissions) };
       return role
@@ -237,22 +297,12 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
       if (!refused(e, [409, 422])) failed(e, "Not saved");
     },
   });
-  const remove = useMutation({
-    mutationFn: () => call(api.DELETE("/admin/roles/{key}", { params: { path: { key: role!.key } } })),
-    onSuccess: () => {
-      changed();
-      toast.success(`${role!.name} deleted`);
-      void navigate({ to: "/admin/roles" });
-    },
-    onError: (e) => {
-      if (!refused(e, [409])) failed(e, "Not deleted");
-    },
-  });
   const errors = fieldErrors(save.error);
   const keyTaken = !role && isApiError(save.error) && save.error.status === 409 ? save.error.problem.detail : undefined;
   const permissionsError = errorAt(errors, "/permissions");
   return (
     <form
+      id={formId}
       className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]"
       onSubmit={(e) => {
         e.preventDefault();
@@ -319,25 +369,7 @@ function RoleForm({ catalogue, role, start }: { catalogue: Catalogue; role?: S["
         </Panel>
         <div className="flex flex-col gap-2">
           {role && <Uses role={role} />}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              {role ? "Save role" : "Make role"}
-            </Button>
-            {role && (
-              <Button
-                type="button"
-                variant="danger"
-                disabled={remove.isPending}
-                onClick={() =>
-                  window.confirm(`Delete ${role.name}? Nobody can be given it any more.`) && remove.mutate()
-                }
-              >
-                Delete role
-              </Button>
-            )}
-          </div>
           {!keyTaken && <Refusal error={save.error} only={[409]} />}
-          <Refusal error={remove.error} only={[409]} />
         </div>
       </div>
     </form>
@@ -377,25 +409,58 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
           </p>
         )}
         <Uses role={role} />
-        {canMake && (
-          <div>
-            <Button asChild size="sm">
-              <Link to="/admin/roles/new" search={{ from: role.key }}>
-                Make a role from it
-              </Link>
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
+const saveKey = ["admin", "role", "save"];
+
+function SaveButton({ formId, label }: { formId: string; label: string }) {
+  const saving = useIsMutating({ mutationKey: saveKey }) > 0;
+  return (
+    <Button type="submit" form={formId} variant="primary" disabled={saving}>
+      {saving ? "Saving…" : label}
+    </Button>
+  );
+}
+
+function RoleMenu({ role, editable, onDelete }: { role: S["Role"]; editable: boolean; onDelete: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <IconButton label={`More actions for ${role.name}`} variant="secondary" className="size-8">
+          <Ellipsis />
+        </IconButton>
+      </MenuTrigger>
+      <MenuContent>
+        <MenuItem onSelect={() => void navigate({ to: "/admin/roles/new", search: { from: role.key } })}>
+          Make a role from it
+        </MenuItem>
+        {editable && (
+          <>
+            <MenuSeparator />
+            <MenuItem danger disabled={Boolean(cantDelete(role))} onSelect={onDelete}>
+              {cantDelete(role) ?? "Delete role"}
+            </MenuItem>
+          </>
+        )}
+      </MenuContent>
+    </Menu>
+  );
+}
+
 export function RolePage({ roleKey }: { roleKey: string }) {
   const { me } = useCurrentProject();
+  const navigate = useNavigate();
+  const formId = useId();
   const role = useQuery(adm.role(roleKey));
   const catalogue = useQuery(adm.permissions());
+  const [deleting, setDeleting] = useState(false);
   const r = role.data;
+  const canMake = can(me, "access.manage");
+  const editable = Boolean(r && canMake && !r.built_in);
   return (
     <Page>
       <PageHeader
@@ -410,22 +475,46 @@ export function RolePage({ roleKey }: { roleKey: string }) {
             </>
           )
         }
+        actions={
+          r &&
+          canMake &&
+          (editable ? (
+            <>
+              <RoleMenu role={r} editable onDelete={() => setDeleting(true)} />
+              <SaveButton formId={formId} label="Save role" />
+            </>
+          ) : (
+            <Button asChild variant="primary">
+              <Link to="/admin/roles/new" search={{ from: r.key }}>
+                Make a role from it
+              </Link>
+            </Button>
+          ))
+        }
       />
       {(role.isPending || catalogue.isPending) && !role.isError && !catalogue.isError && <Skeleton className="h-64" />}
       {role.isError && <ErrorState error={role.error} onRetry={() => void role.refetch()} />}
       {catalogue.isError && <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />}
       {r &&
         catalogue.data &&
-        (can(me, "access.manage") && !r.built_in ? (
-          <RoleForm key={r.key} catalogue={catalogue.data} role={r} />
+        (editable ? (
+          <RoleForm key={r.key} formId={formId} catalogue={catalogue.data} role={r} />
         ) : (
-          <RoleView catalogue={catalogue.data} role={r} canMake={can(me, "access.manage")} />
+          <RoleView catalogue={catalogue.data} role={r} canMake={canMake} />
         ))}
+      {r && deleting && (
+        <DeleteRole
+          role={r}
+          onClose={() => setDeleting(false)}
+          onDeleted={() => void navigate({ to: "/admin/roles" })}
+        />
+      )}
     </Page>
   );
 }
 
 export function NewRolePage({ from }: { from?: string }) {
+  const formId = useId();
   const source = useQuery({ ...adm.role(from ?? ""), enabled: Boolean(from) });
   const catalogue = useQuery(adm.permissions());
   const ready = catalogue.data && (!from || source.data || source.isError);
@@ -434,11 +523,12 @@ export function NewRolePage({ from }: { from?: string }) {
       <PageHeader
         breadcrumbs={crumbs}
         title="New role"
-        meta={source.data ? `Starting from what ${source.data.name} allows.` : "Choose what it allows."}
+        description={source.data ? `Starting from what ${source.data.name} allows.` : "Choose what it allows."}
+        actions={ready && <SaveButton formId={formId} label="Make role" />}
       />
       {!ready && !catalogue.isError && <Skeleton className="h-64" />}
       {catalogue.isError && <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />}
-      {ready && <RoleForm catalogue={catalogue.data} start={source.data?.permissions} />}
+      {ready && <RoleForm formId={formId} catalogue={catalogue.data} start={source.data?.permissions} />}
     </Page>
   );
 }

@@ -53,15 +53,53 @@ export function AccessExplained({
   projectId,
   self,
   linked,
+  filters,
 }: {
   userId: string;
   projectId?: string;
   self: boolean;
   linked: boolean;
+  /** Who and where, in the toolbar before Show. */
+  filters?: React.ReactNode;
+}) {
+  const [show, setShow] = useState<Show>("all");
+  return (
+    <div className="flex flex-col">
+      <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
+        {filters}
+        <Field label="Show" htmlFor="explain-show" className="w-48">
+          <Select
+            id="explain-show"
+            value={show}
+            onChange={(v) => setShow(v as Show)}
+            options={[
+              { value: "all", label: "Every permission" },
+              { value: "held", label: "Those held" },
+              { value: "not-held", label: "Those not held" },
+            ]}
+          />
+        </Field>
+      </div>
+      <Explanation userId={userId} projectId={projectId} self={self} linked={linked} show={show} />
+    </div>
+  );
+}
+
+function Explanation({
+  userId,
+  projectId,
+  self,
+  linked,
+  show,
+}: {
+  userId: string;
+  projectId?: string;
+  self: boolean;
+  linked: boolean;
+  show: Show;
 }) {
   const answer = useQuery(adm.explain(userId, projectId));
   const catalogue = useQuery(adm.permissions());
-  const [show, setShow] = useState<Show>("all");
   if (answer.isError) return <ErrorState error={answer.error} onRetry={() => void answer.refetch()} />;
   if (catalogue.isError) return <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />;
   if (!answer.data || !catalogue.data) return <SkeletonRows rows={6} cols={3} />;
@@ -78,7 +116,7 @@ export function AccessExplained({
     areas.set(area, [...(areas.get(area) ?? []), p]);
   }
   return (
-    <div className="flex flex-col">
+    <>
       <div className="flex flex-col gap-2 border-b border-line px-4 py-3 text-body">
         <p>
           {self ? "Your roles" : `${a.user.name}'s roles`} {where}, with the groups of {their} last sign-in
@@ -95,20 +133,6 @@ export function AccessExplained({
         <p className="text-secondary text-muted">
           An API token acts with the roles given to {self ? "you" : "them"} only, never those through a group.
         </p>
-      </div>
-      <div className="flex items-end gap-2 border-b border-line px-4 py-3">
-        <Field label="Show" htmlFor="explain-show" className="w-48">
-          <Select
-            id="explain-show"
-            value={show}
-            onChange={(v) => setShow(v as Show)}
-            options={[
-              { value: "all", label: "Every permission" },
-              { value: "held", label: "Those held" },
-              { value: "not-held", label: "Those not held" },
-            ]}
-          />
-        </Field>
       </div>
       <div className="overflow-x-auto">
         <table
@@ -171,7 +195,7 @@ export function AccessExplained({
           </tbody>
         </table>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -189,25 +213,36 @@ export function WhatSomeoneMayDo({
   const projects = useQuery(adm.projectNames());
   const who = userId ?? me.user.id;
   return (
-    <Panel title="What someone may do" flush>
-      <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
-        <div className="w-72">
-          <UserPicker label="Who" id="explain-user" onPick={(u) => onChange({ user: u.id, project: projectId })} />
-        </div>
-        <Field label="Where" htmlFor="explain-project" className="w-56">
-          <Select
-            id="explain-project"
-            value={projectId ?? RVAV}
-            onChange={(v) => onChange({ user: userId, project: v === RVAV ? undefined : v })}
-            loading={projects.isPending}
-            options={[
-              { value: RVAV, label: "For all of rvav" },
-              ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
-            ]}
-          />
-        </Field>
-      </div>
-      <AccessExplained userId={who} projectId={projectId} self={who === me.user.id} linked />
+    <Panel
+      title="What someone may do"
+      description="Each permission, held or not, and which of their roles grants it: the answer to why someone can't."
+      flush
+    >
+      <AccessExplained
+        userId={who}
+        projectId={projectId}
+        self={who === me.user.id}
+        linked
+        filters={
+          <>
+            <div className="w-72">
+              <UserPicker label="Who" id="explain-user" onPick={(u) => onChange({ user: u.id, project: projectId })} />
+            </div>
+            <Field label="Where" htmlFor="explain-project" className="w-56">
+              <Select
+                id="explain-project"
+                value={projectId ?? RVAV}
+                onChange={(v) => onChange({ user: userId, project: v === RVAV ? undefined : v })}
+                loading={projects.isPending}
+                options={[
+                  { value: RVAV, label: "For all of rvav" },
+                  ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </Field>
+          </>
+        }
+      />
     </Panel>
   );
 }
@@ -223,24 +258,24 @@ export function MyAccessPage({ project }: { project?: string }) {
     <Page>
       <PageHeader title="What I may do" meta="Each permission, held or not, and which of your roles grants it." />
       <Panel title="Your permissions" flush>
-        <div className="flex items-end gap-2 border-b border-line px-4 py-3">
-          <Field label="Where" htmlFor="my-access-project" className="w-56">
-            <Select
-              id="my-access-project"
-              value={chosen}
-              onChange={(v) => void navigate({ to: "/access", search: { project: v }, replace: true })}
-              options={[
-                { value: RVAV, label: "For all of rvav" },
-                ...me.projects.map((p) => ({ value: p.project.id, label: p.project.name })),
-              ]}
-            />
-          </Field>
-        </div>
         <AccessExplained
           userId={me.user.id}
           projectId={chosen === RVAV ? undefined : chosen}
           self
           linked={can(me, "access.read")}
+          filters={
+            <Field label="Where" htmlFor="my-access-project" className="w-56">
+              <Select
+                id="my-access-project"
+                value={chosen}
+                onChange={(v) => void navigate({ to: "/access", search: { project: v }, replace: true })}
+                options={[
+                  { value: RVAV, label: "For all of rvav" },
+                  ...me.projects.map((p) => ({ value: p.project.id, label: p.project.name })),
+                ]}
+              />
+            </Field>
+          }
         />
       </Panel>
     </Page>

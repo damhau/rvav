@@ -2,22 +2,25 @@
 // searched and exported as CSV. Administrators and auditors see all of it,
 // project admins their projects' events.
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { Download, ScrollText } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { Page } from "@/components/common/page";
+import { ErrorState } from "@/components/common/feedback";
+import { KeyValues, Page } from "@/components/common/page";
+import { Button } from "@/components/ui/button";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Field, Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { useDebounced } from "@/lib/hooks";
-import { adm, q, type AuditFilters } from "@/lib/query";
 import { projectsWith } from "@/lib/can";
+import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
+import { adm, q, type AuditFilters } from "@/lib/query";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
 
@@ -48,20 +51,88 @@ function dayStart(day: string, after = false): string {
 
 const time = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-function Detail({ e }: { e: AuditEvent }) {
-  const entries = Object.entries(e.detail);
-  if (entries.length === 0) return <span className="text-faint">—</span>;
+const target = (e: AuditEvent) => (
+  <>
+    <span className="text-faint">{e.target_type.replace("_", " ")}</span>{" "}
+    <span className="font-mono">{e.target_id}</span>
+  </>
+);
+
+const detailCount = (e: AuditEvent) => Object.keys(e.detail).length;
+
+const value = (v: unknown) =>
+  typeof v === "string" ? (
+    v
+  ) : (
+    <pre className="overflow-auto rounded bg-sunken p-2 font-mono text-caption whitespace-pre-wrap">
+      {JSON.stringify(v, null, 2)}
+    </pre>
+  );
+
+function EventSheet({ e, onClose }: { e: AuditEvent; onClose: () => void }) {
   return (
-    <details>
-      <summary className="cursor-pointer text-secondary text-muted">
-        {entries.length} detail{entries.length > 1 ? "s" : ""}
-      </summary>
-      <pre className="mt-1 max-w-md overflow-auto rounded bg-sunken p-2 font-mono text-caption whitespace-pre-wrap">
-        {JSON.stringify(e.detail, null, 2)}
-      </pre>
-    </details>
+    <Sheet open onOpenChange={(o) => !o && onClose()} title={e.action} description={time(e.at)}>
+      <KeyValues
+        items={[
+          {
+            label: "Who",
+            value: !e.actor ? "rvav" : e.actor.email ? `${e.actor.name} (${e.actor.email})` : e.actor.name,
+          },
+          { label: "What", value: <span className="font-mono">{e.action}</span> },
+          { label: "On", value: target(e) },
+          { label: "Project", value: e.project?.name ?? "None" },
+          { label: "Event", value: <span className="font-mono">{e.id}</span> },
+        ]}
+      />
+      <section aria-labelledby="audit-detail" className="flex flex-col gap-2">
+        <h3 id="audit-detail" className="label">
+          Detail
+        </h3>
+        {detailCount(e) === 0 ? (
+          <p className="text-secondary text-muted">Nothing more was recorded.</p>
+        ) : (
+          <KeyValues items={Object.entries(e.detail).map(([k, v]) => ({ label: k, value: value(v) }))} />
+        )}
+      </section>
+    </Sheet>
   );
 }
+
+const columns = (open: (e: AuditEvent) => void): Column<AuditEvent>[] => [
+  {
+    id: "when",
+    header: "When",
+    cell: (e) => (
+      <button
+        type="button"
+        className="text-left text-secondary whitespace-nowrap text-muted hover:text-accent"
+        onClick={() => open(e)}
+      >
+        <span className="sr-only">Open the event from </span>
+        <time dateTime={e.at}>{time(e.at)}</time>
+      </button>
+    ),
+  },
+  { id: "who", header: "Who", cell: (e) => <span className="text-secondary">{e.actor?.name ?? "rvav"}</span> },
+  { id: "what", header: "What", cell: (e) => <span className="font-mono text-secondary">{e.action}</span> },
+  { id: "on", header: "On", cell: (e) => <span className="text-secondary">{target(e)}</span> },
+  {
+    id: "project",
+    header: "Project",
+    cell: (e) => <span className="text-secondary">{e.project?.name ?? <span className="text-faint">None</span>}</span>,
+  },
+  {
+    id: "detail",
+    header: "Detail",
+    cell: (e) => (
+      <span className="text-secondary text-muted">
+        {detailCount(e) === 0 ? "None" : `${detailCount(e)} ${detailCount(e) === 1 ? "detail" : "details"}`}
+      </span>
+    ),
+  },
+];
+
+const none = { search: "", kind: "any", project: "any", from: "", to: "" };
 
 export function AuditPage() {
   const { me } = useCurrentProject();
@@ -76,20 +147,18 @@ export function AuditPage() {
           label: p.archived ? `${p.name} (archived)` : p.name,
         }))
       : scope.map((p) => ({ value: p.id, label: p.name }));
-  const [search, setSearch] = useState("");
-  const [kind, setKind] = useState("any");
-  const [project, setProject] = useState("any");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [f, setF] = useState(none);
+  const [opened, setOpened] = useState<AuditEvent | null>(null);
   const filters: AuditFilters = {
-    q: useDebounced(search, 300) || undefined,
-    action: kind === "any" ? undefined : kind,
-    project_id: project === "any" ? undefined : project,
-    from: from ? dayStart(from) : undefined,
-    to: to ? dayStart(to, true) : undefined,
+    q: useDebounced(f.search, 300) || undefined,
+    action: f.kind === "any" ? undefined : f.kind,
+    project_id: f.project === "any" ? undefined : f.project,
+    from: f.from ? dayStart(f.from) : undefined,
+    to: f.to ? dayStart(f.to, true) : undefined,
   };
+  const filtered = (Object.keys(none) as (keyof typeof none)[]).some((k) => f[k] !== none[k]);
   const events = useInfiniteQuery(q.audit(filters));
-  const list = events.data?.pages.flatMap((p) => p.items) ?? [];
+  const list = events.data?.pages.flatMap((p) => p.items);
   const exportCsv = useMutation({
     mutationFn: async () => {
       const text = await call(api.GET("/audit", { params: { query: { ...filters, format: "csv" } }, parseAs: "text" }));
@@ -103,101 +172,94 @@ export function AuditPage() {
     <Page>
       <PageHeader
         title="Audit log"
-        meta="Every change people and rvav make: catalog, projects, policies, settings and tokens."
+        description="Every change people and rvav make: catalog, projects, policies, settings and tokens. Newest first."
         actions={
-          <Button size="sm" disabled={exportCsv.isPending} onClick={() => exportCsv.mutate()}>
+          <Button disabled={exportCsv.isPending} onClick={() => exportCsv.mutate()}>
+            <Download />
             {exportCsv.isPending ? "Exporting…" : "Export CSV"}
           </Button>
         }
       />
-      <Panel flush>
-        <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
-          <Field label="Search" htmlFor="audit-search" className="w-56">
-            <Input
-              id="audit-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Who, what, target"
-            />
-          </Field>
-          <Field label="What" htmlFor="audit-kind" className="w-40">
-            <Select id="audit-kind" value={kind} onChange={setKind} options={kinds} />
-          </Field>
-          <Field label="Project" htmlFor="audit-project" className="w-44">
-            <Select
-              id="audit-project"
-              value={project}
-              onChange={setProject}
-              options={[{ value: "any", label: "Any" }, ...projectOptions]}
-            />
-          </Field>
-          <Field label="From" htmlFor="audit-from">
-            <Input id="audit-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </Field>
-          <Field label="To" htmlFor="audit-to">
-            <Input id="audit-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </Field>
-        </div>
-        {events.isPending && <SkeletonRows rows={6} cols={5} />}
-        {events.isError && <ErrorState error={events.error} onRetry={() => void events.refetch()} />}
-        {events.data && list.length === 0 && (
-          <EmptyState title="Nothing found" body="No event matches these filters." />
-        )}
-        {list.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-body">
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                    When
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Who
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    What
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    On
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Project
-                  </th>
-                  <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                    Detail
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((e) => (
-                  <tr key={e.id} className="align-top hover:bg-sunken">
-                    <td className="border-b border-line px-4 py-2 text-secondary whitespace-nowrap text-muted">
-                      {time(e.at)}
-                    </td>
-                    <td className="border-b border-line px-3 py-2 text-secondary">{e.actor?.name ?? "rvav"}</td>
-                    <td className="border-b border-line px-3 py-2 font-mono text-secondary">{e.action}</td>
-                    <td className="border-b border-line px-3 py-2 text-secondary">
-                      <span className="text-faint">{e.target_type.replace("_", " ")}</span>{" "}
-                      <span className="font-mono">{e.target_id}</span>
-                    </td>
-                    <td className="border-b border-line px-3 py-2 text-secondary">{e.project?.name ?? "—"}</td>
-                    <td className="border-b border-line px-4 py-2">
-                      <Detail e={e} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {events.hasNextPage && (
-          <div className="px-4 py-3">
+      <Panel
+        flush
+        footer={
+          events.hasNextPage && (
             <Button size="sm" disabled={events.isFetchingNextPage} onClick={() => void events.fetchNextPage()}>
               {events.isFetchingNextPage ? "Loading…" : "Load older events"}
             </Button>
-          </div>
-        )}
+          )
+        }
+      >
+        <DataTable
+          label="Audit events"
+          columns={columns(setOpened)}
+          rows={list}
+          rowKey={(e) => e.id}
+          minWidth={820}
+          loading={events.isPending}
+          error={events.isError && <ErrorState error={events.error} onRetry={() => void events.refetch()} />}
+          toolbar={
+            <div className="flex w-full flex-wrap items-end gap-2">
+              <Field label="Search" htmlFor="audit-search" className="w-56">
+                <Input
+                  id="audit-search"
+                  value={f.search}
+                  onChange={(e) => setF({ ...f, search: e.target.value })}
+                  placeholder="Who, what, target"
+                />
+              </Field>
+              <Field label="What" htmlFor="audit-kind" className="w-40">
+                <Select id="audit-kind" value={f.kind} onChange={(kind) => setF({ ...f, kind })} options={kinds} />
+              </Field>
+              <Field label="Project" htmlFor="audit-project" className="w-44">
+                <Select
+                  id="audit-project"
+                  value={f.project}
+                  onChange={(project) => setF({ ...f, project })}
+                  options={[{ value: "any", label: "Any" }, ...projectOptions]}
+                />
+              </Field>
+              <Field label="From" htmlFor="audit-from">
+                <Input
+                  id="audit-from"
+                  type="date"
+                  value={f.from}
+                  onChange={(e) => setF({ ...f, from: e.target.value })}
+                />
+              </Field>
+              <Field label="To" htmlFor="audit-to">
+                <Input id="audit-to" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
+              </Field>
+              {filtered && (
+                <Button variant="quiet" onClick={() => setF(none)}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          }
+          empty={
+            filtered ? (
+              <EmptyState
+                icon={ScrollText}
+                title="Nothing found"
+                body="No event matches these filters."
+                action={
+                  <Button size="sm" onClick={() => setF(none)}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={ScrollText}
+                title="Nothing recorded yet"
+                body="Changes to the catalog, projects, policies, settings and tokens show here as people make them."
+              />
+            )
+          }
+        />
       </Panel>
+      {opened && <EventSheet e={opened} onClose={() => setOpened(null)} />}
     </Page>
   );
 }
