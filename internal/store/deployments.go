@@ -347,7 +347,7 @@ type IPAMResource struct {
 // IPAMResources lists the addresses and DNS records deployments own.
 func (s *Store) IPAMResources(ctx context.Context) ([]IPAMResource, error) {
 	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state,
-		r.properties, d.name as deployment_name
+		r.properties, r.prevent_delete, d.name as deployment_name
 		from resources r join deployments d on d.id = r.deployment_id
 		where r.type in ('ipam.address', 'dns.record') order by d.name, r.type, r.name`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAMResource])
