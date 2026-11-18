@@ -134,6 +134,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				Timeout: w.TimeoutSeconds, Inputs: ev.Inputs}
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		}
+		plan.Placement = ev.placementNotes()
 		plan.Context = map[string]any{
 			"request_id": req.ID, "request_number": req.Number, "project": ev.Project.Code,
 			"environment": ev.Env.Key, "requester": p.User.Email,

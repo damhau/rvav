@@ -45,6 +45,9 @@ type Plan struct {
 	// Security are the NSX security groups and firewall rules made for its
 	// deployments before their VMs (ADR-0028).
 	Security []SecurityUnit `json:"security,omitempty"`
+	// Placement says how constraint tags placed its VMs, and the soft
+	// constraints let go (ADR-0035), for its timeline.
+	Placement []string `json:"placement,omitempty"`
 }
 
 // ComponentUnit is one component of a multi-VM blueprint's plan.
@@ -593,8 +596,10 @@ type StepDef struct {
 // Step keys. VM steps get "@<vm name>" appended when a request builds
 // more than one VM.
 const (
-	KeySubmit    = "submit"
-	KeyPolicy    = "policy"
+	KeySubmit = "submit"
+	KeyPolicy = "policy"
+	// KeyPlacement says how constraint tags placed the VMs: done at submit.
+	KeyPlacement = "placement"
 	KeyIPAM      = "ipam.reserve"
 	KeyDNS       = "dns.create"
 	KeyClone     = "vsphere.clone"
@@ -699,6 +704,10 @@ func (p Plan) vmTitle(title string, vm VMUnit) string {
 // Steps lists the top-level steps of the plan in order.
 func (p Plan) Steps(environment string) []StepDef {
 	steps := []StepDef{{Key: KeySubmit, Title: "Submitted", System: "rvav", Status: "done"}}
+	if len(p.Placement) > 0 {
+		steps = append(steps, StepDef{Key: KeyPlacement, Title: "Placed by constraint tags", Detail: strings.Join(p.Placement, "; "),
+			System: "rvav", Status: "done"})
+	}
 	switch {
 	case p.ApprovalRequired:
 		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Waiting for approval", System: "policy", Status: "running"})

@@ -332,6 +332,11 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
     setRefused(pending?.problems.length ? { text: original, errors: pending.problems } : undefined);
   }, [original, pending, shown?.id]);
   const dirty = text !== original || Boolean(pending);
+  // What may not work as meant in the version as saved (ADR-0035), on its lines.
+  const warnings = useMemo(
+    () => (pending || !version.data?.warnings ? [] : problemsOnLines(original, version.data.warnings)),
+    [pending, version.data, original],
+  );
   useEffect(() => onDirty(text !== original), [text, original, onDirty]);
   useEffect(() => {
     if (text === original) return;
@@ -433,6 +438,15 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
           {problems.length > 0 && (
             <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-secondary text-bad">
               {problems.map((p, i) => (
+                <li key={i}>
+                  Line {p.line}: {p.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {warnings.length > 0 && (
+            <ul aria-label="Warnings" className="mt-2 flex flex-col gap-0.5 text-secondary text-warn">
+              {warnings.map((p, i) => (
                 <li key={i}>
                   Line {p.line}: {p.message}
                 </li>

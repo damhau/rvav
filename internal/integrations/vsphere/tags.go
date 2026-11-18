@@ -13,10 +13,10 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-// readTags puts the vSphere tags of clusters and datastores, as
-// category/tag, on the inventory: placement rules can choose by them
-// (ADR-0020). It needs the tagging service, through vCenter's REST API
-// with the same credentials.
+// readTags puts the vSphere tags of clusters, datastores and networks, as
+// category/tag, on the inventory: placement rules (ADR-0020) and
+// blueprints' constraints (ADR-0035) choose by them. It needs the tagging
+// service, through vCenter's REST API with the same credentials.
 func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory) error {
 	m, done, err := cl.tagManager(ctx, c)
 	if err != nil {
@@ -30,6 +30,9 @@ func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory)
 	}
 	for _, d := range inv.Datastores {
 		refs = append(refs, types.ManagedObjectReference{Type: "Datastore", Value: d.Moref})
+	}
+	for _, n := range inv.Networks {
+		refs = append(refs, types.ManagedObjectReference{Type: n.Kind, Value: n.Moref})
 	}
 	if len(refs) == 0 {
 		return nil
@@ -58,6 +61,9 @@ func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory)
 	}
 	for i := range inv.Datastores {
 		inv.Datastores[i].Tags = sorted(byObject["Datastore:"+inv.Datastores[i].Moref])
+	}
+	for i := range inv.Networks {
+		inv.Networks[i].Tags = sorted(byObject[inv.Networks[i].Kind+":"+inv.Networks[i].Moref])
 	}
 	return nil
 }

@@ -48,7 +48,7 @@ type LibrarySpec struct {
 	Items                    map[string]string
 }
 
-// TagSpec is a vSphere tag on clusters and datastores, by name.
+// TagSpec is a vSphere tag on clusters, datastores and networks, by name.
 type TagSpec struct {
 	Category, Name string
 	Objects        []string
@@ -103,10 +103,12 @@ func DefaultLayout() Layout {
 		VMTagCategories: []string{"backup", "app"},
 		Libraries: []LibrarySpec{{Name: "rvav-templates", Datastore: "vsan-gva-dev-cl01", Cluster: "GVA-DEV-CL01",
 			Items: map[string]string{"rhel9-library": "tpl-rhel9.4-2026.10"}}},
-		// Placement by tag (ADR-0020): a storage tier on clusters and datastores.
+		// Placement by tag (ADR-0020) and constraints (ADR-0035): a storage
+		// tier on clusters and datastores, a zone on networks.
 		Tags: []TagSpec{
 			{Category: "rvav-tier", Name: "gold", Objects: []string{"GVA-PRD-CL01", "vsan-gva-prd-cl01", "vsan-gva-dev-cl01"}},
 			{Category: "rvav-tier", Name: "bronze", Objects: []string{"GVA-DEV-CL01", "nfs-gva-bronze-01"}},
+			{Category: "rvav-zone", Name: "dmz", Objects: []string{"dvpg-web-prd-vl210"}},
 		},
 	}
 }
@@ -274,7 +276,7 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 			if cat, err := m.GetCategory(ctx, t.Category); err == nil {
 				catID = cat.ID
 			} else if catID, err = m.CreateCategory(ctx, &tags.Category{Name: t.Category, Cardinality: "MULTIPLE",
-				AssociableTypes: []string{"ClusterComputeResource", "Datastore"}}); err != nil {
+				AssociableTypes: []string{"ClusterComputeResource", "Datastore", "Network", "DistributedVirtualPortgroup"}}); err != nil {
 				return err
 			}
 			categories[t.Category] = catID
@@ -291,8 +293,10 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 				ref = cc.Reference()
 			} else if ds, err := finder.Datastore(ctx, name); err == nil {
 				ref = ds.Reference()
+			} else if n, err := finder.Network(ctx, name); err == nil {
+				ref = n.Reference()
 			} else {
-				return fmt.Errorf("no cluster or datastore %s to tag", name)
+				return fmt.Errorf("no cluster, datastore or network %s to tag", name)
 			}
 			if err := m.AttachTag(ctx, tagID, ref); err != nil {
 				return err

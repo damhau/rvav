@@ -32,7 +32,7 @@ import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, newIdempotencyKey, roughDuration } from "@/lib/utils";
-import { ComponentsPreview } from "./ComponentsPreview";
+import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
 
 const RequestTopology = lazy(() => import("./RequestTopology"));
 
@@ -223,6 +223,12 @@ function Summary({
                 ))}
               </dl>
             )}
+            {single && !composite && preview.components?.[0]?.placement?.constraints?.length ? (
+              <div className="flex flex-col gap-1.5 border-t border-line px-4 py-3">
+                <span className="label">Placed by tags</span>
+                <PlacedBy constraints={preview.components[0].placement.constraints} />
+              </div>
+            ) : null}
             {(oneDeployment || composite) && preview.components && (
               <ComponentsPreview components={preview.components} />
             )}

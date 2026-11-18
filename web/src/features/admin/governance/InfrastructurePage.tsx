@@ -1,8 +1,8 @@
 // VM templates, size presets and network mappings (S9, ADR-0020): what
 // blueprints' template and size pickers offer, and the subnet each vCenter
-// network deploys into.
+// network deploys into; and the vCenter objects' tags (ADR-0035).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, HardDrive, Network } from "lucide-react";
+import { Cpu, HardDrive, Network, Server } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
@@ -10,7 +10,7 @@ import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type Column } from "@/components/ui/data-table";
+import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
@@ -655,6 +655,133 @@ function Networks({ canEdit }: { canEdit: boolean }) {
   );
 }
 
+type Kind = "cluster" | "datastore" | "network";
+
+interface VsphereObject {
+  kind: Kind;
+  vcenter: string;
+  name: string;
+  /** Hosts and free memory, free space, or the clusters a network reaches. */
+  detail: string;
+  tags: string[];
+}
+
+const kindLabel: Record<Kind, string> = { cluster: "Cluster", datastore: "Datastore", network: "Network" };
+
+function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
+  return [
+    ...inv.clusters.map((c) => ({
+      kind: "cluster" as const,
+      vcenter: c.vcenter,
+      name: c.name,
+      detail: `${c.hosts} hosts, ${c.memory_free_gb} GB memory free`,
+      tags: c.tags,
+    })),
+    ...inv.datastores.map((d) => ({
+      kind: "datastore" as const,
+      vcenter: d.vcenter,
+      name: d.name,
+      detail: `${d.free_gb} of ${d.capacity_gb} GB free`,
+      tags: d.tags,
+    })),
+    ...inv.networks.map((n) => ({
+      kind: "network" as const,
+      vcenter: n.vcenter,
+      name: n.name,
+      detail: n.clusters.join(", ") || "No cluster",
+      tags: n.tags,
+    })),
+  ];
+}
+
+/** The vCenter objects the sync read, with the tags placement rules and constraints choose by (ADR-0035). */
+function Inventory() {
+  const inventory = useQuery(adm.inventory());
+  const [q, setQ] = useState("");
+  const [kind, setKind] = useState<Kind | "all">("all");
+  const all = inventory.data ? objectsOf(inventory.data) : undefined;
+  const needle = q.trim().toLowerCase();
+  const rows = all?.filter(
+    (o) =>
+      (kind === "all" || o.kind === kind) &&
+      (!needle || o.name.toLowerCase().includes(needle) || o.tags.some((t) => t.toLowerCase().includes(needle))),
+  );
+  const columns: Column<VsphereObject>[] = [
+    {
+      id: "name",
+      header: "Name",
+      sortValue: (o) => o.name,
+      cell: (o) => <span className="font-mono text-secondary">{o.name}</span>,
+    },
+    { id: "kind", header: "Kind", sortValue: (o) => o.kind, cell: (o) => kindLabel[o.kind] },
+    { id: "vcenter", header: "vCenter", sortValue: (o) => o.vcenter, cell: (o) => o.vcenter },
+    { id: "detail", header: "Capacity or reach", cell: (o) => <span className="text-secondary">{o.detail}</span> },
+    {
+      id: "tags",
+      header: "Tags",
+      sortValue: (o) => o.tags.join(" ") || null,
+      cell: (o) =>
+        o.tags.length ? (
+          <span className="flex flex-wrap gap-1">
+            {o.tags.map((t) => (
+              <Badge key={t} tone="outline" className="font-mono">
+                {t}
+              </Badge>
+            ))}
+          </span>
+        ) : (
+          <span className="text-faint">None</span>
+        ),
+    },
+  ];
+  return (
+    <Panel
+      title="vCenter objects"
+      description="The clusters, datastores and networks the last inventory sync read. Placement rules and blueprints' constraints choose by their vSphere tags, written category/tag."
+      flush
+    >
+      <DataTable
+        label="vCenter objects"
+        columns={columns}
+        rows={rows}
+        rowKey={(o) => `${o.kind}/${o.vcenter}/${o.name}`}
+        minWidth={760}
+        defaultSort={{ id: "name", desc: false }}
+        loading={inventory.isPending}
+        error={inventory.isError && <ErrorState error={inventory.error} onRetry={() => void inventory.refetch()} />}
+        toolbar={
+          <>
+            <TableSearch label="Search by name or tag" value={q} onChange={setQ} placeholder="Name or tag" />
+            <Select
+              aria-label="Kind"
+              className="w-40"
+              value={kind}
+              onChange={(v) => setKind(v as Kind | "all")}
+              options={[
+                { value: "all", label: "All kinds" },
+                { value: "cluster", label: "Clusters" },
+                { value: "datastore", label: "Datastores" },
+                { value: "network", label: "Networks" },
+              ]}
+            />
+          </>
+        }
+        empty={
+          <EmptyState
+            icon={Server}
+            title={all?.length ? "Nothing matches" : "No vCenter objects yet"}
+            body={
+              all?.length
+                ? "No cluster, datastore or network has that name or tag."
+                : "The inventory sync lists them once a vCenter is connected."
+            }
+          />
+        }
+      />
+    </Panel>
+  );
+}
+
 export function InfrastructurePage() {
   const { me } = useCurrentProject();
   const canEdit = can(me, "infrastructure.manage");
@@ -662,13 +789,14 @@ export function InfrastructurePage() {
     <Page>
       <PageHeader
         title="Templates and networks"
-        description="What blueprints' template and size pickers offer, and the subnet each network deploys into."
+        description="What blueprints' template and size pickers offer, the subnet each network deploys into, and the tags of vCenter objects."
       />
       <Tabs defaultValue="templates">
         <TabsList aria-label="Infrastructure sections">
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="sizes">Sizes</TabsTrigger>
           <TabsTrigger value="networks">Networks</TabsTrigger>
+          <TabsTrigger value="inventory">vCenter objects</TabsTrigger>
         </TabsList>
         <TabsContent value="templates" className="pt-4">
           <Templates canEdit={canEdit} />
@@ -678,6 +806,9 @@ export function InfrastructurePage() {
         </TabsContent>
         <TabsContent value="networks" className="pt-4">
           <Networks canEdit={canEdit} />
+        </TabsContent>
+        <TabsContent value="inventory" className="pt-4">
+          <Inventory />
         </TabsContent>
       </Tabs>
     </Page>

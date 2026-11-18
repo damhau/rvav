@@ -48,6 +48,15 @@ export const networks: Network[] = [
   { name: "dvpg-db-prd-vl230", env: "prd", subnet: "10.22.30.0/25", gateway: "10.22.30.1", free: 31, nextHost: 40 },
 ];
 
+/** The vSphere tags on clusters, datastores and networks, as category/tag (ADR-0035). */
+export const tags: Record<string, string[]> = {
+  "GVA-PRD-CL01": ["rvav-tier/gold"],
+  "GVA-DEV-CL01": ["rvav-tier/bronze"],
+  "vsan-gva-prd-cl01": ["rvav-tier/gold"],
+  "nfs-gva-bronze-01": ["rvav-tier/bronze"],
+  "dvpg-web-prd-vl210": ["rvav-zone/dmz"],
+};
+
 export const dnsZones = ["corp.example", "web.corp.example", "data.corp.example", "10.in-addr.arpa"];
 
 export function prefix(subnet: string) {

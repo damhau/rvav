@@ -27,8 +27,8 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 				inv.VCenter, d.Moref, d.Name, d.CapacityGB, d.FreeGB, nonNil(d.Clusters), nonNil(d.Tags))
 		}
 		for _, n := range inv.Networks {
-			b.Queue(`insert into inv_networks (vcenter, moref, name, kind, clusters) values ($1,$2,$3,$4,$5)`,
-				inv.VCenter, n.Moref, n.Name, n.Kind, nonNil(n.Clusters))
+			b.Queue(`insert into inv_networks (vcenter, moref, name, kind, clusters, tags) values ($1,$2,$3,$4,$5,$6)`,
+				inv.VCenter, n.Moref, n.Name, n.Kind, nonNil(n.Clusters), nonNil(n.Tags))
 		}
 		for _, t := range inv.Templates {
 			b.Queue(`insert into inv_templates (vcenter, moref, name, guest_os, library) values ($1,$2,$3,$4,$5)`,
@@ -60,7 +60,7 @@ func (s *Store) InventoryDatastores(ctx context.Context) ([]InvDatastore, error)
 }
 
 func (s *Store) InventoryNetworks(ctx context.Context) ([]InvNetwork, error) {
-	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, kind, clusters from inv_networks order by name, vcenter`)
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, kind, clusters, tags from inv_networks order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvNetwork])
 }
 

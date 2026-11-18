@@ -6,8 +6,8 @@
 import type { CanvasGraph, CanvasStatus } from "@/components/canvas/graph";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 
-// The server's (submit, policy, checks) and the mock's.
-const before = new Set(["submit", "policy", "checks", "request.submit", "policy.approval"]);
+// The server's (submit, placement by constraint tags, policy, checks) and the mock's.
+const before = new Set(["submit", "placement", "policy", "checks", "request.submit", "policy.approval"]);
 const ready = new Set(["ready", "request.ready"]);
 
 /**

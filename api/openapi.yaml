@@ -2593,6 +2593,21 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/inventory:
+    get:
+      tags: [admin]
+      operationId: getVsphereInventory
+      summary: The clusters, datastores and networks of every vCenter, with their tags
+      description: What the last inventory sync read. Placement rules and blueprints' constraints choose by these tags, as category/tag (ADR-0035).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VsphereInventory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /admin/network-mappings:
     get:
       tags: [admin]
@@ -4437,6 +4452,10 @@ components:
           required: [definition]
           properties:
             definition: { $ref: "#/components/schemas/CatalogVersionDefinition" }
+            warnings:
+              type: array
+              description: "What may not work as meant, without stopping a save or a publish: a blueprint's constraint naming a tag (`unknown_tag`) that no cluster, datastore or network of the inventory carries (ADR-0035). Pointers as in a validation error's."
+              items: { $ref: "#/components/schemas/FieldError" }
     CatalogVersionDefinition:
       type: object
       required: [form_schema, ui_schema, initial_values, blueprint]
@@ -5542,17 +5561,7 @@ components:
           items: { type: string }
         os_family: { type: string, enum: [linux, windows] }
         template: { type: string }
-        placement:
-          type: object
-          properties:
-            vcenter: { type: string }
-            cluster: { type: string }
-            datastore: { type: string }
-            folder: { type: string }
-            storage_policy: { type: string }
-            chosen:
-              type: boolean
-              description: rvav chose the cluster or datastore (they weren't given).
+        placement: { $ref: "#/components/schemas/ComponentPlacement" }
         disks:
           type: array
           description: Every disk, the template's first.
@@ -5579,6 +5588,43 @@ components:
           type: array
           items: { type: string }
         anti_affinity: { type: boolean, description: Its VMs are kept on separate hosts. }
+
+    ComponentPlacement:
+      type: object
+      properties:
+        vcenter: { type: string }
+        cluster: { type: string }
+        datastore: { type: string }
+        folder: { type: string }
+        storage_policy: { type: string }
+        chosen:
+          type: boolean
+          description: rvav chose the cluster, a datastore or the network (they weren't given).
+        constraints:
+          type: array
+          description: What its constraint tags chose or ruled out (ADR-0035), in the order they applied.
+          items: { $ref: "#/components/schemas/PlacementConstraint" }
+
+    PlacementConstraint:
+      type: object
+      required: [kind, tag, negated, soft, met, excluded]
+      properties:
+        kind:
+          type: string
+          enum: [compute, storage, network]
+          description: What it chooses, a cluster, a datastore or a network.
+        tag: { type: string, description: "category/tag", examples: [rvav-tier/gold] }
+        negated: { type: boolean, description: "It rules out what carries the tag (`!rvav-zone/dmz`)." }
+        soft: { type: boolean, description: "It is preferred, and let go when nothing allowed meets it." }
+        disk:
+          type: integer
+          description: Set for an added disk's own storage constraint, as its place in `disks` (the template's disk is 0).
+        object: { type: string, description: "The cluster, datastore or network the VMs (or the disk) go to. Absent when none could be chosen." }
+        met: { type: boolean, description: "`object` meets it. A soft constraint not met was let go." }
+        excluded:
+          type: array
+          description: The allowed clusters, datastores or networks it ruled out (or passed over, for a soft one).
+          items: { type: string }
 
     QuotaImpact:
       type: object
@@ -7586,10 +7632,11 @@ components:
         tags: { type: array, items: { type: string } }
     PreviewNetwork:
       type: object
-      required: [name, clusters]
+      required: [name, clusters, tags]
       properties:
         name: { type: string }
         clusters: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
         subnet: { type: string, description: Empty when no mapping gives it a subnet. }
         dns_zone: { type: string }
         source: { type: string, enum: [manual, efficientip, nsx], description: "nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028)." }
@@ -7624,6 +7671,46 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/NetworkMapping" }
+    VsphereInventory:
+      type: object
+      required: [clusters, datastores, networks]
+      properties:
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryCluster" }
+        datastores:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryDatastore" }
+        networks:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryNetwork" }
+    InventoryCluster:
+      type: object
+      required: [vcenter, name, hosts, memory_free_gb, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string }
+        hosts: { type: integer }
+        memory_free_gb: { type: integer }
+        tags: { type: array, items: { type: string }, description: "category/tag" }
+    InventoryDatastore:
+      type: object
+      required: [vcenter, name, free_gb, capacity_gb, clusters, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string }
+        free_gb: { type: integer }
+        capacity_gb: { type: integer }
+        clusters: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+    InventoryNetwork:
+      type: object
+      required: [vcenter, name, clusters, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string }
+        clusters: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
     Offer:
       type: object
       description: Where something is offered; a null project or environment means all.

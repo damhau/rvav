@@ -2056,6 +2056,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The clusters, datastores and networks of every vCenter, with their tags
+         * @description What the last inventory sync read. Placement rules and blueprints' constraints choose by these tags, as category/tag (ADR-0035).
+         */
+        get: operations["getVsphereInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/network-mappings": {
         parameters: {
             query?: never;
@@ -3311,6 +3331,8 @@ export interface components {
         };
         CatalogItemVersionDetail: components["schemas"]["CatalogItemVersion"] & {
             definition: components["schemas"]["CatalogVersionDefinition"];
+            /** @description What may not work as meant, without stopping a save or a publish: a blueprint's constraint naming a tag (`unknown_tag`) that no cluster, datastore or network of the inventory carries (ADR-0035). Pointers as in a validation error's. */
+            warnings?: components["schemas"]["FieldError"][];
         };
         CatalogVersionDefinition: {
             /** @description JSON Schema (draft 2020-12) of the inputs. */
@@ -4105,15 +4127,7 @@ export interface components {
             /** @enum {string} */
             os_family?: "linux" | "windows";
             template?: string;
-            placement?: {
-                vcenter?: string;
-                cluster?: string;
-                datastore?: string;
-                folder?: string;
-                storage_policy?: string;
-                /** @description rvav chose the cluster or datastore (they weren't given). */
-                chosen?: boolean;
-            };
+            placement?: components["schemas"]["ComponentPlacement"];
             /** @description Every disk, the template's first. */
             disks: {
                 size_gb: number;
@@ -4133,6 +4147,41 @@ export interface components {
             tags?: string[];
             /** @description Its VMs are kept on separate hosts. */
             anti_affinity: boolean;
+        };
+        ComponentPlacement: {
+            vcenter?: string;
+            cluster?: string;
+            datastore?: string;
+            folder?: string;
+            storage_policy?: string;
+            /** @description rvav chose the cluster, a datastore or the network (they weren't given). */
+            chosen?: boolean;
+            /** @description What its constraint tags chose or ruled out (ADR-0035), in the order they applied. */
+            constraints?: components["schemas"]["PlacementConstraint"][];
+        };
+        PlacementConstraint: {
+            /**
+             * @description What it chooses, a cluster, a datastore or a network.
+             * @enum {string}
+             */
+            kind: "compute" | "storage" | "network";
+            /**
+             * @description category/tag
+             * @example rvav-tier/gold
+             */
+            tag: string;
+            /** @description It rules out what carries the tag (`!rvav-zone/dmz`). */
+            negated: boolean;
+            /** @description It is preferred, and let go when nothing allowed meets it. */
+            soft: boolean;
+            /** @description Set for an added disk's own storage constraint, as its place in `disks` (the template's disk is 0). */
+            disk?: number;
+            /** @description The cluster, datastore or network the VMs (or the disk) go to. Absent when none could be chosen. */
+            object?: string;
+            /** @description `object` meets it. A soft constraint not met was let go. */
+            met: boolean;
+            /** @description The allowed clusters, datastores or networks it ruled out (or passed over, for a soft one). */
+            excluded: string[];
         };
         QuotaImpact: {
             resource: components["schemas"]["QuotaResource"];
@@ -5715,6 +5764,7 @@ export interface components {
         PreviewNetwork: {
             name: string;
             clusters: string[];
+            tags: string[];
             /** @description Empty when no mapping gives it a subnet. */
             subnet?: string;
             dns_zone?: string;
@@ -5749,6 +5799,33 @@ export interface components {
         };
         NetworkMappingList: {
             items: components["schemas"]["NetworkMapping"][];
+        };
+        VsphereInventory: {
+            clusters: components["schemas"]["InventoryCluster"][];
+            datastores: components["schemas"]["InventoryDatastore"][];
+            networks: components["schemas"]["InventoryNetwork"][];
+        };
+        InventoryCluster: {
+            vcenter: string;
+            name: string;
+            hosts: number;
+            memory_free_gb: number;
+            /** @description category/tag */
+            tags: string[];
+        };
+        InventoryDatastore: {
+            vcenter: string;
+            name: string;
+            free_gb: number;
+            capacity_gb: number;
+            clusters: string[];
+            tags: string[];
+        };
+        InventoryNetwork: {
+            vcenter: string;
+            name: string;
+            clusters: string[];
+            tags: string[];
         };
         /** @description Where something is offered; a null project or environment means all. */
         Offer: {
@@ -10048,6 +10125,28 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getVsphereInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VsphereInventory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listNetworkMappings: {

@@ -70,4 +70,28 @@ describe("Templates and networks", () => {
     const synced = adminState(db).mappings.find((m) => m.source === "efficientip")!.network;
     expect(await items(synced)).toEqual(["Map by hand"]);
   });
+
+  it("lists vCenter objects with their tags, by name, kind or tag", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    await user.click(await screen.findByRole("tab", { name: "vCenter objects" }));
+    const region = await screen.findByRole("region", { name: "vCenter objects" });
+    expect(await within(region).findByRole("row", { name: /^GVA-PRD-CL01 Cluster/ })).toHaveTextContent(
+      "rvav-tier/gold",
+    );
+    expect(within(region).getByRole("row", { name: /^dvpg-web-prd-vl210/ })).toHaveTextContent("rvav-zone/dmz");
+    expect(within(region).getByRole("row", { name: /^dvpg-app-dev-vl310/ })).toHaveTextContent("None");
+
+    await user.type(within(region).getByRole("searchbox", { name: "Search by name or tag" }), "gold");
+    const names = () =>
+      within(region)
+        .getAllByRole("row")
+        .slice(1)
+        .map((r) => within(r).getAllByRole("cell")[0]?.textContent);
+    await waitFor(() => expect(names()).toEqual(["GVA-PRD-CL01", "vsan-gva-prd-cl01"]));
+
+    await user.click(within(region).getByRole("combobox", { name: "Kind" }));
+    await user.click(await screen.findByRole("option", { name: "Datastores" }));
+    await waitFor(() => expect(names()).toEqual(["vsan-gva-prd-cl01"]));
+  });
 });

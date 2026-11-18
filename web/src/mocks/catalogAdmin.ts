@@ -7,6 +7,7 @@ import type { components } from "@/lib/api/schema";
 import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
+import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
@@ -115,6 +116,12 @@ function state(db: Db): AdminState {
 const summary = (v: Version): S["CatalogItemVersion"] => {
   const { definition: _, ...rest } = v;
   return rest;
+};
+
+/** A version as served, with the tags its constraints name that vCenter doesn't have (ADR-0035). */
+const served = (v: Version): Version => {
+  const warnings = constraintWarnings(v.definition.blueprint, "/definition/blueprint");
+  return warnings.length > 0 ? { ...v, warnings } : v;
 };
 
 function adminItem(db: Db, item: StoredItem): S["AdminCatalogItem"] {
@@ -784,13 +791,13 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         definition: structuredClone(c.definition ?? from!.definition),
       };
       versions.unshift(v);
-      return HttpResponse.json(v, { status: 201 });
+      return HttpResponse.json(served(v), { status: 201 });
     }),
     http.get(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params }) => {
       await wait();
       const item = find(String(params.id));
       const v = item && versionsOf(item).find((x) => x.id === params.vid);
-      return v ? HttpResponse.json(v) : problem(404, "Not found");
+      return v ? HttpResponse.json(served(v)) : problem(404, "Not found");
     }),
     http.put(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params, request }) => {
       await wait();
@@ -813,7 +820,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       v.revision += 1;
       if (u.number) v.number = u.number;
       if (u.changelog !== undefined) v.changelog = u.changelog;
-      return HttpResponse.json(v);
+      return HttpResponse.json(served(v));
     }),
     http.delete(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params }) => {
       await wait();

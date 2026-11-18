@@ -1,9 +1,26 @@
 // What a multi-VM blueprint builds (ADR-0024): each component's VMs, their
-// size, placement and network, as the preview says.
+// size, placement and network, as the preview says, and what its constraint
+// tags chose or ruled out (ADR-0035).
 import { Badge } from "@/components/ui/badge";
-import type { PreviewComponent } from "@/lib/api/types";
+import type { PlacementConstraint, PreviewComponent } from "@/lib/api/types";
+
+import { constraintText } from "./constraints";
 
 const osLabel = { linux: "Linux", windows: "Windows" } as const;
+
+/** What constraint tags chose or ruled out, one line each. */
+export function PlacedBy({ constraints }: { constraints?: PlacementConstraint[] }) {
+  if (!constraints?.length) return null;
+  return (
+    <ul className="flex flex-col text-secondary text-muted" aria-label="Placed by tags">
+      {constraints.map((k, i) => (
+        <li key={i} className="break-words">
+          {constraintText(k)}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function ComponentsPreview({ components }: { components: PreviewComponent[] }) {
   const total = components.reduce((n, c) => n + c.count, 0);
@@ -45,6 +62,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                       )
                       .join(" · ")}
                   </span>
+                  <PlacedBy constraints={c.placement?.constraints} />
                   {c.tags && c.tags.length > 0 && (
                     <span className="text-caption text-faint">Tags {c.tags.join(", ")}</span>
                   )}

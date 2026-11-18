@@ -38,6 +38,8 @@ type Blueprint struct {
 	Disks        []Disk                 `json:"disks,omitempty"`
 	NICs         []NIC                  `json:"nics,omitempty"`
 	Tags         []string               `json:"tags,omitempty"`
+	// Constraints choose where its VMs go by vSphere tags (ADR-0035).
+	Constraints *Constraints `json:"constraints,omitempty"`
 	// StoragePolicy is the VMs' storage policy, over the placement rule's.
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
@@ -172,6 +174,8 @@ type Component struct {
 	Disks    []Disk            `json:"disks,omitempty"`
 	NICs     []NIC             `json:"nics,omitempty"`
 	Tags     []string          `json:"tags,omitempty"`
+	// Constraints are its VMs' (ADR-0035).
+	Constraints *Constraints `json:"constraints,omitempty"`
 	// StoragePolicy is its VMs' storage policy.
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
@@ -184,11 +188,14 @@ type Component struct {
 }
 
 // Disk is a disk added after the template's: SizeGB is a number or CEL,
-// Datastore CEL (the VM's when empty).
+// Datastore CEL (the VM's when empty). Constraints are its own storage
+// constraints (ADR-0035): rvav chooses its datastore by them when it isn't
+// given.
 type Disk struct {
-	SizeGB        any    `json:"size_gb"`
-	Datastore     string `json:"datastore,omitempty"`
-	StoragePolicy string `json:"storage_policy,omitempty"`
+	SizeGB        any      `json:"size_gb"`
+	Datastore     string   `json:"datastore,omitempty"`
+	StoragePolicy string   `json:"storage_policy,omitempty"`
+	Constraints   []string `json:"constraints,omitempty"`
 }
 
 // NIC is a network adapter added after the template's: Network is CEL.
@@ -217,7 +224,8 @@ func (b Blueprint) Multi() bool { return len(b.Components) > 0 }
 func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
-			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups}}
+			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups,
+			Constraints: b.Constraints}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -250,6 +258,7 @@ func (b Blueprint) ComponentList() []Component {
 		if r.Tags == nil {
 			r.Tags = b.Tags
 		}
+		r.Constraints = c.Constraints.under(b.Constraints)
 		if r.StoragePolicy == "" {
 			r.StoragePolicy = b.StoragePolicy
 		}

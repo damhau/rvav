@@ -70,6 +70,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		}
 	}
 	errs = append(errs, checkParts(ptr, b.Disks, b.NICs, b.Tags)...)
+	errs = append(errs, checkConstraints(ptr, b.Constraints)...)
 
 	// NSX segments made for each deployment (ADR-0028).
 	segKeys := map[string]bool{}
@@ -127,6 +128,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		checkNaming(at+"/naming", c.Naming)
 		bindings(at+"/bindings", c.Bindings)
 		errs = append(errs, checkParts(at, c.Disks, c.NICs, c.Tags)...)
+		errs = append(errs, checkConstraints(at, c.Constraints)...)
 	}
 	if total > blueprint.MaxVMs {
 		add(ptr+"/components", "out_of_range", fmt.Sprintf("A request builds at most %d VMs; these components have %d.", blueprint.MaxVMs, total))
@@ -284,6 +286,9 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 			if err := policy.Check(d.Datastore); err != nil {
 				add(at+"/datastore", "invalid", "The datastore is not valid CEL: "+err.Error()+` (a name is quoted: '"vsan-01"').`)
 			}
+		}
+		for j, e := range d.Constraints {
+			errs = append(errs, checkConstraint(fmt.Sprintf("%s/constraints/%d", at, j), e)...)
 		}
 	}
 	keys := map[string]bool{}

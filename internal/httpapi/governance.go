@@ -219,6 +219,11 @@ func (s *Server) ListNetworkMappings(w http.ResponseWriter, r *http.Request) {
 	s.reply(w, r, http.StatusOK, api.NetworkMappingList{Items: items}, err)
 }
 
+func (s *Server) GetVsphereInventory(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.VsphereInventory(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) DeleteNetworkMapping(w http.ResponseWriter, r *http.Request, network string) {
 	s.replyEmpty(w, r, s.Core.DeleteNetworkMapping(r.Context(), principal(r), network))
 }

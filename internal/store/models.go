@@ -322,6 +322,7 @@ type InvNetwork struct {
 	Name     string   `db:"name"`
 	Kind     string   `db:"kind"`
 	Clusters []string `db:"clusters"`
+	Tags     []string `db:"tags"`
 }
 
 type InvTemplate struct {

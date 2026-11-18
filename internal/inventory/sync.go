@@ -429,7 +429,7 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 	}
 	// Tags that couldn't be read keep their last known values: a hiccup of
 	// the tagging service mustn't empty placement by tag.
-	clusterTags, datastoreTags := map[string][]string{}, map[string][]string{}
+	clusterTags, datastoreTags, networkTags := map[string][]string{}, map[string][]string{}, map[string][]string{}
 	if inv.TagsError != nil {
 		s.Log.Warn("inventory: vSphere tags not read; keeping the last ones", "err", inv.TagsError)
 		// This vCenter's: morefs repeat between vCenters.
@@ -444,6 +444,13 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 			for _, d := range ds {
 				if d.VCenter == vc.Name() {
 					datastoreTags[d.Moref] = d.Tags
+				}
+			}
+		}
+		if ns, err := s.Store.InventoryNetworks(ctx); err == nil {
+			for _, n := range ns {
+				if n.VCenter == vc.Name() {
+					networkTags[n.Moref] = n.Tags
 				}
 			}
 		}
@@ -467,7 +474,11 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Clusters: d.Clusters, Tags: tags})
 	}
 	for _, n := range inv.Networks {
-		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters})
+		tags := n.Tags
+		if inv.TagsError != nil {
+			tags = networkTags[n.Moref]
+		}
+		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters, Tags: tags})
 	}
 	for _, t := range inv.Templates {
 		snap.Templates = append(snap.Templates, store.InvTemplate{Moref: t.Moref, Name: t.Name, GuestOS: t.GuestOS, Library: t.Library})

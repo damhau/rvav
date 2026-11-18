@@ -294,23 +294,69 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
-| `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
+| `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy`, `constraints` (the disk's own storage constraints, below) |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network` (or `segments.<key>`, a segment made for the deployment, never with DHCP), `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding, or an added adapter's `network`, names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. In a composite, a VM step's segments are made under its step, before its VMs |
 | `security_groups` | NSX groups made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to eight: `key`, `title`, and the firewall `rules` into each: `from` (`any`, another group's key, or `nsx:<group ID>`), `services` (NSX service IDs, or `any`), `action` (`allow`, the default, `drop`, `reject`). In a composite, a VM step's groups and rules are made under its step, before its VMs |
 | `groups` | The NSX groups the VMs are in: keys of `security_groups`, or existing groups that select VMs by tag, as `nsx:<group ID>`; a component may name its own |
 | `tags` | vSphere tags, `category/tag` |
+| `constraints` | The vSphere tags the clusters (`compute`), datastores (`storage`) and network (`network`) of the VMs must carry, or must not; below |
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `groups`, which win over the blueprint's (guest field by field, bindings key by key) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `groups`, `constraints`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind) |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for
 several makes one deployment per VM; with them, one deployment holding
 every component's VMs (20 at most). When a component's `cluster` isn't
 bound, rvav chooses the allowed cluster with the most free memory, and
-the datastore likewise.
+the datastore likewise, among those that meet its constraints.
+
+**Constraint tags** ([ADR-0035](adr/0035-constraint-tags.md)) say what
+the VMs need from vCenter, with the vSphere tags an administrator puts on
+clusters, datastores and networks:
+
+```yaml
+blueprint:
+  kind: vm
+  constraints:
+    compute: [rvav-env/prod, "!rvav-zone/pci"]   # a production cluster outside the PCI zone
+    storage: ["rvav-backup/${inputs.backup}", rvav-tier/gold:soft]
+    network: ["!rvav-zone/dmz"]
+  disks:
+    - size_gb: 200
+      constraints: [rvav-tier/platinum]           # this disk on its own datastore
+```
+
+- An entry is `category/tag`, as the inventory writes tags. `!` in front
+  rules out what carries the tag; quote the entry in YAML.
+- `:soft` makes it a preference: rvav prefers what meets it and, when
+  nothing allowed does, places the VMs anyway and says so on the
+  request's timeline. Without `:soft` (or with `:hard`), the request fails
+  before anything is made, saying which constraint nothing meets.
+- `compute` chooses the cluster, `storage` the datastore and `network` the
+  first adapter's network. rvav chooses the network only when the
+  `network` binding is absent: the first allowed network, by name, with an
+  EfficientIP subnet that meets them. Network constraints don't apply to a
+  segment made for the deployment.
+- A component's `constraints` replace the blueprint's kind by kind:
+  `storage: []` removes the blueprint's storage constraints.
+- A disk's `constraints` place that disk on a datastore of its own when its
+  `datastore` is absent.
+- `${...}` is CEL over `inputs`, `sizes`, `segments`, `environment` (its
+  key) and `project`, worked out at submit. An entry that is only `${...}`
+  may give a list of entries; an empty string gives none.
+- Constraints choose among what the placement rules allow, never beyond.
+  What the blueprint or the form binds is checked against them: a hard
+  constraint it doesn't meet is an error on that field.
+- When you save the item, rvav refuses an entry that isn't
+  `[!]category/tag[:soft]` (vRA's `env:prod` included) and CEL that
+  doesn't compile. It warns about a tag that no cluster, datastore or
+  network in vCenter carries, and still saves.
+
+The request form's summary says which constraint chose or ruled out which
+cluster, datastore or network.
 
 **References between components**: a component's `tags` binding and
 cloud-init user data can read what each VM is and what other components
@@ -548,8 +594,8 @@ All policies have a scope (global, project or item), a CEL condition, and a prio
 
 ### Placement
 - Project → allowed compute, storage and network targets.
-- Strategy: first fit, most free capacity, or round robin; tag-based constraints
-  (for example `env:prod`, `tier:gold`).
+- Strategy: first fit, most free capacity, or round robin; constraint tags
+  (for example `rvav-env/prod`, `rvav-tier/gold:soft`; see VM blueprints).
 - The form can let the user choose among allowed targets, or hide them entirely.
 
 ### Naming

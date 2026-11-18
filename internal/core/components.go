@@ -80,6 +80,8 @@ type vmPart struct {
 	check    *nameCheck
 	// addresses is the next free address of its network, as a hint.
 	addresses []string
+	// constraints are what its constraints did (ADR-0035).
+	constraints []constraintResult
 }
 
 func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
@@ -299,9 +301,25 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 	}
 
-	// Placement chooses the cluster, and the datastore, the blueprint
-	// doesn't bind (ADR-0024).
+	// Placement chooses the cluster, the datastore, and the disks'
+	// datastores, the blueprint doesn't bind (ADR-0024), and its network
+	// when constraints choose it, among what the constraints allow
+	// (ADR-0035). A segment made for the deployment has no tags.
+	cons := constraintsOf(ev, c, strict, add)
+	if part.segment != "" {
+		cons = slices.DeleteFunc(cons, func(k blueprint.Constraint) bool { return k.Kind == blueprint.Network })
+	}
 	pickDatastore := plan.Datastore == "" && c.Bindings["datastore"] == ""
+	pickNetwork := placed.Network == "" && part.segment == "" && c.Bindings["network"] == "" && len(cons.of(blueprint.Network, 0)) > 0
+	// Added disks with constraints of their own and no datastore given go
+	// where those choose; the VMs' datastore holds the rest.
+	disks, vmGB := map[int]int{}, plan.StorageGB()
+	for i, d := range plan.Disks {
+		if d.Datastore == "" && c.Disks[i].Datastore == "" && len(cons.of(blueprint.Storage, i+1)) > 0 {
+			disks[i+1], vmGB = d.SizeGB, vmGB-d.SizeGB
+		}
+	}
+	var placedBy []constraintResult
 	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.rules) > 0 {
 		// Only in a vCenter that has the template (when the inventory says).
 		hasTemplate := func(vc string) bool {
@@ -309,19 +327,73 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				return t.Name == plan.Template && t.Library == plan.Library && t.VCenter == vc
 			})
 		}
-		if cl := pl.choose(placed, part.count, c.AntiAffinity, pickDatastore, hasTemplate); cl != nil {
+		cl, results, why := pl.choose(placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
+			anyNetwork: pickNetwork, hasTemplate: hasTemplate, cons: cons, disks: disks, vmGB: vmGB})
+		placedBy = append(placedBy, results...)
+		switch {
+		case cl != nil:
 			plan.Cluster, part.chosen = cl.Name, true
-		} else {
+		case why != "":
+			add("", "constraint", why)
+		default:
 			add("", "no_room", "No cluster allowed here has "+orDefault(plan.Network, "the network")+" and room for these VMs. Ask an administrator.")
 		}
+	} else if cl := pl.cluster(plan.Cluster); cl != nil {
+		placedBy = append(placedBy, checkGiven(cons.of(blueprint.Compute, 0), "Cluster", cl.Name, cl.Tags,
+			func(code, msg string) { add(field("cluster"), code, msg) })...)
 	}
 	if pickDatastore && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
-		if ds := pl.roomiest(plan.Cluster, plan.StorageGB()*part.count); ds != "" {
+		ds, results, why := pl.pickDatastore(plan.Cluster, vmGB*part.count, cons.of(blueprint.Storage, 0))
+		placedBy = append(placedBy, results...)
+		switch {
+		case ds != "":
 			plan.Datastore, part.chosen = ds, true
+		case why != "":
+			add("", "constraint", why)
+		default:
+			add("", "no_room", fmt.Sprintf("No datastore allowed on %s has room for %d GB. Ask an administrator.", plan.Cluster, vmGB*part.count))
+		}
+	} else if i := slices.IndexFunc(pl.datastoresFor(plan.Cluster), func(d store.InvDatastore) bool { return d.Name == plan.Datastore }); i >= 0 {
+		d := pl.datastoresFor(plan.Cluster)[i]
+		placedBy = append(placedBy, checkGiven(cons.of(blueprint.Storage, 0), "Datastore", d.Name, d.Tags,
+			func(code, msg string) { add(field("datastore"), code, msg) })...)
+	}
+	if pickNetwork && plan.Cluster != "" && pl.cluster(plan.Cluster) != nil {
+		n, results, why := pl.pickNetwork(plan.Cluster, cons.of(blueprint.Network, 0))
+		placedBy = append(placedBy, results...)
+		if n != "" {
+			plan.Network, placed.Network, part.chosen = n, n, true
 		} else {
-			add("", "no_room", fmt.Sprintf("No datastore allowed on %s has room for %d GB. Ask an administrator.", plan.Cluster, plan.StorageGB()*part.count))
+			add("", "constraint", why)
+		}
+	} else if i := slices.IndexFunc(pl.networksFor(plan.Cluster), func(n store.InvNetwork) bool { return n.Name == placed.Network }); i >= 0 {
+		n := pl.networksFor(plan.Cluster)[i]
+		placedBy = append(placedBy, checkGiven(cons.of(blueprint.Network, 0), "Network", n.Name, n.Tags,
+			func(code, msg string) { add(field("network"), code, msg) })...)
+	}
+	for i := range plan.Disks {
+		ks := cons.of(blueprint.Storage, i+1)
+		if len(ks) == 0 || plan.Cluster == "" || pl.cluster(plan.Cluster) == nil {
+			continue
+		}
+		if gb, ok := disks[i+1]; ok {
+			ds, results, why := pl.pickDatastore(plan.Cluster, gb*part.count, ks)
+			placedBy = append(placedBy, results...)
+			switch {
+			case ds != "":
+				plan.Disks[i].Datastore, part.chosen = ds, true
+			case why != "":
+				add("", "constraint", why)
+			default:
+				add("", "no_room", fmt.Sprintf("No datastore allowed on %s has room for disk %d (%d GB). Ask an administrator.", plan.Cluster, i+2, gb*part.count))
+			}
+		} else if j := slices.IndexFunc(pl.datastoresFor(plan.Cluster), func(d store.InvDatastore) bool { return d.Name == plan.Disks[i].Datastore }); j >= 0 {
+			d := pl.datastoresFor(plan.Cluster)[j]
+			placedBy = append(placedBy, checkGiven(ks, "Datastore", d.Name, d.Tags,
+				func(code, msg string) { add(bindingField(c.Disks[i].Datastore, ""), code, msg) })...)
 		}
 	}
+	part.constraints = placedBy
 	if plan.Cluster != "" {
 		if pl.cluster(plan.Cluster) == nil {
 			add(field("cluster"), "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
@@ -471,53 +543,6 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	return part, nil
 }
 
-// choose is the cluster a component's VMs go to when the blueprint doesn't
-// say: among those allowed in a vCenter with the template, with its
-// network, enough hosts to keep the VMs apart, and a datastore with room
-// (the one given, else any allowed), the one with the most free memory.
-func (pl *placement) choose(plan blueprint.VMPlan, count int, apart, anyDatastore bool, hasTemplate func(vcenter string) bool) *store.InvCluster {
-	var best *store.InvCluster
-	for i := range pl.clusters {
-		c := &pl.clusters[i]
-		// A name in two vCenters is never chosen (its rule must say which),
-		// and a name twice in one is the first.
-		if pl.ambiguous(c.Name) || pl.cluster(c.Name) != c || !hasTemplate(c.VCenter) {
-			continue
-		}
-		if plan.Network != "" && !slices.ContainsFunc(pl.networksFor(c.Name), func(n store.InvNetwork) bool { return n.Name == plan.Network }) {
-			continue
-		}
-		if apart && count > 1 && c.HostCount > 0 && c.HostCount < count {
-			continue
-		}
-		room := false
-		for _, d := range pl.datastoresFor(c.Name) {
-			if anyDatastore && d.FreeGB >= int64(plan.StorageGB()*count) || !anyDatastore && d.Name == plan.Datastore {
-				room = true
-			}
-		}
-		if !room {
-			continue
-		}
-		if best == nil || c.MemoryTotalMB-c.MemoryUsedMB > best.MemoryTotalMB-best.MemoryUsedMB {
-			best = c
-		}
-	}
-	return best
-}
-
-// roomiest is the allowed datastore of the cluster with the most free
-// space, if it has room for need GB ("" when none has).
-func (pl *placement) roomiest(cluster string, need int) string {
-	best, free := "", int64(-1)
-	for _, d := range pl.datastoresFor(cluster) {
-		if d.FreeGB >= int64(need) && d.FreeGB > free {
-			best, free = d.Name, d.FreeGB
-		}
-	}
-	return best
-}
-
 // vmQuota is what a VM blueprint's components add to the quotas.
 func (ev *Evaluation) vmQuota() map[string]int {
 	q := map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
@@ -609,14 +634,11 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		if p.guest.OSFamily == "linux" || p.guest.OSFamily == "windows" {
 			c.OsFamily = present.Ptr(api.PreviewComponentOsFamily(p.guest.OSFamily))
 		}
-		c.Placement = &struct {
-			Chosen        *bool   `json:"chosen,omitempty"`
-			Cluster       *string `json:"cluster,omitempty"`
-			Datastore     *string `json:"datastore,omitempty"`
-			Folder        *string `json:"folder,omitempty"`
-			StoragePolicy *string `json:"storage_policy,omitempty"`
-			Vcenter       *string `json:"vcenter,omitempty"`
-		}{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy), Vcenter: str(p.vcenter)}
+		c.Placement = &api.ComponentPlacement{Cluster: str(p.vm.Cluster), Datastore: str(p.vm.Datastore),
+			StoragePolicy: str(p.vm.StoragePolicy), Vcenter: str(p.vcenter)}
+		if len(p.constraints) > 0 {
+			c.Placement.Constraints = present.Ptr(presentConstraints(p.constraints))
+		}
 		if p.chosen {
 			c.Placement.Chosen = present.Ptr(true)
 		}

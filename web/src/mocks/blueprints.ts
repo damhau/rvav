@@ -85,6 +85,7 @@ const seeded: Record<string, Blueprint> = {
         title: "Database",
         count: 1,
         bindings: { vcpu: 'sizes["L"].vcpu', memory_gb: 'sizes["L"].memory_gb', disk_gb: 'sizes["L"].disk_gb' },
+        constraints: { storage: ["rvav-tier/gold:soft"] },
       },
     ],
   },

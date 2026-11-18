@@ -191,7 +191,7 @@ func (s *Store) FailSteps(ctx context.Context, db DB, requestID string, keys []s
 func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all bool, keep []string) error {
 	reset := `request_id = $1 and parent_id is null and status in ('failed', 'running', 'cancelled')`
 	if all {
-		reset = `request_id = $1 and parent_id is null and key not in ('submit', 'policy')`
+		reset = `request_id = $1 and parent_id is null and key not in ('submit', 'policy', 'placement')`
 	}
 	// A rollback's step, done or failed, belongs to the run before.
 	if _, err := db.Exec(ctx, `delete from request_steps where request_id = $1 and key = 'rollback'`, requestID); err != nil {

@@ -8,7 +8,7 @@ import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
-import { clusters, datastores, networks } from "./inventory";
+import { clusters, datastores, networks, tags, VCENTER } from "./inventory";
 import type { Db } from "./seed";
 import { userGroups } from "./logic";
 import {
@@ -199,13 +199,6 @@ const MOCK_INSTALL: S["InstallSetting"][] = (
 
 /** A setting's text, "" when it isn't a string. */
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
-
-const tags: Record<string, string[]> = {
-  "GVA-PRD-CL01": ["rvav-tier/gold"],
-  "GVA-DEV-CL01": ["rvav-tier/bronze"],
-  "vsan-gva-prd-cl01": ["rvav-tier/gold"],
-  "nfs-gva-bronze-01": ["rvav-tier/bronze"],
-};
 
 /** The administration's state, made on first use from the projects the mock holds then. */
 export function adminState(db: Db): AdminState {
@@ -1304,12 +1297,42 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           out.networks.push({
             name: n.name,
             clusters: [c.name],
+            tags: tags[n.name] ?? [],
             ...(m ? { subnet: m.subnet, dns_zone: m.dns_zone, source: m.source } : {}),
           });
           if (!m) out.problems.push(`Network ${n.name} has no subnet: map it by hand or in EfficientIP.`);
         }
       }
       if (out.clusters.length === 0) out.problems.push("No cluster in vCenter matches the rules.");
+      return HttpResponse.json(out);
+    }),
+    http.get(`${base}/admin/inventory`, async () => {
+      await wait();
+      const out: S["VsphereInventory"] = {
+        clusters: clusters.map((c) => ({
+          vcenter: VCENTER,
+          name: c.name,
+          hosts: c.hosts,
+          memory_free_gb: Math.round(c.hosts * 512 * (c.memFreePct / 100)),
+          tags: tags[c.name] ?? [],
+        })),
+        datastores: Object.entries(datastores).flatMap(([cluster, list]) =>
+          list.map((d) => ({
+            vcenter: VCENTER,
+            name: d.name,
+            free_gb: Math.round(d.freeTb * 1024),
+            capacity_gb: Math.round(d.freeTb * 1024 * 2.5),
+            clusters: [cluster],
+            tags: tags[d.name] ?? [],
+          })),
+        ),
+        networks: networks.map((n) => ({
+          vcenter: VCENTER,
+          name: n.name,
+          clusters: clusters.filter((c) => c.env === n.env).map((c) => c.name),
+          tags: tags[n.name] ?? [],
+        })),
+      };
       return HttpResponse.json(out);
     }),
     http.get(`${base}/admin/network-mappings`, async () => {

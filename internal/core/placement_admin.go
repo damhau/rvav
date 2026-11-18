@@ -283,7 +283,7 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 		}
 		for _, n := range nets {
 			if networks[n.Name] == nil {
-				pn := &api.PreviewNetwork{Name: n.Name, Clusters: []string{}}
+				pn := &api.PreviewNetwork{Name: n.Name, Clusters: []string{}, Tags: nonNilStrings(n.Tags)}
 				if sub, ok := pl.subnets[n.Name]; ok {
 					src := api.PreviewNetworkSource(sub.Source)
 					pn.Subnet, pn.DnsZone, pn.Source = &sub.Subnet, &sub.DNSZone, &src
@@ -326,6 +326,40 @@ func (s *Service) NetworkMappings(ctx context.Context, p *auth.Principal) ([]api
 	out := make([]api.NetworkMapping, len(list))
 	for i, n := range list {
 		out[i] = presentNetworkMapping(n)
+	}
+	return out, nil
+}
+
+// VsphereInventory lists every vCenter's clusters, datastores and networks
+// with their tags, as the last sync read them (ADR-0035).
+func (s *Service) VsphereInventory(ctx context.Context, p *auth.Principal) (api.VsphereInventory, error) {
+	if !p.Everywhere(auth.InfrastructureRead) {
+		return api.VsphereInventory{}, ErrForbidden
+	}
+	clusters, err := s.Store.InventoryClusters(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	datastores, err := s.Store.InventoryDatastores(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	networks, err := s.Store.InventoryNetworks(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	out := api.VsphereInventory{Clusters: []api.InventoryCluster{}, Datastores: []api.InventoryDatastore{}, Networks: []api.InventoryNetwork{}}
+	for _, c := range clusters {
+		out.Clusters = append(out.Clusters, api.InventoryCluster{Vcenter: c.VCenter, Name: c.Name, Hosts: c.HostCount,
+			MemoryFreeGb: int((c.MemoryTotalMB - c.MemoryUsedMB) / 1024), Tags: nonNilStrings(c.Tags)})
+	}
+	for _, d := range datastores {
+		out.Datastores = append(out.Datastores, api.InventoryDatastore{Vcenter: d.VCenter, Name: d.Name, FreeGb: int(d.FreeGB),
+			CapacityGb: int(d.CapacityGB), Clusters: nonNilStrings(d.Clusters), Tags: nonNilStrings(d.Tags)})
+	}
+	for _, n := range networks {
+		out.Networks = append(out.Networks, api.InventoryNetwork{Vcenter: n.VCenter, Name: n.Name,
+			Clusters: nonNilStrings(n.Clusters), Tags: nonNilStrings(n.Tags)})
 	}
 	return out, nil
 }

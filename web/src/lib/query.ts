@@ -162,6 +162,7 @@ export const adm = {
     get(["admin", "placement-preview", projectId, environment], (signal) =>
       call(api.GET("/admin/placement-preview", { params: { query: { project_id: projectId, environment } }, signal })),
     ),
+  inventory: () => get(["admin", "inventory"], (signal) => call(api.GET("/admin/inventory", { signal }))),
   networkMappings: () =>
     get(["admin", "network-mappings"], (signal) => call(api.GET("/admin/network-mappings", { signal }))),
   templates: () => get(["admin", "templates"], (signal) => call(api.GET("/admin/templates", { signal }))),

@@ -4,6 +4,7 @@
 // database tiers on an NSX segment made for it. Other VM items are one
 // component, "vm".
 import type { EnvironmentKey, PreviewComponent, Project } from "@/lib/api/types";
+import { placedBy } from "./constraints";
 import { clusters, networks, sizes, templates, type SizeKey } from "./inventory";
 import { nextFreeIp, vmNames } from "./logic";
 import type { Db, StoredItem } from "./seed";
@@ -163,7 +164,15 @@ export function previewComponents(
       storage_gb: size.diskGb,
       os_family: p.os,
       template: p.template,
-      placement: { cluster, datastore },
+      placement: {
+        cluster,
+        datastore,
+        constraints: placedBy(item.slug, p.key, {
+          compute: cluster,
+          storage: datastore,
+          network: p.segment ? undefined : network || undefined,
+        }),
+      },
       disks: [{ size_gb: size.diskGb, datastore }],
       nics: [
         p.segment

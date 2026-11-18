@@ -19,7 +19,7 @@ in four groups:
 - **Catalog:** Catalog items, Day-2 actions, Custom workflows, Subscriptions.
 - **Governance:** Projects, Roles, Policies.
 - **Infrastructure:** Integrations, Templates and networks (with the VM
-  sizes), Onboarding, vRA import.
+  sizes and the tags of vCenter objects), Onboarding, vRA import.
 - **Operations:** Setup, Audit log, System.
 
 This guide names a page as **Administration › Page**, such as
@@ -262,6 +262,39 @@ In rvav, the issuer is `https://<org>.okta.com/oauth2/<server ID>`.
 
 A redirect URI error is the provider's (`AADSTS50011` for Entra ID): the
 URI registered must be the one the panel shows, exactly.
+
+## Tags on vCenter objects
+
+rvav reads the vSphere tags on clusters, datastores and networks (port
+groups), written `category/tag`, for example `rvav-tier/gold`. Placement
+rules choose clusters and datastores by them
+([ADR-0020](../adr/0020-administration.md)). Within what the rules allow,
+a blueprint's constraints choose the clusters, datastores and networks
+whose tags it needs, for example a production cluster outside the PCI
+zone ([constraint tags](../service-catalog.md#vm-blueprints),
+[ADR-0035](../adr/0035-constraint-tags.md)). Tags on hosts aren't read.
+
+To tag vCenter objects for rvav:
+1. In the vSphere Client, open **Tags & Custom Attributes** and create a
+   category, for example `rvav-tier`. Under **Associable object types**,
+   choose what its tags go on: **Cluster**, **Datastore**, **Distributed
+   Port Group** or **Network**.
+2. Create the category's tags, for example `gold` and `bronze`. Keep `/`
+   and `:` out of category and tag names: rvav writes a tag as
+   `category/tag`.
+3. Assign the tags to the clusters, datastores and port groups.
+4. Wait for the next full read of the inventory: tags have no change
+   notifications, so they come with the full read every sync interval
+   (2 minutes by default).
+5. To check what rvav read, open **Administration › Templates and
+   networks**, then the **vCenter objects** tab. It lists each cluster,
+   datastore and network with its tags; search by a tag to see which
+   objects carry it.
+
+rvav reads tags through vCenter's tagging service, with the vCenter
+account's credentials. When the service can't be read, the sync keeps the
+tags it read last, and the vCenter's test in **Integrations** says so
+under **Tagging service**.
 
 ## NSX networks
 

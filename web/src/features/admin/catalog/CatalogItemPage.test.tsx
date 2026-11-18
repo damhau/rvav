@@ -95,4 +95,20 @@ describe("the Definition tab", () => {
     });
     expect(shown().startsWith("# mine\n")).toBe(true);
   });
+
+  it("says which constraint names a tag vCenter doesn't have, once saved", async () => {
+    await openDefinition();
+    const at = shown().indexOf("blueprint:\n") + "blueprint:\n".length;
+    act(() =>
+      view().dispatch({
+        changes: { from: at, insert: "  constraints:\n    compute: [rvav-env/test, rvav-tier/gold]\n" },
+        userEvent: "input.type",
+      }),
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save draft" }));
+    const warnings = await screen.findByRole("list", { name: "Warnings" });
+    expect(warnings).toHaveTextContent(
+      /^Line \d+: No cluster in vCenter is tagged rvav-env\/test yet: requests fail until one is\.$/,
+    );
+  });
 });

@@ -232,6 +232,30 @@ func TestPlacementAdministration(t *testing.T) {
 			t.Fatalf("placed by tag: clusters %+v, datastores %v, networks %d, problems %v", preview.Clusters, datastores,
 				len(preview.Networks), preview.Problems)
 		}
+		if i := slices.IndexFunc(preview.Networks, func(n api.PreviewNetwork) bool { return n.Name == "dvpg-web-prd-vl210" }); i < 0 ||
+			fmt.Sprint(preview.Networks[i].Tags) != "[rvav-zone/dmz]" {
+			t.Fatalf("network tags in the preview: %+v", preview.Networks)
+		}
+
+		// The inventory, with each object's tags (ADR-0035).
+		var inv api.VsphereInventory
+		h.json("GET", "/api/v1/admin/inventory", "tnguyen", nil, 403, nil)
+		h.json("GET", "/api/v1/admin/inventory", admin, nil, 200, &inv)
+		tagged := map[string]string{}
+		for _, c := range inv.Clusters {
+			tagged[c.Name] = fmt.Sprint(c.Tags)
+		}
+		for _, d := range inv.Datastores {
+			tagged[d.Name] = fmt.Sprint(d.Tags)
+		}
+		for _, n := range inv.Networks {
+			tagged[n.Name] = fmt.Sprint(n.Tags)
+		}
+		if tagged["GVA-PRD-CL01"] != "[rvav-tier/gold]" || tagged["nfs-gva-bronze-01"] != "[rvav-tier/bronze]" ||
+			tagged["dvpg-web-prd-vl210"] != "[rvav-zone/dmz]" || tagged["dvpg-app-dev-vl310"] != "[]" {
+			t.Fatalf("inventory tags = %v", tagged)
+		}
+
 		rule.Priority = new(50)
 		h.json("PUT", "/api/v1/admin/placement-rules/"+created.Id, admin, rule, 200, &created)
 		if created.Priority != 50 {

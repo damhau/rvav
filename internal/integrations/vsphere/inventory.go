@@ -17,8 +17,9 @@ type Inventory struct {
 	Networks   []Network
 	Templates  []Template
 	VMs        []InventoryVM
-	// TagsError says why clusters and datastores have no tags: the
-	// tagging service couldn't be read. The rest of the inventory is fine.
+	// TagsError says why clusters, datastores and networks have no tags:
+	// the tagging service couldn't be read. The rest of the inventory is
+	// fine.
 	TagsError error
 	// StoragePolicies are the vCenter's storage policies (ADR-0024).
 	StoragePolicies []StoragePolicy
@@ -53,6 +54,7 @@ type Network struct {
 	Name     string
 	Kind     string
 	Clusters []string
+	Tags     []string
 }
 
 type Template struct {

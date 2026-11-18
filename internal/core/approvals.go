@@ -501,6 +501,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 		if err := replanVMs(ev, &plan); err != nil {
 			return nil, nil, nil, nil, err
 		}
+		plan.Placement = ev.placementNotes()
 	case blueprint.KindAWX:
 		plan.ExtraVars = ev.Inputs
 	}
@@ -515,6 +516,13 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	var steps []store.Step
 	for _, st := range stepsOf(req.ID, plan.Steps(ev.Env.Name)) {
 		if st.Key == provision.KeySubmit || st.Key == provision.KeyPolicy {
+			continue
+		}
+		// Done at submit: the new placement is said where it was.
+		if st.Key == provision.KeyPlacement {
+			if err := s.Store.SetPlannedDetail(ctx, tx, req.ID, st.Key, st.Detail); err != nil {
+				return nil, nil, nil, nil, err
+			}
 			continue
 		}
 		st.Status, st.StartedAt, st.FinishedAt = "pending", nil, nil

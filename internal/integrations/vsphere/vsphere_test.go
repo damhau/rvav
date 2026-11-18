@@ -41,8 +41,11 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 			t.Fatalf("tags: cluster %v, datastore %v, error %v", cluster.Tags, ds.Tags, inv.TagsError)
 		}
 		pg := findNetworkInv(inv, "dvpg-app-dev-vl310")
-		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") {
+		if pg == nil || !contains(pg.Clusters, "GVA-DEV-CL01") || len(pg.Tags) != 0 {
 			t.Fatalf("port group dvpg-app-dev-vl310 = %+v", pg)
+		}
+		if dmz := findNetworkInv(inv, "dvpg-web-prd-vl210"); dmz == nil || !slices.Equal(dmz.Tags, []string{"rvav-zone/dmz"}) {
+			t.Fatalf("port group dvpg-web-prd-vl210 = %+v", dmz)
 		}
 		// Three VM templates, the content library's item (ADR-0024) and the
 		// VM template vcsim keeps for it; the storage policies vcsim has.

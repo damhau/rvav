@@ -282,7 +282,15 @@ func (s *Service) CatalogItemVersion(ctx context.Context, p *auth.Principal, idO
 	if err != nil {
 		return api.CatalogItemVersionDetail{}, err
 	}
-	return presentVersionDetail(v, row)
+	out, err := presentVersionDetail(v, row)
+	if err != nil {
+		return out, err
+	}
+	warnings, err := s.constraintWarnings(ctx, out.Definition, "/definition/blueprint")
+	if len(warnings) > 0 {
+		out.Warnings = &warnings
+	}
+	return out, err
 }
 
 // CreateCatalogItemVersion starts a draft: a copy of a version (the
