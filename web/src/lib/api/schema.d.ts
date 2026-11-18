@@ -3392,7 +3392,11 @@ export interface components {
             warnings?: components["schemas"]["FieldError"][];
         };
         CatalogVersionDefinition: {
-            /** @description JSON Schema (draft 2020-12) of the inputs. */
+            /**
+             * @description JSON Schema (draft 2020-12) of the inputs. Formats are checked
+             *     (`date-time` with a time zone, `date`), and `formatMinimum` and
+             *     `formatMaximum` bound a `date-time` or `date` input.
+             */
             form_schema: {
                 [key: string]: unknown;
             };

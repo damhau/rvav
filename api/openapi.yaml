@@ -4560,7 +4560,10 @@ components:
       properties:
         form_schema:
           type: object
-          description: JSON Schema (draft 2020-12) of the inputs.
+          description: |
+            JSON Schema (draft 2020-12) of the inputs. Formats are checked
+            (`date-time` with a time zone, `date`), and `formatMinimum` and
+            `formatMaximum` bound a `date-time` or `date` input.
           additionalProperties: true
         ui_schema: { $ref: "#/components/schemas/UiSchema" }
         initial_values:

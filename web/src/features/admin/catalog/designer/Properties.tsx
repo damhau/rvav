@@ -6,11 +6,12 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { isApiError } from "@/lib/api/client";
 import type { FieldStates, FieldValues, UiWidget, ValueSource } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
+import { cn, localInput, withOffset, zoneLabel } from "@/lib/utils";
 import { focusLater, type Selection } from "./FieldList";
 import {
   builtinSources,
   choiceWidgets,
+  isDecimal,
   isRequired,
   moveToSection,
   namePattern,
@@ -18,6 +19,7 @@ import {
   removeField,
   removeSection,
   renameField,
+  setDecimal,
   setInitial,
   setRequired,
   setRule,
@@ -453,20 +455,41 @@ function FieldProperties({
         </div>
       )}
       {numeric && (
-        <div className="grid grid-cols-2 gap-2">
-          {(["minimum", "maximum"] as const).map((k) => (
-            <Field key={k} label={k === "minimum" ? "Minimum" : "Maximum"} htmlFor={`prop-${k}`}>
-              <Input
-                id={`prop-${k}`}
-                type="number"
-                value={typeof prop[k] === "number" ? prop[k] : ""}
-                onChange={(e) =>
-                  onChange(updateProp(def, name, { [k]: e.target.value ? Number(e.target.value) : undefined }))
-                }
-              />
-            </Field>
-          ))}
-        </div>
+        <>
+          <label htmlFor="prop-decimal" className="flex items-center gap-2 text-body">
+            <Checkbox
+              id="prop-decimal"
+              checked={isDecimal(def, name)}
+              onChange={(on) => onChange(setDecimal(def, name, on))}
+            />
+            Allow decimals
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                ["minimum", "Minimum"],
+                ["maximum", "Maximum"],
+                ["multipleOf", "Step"],
+              ] as const
+            ).map(([k, label]) => (
+              <Field key={k} label={label} htmlFor={`prop-${k}`}>
+                <Input
+                  id={`prop-${k}`}
+                  type="number"
+                  step={isDecimal(def, name) ? "any" : 1}
+                  min={k === "multipleOf" ? 0 : undefined}
+                  value={typeof prop[k] === "number" ? prop[k] : ""}
+                  onChange={(e) =>
+                    onChange(updateProp(def, name, { [k]: e.target.value ? Number(e.target.value) : undefined }))
+                  }
+                />
+              </Field>
+            ))}
+          </div>
+        </>
+      )}
+      {(ui.widget === "date" || ui.widget === "datetime") && prop && (
+        <DateBounds def={def} name={name} time={ui.widget === "datetime"} onChange={onChange} />
       )}
       {choiceWidgets.includes(ui.widget) && !ui.value_source && (
         <Field label="Options" htmlFor="prop-options" hint="One per line: value | label.">
@@ -595,6 +618,46 @@ function OptionsInput({
       onBlur={() => draft !== value && onCommit(draft)}
       {...described}
     />
+  );
+}
+
+/** The earliest and latest a date or date-time input takes: `formatMinimum` and `formatMaximum`. */
+function DateBounds({
+  def,
+  name,
+  time,
+  onChange,
+}: {
+  def: Def;
+  name: string;
+  time: boolean;
+  onChange: (d: Def) => void;
+}) {
+  const prop = props(def)[name] ?? {};
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {(
+        [
+          ["formatMinimum", "Earliest"],
+          ["formatMaximum", "Latest"],
+        ] as const
+      ).map(([k, label]) => {
+        const v = typeof prop[k] === "string" ? prop[k] : "";
+        return (
+          <Field key={k} label={label} htmlFor={`prop-${k}`} hint={time ? zoneLabel() : undefined}>
+            <Input
+              id={`prop-${k}`}
+              type={time ? "datetime-local" : "date"}
+              value={time ? localInput(v) : v}
+              onChange={(e) => {
+                const next = e.target.value ? (time ? withOffset(e.target.value) : e.target.value) : undefined;
+                onChange(updateProp(def, name, { [k]: next }));
+              }}
+            />
+          </Field>
+        );
+      })}
+    </div>
   );
 }
 

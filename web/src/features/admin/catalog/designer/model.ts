@@ -88,6 +88,10 @@ export function schemaFor(widget: UiWidget): Prop | null {
       return { type: "integer" };
     case "toggle":
       return { type: "boolean" };
+    case "date":
+      return { type: "string", format: "date" };
+    case "datetime":
+      return { type: "string", format: "date-time" };
     case "multiselect":
     case "checklist":
     case "tags":
@@ -281,7 +285,7 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       const fs = d.form_schema as { required?: string[] };
       if (fs.required) fs.required = fs.required.filter((r) => r !== name);
       if (fs.required?.length === 0) delete fs.required;
-    } else if (!current || current.type !== schema.type) {
+    } else if (!sameShape(current, schema)) {
       p[name] = schema;
       delete d.initial_values[name];
     }
@@ -292,6 +296,35 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       if (source) ui.value_source = { kind: "builtin", name: source };
       else if (own) delete ui.value_source;
     }
+  });
+}
+
+const numeric = (t: unknown) => t === "integer" || t === "number";
+const itemType = (p: Prop) => (p.items as Prop | undefined)?.type;
+
+/** Whether an input keeps its schema (and checks) when its widget changes: a decimal number stays decimal. */
+function sameShape(current: Prop | undefined, next: Prop): boolean {
+  if (!current) return false;
+  const type = current.type === next.type || (numeric(current.type) && numeric(next.type));
+  return type && current.format === next.format && itemType(current) === itemType(next);
+}
+
+/** Whether a number input takes decimals (JSON Schema `number`) rather than whole numbers (`integer`). */
+export function isDecimal(def: Def, name: string): boolean {
+  return props(def)[name]?.type === "number";
+}
+
+/** Lets a number input take decimals, or only whole numbers: its step goes, and so does a fractional bound. */
+export function setDecimal(def: Def, name: string, decimal: boolean): Def {
+  return edit(def, (d, p) => {
+    const prop = p[name];
+    if (!prop || !numeric(prop.type)) return;
+    prop.type = decimal ? "number" : "integer";
+    if (decimal) return;
+    delete prop.multipleOf;
+    for (const k of ["minimum", "maximum"]) if (!Number.isInteger(prop[k] ?? 0)) delete prop[k];
+    const v = d.initial_values[name];
+    if (typeof v === "number" && !Number.isInteger(v)) delete d.initial_values[name];
   });
 }
 

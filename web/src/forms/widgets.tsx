@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
-import { cn, withUnits } from "@/lib/utils";
+import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
 import { useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -32,6 +32,10 @@ export interface JsonSchemaProp {
   maxLength?: number;
   minimum?: number;
   maximum?: number;
+  multipleOf?: number;
+  format?: string;
+  formatMinimum?: string;
+  formatMaximum?: string;
   enum?: unknown[];
   readOnly?: boolean;
 }
@@ -120,14 +124,16 @@ function TextareaWidget({
 }
 
 function NumberWidget({ id, name, schema, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  const decimal = schema.type === "number";
   return (
     <Input
       id={id}
       name={name}
       type="number"
-      inputMode="numeric"
+      inputMode={decimal ? "decimal" : "numeric"}
       min={schema.minimum}
       max={schema.maximum}
+      step={schema.multipleOf ?? (decimal ? "any" : undefined)}
       value={str(value)}
       readOnly={readOnly}
       aria-invalid={invalid || undefined}
@@ -136,6 +142,51 @@ function NumberWidget({ id, name, schema, value, onChange, onBlur, invalid, desc
       onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
       onBlur={onBlur}
     />
+  );
+}
+
+function DateWidget({ id, name, schema, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  return (
+    <Input
+      id={id}
+      name={name}
+      type="date"
+      min={schema.formatMinimum}
+      max={schema.formatMaximum}
+      value={str(value)}
+      readOnly={readOnly}
+      aria-invalid={invalid || undefined}
+      aria-describedby={describedBy}
+      className={cn("tnum w-44", invalid && "border-bad")}
+      onChange={(e) => onChange(e.target.value || undefined)}
+      onBlur={onBlur}
+    />
+  );
+}
+
+/** A local date and time, kept as ISO 8601 with the browser's offset so the server knows the moment meant. */
+function DateTimeWidget({ id, name, schema, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  const local = localInput(str(value));
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Input
+        id={id}
+        name={name}
+        type="datetime-local"
+        min={localInput(schema.formatMinimum)}
+        max={localInput(schema.formatMaximum)}
+        value={local}
+        readOnly={readOnly}
+        aria-invalid={invalid || undefined}
+        aria-describedby={[describedBy, `${id}-zone`].filter(Boolean).join(" ")}
+        className={cn("tnum w-56", invalid && "border-bad")}
+        onChange={(e) => onChange(e.target.value ? withOffset(e.target.value) : undefined)}
+        onBlur={onBlur}
+      />
+      <span id={`${id}-zone`} className="text-secondary text-muted">
+        {zoneLabel(local ? new Date(local) : undefined)}
+      </span>
+    </div>
   );
 }
 
@@ -330,6 +381,8 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   textarea: TextareaWidget,
   number: NumberWidget,
   slider: NumberWidget,
+  date: DateWidget,
+  datetime: DateTimeWidget,
   toggle: ToggleWidget,
   select: SourcedSelectWidget,
   segmented: SegmentedWidget,

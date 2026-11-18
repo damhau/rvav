@@ -33,7 +33,7 @@ import { useDebounced } from "@/lib/hooks";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
-import { cn, fullDate, newIdempotencyKey, roughDuration } from "@/lib/utils";
+import { cn, fullDate, localInput, newIdempotencyKey, roughDuration } from "@/lib/utils";
 import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
 
 const RequestTopology = lazy(() => import("./RequestTopology"));
@@ -56,14 +56,6 @@ export interface FormStart {
   count?: number;
   scheduledAt?: string | null;
   onBehalfOf?: UserRef;
-}
-
-/** A date-time for a datetime-local input, in local time. */
-function localInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */

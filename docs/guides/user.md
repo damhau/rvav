@@ -68,6 +68,11 @@ to it and press Space), and select it again to hide it. Secret fields are
 never shown again after you submit: they go only to the automation that
 needs them.
 
+A date or time field takes only the dates the item allows. A time is in
+your browser's time zone, which the field names beside it; rvav keeps the
+time zone with the value, so the moment you meant is the one the
+automation gets.
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

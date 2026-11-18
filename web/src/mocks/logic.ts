@@ -220,19 +220,94 @@ export function resolveField(
 type JsonSchema = {
   type?: string;
   properties?: Record<string, JsonSchema>;
+  additionalProperties?: JsonSchema | boolean;
   required?: string[];
   pattern?: string;
   minLength?: number;
   maxLength?: number;
   minimum?: number;
   maximum?: number;
+  multipleOf?: number;
+  format?: string;
+  formatMinimum?: string;
+  formatMaximum?: string;
   enum?: unknown[];
   items?: JsonSchema;
   minItems?: number;
+  maxItems?: number;
+  uniqueItems?: boolean;
   readOnly?: boolean;
 };
 
 const fieldLabel = (form: RequestForm | undefined, field: string) => form?.ui_schema.fields[field]?.label ?? field;
+
+const empty = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+
+const dateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i;
+const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A value against its schema, as the server's validation words it; `name` is the input, for the role's message. */
+function checkValue(
+  prop: JsonSchema,
+  v: unknown,
+  at: string,
+  label: string,
+  add: (field: string, code: string, message: string) => void,
+  name = at,
+) {
+  if (prop.type === "string") {
+    if (typeof v !== "string") return add(at, "type", `${label} must be text.`);
+    if (prop.format === "date-time" && (!dateTime.test(v) || Number.isNaN(Date.parse(v))))
+      return add(at, "format", "Enter a date and time with its time zone, for example 2026-11-20T14:30:00+01:00.");
+    if (prop.format === "date" && (!dateOnly.test(v) || Number.isNaN(Date.parse(v))))
+      return add(at, "format", "Enter a date as YYYY-MM-DD, for example 2026-11-20.");
+    if (prop.format === "date-time" || prop.format === "date") {
+      const t = Date.parse(v);
+      const noun = prop.format === "date" ? "a date" : "a time";
+      if (prop.formatMinimum && t < Date.parse(prop.formatMinimum))
+        return add(at, "out_of_range", `Pick ${noun} on or after ${prop.formatMinimum}.`);
+      if (prop.formatMaximum && t > Date.parse(prop.formatMaximum))
+        return add(at, "out_of_range", `Pick ${noun} on or before ${prop.formatMaximum}.`);
+    }
+    if (prop.pattern && !new RegExp(prop.pattern).test(v))
+      return add(
+        at,
+        "pattern",
+        name === "role" ? "Use 2–12 lower-case letters, for example “api”." : `${label} has an invalid format.`,
+      );
+    if (prop.maxLength !== undefined && v.length > prop.maxLength)
+      return add(at, "maxLength", `${label} can be at most ${prop.maxLength} characters.`);
+    if (prop.enum && !prop.enum.includes(v)) return add(at, "enum", `Choose one of the listed values for ${label}.`);
+  }
+  if (prop.type === "integer" || prop.type === "number") {
+    const n = Number(v);
+    if (typeof v === "boolean" || !Number.isFinite(n)) return add(at, "type", `${label} must be a number.`);
+    if (prop.type === "integer" && !Number.isInteger(n)) return add(at, "type", "Enter a whole number.");
+    if (prop.minimum !== undefined && n < prop.minimum) return add(at, "minimum", `Enter ${prop.minimum} or more.`);
+    if (prop.maximum !== undefined && n > prop.maximum) return add(at, "maximum", `Enter ${prop.maximum} or less.`);
+    // Compared in whole steps: 0.3 / 0.1 isn't exactly 3 in floating point.
+    if (prop.multipleOf && Math.abs(n / prop.multipleOf - Math.round(n / prop.multipleOf)) > 1e-9)
+      return add(at, "multiple_of", `Enter a multiple of ${prop.multipleOf}.`);
+  }
+  if (prop.type === "array" && Array.isArray(v)) {
+    if (prop.minItems && v.length < prop.minItems)
+      return add(at, "minItems", `Pick at least ${prop.minItems} for ${label}.`);
+    if (prop.maxItems !== undefined && v.length > prop.maxItems)
+      return add(at, "maxItems", `${label} takes at most ${prop.maxItems}.`);
+    if (prop.uniqueItems && new Set(v.map((x) => JSON.stringify(x))).size < v.length)
+      return add(at, "unique", `${label} has the same value twice.`);
+    if (prop.items) v.forEach((x, i) => checkValue(prop.items!, x, `${at}/${i}`, label, add));
+  }
+  if (prop.type === "object" && v && typeof v === "object" && !Array.isArray(v)) {
+    const obj = v as Record<string, unknown>;
+    for (const r of prop.required ?? []) if (empty(obj[r])) add(`${at}/${r}`, "required", "This field is required.");
+    for (const [k, x] of Object.entries(obj)) {
+      const sub =
+        prop.properties?.[k] ?? (typeof prop.additionalProperties === "object" ? prop.additionalProperties : undefined);
+      if (sub && !empty(x)) checkValue(sub, x, `${at}/${k}`, label, add);
+    }
+  }
+}
 
 /** The subset of JSON Schema the mock forms use. Messages are written for end users. */
 export function validateInputs(
@@ -247,39 +322,12 @@ export function validateInputs(
   const add = (field: string, code: string, message: string) =>
     errors.push({ field: `/inputs/${field}`, code, message });
   for (const name of schema.required ?? []) {
-    const v = inputs[name];
-    if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) {
-      add(name, "required", `${fieldLabel(form, name)} is required.`);
-    }
+    if (empty(inputs[name])) add(name, "required", `${fieldLabel(form, name)} is required.`);
   }
   for (const [name, prop] of Object.entries(schema.properties ?? {})) {
     const v = inputs[name];
     if (v === undefined || v === null || v === "" || prop.readOnly) continue;
-    const label = fieldLabel(form, name);
-    if (prop.type === "string") {
-      if (typeof v !== "string") add(name, "type", `${label} must be text.`);
-      else if (prop.pattern && !new RegExp(prop.pattern).test(v)) {
-        add(
-          name,
-          "pattern",
-          name === "role" ? "Use 2–12 lower-case letters, for example “api”." : `${label} has an invalid format.`,
-        );
-      } else if (prop.maxLength !== undefined && v.length > prop.maxLength) {
-        add(name, "maxLength", `${label} can be at most ${prop.maxLength} characters.`);
-      } else if (prop.enum && !prop.enum.includes(v))
-        add(name, "enum", `Choose one of the listed values for ${label}.`);
-    }
-    if (prop.type === "integer" || prop.type === "number") {
-      const n = Number(v);
-      if (!Number.isFinite(n)) add(name, "type", `${label} must be a number.`);
-      else if (prop.minimum !== undefined && n < prop.minimum)
-        add(name, "minimum", `${label} must be at least ${prop.minimum}.`);
-      else if (prop.maximum !== undefined && n > prop.maximum)
-        add(name, "maximum", `${label} can be at most ${prop.maximum}.`);
-    }
-    if (prop.type === "array" && Array.isArray(v) && prop.minItems && v.length < prop.minItems) {
-      add(name, "minItems", `Pick at least ${prop.minItems} for ${label}.`);
-    }
+    checkValue(prop, v, name, fieldLabel(form, name), add);
   }
   return errors;
 }

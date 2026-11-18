@@ -680,7 +680,12 @@ An item's tabs:
 - **Details:** name, category, icon, description.
 - **Form designer:** fields, sections, rules, value sources (lists from
   vCenter, AWX, EfficientIP or a REST call), and fields approvers may
-  change. Preview the form as any user.
+  change. Preview the form as any user. Each field type has its own
+  settings
+  ([field types](../service-catalog.md#field-types)):
+  - a number can **Allow decimals**, with a minimum, a maximum and a step;
+  - a date, or a date and time, takes the **Earliest** and **Latest** it
+    accepts, a time in your browser's time zone.
 - **Definition:** the whole version as YAML, to review or paste. A VM
   blueprint's or a composite's graph is beside it (below it on a narrow
   screen), drawn from the YAML as you type: a VM item's components (how

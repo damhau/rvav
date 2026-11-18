@@ -46,6 +46,32 @@ export function longDay(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A date-time as a datetime-local input shows it: local time, to the minute. "" when there is none. */
+export function localInput(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : undefined;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** What a datetime-local input holds, as ISO 8601 with this browser's offset: "2026-11-20T14:30:00+01:00". */
+export function withOffset(local: string): string {
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return local;
+  return `${localInput(local)}:${pad(d.getSeconds())}${offsetOf(d)}`;
+}
+
+function offsetOf(d: Date): string {
+  const off = -d.getTimezoneOffset();
+  return `${off < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
+}
+
+/** This browser's time zone, as "Europe/Zurich (UTC+01:00)" on a given day. */
+export function zoneLabel(at = new Date()): string {
+  return `${Intl.DateTimeFormat().resolvedOptions().timeZone} (UTC${offsetOf(at)})`;
+}
+
 export function clock(iso?: string | null) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

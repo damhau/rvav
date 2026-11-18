@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   addField,
   addSection,
+  isDecimal,
   moveField,
   removeField,
   renameField,
+  setDecimal,
+  setInitial,
   setRequired,
   setRule,
   setWidget,
   sortProblems,
+  updateProp,
   type Def,
 } from "./model";
 
@@ -18,6 +22,8 @@ const empty: Def = {
   initial_values: {},
   blueprint: { kind: "awx", awx: { title: "T", job_template: "t" } },
 };
+
+const prop = (def: Def, name: string) => (def.form_schema.properties as Record<string, unknown>)[name];
 
 describe("form designer model", () => {
   it("adds fields with a schema, a UI field and a place in a section", () => {
@@ -76,6 +82,27 @@ describe("form designer model", () => {
     def = setRule(def, "text", "visible", 'environment == "prd"');
     def = setRule(def, "text", "visible", " ");
     expect(def.ui_schema.fields.text!.rules).toBeUndefined();
+  });
+
+  it("gives dates their format, and keeps a decimal number decimal across number widgets", () => {
+    let def = addField(empty, "text").def;
+    def = setWidget(def, "text", "datetime");
+    expect(prop(def, "text")).toEqual({ type: "string", format: "date-time" });
+    def = setWidget(def, "text", "date");
+    expect(prop(def, "text")).toEqual({ type: "string", format: "date" });
+    def = setWidget(def, "text", "textarea");
+    expect(prop(def, "text")).toEqual({ type: "string" });
+
+    let n = addField(empty, "number").def;
+    n = updateProp(n, "number", { minimum: 0.5, maximum: 4, multipleOf: 0.25 });
+    n = setDecimal(n, "number", true);
+    expect(isDecimal(n, "number")).toBe(true);
+    n = setWidget(n, "number", "slider");
+    expect(prop(n, "number")).toEqual({ type: "number", minimum: 0.5, maximum: 4, multipleOf: 0.25 });
+    n = setInitial(n, "number", 1.5);
+    n = setDecimal(n, "number", false);
+    expect(prop(n, "number")).toEqual({ type: "integer", maximum: 4 });
+    expect(n.initial_values).toEqual({});
   });
 
   it("sorts the server's problems by field and section", () => {

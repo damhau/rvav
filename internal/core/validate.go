@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,14 +22,18 @@ var (
 	schemaMu    sync.Mutex
 	schemaCache = map[string]*jsonschema.Schema{}
 	printer     = message.NewPrinter(language.English)
+	boundsVocab = formatBoundsVocab()
 )
 
 // newCompiler compiles form schemas, which catalog admins write: a $ref may
 // point inside the schema only, never to a file or a URL (the default
-// loader reads local files).
+// loader reads local files). Formats are checked, and dates bounded.
 func newCompiler() *jsonschema.Compiler {
 	c := jsonschema.NewCompiler()
 	c.UseLoader(noLoader{})
+	c.AssertFormat()
+	c.AssertVocabs()
+	c.RegisterVocabulary(boundsVocab)
 	return c
 }
 
@@ -132,6 +138,18 @@ func validateWith(s *jsonschema.Schema, b []byte) ([]api.FieldError, error) {
 			out = append(out, fieldErr(ptr, "required", "This field is required."))
 		case *kind.Contains:
 			out = append(out, fieldErr(ptr, "contains", "A required option is missing from this list."))
+		case *kind.Type:
+			out = append(out, fieldErr(ptr, "type", typeMessage(k.Want)))
+		case *kind.Format:
+			out = append(out, fieldErr(ptr, "format", formatMessage(k.Want)))
+		case *kind.Minimum:
+			out = append(out, fieldErr(ptr, "minimum", "Enter "+ratText(k.Want)+" or more."))
+		case *kind.Maximum:
+			out = append(out, fieldErr(ptr, "maximum", "Enter "+ratText(k.Want)+" or less."))
+		case *kind.MultipleOf:
+			out = append(out, fieldErr(ptr, "multiple_of", "Enter a multiple of "+ratText(k.Want)+"."))
+		case *tooEarly, *tooLate:
+			out = append(out, fieldErr(ptr, "out_of_range", e.ErrorKind.LocalizedString(printer)))
 		default:
 			msg := e.ErrorKind.LocalizedString(printer)
 			if msg != "" {
@@ -142,6 +160,46 @@ func validateWith(s *jsonschema.Schema, b []byte) ([]api.FieldError, error) {
 	}
 	walk(ve)
 	return out, nil
+}
+
+func typeMessage(want []string) string {
+	if len(want) == 1 {
+		switch want[0] {
+		case "integer":
+			return "Enter a whole number."
+		case "number":
+			return "Enter a number."
+		case "string":
+			return "Enter text."
+		case "boolean":
+			return "Choose yes or no."
+		case "array":
+			return "Enter a list."
+		case "object":
+			return "Enter keys and values."
+		}
+	}
+	return "This value has the wrong type: want " + strings.Join(want, " or ") + "."
+}
+
+func formatMessage(format string) string {
+	switch format {
+	case "date-time":
+		return "Enter a date and time with its time zone, for example 2026-11-20T14:30:00+01:00."
+	case "date":
+		return "Enter a date as YYYY-MM-DD, for example 2026-11-20."
+	default:
+		return "This isn't a valid " + format + "."
+	}
+}
+
+// ratText writes a schema's bound as it was written: 0.5, not 1/2.
+func ratText(r *big.Rat) string {
+	if r.IsInt() {
+		return r.Num().String()
+	}
+	f, _ := r.Float64()
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 func pointer(parts []string) string {

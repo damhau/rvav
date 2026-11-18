@@ -592,6 +592,39 @@ Markdown or info block, and resource pickers:
 - AWX: inventory, credential, host
 - App: project, user, group, deployment
 
+Each field is an input in the form schema (`form_schema.properties`) and a
+field in the UI schema (`ui_schema.fields`) with its `widget`. The schema
+holds the type and the checks, which the server applies on preview and
+submit; the widget is how the form shows it. The value reaches rules, the
+blueprint and AWX's extra variables as typed: a number as a number, a list
+as a list.
+
+| Widget | Schema | Value |
+| --- | --- | --- |
+| `secret`, or `text` with `secret: true` | `string` | Masked as you type, with a button that shows it; never shown again after submit (S14.6) |
+| `date` | `string`, `format: date` | `2026-12-24` |
+| `datetime` | `string`, `format: date-time` | `2026-12-24T14:30:00+01:00`: ISO 8601 with the requester's time zone |
+| `number`, `slider` | `integer`, or `number` for decimals | `4`, `1.75` |
+
+A date or a time takes its bounds in `formatMinimum` and `formatMaximum`,
+written in the input's format; a time without a time zone is refused. A
+decimal number takes `minimum`, `maximum` and `multipleOf`, its step:
+
+```yaml
+form_schema:
+  properties:
+    window:
+      type: string
+      format: date-time
+      formatMinimum: "2026-12-01T00:00:00+01:00"
+      formatMaximum: "2026-12-31T23:59:59+01:00"
+    cpu_ratio: { type: number, minimum: 0.5, maximum: 4, multipleOf: 0.25 }
+ui_schema:
+  fields:
+    window: { widget: datetime, label: Maintenance window }
+    cpu_ratio: { widget: number, label: CPU ratio }
+```
+
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:
   - built-in sources (vSphere inventory cache, EfficientIP, AWX, app data),
