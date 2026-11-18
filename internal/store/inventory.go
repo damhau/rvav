@@ -9,7 +9,7 @@ import (
 
 // inventoryTables hold what the inventory sync reads of each vCenter.
 var inventoryTables = []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies",
-	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters"}
+	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters", "inv_folders"}
 
 // ReplaceInventory swaps the cached inventory of one vCenter for a new snapshot.
 func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
@@ -48,6 +48,10 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 			b.Queue(`insert into inv_datastore_clusters (vcenter, moref, name, capacity_gb, free_gb, datastores, sdrs, tags)
 				values ($1,$2,$3,$4,$5,$6,$7,$8)`,
 				inv.VCenter, d.Moref, d.Name, d.CapacityGB, d.FreeGB, nonNil(d.Datastores), d.SDRS, nonNil(d.Tags))
+		}
+		for _, f := range inv.Folders {
+			b.Queue(`insert into inv_folders (vcenter, moref, path, datacenter) values ($1,$2,$3,$4)`,
+				inv.VCenter, f.Moref, f.Path, f.Datacenter)
 		}
 		for _, t := range inv.Templates {
 			b.Queue(`insert into inv_templates (vcenter, moref, name, guest_os, library) values ($1,$2,$3,$4,$5)`,
@@ -93,6 +97,12 @@ func (s *Store) InventoryResourcePools(ctx context.Context) ([]InvResourcePool, 
 	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, cluster, path, cpu_limit_mhz, memory_limit_mb, tags
 		from inv_resource_pools order by cluster, path, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvResourcePool])
+}
+
+// InventoryFolders are the VM folders of every vCenter, by path.
+func (s *Store) InventoryFolders(ctx context.Context) ([]InvFolder, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, path, datacenter from inv_folders order by path, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvFolder])
 }
 
 func (s *Store) InventoryDatastoreClusters(ctx context.Context) ([]InvDatastoreCluster, error) {

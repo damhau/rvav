@@ -521,6 +521,9 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 		snap.DatastoreClusters = append(snap.DatastoreClusters, store.InvDatastoreCluster{Moref: d.Moref, Name: d.Name,
 			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Datastores: d.Datastores, SDRS: d.SDRS, Tags: tagsOf(podTags, d.Moref, d.Tags)})
 	}
+	for _, f := range inv.Folders {
+		snap.Folders = append(snap.Folders, store.InvFolder{Moref: f.Moref, Path: f.Path, Datacenter: f.Datacenter})
+	}
 	for _, t := range inv.Templates {
 		snap.Templates = append(snap.Templates, store.InvTemplate{Moref: t.Moref, Name: t.Name, GuestOS: t.GuestOS, Library: t.Library})
 	}

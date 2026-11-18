@@ -19,6 +19,16 @@ export const clusters: Cluster[] = [
   { name: "GVA-PRD-CL01", env: "prd", hosts: 8, cpuFreePct: 41, memFreePct: 33 },
 ];
 
+export const vmFolders = [
+  "/GVA/vm",
+  "/GVA/vm/rvav",
+  "/GVA/vm/rvav/web",
+  "/GVA/vm/rvav/web/dev",
+  "/GVA/vm/rvav/web/prd",
+  "/GVA/vm/rvav/web/tst",
+  "/GVA/vm/templates",
+];
+
 export const datastores: Record<string, { name: string; freeTb: number; tier: string }[]> = {
   "GVA-DEV-CL01": [
     { name: "vsan-gva-dev-cl01", freeTb: 3.2, tier: "silver" },

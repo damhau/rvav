@@ -5574,7 +5574,9 @@ components:
           type: string
           description: |
             For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
-            `vsphere.networks`, `vsphere.templates`, `vsphere.folders`,
+            `vsphere.networks`, `vsphere.templates`, `vsphere.folders`
+            (the VM folders of the datacenters the project's placement
+            uses in the environment, by path; checked on submit),
             `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
             `awx.inventories`, `awx.credentials`, `naming.preview`,
             `rvav.templates` and `rvav.sizes` (what is offered to the

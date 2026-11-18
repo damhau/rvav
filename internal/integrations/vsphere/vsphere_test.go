@@ -73,6 +73,18 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 		if member := findDatastore(inv, "nfs-gva-dev-sdrs-02"); member == nil || !slices.Equal(member.Clusters, []string{"GVA-DEV-CL01"}) {
 			t.Fatalf("datastore nfs-gva-dev-sdrs-02 = %+v", member)
 		}
+		// VM folders by path, with their datacenter; host and network
+		// folders left out.
+		var gva []string
+		for _, f := range inv.Folders {
+			if f.Datacenter == "GVA" {
+				gva = append(gva, f.Path)
+			}
+		}
+		if !slices.Equal(gva, []string{"/GVA/vm", "/GVA/vm/rvav", "/GVA/vm/rvav/web", "/GVA/vm/rvav/web/dev",
+			"/GVA/vm/rvav/web/prd", "/GVA/vm/rvav/web/tst", "/GVA/vm/templates"}) {
+			t.Fatalf("GVA's VM folders = %v", gva)
+		}
 		// Three VM templates, the content library's item (ADR-0024) and the
 		// VM template vcsim keeps for it; the storage policies vcsim has.
 		var library []string

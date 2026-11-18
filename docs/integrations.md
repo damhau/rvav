@@ -103,7 +103,8 @@ How a blueprint is built is in
 - When its session breaks (vCenter restarted, the session timed out), the
   sync signs in again, follows again and reads that vCenter in full, after
   a pause that grows to a minute while it keeps failing.
-- Writes into cache tables used by form pickers, placement and the deployment view.
+- Writes into cache tables used by form pickers, placement and the deployment view;
+  VM folders by path, for the `vsphere.folders` picker, come with each full read.
 - Flags VMs changed outside rvav (power, size, disks, adapters' networks)
   with what differs, and VMs deleted outside rvav as missing ([ADR-0025](adr/0025-drift.md)).
 - Changes are pushed to the UI over SSE (power state, IPs, reconfigurations made

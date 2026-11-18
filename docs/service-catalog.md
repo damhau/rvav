@@ -716,6 +716,33 @@ ui_schema:
 A column with no property, a property with no column, or a widget that
 doesn't fit its type is refused when the version is saved.
 
+A multi-select (`multiselect` or `checklist`) takes its options from the
+field's `options` or its `value_source`, like a dropdown. With
+`depends_on`, a change to a field it depends on fetches the options again
+and drops the picks they no longer offer. The value is a list of the
+options' values.
+
+The `vsphere_folder` widget offers the VM folders of the datacenters whose
+clusters the project's placement allows in the environment, by path from
+the root (`vsphere.folders`). The server refuses a folder it doesn't offer.
+To put the VMs in the folder picked, bind the blueprint's `folder` to the
+input; a path from the root wins over the placement rule's folder:
+
+```yaml
+form_schema:
+  properties:
+    folder: { type: string }
+ui_schema:
+  fields:
+    folder:
+      widget: vsphere_folder
+      label: Folder
+      value_source: { kind: builtin, name: vsphere.folders }
+blueprint:
+  kind: vm
+  folder: ${inputs.folder}
+```
+
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:
   - built-in sources (vSphere inventory cache, EfficientIP, AWX, app data),

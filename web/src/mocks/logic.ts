@@ -23,7 +23,7 @@ import { toText } from "@/lib/utils";
 import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
 import { multiParts, partVMs, previewComponents } from "./components";
-import { clusters, datastores, dnsZones, networks, prefix, sizes, type SizeKey } from "./inventory";
+import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
 
 type Inputs = Record<string, unknown>;
@@ -138,6 +138,9 @@ export function resolveField(
           .filter((n) => n.env === env && placed(db, project.id, env, "network", n.name))
           .map((n) => ({ value: n.name, label: n.name, meta: n.subnet })),
       );
+    // The VM folders of the placement's datacenters: every mock cluster is in GVA.
+    case "vsphere.folders":
+      return { field, options: vmFolders.map((f) => ({ value: f, label: f, meta: "GVA" })), cache_seconds: 60 };
     case "ipam.subnets":
       return withDefault(
         networks

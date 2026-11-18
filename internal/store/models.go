@@ -376,6 +376,14 @@ type InvResourcePool struct {
 	Tags          []string `db:"tags"`
 }
 
+// InvFolder is a VM folder: Path is from the root, such as /GVA/vm/rvav/web.
+type InvFolder struct {
+	VCenter    string `db:"vcenter"`
+	Moref      string `db:"moref"`
+	Path       string `db:"path"`
+	Datacenter string `db:"datacenter"`
+}
+
 // InvDatastoreCluster is a storage pod and its member datastores.
 type InvDatastoreCluster struct {
 	VCenter    string   `db:"vcenter"`
@@ -435,6 +443,7 @@ type Inventory struct {
 	Hosts             []InvHost
 	ResourcePools     []InvResourcePool
 	DatastoreClusters []InvDatastoreCluster
+	Folders           []InvFolder
 }
 
 type Event struct {

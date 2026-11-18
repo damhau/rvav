@@ -1,7 +1,7 @@
 // Widgets for the request form renderer, keyed by `ui:widget`. Each takes the
 // same props so the renderer can pick one from the registry.
 import { Eye, EyeOff, Info, LoaderCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
@@ -268,9 +268,16 @@ function RadioCardsWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
   );
 }
 
-function ChecklistWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
-  const options = ui.options ?? [];
-  const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
+/**
+ * Several options picked, from the field's options or its value source. When
+ * a field it depends on changes, the picks the new options no longer offer
+ * are dropped.
+ */
+function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, describedBy, readOnly }: WidgetProps) {
+  const sourced = useFieldValues(name, ui, values, ctx);
+  const options = ui.value_source ? (sourced.data?.options ?? []) : (ui.options ?? []);
+  const picked = Array.isArray(value) ? value.map(String) : [];
+  const selected = new Set(picked);
   // Required options (disabled with a reason) are always part of the value.
   for (const o of options) if (o.disabled && o.disabled_reason) selected.add(o.value);
   const toggle = (o: Option) => {
@@ -279,8 +286,39 @@ function ChecklistWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
     else next.add(o.value);
     onChange(options.map((x) => x.value).filter((v) => next.has(v)));
   };
+  const offered = sourced.data?.options;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const pickedKey = JSON.stringify(picked);
+  useEffect(() => {
+    if (!offered) return;
+    const before = JSON.parse(pickedKey) as string[];
+    const kept = before.filter((v) => offered.some((o) => o.value === v));
+    if (kept.length < before.length) onChangeRef.current(kept.length ? kept : undefined);
+  }, [offered, pickedKey]);
+
+  if (ui.value_source && !sourced.data) {
+    return (
+      <p className="text-secondary text-muted" aria-describedby={describedBy}>
+        {sourced.isError
+          ? "Couldn't load the options. They'll be retried when you change a related field."
+          : "Loading the options…"}
+      </p>
+    );
+  }
+  if (options.length === 0) {
+    return (
+      <p className="text-secondary text-muted" aria-describedby={describedBy}>
+        Nothing available.
+      </p>
+    );
+  }
   return (
-    <ul className="flex flex-col" aria-labelledby={`${id}-label`}>
+    <ul
+      className={cn("flex flex-col", options.length > 10 && "max-h-72 overflow-y-auto pr-1")}
+      aria-labelledby={`${id}-label`}
+      aria-describedby={describedBy}
+    >
       {options.map((o) => {
         const optionId = `${id}-${o.value}`;
         return (

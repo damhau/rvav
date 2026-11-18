@@ -281,6 +281,12 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 			allowed, err = s.dnsZones(ctx)
 		case "awx.inventories", "awx.credentials":
 			allowed, err = s.awxChoices(ctx, *src.Name, resolveParams(src.Params, ev.Inputs))
+		case "vsphere.folders":
+			var folders []store.InvFolder
+			folders, err = s.vmFolders(ctx, ev.Project.ID, ev.Env.Key)
+			for _, f := range folders {
+				allowed = append(allowed, f.Path)
+			}
 		case "rvav.templates":
 			allowed, err = s.Store.OfferedKeys(ctx, "template", ev.Project.ID, ev.Env.Key)
 		case "rvav.sizes":

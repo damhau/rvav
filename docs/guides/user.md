@@ -84,6 +84,9 @@ Some fields take several values:
   takes the focus. Each row has a delete button. The table may need a
   number of rows, which it says beside **Add a row**. A problem names its
   row and column, for example "Row 2, Size (GB): Enter 10 or more."
+- **Lists of choices:** select each one you want. When you change a field
+  the list depends on, it may offer other choices, and the ones it no
+  longer offers are cleared.
 
 ## Following a request
 

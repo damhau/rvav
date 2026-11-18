@@ -1,8 +1,10 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
-import type { RequestForm, UiField } from "@/lib/api/types";
+import type { FieldValuesQuery, RequestForm, UiField } from "@/lib/api/types";
+import { server } from "@/mocks/node";
 import { renderWithQuery } from "@/test/render";
 import { FormRenderer } from "./FormRenderer";
 
@@ -253,5 +255,53 @@ describe("tables", () => {
     expect(values()).toEqual({ disks: [{ size_gb: 20 }] });
     expect(screen.getByLabelText("Size (GB), row 1")).toHaveFocus();
     expect(screen.getByRole("columnheader", { name: "Tier" })).toBeInTheDocument();
+  });
+});
+
+describe("multi-select from a value source", () => {
+  it("offers the source's options, and drops the picks a dependency change takes away", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        const zones = q.inputs.site === "zrh" ? ["zrh-a"] : ["gva-a", "gva-b"];
+        return HttpResponse.json({ field: q.field, options: zones.map((z) => ({ value: z, label: z.toUpperCase() })) });
+      }),
+    );
+    renderWithQuery(
+      <Harness
+        form={formOf(
+          {
+            site: {
+              ui: {
+                widget: "segmented",
+                label: "Site",
+                options: [
+                  { value: "gva", label: "Geneva" },
+                  { value: "zrh", label: "Zurich" },
+                ],
+              },
+              schema: { type: "string" },
+            },
+            zones: {
+              ui: {
+                widget: "multiselect",
+                label: "Zones",
+                depends_on: ["site"],
+                value_source: { kind: "rest", params: { url: "https://cmdb.corp.example/zones?site=${inputs.site}" } },
+              },
+              schema: { type: "array", items: { type: "string" } },
+            },
+          },
+          { site: "gva" },
+        )}
+      />,
+    );
+    await user.click(await screen.findByRole("checkbox", { name: "GVA-A" }));
+    await user.click(screen.getByRole("checkbox", { name: "GVA-B" }));
+    expect(values()).toEqual({ site: "gva", zones: ["gva-a", "gva-b"] });
+    await user.click(screen.getByRole("radio", { name: "Zurich" }));
+    expect(await screen.findByRole("checkbox", { name: "ZRH-A" })).not.toBeChecked();
+    await waitFor(() => expect(values()).toEqual({ site: "zrh" }));
   });
 });

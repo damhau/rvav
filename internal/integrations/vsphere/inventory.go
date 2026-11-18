@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/vmware/govmomi/property"
@@ -22,6 +23,8 @@ type Inventory struct {
 	Hosts             []Host
 	ResourcePools     []ResourcePool
 	DatastoreClusters []DatastoreCluster
+	// Folders are the VM folders, for forms to offer (vsphere.folders).
+	Folders []Folder
 	// TagsError says why clusters, datastores and networks have no tags:
 	// the tagging service couldn't be read. The rest of the inventory is
 	// fine.
@@ -93,6 +96,14 @@ type ResourcePool struct {
 	Tags          []string
 }
 
+// Folder is a folder VMs can be in: Path is from the root, such as
+// /GVA/vm/rvav/web, and Datacenter the one it is in.
+type Folder struct {
+	Moref      string
+	Path       string
+	Datacenter string
+}
+
 // DatastoreCluster is a storage pod: its member datastores, and whether
 // Storage DRS is on.
 type DatastoreCluster struct {
@@ -148,7 +159,11 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		return nil, err
 	}
 	var datacenters []mo.Datacenter
-	if err := retrieve([]string{"Datacenter"}, []string{"name", "hostFolder"}, &datacenters); err != nil {
+	if err := retrieve([]string{"Datacenter"}, []string{"name", "parent"}, &datacenters); err != nil {
+		return nil, err
+	}
+	var folders []mo.Folder
+	if err := retrieve([]string{"Folder"}, []string{"name", "parent", "childType"}, &folders); err != nil {
 		return nil, err
 	}
 	var datastores []mo.Datastore
@@ -285,11 +300,51 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		}
 		inv.VMs = append(inv.VMs, iv)
 	}
-	_ = datacenters
+	inv.Folders = vmFolders(folders, datacenters)
 	inv.TagsError = cl.readTags(ctx, c, inv)
 	inv.LibrariesError = cl.readLibraries(ctx, c, inv)
 	inv.PoliciesError = readStoragePolicies(ctx, c, inv)
 	return inv, nil
+}
+
+// vmFolders are the folders that hold VMs, with their paths worked out from
+// what was read rather than one call per folder.
+func vmFolders(folders []mo.Folder, datacenters []mo.Datacenter) []Folder {
+	type node struct {
+		name, kind string
+		parent     *types.ManagedObjectReference
+	}
+	nodes := map[types.ManagedObjectReference]node{}
+	for _, f := range folders {
+		nodes[f.Self] = node{name: f.Name, kind: "Folder", parent: f.Parent}
+	}
+	for _, d := range datacenters {
+		nodes[d.Self] = node{name: d.Name, kind: "Datacenter", parent: d.Parent}
+	}
+	var out []Folder
+	for _, f := range folders {
+		if !slices.Contains(f.ChildType, "VirtualMachine") {
+			continue
+		}
+		var parts []string
+		dc := ""
+		for ref, i := f.Self, 0; i < 30; i++ {
+			n, ok := nodes[ref]
+			if !ok || n.parent == nil {
+				break // the root folder has no name in paths
+			}
+			if n.kind == "Datacenter" && dc == "" {
+				dc = n.name
+			}
+			parts = append([]string{n.name}, parts...)
+			ref = *n.parent
+		}
+		if dc != "" {
+			out = append(out, Folder{Moref: f.Self.Value, Path: "/" + strings.Join(parts, "/"), Datacenter: dc})
+		}
+	}
+	slices.SortFunc(out, func(a, b Folder) int { return strings.Compare(a.Path, b.Path) })
+	return out
 }
 
 // resourcePools are the clusters' pools below their root ones, vApps left

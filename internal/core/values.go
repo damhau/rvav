@@ -56,6 +56,31 @@ func option(value, label, meta string) api.Option {
 	return o
 }
 
+// vmFolders are the VM folders of the datacenters whose clusters the
+// project's placement allows in that environment, once per path: a
+// component's folder is a path, found in the datacenter it is placed in.
+func (s *Service) vmFolders(ctx context.Context, projectID, env string) ([]store.InvFolder, error) {
+	pl, err := s.placement(ctx, projectID, env)
+	if err != nil {
+		return nil, err
+	}
+	datacenters := map[[2]string]bool{}
+	for _, c := range pl.clusters {
+		datacenters[[2]string{c.VCenter, c.Datacenter}] = true
+	}
+	all, err := s.Store.InventoryFolders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []store.InvFolder
+	for _, f := range all {
+		if datacenters[[2]string{f.VCenter, f.Datacenter}] && !slices.ContainsFunc(out, func(o store.InvFolder) bool { return o.Path == f.Path }) {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
 func formatGB(gb int64) string {
 	if gb >= 1024 {
 		return fmt.Sprintf("%.1f TB free", float64(gb)/1024)
@@ -228,6 +253,21 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		opts := []api.Option{}
 		for _, t := range list {
 			opts = append(opts, option(t.Name, t.Name, t.GuestOS))
+		}
+		out.Options = &opts
+		cache(60)
+
+	case "vsphere.folders":
+		if err := needEnv(); err != nil {
+			return out, err
+		}
+		folders, err := s.vmFolders(ctx, proj.ID, env)
+		if err != nil {
+			return out, err
+		}
+		opts := []api.Option{}
+		for _, f := range folders {
+			opts = append(opts, option(f.Path, f.Path, f.Datacenter))
 		}
 		out.Options = &opts
 		cache(60)
