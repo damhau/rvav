@@ -84,7 +84,10 @@ cluster: a host's tags are its own and its cluster's. A cluster meets a
 compute constraint when one of its usable hosts does, and the VMs start
 only on the hosts that meet the component's compute constraints. When
 those are fewer than the cluster's usable hosts, the plan names them
-(`hosts`), and anti-affinity needs as many of them as VMs. Clusters
+(`hosts`), and anti-affinity needs as many of them as VMs. The plan also
+names them when a host disconnected or in maintenance at plan time is
+one the rule's patterns, a bound host or a constraint leaves out (T1.7):
+a plan without `hosts` lets the clone use any host in service by then. Clusters
 without hosts in the inventory are matched by their own tags, as before.
 
 ### Datastore clusters

@@ -172,18 +172,40 @@ func (pl *placement) computeCands(c *store.InvCluster, bound string) []computeCa
 }
 
 // hostsOf are the hosts of the candidates on a cluster, nil when they are
-// all those of the cluster that take new VMs (or the inventory has none).
-func (pl *placement) hostsOf(cands []computeCand, c *store.InvCluster) []string {
+// all those of the cluster that take new VMs (or the inventory has none)
+// and none of those that take none now was ruled out: the clone takes nil
+// as any host in service then, so a host the rule's patterns, the host
+// bound or a compute constraint leave out must be left out by name.
+func (pl *placement) hostsOf(cands []computeCand, c *store.InvCluster, bound string, cs []blueprint.Constraint) []string {
 	var out []string
+	var mine []computeCand
 	for _, cd := range cands {
 		if cd.cluster == c && cd.host != "" {
-			out = append(out, cd.host)
+			out, mine = append(out, cd.host), append(mine, cd)
 		}
 	}
-	if pl.hostsKnown(c) && len(out) == len(pl.usableHosts(c, nil)) {
-		return nil
+	if !pl.hostsKnown(c) || len(out) != len(pl.usableHosts(c, nil)) {
+		return out
 	}
-	return out
+	// The constraints that held on the candidates: a soft one let go
+	// rules out nothing.
+	held := slices.DeleteFunc(slices.Clone(cs), func(k blueprint.Constraint) bool {
+		return slices.ContainsFunc(mine, func(cd computeCand) bool { return !k.Meets(cd.tags) })
+	})
+	var patterns []string
+	if r := pl.rule(c.Name); r != nil {
+		patterns = r.HostPatterns
+	}
+	for _, h := range pl.hosts {
+		if h.VCenter != c.VCenter || h.Cluster != c.Name || usable(h) {
+			continue
+		}
+		if len(patterns) > 0 && !matchAny(patterns, h.Name) || bound != "" && h.Name != bound ||
+			!meetsAll(held, append(slices.Clone(c.Tags), h.Tags...)) {
+			return out
+		}
+	}
+	return nil
 }
 
 // clusterChoice is a cluster chosen for a component: its hosts, when the
@@ -370,11 +392,11 @@ func (pl *placement) choose(q placementQuery) (clusterChoice, []constraintResult
 		return none, results, ""
 	}
 	best, strategy, note := pl.pick(clusters, q)
-	hosts := pl.hostsOf(cands, best)
+	hosts := pl.hostsOf(cands, best, q.plan.Host, compute)
 	// A soft constraint that leaves too few hosts to keep the VMs apart is
 	// met on some of them only.
 	if q.apart && q.count > 1 && hosts != nil && len(hosts) < q.count {
-		hosts = pl.hostsOf(held, best)
+		hosts = pl.hostsOf(held, best, q.plan.Host, compute)
 	}
 	tags := best.Tags
 	if i := slices.IndexFunc(cands, func(cd computeCand) bool { return cd.cluster == best }); i >= 0 {
@@ -397,7 +419,7 @@ func (pl *placement) placeOnGiven(c *store.InvCluster, bound string, cs []bluepr
 		return nil, nil
 	}
 	if !pl.hostsKnown(c) {
-		return pl.hostsOf(cands, c), checkGiven(cs, "Cluster", c.Name, c.Tags, add)
+		return pl.hostsOf(cands, c, bound, cs), checkGiven(cs, "Cluster", c.Name, c.Tags, add)
 	}
 	left, results, failed := narrow(cands, hard(cs), candTags, candName)
 	if failed != nil {
@@ -409,7 +431,7 @@ func (pl *placement) placeOnGiven(c *store.InvCluster, bound string, cs []bluepr
 		return nil, results
 	}
 	left, softs, _ := narrow(left, soft(cs), candTags, candName)
-	return pl.hostsOf(left, c), placedOn(append(results, softs...), c.Name, left[0].tags)
+	return pl.hostsOf(left, c, bound, cs), placedOn(append(results, softs...), c.Name, left[0].tags)
 }
 
 // fits says whether a cluster has the component's network, hosts to keep

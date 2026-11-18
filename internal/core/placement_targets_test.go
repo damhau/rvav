@@ -155,6 +155,34 @@ func TestHostTagsAndPatterns(t *testing.T) {
 	}
 }
 
+// TestHostsLeftOutStayOut: a host in maintenance at plan time that the
+// rule's patterns, the host bound or a constraint leave out is left out
+// by name, so it doesn't take the VMs once back (T1.7).
+func TestHostsLeftOutStayOut(t *testing.T) {
+	pl := pooled("")
+	pl.hosts[0].Tags = []string{"rvav-zone/pci"} // c-h1, in maintenance
+	want := []string{"c-h2", "c-h3"}
+	if ch := chooseIn(t, pl, blueprint.VMPlan{MemoryGB: 8}, 1, "compute !rvav-zone/pci"); !slices.Equal(ch.hosts, want) {
+		t.Errorf("a constraint: %v", ch.hosts)
+	}
+	if hosts, _ := pl.placeOnGiven(pl.cluster("c"), "", constraints(t, "compute !rvav-zone/pci"), nil); !slices.Equal(hosts, want) {
+		t.Errorf("a constraint on the cluster given: %v", hosts)
+	}
+	// A soft one let go, or one c-h1 meets too, rules out nothing.
+	if ch := chooseIn(t, pl, blueprint.VMPlan{MemoryGB: 8}, 1, "compute rvav-hw/fpga:soft", "compute rvav-env/prod"); ch.hosts != nil {
+		t.Errorf("a soft constraint let go: %v", ch.hosts)
+	}
+	pl.rules[0].HostPatterns = []string{"c-h[23]"}
+	if ch := chooseIn(t, pl, blueprint.VMPlan{MemoryGB: 8}, 1); !slices.Equal(ch.hosts, want) {
+		t.Errorf("host patterns: %v", ch.hosts)
+	}
+	pl.rules[0].HostPatterns = nil
+	pl.hosts = pl.hosts[:2]
+	if ch := chooseIn(t, pl, blueprint.VMPlan{MemoryGB: 8, Host: "c-h2"}, 1); !slices.Equal(ch.hosts, []string{"c-h2"}) {
+		t.Errorf("a host bound: %v", ch.hosts)
+	}
+}
+
 func TestPlaceOnGiven(t *testing.T) {
 	pl := pooled("")
 	var said []string
