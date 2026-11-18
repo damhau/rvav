@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
+import { HardDrive, List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
 import { Dialog as D } from "radix-ui";
 import { useDeferredValue, useState } from "react";
 import { useOpener } from "@/components/ui/opener";
@@ -105,6 +105,22 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       }))
     : [];
 
+  // The palette shows a few deployments; Resources lists every VM the search finds.
+  const vms: Entry[] = searching
+    ? [
+        {
+          id: "find-vms",
+          label: `Find “${term}” in Resources`,
+          meta: "VMs by name, IP or FQDN",
+          icon: HardDrive,
+          run: () => {
+            close();
+            void navigate({ to: "/resources", search: { q: term } });
+          },
+        },
+      ]
+    : [];
+
   const reqs: Entry[] = searching
     ? (requests.data?.pages[0]?.items ?? []).map((r) => ({
         id: `req-${r.id}`,
@@ -143,7 +159,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                   Try a VM name, an IP address such as 10.21.10.37, or a request number.
                 </span>
               </Command.Empty>
-              <Group heading="Deployments and VMs" entries={deps} />
+              <Group heading="Deployments and VMs" entries={[...deps, ...vms]} />
               <Group heading="Requests" entries={reqs} />
               <Group heading="Request" entries={items} />
               <Group heading="Go to" entries={nav} />

@@ -17,6 +17,7 @@ const pages = [
   "/catalog/three-tier/request",
   "/requests",
   "/deployments",
+  "/resources",
   "/approvals",
   "/notifications",
   "/reports",

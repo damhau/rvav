@@ -51,6 +51,7 @@ describe("sidebar", () => {
       "Overview",
       "Catalog",
       "Deployments",
+      "Resources",
       expect.stringMatching(/^Requests/),
       expect.stringMatching(/^Approvals/),
       "Reports",

@@ -234,6 +234,11 @@ function ViewNameDialog({
       <DialogContent
         title={view ? `Rename ${view.name}` : "Save this view"}
         description={view ? undefined : "Its filters, sort and layout, under a name only you see."}
+        onOpenAutoFocus={(e) => {
+          // The name it asks for, rather than Close.
+          e.preventDefault();
+          document.getElementById("view-name")?.focus();
+        }}
       >
         <form
           className="flex flex-col gap-4 p-4"

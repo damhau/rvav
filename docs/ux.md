@@ -19,8 +19,8 @@
 ## Navigation
 
 ```
-Sidebar:  Overview · Catalog · Deployments · Requests (running) ·
-          Approvals (badge) · Reports
+Sidebar:  Overview · Catalog · Deployments · Resources ·
+          Requests (running) · Approvals (badge) · Reports
           ── Administration
              Catalog:        Catalog items · Day-2 actions · Custom workflows ·
                              Subscriptions
@@ -127,6 +127,24 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
   Its name opens the VM's properties in a read-only side panel: guest, adapters,
   disks, snapshots, ISO, placement, custom properties, and a link into the
   vSphere Client (or why there is none yet).
+
+### Resources
+- The VMs of the deployments the person sees, one row per VM, in a table:
+  name (a button that opens the VM's properties in the side panel, in
+  place) with its FQDN, power, addresses (reserved first, IPv4 before
+  IPv6), deployment (a link), project (with **All my projects**),
+  environment, vCenter and cluster, vCPU, memory, disks (count and total)
+  and networks. It scrolls sideways under its width.
+- Filters in the toolbar, kept in the address: search (name, IP, FQDN),
+  environment, power, vCenter, cluster, network. vCenters, clusters and
+  networks are those the VMs use. Headers sort on the server; **Load more**
+  pages.
+- **All my projects** and **Views** as on Deployments; no cards.
+- VMs only, not tabs: the disks and networks are the VMs' own (columns and
+  a filter), NSX objects belong to a deployment's topology, and other kinds
+  of resource would each need their own columns. A tab bar with one tab
+  would only add a click.
+- ⌘K offers **Find … in Resources** once two characters are typed.
 
 ### Approvals inbox
 A table in two tabs, Waiting for you and Decided, kept in the address. A row

@@ -277,6 +277,30 @@ over a soft quota.
   What happens at the end (power off then delete, or delete) is the
   environment's policy.
 
+## Resources
+
+**Resources** lists the VMs in the deployments of the project you work in,
+one row per VM, whatever deployment holds it. To list the VMs of every
+project you're in, select **All my projects**. Each row shows the VM's
+power state, its IPv4 and IPv6 addresses, its deployment, environment,
+vCenter and cluster, its vCPUs and memory, its disks (how many, and their
+total size) and the networks it's on.
+
+To find VMs:
+- search by name, IP address or FQDN;
+- choose an environment, a power state, a vCenter, a cluster or a network.
+  Only the vCenters, clusters and networks your VMs use are offered.
+
+To sort, select a column's header. The address keeps your filters and sort,
+and **Views** saves them under a name, as on **Deployments**.
+
+To see everything about a VM, select its name: its properties open in a
+side panel, and the list stays as it is. To open its deployment, select
+the deployment's name.
+
+To search from anywhere, press **Ctrl+K** (**⌘K** on a Mac), type at least
+two characters, and select **Find … in Resources**.
+
 ## Signing in to your VMs
 
 When the item gives the VMs a user, the deployment's **Overview** shows

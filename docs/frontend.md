@@ -286,9 +286,10 @@ routes.
 
 ### Navigation
 - The sidebar (`components/shell/Sidebar.tsx`) starts with the main menu:
-  Overview, Catalog, Deployments, Requests, Approvals and Reports. Below a
-  line, **Administration** lists its pages in four groups, each under a
-  small heading: Catalog, Governance, Infrastructure and Operations.
+  Overview, Catalog, Deployments, Resources, Requests, Approvals and
+  Reports. Below a line, **Administration** lists its pages in four groups,
+  each under a small heading: Catalog, Governance, Infrastructure and
+  Operations.
 - `components/shell/nav.ts` lists the pages, their icons, their groups and
   who may open each. The sidebar shows only the pages the person may open,
   and leaves out a group with none. The command palette lists the same
@@ -309,6 +310,9 @@ routes.
   come after Go to, in the sidebar's groups. They're found by their name, their
   group's name, or a keyword from `keywords` in `components/shell/nav.ts`,
   such as "sizes" for **Templates and networks**.
+- Once two characters are typed, **Find … in Resources** ends the
+  Deployments and VMs group: it opens `/resources?q=…`, which lists every VM
+  the search finds, not the palette's first few deployments.
 - Results are cached in TanStack Query.
 
 ## Catalog form renderer
