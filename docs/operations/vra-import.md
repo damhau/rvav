@@ -211,8 +211,9 @@ that the group has the inputs and constants the item reads.
 Changing an imported group in rvav therefore reaches its items at the
 next import: each item that names the group gets a new draft that names
 the group's new version (or a conflict, if the item has a draft already),
-even when nothing changed in vRA. Publish the drafts, or discard them to
-keep the version the items name.
+even when nothing changed in vRA. The plan says so on the group, and
+lists the items it makes a new draft of. Publish the drafts, or discard
+them to keep the version the items name.
 
 ### Custom forms
 

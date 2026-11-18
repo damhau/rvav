@@ -193,6 +193,22 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		}
 		p.Summary.SharesAdd += len(it.ShareAdd)
 	}
+	for i, g := range p.PropertyGroups {
+		if g.Action != ActionDiffers {
+			continue
+		}
+		var drafts []string
+		for _, it := range p.Items {
+			if it.Action == ActionUpdate && namesGroup(it.Doc, g.Key) {
+				drafts = append(drafts, it.Slug)
+			}
+		}
+		if len(drafts) > 0 {
+			p.PropertyGroups[i].Notes = append(p.PropertyGroups[i].Notes, Note{Warning, "", fmt.Sprintf(
+				"The import makes a new draft of %s, naming version %d: publish it for requests to use that version.",
+				strings.Join(drafts, ", "), g.Version)})
+		}
+	}
 	if r.ItemStates == nil {
 		r.ItemStates = after
 	}

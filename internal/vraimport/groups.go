@@ -115,7 +115,8 @@ func PlanPropertyGroups(e *vra.Estate, r Rvav) []GroupImport {
 		default:
 			gi.Action, gi.Version = ActionDiffers, have.Version
 			gi.Notes = append(gi.Notes, Note{Warning, "", fmt.Sprintf("rvav has a property group %s that isn't what vRA's gives: "+
-				"the import leaves it as it is, and items name its version %d.", gi.Key, have.Version)})
+				"the import leaves it as it is, and items name its version %d. An item imported while the group had an older "+
+				"version gets a new draft, even when its template hasn't changed.", gi.Key, have.Version)})
 		}
 		out = append(out, gi)
 	}
@@ -339,6 +340,18 @@ func (gs *groupScope) refs() []any {
 // withGroupVersions makes an item's versions name the version of each
 // property group the import makes or finds, and says when it finds one
 // that differs from vRA's.
+// namesGroup says whether the item's latest version names the group.
+func namesGroup(doc *ItemDoc, key string) bool {
+	if doc == nil || len(doc.Versions) == 0 {
+		return false
+	}
+	refs, _ := doc.Versions[len(doc.Versions)-1].Blueprint["property_groups"].([]any)
+	return slices.ContainsFunc(refs, func(r any) bool {
+		m, _ := r.(map[string]any)
+		return m["key"] == key
+	})
+}
+
 func withGroupVersions(doc *ItemDoc, groups map[string]GroupImport, note func(level, where, text string)) {
 	warned := map[string]bool{}
 	for _, v := range doc.Versions {

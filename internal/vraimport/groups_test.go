@@ -180,4 +180,16 @@ func TestMapGroupedTemplate(t *testing.T) {
 	if plan.Summary.PropertyGroupsCreate != 1 {
 		t.Fatalf("summary = %+v", plan.Summary)
 	}
+
+	// Imported while dnsSettings was at version 1: a new draft, said on
+	// the group.
+	st.Links["bp-grouped"] = Link{RvavID: "itm_grouped", Version: "1", Hash: "the hash with version 1"}
+	st.Items["itm_grouped"] = ItemState{ID: "itm_grouped", Slug: it.Slug, Published: true}
+	plan = PlanImport(&e, r, st)
+	g := plan.PropertyGroups[slices.IndexFunc(plan.PropertyGroups, func(g GroupImport) bool { return g.Key == "dnsSettings" })]
+	if !slices.ContainsFunc(g.Notes, func(n Note) bool {
+		return n.Level == Warning && n.Text == "The import makes a new draft of "+it.Slug+", naming version 3: publish it for requests to use that version."
+	}) || !strings.Contains(g.Notes[0].Text, "gets a new draft, even when its template hasn't changed") {
+		t.Fatalf("dnsSettings notes = %+v", g.Notes)
+	}
 }
