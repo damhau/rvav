@@ -4935,6 +4935,9 @@ components:
           description: The values a string input is chosen from.
           items: { type: string }
         help: { type: string, maxLength: 300 }
+        expose_to_inventory:
+          type: boolean
+          description: "Puts its value in the host variables of the AWX inventory's hosts, as a form field's expose_to_inventory does. Not with secret."
     PropertyGroupWrite:
       type: object
       required: [name, inputs, constants]

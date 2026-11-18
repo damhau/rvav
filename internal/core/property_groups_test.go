@@ -25,13 +25,14 @@ func TestCheckGroup(t *testing.T) {
 		{Name: "a", Label: "A", Type: api.PropertyGroupInputTypeInteger, Default: 1.5, Options: &opts},
 		{Name: "b", Label: "B", Type: api.PropertyGroupInputTypeString, Options: &opts, Default: "CC-9"},
 		{Name: "c", Label: "C", Type: api.PropertyGroupInputTypeString, Secret: &yes, Default: "plain"},
+		{Name: "d", Label: "D", Type: api.PropertyGroupInputTypeString, Secret: &yes, ExposeToInventory: &yes},
 	}, Constants: map[string]any{"bad-key": "x", "nested": map[string]any{"a": 1.0}}}
 	var got []string
 	for _, e := range checkGroup(w) {
 		got = append(got, e.Field)
 	}
 	want := []string{"/name", "/inputs/0/name", "/inputs/1/label", "/inputs/1/type", "/inputs/2/name", "/inputs/2/options",
-		"/inputs/2/default", "/inputs/3/default", "/inputs/4/default", "/constants/bad-key", "/constants/nested"}
+		"/inputs/2/default", "/inputs/3/default", "/inputs/4/default", "/inputs/5/expose_to_inventory", "/constants/bad-key", "/constants/nested"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("errors at\n %v, want\n %v", got, want)
 	}

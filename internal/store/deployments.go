@@ -380,7 +380,10 @@ type InventoryHost struct {
 	Owner          string          `db:"owner"`
 	OSFamily       string          `db:"os_family"`
 	Inputs         json.RawMessage `db:"inputs"`
-	UISchema       json.RawMessage `db:"ui_schema"`
+	// UISchema is the item version's, with its property groups' fields.
+	UISchema  json.RawMessage `db:"ui_schema"`
+	VersionID string          `db:"version_id"`
+	Groups    json.RawMessage `db:"groups"`
 }
 
 // InventoryHosts lists the VMs of deployments that are not being deleted,
@@ -397,12 +400,28 @@ func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
 		coalesce((select c->'guest'->>'os_family' from jsonb_array_elements(case when jsonb_typeof(v.blueprint->'components') = 'array'
 			then v.blueprint->'components' else '[]' end) c where c->>'key' = r.properties->'vm'->>'component'),
 			v.blueprint->'guest'->>'os_family', '') as os_family,
-		d.inputs, coalesce(v.ui_schema, '{}') as ui_schema
+		d.inputs, coalesce(v.ui_schema, '{}') as ui_schema, coalesce(v.id, '') as version_id,
+		jsonb_build_object('property_groups', v.blueprint->'property_groups') as groups
 		from resources r join deployments d on d.id = r.deployment_id join projects p on p.id = d.project_id
 		join catalog_items i on i.id = d.item_id left join catalog_item_versions v on v.id = d.version_id
 		left join users u on u.id = d.owner_id
 		where r.type = 'vsphere.vm' and d.status not in ('deleting', 'deleted') order by r.name`)
-	return pgx.CollectRows(rows, pgx.RowToStructByName[InventoryHost])
+	hosts, err := pgx.CollectRows(rows, pgx.RowToStructByName[InventoryHost])
+	if err != nil {
+		return nil, err
+	}
+	merged := map[string]json.RawMessage{}
+	for i, h := range hosts {
+		ui, ok := merged[h.VersionID]
+		if !ok {
+			if ui, err = UISchemaWithGroups(ctx, s.Pool, h.UISchema, h.Groups); err != nil {
+				return nil, err
+			}
+			merged[h.VersionID] = ui
+		}
+		hosts[i].UISchema = ui
+	}
+	return hosts, nil
 }
 
 // UpdateResourceStateIf stores a resource's new state and properties only

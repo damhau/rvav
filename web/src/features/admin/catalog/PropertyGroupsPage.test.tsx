@@ -189,17 +189,26 @@ describe("Property groups", () => {
     await user.click(within(sheet).getByRole("button", { name: "Add input" }));
     await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-input-0-name" }), "disk_gb");
     await user.type(within(sheet).getByLabelText("Label"), "Disk");
+    await user.click(within(sheet).getByRole("checkbox", { name: "A host variable in the AWX inventory" }));
     await user.click(within(sheet).getByRole("checkbox", { name: "Secret" }));
     expect(within(sheet).queryByLabelText("Default")).toBeNull();
+    expect(within(sheet).queryByRole("checkbox", { name: "A host variable in the AWX inventory" })).toBeNull();
     await user.click(within(sheet).getByLabelText("Type", { selector: "#pg-input-0-type" }));
     await user.click(await screen.findByRole("option", { name: "Whole number" }));
     await user.type(within(sheet).getByLabelText("Default"), "40");
     await user.type(within(sheet).getByLabelText("Help"), "In GB, on top of the template's disk.");
+    await user.click(within(sheet).getByRole("button", { name: "Add input" }));
+    await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-input-1-name" }), "site");
+    await user.type(within(sheet).getByLabelText("Label", { selector: "#pg-input-1-label" }), "Site");
+    await user.click(
+      within(sheet).getByLabelText("A host variable in the AWX inventory", { selector: "#pg-input-1-inventory" }),
+    );
     await user.click(within(sheet).getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect((sent[0] as { inputs: unknown }).inputs).toEqual([
       { name: "disk_gb", label: "Disk", type: "integer", default: 40, help: "In GB, on top of the template's disk." },
+      { name: "site", label: "Site", type: "string", expose_to_inventory: true },
     ]);
   });
 

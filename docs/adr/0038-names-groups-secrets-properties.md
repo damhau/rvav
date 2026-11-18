@@ -44,7 +44,9 @@ own `properties` (C30).
   the administration menu (`/admin/property-groups`, `catalog.manage`).
 - An input has a name, a label, a type (`string`, `integer`, `number`,
   `boolean`), and may be required, secret (text without options or
-  default), have a default and, as text, options. Constants are scalars
+  default), have a default, a help text and, as text, options, and be
+  exposed to the AWX inventory (`expose_to_inventory`, never with
+  `secret`), as a form field may. Constants are scalars
   (text, number, yes or no): a binding reads `propgroup.<key>.<name>`
   whole, and a nested value would read as JSON text in a vSphere
   attribute.
@@ -62,6 +64,13 @@ own `properties` (C30).
   (`propgroup-<key>`, titled with its name), and their constants to
   `GroupConstants`. So no requester path needs to know about groups, and
   a secret group input is sealed and masked like any other.
+- What reads a request's or deployment's inputs outside the API, the
+  integration events (`outbox.RequestData`, `DeploymentData`) and the AWX
+  inventory (`store.InventoryHosts`), merges the groups' UI fields the
+  same way (`store.UISchemaWithGroups`). The events leave out a group's
+  secret inputs as the form's, and the inventory has a group input when
+  it's exposed. An AWX item's launch already had them all: it gets the
+  submitted inputs, a secret one opened at launch.
 - Form rules, bindings, properties, folders and composite steps read the
   constants as `propgroup.<key>.<name>`; the worker reads them from the
   version when it works out a composite step.

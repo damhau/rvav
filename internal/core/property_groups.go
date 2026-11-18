@@ -186,6 +186,9 @@ func checkGroup(w api.PropertyGroupWrite) []api.FieldError {
 		if secret && (!str || len(options) > 0) {
 			add(at+"/secret", "invalid", "A secret input is a string typed in, without options.")
 		}
+		if secret && in.ExposeToInventory != nil && *in.ExposeToInventory {
+			add(at+"/expose_to_inventory", "invalid", "A secret input never goes to the AWX inventory.")
+		}
 		if in.Default == nil {
 			continue
 		}

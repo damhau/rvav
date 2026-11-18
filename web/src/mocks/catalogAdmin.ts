@@ -75,6 +75,8 @@ function checkGroup(w: S["PropertyGroupWrite"]): S["FieldError"][] {
     if (options.length > 0 && !str) add(`${at}/options`, "invalid", "Only a string input is chosen from options.");
     if (i.secret && (!str || options.length > 0))
       add(`${at}/secret`, "invalid", "A secret input is a string typed in, without options.");
+    if (i.secret && i.expose_to_inventory)
+      add(`${at}/expose_to_inventory`, "invalid", "A secret input never goes to the AWX inventory.");
     if (i.default === undefined || i.default === null) return;
     if (i.secret) add(`${at}/default`, "invalid", "A secret input has no default: the group would hold its value.");
     else if (!ofType(i.default, i.type)) add(`${at}/default`, "invalid", `The default must be a ${i.type}.`);
@@ -532,6 +534,7 @@ function groupInput(i: S["PropertyGroupInput"]): [Record<string, unknown>, S["Ui
   else if (i.type === "boolean") field.widget = "toggle";
   else if (i.type === "integer" || i.type === "number") field.widget = "number";
   if (i.help) field.help = i.help;
+  if (i.expose_to_inventory && !i.secret) field.expose_to_inventory = true;
   return [schema, field];
 }
 

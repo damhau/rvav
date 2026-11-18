@@ -3698,6 +3698,8 @@ export interface components {
             /** @description The values a string input is chosen from. */
             options?: string[];
             help?: string;
+            /** @description Puts its value in the host variables of the AWX inventory's hosts, as a form field's expose_to_inventory does. Not with secret. */
+            expose_to_inventory?: boolean;
         };
         PropertyGroupWrite: {
             /** @description When creating: how blueprints name it and bindings read it, propgroup.<key>.<name>. */

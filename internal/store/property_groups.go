@@ -32,6 +32,9 @@ type GroupInput struct {
 	Default  any      `json:"default,omitempty"`
 	Options  []string `json:"options,omitempty"`
 	Help     string   `json:"help,omitempty"`
+	// ExposeToInventory puts it in the AWX inventory's host variables, as
+	// a form field's expose_to_inventory does; never a secret one.
+	ExposeToInventory bool `json:"expose_to_inventory,omitempty"`
 }
 
 // GroupRef is a blueprint's reference to a version of a property group, in
@@ -124,22 +127,46 @@ func (s *Store) GetVersion(ctx context.Context, id string) (ItemVersion, error) 
 	if err != nil || len(refs) == 0 {
 		return v, err
 	}
+	groups, err := groupsOf(ctx, s.Pool, refs)
+	if err != nil {
+		return v, err
+	}
+	return WithGroups(v, groups), nil
+}
+
+// UISchemaWithGroups is a version's UI schema with the fields of the
+// property groups its blueprint names, as GetVersion gives it: what tells
+// a group's secret inputs, and those exposed to the AWX inventory.
+func UISchemaWithGroups(ctx context.Context, db DB, uiSchema, blueprint json.RawMessage) (json.RawMessage, error) {
+	refs := GroupRefs(blueprint)
+	if len(refs) == 0 {
+		return uiSchema, nil
+	}
+	groups, err := groupsOf(ctx, db, refs)
+	if err != nil {
+		return uiSchema, err
+	}
+	return WithGroups(ItemVersion{UISchema: uiSchema}, groups).UISchema, nil
+}
+
+func groupsOf(ctx context.Context, db DB, refs []GroupRef) ([]PropertyGroup, error) {
 	groups := make([]PropertyGroup, 0, len(refs))
 	for _, r := range refs {
 		if r.Version < 1 {
 			continue
 		}
+		rows, _ := db.Query(ctx, `select `+groupCols+` from property_groups where key = $1 and version = $2`, r.Key, r.Version)
+		g, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[PropertyGroup])
 		// Only a draft can name a group that's gone: saving it says so.
-		g, err := s.GetPropertyGroup(ctx, r.Key, r.Version)
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
 		if err != nil {
-			return v, err
+			return nil, err
 		}
 		groups = append(groups, g)
 	}
-	return WithGroups(v, groups), nil
+	return groups, nil
 }
 
 // WithGroups is the version with the inputs of these property groups in
@@ -225,6 +252,9 @@ func (in GroupInput) uiField() map[string]any {
 	}
 	if in.Help != "" {
 		f["help"] = in.Help
+	}
+	if in.ExposeToInventory && !in.Secret {
+		f["expose_to_inventory"] = true
 	}
 	return f
 }

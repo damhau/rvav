@@ -928,13 +928,17 @@ as a cost centre every VM asks for or the DNS domain of a site. Manage them
 in **Property groups**, under **Catalog**; you need `catalog.manage`.
 
 - **Inputs:** each has a name, a label, a type (text, whole number,
-  number, yes or no), and can be required or have a default. Text inputs
-  can list options, separated by commas, for requesters to choose from,
-  or be secret (a secret input has no default and no options).
+  number, yes or no), and can be required or have a default and a help
+  text, shown under the field on the request form. Text inputs can list
+  options, separated by commas, for requesters to choose from, or be
+  secret (a secret input has no default and no options). Changing an
+  input's type away from text clears **Secret** and its options. **A host
+  variable in the AWX inventory** puts the input in the inventory; a
+  secret input can't be one.
 - **Constants:** values the item's bindings, properties, folders, form
   rules and composite steps read as `propgroup.<key>.<name>`, such as
-  `${propgroup.network.dns_domain}`. A constant is text, a number, or
-  `true` or `false`.
+  `${propgroup.network.dns_domain}`. Each has a type: **Text**,
+  **Number**, or **Yes or no**.
 
 Saving a group makes its next version; the versions before it don't
 change. To use a group, name it and its version in the item's blueprint,
@@ -948,8 +952,20 @@ blueprint:
 ```
 
 The group's inputs show on the item's request form in a section of their
-own, titled with the group's name, as if the item declared them. An item
-keeps the version it names: to use a newer one, change the version in a
+own, titled with the group's name, and go wherever the item's own inputs
+go:
+
+- Bindings, properties and cloud-init read them as `inputs.<name>`.
+- An AWX item's job gets them as extra variables, and the events sent to
+  webhooks carry them under `inputs`.
+- The AWX inventory has an input among a host's `rvav_inputs` only when
+  the input is a host variable in the AWX inventory.
+- A secret input is sealed like the item's own secret inputs: only an
+  AWX item's job gets its value, at launch. Events, the inventory and the
+  API never show it, a custom property that reads it shows `••••`, and
+  saving an item refuses a folder that reads it.
+
+An item keeps the version it names: to use a newer one, change the version in a
 new draft and publish it. Saving the item refuses a group or version that
 doesn't exist, and an input that is both in the item's form and in a
 group, or in two groups.

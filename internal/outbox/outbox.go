@@ -167,13 +167,13 @@ func requestData(ctx context.Context, db store.DB, requestID string) (map[string
 		id, number, kind, status        string
 		action, deploymentID            *string
 		resourceID, resourceName        *string
-		inputs, uiSchema, plan          []byte
+		inputs, uiSchema, bp, plan      []byte
 		item, project, requester, owner []byte
 		environment                     string
 		production                      bool
 	)
 	err := db.QueryRow(ctx, `select r.id, r.number, r.kind, r.action, r.status, r.deployment_id, r.resource_id, r.resource_name,
-			r.inputs, v.ui_schema, r.plan,
+			r.inputs, v.ui_schema, v.blueprint, r.plan,
 			jsonb_build_object('id', i.id, 'slug', i.slug, 'name', i.name, 'type', i.type, 'version', v.number),
 			jsonb_build_object('id', p.id, 'code', p.code, 'name', p.name, 'cost_center', p.cost_center),
 			jsonb_build_object('id', ru.id, 'name', ru.name, 'email', ru.email),
@@ -183,11 +183,14 @@ func requestData(ctx context.Context, db store.DB, requestID string) (map[string
 		join projects p on p.id = r.project_id join environments e on e.key = r.environment
 		join users ru on ru.id = r.requester_id join users ou on ou.id = r.owner_id
 		where r.id = $1`, requestID).Scan(&id, &number, &kind, &action, &status, &deploymentID, &resourceID, &resourceName,
-		&inputs, &uiSchema, &plan,
+		&inputs, &uiSchema, &bp, &plan,
 		&item, &project, &requester, &owner, &environment, &production)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, store.ErrNotFound
 	} else if err != nil {
+		return nil, nil, err
+	}
+	if uiSchema, err = store.UISchemaWithGroups(ctx, db, uiSchema, bp); err != nil {
 		return nil, nil, err
 	}
 	data := map[string]any{
@@ -223,17 +226,20 @@ func deploymentData(ctx context.Context, db store.DB, deploymentID string) (map[
 		item, project, owner []byte
 		environment          string
 		production           bool
-		inputs, uiSchema     []byte
+		inputs, uiSchema, bp []byte
 	)
 	err := db.QueryRow(ctx, `select jsonb_build_object('id', i.id, 'slug', i.slug, 'name', i.name, 'type', i.type, 'version', v.number),
 			jsonb_build_object('id', p.id, 'code', p.code, 'name', p.name, 'cost_center', p.cost_center),
-			jsonb_build_object('id', ou.id, 'name', ou.name, 'email', ou.email), e.key, e.production, d.inputs, v.ui_schema
+			jsonb_build_object('id', ou.id, 'name', ou.name, 'email', ou.email), e.key, e.production, d.inputs, v.ui_schema, v.blueprint
 		from deployments d join catalog_items i on i.id = d.item_id join catalog_item_versions v on v.id = d.version_id
 		join projects p on p.id = d.project_id join environments e on e.key = d.environment join users ou on ou.id = d.owner_id
-		where d.id = $1`, deploymentID).Scan(&item, &project, &owner, &environment, &production, &inputs, &uiSchema)
+		where d.id = $1`, deploymentID).Scan(&item, &project, &owner, &environment, &production, &inputs, &uiSchema, &bp)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, store.ErrNotFound
 	} else if err != nil {
+		return nil, err
+	}
+	if uiSchema, err = store.UISchemaWithGroups(ctx, db, uiSchema, bp); err != nil {
 		return nil, err
 	}
 	deps, resources, err := deployments(ctx, db, "d.id = $1", deploymentID)
@@ -304,7 +310,8 @@ func raw(b []byte) map[string]any {
 	return m
 }
 
-// publicInputs leaves out the inputs of secret fields, as the API does.
+// publicInputs leaves out the inputs of secret fields, the item's and its
+// property groups', as the API does.
 func publicInputs(inputs, uiSchema []byte) map[string]any {
 	m := raw(inputs)
 	if m == nil {

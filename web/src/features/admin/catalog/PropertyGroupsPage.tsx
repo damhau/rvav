@@ -44,6 +44,7 @@ interface InputRow {
   type: InputType;
   required: boolean;
   secret: boolean;
+  inventory: boolean;
   default: string;
   options: string;
   help: string;
@@ -76,6 +77,7 @@ const toRow = (i: GroupInput): InputRow => ({
   type: i.type,
   required: Boolean(i.required),
   secret: Boolean(i.secret),
+  inventory: Boolean(i.expose_to_inventory),
   default: asText(i.default),
   options: (i.options ?? []).join(", "),
   help: i.help ?? "",
@@ -90,6 +92,7 @@ function fromRow(r: InputRow): GroupInput {
   if (r.required) out.required = true;
   if (r.type === "string" && r.secret) out.secret = true;
   if (r.type === "string" && options.length) out.options = options;
+  if (r.inventory && !out.secret) out.expose_to_inventory = true;
   if (r.help.trim()) out.help = r.help.trim();
   const d = r.default.trim();
   if (d && !out.secret) {
@@ -131,7 +134,7 @@ function unplaced(errors: Record<string, string>, inputs: number, constants: Con
   return Object.entries(errors)
     .filter(([at]) => {
       if (["/key", "/name", "/description"].includes(at) || keys.has(at)) return false;
-      const m = /^\/inputs\/(\d+)\/(name|label|type|default|options|secret|help)$/.exec(at);
+      const m = /^\/inputs\/(\d+)\/(name|label|type|default|options|secret|expose_to_inventory|help)$/.exec(at);
       return !(m && Number(m[1]) < inputs);
     })
     .map(([, why]) => why);
@@ -233,13 +236,30 @@ function InputEditor({
               id={id("secret")}
               checked={row.secret}
               onChange={(v) =>
-                onChange({ ...row, secret: v, default: v ? "" : row.default, options: v ? "" : row.options })
+                onChange({
+                  ...row,
+                  secret: v,
+                  inventory: v ? false : row.inventory,
+                  default: v ? "" : row.default,
+                  options: v ? "" : row.options,
+                })
               }
             />
             Secret
           </label>
         )}
+        {!row.secret && (
+          <label htmlFor={id("inventory")} className="flex items-center gap-2 text-body">
+            <Checkbox
+              id={id("inventory")}
+              checked={row.inventory}
+              onChange={(v) => onChange({ ...row, inventory: v })}
+            />
+            A host variable in the AWX inventory
+          </label>
+        )}
         {err("secret") && <span className="text-secondary text-bad">{err("secret")}</span>}
+        {err("expose_to_inventory") && <span className="text-secondary text-bad">{err("expose_to_inventory")}</span>}
         <Button
           type="button"
           size="sm"
@@ -377,6 +397,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
                   type: "string",
                   required: false,
                   secret: false,
+                  inventory: false,
                   default: "",
                   options: "",
                   help: "",
