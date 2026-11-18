@@ -74,6 +74,7 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await expect(page.getByRole("button", { name: /^Project/ })).toContainText("Infra Core");
   await nav(page, "Catalog");
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill(role);
   const vm = `core-dev-${role}001`;
@@ -92,10 +93,11 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await choose(page, "As", operator);
   await members.getByRole("textbox", { name: "Add someone" }).fill("Thomas");
   await members
-    .getByRole("button", { name: /Thomas Nguyen/ })
+    .getByRole("list", { name: "Add someone: people found" })
+    .getByRole("button", { name: /^Thomas Nguyen/ })
     .first()
     .click();
-  await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toHaveText(`${operator} given here`);
+  await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText(`${operator} given here`);
 
   // Thomas powers it off and on, and nothing else.
   await signInAs(page, "thomas");
@@ -135,10 +137,11 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await choose(page, "The role", auditor);
   await rvav.getByRole("textbox", { name: "Give someone" }).fill("Thomas");
   await rvav
-    .getByRole("button", { name: /Thomas Nguyen/ })
+    .getByRole("list", { name: "Give someone: people found" })
+    .getByRole("button", { name: /^Thomas Nguyen/ })
     .first()
     .click();
-  await expect(rvav.getByRole("button", { name: `Take ${auditor} away from Thomas Nguyen` })).toBeVisible();
+  await expect(rvav.getByRole("button", { name: `Actions for ${auditor} of Thomas Nguyen` })).toBeVisible();
 
   // Thomas reads the administration, read only.
   await signInAs(page, "thomas");
@@ -148,20 +151,25 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Integrations" })).toBeHidden();
   await nav(page, "Projects");
   await expect(page.getByRole("button", { name: "New project" })).toBeHidden();
+  await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
-  await expect(envs.getByRole("checkbox", { name: "Production is production" })).toBeDisabled();
+  await expect(envs.getByRole("row", { name: /^Production/ }).first()).toBeVisible();
+  await expect(envs.getByRole("button", { name: "Actions for Production" })).toBeHidden();
+  await expect(envs.getByRole("button", { name: "New environment" })).toBeHidden();
+  await page.getByRole("tab", { name: "Identity provider groups" }).click();
   await expect(
-    page.getByRole("region", { name: "OIDC group mappings" }).getByRole("button", { name: "Map group" }),
+    page.getByRole("region", { name: "Identity provider groups" }).getByRole("button", { name: "Map a group" }),
   ).toBeHidden();
+  await page.getByRole("tab", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Infra Core" }).click();
   const theirs = page.getByRole("region", { name: "Members" });
   await expect(theirs.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText(operator);
   await expect(theirs.getByRole("textbox", { name: "Add someone" })).toBeHidden();
-  await expect(theirs.getByRole("button", { name: /^(Change roles|Remove)/ })).toHaveCount(0);
+  await expect(theirs.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
   await openRole(page, auditor);
   await expect(page.getByRole("list", { name: "Its permissions" })).toContainText("audit.read");
   await expect(page.getByRole("checkbox")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete role" })).toBeHidden();
+  await expect(page.getByRole("button", { name: `More actions for ${auditor}` })).toBeHidden();
   await nav(page, "Roles");
   await expect(page.getByRole("link", { name: "New role" })).toBeHidden();
   await nav(page, "Audit log");
@@ -170,18 +178,39 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await signInAs(page, "marc");
   await nav(page, "Roles");
   await page.getByRole("tab", { name: "For all of rvav" }).click();
-  await page.getByRole("button", { name: `Take ${auditor} away from Thomas Nguyen` }).click();
+  await page.getByRole("button", { name: `Actions for ${auditor} of Thomas Nguyen` }).click();
+  await page.getByRole("menuitem", { name: "Take it away" }).click();
+  await page
+    .getByRole("alertdialog", { name: `Take ${auditor} away from Thomas Nguyen?` })
+    .getByRole("button", { name: "Take it away" })
+    .click();
   await expect(page.getByText(`${auditor} taken away from Thomas Nguyen`)).toBeVisible();
   await openInfraCore(page);
-  await page.getByRole("region", { name: "Members" }).getByRole("button", { name: "Remove Thomas Nguyen" }).click();
-  await expect(page.getByText("Member removed")).toBeVisible();
+  await page
+    .getByRole("region", { name: "Members" })
+    .getByRole("button", { name: "Actions for Thomas Nguyen" })
+    .click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Remove Thomas Nguyen?" })
+    .getByRole("button", { name: "Remove member" })
+    .click();
+  await expect(page.getByRole("region", { name: "Members" }).getByRole("row", { name: /Thomas Nguyen/ })).toHaveCount(
+    0,
+  );
   for (const name of [operator, auditor]) {
     await openRole(page, name);
-    await page.getByRole("button", { name: "Delete role" }).click();
+    await page.getByRole("button", { name: `More actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete role" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Delete ${name}?` })
+      .getByRole("button", { name: "Delete role" })
+      .click();
     await expect(page.getByText(`${name} deleted`)).toBeVisible();
   }
   await page.goto(deploymentUrl);
-  await page.getByRole("button", { name: /^Delete/ }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const del = page.getByRole("dialog", { name: `Delete · ${deployment}` });
   await del.getByRole("textbox", { name: /to confirm/ }).fill(deployment);
   await del.getByRole("button", { name: "Delete" }).click();

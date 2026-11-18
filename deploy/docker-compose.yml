@@ -73,6 +73,9 @@ x-rvav-env: &rvav-env
 services:
   postgres:
     image: postgres:16.4
+    # Temporal's services keep a pool per store and grow past 70 connections,
+    # and rvav's api, worker and sync add theirs: the default 100 runs out.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: rvav
       POSTGRES_PASSWORD: rvav

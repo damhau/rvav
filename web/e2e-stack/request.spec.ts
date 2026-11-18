@@ -15,6 +15,7 @@ test("a RHEL 9 server requested in the browser reaches Ready, then powers off", 
   await page.goto("/catalog");
   await signIn(page);
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await expect(page.getByText("No approval needed")).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill(role);
@@ -38,7 +39,7 @@ test("a RHEL 9 server requested in the browser reaches Ready, then powers off", 
   await dialog.getByRole("button", { name: "Power off" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByText(/vm-\d+ · off/)).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("navigation", { name: "Deployment sections" }).getByRole("link", { name: "History" }).click();
+  await page.getByRole("tablist", { name: "Deployment sections" }).getByRole("tab", { name: "History" }).click();
   const history = page.getByRole("region", { name: "History" });
   await expect(history.getByRole("link", { name: "Power off" })).toBeVisible();
   await expect(history.getByRole("link", { name: "Created" })).toBeVisible();

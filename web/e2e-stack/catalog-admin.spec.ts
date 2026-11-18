@@ -22,7 +22,7 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   const name = `Ubuntu web ${suffix}`;
   const secret = `backup-${suffix}`;
 
-  await page.goto("/admin/catalog-items");
+  await page.goto("/admin/catalog-items?tab=secrets");
   await signIn(page);
 
   // The CMDB's token, stored.
@@ -32,20 +32,24 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   await secretDialog.getByLabel("Value").fill("backup-token");
   await secretDialog.getByRole("button", { name: "Store" }).click();
   await expect(page.getByText(`${secret} stored`)).toBeVisible();
+  await page.getByRole("tab", { name: "Items" }).click();
 
   // The RHEL item exported, renamed and imported: a new item with a draft.
   // Items are found by their exact name: the stack keeps those of earlier
   // runs and checks (a vRA import's "RHEL 9 Server").
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server", exact: true }).click();
-  const download = page.waitForEvent("download");
+  await page.getByRole("tab", { name: "Versions" }).click();
   await page
-    .getByRole("button", { name: /^Export .* as YAML$/ })
-    .first()
+    .getByRole("row")
+    .filter({ hasText: "Published" })
+    .getByRole("button", { name: /^Actions for version / })
     .click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: /^Export .* as YAML$/ }).click();
   const yaml = (await readFile(await (await download).path(), "utf8"))
     .replace(/^ {2}slug: .*$/m, `  slug: ${slug}`)
     .replace(/^ {2}name: .*$/m, `  name: ${name}`);
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog items" }).click();
   await page.getByRole("button", { name: "Import YAML" }).click();
   await page.getByRole("dialog", { name: "Import an item" }).getByRole("textbox", { name: "YAML" }).fill(yaml);
   await page.getByRole("button", { name: "Import", exact: true }).click();
@@ -103,8 +107,9 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   // Requested from the catalog, through Temporal and vcsim.
   const role =
     "ub" + Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog", exact: true }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name, exact: true }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Request ${name}` })).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill(role);
   await page.getByRole("combobox", { name: "Backup policy" }).click();
@@ -114,7 +119,7 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible({ timeout: 120_000 });
 
   // A new version renames the field; rolled back, the deployment stays on the first.
-  await page.getByRole("navigation").getByRole("link", { name: "Catalog items" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog items" }).click();
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name, exact: true }).click();
   await page.getByRole("button", { name: "New draft" }).click();
   const draftToast = page.getByText(/^Draft (\d+\.\d+) made from the published version$/);
@@ -127,7 +132,8 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(`${v2} published`)).toBeVisible();
-  await page.getByRole("button", { name: `Roll back to ${v1}` }).click();
+  await page.getByRole("button", { name: `Actions for version ${v1}` }).click();
+  await page.getByRole("menuitem", { name: `Roll back to ${v1}` }).click();
   await expect(page.getByText(`Rolled back to ${v1}`)).toBeVisible();
   const rows = page.getByRole("region", { name: "Versions" }).getByRole("row");
   await expect(rows.filter({ hasText: v1 }).filter({ hasText: "published" })).toContainText("1");

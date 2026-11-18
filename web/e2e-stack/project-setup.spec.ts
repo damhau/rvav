@@ -64,11 +64,12 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   // A quota of one VM in dev.
   await page.getByRole("tab", { name: "Quotas" }).click();
   await page.getByRole("button", { name: "Add a limit" }).click();
-  await choose(page, "Limit 1: resource", "VMs");
-  await choose(page, "Limit 1: environment", "dev");
-  await page.getByRole("spinbutton", { name: "Limit 1: value" }).fill("1");
-  await page.getByRole("button", { name: "Save quotas" }).click();
-  await expect(page.getByText("Quotas saved")).toBeVisible();
+  const limit = page.getByRole("dialog", { name: "New limit" });
+  await choose(page, "Resource", "VMs");
+  await choose(page, "In", "dev");
+  await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");
+  await limit.getByRole("button", { name: "Save limit" }).click();
+  await expect(page.getByText("Limit saved")).toBeVisible();
 
   // Its own naming policy.
   await nav(page, "Policies");
@@ -88,7 +89,7 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   const tpl = page.getByRole("dialog", { name: "New VM template" });
   await tpl.getByRole("textbox", { name: "Key" }).fill(`ubuntu-${suffix}`);
   await tpl.getByRole("textbox", { name: "Label" }).fill(`Ubuntu 24.04 ${suffix}`);
-  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("tpl-ubuntu24.04-2026.10");
+  await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("tpl-ubuntu24.04-2026.10");
   await choose(page, "Offer 1: project", name);
   await tpl.getByRole("button", { name: "Save template" }).click();
   const row = page
@@ -111,6 +112,7 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   await page.getByRole("menuitem", { name: new RegExp(name) }).click();
   await nav(page, "Catalog");
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill("api");
   const vm = `${code}devapi01`;
@@ -130,6 +132,7 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   // A second VM is over the quota.
   await nav(page, "Catalog");
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await page.getByRole("textbox", { name: "Role" }).fill("web");
   await expect(page.locator("#f-vm_name")).toHaveText(new RegExp(`${code}devweb01`));
   await page.getByRole("button", { name: "Submit request" }).click();
