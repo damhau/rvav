@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -395,15 +396,16 @@ func TestDay2RunsOpsThenFinishes(t *testing.T) {
 	}
 }
 
-type fakeHousekeeper struct{ calls int }
+// The test environment runs the two activities on their own goroutines.
+type fakeHousekeeper struct{ calls atomic.Int32 }
 
 func (f *fakeHousekeeper) ExpireSnapshots(context.Context, time.Time) ([]string, error) {
-	f.calls++
+	f.calls.Add(1)
 	return []string{"req_9"}, nil
 }
 
 func (f *fakeHousekeeper) ExpireLeases(context.Context, time.Time) ([]string, error) {
-	f.calls++
+	f.calls.Add(1)
 	return nil, errors.New("database unavailable")
 }
 
@@ -414,8 +416,8 @@ func TestHousekeepingExpiresSnapshots(t *testing.T) {
 	env.RegisterActivity(&Activities{Housekeeper: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	env.ExecuteWorkflow(Housekeeping)
 	// Leases failing (three attempts) does not stop snapshots.
-	if err := env.GetWorkflowError(); err == nil || fake.calls != 4 {
-		t.Fatalf("housekeeping: %v, %d calls", err, fake.calls)
+	if err := env.GetWorkflowError(); err == nil || fake.calls.Load() != 4 {
+		t.Fatalf("housekeeping: %v, %d calls", err, fake.calls.Load())
 	}
 }
 
