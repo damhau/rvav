@@ -256,9 +256,13 @@ To download the deployment's private key:
 2. Select **Show the private key**. rvav shows the key and forgets it: no
    one can download it again, you included.
 3. Select **Save as** to save it as a file, or **Copy** to put it in your
-   password manager.
+   password manager. If your browser doesn't let rvav copy, rvav says
+   **Not copied**: select the key in its box and copy it yourself.
 4. Sign in with the command shown:
    `chmod 600 <file> && ssh -i <file> <user>@<address>`.
+
+If you close the panel before you save or copy the key, rvav asks first:
+once you close it, no one can download the key again.
 
 Afterwards, **Remote access** says who downloaded the key and when. If
 you lose the key, sign in another way (a password, the console) and add

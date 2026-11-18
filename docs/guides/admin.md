@@ -542,9 +542,9 @@ A project's page has four tabs:
 Each tab is in the page's address, so a link can open it, for example
 `/admin/projects?tab=groups`.
 
-A deployment whose blueprint sets `prevent_delete` can't be deleted, by
-its owner, a project admin or the end of its lease: **Delete** names the
-VMs it keeps. When its lease ends, rvav tells the owner once, and leaves
+Nobody can delete a deployment whose blueprint sets `prevent_delete`: not
+its owner, not a project admin, and not the end of its lease. **Delete**
+names the VMs it keeps. When its lease ends, rvav tells the owner once, and leaves
 the requests waiting on it, such as a lease extension waiting for
 approval. To let it be deleted, open the deployment and select
 **Allow deletion** in its **Actions** menu. You need `project.update` in
@@ -704,10 +704,11 @@ that name it, and the templates whose user data reads it
 (`template:<key>`): you can't remove it while one does.
 To give one project its own value for a secret, store a secret of the same
 name and pick the project in **Project**: that project's requests open it
-rather than the global one, and other projects never open it. A request
-whose project has no secret of a name its item opens is refused, naming
-the secret. A project's own secret can be removed while items use it if a
-global one of its name remains.
+rather than the global one, and other projects never open it. Its row says
+**Opened instead of the global one**. rvav refuses a request when its item
+opens a secret that neither its project nor the global ones have, and
+names the secret. You can remove a project's own secret while items use
+it, as long as a global one of its name remains.
 A row's menu has what you can do with it, and removing anything asks
 first and says what depends on it. An item that was ever requested can't
 be deleted: withdraw it instead.
