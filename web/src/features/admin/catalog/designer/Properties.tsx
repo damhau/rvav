@@ -325,7 +325,7 @@ function SourceEditor({
           <legend className="mb-1 text-secondary font-medium">Depends on</legend>
           <p className="text-caption text-faint">A change to these inputs fetches the values again.</p>
           {others.map((o) => (
-            <label key={o} htmlFor={`prop-dep-${o}`} className="flex items-center gap-2 text-secondary">
+            <label key={o} htmlFor={`prop-dep-${o}`} className="flex min-h-6 items-center gap-2 text-secondary">
               <Checkbox
                 id={`prop-dep-${o}`}
                 checked={deps.includes(o)}
