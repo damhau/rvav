@@ -57,7 +57,9 @@ one to ask your project admin or administrator for.
    - how many;
    - when to start (now, or at a set time);
    - for someone else: they own it and are told.
-6. **Submit request.**
+6. **Submit request**, at the foot of the summary (**Submit for approval**
+   when someone must approve it). A field with a problem says what it is
+   under the field.
 
 A form you leave can be kept as a **draft** (Resume or Discard it later).
 A draft never keeps passwords or other secret fields. Secret fields are

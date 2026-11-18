@@ -49,18 +49,23 @@ export function Field({
         {aside}
       </div>
       {control}
-      {error ? (
-        <p id={noteId} className="flex items-start gap-1.5 text-secondary text-bad">
-          <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {error}
-        </p>
-      ) : (
-        hint && (
-          <p id={noteId} className="text-secondary text-muted">
-            {hint}
-          </p>
-        )
-      )}
+      <FieldNote id={noteId} error={error} hint={hint} />
     </div>
   );
+}
+
+/** What goes under a control: the problem with its value, or else its help. */
+export function FieldNote({ id, error, hint }: { id?: string; error?: string; hint?: React.ReactNode }) {
+  if (error)
+    return (
+      <p id={id} className="flex items-start gap-1.5 text-secondary text-bad">
+        <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        {error}
+      </p>
+    );
+  return hint ? (
+    <p id={id} className="text-secondary text-muted">
+      {hint}
+    </p>
+  ) : null;
 }

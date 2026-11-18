@@ -2,6 +2,8 @@
 // server-resolved values with dependencies, the server's rule results and
 // field errors.
 import type { ReactNode } from "react";
+import { FieldNote } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import type { FieldStates, RequestForm, UiField } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import type { FormContext } from "./useFieldValues";
@@ -81,21 +83,15 @@ export function FormRenderer({
           .filter((f) => f.state.visible);
         if (fields.length === 0 && !(i === 0 && leading)) return null;
         return (
-          <fieldset key={section.key} className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
-            <legend className="sr-only">{section.title}</legend>
-            <div className="border-b border-line px-4 py-2.5" aria-hidden>
-              <span className="text-body font-semibold">{section.title}</span>
-              {section.description && <span className="ml-2 text-secondary text-faint">{section.description}</span>}
-            </div>
-            <div className={cn("grid grid-cols-1 gap-x-4 gap-y-4 px-4 py-4", gridCols[section.columns ?? 2])}>
+          <Panel key={section.key} as="fieldset" title={section.title} description={section.description}>
+            <div className={cn("grid grid-cols-1 gap-4", gridCols[section.columns ?? 2])}>
               {i === 0 && leading}
               {fields.map(({ name, ui, state }) => {
                 const Widget = widgets[ui.widget] ?? widgets.text!;
                 const id = `f-${name}`;
                 const error = errors[name];
-                const helpId = ui.help && !selfLabelled.includes(ui.widget) ? `${id}-help` : undefined;
-                const errorId = error ? `${id}-error` : undefined;
-                const describedBy = [errorId, helpId].filter(Boolean).join(" ") || undefined;
+                const help = selfLabelled.includes(ui.widget) ? undefined : ui.help;
+                const noteId = error || help ? `${id}-note` : undefined;
                 const wide = ["radio_cards", "checklist", "info", "multiselect"].includes(ui.widget);
                 const value = state.computed !== undefined ? state.computed : values[name];
                 return (
@@ -121,24 +117,15 @@ export function FormRenderer({
                       onBlur={() => onBlur?.(name)}
                       ctx={ctx}
                       invalid={Boolean(error)}
-                      describedBy={describedBy}
+                      describedBy={noteId}
                       readOnly={state.readOnly}
                     />
-                    {error && (
-                      <p id={errorId} className="text-secondary text-bad">
-                        {error}
-                      </p>
-                    )}
-                    {helpId && (
-                      <p id={helpId} className="text-caption text-faint">
-                        {ui.help}
-                      </p>
-                    )}
+                    <FieldNote id={noteId} error={error} hint={help} />
                   </div>
                 );
               })}
             </div>
-          </fieldset>
+          </Panel>
         );
       })}
     </div>

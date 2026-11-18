@@ -5,13 +5,15 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
-import { itemTypeLabel } from "@/components/common/misc";
+import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 // The graph's model only: the canvas itself (React Flow) loads with RequestTopology.
 import { blueprintGraph } from "@/components/canvas/blueprint";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/input";
+import { Field, FieldNote, Input, Textarea } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { UserPicker } from "@/features/admin/governance/common";
 import { FormRenderer } from "@/forms/FormRenderer";
@@ -101,6 +103,7 @@ function EnvironmentPicker({
       <div
         role="radiogroup"
         aria-labelledby="env-label"
+        aria-describedby="env-note"
         className="flex overflow-hidden rounded-md border border-line-strong"
       >
         {list.map((e) => {
@@ -123,15 +126,15 @@ function EnvironmentPicker({
           );
         })}
       </div>
-      {error ? (
-        <p className="text-secondary text-bad">{error}</p>
-      ) : (
-        <p className="text-caption text-faint">
-          {list.find((e) => e.key === value)?.production
+      <FieldNote
+        id="env-note"
+        error={error}
+        hint={
+          list.find((e) => e.key === value)?.production
             ? "Production: stricter policies and no lease."
-            : "Placement, quota and policies follow the environment."}
-        </p>
-      )}
+            : "Placement, quota and policies follow the environment."
+        }
+      />
     </div>
   );
 }
@@ -219,12 +222,23 @@ function Summary({
   ].filter((r): r is { label: string; value: string; mono?: boolean } => r !== null);
 
   return (
-    <div className="flex flex-col gap-3 lg:sticky lg:top-4">
-      <section className="rounded-lg border border-line bg-surface" aria-label="Summary" aria-busy={fetching}>
-        <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-          <h2 className="text-body font-semibold">Summary</h2>
-          {fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
-        </div>
+    <div className="lg:sticky lg:top-4" aria-busy={fetching}>
+      <Panel
+        title="Summary"
+        flush
+        actions={fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
+        footer={
+          <>
+            <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
+              Save as draft
+            </Button>
+            <Button variant="primary" type="button" onClick={onSubmit} disabled={pending}>
+              {pending && <LoaderCircle className="animate-spin" aria-hidden />}
+              {approval?.required ? "Submit for approval" : "Submit request"}
+            </Button>
+          </>
+        }
+      >
         {!preview ? (
           <div className="flex flex-col gap-2 p-4">
             <Skeleton className="h-3 w-3/4" />
@@ -277,7 +291,7 @@ function Summary({
             )}
             <div
               className={cn(
-                "flex flex-col gap-0.5 rounded-b-lg border-t border-line px-4 py-3",
+                "flex flex-col gap-0.5 border-t border-line px-4 py-3",
                 approval?.required ? "bg-warn-soft text-warn" : "bg-ok-soft text-ok",
               )}
             >
@@ -292,27 +306,17 @@ function Summary({
             </div>
           </>
         )}
-      </section>
-      {formErrors.length > 0 && (
-        <ul
-          role="alert"
-          className="flex flex-col gap-1 rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary text-bad"
-        >
-          {formErrors.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-      )}
-      <Button variant="primary" className="h-9" type="button" onClick={onSubmit} disabled={pending}>
-        {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-        {approval?.required ? "Submit for approval" : "Submit request"}
-      </Button>
-      <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
-        Save as draft
-      </Button>
-      <p className="text-center text-caption text-faint">
-        You can follow every step live, including the AWX job output.
-      </p>
+        {formErrors.length > 0 && (
+          <ul
+            role="alert"
+            className="m-4 flex flex-col gap-1 rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary text-bad"
+          >
+            {formErrors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </Panel>
     </div>
   );
 }
@@ -507,16 +511,17 @@ function RequestFormBody({
             <RequestTopology graph={drawn} name={item.name} components={preview.data?.components} />
           </Suspense>
         )}
-        <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
-          <legend className="sr-only">Lease and reason</legend>
-          <div className="border-b border-line px-4 py-2.5 text-body font-semibold" aria-hidden>
-            Lease and reason
-          </div>
-          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="lease" className="text-secondary font-medium">
-                Lease
-              </label>
+        <Panel as="fieldset" title="Lease and reason">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field
+              label="Lease"
+              htmlFor="lease"
+              hint={
+                leaseOptions.length
+                  ? "You get reminders 7 days and 1 day before. You can extend it twice."
+                  : "Production deployments and AWX jobs have no lease."
+              }
+            >
               {leaseOptions.length ? (
                 <Select
                   id="lease"
@@ -532,16 +537,8 @@ function RequestFormBody({
                   No expiry
                 </span>
               )}
-              <p className="text-caption text-faint">
-                {leaseOptions.length
-                  ? "You get reminders 7 days and 1 day before. You can extend it twice."
-                  : "Production deployments and AWX jobs have no lease."}
-              </p>
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="justification" className="text-secondary font-medium">
-                Reason <span className="font-normal text-faint">· shown to approvers</span>
-              </label>
+            </Field>
+            <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
               <Textarea
                 id="justification"
                 rows={2}
@@ -549,20 +546,18 @@ function RequestFormBody({
                 value={justification}
                 onChange={(e) => setJustification(e.target.value)}
               />
-            </div>
+            </Field>
           </div>
-        </fieldset>
-        <fieldset className="m-0 min-w-0 rounded-lg border border-line bg-surface p-0">
-          <legend className="sr-only">Options</legend>
-          <div className="border-b border-line px-4 py-2.5 text-body font-semibold" aria-hidden>
-            Options
-          </div>
-          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+        </Panel>
+        <Panel as="fieldset" title="Options">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {many && (
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <label htmlFor="count" className="text-secondary font-medium">
-                  How many
-                </label>
+              <Field
+                label="How many"
+                htmlFor="count"
+                hint="Identical deployments, named one after the other (at most 20)."
+                error={fieldErrors.$count}
+              >
                 <Input
                   id="count"
                   type="number"
@@ -571,47 +566,41 @@ function RequestFormBody({
                   className="w-24"
                   value={count}
                   onChange={(e) => setCount(e.target.value)}
-                  aria-invalid={Boolean(fieldErrors.$count) || undefined}
                 />
-                <p className="text-caption text-faint">
-                  {fieldErrors.$count ?? "Identical deployments, named one after the other (at most 20)."}
-                </p>
-              </div>
+              </Field>
             )}
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="start" className="text-secondary font-medium">
-                Start
-              </label>
-              <Select
-                id="start"
-                value={later ? "later" : "now"}
-                onChange={(v) => setLater(v === "later")}
-                options={[
-                  { value: "now", label: "As soon as it is approved" },
-                  { value: "later", label: "At a time I choose" },
-                ]}
-              />
-              {later && (
-                <Input
-                  id="start-at"
-                  type="datetime-local"
-                  aria-label="Start at"
-                  value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
-                  aria-invalid={Boolean(fieldErrors.$scheduled_at) || undefined}
+            <div className="flex min-w-0 flex-col gap-3">
+              <Field label="Start" htmlFor="start">
+                <Select
+                  id="start"
+                  value={later ? "later" : "now"}
+                  onChange={(v) => setLater(v === "later")}
+                  options={[
+                    { value: "now", label: "As soon as it is approved" },
+                    { value: "later", label: "At a time I choose" },
+                  ]}
                 />
+              </Field>
+              {later && (
+                <Field label="Start at" htmlFor="start-at" error={fieldErrors.$scheduled_at}>
+                  <Input
+                    id="start-at"
+                    type="datetime-local"
+                    value={startAt}
+                    onChange={(e) => setStartAt(e.target.value)}
+                  />
+                </Field>
               )}
-              {fieldErrors.$scheduled_at && <p className="text-caption text-bad">{fieldErrors.$scheduled_at}</p>}
             </div>
             {canActForOthers && (
-              <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
+              <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
                 {onBehalfOf ? (
                   <>
                     <span className="text-secondary font-medium">For someone else</span>
                     <div className="flex items-center gap-2 text-body">
                       <span>
                         On behalf of <strong>{onBehalfOf.name}</strong>{" "}
-                        <span className="text-secondary text-faint">{onBehalfOf.email}</span>: they will own it.
+                        <span className="text-secondary text-muted">{onBehalfOf.email}</span>: they will own it.
                       </span>
                       <Button size="sm" variant="quiet" onClick={() => setOnBehalfOf(null)}>
                         For myself instead
@@ -621,11 +610,11 @@ function RequestFormBody({
                 ) : (
                   <UserPicker label="For someone else (optional)" id="on-behalf" onPick={setOnBehalfOf} />
                 )}
-                {fieldErrors.$on_behalf_of && <p className="text-caption text-bad">{fieldErrors.$on_behalf_of}</p>}
+                <FieldNote error={fieldErrors.$on_behalf_of} />
               </div>
             )}
           </div>
-        </fieldset>
+        </Panel>
       </div>
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col self-stretch">
         <Summary
@@ -698,35 +687,39 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
 
   return (
     <Page>
-      <div className="flex flex-col gap-1.5">
-        <Breadcrumbs>
-          <Link to="/catalog">Catalog</Link>
-          {item.data && (
-            <Link to="/catalog/$itemId" params={{ itemId: item.data.slug }}>
-              {item.data.name}
-            </Link>
-          )}
-        </Breadcrumbs>
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface font-mono text-caption font-medium text-muted">
-            {item.data?.type === "vm_blueprint" ? "VM" : item.data ? "AWX" : ""}
-          </span>
-          <div className="flex min-w-0 flex-col">
-            <h1 className="text-title font-semibold">
-              {item.data ? `Request ${item.data.name}` : <Skeleton className="h-5 w-56" />}
-            </h1>
+      <PageHeader
+        breadcrumbs={
+          <Breadcrumbs>
+            <Link to="/catalog">Catalog</Link>
             {item.data && (
-              <span className="text-secondary text-muted">
-                {itemTypeLabel[item.data.type]} {item.data.version.number}
-                {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
-                {item.data.typical_duration_seconds
-                  ? ` · usually done in ${roughDuration(item.data.typical_duration_seconds)}`
-                  : ""}
-              </span>
+              <Link to="/catalog/$itemId" params={{ itemId: item.data.slug }}>
+                {item.data.name}
+              </Link>
             )}
-          </div>
-        </div>
-      </div>
+          </Breadcrumbs>
+        }
+        title={
+          item.data ? (
+            <span className="flex items-center gap-3">
+              <ItemIcon name={item.data.icon} type={item.data.type} className="size-9" />
+              Request {item.data.name}
+            </span>
+          ) : (
+            <Skeleton className="h-5 w-56" />
+          )
+        }
+        description={
+          item.data && (
+            <>
+              {itemTypeLabel[item.data.type]} {item.data.version.number}
+              {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
+              {item.data.typical_duration_seconds
+                ? ` · usually done in ${roughDuration(item.data.typical_duration_seconds)}`
+                : ""}
+            </>
+          )
+        }
+      />
       {error ? (
         <ErrorState error={error} className="rounded-lg border border-line bg-surface" />
       ) : !item.data || !form.data || !project.data || !environments.data || waiting ? (

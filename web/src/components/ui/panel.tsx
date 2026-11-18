@@ -46,17 +46,20 @@ export function Panel({
   children,
   className,
   flush,
+  as: Box = "section",
 }: HeaderProps & {
   /** Help on the left, buttons on the right: what a settings form saves with. */
   footer?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   flush?: boolean;
+  /** `fieldset` for a section of a form: a group of fields its title names. */
+  as?: "section" | "fieldset";
 }) {
   const id = useId();
   return (
-    <section
-      className={cn("min-w-0 rounded-lg border border-line bg-surface", className)}
+    <Box
+      className={cn("m-0 min-w-0 rounded-lg border border-line bg-surface p-0", className)}
       aria-labelledby={title ? id : undefined}
     >
       {title && (
@@ -75,7 +78,7 @@ export function Panel({
           {footer}
         </div>
       )}
-    </section>
+    </Box>
   );
 }
 

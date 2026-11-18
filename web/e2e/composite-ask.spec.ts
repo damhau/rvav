@@ -237,9 +237,12 @@ test("approve or reject: a reject fails it, a Retry asks again, a cancel takes t
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: /^Approvals/ })
     .click();
-  const row = page.getByRole("button", { name: /A step asks: A manager's OK/ });
-  await row.click();
-  await page.getByRole("link", { name: "Answer on the request's page" }).click();
+  await page
+    .getByRole("table", { name: "Waiting for you" })
+    .getByRole("row", { name: /A step asks: A manager's OK/ })
+    .getByRole("link")
+    .click();
+  await page.getByRole("dialog").getByRole("link", { name: "Answer on the request's page" }).click();
   await expect(answer).toBeVisible();
 
   // A cancel stops the wait and takes the question away.

@@ -60,9 +60,11 @@ Markdown description, the version requests use, what it builds (the topology,
 or a composite's steps), and Request as the primary action.
 
 ### Request form
-- Wizard or single page, depending on the form layout.
+- Wizard or single page, depending on the form layout. Each section of the
+  form, then Lease and reason and Options, is a panel of fields.
 - A sticky right-hand summary: name preview, placement, quota impact,
-  approval path, lease.
+  approval path, lease. Save as draft and the primary Submit request (or
+  Submit for approval) are at its foot, on the right.
 - Inline validation; dynamic fields show loading states rather than freezing the
   page.
 
