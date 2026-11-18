@@ -67,6 +67,13 @@ func (s *Store) ForgetDeploymentKey(ctx context.Context, db DB, deploymentID str
 	return err
 }
 
+// DropDeploymentKey deletes a deployment's key pair: a build that made it
+// was rolled back, and no VM of the deployment has it.
+func (s *Store) DropDeploymentKey(ctx context.Context, db DB, deploymentID string) error {
+	_, err := db.Exec(ctx, `delete from deployment_keys where deployment_id = $1`, deploymentID)
+	return err
+}
+
 // DeploymentKeysNotWith lists the private keys still kept that were not
 // sealed with this key (key rotation).
 func (s *Store) DeploymentKeysNotWith(ctx context.Context, keyID string) ([]DeploymentKey, error) {

@@ -1837,6 +1837,11 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 			}
 		}
 	}
+	for _, id := range deploymentsOf(list) {
+		if err := a.dropUnusedKey(ctx, id); err != nil {
+			return fmt.Errorf("roll back the key of %s: %w", id, err)
+		}
+	}
 	// Add a step so the timeline shows what was undone.
 	steps, _ := a.Store.ListSteps(ctx, requestID)
 	pos := 0
@@ -1854,6 +1859,30 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 	}
 	a.Events.Step(ctx, projectID, requestID, st)
 	return nil
+}
+
+func deploymentsOf(list []store.Resource) []string {
+	var ids []string
+	for _, r := range list {
+		if r.DeploymentID != "" && !slices.Contains(ids, r.DeploymentID) {
+			ids = append(ids, r.DeploymentID)
+		}
+	}
+	return ids
+}
+
+// dropUnusedKey deletes the deployment's generated key pair when none of
+// its VMs has it any more: Customize makes it before the VM's guest.access
+// is recorded, so a build failing in between left it behind.
+func (a *Activities) dropUnusedKey(ctx context.Context, deploymentID string) error {
+	rs, err := a.Store.ListResources(ctx, deploymentID)
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(rs, func(r store.Resource) bool { return r.Type == AccessResource }) {
+		return nil
+	}
+	return a.Store.DropDeploymentKey(ctx, a.Store.Pool, deploymentID)
 }
 
 // checkAWXAction refuses to launch the job of an AWX day-2 action turned off,

@@ -252,5 +252,22 @@ func TestRemoteAccess(t *testing.T) {
 				t.Errorf("%s: metadata = %v", slug, meta)
 			}
 		}
+
+		// A build failing once its key is made, before its VM has it: the
+		// rollback drops the key (T1.7).
+		def := accessItem(map[string]any{"kind": "generated_key", "username": "ops"})
+		def.Blueprint["guest"].(map[string]any)["cloud_init"] = map[string]any{
+			"user_data": "#cloud-config\n{{ if eq .inputs.ssh_key \"list\" }}- a list{{ else }}a: map{{ end }}"}
+		def.Blueprint["rollback_on_failure"] = true
+		req = h.submit(h.publish("gen-broken", def), "broken", map[string]any{"ssh_key": "list"})
+		h.runWorkflow(req.Id, cloudInitGuest(h.harness, c))
+		h.json("GET", "/api/v1/requests/"+req.Id, "tnguyen", nil, 200, &req)
+		var keys int
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from deployment_keys`).Scan(&keys); err != nil {
+			t.Fatal(err)
+		}
+		if req.Status != api.RequestStatusFailed || keys != 0 {
+			t.Fatalf("broken build = %s %s, %d keys kept", req.Status, errorOf(req), keys)
+		}
 	})
 }

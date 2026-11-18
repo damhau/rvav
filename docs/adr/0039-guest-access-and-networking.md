@@ -111,6 +111,11 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
 - Deleting the deployment's `guest.access` resources forgets the private
   key: the row keeps the public key and fingerprint, without the sealed
   key.
+- `Customize` makes the pair before it writes guestinfo and records the
+  VM's `guest.access`. A rollback that leaves a deployment without any
+  `guest.access` deletes its row, so a build that failed in between
+  doesn't keep a private key its owner could still download, and a new
+  build makes a new pair (T1.7).
 - The deployment's owner downloads the private key once:
   `POST /deployments/{id}/private-key`. It is a POST because it changes
   something: in one transaction the API process locks the row, opens the
