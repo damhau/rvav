@@ -22,6 +22,7 @@ import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-action
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
 import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
+import { Route as AdminPropertyGroupsRouteImport } from "./routes/admin/property-groups"
 import { Route as AdminSetupRouteImport } from "./routes/admin/setup"
 import { Route as AdminSystemRouteImport } from "./routes/admin/system"
 import { Route as AdminVraImportRouteImport } from "./routes/admin/vra-import"
@@ -110,6 +111,11 @@ const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   id: "/policies",
   path: "/policies",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminPropertyGroupsRoute = AdminPropertyGroupsRouteImport.update({
+  id: "/property-groups",
+  path: "/property-groups",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSetupRoute = AdminSetupRouteImport.update({
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
   "/admin/vra-import": typeof AdminVraImportRoute
@@ -286,6 +293,7 @@ export interface FileRoutesByTo {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
   "/admin/vra-import": typeof AdminVraImportRoute
@@ -326,6 +334,7 @@ export interface FileRoutesById {
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
+  "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
   "/admin/vra-import": typeof AdminVraImportRoute
@@ -367,6 +376,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/property-groups"
     | "/admin/setup"
     | "/admin/system"
     | "/admin/vra-import"
@@ -405,6 +415,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/property-groups"
     | "/admin/setup"
     | "/admin/system"
     | "/admin/vra-import"
@@ -444,6 +455,7 @@ export interface FileRouteTypes {
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
+    | "/admin/property-groups"
     | "/admin/setup"
     | "/admin/system"
     | "/admin/vra-import"
@@ -581,6 +593,13 @@ declare module "@tanstack/react-router" {
       path: "/policies"
       fullPath: "/admin/policies"
       preLoaderRoute: typeof AdminPoliciesRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/property-groups": {
+      id: "/admin/property-groups"
+      path: "/property-groups"
+      fullPath: "/admin/property-groups"
+      preLoaderRoute: typeof AdminPropertyGroupsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     "/admin/setup": {
@@ -760,6 +779,7 @@ interface AdminRouteRouteChildren {
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
+  AdminPropertyGroupsRoute: typeof AdminPropertyGroupsRoute
   AdminSetupRoute: typeof AdminSetupRoute
   AdminSystemRoute: typeof AdminSystemRoute
   AdminVraImportRoute: typeof AdminVraImportRoute
@@ -784,6 +804,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
+  AdminPropertyGroupsRoute: AdminPropertyGroupsRoute,
   AdminSetupRoute: AdminSetupRoute,
   AdminSystemRoute: AdminSystemRoute,
   AdminVraImportRoute: AdminVraImportRoute,

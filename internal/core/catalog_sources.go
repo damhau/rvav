@@ -77,7 +77,7 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 }
 
 // formVars are the CEL variables of form rules and `cel` value sources.
-func formVars(inputs map[string]any, proj store.Project, environment string, p *auth.Principal) policy.Vars {
+func formVars(inputs map[string]any, proj store.Project, environment string, p *auth.Principal, v store.ItemVersion) policy.Vars {
 	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(p.Roles), "groups": nonNilStrings(p.Groups),
 		"permissions": p.PermissionsIn(proj.ID)}
 	return policy.Vars{
@@ -85,6 +85,7 @@ func formVars(inputs map[string]any, proj store.Project, environment string, p *
 		"environment": environment,
 		"project":     projectVars(proj),
 		"user":        user,
+		"propgroup":   groupVars(v),
 	}
 }
 
@@ -376,7 +377,8 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		}
 		errs = append(errs, nsxErrs...)
 	}
-	return errs, nil
+	groupErrs, err := s.checkGroupRefs(ctx, d, prefix)
+	return append(errs, groupErrs...), err
 }
 
 // checkBlueprintSecrets checks the stored secrets a blueprint names: each

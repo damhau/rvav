@@ -841,6 +841,43 @@ An item's tabs:
 
 Items can be exported and imported as YAML, between installations.
 
+### Property groups
+
+A property group holds inputs and constants that several items share, such
+as a cost centre every VM asks for or the DNS domain of a site. Manage them
+in **Property groups**, under **Catalog**; you need `catalog.manage`.
+
+- **Inputs:** each has a name, a label, a type (text, whole number,
+  number, yes or no), and can be required or have a default. Text inputs
+  can list options, separated by commas, for requesters to choose from,
+  or be secret (a secret input has no default and no options).
+- **Constants:** values the item's bindings, properties, folders, form
+  rules and composite steps read as `propgroup.<key>.<name>`, such as
+  `${propgroup.network.dns_domain}`. A constant is text, a number, or
+  `true` or `false`.
+
+Saving a group makes its next version; the versions before it don't
+change. To use a group, name it and its version in the item's blueprint,
+on its **Definition** tab:
+
+```yaml
+blueprint:
+  kind: vm
+  property_groups:
+    - {key: network, version: 2}
+```
+
+The group's inputs show on the item's request form in a section of their
+own, titled with the group's name, as if the item declared them. An item
+keeps the version it names: to use a newer one, change the version in a
+new draft and publish it. Saving the item refuses a group or version that
+doesn't exist, and an input that is both in the item's form and in a
+group, or in two groups.
+
+You can't delete a group while a published or deprecated version of an
+item names it. A draft that names a deleted group is refused the next time
+you save it.
+
 ### The catalog in Git
 
 The catalog can be kept in a Git repository

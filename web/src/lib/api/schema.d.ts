@@ -1598,6 +1598,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/property-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Property groups, at their latest version
+         * @description Needs `catalog.manage`. A property group is a reusable set of inputs
+         *     and constants (ADR-0038): an item's blueprint names a version of it
+         *     in `property_groups`, its inputs join the item's form when the item
+         *     is saved, and its constants are read as `propgroup.<key>.<name>`.
+         */
+        get: operations["listPropertyGroups"];
+        put?: never;
+        /** Add a property group, as its version 1 */
+        post: operations["createPropertyGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/property-groups/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        /** A property group, at its latest version or the one asked */
+        get: operations["getPropertyGroup"];
+        /**
+         * Save a property group as its next version
+         * @description Versions never change. Items keep the version they name until a new version of theirs names another.
+         */
+        put: operations["updatePropertyGroup"];
+        post?: never;
+        /**
+         * Delete a property group no saved version uses
+         * @description Refused while a published or earlier version of an item names it; drafts that do are refused when next saved.
+         */
+        delete: operations["deletePropertyGroup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -3600,6 +3651,53 @@ export interface components {
             header?: string;
             value: string;
         };
+        PropertyGroupList: {
+            items: components["schemas"]["PropertyGroup"][];
+        };
+        /** @description An input a property group adds to the forms of the items naming it. */
+        PropertyGroupInput: {
+            /** @description The input's name, as the item's own inputs: inputs.<name>. */
+            name: string;
+            label: string;
+            /** @enum {string} */
+            type: "string" | "integer" | "number" | "boolean";
+            required?: boolean;
+            /** @description A string kept as a secret input (S14.6): shown masked, never returned. */
+            secret?: boolean;
+            /** @description Its first value: of its type, one of its options when it has some. */
+            default?: unknown;
+            /** @description The values a string input is chosen from. */
+            options?: string[];
+            help?: string;
+        };
+        PropertyGroupWrite: {
+            /** @description When creating: how blueprints name it and bindings read it, propgroup.<key>.<name>. */
+            key?: string;
+            name: string;
+            description?: string;
+            inputs: components["schemas"]["PropertyGroupInput"][];
+            /** @description Values bindings read as propgroup.<key>.<name>: text, numbers or booleans. */
+            constants: {
+                [key: string]: unknown;
+            };
+        };
+        PropertyGroup: {
+            key: string;
+            name: string;
+            description: string;
+            /** @description The version shown. */
+            version: number;
+            /** @description Every version, the latest last. */
+            versions: number[];
+            inputs: components["schemas"]["PropertyGroupInput"][];
+            constants: {
+                [key: string]: unknown;
+            };
+            /** @description Items whose saved versions name it, by slug (drafts aside): it can't be deleted while one does. */
+            used_by: string[];
+            /** Format: date-time */
+            updated_at: string;
+        };
         IpamReconcile: {
             /** Format: date-time */
             checked_at: string;
@@ -3952,7 +4050,8 @@ export interface components {
             approver_editable?: boolean;
         };
         /**
-         * @description CEL expressions over `inputs`, `project`, `user` and `environment`.
+         * @description CEL expressions over `inputs`, `project`, `user`, `environment` and
+         *     `propgroup` (the constants of the property groups the item names).
          *     The server evaluates them on preview and submit and returns the
          *     results in `fields`; the UI shows those.
          */
@@ -9505,6 +9604,137 @@ export interface operations {
             header?: never;
             path: {
                 name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listPropertyGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyGroupList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPropertyGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PropertyGroupWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyGroup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getPropertyGroup: {
+        parameters: {
+            query?: {
+                version?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyGroup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePropertyGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PropertyGroupWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyGroup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deletePropertyGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
             };
             cookie?: never;
         };

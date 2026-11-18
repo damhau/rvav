@@ -155,7 +155,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		}
 	}
 	if ev.Blueprint, err = blueprint.Parse(ev.Version.Blueprint); err == nil {
-		ev.Blueprint = ev.Blueprint.WithContext(policy.Vars{"project": projectVars(ev.Project)})
+		ev.Blueprint = ev.Blueprint.WithContext(policy.Vars{"project": projectVars(ev.Project), "propgroup": groupVars(ev.Version)})
 	}
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	}
 
 	// Rules first: computed values are inputs like any other.
-	ev.Fields = fieldStates(ev.Version.FormSchema, ev.Version.UISchema, formVars(ev.Inputs, ev.Project, ev.Env.Key, p))
+	ev.Fields = fieldStates(ev.Version.FormSchema, ev.Version.UISchema, formVars(ev.Inputs, ev.Project, ev.Env.Key, p, ev.Version))
 	var ui api.UiSchema
 	_ = json.Unmarshal(ev.Version.UISchema, &ui)
 	var initial map[string]any
@@ -378,6 +378,15 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"user":        user,
 		"quota":       quotaVars(ev.OverSoft),
 	}
+}
+
+// groupVars is what CEL reads as propgroup: the constants of the version's
+// property groups, by group key (ADR-0038).
+func groupVars(v store.ItemVersion) map[string]any {
+	if v.GroupConstants == nil {
+		return map[string]any{}
+	}
+	return v.GroupConstants
 }
 
 // projectVars is what CEL reads of a project: project.properties are its

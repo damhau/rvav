@@ -295,3 +295,47 @@ test("designer changes survive tab switches, saved or refused", async ({ page })
   expect(focused).toBe("Move VM name down");
   expect(errors).toEqual([]);
 });
+
+test("a property group, changed as a new version", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.getByRole("link", { name: "Property groups" }).click();
+  await expect(page.getByRole("heading", { name: "Property groups" })).toBeVisible();
+  const table = page.getByRole("table", { name: "Property groups" });
+  await expect(table.getByRole("row", { name: /Corporate operations/ })).toContainText("cost_center, backup");
+
+  await page.getByRole("button", { name: "New property group" }).click();
+  const sheet = page.getByRole("dialog", { name: "New property group" });
+  await sheet.locator("#pg-key").fill("network");
+  await sheet.locator("#pg-name").fill("Network");
+  await sheet.getByRole("button", { name: "Add input" }).click();
+  await sheet.locator("#pg-input-0-name").fill("zone");
+  await sheet.locator("#pg-input-0-label").fill("Zone");
+  await sheet.locator("#pg-input-0-options").fill("dmz, internal");
+  await sheet.getByRole("checkbox", { name: "Required" }).check();
+  await sheet.getByRole("button", { name: "Add constant" }).click();
+  await sheet.locator("#pg-const-0-key").fill("dns_domain");
+  await sheet.locator("#pg-const-0-value").fill("corp.example");
+  await sheet.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Network saved as version 1")).toBeVisible();
+  const row = table.getByRole("row", { name: /Network/ });
+  await expect(row).toContainText("zone");
+
+  await row.getByRole("button", { name: "Actions for Network" }).click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
+  const change = page.getByRole("dialog", { name: "Change Network" });
+  await expect(change.getByText(/Saving makes version 2/)).toBeVisible();
+  await change.locator("#pg-const-0-value").fill("new.example");
+  await change.getByRole("button", { name: "Save as a new version" }).click();
+  await expect(page.getByText("Network saved as version 2")).toBeVisible();
+  await expect(row.getByRole("cell").nth(1)).toHaveText("2");
+
+  await row.getByRole("button", { name: "Actions for Network" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete Network?" });
+  await confirm.getByRole("button", { name: "Delete property group" }).click();
+  await expect(page.getByText("Network deleted")).toBeVisible();
+  await expect(row).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

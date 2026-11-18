@@ -48,7 +48,10 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if err != nil {
 		return api.DesignerPreview{}, err
 	}
-	v, _, err := s.itemVersion(ctx, it, versionID)
+	if _, _, err := s.itemVersion(ctx, it, versionID); err != nil {
+		return api.DesignerPreview{}, err
+	}
+	v, err := s.Store.GetVersion(ctx, versionID)
 	if err != nil {
 		return api.DesignerPreview{}, err
 	}
@@ -80,7 +83,7 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if q.Environment != nil {
 		env = *q.Environment
 	}
-	out.Fields = fieldStates(v.FormSchema, v.UISchema, formVars(inputs, proj, env, as))
+	out.Fields = fieldStates(v.FormSchema, v.UISchema, formVars(inputs, proj, env, as, v))
 	ruleErrs := applyStates(out.Fields, out.Form.UiSchema, out.Form.InitialValues, inputs)
 	if schema, err := compileSchemaUncached(v.FormSchema); err == nil {
 		b, _ := json.Marshal(inputs)

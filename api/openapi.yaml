@@ -1972,6 +1972,99 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /admin/property-groups:
+    get:
+      tags: [catalog-admin]
+      operationId: listPropertyGroups
+      summary: Property groups, at their latest version
+      description: |
+        Needs `catalog.manage`. A property group is a reusable set of inputs
+        and constants (ADR-0038): an item's blueprint names a version of it
+        in `property_groups`, its inputs join the item's form when the item
+        is saved, and its constants are read as `propgroup.<key>.<name>`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyGroupList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [catalog-admin]
+      operationId: createPropertyGroup
+      summary: Add a property group, as its version 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyGroupWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/property-groups/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [catalog-admin]
+      operationId: getPropertyGroup
+      summary: A property group, at its latest version or the one asked
+      parameters:
+        - name: version
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog-admin]
+      operationId: updatePropertyGroup
+      summary: Save a property group as its next version
+      description: Versions never change. Items keep the version they name until a new version of theirs names another.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyGroupWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [catalog-admin]
+      operationId: deletePropertyGroup
+      summary: Delete a property group no saved version uses
+      description: Refused while a published or earlier version of an item names it; drafts that do are refused when next saved.
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   # ── Administration (S9, ADR-0020) ─────────────────────────────────────
   /users:
     get:
@@ -4789,6 +4882,72 @@ components:
         username: { type: string }
         header: { type: string }
         value: { type: string, minLength: 1, writeOnly: true }
+    PropertyGroupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PropertyGroup" }
+    PropertyGroupInput:
+      type: object
+      required: [name, label, type]
+      additionalProperties: false
+      description: An input a property group adds to the forms of the items naming it.
+      properties:
+        name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,62}$", description: "The input's name, as the item's own inputs: inputs.<name>." }
+        label: { type: string, minLength: 1, maxLength: 100 }
+        type: { type: string, enum: [string, integer, number, boolean] }
+        required: { type: boolean }
+        secret: { type: boolean, description: "A string kept as a secret input (S14.6): shown masked, never returned." }
+        default: { description: "Its first value: of its type, one of its options when it has some." }
+        options:
+          type: array
+          description: The values a string input is chosen from.
+          items: { type: string }
+        help: { type: string, maxLength: 300 }
+    PropertyGroupWrite:
+      type: object
+      required: [name, inputs, constants]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_]{1,62}$"
+          description: "When creating: how blueprints name it and bindings read it, propgroup.<key>.<name>."
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        inputs:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/PropertyGroupInput" }
+        constants:
+          type: object
+          description: "Values bindings read as propgroup.<key>.<name>: text, numbers or booleans."
+          additionalProperties: true
+    PropertyGroup:
+      type: object
+      required: [key, name, description, version, versions, inputs, constants, used_by, updated_at]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        version: { type: integer, description: The version shown. }
+        versions:
+          type: array
+          description: Every version, the latest last.
+          items: { type: integer }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/PropertyGroupInput" }
+        constants:
+          type: object
+          additionalProperties: true
+        used_by:
+          type: array
+          description: "Items whose saved versions name it, by slug (drafts aside): it can't be deleted while one does."
+          items: { type: string }
+        updated_at: { type: string, format: date-time }
     IpamReconcile:
       type: object
       required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]
@@ -5341,7 +5500,8 @@ components:
     UiRules:
       type: object
       description: |
-        CEL expressions over `inputs`, `project`, `user` and `environment`.
+        CEL expressions over `inputs`, `project`, `user`, `environment` and
+        `propgroup` (the constants of the property groups the item names).
         The server evaluates them on preview and submit and returns the
         results in `fields`; the UI shows those.
       properties:

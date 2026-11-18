@@ -30,8 +30,9 @@ type set struct {
 	cache map[string]cel.Program
 }
 
-// forms is for approval policies, form rules and blueprint bindings.
-var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments"},
+// forms is for approval policies, form rules and blueprint bindings;
+// propgroup is the constants of the item's property groups (ADR-0038).
+var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments", "propgroup"},
 	strings: map[string]bool{"environment": true}}
 
 // day2 is for day-2 policy conditions, where environment is an object
@@ -39,8 +40,9 @@ var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm
 var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
 
 // composite is for a composite item's bindings and step conditions
-// (ADR-0022): its inputs and the outputs of earlier steps.
-var composite = &set{names: []string{"inputs", "steps", "environment", "project"}, strings: map[string]bool{"environment": true}}
+// (ADR-0022): its inputs, the outputs of earlier steps and its property
+// groups' constants.
+var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup"}, strings: map[string]bool{"environment": true}}
 
 // build is for the bindings evaluated as each VM is built (ADR-0024): its
 // tags, reading the VM itself and the components built before it.

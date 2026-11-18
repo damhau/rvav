@@ -208,7 +208,7 @@ func (s *Service) itemYAML(ctx context.Context, it store.AdminItem, keep func(st
 		if !keep(row) {
 			continue
 		}
-		v, err := s.Store.GetVersion(ctx, row.ID)
+		v, err := s.Store.GetVersionAsWritten(ctx, row.ID)
 		if err != nil {
 			return nil, err
 		}

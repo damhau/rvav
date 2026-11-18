@@ -19,9 +19,41 @@ type Definition = S["CatalogVersionDefinition"];
 
 interface AdminState {
   secrets: S["Secret"][];
+  /** Every version of every property group, without what is worked out when served. */
+  propertyGroups: Omit<S["PropertyGroup"], "versions" | "used_by">[];
   versions: Record<string, Version[]>; // by item ID, newest first
   allProjects: Set<string>;
   sortOrder: Record<string, number>;
+}
+
+const storedGroup = (
+  key: string,
+  version: number,
+  w: S["PropertyGroupWrite"],
+): AdminState["propertyGroups"][number] => ({
+  key,
+  version,
+  name: w.name,
+  description: w.description ?? "",
+  inputs: w.inputs,
+  constants: w.constants,
+  updated_at: now(),
+});
+
+/** A property group at a version (its latest by default), with its versions and the items whose saved versions name it. */
+function groupAt(db: Db, key: string, version = 0): S["PropertyGroup"] | undefined {
+  const st = state(db);
+  const all = st.propertyGroups.filter((g) => g.key === key).sort((a, b) => a.version - b.version);
+  const g = version ? all.find((x) => x.version === version) : all.at(-1);
+  if (!g) return undefined;
+  const names = (v: Version) => {
+    const refs = (v.definition.blueprint as { property_groups?: { key?: string }[] }).property_groups;
+    return Array.isArray(refs) && refs.some((r) => r.key === key);
+  };
+  const usedBy = db.items
+    .filter((i) => (st.versions[i.id] ?? []).some((v) => v.state !== "draft" && names(v)))
+    .map((i) => i.slug);
+  return { ...g, versions: all.map((x) => x.version), used_by: usedBy };
 }
 
 const builtinSources = [
@@ -104,6 +136,23 @@ function state(db: Db): AdminState {
           created_at: now(),
           updated_at: now(),
         },
+      ],
+      propertyGroups: [
+        storedGroup("corp_ops", 1, {
+          name: "Corporate operations",
+          description: "What every VM of the shop is billed and backed up by.",
+          inputs: [
+            {
+              name: "cost_center",
+              label: "Cost centre",
+              type: "string",
+              required: true,
+              options: ["CC-1001", "CC-2002", "CC-3003"],
+            },
+            { name: "backup", label: "Back up nightly", type: "boolean", default: true },
+          ],
+          constants: { dns_domain: "corp.example", support_queue: "ops-l2" },
+        }),
       ],
       versions,
       allProjects: new Set(db.items.filter((i) => i.source.kind === "awx").map((i) => i.id)),
@@ -1090,6 +1139,51 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const project = new URL(request.url).searchParams.get("project_id") ?? undefined;
       const st = state(db);
       st.secrets = st.secrets.filter((x) => !(x.name === params.name && x.project_id === project));
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get(`${base}/admin/property-groups`, async () => {
+      await wait();
+      const st = state(db);
+      const keys = [...new Set(st.propertyGroups.map((g) => g.key))].sort();
+      return HttpResponse.json({ items: keys.map((k) => groupAt(db, k)!) });
+    }),
+    http.post(`${base}/admin/property-groups`, async ({ request }) => {
+      await wait();
+      const w = (await request.json()) as S["PropertyGroupWrite"];
+      const st = state(db);
+      const key = w.key ?? "";
+      if (!/^[A-Za-z][A-Za-z0-9_]{1,62}$/.test(key))
+        return problem(422, "Some inputs need attention", [
+          { field: "/key", code: "pattern", message: "Letters, digits and underscores, starting with a letter." },
+        ]);
+      if (st.propertyGroups.some((g) => g.key === key))
+        return problem(409, "Conflict", undefined, `The property group "${key}" exists.`);
+      st.propertyGroups.push(storedGroup(key, 1, w));
+      return HttpResponse.json(groupAt(db, key), { status: 201 });
+    }),
+    http.get(`${base}/admin/property-groups/:key`, async ({ params, request }) => {
+      await wait();
+      const version = Number(new URL(request.url).searchParams.get("version") ?? 0);
+      const g = groupAt(db, String(params.key), version);
+      return g ? HttpResponse.json(g) : problem(404, "Not found");
+    }),
+    http.put(`${base}/admin/property-groups/:key`, async ({ params, request }) => {
+      await wait();
+      const w = (await request.json()) as S["PropertyGroupWrite"];
+      const st = state(db);
+      const latest = groupAt(db, String(params.key));
+      if (!latest) return problem(404, "Not found");
+      st.propertyGroups.push(storedGroup(latest.key, latest.version + 1, w));
+      return HttpResponse.json(groupAt(db, latest.key));
+    }),
+    http.delete(`${base}/admin/property-groups/:key`, async ({ params }) => {
+      await wait();
+      const st = state(db);
+      const g = groupAt(db, String(params.key));
+      if (!g) return problem(404, "Not found");
+      if (g.used_by.length)
+        return problem(409, "Conflict", undefined, `Items use this property group: ${g.used_by.join(", ")}.`);
+      st.propertyGroups = st.propertyGroups.filter((x) => x.key !== g.key);
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/catalog/preview-users`, async ({ request }) => {

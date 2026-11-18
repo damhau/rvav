@@ -293,6 +293,8 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	var token api.ApiTokenCreated
 	h.json("POST", "/api/v1/tokens", "tnguyen", api.ApiTokenCreate{Name: "Thomas's pipeline"}, 201, &token)
 	h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "a1-token", Kind: api.SecretWriteKindToken, Value: new("x")}, 201, nil)
+	h.json("POST", "/api/v1/admin/property-groups", admin, api.PropertyGroupWrite{Key: new("a1_group"), Name: "A1 group",
+		Inputs: []api.PropertyGroupInput{}, Constants: map[string]any{"domain": "corp.example"}}, 201, nil)
 	fin := &[]api.Offer{{ProjectId: new("prj_fin")}}
 	var naming api.NamingPolicy
 	h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "A1 names",
@@ -338,6 +340,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"versions/{versionId}":       item.PublishedVersion.Id,
 		"categories/{key}":           "compute",
 		"secrets/{name}":             "a1-token",
+		"property-groups/{key}":      "a1_group",
 		"members/{userId}":           seed.UserID("tnguyen"),
 		"roles/{key}":                "vm-operator",
 		"role-assignments/{id}":      deref(given.Id),

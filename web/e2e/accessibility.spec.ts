@@ -35,6 +35,7 @@ const pages = [
   "/admin/integrations/vcenter",
   "/admin/integrations/awx",
   "/admin/infrastructure",
+  "/admin/property-groups",
   "/admin/day2-actions",
   "/admin/workflows",
   "/admin/onboarding",

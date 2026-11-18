@@ -130,7 +130,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		out.Options, out.CacheSeconds = &opts, &cacheSeconds
 		return out, nil
 	case api.Cel:
-		opts, value, err := celValues(raw, formVars(q.Inputs, proj, env, p))
+		opts, value, err := celValues(raw, formVars(q.Inputs, proj, env, p, ver))
 		if err != nil {
 			return out, err
 		}

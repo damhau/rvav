@@ -249,9 +249,9 @@ func (s *Service) DeleteCatalogItem(ctx context.Context, p *auth.Principal, idOr
 	return nil
 }
 
-// itemVersion finds a version of the item.
+// itemVersion finds a version of the item, as written.
 func (s *Service) itemVersion(ctx context.Context, it store.AdminItem, versionID string) (store.ItemVersion, store.VersionRow, error) {
-	v, err := s.Store.GetVersion(ctx, versionID)
+	v, err := s.Store.GetVersionAsWritten(ctx, versionID)
 	if errors.Is(err, store.ErrNotFound) || err == nil && v.ItemID != it.ID {
 		return v, store.VersionRow{}, ErrNotFound
 	}

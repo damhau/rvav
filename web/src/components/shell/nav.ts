@@ -1,5 +1,6 @@
 import {
   Activity,
+  Boxes,
   ChartColumn,
   Folders,
   House,
@@ -58,6 +59,13 @@ export const adminGroups: AdminGroup[] = [
     label: "Catalog",
     pages: [
       { to: "/admin/catalog-items", label: "Catalog items", icon: Package, show: (me) => can(me, "catalog.manage") },
+      {
+        to: "/admin/property-groups",
+        label: "Property groups",
+        icon: Boxes,
+        keywords: ["inputs", "constants", "propgroup"],
+        show: (me) => can(me, "catalog.manage"),
+      },
       {
         to: "/admin/day2-actions",
         label: "Day-2 actions",

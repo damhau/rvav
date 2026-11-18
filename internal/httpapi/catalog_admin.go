@@ -245,3 +245,39 @@ func (s *Server) UpdateSecret(w http.ResponseWriter, r *http.Request, name strin
 func (s *Server) DeleteSecret(w http.ResponseWriter, r *http.Request, name string, params api.DeleteSecretParams) {
 	s.replyEmpty(w, r, s.Core.DeleteSecret(r.Context(), principal(r), name, deref(params.ProjectId)))
 }
+
+func (s *Server) ListPropertyGroups(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Core.ListPropertyGroups(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, list, err)
+}
+
+func (s *Server) CreatePropertyGroup(w http.ResponseWriter, r *http.Request) {
+	var body api.PropertyGroupWrite
+	if !s.decode(w, r, &body) {
+		return
+	}
+	out, err := s.Core.PutPropertyGroup(r.Context(), principal(r), "", body, true)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) GetPropertyGroup(w http.ResponseWriter, r *http.Request, key string, params api.GetPropertyGroupParams) {
+	version := 0
+	if params.Version != nil {
+		version = *params.Version
+	}
+	out, err := s.Core.PropertyGroup(r.Context(), principal(r), key, version)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) UpdatePropertyGroup(w http.ResponseWriter, r *http.Request, key string) {
+	var body api.PropertyGroupWrite
+	if !s.decode(w, r, &body) {
+		return
+	}
+	out, err := s.Core.PutPropertyGroup(r.Context(), principal(r), key, body, false)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeletePropertyGroup(w http.ResponseWriter, r *http.Request, key string) {
+	s.replyEmpty(w, r, s.Core.DeletePropertyGroup(r.Context(), principal(r), key))
+}

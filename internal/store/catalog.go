@@ -85,7 +85,9 @@ func (s *Store) ListCategories(ctx context.Context, projectID string) ([]Categor
 
 const versionCols = `id, item_id, number, state, form_schema, ui_schema, initial_values, blueprint, published_at`
 
-func (s *Store) GetVersion(ctx context.Context, id string) (ItemVersion, error) {
+// GetVersionAsWritten gives a version as it was saved, without the inputs
+// of its property groups.
+func (s *Store) GetVersionAsWritten(ctx context.Context, id string) (ItemVersion, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+versionCols+` from catalog_item_versions where id = $1`, id)
 	v, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[ItemVersion])
 	return v, notFound(err)

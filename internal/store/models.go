@@ -158,6 +158,9 @@ type ItemVersion struct {
 	InitialValues json.RawMessage `db:"initial_values"`
 	Blueprint     json.RawMessage `db:"blueprint"`
 	PublishedAt   *time.Time      `db:"published_at"`
+	// GroupConstants are the constants of its property groups, by group
+	// key: what bindings read as propgroup (GetVersion).
+	GroupConstants map[string]any `db:"-"`
 }
 
 type ApprovalPolicy struct {

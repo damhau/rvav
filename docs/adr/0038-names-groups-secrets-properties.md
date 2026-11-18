@@ -10,7 +10,8 @@
 ## Context
 vRA's custom naming has a counter that starts and moves as the
 administrator says; rvav's always started at 1 and moved by 1 (parity C7).
-vRA projects carry custom properties that reach every machine (C6), and a
+vRA property groups let several cloud templates share inputs and
+constants (C25). vRA projects carry custom properties that reach every machine (C6), and a
 cloud template's machine can say `preventDelete`, `folderName` and its
 own `properties` (C30).
 
@@ -33,6 +34,41 @@ own `properties` (C30).
 - The policy's preview and a request's look-ahead (the DNS prefetch) count
   the same way.
 - A number wider than `{seq:NN}`'s padding is printed whole (`web1000`).
+
+### Property groups
+- A property group is a key, a name, up to 50 inputs and a map of
+  constants, in `property_groups` (migration 00061), one row per version.
+  A version never changes: saving a group adds the next one, so an item
+  stays as it was published until its own new version names the new one.
+  Catalog admins manage groups on **Property groups**, under Catalog in
+  the administration menu (`/admin/property-groups`, `catalog.manage`).
+- An input has a name, a label, a type (`string`, `integer`, `number`,
+  `boolean`), and may be required, secret (text without options or
+  default), have a default and, as text, options. Constants are scalars
+  (text, number, yes or no): a binding reads `propgroup.<key>.<name>`
+  whole, and a nested value would read as JSON text in a vSphere
+  attribute.
+- A blueprint names groups at a version: `property_groups: [{key: ops,
+  version: 2}]`. The version is required: an item's form and bindings
+  don't change under it when an administrator saves the group, as vRA's
+  do. Saving the item checks that the group and version exist and that no
+  input is both in the form and in a group, or in two groups.
+- The store gives a version two ways. `GetVersionAsWritten` is the
+  definition as saved: the item's admin pages, YAML export and Git read
+  it. `GetVersion`, which everything a requester reaches reads (the
+  request form, preview, submit, drafts, approvals, secret masking,
+  bindings), adds the groups' inputs to the form schema, UI schema and
+  initial values, each group's in a section of its own
+  (`propgroup-<key>`, titled with its name), and their constants to
+  `GroupConstants`. So no requester path needs to know about groups, and
+  a secret group input is sealed and masked like any other.
+- Form rules, bindings, properties, folders and composite steps read the
+  constants as `propgroup.<key>.<name>`; the worker reads them from the
+  version when it works out a composite step.
+- A group is deleted with all its versions, and only when no version of an
+  item other than a draft names it: published and retired versions may be
+  rolled back to. A draft naming a deleted group is refused when saved
+  next.
 
 ### Custom properties and folders
 - A project has `properties`, a map of up to 50 keys (letters, digits,
