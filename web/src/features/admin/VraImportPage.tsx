@@ -43,6 +43,11 @@ const actions: Record<S["VraItemPlan"]["action"], [string, Tone]> = {
   conflict: ["Conflict", "bad"],
   skip: ["Not imported", "outline"],
 };
+const groupActions: Record<S["VraPropertyGroupPlan"]["action"], [string, Tone]> = {
+  create: ["Create", "accent"],
+  unchanged: ["Unchanged", "neutral"],
+  differs: ["Differs in rvav", "warn"],
+};
 const mapping: Record<S["VraItemPlan"]["status"], [string, Tone]> = {
   complete: ["Complete", "ok"],
   partial: ["Partial", "warn"],
@@ -171,7 +176,7 @@ function Summary({ plan }: { plan: Plan }) {
 function planLeft(plan?: Plan) {
   const unplaced = plan?.projects.filter((p) => p.how === "none").length ?? 0;
   const s = plan?.summary;
-  const items = s ? s.templates_create + s.items_create + s.items_update : 0;
+  const items = s ? s.templates_create + s.property_groups_create + s.items_create + s.items_update : 0;
   const left = s ? items + s.shares_add + s.deployments_adopt : 0;
   return { unplaced, items, left };
 }
@@ -436,14 +441,73 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
     },
   ];
   return (
-    <DataTable
-      label="Cloud templates"
-      columns={columns}
-      rows={plan.items}
-      rowKey={(it) => it.blueprint_id}
-      minWidth={820}
-      empty={<EmptyState title="No cloud template" body="vRA has no cloud template to import." />}
-    />
+    <>
+      <DataTable
+        label="Cloud templates"
+        columns={columns}
+        rows={plan.items}
+        rowKey={(it) => it.blueprint_id}
+        minWidth={820}
+        empty={<EmptyState title="No cloud template" body="vRA has no cloud template to import." />}
+      />
+      {plan.property_groups.length > 0 && <PropertyGroups plan={plan} onNotes={onNotes} />}
+    </>
+  );
+}
+
+/** vRA's property groups, made in rvav before the items that name them. */
+function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const columns: Column<S["VraPropertyGroupPlan"]>[] = [
+    {
+      id: "group",
+      header: "Property group",
+      sortValue: (g) => g.label,
+      cell: (g) => (
+        <>
+          <span className="font-medium">{g.label}</span>
+          <div className="font-mono text-caption text-faint">
+            {g.key} ·{" "}
+            {g.type === "input"
+              ? plural(g.inputs.length, "input")
+              : plural(Object.keys(g.constants).length, "constant")}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "import",
+      header: "Import",
+      sortValue: (g) => groupActions[g.action][0],
+      cell: (g) => (
+        <>
+          <Badge tone={groupActions[g.action][1]}>{groupActions[g.action][0]}</Badge>
+          {g.action === "differs" && (
+            <div className="mt-1 max-w-64 text-secondary text-muted">
+              Left as it is: items name its version {g.version}.
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      cell: (g) => <NotesButton of={g.label} notes={g.notes} onOpen={onNotes} />,
+    },
+  ];
+  return (
+    <section aria-labelledby="vra-property-groups" className="mt-6">
+      <h3 id="vra-property-groups" className="px-4 pb-2 text-body font-medium">
+        Property groups
+      </h3>
+      <DataTable
+        label="Property groups"
+        columns={columns}
+        rows={plan.property_groups}
+        rowKey={(g) => g.vra_id}
+        minWidth={560}
+      />
+    </section>
   );
 }
 
@@ -878,6 +942,8 @@ function ImportSheet({
           <span className="font-medium">Catalog items</span>
           <span className="block text-secondary text-muted">
             {s.templates_create > 0 && `${plural(s.templates_create, "template")} to make from vRA's image mappings; `}
+            {s.property_groups_create > 0 &&
+              `${plural(s.property_groups_create, "property group")} to make from vRA's; `}
             {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
             {plural(s.shares_add, "share")} to add (an item offered to one more project).
           </span>
@@ -916,6 +982,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
     >
       <section aria-label="Imported" className="flex flex-col gap-1 text-body">
         {line("Templates made", r.templates_created)}
+        {line("Property groups made", r.property_groups_created)}
         {line("Projects given vRA's custom properties", r.projects_updated)}
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
@@ -927,6 +994,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
           </p>
         ))}
         {r.templates_created.length +
+          r.property_groups_created.length +
           r.projects_updated.length +
           r.created.length +
           r.updated.length +

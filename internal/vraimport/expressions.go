@@ -28,6 +28,8 @@ type scope struct {
 	machines    map[string]machineRef
 	self        string
 	environment bool
+	// groups are the property groups it reads; nil where none can be.
+	groups *groupScope
 }
 
 // What an expression gives, when rvav can tell.
@@ -69,6 +71,8 @@ type ref struct {
 	component, index string
 	list             bool
 	ownComponent     bool
+	// value is a property group constant's.
+	value any
 }
 
 func (s scope) ref(path string) (ref, error) {
@@ -81,10 +85,19 @@ func (s scope) ref(path string) (ref, error) {
 		return ref{what: "self", name: "name"}, nil
 	case strings.HasPrefix(path, "input."):
 		name := strings.TrimPrefix(path, "input.")
+		// An input that is a property group: its inputs are the form's.
+		if g, prop, ok := strings.Cut(name, "."); ok && s.groups != nil && s.groups.inputs[g] != "" && inputName.MatchString(prop) {
+			return ref{what: "input", name: prop}, nil
+		}
 		if !inputName.MatchString(name) {
 			return ref{}, fmt.Errorf("%s has no rvav equivalent", path)
 		}
 		return ref{what: "input", name: name}, nil
+	case strings.HasPrefix(path, "propgroup."):
+		if s.groups == nil {
+			return ref{}, fmt.Errorf("%s: property groups aren't read here", path)
+		}
+		return s.groups.constant(path)
 	case strings.HasPrefix(path, "secret."):
 		name := SecretName(strings.TrimPrefix(path, "secret."))
 		if name == "" {
@@ -126,6 +139,11 @@ func (r ref) cel() (string, valueKind) {
 		return "self." + r.name, kindString
 	case "input":
 		return "inputs." + r.name, kindOther
+	case "propgroup":
+		if _, ok := r.value.(string); ok {
+			return "propgroup." + r.name, kindString
+		}
+		return "propgroup." + r.name, kindOther
 	}
 	c := "components." + r.component
 	switch {
@@ -159,6 +177,14 @@ func (r ref) action() string {
 	case "secret":
 		// Printed as it is, as vRA does.
 		return `{{ secret "` + r.name + `" }}`
+	case "propgroup":
+		// rvav's user data doesn't read property groups: the value is
+		// printed in it.
+		v := fmt.Sprint(r.value)
+		if strings.Contains(v, "{{") || strings.Contains(v, "}}") {
+			return "{{ " + strconv.Quote(v) + " }}"
+		}
+		return v
 	}
 	c := ".components." + r.component
 	switch {
@@ -540,6 +566,9 @@ func (s scope) userData(src string) (string, []string) {
 		if err == nil && len(toks) == 1 && toks[0].kind == tokIdent || secretRef.MatchString(inner) {
 			r, err := s.ref(inner)
 			if err == nil {
+				if r.what == "propgroup" {
+					s.groups.inlined = append(s.groups.inlined, inner)
+				}
 				return r.action()
 			}
 			problems = append(problems, fmt.Sprintf("cloud-init uses %s: %v. It is left as it was.", m, err))

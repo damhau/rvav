@@ -26,7 +26,7 @@ describe("vRA import", () => {
     expect(strategy("vra-prj-legacy")).toHaveTextContent(/^None$/);
   });
 
-  it("adds vRA's custom properties a project lacks when the catalog is imported", { timeout: 15_000 }, async () => {
+  it("adds vRA's custom properties and property groups when the catalog is imported", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=projects");
     const table = await screen.findByRole("table", { name: "vRA projects" });
@@ -39,9 +39,11 @@ describe("vRA import", () => {
 
     await user.click(screen.getByRole("button", { name: "Import…" }));
     const sheet = await screen.findByRole("dialog", { name: "Import from vRA" });
+    expect(sheet).toHaveTextContent(/2 property groups to make from vRA's;/);
     await user.click(within(sheet).getByRole("button", { name: "Import" }));
     const result = (await screen.findAllByRole("region", { name: "Imported" })).at(-1);
     expect(result).toHaveTextContent(/Projects given vRA's custom properties: Web Platform/);
+    expect(result).toHaveTextContent(/Property groups made: corpInputs, dnsSettings/);
     await waitFor(() => expect(properties("vra-prj-web")).toHaveTextContent(/^Left out: cost center$/));
   });
 
@@ -68,6 +70,18 @@ describe("vRA import", () => {
     await user.click(await screen.findByRole("button", { name: "Notes on RHEL 9 Server: 2 notes" }));
     const sheet = await screen.findByRole("dialog", { name: "Notes on RHEL 9 Server" });
     expect(sheet).toHaveTextContent(/Placed by its constraint tags/);
+  });
+
+  it("lists vRA's property groups under the templates, with their notes", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=items");
+    const table = await screen.findByRole("table", { name: "Property groups" });
+    const row = (label: string) => within(table).getByText(label).closest("tr") as HTMLTableRowElement;
+    expect(row("Corporate inputs")).toHaveTextContent(/corpInputs · 2 inputsCreate/);
+    expect(row("DNS settings")).toHaveTextContent(/dnsSettings · 2 constantsCreate/);
+    await user.click(within(table).getByRole("button", { name: "Notes on Corporate inputs: 1 note" }));
+    const sheet = await screen.findByRole("dialog", { name: "Notes on Corporate inputs" });
+    expect(sheet).toHaveTextContent(/the form shows their values/);
   });
 
   it("marks a project moved from a side panel, and not moved once confirmed", async () => {

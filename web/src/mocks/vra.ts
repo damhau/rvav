@@ -46,6 +46,15 @@ const images: Omit<S["VraTemplatePlan"], "action">[] = [
     notes: [{ level: "unmapped", where: "image_profiles.img-zrh", text: "Region Zurich is in vCenter vc02.corp.example, which rvav doesn't manage: its template tpl-win2025-std-zrh is left out. Add the vCenter in Administration › vCenters, then import again." }] },
 ]; // prettier-ignore
 
+/** vRA's property groups, as rvav's (ADR-0038). */
+const groups: Omit<S["VraPropertyGroupPlan"], "action">[] = [
+  { vra_id: "pg-corp", name: "corpInputs", key: "corpInputs", label: "Corporate inputs", type: "input", version: 1, constants: {},
+    inputs: [{ name: "backup", label: "Back up", type: "boolean", default: true }, { name: "costCenter", label: "Cost center", type: "string", required: true, options: ["CC-1001", "CC-2002"] }],
+    notes: [{ level: "info", where: "properties.costCenter.oneOf", text: "Its choices' titles aren't kept: the form shows their values." }] },
+  { vra_id: "pg-dns", name: "dnsSettings", key: "dnsSettings", label: "DNS settings", type: "constant", version: 1, inputs: [],
+    constants: { domain: "corp.example", ttl: 300 }, notes: [] },
+]; // prettier-ignore
+
 const vraProjects: {
   id: string;
   name: string;
@@ -169,6 +178,10 @@ function plan(db: Db, st: State): S["VraPlan"] {
     ...t,
     action: st.imported.has(`image:${t.key}`) ? "unchanged" : "create",
   }));
+  const pgs: S["VraPropertyGroupPlan"][] = groups.map((g) => ({
+    ...g,
+    action: st.imported.has(`group:${g.key}`) ? "unchanged" : "create",
+  }));
   const cutover: S["VraCutover"] = {
     total: projects.length,
     moved: Object.keys(st.moved).length,
@@ -211,12 +224,13 @@ function plan(db: Db, st: State): S["VraPlan"] {
     snapshot: st.snapshot,
     summary: {
       templates_create: tpls.filter((t) => t.action === "create").length,
+      property_groups_create: pgs.filter((g) => g.action === "create").length,
       items_create: count((i) => i.action === "create"), items_update: 0, items_unchanged: count((i) => i.action === "unchanged"),
       items_blocked: count((i) => i.action === "skip" || i.action === "conflict"), shares_add: items.reduce((n, i) => n + i.share_add.length, 0),
       deployments_adopt: deployments.filter((d) => d.status === "adopt").length, deployments_adopted: deployments.filter((d) => d.status === "adopted").length,
       deployments_skipped: deployments.filter((d) => d.status === "skipped").length,
     },
-    projects, templates: tpls, items, deployments, cutover,
+    projects, templates: tpls, property_groups: pgs, items, deployments, cutover,
     policies: [
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
@@ -317,6 +331,7 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
       const before = plan(db, st);
       const out: S["VraImportResult"] = {
         templates_created: [],
+        property_groups_created: [],
         projects_updated: [],
         created: [],
         updated: [],
@@ -336,6 +351,10 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
           if (!extra) continue;
           extra.properties = { ...p.properties_add, ...extra.properties };
           out.projects_updated.push(p.rvav_project_name!);
+        }
+        for (const g of before.property_groups.filter((x) => x.action === "create")) {
+          st.imported.add(`group:${g.key}`);
+          out.property_groups_created.push(g.key);
         }
         for (const t of before.templates.filter((x) => x.action === "create")) {
           st.imported.add(`image:${t.key}`);

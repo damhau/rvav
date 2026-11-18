@@ -142,6 +142,26 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 		return false
 	})
+	// An input that is a property group: the item names the group, whose
+	// inputs are the form's (ADR-0038).
+	gs := newGroupScope(e, bp.ProjectID)
+	order = slices.DeleteFunc(order, func(name string) bool {
+		ref, _ := t.Inputs[name]["$ref"].(string)
+		if !strings.HasPrefix(ref, groupRefPrefix) {
+			return false
+		}
+		gname := strings.TrimPrefix(ref, groupRefPrefix)
+		g := e.PropertyGroupFor(gname, bp.ProjectID)
+		if g == nil {
+			note(Unmapped, "inputs."+name, fmt.Sprintf("Property group %s isn't in what was read from vRA. Left out.", gname))
+			return true
+		}
+		key := gs.keys[g.ID]
+		gs.inputs[name], gs.used[key] = key, true
+		note(Info, "inputs."+name, fmt.Sprintf("Property group %s is rvav's %s: the item names it, and its inputs are in the form, "+
+			"in their own section. ${input.%s.x} is inputs.x.", gname, key, name))
+		return true
+	})
 	for _, name := range order {
 		prop, field, req, def := mapInput(name, t.Inputs[name], note)
 		if prop == nil {
@@ -190,7 +210,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	}
 	// Constraint tags are rvav's constraints (ADR-0035): an existing
 	// network's are those of the machines whose first adapter is on it.
-	cs := scope{machines: machineRefs, environment: true}
+	cs := scope{machines: machineRefs, environment: true, groups: gs}
 	netConstraints := map[string][]any{}
 	for _, name := range slices.Sorted(maps.Keys(t.Resources)) {
 		r := t.Resources[name]
@@ -213,7 +233,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	for _, name := range machines {
 		r := t.Resources[name]
 		where := "resources." + name
-		sc := scope{machines: machineRefs, self: name}
+		sc := scope{machines: machineRefs, self: name, groups: gs}
 		c := map[string]any{"key": machineRefs[name].key, "title": name}
 		bindings := map[string]any{}
 		if img, _ := r.Properties["image"].(string); img != "" {
@@ -252,6 +272,11 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			for _, pr := range problems {
 				note(Warning, where+".cloudConfig", pr)
 			}
+			for _, c := range gs.inlined {
+				note(Info, where+".cloudConfig", fmt.Sprintf("${%s} is the constant's value in vRA, printed in the user data: "+
+					"rvav's cloud-init doesn't read property groups, so change it here too when the group changes.", c))
+			}
+			gs.inlined = nil
 			for _, name := range secretsIn(ci) {
 				note(Warning, where+".cloudConfig", fmt.Sprintf("cloud-init opens secret %s: store it in rvav under that name "+
 					"(Catalog items › Secrets) before importing, since vRA never gives a secret's value.", name))
@@ -352,6 +377,9 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		note(Info, "resources", fmt.Sprintf("%d machines: a multi-VM item, one component each (ADR-0024).", len(comps)))
 	}
 	nx.apply(blueprint)
+	if refs := gs.refs(); len(refs) > 0 {
+		blueprint["property_groups"] = refs
+	}
 	if osFamily == "windows" {
 		note(Warning, "guest", "A Windows guest: set its domain join (domain, OU and the secret of the joining account) in the blueprint.")
 	}

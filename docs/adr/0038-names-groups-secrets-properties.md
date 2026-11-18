@@ -199,6 +199,15 @@ own `properties` (C30).
   `projects_updated` in the result, audited as `project.update`). They
   are only added: a key the rvav project has keeps its rvav value, and
   keys rvav refuses, or past its limit, are listed as unmapped.
+- vRA's property groups (`/properties/api/property-groups`) become rvav
+  property groups before the items, keyed by their name (a project's
+  first, then the organisation's; `_2` on a clash). A `$ref` input is
+  the group named in `property_groups`, `${input.g.p}` is `inputs.p`,
+  `${propgroup.g.p}` is `propgroup.<key>.p`. In cloud-init the
+  constant's value is written in: the user data is a Go template, which
+  has no `propgroup`. The import makes a group once and never changes
+  it: when rvav's differs, items name rvav's latest version with a
+  warning, as an administrator may have changed it on purpose.
 
 ## Consequences
 - Names, deletion protection, folders and custom properties carry over

@@ -76,6 +76,8 @@ type Rvav struct {
 	Templates map[string]RvavTemplate
 	// Secrets are the names of its stored secrets, of any scope.
 	Secrets map[string]bool
+	// PropertyGroups are its property groups, by key.
+	PropertyGroups map[string]RvavGroup
 }
 
 // DeploymentPlan is what becomes of a vRA deployment: adopted into an rvav

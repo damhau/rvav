@@ -139,7 +139,36 @@ func (s *Service) vraImages(ctx context.Context, r *vraimport.Rvav) error {
 		}
 		r.Templates[t.Key] = rt
 	}
+	groups, err := s.Store.PropertyGroups(ctx)
+	if err != nil {
+		return err
+	}
+	r.PropertyGroups = map[string]vraimport.RvavGroup{}
+	for _, g := range groups {
+		rg := vraimport.RvavGroup{Version: g.Version}
+		if err := json.Unmarshal(g.Inputs, &rg.Inputs); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(g.Constants, &rg.Constants); err != nil {
+			return err
+		}
+		r.PropertyGroups[g.Key] = rg
+	}
 	return nil
+}
+
+// vraPropertyGroup makes a property group of vRA's (ADR-0038).
+func (s *Service) vraPropertyGroup(ctx context.Context, p *auth.Principal, g vraimport.GroupImport) error {
+	w, err := convert[api.PropertyGroupWrite](map[string]any{"key": g.Key, "name": g.Label, "description": g.Description,
+		"inputs": g.Inputs, "constants": g.Constants})
+	if err != nil {
+		return err
+	}
+	_, err = s.PutPropertyGroup(ctx, p, "", w, true)
+	if errors.Is(err, ErrForbidden) {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("", "forbidden", "Making property groups needs the right to manage the catalog.")}}
+	}
+	return err
 }
 
 // vraTemplate makes a catalogue template of vRA's image mappings, offered
@@ -495,7 +524,7 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 // (drafts) with their sharing, and, when asked, its deployments adopted.
 // It can run again: what was imported is linked, so only what changed is.
 func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraImportRequest) (api.VraImportResult, error) {
-	out := api.VraImportResult{TemplatesCreated: []string{}, ProjectsUpdated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
+	out := api.VraImportResult{TemplatesCreated: []string{}, PropertyGroupsCreated: []string{}, ProjectsUpdated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
 	out.Failed = []struct {
 		Name   string `json:"name"`
 		Reason string `json:"reason"`
@@ -546,7 +575,19 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		if out.ProjectsUpdated, err = s.vraProjectProperties(ctx, p, plan.Projects, chosen); err != nil {
 			return out, err
 		}
-		// Templates first: items bind them.
+		// Templates and property groups first: items name them.
+		for _, g := range plan.PropertyGroups {
+			if g.Action != vraimport.ActionCreate {
+				continue
+			}
+			if err := s.vraPropertyGroup(ctx, p, g); isRefusal(err) {
+				fail("Property group "+g.Key, err)
+				continue
+			} else if err != nil {
+				return out, err
+			}
+			out.PropertyGroupsCreated = append(out.PropertyGroupsCreated, g.Key)
+		}
 		for _, t := range plan.Templates {
 			if t.Action != vraimport.ActionCreate {
 				continue
@@ -639,7 +680,8 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 			}
 		}
 	}
-	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated, "projects": out.ProjectsUpdated,
+	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated,
+		"property_groups": out.PropertyGroupsCreated, "projects": out.ProjectsUpdated,
 		"created": out.Created, "updated": out.Updated,
 		"shared": out.Shared, "adopted": out.Adopted, "failed": len(out.Failed)})
 	after, _, err := s.vraPlan(ctx, e, nil)

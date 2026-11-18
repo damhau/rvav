@@ -119,6 +119,20 @@ func SampleEstate(now time.Time) Estate {
 	e.Images, e.Flavors = []ImageProfile{gva, zrh}, []FlavorProfile{flv}
 	// Data Services names its machines by custom naming, counting from 100
 	// in tens.
+	// Property groups: inputs the corporation asks every VM for, and its
+	// DNS settings.
+	e.PropertyGroups = []PropertyGroup{
+		{ID: "pg-corp", Name: "corpInputs", DisplayName: "Corporate inputs", Type: "INPUT", Required: []string{"costCenter"},
+			Properties: map[string]map[string]any{
+				"costCenter": {"type": "string", "title": "Cost center", "enum": []any{"CC-1001", "CC-2002"}},
+				"backup":     {"type": "boolean", "title": "Back up", "default": true},
+			}},
+		{ID: "pg-dns", Name: "dnsSettings", DisplayName: "DNS settings", Type: "CONSTANT",
+			Properties: map[string]map[string]any{
+				"domain": {"type": "string", "const": "corp.example"},
+				"ttl":    {"type": "integer", "const": 300},
+			}},
+	}
 	e.Namings = []CustomNaming{{ID: "cn-data", Name: "Database servers",
 		Projects:  []NamingProject{{ProjectID: "vra-prj-data", Active: true}},
 		Templates: []NamingTemplate{{ResourceType: "COMPUTE", Pattern: "db-${input.environment}-${###}", StartCounter: 100, IncrementStep: 10}}}}

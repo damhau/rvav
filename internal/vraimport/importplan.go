@@ -94,33 +94,43 @@ type ProjectPlan struct {
 
 // Summary counts what the import would do.
 type Summary struct {
-	TemplatesCreate    int `json:"templates_create"`
-	ItemsCreate        int `json:"items_create"`
-	ItemsUpdate        int `json:"items_update"`
-	ItemsUnchanged     int `json:"items_unchanged"`
-	ItemsBlocked       int `json:"items_blocked"`
-	SharesAdd          int `json:"shares_add"`
-	DeploymentsAdopt   int `json:"deployments_adopt"`
-	DeploymentsAdopted int `json:"deployments_adopted"`
-	DeploymentsSkipped int `json:"deployments_skipped"`
+	TemplatesCreate      int `json:"templates_create"`
+	PropertyGroupsCreate int `json:"property_groups_create"`
+	ItemsCreate          int `json:"items_create"`
+	ItemsUpdate          int `json:"items_update"`
+	ItemsUnchanged       int `json:"items_unchanged"`
+	ItemsBlocked         int `json:"items_blocked"`
+	SharesAdd            int `json:"shares_add"`
+	DeploymentsAdopt     int `json:"deployments_adopt"`
+	DeploymentsAdopted   int `json:"deployments_adopted"`
+	DeploymentsSkipped   int `json:"deployments_skipped"`
 }
 
 // ImportPlan is the dry run.
 type ImportPlan struct {
-	Summary     Summary          `json:"summary"`
-	Templates   []TemplateImport `json:"templates"`
-	Projects    []ProjectPlan    `json:"projects"`
-	Items       []ItemImport     `json:"items"`
-	Deployments []DeploymentPlan `json:"deployments"`
-	Policies    []PolicyPlan     `json:"policies"`
-	Triage      Triage           `json:"triage"`
-	Cutover     Cutover          `json:"cutover"`
+	Summary   Summary          `json:"summary"`
+	Templates []TemplateImport `json:"templates"`
+	// PropertyGroups are vRA's property groups (ADR-0038).
+	PropertyGroups []GroupImport    `json:"property_groups"`
+	Projects       []ProjectPlan    `json:"projects"`
+	Items          []ItemImport     `json:"items"`
+	Deployments    []DeploymentPlan `json:"deployments"`
+	Policies       []PolicyPlan     `json:"policies"`
+	Triage         Triage           `json:"triage"`
+	Cutover        Cutover          `json:"cutover"`
 }
 
 // PlanImport is what importing the estate would do, nothing written.
 func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	p := ImportPlan{Projects: []ProjectPlan{}, Items: []ItemImport{}, Policies: PlanPolicies(e), Triage: TriageVRO(e),
-		Templates: PlanTemplates(e, r)}
+		Templates: PlanTemplates(e, r), PropertyGroups: PlanPropertyGroups(e, r)}
+	groups := map[string]GroupImport{}
+	for _, g := range p.PropertyGroups {
+		groups[g.Key] = g
+		if g.Action == ActionCreate {
+			p.Summary.PropertyGroupsCreate++
+		}
+	}
 	planned := map[string]TemplateImport{}
 	for _, t := range p.Templates {
 		planned[t.Key] = t
@@ -154,7 +164,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		after[id] = s
 	}
 	for _, bp := range e.Blueprints {
-		it := planItem(e, r, st, bp)
+		it := planItem(e, r, st, bp, groups)
 		for _, key := range it.templates {
 			if t, ok := planned[key]; ok && t.Action == ActionSkip {
 				it.Notes = append(it.Notes, Note{Warning, "image", fmt.Sprintf(
@@ -221,7 +231,7 @@ func projectProperties(vraProps, rvavProps map[string]string) (add map[string]st
 	return add, unmapped
 }
 
-func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImport {
+func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint, groups map[string]GroupImport) ItemImport {
 	m := MapTemplate(e, bp)
 	it := ItemImport{BlueprintID: bp.ID, Name: m.Name, Slug: m.Slug, Status: m.Status, Notes: m.Notes, ShareAdd: []string{},
 		ShareUnmapped: []string{}, Doc: m.Doc, templates: m.Templates}
@@ -232,6 +242,9 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImpor
 		it.Action = ActionSkip
 		return it
 	}
+	// Before the hash: an item names the group versions the import makes
+	// or finds.
+	withGroupVersions(m.Doc, groups, func(level, where, text string) { it.Notes = append(it.Notes, Note{level, where, text}) })
 	last := m.Doc.Versions[len(m.Doc.Versions)-1]
 	it.Version = last.Number
 	b, _ := json.Marshal(last)

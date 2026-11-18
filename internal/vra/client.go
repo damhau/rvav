@@ -315,6 +315,16 @@ func (c *Client) CustomNamings(ctx context.Context) ([]CustomNaming, error) {
 	return list, err
 }
 
+// PropertyGroups are the property groups; none when vRA has no such
+// service (before 8.3).
+func (c *Client) PropertyGroups(ctx context.Context) ([]PropertyGroup, error) {
+	list, err := listPages[PropertyGroup](ctx, c, "/properties/api/property-groups", nil)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	return list, err
+}
+
 // RequestForm is the custom form of a template or workflow, if it has one.
 func (c *Client) RequestForm(ctx context.Context, sourceType, sourceID string) (*Form, error) {
 	var f Form
@@ -560,6 +570,9 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	if e.Namings, err = c.CustomNamings(ctx); err != nil {
+		return nil, err
+	}
+	if e.PropertyGroups, err = c.PropertyGroups(ctx); err != nil {
 		return nil, err
 	}
 	if e.Blueprints, err = c.Blueprints(ctx); err != nil {

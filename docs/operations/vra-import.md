@@ -137,6 +137,8 @@ check it) or *unmapped* (left out).
 | `customizationSpec` | The guest's vCenter customization specification. |
 | `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}`, `${count.index}`, `${input.x}` (printed through `json`) and other machines' names, addresses and count are translated; functions, operators and other references are reported. |
 | `${secret.x}` in `cloudConfig` | `{{ secret "x" }}`: the stored secret, printed as it is. Its name becomes an rvav name (lower case, a dash for any other character: `Root_Password` is `root-password`). vRA never gives a secret's value, so the item waits (a conflict) until you store each secret it opens in rvav under that name (**Catalog items › Secrets**), then import again. A secret anywhere else, such as a property or a tag, is reported. |
+| An input of a property group (`$ref: /ref/property-groups/<name>`) | The item names the rvav property group that vRA's becomes ([Property groups](#property-groups)), and the form gets the group's inputs in place of the input. `${input.<input>.<property>}` is `${inputs.<property>}`. A group that wasn't read is reported. |
+| `${propgroup.<group>.<property>}` | `${propgroup.<key>.<property>}`, and the item names the group. In `cloudConfig`, the constant's value is written in, with an info note: a later change to the group doesn't reach the item's cloud-init. |
 | `preventDelete: true` on a machine | The component's `prevent_delete`: its VMs can't be deleted until an administrator runs the deployment's **Allow deletion**. |
 | Other resource flags (`ignoreChanges`, `createBeforeDelete`, `forceRecreate`, `allocatePerInstance`, `dependsOnPrevious`...) | Reported, left out. Timeouts (`createTimeout`...) are left out with an info note: rvav's own apply. |
 | `folderName` | The component's `folder`, below the VM folder of the placement rule folder's datacenter. `${input.x}` is `${inputs.x}`; a folder that reads a machine is reported. |
@@ -178,6 +180,27 @@ when it isn't what vRA's mappings give. An item whose image has no
 template, because none of its regions is in a vCenter rvav manages, is
 imported with a warning, and its requests fail until an administrator
 makes the template.
+
+### Property groups
+
+The import makes each vRA property group an rvav property group
+(**Catalog items › Property groups**,
+[ADR-0038](../adr/0038-names-groups-secrets-properties.md)) before the
+items that name it. The **Catalog items** tab lists them under the cloud
+templates.
+
+| vRA | rvav |
+|---|---|
+| Name | The key: letters, digits and underscores, starting with a letter (`dns-settings` is `dns_settings`). When groups share a name, the organization's keeps it and projects' groups get `_2`, `_3`. A template uses its project's group first, then the organization's. |
+| Display name, description | The group's name and description. |
+| An input group's properties (string, integer, number, boolean; `title`, `description`, `default`, `enum`, `oneOf`, `encrypted`, `required`) | The group's inputs. `enum` and `oneOf` give a string input its options; `oneOf` titles aren't kept. `encrypted` makes a string input secret, without a default. Lists, objects, options on a number, and checks such as `minimum` or `pattern` are reported, and left out. A group keeps at most 50 inputs. |
+| A constant group's properties | The group's constants: text, numbers and booleans. Lists, maps and encrypted constants are reported: vRA doesn't give an encrypted value, so store it as a secret. |
+| A project's property group | A group every item can name, with an info note. |
+
+The import never changes an rvav property group. When rvav's group of
+that key isn't what vRA's gives, the plan marks it **Differs in rvav**,
+and the items name rvav's latest version, each with a warning: check
+that the group has the inputs and constants the item reads.
 
 ### Custom forms
 

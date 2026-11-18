@@ -6748,14 +6748,15 @@ components:
         stays_in_vra: { type: boolean, default: false, description: "Keep it in vRA, even if rvav has a project of its name (rvav_project_id null)." }
     VraPlan:
       type: object
-      required: [snapshot, projects, templates, items, deployments, policies, triage, summary, cutover]
+      required: [snapshot, projects, templates, property_groups, items, deployments, policies, triage, summary, cutover]
       properties:
         snapshot: { $ref: "#/components/schemas/VraSnapshot" }
         summary:
           type: object
-          required: [templates_create, items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
+          required: [templates_create, property_groups_create, items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
           properties:
             templates_create: { type: integer, description: "Catalogue templates to make of vRA's image mappings (ADR-0037)." }
+            property_groups_create: { type: integer, description: "Property groups to make of vRA's (ADR-0038)." }
             items_create: { type: integer }
             items_update: { type: integer }
             items_unchanged: { type: integer }
@@ -6770,6 +6771,9 @@ components:
         templates:
           type: array
           items: { $ref: "#/components/schemas/VraTemplatePlan" }
+        property_groups:
+          type: array
+          items: { $ref: "#/components/schemas/VraPropertyGroupPlan" }
         items:
           type: array
           items: { $ref: "#/components/schemas/VraItemPlan" }
@@ -6851,6 +6855,36 @@ components:
           type: array
           items: { type: string }
           description: "The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left."
+    VraPropertyGroupPlan:
+      type: object
+      description: |
+        The rvav property group a vRA property group becomes (ADR-0038):
+        its inputs, or its constants. The items whose templates name it
+        name it at `version`.
+      required: [vra_id, name, key, label, type, action, version, inputs, constants, notes]
+      properties:
+        vra_id: { type: string }
+        name: { type: string, description: "vRA's name, as its templates name it." }
+        key: { type: string }
+        label: { type: string }
+        type: { type: string, enum: [input, constant] }
+        action:
+          type: string
+          enum: [create, unchanged, differs]
+          description: |
+            What the import does: make the group; nothing, as rvav's is what
+            vRA's gives; nothing, as rvav has another group of that key (the
+            import never changes one).
+        version: { type: integer, description: "The version the items name: the one the import makes, or rvav's latest." }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/PropertyGroupInput" }
+        constants:
+          type: object
+          additionalProperties: true
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
     VraTemplatePlan:
       type: object
       description: |
@@ -6959,9 +6993,10 @@ components:
           description: "Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent."
     VraImportResult:
       type: object
-      required: [templates_created, projects_updated, created, updated, shared, adopted, failed, plan]
+      required: [templates_created, property_groups_created, projects_updated, created, updated, shared, adopted, failed, plan]
       properties:
         templates_created: { type: array, items: { type: string }, description: "Catalogue templates made (their keys)." }
+        property_groups_created: { type: array, items: { type: string }, description: "Property groups made (their keys)." }
         projects_updated: { type: array, items: { type: string }, description: "rvav projects given vRA's custom properties (their names)." }
         created: { type: array, items: { type: string }, description: Items made (their names). }
         updated: { type: array, items: { type: string }, description: Items given a new draft. }

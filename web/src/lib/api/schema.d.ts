@@ -5007,6 +5007,8 @@ export interface components {
             summary: {
                 /** @description Catalogue templates to make of vRA's image mappings (ADR-0037). */
                 templates_create: number;
+                /** @description Property groups to make of vRA's (ADR-0038). */
+                property_groups_create: number;
                 items_create: number;
                 items_update: number;
                 items_unchanged: number;
@@ -5020,6 +5022,7 @@ export interface components {
             };
             projects: components["schemas"]["VraProjectPlan"][];
             templates: components["schemas"]["VraTemplatePlan"][];
+            property_groups: components["schemas"]["VraPropertyGroupPlan"][];
             items: components["schemas"]["VraItemPlan"][];
             deployments: components["schemas"]["VraDeploymentPlan"][];
             policies: components["schemas"]["VraPolicyPlan"][];
@@ -5091,6 +5094,34 @@ export interface components {
             };
             /** @description The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left. */
             properties_unmapped?: string[];
+        };
+        /**
+         * @description The rvav property group a vRA property group becomes (ADR-0038):
+         *     its inputs, or its constants. The items whose templates name it
+         *     name it at `version`.
+         */
+        VraPropertyGroupPlan: {
+            vra_id: string;
+            /** @description vRA's name, as its templates name it. */
+            name: string;
+            key: string;
+            label: string;
+            /** @enum {string} */
+            type: "input" | "constant";
+            /**
+             * @description What the import does: make the group; nothing, as rvav's is what
+             *     vRA's gives; nothing, as rvav has another group of that key (the
+             *     import never changes one).
+             * @enum {string}
+             */
+            action: "create" | "unchanged" | "differs";
+            /** @description The version the items name: the one the import makes, or rvav's latest. */
+            version: number;
+            inputs: components["schemas"]["PropertyGroupInput"][];
+            constants: {
+                [key: string]: unknown;
+            };
+            notes: components["schemas"]["VraNote"][];
         };
         /**
          * @description The catalogue template an image name of vRA's image profiles becomes
@@ -5200,6 +5231,8 @@ export interface components {
         VraImportResult: {
             /** @description Catalogue templates made (their keys). */
             templates_created: string[];
+            /** @description Property groups made (their keys). */
+            property_groups_created: string[];
             /** @description rvav projects given vRA's custom properties (their names). */
             projects_updated: string[];
             /** @description Items made (their names). */

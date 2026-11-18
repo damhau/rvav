@@ -63,6 +63,38 @@ type NamingTemplate struct {
 	IncrementStep int    `json:"incrementStep"`
 }
 
+// PropertyGroup is one of vRA's property groups (Design › Property
+// groups): inputs several templates share, or constants they read.
+type PropertyGroup struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Type is INPUT or CONSTANT.
+	Type      string `json:"type"`
+	ProjectID string `json:"projectId,omitempty"`
+	// Properties are JSON schemas: an input's, or a constant's with its
+	// value in const.
+	Properties map[string]map[string]any `json:"properties,omitempty"`
+	Required   []string                  `json:"required,omitempty"`
+}
+
+// PropertyGroupFor is the property group a project's template names:
+// the project's own, else the organisation's; nil when there is none.
+func (e *Estate) PropertyGroupFor(name, projectID string) *PropertyGroup {
+	var org *PropertyGroup
+	for i, g := range e.PropertyGroups {
+		switch {
+		case g.Name != name:
+		case g.ProjectID == projectID:
+			return &e.PropertyGroups[i]
+		case g.ProjectID == "" && org == nil:
+			org = &e.PropertyGroups[i]
+		}
+	}
+	return org
+}
+
 // MachineNaming is the custom naming pattern of a project's machines,
 // its own before the organisation's default; nil when there is none.
 func (e *Estate) MachineNaming(projectID string) (*CustomNaming, *NamingTemplate) {
@@ -351,13 +383,15 @@ type Estate struct {
 	Regions       []Region       `json:"regions,omitempty"`
 	CloudAccounts []CloudAccount `json:"cloud_accounts,omitempty"`
 	// Namings are the custom names; none in a vRA without them.
-	Namings      []CustomNaming `json:"custom_namings,omitempty"`
-	Blueprints   []Blueprint    `json:"blueprints"`
-	Forms        []Form         `json:"forms"`
-	CatalogItems []CatalogItem  `json:"catalog_items"`
-	Entitlements []Entitlement  `json:"entitlements"`
-	Policies     []Policy       `json:"policies"`
-	Deployments  []Deployment   `json:"deployments"`
+	Namings []CustomNaming `json:"custom_namings,omitempty"`
+	// PropertyGroups are the property groups; none in a vRA without them.
+	PropertyGroups []PropertyGroup `json:"property_groups,omitempty"`
+	Blueprints     []Blueprint     `json:"blueprints"`
+	Forms          []Form          `json:"forms"`
+	CatalogItems   []CatalogItem   `json:"catalog_items"`
+	Entitlements   []Entitlement   `json:"entitlements"`
+	Policies       []Policy        `json:"policies"`
+	Deployments    []Deployment    `json:"deployments"`
 	// What extensibility runs: vRA's subscriptions, vRO's workflows and
 	// actions (the triage report, P2.4).
 	Subscriptions   []Subscription   `json:"subscriptions"`
