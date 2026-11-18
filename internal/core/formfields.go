@@ -173,6 +173,8 @@ func checkShown(name string, f api.UiField, input bool, ptr string, publish bool
 	switch u := strings.TrimSpace(deref(f.Url)); {
 	case u == "" && publish:
 		errs = append(errs, fieldErr(at+"/url", "required", fmt.Sprintf("%s needs its address (url).", what)))
+	case strings.HasPrefix(u, imagePrefix) && f.Widget == api.UiWidgetImage:
+		// One rvav keeps: checkImages looks.
 	case u != "" && !shownURL(u):
 		errs = append(errs, fieldErr(at+"/url", "invalid",
 			"Give an address that starts with https:// or http://, or a path on this site that starts with /."))

@@ -751,7 +751,10 @@ An item's tabs:
     its **Address**, and its label is the link's text. An address starts
     with `https://` or `http://`, or is a path on this site. To publish,
     give the address, and an image's text alternative. An image from
-    another site loads only if that site is in `RVAV_WEB_IMAGE_SOURCES`;
+    another site loads only if that site is in `RVAV_WEB_IMAGE_SOURCES`.
+    To show a picture rvav keeps instead, select **Upload a picture** and
+    choose a PNG, JPEG, GIF or WebP file of 2 MB at most: its address
+    becomes `upload:<id>`;
   - a multiple choice dropdown, a checklist or a dual list takes its
     choices from its options or a value source, as a dropdown does; a
     dual list also takes the **Fewest picks** and **Most picks**, and

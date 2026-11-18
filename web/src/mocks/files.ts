@@ -54,6 +54,7 @@ function sniffed(b: Uint8Array): string {
   if (starts("\x89PNG")) return "image/png";
   if (starts("\xff\xd8\xff")) return "image/jpeg";
   if (starts("GIF8")) return "image/gif";
+  if (starts("RIFF") && new TextDecoder().decode(b.slice(8, 12)) === "WEBP") return "image/webp";
   if (starts("PK\x03\x04")) return "application/zip";
   if (starts("\x1f\x8b")) return "application/gzip";
   const head = new TextDecoder().decode(b.slice(0, 512)).trimStart().toLowerCase();
@@ -123,6 +124,19 @@ function problem(status: number, type: string, title: string, detail?: string) {
   );
 }
 
+/** Pictures uploaded for image fields, by ID. */
+const images = new Map<string, { img: S["FormImage"]; content: Uint8Array }>();
+
+/** As the server's checkImages: an image field's upload:<id> names a picture rvav keeps. */
+export function imageProblem(url: string, at: string): S["FieldError"] | undefined {
+  const id = url.slice("upload:".length);
+  return images.has(id)
+    ? undefined
+    : { field: at, code: "unknown", message: `rvav keeps no image ${id}: upload it again.` };
+}
+
+const pictures = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 
 export function fileHandlers(db: Db, base: string, wait: () => Promise<void>) {
@@ -177,6 +191,49 @@ export function fileHandlers(db: Db, base: string, wait: () => Promise<void>) {
       };
       kept.set(ref.id, { ref, content });
       return HttpResponse.json(ref, { status: 201 });
+    }),
+    http.post(`${base}/admin/catalog/images`, async ({ request }) => {
+      await wait();
+      if (!db.me.permissions.includes("catalog.manage"))
+        return problem(403, "forbidden", "You can't do this", "Only catalog administrators upload images for forms.");
+      const name = (new URL(request.url).searchParams.get("name") ?? "").split(/[\\/]/).pop()?.trim() ?? "";
+      const ext = extension(name);
+      if (!pictures.includes(ext))
+        return problem(
+          415,
+          "unsupported-type",
+          "This type of file isn't taken",
+          "An image field shows PNG, JPEG, GIF or WebP pictures.",
+        );
+      const content = new Uint8Array(await request.arrayBuffer());
+      if (content.length > 2 << 20)
+        return problem(
+          413,
+          "too-large",
+          "The file is too large",
+          `${name} is larger than 2 MB, the most an image field shows.`,
+        );
+      if (content.length === 0) return problem(400, "bad-request", "The request is not valid", `${name} is empty.`);
+      const seen = sniffed(content);
+      if (seen !== kinds[ext])
+        return problem(
+          415,
+          "unsupported-type",
+          "This type of file isn't taken",
+          `${name} isn't what a ${ext} picture holds: its content is ${seen}.`,
+        );
+      const id = `img_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      const img: S["FormImage"] = { id, name, size: content.length, content_type: seen, url: `upload:${id}` };
+      images.set(id, { img, content });
+      return HttpResponse.json(img, { status: 201 });
+    }),
+    http.get(`${base}/forms/images/:imageId`, async ({ params }) => {
+      await wait();
+      const kept = images.get(String(params.imageId));
+      if (!kept) return problem(404, "not-found", "Not found");
+      return new HttpResponse(kept.content, {
+        headers: { "Content-Type": kept.img.content_type, "X-Content-Type-Options": "nosniff" },
+      });
     }),
     http.get(`${base}/files/:fileId`, async ({ params }) => {
       await wait();

@@ -22,6 +22,35 @@ func (s *Server) UploadFormFile(w http.ResponseWriter, r *http.Request, params a
 	s.reply(w, r, http.StatusCreated, out, err)
 }
 
+// UploadFormImage keeps a picture for image fields (ADR-0040).
+func (s *Server) UploadFormImage(w http.ResponseWriter, r *http.Request, params api.UploadFormImageParams) {
+	body := http.MaxBytesReader(w, r.Body, core.MaxImageSize+1)
+	out, err := s.Core.UploadFormImage(r.Context(), principal(r), params.Name, r.ContentLength, body)
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		err = &core.TooLargeError{Msg: "The picture is larger than an image field shows."}
+	}
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+// GetFormImage sends a picture an image field shows: a raster image, so of
+// the type it was checked to be, and never sniffed as another.
+func (s *Server) GetFormImage(w http.ResponseWriter, r *http.Request, imageID string) {
+	img, content, err := s.Core.FormImage(r.Context(), imageID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", img.ContentType)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("Cache-Control", "private, max-age=86400, immutable")
+	h.Set("Content-Length", strconv.Itoa(len(content)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
 // DownloadFile sends a request's file as a download: never shown in the
 // browser, whatever it holds.
 func (s *Server) DownloadFile(w http.ResponseWriter, r *http.Request, fileID string) {

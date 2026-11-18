@@ -601,7 +601,8 @@ var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere
 	"nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services"}
 
 // checkVersion checks a version's definition with what it depends on: its
-// property groups' inputs, its sources' hosts and the secrets it names.
+// property groups' inputs, its sources' hosts, the secrets and the uploaded
+// images it names.
 func (s *Service) checkVersion(ctx context.Context, itemType string, d api.CatalogVersionDefinition, prefix string, publish bool) ([]api.FieldError, error) {
 	groups, err := s.groupFields(ctx, d)
 	if err != nil {
@@ -609,7 +610,11 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 	}
 	errs := checkDefinition(itemType, d, groups, prefix, publish)
 	refs, err := s.checkSourceRefs(ctx, d, prefix)
-	return append(errs, refs...), err
+	if err != nil {
+		return nil, err
+	}
+	images, err := s.checkImages(ctx, d, prefix)
+	return append(append(errs, refs...), images...), err
 }
 
 // checkDefinition checks a version's definition as a whole, with pointers

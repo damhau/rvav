@@ -1,9 +1,12 @@
-import { useId, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { LoaderCircle, Upload } from "lucide-react";
+import { useId, useRef, useState } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { uploadImage } from "@/forms/image";
 import { isApiError } from "@/lib/api/client";
 import type { FieldStates, FieldValues, UiColumn, UiWidget, ValueSource } from "@/lib/api/types";
 import { cn, localInput, withOffset, zoneLabel } from "@/lib/utils";
@@ -513,7 +516,7 @@ function FieldProperties({
           htmlFor="prop-url"
           hint={
             ui.widget === "image"
-              ? "The picture's address: https://…, or a path on this site."
+              ? "The picture's address: https://…, a path on this site, or upload:<id> for one you upload."
               : "Where the link goes: https://…, or a path on this site. It opens in a new tab."
           }
         >
@@ -528,6 +531,7 @@ function FieldProperties({
           <ProblemList id="prop-url-problems" list={at("url")} />
         </Field>
       )}
+      {ui.widget === "image" && <ImageUpload key={name} onUploaded={(url) => onChange(updateUi(def, name, { url }))} />}
       {ui.widget === "image" && (
         <Field
           label="Text alternative"
@@ -764,6 +768,57 @@ function FieldProperties({
           Remove {ui.label || name}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Uploads a picture for an image field, which then shows it as upload:<id>. */
+function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string>();
+  const upload = useMutation({
+    mutationFn: uploadImage,
+    onSuccess: (img) => {
+      setError(undefined);
+      onUploaded(img.url);
+    },
+    onError: (e, f) => setError(isApiError(e) ? (e.problem.detail ?? e.problem.title) : `Couldn't upload ${f.name}.`),
+  });
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        ref={input}
+        type="file"
+        hidden
+        tabIndex={-1}
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          if (f.size > 2 * 1024 * 1024) setError(`${f.name} is larger than 2 MB, the most an image field shows.`);
+          else upload.mutate(f);
+        }}
+      />
+      <Button
+        size="sm"
+        className="self-start"
+        disabled={upload.isPending}
+        aria-describedby={error ? "prop-image-upload-error" : "prop-image-upload-hint"}
+        onClick={() => input.current?.click()}
+      >
+        {upload.isPending ? <LoaderCircle className="animate-spin" /> : <Upload />}
+        Upload a picture
+      </Button>
+      {error ? (
+        <p id="prop-image-upload-error" className="text-secondary text-bad">
+          {error}
+        </p>
+      ) : (
+        <p id="prop-image-upload-hint" className="text-secondary text-muted">
+          PNG, JPEG, GIF or WebP, 2 MB at most.
+        </p>
+      )}
     </div>
   );
 }

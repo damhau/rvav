@@ -1,11 +1,15 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -174,6 +178,83 @@ func TestFileFields(t *testing.T) {
 		sent, _ := json.Marshal(vars["rules"])
 		if vars["note"] != "checked" || !strings.Contains(string(sent), ref.Sha256) || strings.Contains(string(sent), "10.0.0.0/8") {
 			t.Fatalf("AWX got %v", vars)
+		}
+	})
+}
+
+// TestFormImages: a catalog administrator uploads a picture, a raster image
+// whose content is what its name says, and an image field shows it as
+// upload:<id> to whoever requests; a field naming a picture rvav doesn't
+// keep is refused (F1.2, ADR-0040).
+func TestFormImages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "lmartin"
+		var buf bytes.Buffer
+		zones := image.NewRGBA(image.Rect(0, 0, 4, 4))
+		zones.Set(1, 1, color.RGBA{R: 200, A: 255})
+		if err := png.Encode(&buf, zones); err != nil {
+			t.Fatal(err)
+		}
+		picture := buf.String()
+		upload := func(user, name, content string, want int) api.FormImage {
+			t.Helper()
+			var img api.FormImage
+			var out any = &img
+			if want != 201 {
+				out = nil
+			}
+			h.json("POST", "/api/v1/admin/catalog/images?name="+url.QueryEscape(name), user, rawYAML(content), want, out,
+				"Content-Type", "application/octet-stream")
+			return img
+		}
+		img := upload(admin, "zones.png", picture, 201)
+		if img.ContentType != "image/png" || img.Size != int64(len(picture)) || img.Url != "upload:"+img.Id {
+			t.Fatalf("kept as %+v", img)
+		}
+		upload("tnguyen", "zones.png", picture, 403)
+		upload("svc-awx", "zones.png", picture, 403)
+		upload(admin, "zones.svg", `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`, 415)
+		upload(admin, "zones.png", "GIF89a\x01\x00\x01\x00", 415)
+		upload(admin, "zones.gif", "<!DOCTYPE html><script>alert(1)</script>", 415)
+		upload(admin, "zones.png", picture+strings.Repeat("\x00", 2<<20), 413)
+
+		field := func(url string) api.CatalogVersionDefinition {
+			def := api.CatalogVersionDefinition{
+				FormSchema: map[string]any{"type": "object", "properties": map[string]any{"note": map[string]any{"type": "string"}}},
+				UiSchema: api.UiSchema{Fields: map[string]api.UiField{
+					"zones": {Widget: api.UiWidgetImage, Label: "Zones", Url: new(url), Alt: new("The network zones")},
+					"note":  {Widget: api.UiWidgetText, Label: "Note"},
+				}},
+				Blueprint: map[string]any{"kind": "awx", "awx": map[string]any{"title": "Open ports", "job_template": "pg-create-role"}},
+			}
+			def.UiSchema.Layout.Kind = api.Page
+			def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Zones", Fields: []string{"zones", "note"}}}
+			return def
+		}
+		create := func(slug, url string, want int) []api.FieldError {
+			t.Helper()
+			def := field(url)
+			var problem struct{ Errors []api.FieldError }
+			h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: slug, Name: "Zones " + slug,
+				Summary: "Zones.", Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, want, &problem)
+			return problem.Errors
+		}
+		if errs := create("zones-gone", "upload:img_not_kept", 422); len(errs) != 1 || errs[0].Field != "/definition/ui_schema/fields/zones/url" ||
+			deref(errs[0].Code) != "unknown" {
+			t.Fatalf("an image rvav doesn't keep: %+v", errs)
+		}
+		create("zones", img.Url, 201)
+
+		code, body, hdr := h.do("GET", "/api/v1/forms/images/"+img.Id, "tnguyen", nil)
+		if code != 200 || string(body) != picture || hdr.Get("Content-Type") != "image/png" || hdr.Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("GET the image as a requester = %d %v", code, hdr)
+		}
+		if code, _, _ := h.do("GET", "/api/v1/forms/images/img_not_kept", "tnguyen", nil); code != 404 {
+			t.Fatalf("GET an image rvav doesn't keep = %d", code)
 		}
 	})
 }

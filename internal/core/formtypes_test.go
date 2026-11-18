@@ -215,6 +215,8 @@ func TestShownFields(t *testing.T) {
 		{api.UiField{Widget: api.UiWidgetLink, Url: new("https://wiki.corp.example/sizes")}, false, true, nil},
 		{api.UiField{Widget: api.UiWidgetLink, Url: new("/requests")}, false, true, nil},
 		{api.UiField{Widget: api.UiWidgetImage, Url: new("http://cdn.corp.example/a.png"), Alt: new("The network")}, false, true, nil},
+		{api.UiField{Widget: api.UiWidgetImage, Url: new("upload:img_zones"), Alt: new("The zones")}, false, true, nil},
+		{api.UiField{Widget: api.UiWidgetLink, Url: new("upload:img_zones")}, false, true, []string{"/ui_schema/fields/f/url invalid"}},
 		{api.UiField{Widget: api.UiWidgetLink}, false, false, nil},
 		{api.UiField{Widget: api.UiWidgetLink}, false, true, []string{"/ui_schema/fields/f/url required"}},
 		{api.UiField{Widget: api.UiWidgetImage, Url: new("https://cdn.corp.example/a.png")}, false, true, []string{"/ui_schema/fields/f/alt required"}},

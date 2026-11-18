@@ -26,6 +26,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/seed"
+	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -297,6 +298,12 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		t.Fatal(err)
 	}
 
+	const picture = "img_a1zones"
+	if err := h.store.PutFormImage(h.ctx, store.FormImage{ID: picture, Name: "zones.png", ContentType: "image/png", Size: 8, SHA256: "a1"},
+		[]byte("\x89PNG\r\n\x1a\n")); err != nil {
+		t.Fatal(err)
+	}
+
 	var draft api.SavedDraft
 	h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: vm.draft}, 201, &draft)
 	var view api.SavedView
@@ -373,6 +380,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"workflows/{key}":            "a1-report",
 		"tokens/{id}":                token.Id,
 		"files/{fileId}":             attached,
+		"images/{imageId}":           picture,
 	}
 }
 

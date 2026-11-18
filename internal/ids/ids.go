@@ -37,6 +37,8 @@ const (
 	VRASnapshot = "vrs"
 	// A file attached to a request (ADR-0040).
 	File = "fil"
+	// An image uploaded for image fields (ADR-0040).
+	Image = "img"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

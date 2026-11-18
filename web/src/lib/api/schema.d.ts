@@ -607,6 +607,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/forms/images/{imageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An image uploaded for forms, which an image field shows as upload:<id>
+         * @description For anyone signed in: forms show it to everyone who may request
+         *     their item. A PNG, JPEG, GIF or WebP picture, never anything a
+         *     browser runs.
+         */
+        get: operations["getFormImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/preview": {
         parameters: {
             query?: never;
@@ -1619,6 +1641,30 @@ export interface paths {
         get: operations["exportCatalogItem"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload an image that image fields show
+         * @description The body is the picture's content as it is: PNG, JPEG, GIF or WebP,
+         *     2 MB at most, its content read from its first bytes and matching
+         *     its name's extension. An image field shows it with the returned
+         *     `url`, `upload:<id>`. Images are kept in rvav's database, and
+         *     anyone signed in may read them.
+         */
+        post: operations["uploadFormImage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4230,7 +4276,7 @@ export interface components {
             help?: string;
             placeholder?: string;
             /**
-             * @description An `image` field's picture or a `link` field's target: an `https://` or `http://` address, or a path on rvav's own site (`/...`). Other schemes, such as `javascript:`, are refused. Needed to publish. Image, link and info fields show and take no input.
+             * @description An `image` field's picture or a `link` field's target: an `https://` or `http://` address, or a path on rvav's own site (`/...`); for an image, also `upload:<id>`, a picture uploaded with `POST /admin/catalog/images`. Other schemes, such as `javascript:`, are refused. Needed to publish. Image, link and info fields show and take no input.
              * @example https://wiki.corp.example/vm-sizes
              */
             url?: string;
@@ -4367,6 +4413,25 @@ export interface components {
             content_type: string;
             /** @description The content's SHA-256, in hex. */
             sha256: string;
+        };
+        /** @description An image uploaded for image fields. */
+        FormImage: {
+            /** @example img_4k8s1d2m */
+            id: string;
+            /** @example network-zones.png */
+            name: string;
+            /**
+             * Format: int64
+             * @description In bytes.
+             */
+            size: number;
+            /** @example image/png */
+            content_type: string;
+            /**
+             * @description What an image field's `url` takes to show it.
+             * @example upload:img_4k8s1d2m
+             */
+            url: string;
         };
         FieldValuesQuery: {
             version_id: string;
@@ -8567,6 +8632,33 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getFormImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/gif": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     previewRequest: {
         parameters: {
             query?: never;
@@ -10079,6 +10171,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    uploadFormImage: {
+        parameters: {
+            query: {
+                /** @description The picture's file name. */
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Kept */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormImage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
         };
     };
     importCatalogItem: {

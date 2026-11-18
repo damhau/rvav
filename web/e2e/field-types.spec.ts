@@ -4,7 +4,8 @@ import { bothThemes, scan } from "./axe";
 // Every field type the designer offers (F1.1, F1.2): a form with one of each,
 // built in the designer, passes axe in both themes in the designer's
 // preview and as members request it, and the new types work by keyboard. A
-// file attached comes back from the request's page as a download.
+// picture uploaded shows in the image field, and a file attached comes back
+// from the request's page as a download.
 
 const widgets = [
   "Text",
@@ -47,6 +48,9 @@ const widgets = [
   "User",
   "Deployment",
 ];
+
+// A one-pixel PNG, uploaded as the image field's picture.
+const dot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
 test("a form with every field type, in the designer and requested", async ({ page }) => {
   test.setTimeout(180_000);
@@ -93,10 +97,12 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await props.getByRole("checkbox", { name: "The source searches by the typed text" }).click();
   await expect(props.getByRole("checkbox", { name: "The source searches by the typed text" })).toBeChecked();
   await fields.getByRole("button", { name: /^Image/ }).click();
-  await props.getByRole("textbox", { name: "Address" }).fill("/favicon.svg");
-  await props.getByRole("textbox", { name: "Address" }).press("Tab");
-  await props.getByRole("textbox", { name: "Text alternative" }).fill("The rvav logo");
-  await expect(preview.getByRole("img", { name: "The rvav logo" })).toBeVisible();
+  const picture = page.waitForEvent("filechooser");
+  await props.getByRole("button", { name: "Upload a picture" }).press("Enter");
+  await (await picture).setFiles({ name: "dot.png", mimeType: "image/png", buffer: Buffer.from(dot, "base64") });
+  await expect(props.getByRole("textbox", { name: "Address" })).toHaveValue(/^upload:img_/);
+  await props.getByRole("textbox", { name: "Text alternative" }).fill("A red dot");
+  await expect(preview.getByRole("img", { name: "A red dot" })).toHaveAttribute("src", /^blob:/);
   await fields.getByRole("button", { name: /^Link/ }).click();
   await props.getByRole("textbox", { name: "Address" }).fill("/requests");
   await props.getByRole("textbox", { name: "Address" }).press("Tab");
@@ -117,6 +123,7 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name: "Request Every field" }).click();
   await expect(page.getByRole("heading", { name: "Request Every field" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "A red dot" })).toHaveAttribute("src", /^blob:/);
   await bothThemes(page, "request form");
 
   // The new types, by keyboard.

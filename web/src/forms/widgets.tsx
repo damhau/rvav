@@ -2,6 +2,7 @@
 // same props so the renderer can pick one from the registry.
 import { ExternalLink, Eye, EyeOff, ImageOff, Info, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/common/feedback";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { DatagridWidget, KeyValueWidget, ObjectWidget, TagsWidget } from "./coll
 import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
 import { FileWidget } from "./file";
+import { uploadedImage, useShownImage } from "./image";
 import { UserWidget } from "./people";
 import { SearchWidget } from "./search";
 import { TreeWidget } from "./tree";
@@ -478,8 +480,9 @@ function InfoWidget({ ui }: WidgetProps) {
 
 /** A picture the form shows, with its text alternative and, from help, a caption. */
 function ImageWidget({ id, ui }: WidgetProps) {
-  const src = shownUrl(ui.url);
+  const { src, failed } = useShownImage(ui.url);
   const [broken, setBroken] = useState(false);
+  const loading = !src && !failed && uploadedImage(ui.url) !== undefined;
   return (
     <figure id={id} className="flex flex-col gap-1.5">
       {src && !broken ? (
@@ -489,10 +492,14 @@ function ImageWidget({ id, ui }: WidgetProps) {
           className="max-h-96 max-w-full self-start rounded-md border border-line"
           onError={() => setBroken(true)}
         />
+      ) : loading ? (
+        <span role="status" aria-label={`Loading the image: ${ui.alt ?? ui.label}`}>
+          <Skeleton className="h-24 w-40 rounded-md" />
+        </span>
       ) : (
         <p className="flex items-center gap-2 rounded-md border border-dashed border-line px-3 py-6 text-secondary text-muted">
           <ImageOff className="size-4 shrink-0" aria-hidden />
-          {src ? `The image didn't load: ${ui.alt ?? ui.label}` : `No image yet: ${ui.alt ?? ui.label}`}
+          {src || failed ? `The image didn't load: ${ui.alt ?? ui.label}` : `No image yet: ${ui.alt ?? ui.label}`}
         </p>
       )}
       {ui.help && <figcaption className="text-secondary text-muted">{ui.help}</figcaption>}

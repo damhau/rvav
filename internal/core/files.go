@@ -31,7 +31,14 @@ const (
 	MaxFileSize     = 25 << 20
 	defaultFileMB   = 10
 	maxWaitingFiles = 20
+	// MaxImageSize is the largest picture an image field shows.
+	MaxImageSize = 2 << 20
+	imagePrefix  = "upload:"
 )
+
+// imageKinds are the pictures an image field shows: raster only, as an SVG
+// can hold scripts.
+var imageKinds = []string{".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 // fileKind is a type of file rvav takes: its MIME type, and what
 // http.DetectContentType may say of a file of that type.
@@ -348,4 +355,73 @@ func checkFile(name string, f api.UiField, initial bool, prefix string, publish 
 		errs = append(errs, fieldErr(prefix+"/initial_values/"+name, "not_allowed", "A file field starts empty: the requester attaches the file."))
 	}
 	return errs
+}
+
+// UploadFormImage keeps a picture for image fields, which show it as
+// upload:<id>: a raster image whose content is what its name says.
+func (s *Service) UploadFormImage(ctx context.Context, p *auth.Principal, name string, size int64, body io.Reader) (api.FormImage, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return api.FormImage{}, fmt.Errorf("%w: only catalog administrators upload images for forms", ErrForbidden)
+	}
+	name, ok := cleanFileName(name)
+	if !ok {
+		return api.FormImage{}, &BadRequestError{Msg: "Give the picture's own name, without folders or control characters."}
+	}
+	ext := strings.ToLower(path.Ext(name))
+	if !slices.Contains(imageKinds, ext) {
+		return api.FormImage{}, &UnsupportedTypeError{Msg: "An image field shows PNG, JPEG, GIF or WebP pictures."}
+	}
+	tooLarge := &TooLargeError{Msg: fmt.Sprintf("%s is larger than %d MB, the most an image field shows.", name, MaxImageSize>>20)}
+	if size > MaxImageSize {
+		return api.FormImage{}, tooLarge
+	}
+	content, err := io.ReadAll(io.LimitReader(body, MaxImageSize+1))
+	switch {
+	case err != nil:
+		return api.FormImage{}, err
+	case len(content) > MaxImageSize:
+		return api.FormImage{}, tooLarge
+	case len(content) == 0:
+		return api.FormImage{}, &BadRequestError{Msg: name + " is empty."}
+	}
+	kind := fileKinds[ext]
+	if got := sniffed(content); !slices.Contains(kind.sniffs, got) {
+		return api.FormImage{}, &UnsupportedTypeError{Msg: fmt.Sprintf("%s isn't what a %s picture holds: its content is %s.", name, ext, got)}
+	}
+	sum := sha256.Sum256(content)
+	img := store.FormImage{ID: ids.New(ids.Image), Name: name, ContentType: kind.mime, Size: int64(len(content)),
+		SHA256: hex.EncodeToString(sum[:]), CreatedBy: &p.User.ID}
+	if err := s.Store.PutFormImage(ctx, img, content); err != nil {
+		return api.FormImage{}, err
+	}
+	return api.FormImage{Id: img.ID, Name: img.Name, Size: img.Size, ContentType: img.ContentType, Url: imagePrefix + img.ID}, nil
+}
+
+// FormImage is a picture image fields show, for anyone signed in.
+func (s *Service) FormImage(ctx context.Context, id string) (store.FormImage, []byte, error) {
+	return s.Store.GetFormImage(ctx, id)
+}
+
+// uploadedImage is the picture an image field's url names as upload:<id>.
+func uploadedImage(f api.UiField) (string, bool) {
+	return strings.CutPrefix(strings.TrimSpace(deref(f.Url)), imagePrefix)
+}
+
+// checkImages refuses an image field showing a picture rvav doesn't keep.
+func (s *Service) checkImages(ctx context.Context, d api.CatalogVersionDefinition, prefix string) ([]api.FieldError, error) {
+	at := map[string]string{}
+	for _, name := range sortedKeys(d.UiSchema.Fields) {
+		if id, ok := uploadedImage(d.UiSchema.Fields[name]); ok && d.UiSchema.Fields[name].Widget == api.UiWidgetImage {
+			at[id] = prefix + "/ui_schema/fields/" + name + "/url"
+		}
+	}
+	if len(at) == 0 {
+		return nil, nil
+	}
+	missing, err := s.Store.MissingFormImages(ctx, slices.Sorted(maps.Keys(at)))
+	var errs []api.FieldError
+	for _, id := range missing {
+		errs = append(errs, fieldErr(at[id], "unknown", fmt.Sprintf("rvav keeps no image %s: upload it again.", id)))
+	}
+	return errs, err
 }

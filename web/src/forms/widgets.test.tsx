@@ -446,6 +446,42 @@ describe("images and links", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText("No image yet: A dot")).toBeInTheDocument();
   });
+
+  it("fetch an uploaded picture with the user's token and show it from memory", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get("*/api/v1/forms/images/:id", ({ params, request }) => {
+        asked.push(`${String(params.id)} ${request.headers.get("Authorization") ? "with" : "without"} a token`);
+        return params.id === "img_zones"
+          ? new HttpResponse(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { headers: { "Content-Type": "image/png" } })
+          : HttpResponse.json({ title: "Not found", status: 404 }, { status: 404 });
+      }),
+    );
+    const made: Blob[] = [];
+    Object.assign(URL, {
+      createObjectURL: (b: Blob) => {
+        made.push(b);
+        return `blob:picture-${made.length}`;
+      },
+      revokeObjectURL: vi.fn(),
+    });
+    renderWithQuery(
+      <Harness
+        form={formOf({
+          zones: {
+            ui: { widget: "image", label: "Zones", url: "upload:img_zones", alt: "The network zones" },
+            schema: {},
+          },
+          gone: { ui: { widget: "image", label: "Gone", url: "upload:img_gone", alt: "A lost picture" }, schema: {} },
+        })}
+      />,
+    );
+    expect(screen.getByRole("status", { name: "Loading the image: The network zones" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "The network zones" })).toHaveAttribute("src", "blob:picture-1");
+    expect(made[0]?.type).toBe("image/png");
+    expect(await screen.findByText("The image didn't load: A lost picture")).toBeInTheDocument();
+    expect(asked.sort()).toEqual(["img_gone with a token", "img_zones with a token"]);
+  });
 });
 
 describe("multi-select from a value source", () => {

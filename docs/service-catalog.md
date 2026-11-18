@@ -832,6 +832,26 @@ Content-Security-Policy allows that site: list its origin in
 `RVAV_WEB_IMAGE_SOURCES` ([configuration](operations/configuration.md)).
 Otherwise the form says the image didn't load, with its text alternative.
 
+An image can also show a picture rvav keeps: upload it with
+`POST /api/v1/admin/catalog/images?name=zones.png`, the picture as an
+`application/octet-stream` body, or with **Upload a picture** in the
+designer. rvav takes PNG, JPEG, GIF and WebP pictures of 2 MB at most whose
+content is what their extension says, never SVG, and answers with the
+picture's `url`, `upload:<id>`, which an image's `url` takes. Uploading
+needs `catalog.manage`; anyone signed in sees the picture. Saving a version
+whose image names a picture rvav doesn't keep is refused, with the code
+`unknown` ([ADR-0040](adr/0040-file-fields.md)):
+
+```yaml
+ui_schema:
+  fields:
+    zones:
+      widget: image
+      label: Network zones
+      url: upload:img_5b1e0c7f2a9d4e8c61f3
+      alt: The web, app and data zones, each behind its own firewall
+```
+
 The `vsphere_folder` widget offers the VM folders of the datacenters whose
 clusters the project's placement allows in the environment, by path from
 the root (`vsphere.folders`). The server refuses a folder it doesn't offer.

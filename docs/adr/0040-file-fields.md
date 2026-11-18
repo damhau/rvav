@@ -91,6 +91,21 @@ read it after the request.
 - The request's page lists a file as a button that downloads it.
 - nginx takes 25 MB on `/api/v1/forms/files`, and 10 MB elsewhere.
 
+### Pictures for image fields
+- An image field shows a picture at an address, or one rvav keeps, named
+  `upload:<id>`. A catalog administrator (`catalog.manage`) uploads it to
+  `POST /admin/catalog/images` as an octet-stream body: PNG, JPEG, GIF or
+  WebP, 2 MB at most, whose content is sniffed as for a file field. SVG is
+  refused, as it can hold scripts.
+- The picture is kept in `form_images`, apart from requests: it belongs to
+  the catalog, and versions name it. Saving a version naming a picture
+  rvav doesn't keep is refused (`unknown`). A picture is never removed,
+  as published versions may show it.
+- `GET /forms/images/{id}` sends it to anyone signed in, with its checked
+  type, `nosniff`, a sandboxing Content-Security-Policy, and
+  `Cache-Control: private`. The web app fetches it with the user's token
+  and shows it from a `blob:` URL, which the web server's policy allows.
+
 ## Consequences
 - The database grows with what requesters attach: 25 MB at most for each
   file field of a request. Backups hold the files. They are kept with

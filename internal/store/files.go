@@ -66,3 +66,35 @@ func (s *Store) AttachFiles(ctx context.Context, db DB, requestID, ownerID strin
 		requestID, ids, ownerID, FileWait.Seconds())
 	return tag.RowsAffected(), err
 }
+
+// FormImage is a picture uploaded for image fields (ADR-0040).
+type FormImage struct {
+	ID          string
+	Name        string
+	ContentType string
+	Size        int64
+	SHA256      string
+	CreatedBy   *string
+}
+
+// PutFormImage keeps a picture for image fields.
+func (s *Store) PutFormImage(ctx context.Context, img FormImage, content []byte) error {
+	_, err := s.Pool.Exec(ctx, `insert into form_images (id, name, content_type, size, sha256, content, created_by)
+		values ($1, $2, $3, $4, $5, $6, $7)`, img.ID, img.Name, img.ContentType, img.Size, img.SHA256, content, img.CreatedBy)
+	return err
+}
+
+// GetFormImage is a picture and its content.
+func (s *Store) GetFormImage(ctx context.Context, id string) (FormImage, []byte, error) {
+	var img FormImage
+	var content []byte
+	err := s.Pool.QueryRow(ctx, `select id, name, content_type, size, sha256, created_by, content from form_images where id = $1`, id).
+		Scan(&img.ID, &img.Name, &img.ContentType, &img.Size, &img.SHA256, &img.CreatedBy, &content)
+	return img, content, notFound(err)
+}
+
+// MissingFormImages are those of ids that no picture has.
+func (s *Store) MissingFormImages(ctx context.Context, ids []string) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select id from unnest($1::text[]) as id where id not in (select id from form_images)`, ids)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
