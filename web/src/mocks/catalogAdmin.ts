@@ -77,7 +77,7 @@ function checkGroup(w: S["PropertyGroupWrite"]): S["FieldError"][] {
     if (i.default === undefined || i.default === null) return;
     if (i.secret) add(`${at}/default`, "invalid", "A secret input has no default: the group would hold its value.");
     else if (!ofType(i.default, i.type)) add(`${at}/default`, "invalid", `The default must be a ${i.type}.`);
-    else if (options.length > 0 && !options.includes(String(i.default)))
+    else if (options.length > 0 && !options.some((o) => o === i.default))
       add(`${at}/default`, "invalid", "The default must be one of the options.");
   });
   for (const [k, v] of Object.entries(w.constants ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
