@@ -44,5 +44,6 @@ vRealize / Aria Automation (vRA).
 | [Frontend](docs/frontend.md) | React/TS/Vite, TanStack Router + Query, Tailwind + shadcn/ui architecture |
 | [API](api/README.md) | OpenAPI contract (`api/openapi.yaml`) and API conventions; each rvav serves it at `/api/v1/openapi.json`, each release has its reference |
 | [Implementation plan](docs/implementation-plan.md) | Path to 80% of vRA: parity table, slices, effort, calendar, risks |
+| [Compared with vRA 8](docs/vra-parity.md) | rvav against vRA 8, feature by feature: what's covered, what's missing, what's beyond |
 | [Roadmap](docs/roadmap.md) | Status, releases and decisions |
 | [ADRs](docs/adr/) | Architecture decision records |

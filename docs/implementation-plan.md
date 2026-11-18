@@ -42,6 +42,11 @@ vRA features are listed below with a weight for how much a typical vSphere
 shop relies on them (H = 3, M = 2, L = 1). Coverage is the weighted share of
 features delivered in 1.0.
 
+This table credits a feature once its slice is built. The finer count,
+129 features checked in the code on 2026-11-18, is in
+[vra-parity.md](vra-parity.md): 65% with a partial feature counted as
+half, 78% counted as three quarters.
+
 **Result: 83% in the core 1.0 scope, 86% with the four stretch items
 (all built); 88% (97 / 110) with P2's importer and half of NSX (N1, load
 balancers out).** Features vRA has but a vSphere-only shop rarely uses
