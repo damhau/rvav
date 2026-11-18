@@ -1574,7 +1574,10 @@ export interface paths {
     };
     "/admin/secrets/{name}": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project whose own secret this is; none for the global one. */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 name: string;
@@ -1585,7 +1588,10 @@ export interface paths {
         /** Replace a secret's value */
         put: operations["updateSecret"];
         post?: never;
-        /** Delete a secret no value source uses */
+        /**
+         * Delete a secret nothing uses
+         * @description A project's own secret may be deleted while used when a global secret of the same name remains.
+         */
         delete: operations["deleteSecret"];
         options?: never;
         head?: never;
@@ -3557,10 +3563,18 @@ export interface components {
         };
         SecretList: {
             items: components["schemas"]["Secret"][];
+            /** @description Every project, those a secret may belong to. */
+            readonly projects?: {
+                id: string;
+                code: string;
+                name: string;
+            }[];
         };
         /** @description A stored secret. Its value is never returned. */
         Secret: {
             name: string;
+            /** @description The project it belongs to (ADR-0038): that project's requests open it rather than the global secret of the same name, and other projects never do. Absent for a global secret. */
+            project_id?: string;
             /** @enum {string} */
             kind: "token" | "basic" | "header";
             description: string;
@@ -3577,6 +3591,8 @@ export interface components {
         };
         SecretWrite: {
             name: string;
+            /** @description When creating: the project it belongs to, none for a global secret. A replacement names its project in the query instead. */
+            project_id?: string;
             /** @enum {string} */
             kind: "token" | "basic" | "header";
             description?: string;
@@ -9449,7 +9465,10 @@ export interface operations {
     };
     updateSecret: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project whose own secret this is; none for the global one. */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 name: string;
@@ -9479,7 +9498,10 @@ export interface operations {
     };
     deleteSecret: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project whose own secret this is; none for the global one. */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 name: string;

@@ -695,14 +695,14 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		detail := fmt.Sprintf("Hostname %s, static IP %s/%d", in.VM.Name, in.IP, in.VM.PrefixLength)
 		if in.Guest.OSFamily == "windows" {
 			if name := in.Guest.AdminPassword; name != "" {
-				_, pw, err := a.secret(ctx, name)
+				_, pw, err := a.secret(ctx, in.ProjectID, name)
 				if err != nil {
 					return "", "", err
 				}
 				cu.AdminPassword = pw
 			}
 			if j := in.Guest.DomainJoin; j != nil {
-				user, pw, err := a.secret(ctx, j.Credential)
+				user, pw, err := a.secret(ctx, in.ProjectID, j.Credential)
 				if err != nil {
 					return "", "", err
 				}
@@ -733,24 +733,25 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 
 // secret opens a stored secret: its user name and value. The value never
 // goes into a step, a log or an error.
-func (a *Activities) secret(ctx context.Context, name string) (username, value string, err error) {
-	v, value, err := a.openSecret(ctx, name)
+func (a *Activities) secret(ctx context.Context, project, name string) (username, value string, err error) {
+	v, value, err := a.openSecret(ctx, project, name)
 	return v.Username, value, err
 }
 
-// openSecret gives a stored secret and its value.
-func (a *Activities) openSecret(ctx context.Context, name string) (store.Secret, string, error) {
+// openSecret gives the stored secret a project's requests open by this
+// name, its own else the global one (ADR-0038), and its value.
+func (a *Activities) openSecret(ctx context.Context, project, name string) (store.Secret, string, error) {
 	if a.Secrets == nil {
 		return store.Secret{}, "", permanent("rvav has no secrets key (RVAV_SECRETS_KEY), so it can't open the secret %s", name)
 	}
-	v, err := a.Store.GetSecret(ctx, name)
+	v, err := a.Store.SecretFor(ctx, project, name)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Secret{}, "", permanent("There is no secret %s any more. Ask a catalog admin to check this item.", name)
 	}
 	if err != nil {
 		return store.Secret{}, "", err
 	}
-	plain, err := a.Secrets.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext)
+	plain, err := a.Secrets.Open(v.SealName(), v.KeyID, v.Nonce, v.Ciphertext)
 	if err != nil {
 		return store.Secret{}, "", permanent("The secret %s can't be opened with rvav's key", name)
 	}
@@ -815,7 +816,7 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 		"request": map[string]any{"id": r.ID, "number": r.Number},
 	}
 	secret := func(name string) (string, error) {
-		_, v, err := a.openSecret(ctx, name)
+		_, v, err := a.openSecret(ctx, in.ProjectID, name)
 		return v, err
 	}
 	var own, image string
@@ -1061,7 +1062,7 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		if len(in.Secrets) > 0 {
 			extra = maps.Clone(extra)
 			for k, name := range in.Secrets {
-				if _, extra[k], err = a.openSecret(ctx, name); err != nil {
+				if _, extra[k], err = a.openSecret(ctx, in.ProjectID, name); err != nil {
 					return err
 				}
 			}

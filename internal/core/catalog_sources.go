@@ -208,8 +208,23 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	if n, ok := params["cache_seconds"].(float64); ok {
 		cacheSeconds = min(max(int(n), 0), 3600)
 	}
+	call := restcall.Request{Method: method, URL: target}
+	if method == http.MethodPost {
+		call.Body = []byte(body)
+	}
+	// The secret opened, a project's or the global one, is in the key: an
+	// answer one project's credentials fetched isn't another's.
+	sealedAs := ""
+	if name := p("secret"); name != "" {
+		sec, value, err := secret(name)
+		if err != nil {
+			return nil, 0, fmt.Errorf("secret %s: %w", name, err)
+		}
+		call.Credential = &restcall.Credential{Kind: sec.Kind, Username: sec.Username, Header: sec.Header, Value: value}
+		sealedAs = sec.SealName()
+	}
 	// The mapping is in the key too: two fields may read one answer differently.
-	key := strings.Join([]string{method + " " + target, body, p("secret"), p("items"), p("value"), p("label"), p("meta")}, "\n")
+	key := strings.Join([]string{method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta")}, "\n")
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Now().Before(e.until) {
 		r.mu.Unlock()
@@ -217,17 +232,6 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	}
 	r.mu.Unlock()
 
-	call := restcall.Request{Method: method, URL: target}
-	if method == http.MethodPost {
-		call.Body = []byte(body)
-	}
-	if name := p("secret"); name != "" {
-		sec, value, err := secret(name)
-		if err != nil {
-			return nil, 0, fmt.Errorf("secret %s: %w", name, err)
-		}
-		call.Credential = &restcall.Credential{Kind: sec.Kind, Username: sec.Username, Header: sec.Header, Value: value}
-	}
 	answer, err := r.Do(ctx, call)
 	switch {
 	case err != nil:
@@ -318,7 +322,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 			errs = append(errs, fieldErr(ptr+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", u.Host)))
 		}
 		if secret, _ := params["secret"].(string); secret != "" {
-			if _, err := s.Store.GetSecret(ctx, secret); errors.Is(err, store.ErrNotFound) {
+			if _, err := s.anySecret(ctx, secret); errors.Is(err, store.ErrNotFound) {
 				errs = append(errs, fieldErr(ptr+"/secret", "unknown", fmt.Sprintf("There is no secret %q.", secret)))
 			} else if err != nil {
 				return nil, err
@@ -335,7 +339,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 				errs = append(errs, fieldErr(at+"/url", "not_allowed", fmt.Sprintf("rvav may not call %s: it is not one of the hosts REST calls may reach (Administration › Integrations › Allowed hosts).", u.Host)))
 			}
 			if c.Secret != "" {
-				if _, err := s.Store.GetSecret(ctx, c.Secret); errors.Is(err, store.ErrNotFound) {
+				if _, err := s.anySecret(ctx, c.Secret); errors.Is(err, store.ErrNotFound) {
 					errs = append(errs, fieldErr(at+"/secret", "unknown", fmt.Sprintf("There is no secret %q.", c.Secret)))
 				} else if err != nil {
 					return nil, err
@@ -380,7 +384,7 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 func (s *Service) checkBlueprintSecrets(ctx context.Context, b blueprint.Blueprint, ptr string) ([]api.FieldError, error) {
 	var errs []api.FieldError
 	for _, r := range b.Secrets() {
-		v, err := s.Store.GetSecret(ctx, r.Name)
+		v, err := s.anySecret(ctx, r.Name)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			msg := fmt.Sprintf("There is no secret %q.", r.Name)

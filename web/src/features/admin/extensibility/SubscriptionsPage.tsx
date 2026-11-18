@@ -207,7 +207,9 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
                 id="sub-secret"
                 value={secret}
                 onChange={setSecret}
-                options={(secrets.data?.items ?? []).map((s) => ({ value: s.name, label: s.name }))}
+                options={(secrets.data?.items ?? [])
+                  .filter((s) => !s.project_id)
+                  .map((s) => ({ value: s.name, label: s.name }))}
               />
             </Field>
           </div>

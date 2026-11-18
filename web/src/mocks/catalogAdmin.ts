@@ -1052,13 +1052,17 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
             ),
           )
           .map((i) => i.slug);
-      return HttpResponse.json({ items: st.secrets.map((x) => ({ ...x, used_by: usedBy(x.name) })) });
+      return HttpResponse.json({
+        items: st.secrets.map((x) => ({ ...x, used_by: usedBy(x.name) })),
+        projects: db.projects.map((p) => ({ id: p.id, code: p.code, name: p.name })),
+      });
     }),
     http.post(`${base}/admin/secrets`, async ({ request }) => {
       await wait();
       const w = (await request.json()) as S["SecretWrite"];
       const st = state(db);
-      if (st.secrets.some((x) => x.name === w.name)) return problem(409, "Conflict", undefined, `${w.name} exists.`);
+      if (st.secrets.some((x) => x.name === w.name && x.project_id === w.project_id))
+        return problem(409, "Conflict", undefined, `${w.name} exists.`);
       const { value: _, ...rest } = w;
       const secret: S["Secret"] = { ...rest, description: w.description ?? "", created_at: now(), updated_at: now() };
       st.secrets.push(secret);
@@ -1067,21 +1071,25 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
     http.put(`${base}/admin/secrets/:name`, async ({ params, request }) => {
       await wait();
       const w = (await request.json()) as S["SecretWrite"];
+      const project = new URL(request.url).searchParams.get("project_id") ?? undefined;
       const st = state(db);
+      const same = (x: S["Secret"]) => x.name === params.name && x.project_id === project;
       const { value: _, ...rest } = w;
       const secret: S["Secret"] = {
         ...rest,
+        ...(project ? { project_id: project } : {}),
         description: w.description ?? "",
-        created_at: st.secrets.find((x) => x.name === params.name)?.created_at ?? now(),
+        created_at: st.secrets.find(same)?.created_at ?? now(),
         updated_at: now(),
       };
-      st.secrets = [...st.secrets.filter((x) => x.name !== params.name), secret];
+      st.secrets = [...st.secrets.filter((x) => !same(x)), secret];
       return HttpResponse.json(secret);
     }),
-    http.delete(`${base}/admin/secrets/:name`, async ({ params }) => {
+    http.delete(`${base}/admin/secrets/:name`, async ({ params, request }) => {
       await wait();
+      const project = new URL(request.url).searchParams.get("project_id") ?? undefined;
       const st = state(db);
-      st.secrets = st.secrets.filter((x) => x.name !== params.name);
+      st.secrets = st.secrets.filter((x) => !(x.name === params.name && x.project_id === project));
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/catalog/preview-users`, async ({ request }) => {

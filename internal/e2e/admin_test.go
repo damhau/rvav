@@ -714,7 +714,7 @@ func TestIntegrationSettings(t *testing.T) {
 			t.Fatalf("rotated %d again", n)
 		}
 		// A value replaced while a rotation runs is not put back.
-		if done, err := h.store.ResealSecret(ctx, "cmdb", []byte("not the nonce read"), "k", []byte("n"), []byte("c")); err != nil || done {
+		if done, err := h.store.ResealSecret(ctx, store.Secret{Name: "cmdb"}, []byte("not the nonce read"), "k", []byte("n"), []byte("c")); err != nil || done {
 			t.Fatalf("resealed a changed secret: %v %v", done, err)
 		}
 	})

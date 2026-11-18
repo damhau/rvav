@@ -229,19 +229,19 @@ func (s *Server) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	if !s.decode(w, r, &body) {
 		return
 	}
-	out, err := s.Core.PutSecret(r.Context(), principal(r), "", body, true)
+	out, err := s.Core.PutSecret(r.Context(), principal(r), "", "", body, true)
 	s.reply(w, r, http.StatusCreated, out, err)
 }
 
-func (s *Server) UpdateSecret(w http.ResponseWriter, r *http.Request, name string) {
+func (s *Server) UpdateSecret(w http.ResponseWriter, r *http.Request, name string, params api.UpdateSecretParams) {
 	var body api.SecretWrite
 	if !s.decode(w, r, &body) {
 		return
 	}
-	out, err := s.Core.PutSecret(r.Context(), principal(r), name, body, false)
+	out, err := s.Core.PutSecret(r.Context(), principal(r), name, deref(params.ProjectId), body, false)
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
-func (s *Server) DeleteSecret(w http.ResponseWriter, r *http.Request, name string) {
-	s.replyEmpty(w, r, s.Core.DeleteSecret(r.Context(), principal(r), name))
+func (s *Server) DeleteSecret(w http.ResponseWriter, r *http.Request, name string, params api.DeleteSecretParams) {
+	s.replyEmpty(w, r, s.Core.DeleteSecret(r.Context(), principal(r), name, deref(params.ProjectId)))
 }

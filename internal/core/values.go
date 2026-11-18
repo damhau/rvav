@@ -122,7 +122,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	switch src.Kind {
 	case api.Rest:
 		opts, cacheSeconds, err := s.REST.Options(ctx, raw, q.Inputs, func(name string) (store.Secret, string, error) {
-			return s.secretValue(ctx, name)
+			return s.secretValue(ctx, proj.ID, name)
 		})
 		if err != nil {
 			return out, err

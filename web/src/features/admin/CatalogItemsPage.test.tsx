@@ -130,4 +130,44 @@ describe("Categories and secrets", () => {
     await u.click(within(confirm).getByRole("button", { name: "Remove secret" }));
     await waitFor(() => expect(within(region).queryByRole("row", { name: /cmdb/ })).toBeNull());
   });
+
+  it("stores a project's own secret beside the global one of its name", { timeout: 15_000 }, async () => {
+    const u = user();
+    renderApp("/admin/catalog-items?tab=secrets");
+    const region = await screen.findByRole("region", { name: "Secrets" });
+    const store = async (project?: string) => {
+      await u.click(await within(region).findByRole("button", { name: "New secret" }));
+      const sheet = await screen.findByRole("dialog", { name: "New secret" });
+      await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "ci-token");
+      if (project) {
+        await u.click(within(sheet).getByRole("combobox", { name: "Project" }));
+        await u.click(await screen.findByRole("option", { name: new RegExp(project) }));
+      }
+      await u.click(within(sheet).getByLabelText("Value"));
+      await u.paste("token");
+      await u.click(within(sheet).getByRole("button", { name: "Store" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "New secret" })).toBeNull());
+    };
+    await store();
+    await store("Web Platform");
+    const rows = await within(region).findAllByRole("row", { name: /ci-token/ });
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("Every project"),
+      expect.stringContaining("Web Platform"),
+    ]);
+
+    await u.click(within(region).getByRole("button", { name: "Actions for ci-token of Web Platform" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Replace the value" }));
+    const replace = await screen.findByRole("dialog", { name: "Replace ci-token" });
+    expect(within(replace).getByRole("combobox", { name: "Project" })).toHaveTextContent("Web Platform");
+    expect(within(replace).getByRole("combobox", { name: "Project" })).toBeDisabled();
+    await u.click(within(replace).getByRole("button", { name: "Cancel" }));
+
+    await u.click(within(region).getByRole("button", { name: "Actions for ci-token of Web Platform" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Remove ci-token of Web Platform?" });
+    expect(confirm).toHaveTextContent("Web Platform's requests open the global ci-token instead.");
+    await u.click(within(confirm).getByRole("button", { name: "Remove secret" }));
+    await waitFor(() => expect(within(region).getAllByRole("row", { name: /ci-token/ })).toHaveLength(1));
+  });
 });

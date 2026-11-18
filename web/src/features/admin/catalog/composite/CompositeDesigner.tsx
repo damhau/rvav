@@ -973,7 +973,8 @@ function RestCallFields({
   const method = str(call.method);
   const secret = str(call.secret);
   const accept = Array.isArray(call.accept) ? call.accept.join(", ") : "";
-  const stored = secrets.data?.items ?? [];
+  // A name stored globally and by projects is one choice: the request's project picks which opens.
+  const stored = [...new Map((secrets.data?.items ?? []).map((s) => [s.name, s])).values()];
   const secretOptions: Option[] = [
     { value: "none", label: "No secret" },
     ...stored.map((s) => ({ value: s.name, label: s.name, meta: s.kind })),

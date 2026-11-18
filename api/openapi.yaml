@@ -1937,6 +1937,10 @@ paths:
         in: path
         required: true
         schema: { type: string }
+      - name: project_id
+        in: query
+        description: The project whose own secret this is; none for the global one.
+        schema: { type: string }
     put:
       tags: [catalog-admin]
       operationId: updateSecret
@@ -1959,7 +1963,8 @@ paths:
     delete:
       tags: [catalog-admin]
       operationId: deleteSecret
-      summary: Delete a secret no value source uses
+      summary: Delete a secret nothing uses
+      description: A project's own secret may be deleted while used when a global secret of the same name remains.
       responses:
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4740,12 +4745,26 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/Secret" }
+        projects:
+          type: array
+          readOnly: true
+          description: Every project, those a secret may belong to.
+          items:
+            type: object
+            required: [id, code, name]
+            properties:
+              id: { type: string }
+              code: { type: string }
+              name: { type: string }
     Secret:
       type: object
       required: [name, kind, description, created_at, updated_at]
       description: A stored secret. Its value is never returned.
       properties:
         name: { type: string, pattern: "^[a-z][a-z0-9-]{1,62}$" }
+        project_id:
+          type: string
+          description: "The project it belongs to (ADR-0038): that project's requests open it rather than the global secret of the same name, and other projects never do. Absent for a global secret."
         kind: { type: string, enum: [token, basic, header] }
         description: { type: string }
         username: { type: string, description: For `basic`. }
@@ -4762,6 +4781,9 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, pattern: "^[a-z][a-z0-9-]{1,62}$" }
+        project_id:
+          type: string
+          description: "When creating: the project it belongs to, none for a global secret. A replacement names its project in the query instead."
         kind: { type: string, enum: [token, basic, header] }
         description: { type: string, maxLength: 200 }
         username: { type: string }

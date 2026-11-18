@@ -517,13 +517,13 @@ func restCalls(b blueprint.Blueprint, ptr string) map[string]*blueprint.RESTCall
 // restUnavailable says why a REST call can't be made any more: what the
 // hosts allowed and the secrets were when it was saved may have changed. A
 // requester reads it, so it names neither.
-func (s *Service) restUnavailable(ctx context.Context, c *blueprint.RESTCall) (string, error) {
+func (s *Service) restUnavailable(ctx context.Context, project string, c *blueprint.RESTCall) (string, error) {
 	if u, err := url.Parse(restcall.Skeleton(c.URL)); err != nil || !s.REST.Allowed(ctx, u) {
 		return "calls a host rvav may not call any more. Ask a catalog admin to check this item.", nil
 	}
 	if c.Secret != "" {
-		if _, err := s.Store.GetSecret(ctx, c.Secret); errors.Is(err, store.ErrNotFound) {
-			return "uses a secret that is gone. Ask a catalog admin to check this item.", nil
+		if _, err := s.Store.SecretFor(ctx, project, c.Secret); errors.Is(err, store.ErrNotFound) {
+			return "uses a secret this project doesn't have. Ask a catalog admin to check this item.", nil
 		} else if err != nil {
 			return "", err
 		}
@@ -663,7 +663,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 				part.title = reg.Title
 			}
 		case st.REST != nil:
-			why, err := s.restUnavailable(ctx, st.REST)
+			why, err := s.restUnavailable(ctx, ev.Project.ID, st.REST)
 			if err != nil {
 				return nil, err
 			}
@@ -682,7 +682,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			part.wait = st.Wait
 		case st.Poll != nil:
 			if st.Poll.REST != nil {
-				why, err := s.restUnavailable(ctx, st.Poll.REST)
+				why, err := s.restUnavailable(ctx, ev.Project.ID, st.Poll.REST)
 				if err != nil {
 					return nil, err
 				}
@@ -726,7 +726,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			part.undo = &provision.CompositeUndo{With: u.With}
 			switch {
 			case u.REST != nil:
-				why, err := s.restUnavailable(ctx, u.REST)
+				why, err := s.restUnavailable(ctx, ev.Project.ID, u.REST)
 				if err != nil {
 					return nil, err
 				}

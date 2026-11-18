@@ -110,3 +110,29 @@ own `properties` (C30).
   blueprint's text, then read.
 - AWX shows a job's extra variables to those who see the job, and vCenter
   users read guestinfo: the same limits as secret inputs (S14.6).
+
+### Project secrets
+- A secret may belong to a project (`secrets.project_id`, migration
+  00060; a name is unique per scope). That project's requests open it
+  rather than the global secret of the same name; other projects' never
+  do, whatever their items name. The worker looks it up by the request's
+  project (`project_id` is in every activity input that opens one), as
+  value sources do by the form's project.
+- Its value is sealed with `project:<id>:<name>` as associated data, as
+  request inputs and vCenter passwords have their own prefixes: a row
+  copied into another scope doesn't open. Rotation reseals each under its
+  own.
+- Saving an item checks that a secret of each name exists in some scope.
+  A request checks that its project has every secret its guests, user
+  data and AWX steps open, and says which is missing; a REST call's is
+  checked with its step, as before. A REST value source's cached answers
+  are kept per secret opened, so one project's credentials never answer
+  another's form.
+- Catalog admins manage project secrets on the same **Secrets** tab, with
+  a **Project** column; the list carries the projects to pick from, as
+  entitlements do, so `project-names` stays for the pages it serves.
+  Project admins don't manage them: a secret is a credential rvav holds,
+  not a project setting.
+- A project's own secret can be removed while items use it if a global
+  one of its name remains: its requests open that one instead. Webhook
+  signing secrets are global only.

@@ -236,6 +236,9 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 			return nil, err
 		}
 	}
+	if err := s.evaluateSecrets(ctx, ev); err != nil {
+		return nil, err
+	}
 	// Quota first: approval policies may ask approval for a soft quota.
 	if err := s.evaluateQuota(ctx, ev, strict); err != nil {
 		return nil, err

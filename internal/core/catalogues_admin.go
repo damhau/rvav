@@ -126,7 +126,7 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	// The stored secrets its user data reads (ADR-0038).
 	refs, _ := blueprint.UserDataSecrets(userData)
 	for _, r := range refs {
-		if _, err := s.Store.GetSecret(ctx, r.Name); errors.Is(err, store.ErrNotFound) {
+		if _, err := s.anySecret(ctx, r.Name); errors.Is(err, store.ErrNotFound) {
 			errs = append(errs, fieldErr("/user_data", "unknown", fmt.Sprintf("Line %d: there is no secret %q.", r.Line, r.Name)))
 		} else if err != nil {
 			return api.VmTemplate{}, err

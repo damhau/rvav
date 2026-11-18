@@ -716,16 +716,16 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		if v.KeyID == box.KeyID() {
 			continue
 		}
-		plain, err := box.Open(v.Name, v.KeyID, v.Nonce, v.Ciphertext)
+		plain, err := box.Open(v.SealName(), v.KeyID, v.Nonce, v.Ciphertext)
 		if err != nil {
-			return n, fmt.Errorf("secret %s: %w", v.Name, err)
+			return n, fmt.Errorf("secret %s: %w", v.SealName(), err)
 		}
-		keyID, nonce, ct, err := box.Seal(v.Name, plain)
+		keyID, nonce, ct, err := box.Seal(v.SealName(), plain)
 		if err != nil {
 			return n, err
 		}
 		// A secret replaced meanwhile is sealed with the current key already.
-		if done, err := st.ResealSecret(ctx, v.Name, v.Nonce, keyID, nonce, ct); err != nil {
+		if done, err := st.ResealSecret(ctx, v, v.Nonce, keyID, nonce, ct); err != nil {
 			return n, err
 		} else if done {
 			n++

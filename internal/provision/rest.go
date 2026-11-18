@@ -99,7 +99,7 @@ func (a *Activities) callREST(ctx context.Context, in RESTInput) (map[string]any
 	}
 	req := restcall.Request{Method: call.Method, URL: target}
 	if call.Secret != "" {
-		sec, value, err := a.openSecret(ctx, call.Secret)
+		sec, value, err := a.openSecret(ctx, in.ProjectID, call.Secret)
 		if err != nil {
 			return nil, err
 		}

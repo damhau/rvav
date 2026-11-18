@@ -651,6 +651,12 @@ value sources and calls, Windows guests, cloud-init user data
 templates**, those imported from AWX. A secret's **Used by** lists the items
 that name it, and the templates whose user data reads it
 (`template:<key>`): you can't remove it while one does.
+To give one project its own value for a secret, store a secret of the same
+name and pick the project in **Project**: that project's requests open it
+rather than the global one, and other projects never open it. A request
+whose project has no secret of a name its item opens is refused, naming
+the secret. A project's own secret can be removed while items use it if a
+global one of its name remains.
 A row's menu has what you can do with it, and removing anything asks
 first and says what depends on it. An item that was ever requested can't
 be deleted: withdraw it instead.

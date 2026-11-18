@@ -1,6 +1,7 @@
 // Stored secrets for REST value sources and calls, Windows guests, cloud-init
 // and AWX steps (ADR-0019, ADR-0033, ADR-0038): catalog admins add and
-// replace them; their values are never shown again.
+// replace them, global or a project's own; their values are never shown
+// again.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
@@ -23,11 +24,23 @@ import { relative } from "@/lib/utils";
 
 type Secret = components["schemas"]["Secret"];
 type SecretWrite = components["schemas"]["SecretWrite"];
+type ProjectRef = NonNullable<components["schemas"]["SecretList"]["projects"]>[number];
 
 const secretsKey = [...keys.catalogAdmin.all, "secrets"] as const;
 const kindLabel = { token: "Bearer token", basic: "Basic (user and password)", header: "Header" } as const;
+// Radix's select has no empty value: the global scope stands as this.
+const global = "*";
+const scopeQuery = (s: Secret) => (s.project_id ? { project_id: s.project_id } : {});
 
-function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => void }) {
+function SecretSheet({
+  existing,
+  projects,
+  onClose,
+}: {
+  existing?: Secret;
+  projects: ProjectRef[];
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const [w, setW] = useState<SecretWrite>({
     name: existing?.name ?? "",
@@ -37,6 +50,7 @@ function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => 
     header: existing?.header ?? "",
     value: "",
   });
+  const [scope, setScope] = useState(existing?.project_id ?? global);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => {
@@ -49,8 +63,13 @@ function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => 
         ...(w.kind === "header" ? { header: w.header } : {}),
       };
       return existing
-        ? call(api.PUT("/admin/secrets/{name}", { params: { path: { name: existing.name } }, body }))
-        : call(api.POST("/admin/secrets", { body }));
+        ? call(
+            api.PUT("/admin/secrets/{name}", {
+              params: { path: { name: existing.name }, query: scopeQuery(existing) },
+              body,
+            }),
+          )
+        : call(api.POST("/admin/secrets", { body: { ...body, ...(scope !== global ? { project_id: scope } : {}) } }));
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: secretsKey });
@@ -83,6 +102,23 @@ function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => 
           value={w.name}
           disabled={Boolean(existing)}
           onChange={(e) => set("name")(e.target.value)}
+        />
+      </Field>
+      <Field
+        label="Project"
+        htmlFor="secret-project"
+        hint="A project's own secret is opened by its requests rather than the global one of the same name. Other projects never open it."
+        error={errors["/project_id"]}
+      >
+        <Select
+          id="secret-project"
+          value={scope}
+          disabled={Boolean(existing)}
+          onChange={setScope}
+          options={[
+            { value: global, label: "Every project (global)" },
+            ...projects.map((p) => ({ value: p.id, label: p.name, meta: p.code })),
+          ]}
         />
       </Field>
       <Field label="Kind" htmlFor="secret-kind">
@@ -130,6 +166,7 @@ function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => 
 }
 
 const usedBy = (s: Secret) => s.used_by ?? [];
+const secretKey = (s: Secret) => `${s.project_id ?? ""}/${s.name}`;
 
 export function SecretsPanel() {
   const qc = useQueryClient();
@@ -140,14 +177,22 @@ export function SecretsPanel() {
   const [editing, setEditing] = useState<Secret | "new" | null>(null);
   const [removing, setRemoving] = useState<Secret | null>(null);
   const remove = useMutation({
-    mutationFn: (name: string) => call(api.DELETE("/admin/secrets/{name}", { params: { path: { name } } })),
-    onSuccess: (_, name) => {
+    mutationFn: (s: Secret) =>
+      call(api.DELETE("/admin/secrets/{name}", { params: { path: { name: s.name }, query: scopeQuery(s) } })),
+    onSuccess: (_, s) => {
       void qc.invalidateQueries({ queryKey: secretsKey });
-      toast.success(`${name} removed`);
+      toast.success(`${s.name} removed`);
       setRemoving(null);
     },
     onError: (e) => failed(e, "The secret wasn't removed"),
   });
+  const list = secrets.data?.items;
+  const projects = secrets.data?.projects ?? [];
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? id;
+  // A project's own secret, while a global one of its name remains, may go even if used.
+  const shadows = (s: Secret) =>
+    Boolean(s.project_id) && Boolean(list?.some((x) => x.name === s.name && !x.project_id));
+  const inUse = (s: Secret) => usedBy(s).length > 0 && !shadows(s);
   const columns: Column<Secret>[] = [
     {
       id: "name",
@@ -158,6 +203,14 @@ export function SecretsPanel() {
           <div className="font-mono">{s.name}</div>
           {s.description && <div className="text-caption text-muted">{s.description}</div>}
         </>
+      ),
+    },
+    {
+      id: "project",
+      header: "Project",
+      sortValue: (s) => (s.project_id ? projectName(s.project_id) : ""),
+      cell: (s) => (
+        <span className="text-secondary text-muted">{s.project_id ? projectName(s.project_id) : "Every project"}</span>
       ),
     },
     {
@@ -186,7 +239,6 @@ export function SecretsPanel() {
       New secret
     </Button>
   );
-  const list = secrets.data?.items;
   return (
     <Panel
       title="Secrets"
@@ -198,8 +250,8 @@ export function SecretsPanel() {
         label="Secrets"
         columns={columns}
         rows={list}
-        rowKey={(s) => s.name}
-        minWidth={640}
+        rowKey={secretKey}
+        minWidth={760}
         loading={secrets.isPending}
         error={secrets.isError && <ErrorState error={secrets.error} onRetry={() => void secrets.refetch()} />}
         empty={
@@ -210,28 +262,42 @@ export function SecretsPanel() {
             action={add}
           />
         }
-        rowMenuLabel={(s) => `Actions for ${s.name}`}
+        rowMenuLabel={(s) => `Actions for ${s.name}${s.project_id ? ` of ${projectName(s.project_id)}` : ""}`}
         rowMenu={(s) => (
           <>
             <MenuItem onSelect={() => setEditing(s)}>Replace the value</MenuItem>
             <MenuSeparator />
-            <MenuItem danger disabled={usedBy(s).length > 0} onSelect={() => setRemoving(s)}>
-              {usedBy(s).length > 0 ? "Remove: in use" : "Remove"}
+            <MenuItem danger disabled={inUse(s)} onSelect={() => setRemoving(s)}>
+              {inUse(s) ? "Remove: in use" : "Remove"}
             </MenuItem>
           </>
         )}
       />
-      {editing && <SecretSheet existing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <SecretSheet
+          existing={editing === "new" ? undefined : editing}
+          projects={projects}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {removing && (
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
+          title={
+            removing.project_id
+              ? `Remove ${removing.name} of ${projectName(removing.project_id)}?`
+              : `Remove ${removing.name}?`
+          }
           description="Its value is deleted. Storing a secret of the same name later doesn't bring it back."
-          consequences="No item or template uses it today."
+          consequences={
+            shadows(removing)
+              ? `${projectName(removing.project_id ?? "")}'s requests open the global ${removing.name} instead.`
+              : "No item or template uses it today."
+          }
           confirmLabel="Remove secret"
           pending={remove.isPending}
-          onConfirm={() => remove.mutate(removing.name)}
+          onConfirm={() => remove.mutate(removing)}
         />
       )}
     </Panel>
