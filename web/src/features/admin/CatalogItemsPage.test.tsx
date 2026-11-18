@@ -153,8 +153,9 @@ describe("Categories and secrets", () => {
     const rows = await within(region).findAllByRole("row", { name: /ci-token/ });
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining("Every project"),
-      expect.stringContaining("Web Platform"),
+      expect.stringContaining("Web PlatformOpened instead of the global one"),
     ]);
+    expect(rows[0]).not.toHaveTextContent("instead of");
 
     await u.click(within(region).getByRole("button", { name: "Actions for ci-token of Web Platform" }));
     await u.click(await screen.findByRole("menuitem", { name: "Replace the value" }));

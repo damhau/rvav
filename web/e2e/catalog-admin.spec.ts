@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { scan, theme } from "./axe";
+import { bothThemes, scan, theme } from "./axe";
 
 // Catalog administration against the mock backend (S8, ADR-0019).
 
@@ -359,5 +359,63 @@ test("a property group, changed as a new version", async ({ page }) => {
   await confirm.getByRole("button", { name: "Delete property group" }).click();
   await expect(page.getByText("Network deleted")).toBeVisible();
   await expect(row).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a project's own secret, opened instead of the global one", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items?tab=secrets");
+  const region = page.getByRole("region", { name: "Secrets" });
+  const sheet = page.getByRole("dialog", { name: "New secret" });
+  const store = async (project?: string) => {
+    await region.getByRole("button", { name: "New secret" }).click();
+    await sheet.locator("#secret-name").fill("itsm-token");
+    if (project) {
+      await sheet.getByRole("combobox", { name: "Project" }).click();
+      await page.getByRole("option", { name: new RegExp(project) }).click();
+    }
+    await sheet.locator("#secret-value").fill("s3cret");
+    await sheet.getByRole("button", { name: "Store" }).click();
+    await expect(sheet).toHaveCount(0);
+  };
+  await store();
+  await store("Web Platform");
+
+  const rows = region.getByRole("row", { name: /itsm-token/ });
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Every project");
+  await expect(rows.nth(0)).not.toContainText("instead of");
+  await expect(rows.nth(1)).toContainText("Web Platform");
+  await expect(rows.nth(1)).toContainText("Opened instead of the global one");
+  await expect(page.getByText("s3cret")).toHaveCount(0);
+  // A fading toast fails axe's contrast check.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });
+  await bothThemes(page, "secrets, global and a project's own");
+
+  // The sheet and the question in each theme: the theme button is behind them.
+  const confirm = page.getByRole("alertdialog", { name: "Remove itsm-token of Web Platform?" });
+  for (const name of ["Light", "Dark"] as const) {
+    await theme(page, name);
+    await region.getByRole("button", { name: "New secret" }).click();
+    await sheet.getByRole("combobox", { name: "Project" }).click();
+    await page.getByRole("option", { name: /Web Platform/ }).click();
+    await scan(page, `a new project secret, ${name.toLowerCase()}`);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    await region.getByRole("button", { name: "Actions for itsm-token of Web Platform" }).click();
+    await page.getByRole("menuitem", { name: "Remove" }).click();
+    await expect(confirm).toContainText("Web Platform's requests open the global itsm-token instead.");
+    await scan(page, `removing a project secret, ${name.toLowerCase()}`);
+    if (name === "Light") {
+      await confirm.getByRole("button", { name: "Cancel" }).click();
+      await expect(confirm).toHaveCount(0);
+    }
+  }
+  await confirm.getByRole("button", { name: "Remove secret" }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("Every project");
+  await theme(page, "Light");
   expect(errors).toEqual([]);
 });

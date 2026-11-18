@@ -211,7 +211,10 @@ export function SecretsPanel() {
       header: "Project",
       sortValue: (s) => (s.project_id ? projectName(s.project_id) : ""),
       cell: (s) => (
-        <span className="text-secondary text-muted">{s.project_id ? projectName(s.project_id) : "Every project"}</span>
+        <>
+          <div className="text-secondary text-muted">{s.project_id ? projectName(s.project_id) : "Every project"}</div>
+          {shadows(s) && <div className="text-caption text-muted">Opened instead of the global one</div>}
+        </>
       ),
     },
     {
