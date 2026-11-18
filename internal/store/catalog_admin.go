@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -280,8 +283,9 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		}
 		var state string
 		var current int
-		err := tx.QueryRow(ctx, `select state, revision from catalog_item_versions where id = $1 and item_id = $2 for update`,
-			versionID, itemID).Scan(&state, &current)
+		var bp json.RawMessage
+		err := tx.QueryRow(ctx, `select state, revision, blueprint from catalog_item_versions where id = $1 and item_id = $2 for update`,
+			versionID, itemID).Scan(&state, &current, &bp)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -293,6 +297,9 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		}
 		if current != revision {
 			return ErrVersionChanged
+		}
+		if err := groupsStay(ctx, tx, bp); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
 			where item_id = $1 and state = 'published'`, itemID); err != nil {
@@ -306,6 +313,39 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		_, err = tx.Exec(ctx, `update catalog_items set published_version_id = $2, updated_at = now() where id = $1`, itemID, versionID)
 		return err
 	})
+}
+
+// GroupGoneError is a property group a version names that was deleted
+// since it was checked.
+type GroupGoneError struct {
+	Key     string
+	Version int
+}
+
+func (e *GroupGoneError) Error() string {
+	return fmt.Sprintf("property group %s version %d is gone", e.Key, e.Version)
+}
+
+// groupsStay holds the property groups the blueprint names until the
+// transaction ends, once it has seen each named version is there.
+func groupsStay(ctx context.Context, tx pgx.Tx, bp json.RawMessage) error {
+	refs := GroupRefs(bp)
+	// One order for every caller: two publishes can't deadlock.
+	slices.SortFunc(refs, func(a, b GroupRef) int { return strings.Compare(a.Key, b.Key) })
+	for _, r := range refs {
+		if err := LockPropertyGroup(ctx, tx, r.Key); err != nil {
+			return err
+		}
+		var there bool
+		if err := tx.QueryRow(ctx, `select exists (select 1 from property_groups where key = $1 and version = $2)`,
+			r.Key, r.Version).Scan(&there); err != nil {
+			return err
+		}
+		if !there {
+			return &GroupGoneError{Key: r.Key, Version: r.Version}
+		}
+	}
+	return nil
 }
 
 // DeprecateVersion withdraws the published version: the item has none left.

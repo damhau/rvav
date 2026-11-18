@@ -77,7 +77,11 @@ own `properties` (C30).
 - A group is deleted with all its versions, and only when no version of an
   item other than a draft names it: published and retired versions may be
   rolled back to. A draft naming a deleted group is refused when saved
-  next.
+  next. The delete and a publish hold the group with a transaction
+  advisory lock (`store.LockPropertyGroup`): a publish checks again,
+  under the lock, that each group version it names is there, so a group
+  deleted meanwhile gives a 409 rather than a published version whose
+  form silently lost the group's inputs.
 
 ### Custom properties and folders
 - A project has `properties`, a map of up to 50 keys (letters, digits,

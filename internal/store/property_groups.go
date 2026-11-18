@@ -99,19 +99,43 @@ func (s *Store) AddPropertyGroupVersion(ctx context.Context, g PropertyGroup, fi
 	return version, err
 }
 
-// DeletePropertyGroup deletes every version of a property group.
-func (s *Store) DeletePropertyGroup(ctx context.Context, key string) error {
-	tag, err := s.Pool.Exec(ctx, `delete from property_groups where key = $1`, key)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
+// DeletePropertyGroup deletes every version of a property group, unless
+// an item's version other than a draft names it: it gives their slugs
+// then, and deletes nothing.
+func (s *Store) DeletePropertyGroup(ctx context.Context, key string) ([]string, error) {
+	var users []string
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		if err := LockPropertyGroup(ctx, tx, key); err != nil {
+			return err
+		}
+		var err error
+		if users, err = groupUsers(ctx, tx, key); err != nil || len(users) > 0 {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `delete from property_groups where key = $1`, key)
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+	return users, err
+}
+
+// LockPropertyGroup holds a property group until the transaction ends, so
+// that it isn't deleted while a version naming it is published.
+func LockPropertyGroup(ctx context.Context, tx pgx.Tx, key string) error {
+	_, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('rvav.property_group:' || $1))`, key)
 	return err
 }
 
 // PropertyGroupUsers lists the slugs of the items with a version other
 // than a draft whose blueprint names the property group.
 func (s *Store) PropertyGroupUsers(ctx context.Context, key string) ([]string, error) {
-	rows, _ := s.Pool.Query(ctx, `select distinct i.slug from catalog_item_versions v join catalog_items i on i.id = v.item_id
+	return groupUsers(ctx, s.Pool, key)
+}
+
+func groupUsers(ctx context.Context, db DB, key string) ([]string, error) {
+	rows, _ := db.Query(ctx, `select distinct i.slug from catalog_item_versions v join catalog_items i on i.id = v.item_id
 		where v.state <> 'draft' and jsonb_typeof(v.blueprint->'property_groups') = 'array'
 			and v.blueprint->'property_groups' @> jsonb_build_array(jsonb_build_object('key', $1::text))
 		order by i.slug`, key)

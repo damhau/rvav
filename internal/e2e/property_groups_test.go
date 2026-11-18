@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/property"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/present"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // TestPropertyGroups: a property group's inputs join the form of an item
@@ -165,6 +167,57 @@ func TestPropertyGroups(t *testing.T) {
 			api.CatalogItemVersionUpdate{Definition: later}, 422, &problem)
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/blueprint/property_groups/0/key" {
 			t.Fatalf("a draft naming a group that's gone = %+v", problem.Errors)
+		}
+
+		// A delete that has found no user holds the group: a publish naming
+		// it waits, then finds it gone (T1.7).
+		h.json("POST", "/api/v1/admin/property-groups", admin, api.PropertyGroupWrite{Key: present.Ptr("race"), Name: "Race",
+			Inputs: []api.PropertyGroupInput{}, Constants: map[string]any{"x": "y"}}, 201, nil)
+		later.Blueprint["property_groups"] = []any{map[string]any{"key": "race", "version": 1}}
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "pg-race", Name: "p", Summary: "p",
+			Category: "compute", Type: api.VmBlueprint, Definition: &later}, 201, &drafted)
+		tx, err := h.store.Pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := store.LockPropertyGroup(ctx, tx, "race"); err != nil {
+			t.Fatal(err)
+		}
+		type result struct {
+			status int
+			body   []byte
+		}
+		published := make(chan result, 1)
+		go func() {
+			status, body, _ := h.do("POST", "/api/v1/admin/catalog/items/pg-race/versions/"+drafted.DraftVersion.Id+"/publish", admin, nil)
+			published <- result{status, body}
+		}()
+		var got *result
+		for deadline := time.Now().Add(10 * time.Second); got == nil && time.Now().Before(deadline); {
+			select {
+			case r := <-published:
+				got = &r
+			case <-time.After(20 * time.Millisecond):
+				var waiting int
+				_ = h.store.Pool.QueryRow(ctx, `select count(*) from pg_locks where locktype = 'advisory' and not granted`).Scan(&waiting)
+				if waiting > 0 {
+					got = &result{}
+				}
+			}
+		}
+		if _, err := tx.Exec(ctx, `delete from property_groups where key = 'race'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if got == nil || got.status == 0 {
+			r := <-published
+			got = &r
+		}
+		if got.status != 409 || !strings.Contains(string(got.body), "Property group race was deleted while version") {
+			t.Fatalf("publish while the group is deleted = %d %s", got.status, got.body)
 		}
 	})
 }

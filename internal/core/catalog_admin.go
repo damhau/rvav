@@ -427,8 +427,13 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 		return api.AdminCatalogItem{}, &ValidationError{Errors: errs}
 	}
 	// The revision checked above must be the one published.
+	var gone *store.GroupGoneError
 	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog, row.Revision); errors.Is(err, store.ErrVersionState) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Version " + row.Number + " is already published."}
+	} else if errors.As(err, &gone) {
+		return api.AdminCatalogItem{}, &ConflictError{Msg: fmt.Sprintf(
+			"Property group %s was deleted while version %s was being published: name another group in the blueprint, then publish it.",
+			gone.Key, row.Number)}
 	} else if errors.Is(err, store.ErrVersionChanged) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Draft " + row.Number + " was saved while it was being published: publish it again."}
 	} else if err != nil {
