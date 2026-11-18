@@ -11,7 +11,7 @@ import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

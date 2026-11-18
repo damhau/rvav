@@ -6,7 +6,9 @@ import { Link } from "@tanstack/react-router";
 import { Circle, CircleCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -109,7 +111,7 @@ export function SetupPage() {
         actions={
           setup.data &&
           !setup.data.complete && (
-            <Button size="sm" variant="ghost" disabled={hide.isPending} onClick={() => hide.mutate(!setup.data.hidden)}>
+            <Button size="sm" variant="quiet" disabled={hide.isPending} onClick={() => hide.mutate(!setup.data.hidden)}>
               {setup.data.hidden ? "Open it at sign-in again" : "Don't open it at sign-in"}
             </Button>
           )

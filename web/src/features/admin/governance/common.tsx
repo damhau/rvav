@@ -139,7 +139,7 @@ export function OfferEditor({
           <Button
             type="button"
             size="icon"
-            variant="ghost"
+            variant="quiet"
             aria-label={`Remove offer ${i + 1}`}
             onClick={() => onChange(value.filter((_, j) => j !== i))}
           >
@@ -151,7 +151,7 @@ export function OfferEditor({
         <Button
           type="button"
           size="sm"
-          variant="ghost"
+          variant="quiet"
           onClick={() => onChange([...value, { project_id: null, environment: null }])}
         >
           Add an offer
@@ -259,7 +259,7 @@ export function LevelsEditor({
               <Button
                 type="button"
                 size="icon"
-                variant="ghost"
+                variant="quiet"
                 aria-label={`Remove level ${i + 1}`}
                 onClick={() => onChange(value.filter((_, j) => j !== i))}
               >
@@ -289,7 +289,7 @@ export function LevelsEditor({
         <Button
           type="button"
           size="sm"
-          variant="ghost"
+          variant="quiet"
           onClick={() => onChange([...value, { name: `Level ${value.length + 1}`, mode: "any" }])}
         >
           Add a level

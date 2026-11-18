@@ -7,7 +7,10 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { PowerDot } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -193,7 +196,7 @@ function AdoptDialog({
             </ul>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={adopt.isPending}>
@@ -212,7 +215,7 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
     <Panel
       title={`Adopted ${vms} VM${vms === 1 ? "" : "s"} into ${result.deployments.length} deployment${result.deployments.length === 1 ? "" : "s"}`}
       actions={
-        <Button size="sm" variant="ghost" onClick={onClose}>
+        <Button size="sm" variant="quiet" onClick={onClose}>
           Close
         </Button>
       }
@@ -330,7 +333,7 @@ export function OnboardingPage() {
               {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
             </span>
             {selected.size > 0 && (
-              <Button size="sm" variant="ghost" onClick={() => setSelected(new Map())}>
+              <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
                 Clear
               </Button>
             )}
@@ -418,7 +421,7 @@ export function OnboardingPage() {
           <div className="flex justify-center border-t border-line p-2">
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               disabled={list.isFetchingNextPage}
               onClick={() => void list.fetchNextPage()}
             >

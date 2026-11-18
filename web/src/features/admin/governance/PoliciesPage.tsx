@@ -6,7 +6,10 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -97,7 +100,7 @@ function Order({
     <span className="inline-flex">
       <Button
         size="icon"
-        variant="ghost"
+        variant="quiet"
         aria-label={`Move ${name} up`}
         disabled={busy || i === 0}
         onClick={() => move(i - 1)}
@@ -106,7 +109,7 @@ function Order({
       </Button>
       <Button
         size="icon"
-        variant="ghost"
+        variant="quiet"
         aria-label={`Move ${name} down`}
         disabled={busy || i === count - 1}
         onClick={() => move(i + 1)}
@@ -236,7 +239,7 @@ function ApprovalDialog({ policy, onClose }: { policy?: S["ApprovalPolicy"]; onC
             Enabled
           </label>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -329,12 +332,12 @@ function Approvals({ canEdit }: { canEdit: boolean }) {
                           busy={reorder.isPending}
                           move={(to) => reorder.mutate({ items, from: i, to })}
                         />
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                        <Button size="sm" variant="quiet" onClick={() => setEditing(p)}>
                           Change
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${p.name}`}
                           onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
                         >
@@ -501,7 +504,7 @@ function Day2Dialog({ policy, onClose }: { policy?: S["Day2Policy"]; onClose: ()
             Enabled
           </label>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -602,12 +605,12 @@ function Day2({ canEdit }: { canEdit: boolean }) {
                           busy={reorder.isPending}
                           move={(to) => reorder.mutate({ items, from: i, to })}
                         />
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                        <Button size="sm" variant="quiet" onClick={() => setEditing(p)}>
                           Change
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${p.name}`}
                           onClick={() => window.confirm(`Remove ${p.name}?`) && remove.mutate(p.id)}
                         >
@@ -734,7 +737,7 @@ function LeaseDialog({ lease, onClose }: { lease?: S["LeasePolicy"]; onClose: ()
             />
           </Field>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -816,7 +819,7 @@ function Leases({ canEdit }: { canEdit: boolean }) {
                         <>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Change the lease in ${where}`}
                             onClick={() => setEditing(l)}
                           >
@@ -825,7 +828,7 @@ function Leases({ canEdit }: { canEdit: boolean }) {
                           {l.project_id && (
                             <Button
                               size="sm"
-                              variant="ghost"
+                              variant="quiet"
                               aria-label={`Remove the lease in ${where}`}
                               onClick={() =>
                                 remove.mutate({ environment: l.environment, project_id: l.project_id ?? "" })
@@ -984,7 +987,7 @@ function NamingDialog({ policy, onClose }: { policy?: S["NamingPolicy"]; onClose
             )}
           </fieldset>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -1055,12 +1058,12 @@ function Naming({ canEdit }: { canEdit: boolean }) {
                   <td className={`${td} text-right whitespace-nowrap`}>
                     {canEdit && (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                        <Button size="sm" variant="quiet" onClick={() => setEditing(p)}>
                           Change
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${p.name}`}
                           onClick={() => remove.mutate(p.id)}
                         >

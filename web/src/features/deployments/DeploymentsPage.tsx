@@ -3,7 +3,9 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -224,7 +226,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               {b.label}
             </Button>
           ))}
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+          <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())}>
             Clear
           </Button>
         </div>

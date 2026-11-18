@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 
 export function NotInSlice({ title, what }: { title: string; what: string }) {
   return (

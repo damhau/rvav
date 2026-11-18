@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -278,7 +281,7 @@ function WorkflowDialog({ wf, onClose }: { wf?: S["WorkflowRegistration"]; onClo
             Enabled
           </label>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -378,7 +381,7 @@ export function WorkflowsPage() {
                         <>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Change ${w.title}`}
                             onClick={() => setEditing(w)}
                           >
@@ -386,7 +389,7 @@ export function WorkflowsPage() {
                           </Button>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Remove ${w.title}`}
                             onClick={() => window.confirm(`Remove ${w.title}?`) && remove.mutate(w.key ?? "")}
                           >

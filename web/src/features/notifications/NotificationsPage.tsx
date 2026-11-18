@@ -5,7 +5,10 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,7 +82,7 @@ function List() {
               {!n.read_at && (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   aria-label={`Mark read: ${n.title}`}
                   onClick={() => markRead.mutate({ ids: [n.id] })}
                 >
@@ -161,7 +164,7 @@ function Preferences() {
                 {c?.available && (
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="quiet"
                     disabled={test.isPending}
                     aria-label={`Send me a test on ${channelLabel[ch]}`}
                     onClick={() => test.mutate(ch)}

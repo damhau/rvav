@@ -6,7 +6,9 @@ import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -396,7 +398,7 @@ export function RolePage({ roleKey }: { roleKey: string }) {
   return (
     <Page>
       <PageHeader
-        crumbs={crumbs}
+        breadcrumbs={crumbs}
         title={r?.name ?? "Role"}
         meta={
           r && (
@@ -429,7 +431,7 @@ export function NewRolePage({ from }: { from?: string }) {
   return (
     <Page>
       <PageHeader
-        crumbs={crumbs}
+        breadcrumbs={crumbs}
         title="New role"
         meta={source.data ? `Starting from what ${source.data.name} allows.` : "Choose what it allows."}
       />

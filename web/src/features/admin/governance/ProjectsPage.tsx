@@ -4,7 +4,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -125,7 +128,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
             </ul>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={!f.code || !f.name || create.isPending}>
@@ -352,7 +355,7 @@ function Environments({ canEdit }: { canEdit: boolean }) {
                     {canEdit && (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Remove ${e.name}`}
                         disabled={(e.projects ?? 0) > 0 || (e.deployments ?? 0) > 0}
                         title={(e.projects ?? 0) > 0 ? "Projects deploy to it" : undefined}
@@ -479,7 +482,7 @@ function GroupMappings({ canEdit }: { canEdit: boolean }) {
                     {canEdit && (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Remove the mapping of ${m.oidc_group}`}
                         onClick={() => remove.mutate(m.id)}
                       >

@@ -308,7 +308,7 @@ export function RowActions({ deployment }: { deployment: Deployment }) {
         }}
       >
         <MenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`Actions for ${deployment.name}`}>
+          <Button variant="quiet" size="icon" aria-label={`Actions for ${deployment.name}`}>
             <Ellipsis />
           </Button>
         </MenuTrigger>

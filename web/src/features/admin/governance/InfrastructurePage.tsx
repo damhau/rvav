@@ -5,7 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -142,7 +145,7 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
             error={errorAt(errors, "/offers")}
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={!f.key || save.isPending}>
@@ -223,7 +226,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                       <>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Change ${t.label}`}
                           onClick={() => setEditing(t)}
                         >
@@ -231,7 +234,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${t.label}`}
                           onClick={() => remove.mutate(t.key)}
                         >
@@ -328,7 +331,7 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
             error={errorAt(errors, "/offers")}
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={!f.key || save.isPending}>
@@ -399,7 +402,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
                       <>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Change ${z.label}`}
                           onClick={() => setEditing(z)}
                         >
@@ -407,7 +410,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${z.label}`}
                           onClick={() => remove.mutate(z.key)}
                         >
@@ -515,7 +518,7 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
             </Field>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={!network || save.isPending}>
@@ -598,7 +601,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
                       <>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Change: map ${m.network} by hand`}
                           onClick={() => setEditing(m)}
                         >
@@ -607,7 +610,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
                         {m.source === "manual" && (
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Remove the mapping of ${m.network}`}
                             onClick={() => remove.mutate(m.network)}
                           >

@@ -3,7 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { KeyValues, Page, PageHeader, Panel } from "@/components/common/page";
+import { KeyValues, Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Mono, Time } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { adm } from "@/lib/query";
@@ -19,7 +21,7 @@ export function SubscriptionPage({ subscriptionId }: { subscriptionId: string })
   return (
     <Page>
       <PageHeader
-        crumbs={
+        breadcrumbs={
           <Link to="/admin/subscriptions" className="hover:text-fg">
             Subscriptions
           </Link>

@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -135,7 +138,7 @@ function EditDialog({ a, onClose }: { a: AwxAction; onClose: () => void }) {
             <label htmlFor="awx-action-enabled">Offered on deployments</label>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button
@@ -182,7 +185,7 @@ function Row({ a, onEdit }: { a: AwxAction; onEdit: () => void }) {
       </td>
       <td className="border-b border-line px-4 py-2 text-right align-top text-secondary text-faint">
         <div>{relative(a.synced_at)}</div>
-        <Button size="sm" variant="ghost" className="mt-1" onClick={onEdit} aria-label={`Edit ${a.name}`}>
+        <Button size="sm" variant="quiet" className="mt-1" onClick={onEdit} aria-label={`Edit ${a.name}`}>
           Edit
         </Button>
       </td>

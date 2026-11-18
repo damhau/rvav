@@ -134,7 +134,7 @@ export function ServerCertificate({
             <Button type="button" size="sm" variant="primary" disabled={add.isPending} onClick={() => add.mutate()}>
               Add to the CA bundle
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+            <Button type="button" size="sm" variant="quiet" onClick={() => setConfirming(false)}>
               Cancel
             </Button>
           </div>

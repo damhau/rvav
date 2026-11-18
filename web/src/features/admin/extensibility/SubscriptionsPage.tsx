@@ -6,7 +6,10 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -277,7 +280,7 @@ function SubscriptionDialog({ sub, onClose }: { sub?: S["Subscription"]; onClose
             </label>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -388,7 +391,7 @@ export function SubscriptionsPage() {
                         <>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Test ${s.name}`}
                             disabled={test.isPending}
                             onClick={() => test.mutate(s.id)}
@@ -397,7 +400,7 @@ export function SubscriptionsPage() {
                           </Button>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Change ${s.name}`}
                             onClick={() => setEditing(s)}
                           >
@@ -405,7 +408,7 @@ export function SubscriptionsPage() {
                           </Button>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="quiet"
                             aria-label={`Remove ${s.name}`}
                             onClick={() =>
                               window.confirm(`Remove ${s.name} and its run history?`) && remove.mutate(s.id)

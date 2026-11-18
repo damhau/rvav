@@ -38,7 +38,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
 
   return (
     <header className="flex flex-wrap items-center gap-2.5 border-b border-line bg-surface px-4 py-2.5 md:px-6">
-      <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" onClick={onOpenNav}>
+      <Button variant="quiet" size="icon" className="md:hidden" aria-label="Open navigation" onClick={onOpenNav}>
         <MenuIcon />
       </Button>
       <button

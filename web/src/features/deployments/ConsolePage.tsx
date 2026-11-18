@@ -4,7 +4,9 @@ import { ExternalLink, Maximize, Power, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { ConsoleSession, VmResource } from "@/lib/api/types";
@@ -151,7 +153,7 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
   return (
     <Page>
       <PageHeader
-        crumbs={
+        breadcrumbs={
           <>
             <Link to="/deployments">Deployments</Link> /
             <Link to="/deployments/$deploymentId" params={{ deploymentId }}>

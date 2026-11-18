@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, CircleAlert } from "lucide-react";
 import { useState } from "react";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -98,7 +98,7 @@ export function FieldList({
             <Button
               id={`designer-up-${name}`}
               size="icon"
-              variant="ghost"
+              variant="quiet"
               aria-label={`Move ${label} up`}
               disabled={isFirst(at.si, at.i)}
               onClick={() => move(name, label, -1)}
@@ -108,7 +108,7 @@ export function FieldList({
             <Button
               id={`designer-down-${name}`}
               size="icon"
-              variant="ghost"
+              variant="quiet"
               aria-label={`Move ${label} down`}
               disabled={isLast(at.si, at.i)}
               onClick={() => move(name, label, 1)}
@@ -145,7 +145,7 @@ export function FieldList({
                 <Button
                   id={`designer-section-up-${s.key}`}
                   size="icon"
-                  variant="ghost"
+                  variant="quiet"
                   aria-label={`Move section ${s.title} up`}
                   disabled={si === 0}
                   onClick={() => shift(s.key, s.title, -1)}
@@ -155,7 +155,7 @@ export function FieldList({
                 <Button
                   id={`designer-section-down-${s.key}`}
                   size="icon"
-                  variant="ghost"
+                  variant="quiet"
                   aria-label={`Move section ${s.title} down`}
                   disabled={si === sections.length - 1}
                   onClick={() => shift(s.key, s.title, 1)}

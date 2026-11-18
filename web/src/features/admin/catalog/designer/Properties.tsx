@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";

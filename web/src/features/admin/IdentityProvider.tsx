@@ -9,7 +9,7 @@ import { CircleCheck, CircleX, ExternalLink, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CopyText } from "@/components/common/misc";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";

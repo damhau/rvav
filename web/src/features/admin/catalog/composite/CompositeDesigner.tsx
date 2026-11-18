@@ -317,13 +317,13 @@ export default function CompositeDesigner({
         <Plus aria-hidden />
         Add a step
       </Button>
-      <Button size="sm" variant="ghost" disabled={!history.canUndo} onClick={design.undo} aria-keyshortcuts="Control+Z">
+      <Button size="sm" variant="quiet" disabled={!history.canUndo} onClick={design.undo} aria-keyshortcuts="Control+Z">
         <Undo2 aria-hidden />
         Undo
       </Button>
       <Button
         size="sm"
-        variant="ghost"
+        variant="quiet"
         disabled={!history.canRedo}
         onClick={design.redo}
         aria-keyshortcuts="Control+Shift+Z Control+Y"
@@ -547,7 +547,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           <Button
             id="cd-earlier"
             size="sm"
-            variant="ghost"
+            variant="quiet"
             disabled={side ? side.i === 0 : j === null && g === 0}
             onClick={() => move(-1)}
           >
@@ -557,7 +557,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           <Button
             id="cd-later"
             size="sm"
-            variant="ghost"
+            variant="quiet"
             disabled={side ? side.i === side.length - 1 : j === null && g === slots - 1}
             onClick={() => move(1)}
           >
@@ -568,7 +568,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             <Button
               id="cd-join"
               size="sm"
-              variant="ghost"
+              variant="quiet"
               onClick={() => apply(() => edits.joinPrevious(text, id), { focus: "cd-later" })}
             >
               Run with the step before
@@ -1350,7 +1350,7 @@ function BranchFields({
                 <Button
                   id={`${prefix}-earlier`}
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={i === 0}
                   aria-label={`Move case ${i + 1} earlier`}
                   onClick={() => moveCase(i, -1)}
@@ -1361,7 +1361,7 @@ function BranchFields({
                 <Button
                   id={`${prefix}-later`}
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={i === cases.length - 1}
                   aria-label={`Move case ${i + 1} later`}
                   onClick={() => moveCase(i, 1)}
@@ -1371,7 +1371,7 @@ function BranchFields({
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   aria-label={`Remove case ${i + 1}, with its steps`}
                   onClick={() => apply(() => edits.removeBranchCase(text, id, i), { focus: "cd-case-add" })}
                 >
@@ -1735,7 +1735,7 @@ function AskQuestion({
       <div>
         <Button
           size="sm"
-          variant="ghost"
+          variant="quiet"
           aria-label={`Remove question ${index + 1}`}
           onClick={() => apply(() => edits.removeAskQuestion(text, id, index), { focus: "cd-ask-add" })}
         >
@@ -1875,7 +1875,7 @@ function BindingRow({
         {onRemove && (
           <Button
             size="icon"
-            variant="ghost"
+            variant="quiet"
             aria-label={`Remove ${input.name}`}
             title={`Remove ${input.name}`}
             onClick={onRemove}
@@ -2105,7 +2105,7 @@ function AddStepDialog({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="quiet" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" variant="primary">

@@ -6,7 +6,8 @@ import { CircleCheck, CircleX } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Panel } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -173,7 +174,7 @@ function VCenterDialog({ vc, onClose }: { vc?: S["VCenter"]; onClose: () => void
             />
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
@@ -267,7 +268,7 @@ export function VCenters() {
                       <span className="inline-flex gap-1">
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Change ${vc.name}`}
                           onClick={() => setEditing(vc)}
                         >
@@ -275,7 +276,7 @@ export function VCenters() {
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="quiet"
                           aria-label={`Remove ${vc.name}`}
                           onClick={() =>
                             window.confirm(`Stop managing ${vc.name}? Its inventory is forgotten.`) &&

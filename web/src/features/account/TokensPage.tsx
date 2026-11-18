@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input } from "@/components/ui/input";
@@ -114,7 +117,7 @@ export function TokensPage() {
               >
                 Copy
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setMade(null)}>
+              <Button size="sm" variant="quiet" onClick={() => setMade(null)}>
                 Done
               </Button>
             </div>
@@ -182,7 +185,7 @@ export function TokensPage() {
                     <td className="border-b border-line px-4 py-2 text-right">
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Revoke ${t.name}`}
                         disabled={revoke.isPending}
                         onClick={() =>

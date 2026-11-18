@@ -6,7 +6,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { EmptyState, Panel } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -113,7 +114,7 @@ function Preview({
     <Panel
       title="Preview"
       actions={
-        <Button size="sm" variant="ghost" onClick={() => setCtx((c) => ({ ...c, values: { ...initialValues } }))}>
+        <Button size="sm" variant="quiet" onClick={() => setCtx((c) => ({ ...c, values: { ...initialValues } }))}>
           Reset inputs
         </Button>
       }
@@ -179,7 +180,7 @@ function Preview({
                 : `A request with these inputs would have ${problemCount} problem${problemCount === 1 ? "" : "s"}.`}
             </span>
             {problemCount > 0 && !checkAll && (
-              <Button size="sm" variant="ghost" onClick={() => setCheckAll(true)}>
+              <Button size="sm" variant="quiet" onClick={() => setCheckAll(true)}>
                 Show them
               </Button>
             )}

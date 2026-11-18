@@ -5,7 +5,9 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, KeyValues, Panel } from "@/components/common/page";
+import { KeyValues } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { Mono, Time } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -242,7 +244,7 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
                   <td className={`${td} text-right`}>
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="quiet"
                       aria-label={`Open the run of ${r.created_at}`}
                       onClick={() => setOpen(r.id)}
                     >

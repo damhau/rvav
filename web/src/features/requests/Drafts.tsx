@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Time } from "@/components/common/misc";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { api, call } from "@/lib/api/client";
 import { q } from "@/lib/query";
@@ -40,7 +40,7 @@ export function Drafts() {
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               aria-label={`Discard ${d.name}`}
               disabled={discard.isPending}
               onClick={() => discard.mutate(d.id)}

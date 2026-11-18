@@ -9,7 +9,10 @@ import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -103,7 +106,7 @@ function NotesButton({
   const parts = [check ? `${check} to check` : "", out ? `${out} left out` : ""].filter(Boolean);
   const text = parts.length ? parts.join(" · ") : plural(notes.length, "note");
   return (
-    <Button size="sm" variant="ghost" aria-expanded={open} aria-label={`Notes on ${of}: ${text}`} onClick={onToggle}>
+    <Button size="sm" variant="quiet" aria-expanded={open} aria-label={`Notes on ${of}: ${text}`} onClick={onToggle}>
       {text}
     </Button>
   );
@@ -208,7 +211,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
       {projects.isError && (
         <p className="px-4 py-2 text-secondary text-bad">
           rvav's projects couldn't be loaded, so only "by name" and "stays in vRA" can be chosen.{" "}
-          <Button size="sm" variant="ghost" onClick={() => void projects.refetch()}>
+          <Button size="sm" variant="quiet" onClick={() => void projects.refetch()}>
             Retry
           </Button>
         </p>
@@ -414,7 +417,7 @@ function VroTab({ plan }: { plan: Plan }) {
         <Button
           className="ml-auto"
           size="sm"
-          variant="ghost"
+          variant="quiet"
           disabled={download.isPending}
           onClick={() => download.mutate()}
         >
@@ -531,7 +534,7 @@ function MoveDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
             />
           </Field>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={move.isPending}>
@@ -573,7 +576,7 @@ function UndoDialog({ project, onClose }: { project: S["VraCutoverProject"]; onC
             its VMs.
           </p>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" disabled={undo.isPending} onClick={onClose}>
+            <Button variant="quiet" disabled={undo.isPending} onClick={onClose}>
               Cancel
             </Button>
             <Button variant="primary" disabled={undo.isPending} onClick={() => undo.mutate()}>
@@ -652,7 +655,7 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
               {toAdopt(cp) > 0 && (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={busy}
                   aria-label={`Adopt ${plural(toAdopt(cp), "deployment")} (${cp.name})`}
                   onClick={() => adopt.mutate(cp)}
@@ -661,13 +664,13 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
                 </Button>
               )}
               {cp.moved_at ? (
-                <Button size="sm" variant="ghost" aria-label={`Not moved… (${cp.name})`} onClick={() => setUndoing(cp)}>
+                <Button size="sm" variant="quiet" aria-label={`Not moved… (${cp.name})`} onClick={() => setUndoing(cp)}>
                   Not moved…
                 </Button>
               ) : (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={!cp.rvav_project_id}
                   aria-label={`Mark as moved… (${cp.name})`}
                   onClick={() => setMoving(cp)}
@@ -757,7 +760,7 @@ function ImportDialog({
             It can run again: only what changed in vRA, or isn't yet in rvav, is imported.
           </p>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" disabled={run.isPending} onClick={onClose}>
+            <Button type="button" variant="quiet" disabled={run.isPending} onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={(!catalog && !deployments) || run.isPending}>
@@ -781,7 +784,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
     <Panel
       title="Imported"
       actions={
-        <Button size="sm" variant="ghost" onClick={onClose}>
+        <Button size="sm" variant="quiet" onClick={onClose}>
           Close
         </Button>
       }
@@ -896,12 +899,12 @@ export function VraImportPage() {
                 e.target.value = "";
               }}
             />
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => file.current?.click()}>
+            <Button size="sm" variant="quiet" disabled={busy} onClick={() => file.current?.click()}>
               <FileUp /> Upload file…
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               disabled={!status.data?.configured || busy}
               onClick={() => read.mutate(undefined)}
             >

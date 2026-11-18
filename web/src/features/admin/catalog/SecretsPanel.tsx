@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Panel } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
@@ -116,7 +117,7 @@ function SecretDialog({ existing, onClose }: { existing?: Secret; onClose: () =>
             />
           </Field>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={!w.name || !w.value || save.isPending}>
@@ -202,12 +203,12 @@ export function SecretsPanel() {
                       {relative(s.updated_at)}
                     </td>
                     <td className="border-b border-line px-4 py-2 text-right whitespace-nowrap">
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
+                      <Button size="sm" variant="quiet" onClick={() => setEditing(s)}>
                         Replace
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Remove ${s.name}`}
                         disabled={used.length > 0 || remove.isPending}
                         title={used.length > 0 ? "Items use it" : undefined}

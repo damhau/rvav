@@ -4,7 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
-import { EmptyState, Panel } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { GitBadge } from "@/features/admin/catalog/GitPanels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,7 @@ function NewItemDialog({ onClose }: { onClose: () => void }) {
             </Field>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button
@@ -197,7 +198,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
             </ul>
           )}
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button variant="primary" disabled={!text.trim() || run.isPending} onClick={() => run.mutate()}>

@@ -7,7 +7,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
@@ -220,7 +223,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                     {canEdit && !a.fixed && (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Take ${a.role.name} away from ${a.user.name}`}
                         disabled={remove.isPending}
                         onClick={() => {

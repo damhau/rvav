@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useRef } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";

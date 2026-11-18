@@ -308,7 +308,7 @@ export function ChangePasswordPage() {
           <Button type="submit" variant="primary" disabled={busy || wait.left > 0 || current === "" || next === ""}>
             Change password
           </Button>
-          <Button type="button" variant="ghost" onClick={() => void signOut()}>
+          <Button type="button" variant="quiet" onClick={() => void signOut()}>
             Sign out
           </Button>
         </div>

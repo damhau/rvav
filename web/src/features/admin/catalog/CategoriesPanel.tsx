@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -61,7 +61,7 @@ function Row({ c }: { c: AdminCatalogCategory }) {
       <td className="border-b border-line px-4 py-1.5 text-right whitespace-nowrap">
         <Button
           size="sm"
-          variant="ghost"
+          variant="quiet"
           disabled={!changed || save.isPending}
           onClick={() => save.mutate()}
           aria-label={`Save ${c.key}`}
@@ -70,7 +70,7 @@ function Row({ c }: { c: AdminCatalogCategory }) {
         </Button>
         <Button
           size="sm"
-          variant="ghost"
+          variant="quiet"
           disabled={(c.items ?? 0) > 0 || remove.isPending}
           title={(c.items ?? 0) > 0 ? "Move its items to another category first" : undefined}
           onClick={() => remove.mutate()}

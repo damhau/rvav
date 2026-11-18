@@ -580,7 +580,7 @@ function RequestFormBody({
                         On behalf of <strong>{onBehalfOf.name}</strong>{" "}
                         <span className="text-secondary text-faint">{onBehalfOf.email}</span>: they will own it.
                       </span>
-                      <Button size="sm" variant="ghost" onClick={() => setOnBehalfOf(null)}>
+                      <Button size="sm" variant="quiet" onClick={() => setOnBehalfOf(null)}>
                         For myself instead
                       </Button>
                     </div>

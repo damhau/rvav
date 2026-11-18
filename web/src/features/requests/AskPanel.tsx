@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApprovalHistory, dueText } from "@/components/common/approvals";
 import { Time } from "@/components/common/misc";
-import { Panel } from "@/components/common/page";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";

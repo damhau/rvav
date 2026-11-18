@@ -9,7 +9,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -378,7 +381,7 @@ export function ReportsPage() {
     onError: (e) => toast.error(isApiError(e) ? e.problem.title : "The export failed"),
   });
   const csv = (section: Section) => (
-    <Button size="sm" variant="ghost" disabled={exportCsv.isPending} onClick={() => exportCsv.mutate(section)}>
+    <Button size="sm" variant="quiet" disabled={exportCsv.isPending} onClick={() => exportCsv.mutate(section)}>
       <Download /> CSV
     </Button>
   );

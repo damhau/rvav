@@ -5,7 +5,10 @@ import { Link } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -353,12 +356,12 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                     </td>
                     <td className={`${td} text-right whitespace-nowrap`}>
                       {canManage && offered.data && (
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(m)}>
+                        <Button size="sm" variant="quiet" onClick={() => setEditing(m)}>
                           Change roles<span className="sr-only"> of {m.user.name}</span>
                         </Button>
                       )}
                       {canManage && offered.data && removable(m) && (
-                        <Button size="sm" variant="ghost" onClick={() => remove.mutate(m.user.id)}>
+                        <Button size="sm" variant="quiet" onClick={() => remove.mutate(m.user.id)}>
                           Remove<span className="sr-only"> {m.user.name}</span>
                         </Button>
                       )}
@@ -521,7 +524,7 @@ function RuleDialog({
             </fieldset>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="quiet" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={save.isPending}>
@@ -612,10 +615,10 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
             </dl>
             {isAdmin && (
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>
+                <Button size="sm" variant="quiet" onClick={() => setEditing(r)}>
                   Change
                 </Button>
-                <Button size="sm" variant="ghost" aria-label="Remove the rule" onClick={() => remove.mutate(r.id)}>
+                <Button size="sm" variant="quiet" aria-label="Remove the rule" onClick={() => remove.mutate(r.id)}>
                   Remove
                 </Button>
               </div>
@@ -705,7 +708,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               disabled={!ready}
               onClick={() =>
                 setRows([...shown, { environment: "", resource: "vcpu", limit: null, enforcement: "hard" }])
@@ -805,7 +808,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
                     {isAdmin && (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         aria-label={`Remove limit ${i + 1}`}
                         onClick={() => setRows(shown.filter((_, j) => j !== i))}
                       >
@@ -842,7 +845,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
   return (
     <Page>
       <PageHeader
-        crumbs={
+        breadcrumbs={
           <Link to="/admin/projects" className="hover:text-fg">
             Projects
           </Link>

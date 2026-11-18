@@ -7,7 +7,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
-import { Page, PageHeader, Panel } from "@/components/common/page";
+import { Page } from "@/components/common/page";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -233,7 +235,7 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="quiet"
                         disabled={act.isPending}
                         onClick={() =>
                           window.confirm(`Discard draft ${v.number}? Its changes are lost.`) &&
@@ -270,7 +272,7 @@ function VersionsTab({ item }: { item: AdminCatalogItem }) {
                   )}
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="quiet"
                     onClick={() => act.mutate({ v, action: "export" })}
                     aria-label={`Export ${v.number} as YAML`}
                   >
@@ -387,7 +389,7 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
       actions={
         editable && (
           <div className="flex gap-2">
-            <Button size="sm" variant="ghost" disabled={text === original} onClick={() => setText(original)}>
+            <Button size="sm" variant="quiet" disabled={text === original} onClick={() => setText(original)}>
               Undo changes
             </Button>
             <Button size="sm" variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
@@ -667,7 +669,7 @@ export function CatalogItemPage({ itemId }: { itemId: string }) {
   return (
     <Page>
       <PageHeader
-        crumbs={
+        breadcrumbs={
           <Link to="/admin/catalog-items" className="hover:text-fg">
             Catalog items
           </Link>
