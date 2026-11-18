@@ -19,6 +19,7 @@ import (
 	_ "github.com/vmware/govmomi/vapi/simulator" // the tagging service and content libraries
 
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/vcsim"
 )
 
 func main() {
@@ -33,6 +34,8 @@ func main() {
 	if err := model.Create(); err != nil {
 		log.Fatalf("create model: %v", err)
 	}
+	vcsim.SerialClones(model.Map())
+	model.Service.RegisterEndpoints = true
 	model.Service.Listen = &url.URL{Host: *addr}
 	model.Service.TLS = new(tls.Config) // self-signed, like a fresh vCenter
 	srv := model.Service.NewServer()

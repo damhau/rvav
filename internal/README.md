@@ -27,6 +27,7 @@ vCenter simulator with the GVA layout for local work.
 | `provision` | Temporal workflow `Provision`, its activities, the plan and step keys |
 | `seed` | Example organisation and catalog |
 | `store` | PostgreSQL access (pgx), keyset pagination |
+| `vcsim` | Workarounds in the vCenter simulator for the tests and `rvav-vcsim`: clones into one folder run one at a time (#187) |
 | `vmprops` | VM resource properties from vCenter data |
 
 ## How a request runs
