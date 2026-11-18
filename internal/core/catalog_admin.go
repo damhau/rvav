@@ -640,6 +640,11 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 				fmt.Sprintf("%v is required but is not an input of the form's schema, so no request could pass.", r))
 		}
 	}
+	// An empty kind is the one-page layout, as YAML written before kinds
+	// were checked has it.
+	if k := d.UiSchema.Layout.Kind; k != "" && !k.Valid() {
+		add("/ui_schema/layout/kind", "invalid", fmt.Sprintf("%q is no layout: use page, wizard or tabs.", k))
+	}
 	placed := map[string]string{}
 	for i, sec := range d.UiSchema.Layout.Sections {
 		if strings.TrimSpace(sec.Key) == "" {

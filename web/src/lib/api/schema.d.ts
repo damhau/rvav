@@ -4248,8 +4248,17 @@ export interface components {
         };
         UiSchema: {
             layout: {
-                /** @enum {string} */
-                kind: "page" | "wizard";
+                /**
+                 * @description How the sections show, in their order. `page`: all on one
+                 *     page. `wizard`: one section per page, with Back and Next,
+                 *     then a review of what was entered before submit; Next checks
+                 *     the page's fields first. `tabs`: one section per tab. A page
+                 *     or tab whose fields a `visible` rule all hides is left out.
+                 *     Presentation only: the server checks a request the same way
+                 *     whatever the layout.
+                 * @enum {string}
+                 */
+                kind: "page" | "wizard" | "tabs";
                 sections: components["schemas"]["UiSection"][];
             };
             /** @description Presentation and behaviour per input, keyed by the input's name in `schema`. */

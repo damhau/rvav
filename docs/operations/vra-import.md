@@ -235,7 +235,7 @@ them to keep the version the items name.
 | `passwordField` | A secret. A default, in the form or the template, isn't kept, since anyone who reads the item would see it: the requester types the secret (a warning). |
 | A widget that can't edit the input as rvav typed it | A warning: the field keeps the widget of its type. |
 | A widget rvav has none of, such as `treeView` | Reported (unmapped): the field keeps the widget of its type. |
-| Pages and sections | The layout (a wizard when there are several pages). |
+| Pages and sections | One page keeps its sections. Several pages become tabs, as vRA shows them: one tab per page, with the fields of its sections in their order. To show them one after the other instead, choose the wizard layout in the form designer. |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
 | Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
 | Conditions on visibility or read-only | Reported: write an rvav rule (CEL). |

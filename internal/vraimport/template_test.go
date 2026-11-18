@@ -397,3 +397,39 @@ func TestMapFieldTypes(t *testing.T) {
 		t.Errorf("the dropped default is reported twice: %+v", p.Notes)
 	}
 }
+
+// TestMapFormPages: a form with several pages gets the tabs layout, as vRA
+// shows them, one tab per page with the fields of its sections; inputs the
+// form doesn't show come after, in a tab of their own (F1.3).
+func TestMapFormPages(t *testing.T) {
+	form := &vra.Form{Form: `{"layout":{"pages":[
+{"id":"page_general","title":"General","sections":[
+ {"id":"s_role","fields":[{"id":"role","display":"textField"}]},
+ {"id":"s_size","fields":[{"id":"size","display":"dropDown"}]}]},
+{"id":"page_owner","title":"","sections":[
+ {"id":"s_owner","fields":[{"id":"owner","display":"textField"}]}]}]},
+"schema":{"role":{"label":"Role"},"size":{"label":"Size"},"owner":{"label":"Owner"}}}`}
+	props := map[string]any{"role": map[string]any{"type": "string"}, "size": map[string]any{"type": "string"},
+		"owner": map[string]any{"type": "string"}, "notes": map[string]any{"type": "string"}}
+	fields := map[string]any{"role": map[string]any{"widget": "text", "label": "role"}, "size": map[string]any{"widget": "text", "label": "size"},
+		"owner": map[string]any{"widget": "text", "label": "owner"}, "notes": map[string]any{"widget": "text", "label": "notes"}}
+	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": []map[string]any{
+		{"key": "inputs", "title": "Request", "columns": 2, "fields": []string{"role", "size", "owner", "notes"}}}}}
+	var notes []string
+	required := []string{}
+	applyForm(form, props, fields, &required, map[string]any{}, ui, func(level, where, text string) {
+		notes = append(notes, level+" "+where+": "+text)
+	})
+	layout := ui["layout"].(map[string]any)
+	var got []string
+	for _, s := range layout["sections"].([]map[string]any) {
+		got = append(got, fmt.Sprintf("%s %s %v", s["key"], s["title"], s["fields"]))
+	}
+	want := []string{"p1 General [role size]", "p2 Page 2 [owner]", "more More [notes]"}
+	if layout["kind"] != "tabs" || !slices.Equal(got, want) {
+		t.Errorf("layout %v %v, want tabs %v", layout["kind"], got, want)
+	}
+	if !slices.ContainsFunc(notes, func(n string) bool { return strings.Contains(n, "Its pages are tabs") }) {
+		t.Errorf("notes = %v", notes)
+	}
+}

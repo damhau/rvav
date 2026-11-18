@@ -929,7 +929,11 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 	searched := map[string]string{"valuePicker": "a search field"}
 	var sections []map[string]any
 	seen := map[string]bool{}
+	// vRA shows several pages as tabs: each becomes one, with the fields of
+	// its sections, which are rows of fields rather than titled groups.
+	paged := len(def.Layout.Pages) > 1
 	for pi, page := range def.Layout.Pages {
+		var onPage []string
 		for si, s := range page.Sections {
 			var names []string
 			for _, fd := range s.Fields {
@@ -1060,11 +1064,22 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 			if len(names) == 0 {
 				continue
 			}
+			if paged {
+				onPage = append(onPage, names...)
+				continue
+			}
 			title := page.Title
 			if len(page.Sections) > 1 {
 				title = fmt.Sprint(fields[names[0]].(map[string]any)["label"])
 			}
 			sections = append(sections, map[string]any{"key": fmt.Sprintf("p%ds%d", pi+1, si+1), "title": title, "columns": 2, "fields": names})
+		}
+		if len(onPage) > 0 {
+			title := strings.TrimSpace(page.Title)
+			if title == "" {
+				title = fmt.Sprintf("Page %d", pi+1)
+			}
+			sections = append(sections, map[string]any{"key": fmt.Sprintf("p%d", pi+1), "title": title, "columns": 2, "fields": onPage})
 		}
 	}
 	// Inputs the form doesn't show come after its sections.
@@ -1088,8 +1103,9 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 		sections = append(sections, placement)
 	}
 	kind := "page"
-	if len(def.Layout.Pages) > 1 {
-		kind = "wizard"
+	if paged {
+		kind = "tabs"
+		note(Info, "form", "Its pages are tabs, as in vRA: one per page. To show them one after the other, choose the wizard layout in the form designer.")
 	}
 	ui["layout"] = map[string]any{"kind": kind, "sections": sections}
 	note(Info, "form", "The custom form's labels, help, choices, defaults and order are the item's.")
