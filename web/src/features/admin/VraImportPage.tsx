@@ -48,6 +48,10 @@ const groupActions: Record<S["VraPropertyGroupPlan"]["action"], [string, Tone]> 
   unchanged: ["Unchanged", "neutral"],
   differs: ["Differs in rvav", "warn"],
 };
+const templateActions: Record<S["VraTemplatePlan"]["action"], [string, Tone]> = {
+  ...groupActions,
+  skip: ["Not imported", "outline"],
+};
 const mapping: Record<S["VraItemPlan"]["status"], [string, Tone]> = {
   complete: ["Complete", "ok"],
   partial: ["Partial", "warn"],
@@ -450,8 +454,83 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
         minWidth={820}
         empty={<EmptyState title="No cloud template" body="vRA has no cloud template to import." />}
       />
+      {plan.templates.length > 0 && <Templates plan={plan} onNotes={onNotes} />}
       {plan.property_groups.length > 0 && <PropertyGroups plan={plan} onNotes={onNotes} />}
     </>
+  );
+}
+
+const templateWhy: Partial<Record<S["VraTemplatePlan"]["action"], string>> = {
+  differs: "Left as it is: rvav's template isn't what vRA's mappings give.",
+  skip: "None of its regions is in a vCenter rvav manages.",
+};
+
+/** vRA's image mappings, made rvav templates before the items that use them. */
+function Templates({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const columns: Column<S["VraTemplatePlan"]>[] = [
+    {
+      id: "template",
+      header: "Template",
+      sortValue: (t) => t.label,
+      cell: (t) => (
+        <>
+          <span className="font-medium">{t.label}</span>
+          <div className="text-caption text-faint">
+            <span className="font-mono">{t.key}</span>
+            {[
+              t.os_family === "windows" ? "Windows" : "Linux",
+              t.user_data ? "cloud-init" : "",
+              t.constraints.length ? plural(t.constraints.length, "constraint") : "",
+            ]
+              .filter(Boolean)
+              .map((x) => ` · ${x}`)
+              .join("")}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "import",
+      header: "Import",
+      sortValue: (t) => templateActions[t.action][0],
+      cell: (t) => (
+        <>
+          <Badge tone={templateActions[t.action][1]}>{templateActions[t.action][0]}</Badge>
+          {templateWhy[t.action] && (
+            <div className="mt-1 max-w-64 text-secondary text-muted">{templateWhy[t.action]}</div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "sources",
+      header: "In vCenter",
+      cell: (t) =>
+        t.sources.length ? (
+          <ul className="flex flex-col text-secondary">
+            {t.sources.map((s) => (
+              <li key={s.vcenter}>
+                {s.vcenter || "The vCenter integration's"}: <span className="font-mono">{s.template}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-secondary text-faint">None</span>
+        ),
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      cell: (t) => <NotesButton of={t.label} notes={t.notes} onOpen={onNotes} />,
+    },
+  ];
+  return (
+    <section aria-labelledby="vra-templates" className="mt-6">
+      <h3 id="vra-templates" className="px-4 pb-2 text-body font-medium">
+        Templates
+      </h3>
+      <DataTable label="Templates" columns={columns} rows={plan.templates} rowKey={(t) => t.key} minWidth={720} />
+    </section>
   );
 }
 

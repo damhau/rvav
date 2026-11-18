@@ -179,8 +179,10 @@ New templates are offered to every project and environment; restrict
 them in Administration › Templates and networks.
 
 The import makes the templates rvav doesn't have, before the items that
-use them. It never changes one rvav has: the plan marks it *differs*
-when it isn't what vRA's mappings give. An item whose image has no
+use them. The plan's **Catalog items** tab lists them under the cloud
+templates: what the import does with each, its vCenter templates, and
+its notes. It never changes one rvav has: the plan marks it **Differs in
+rvav** when it isn't what vRA's mappings give. An item whose image has no
 template, because none of its regions is in a vCenter rvav manages, is
 imported with a warning, and its requests fail until an administrator
 makes the template.
@@ -190,7 +192,7 @@ makes the template.
 The import makes each vRA property group an rvav property group
 (**Catalog items › Property groups**,
 [ADR-0038](../adr/0038-names-groups-secrets-properties.md)) before the
-items that name it. The **Catalog items** tab lists them under the cloud
+items that name it. The **Catalog items** tab lists them under the
 templates.
 
 | vRA | rvav |

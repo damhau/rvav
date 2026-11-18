@@ -84,6 +84,26 @@ describe("vRA import", () => {
     expect(sheet).toHaveTextContent(/the form shows their values/);
   });
 
+  it("lists the templates vRA's image mappings become, with what the import does and why", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=items");
+    const table = await screen.findByRole("table", { name: "Templates" });
+    const row = (label: string) => within(table).getAllByText(label)[0]!.closest("tr") as HTMLTableRowElement;
+    expect(row("rhel9")).toHaveTextContent(/^rhel9rhel9 · LinuxCreatevc01\.corp\.example: tpl-rhel9\.4-2026\.10/);
+    expect(row("win2022")).toHaveTextContent(/win2022 · Windows · 1 constraintCreate/);
+    expect(row("ubuntu22")).toHaveTextContent(
+      /ubuntu22 · Linux · cloud-initDiffers in rvavLeft as it is: rvav's template isn't what vRA's mappings give\./,
+    );
+    await user.click(within(table).getByRole("button", { name: "Notes on win2022: 1 left out" }));
+    const sheet = await screen.findByRole("dialog", { name: "Notes on win2022" });
+    expect(sheet).toHaveTextContent(/which rvav doesn't manage: its template tpl-win2025-std-zrh is left out/);
+    await user.keyboard("{Escape}");
+    await user.click(within(table).getByRole("button", { name: "Notes on ubuntu22: 2 to check" }));
+    expect(await screen.findByRole("dialog", { name: "Notes on ubuntu22" })).toHaveTextContent(
+      /rvav has one template per vCenter, tpl-ubuntu22\.04/,
+    );
+  });
+
   it("marks a project moved from a side panel, and not moved once confirmed", async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=cutover");

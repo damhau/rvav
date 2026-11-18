@@ -44,7 +44,15 @@ const images: Omit<S["VraTemplatePlan"], "action">[] = [
   { image: "win2022", key: "win2022", label: "win2022", os_family: "windows", sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09" }],
     user_data: "", constraints: ["license/windows"],
     notes: [{ level: "unmapped", where: "image_profiles.img-zrh", text: "Region Zurich is in vCenter vc02.corp.example, which rvav doesn't manage: its template tpl-win2025-std-zrh is left out. Add the vCenter in Administration › vCenters, then import again." }] },
+  { image: "ubuntu22", key: "ubuntu22", label: "ubuntu22", os_family: "linux", sources: [{ vcenter: "vc01.corp.example", template: "tpl-ubuntu22.04" }],
+    user_data: "#cloud-config\npackage_upgrade: true\n", constraints: [],
+    notes: [
+      { level: "warning", where: "image_profiles.img-lab", text: "Region Lab is in vCenter vc01.corp.example too, with template tpl-ubuntu22.04-lab: rvav has one template per vCenter, tpl-ubuntu22.04." },
+      { level: "warning", where: "", text: "rvav has a template ubuntu22 that isn't what vRA's mappings give: the import leaves it as it is." },
+    ] },
 ]; // prettier-ignore
+/** Templates rvav has, made there rather than imported, that vRA's mappings don't match. */
+const rvavDiffers = new Set(["ubuntu22"]);
 
 /** vRA's property groups, as rvav's (ADR-0038). */
 const groups: Omit<S["VraPropertyGroupPlan"], "action">[] = [
@@ -176,7 +184,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
   const count = (f: (x: S["VraItemPlan"]) => boolean) => items.filter(f).length;
   const tpls: S["VraTemplatePlan"][] = images.map((t) => ({
     ...t,
-    action: st.imported.has(`image:${t.key}`) ? "unchanged" : "create",
+    action: rvavDiffers.has(t.key) ? "differs" : st.imported.has(`image:${t.key}`) ? "unchanged" : "create",
   }));
   const pgs: S["VraPropertyGroupPlan"][] = groups.map((g) => ({
     ...g,

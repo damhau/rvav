@@ -895,8 +895,9 @@ imports it:
   catalog items or deployments while some are left to import, then
   cutover. That tab is chosen once, when the plan first loads, so mapping
   the last project doesn't move it away. The vRA projects (each mapped with
-  a select; the placement strategy is the third column), cloud templates,
-  vRA deployments and the vRO triage are `DataTable`s; policies and cutover
+  a select; the placement strategy is the third column), cloud templates
+  (with the templates and property groups they need below them), vRA
+  deployments and the vRO triage are `DataTable`s; policies and cutover
   are sections named by their policy or project.
 - **Side panels:** a row's notes, the import (catalog, deployments or
   both) and **Mark as moved…**, which a project not mapped to an rvav
