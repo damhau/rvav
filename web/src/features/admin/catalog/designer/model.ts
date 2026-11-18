@@ -1,7 +1,10 @@
 // The form designer's edits to a version's definition (ADR-0019): pure
 // functions over the form schema, UI schema and initial values, so the three
 // stay in step. The server checks the result when the draft is saved.
+import { ownSources } from "@/forms/useFieldValues";
 import type { CatalogVersionDefinition, FieldError, UiColumn, UiField, UiWidget } from "@/lib/api/types";
+
+export { ownSources };
 
 export type Def = CatalogVersionDefinition;
 export type Prop = Record<string, unknown>;
@@ -55,6 +58,10 @@ export const builtinSources = [
   "naming.preview",
   "rvav.templates",
   "rvav.sizes",
+  "rvav.projects",
+  "rvav.users",
+  "rvav.deployments",
+  "rvav.vms",
   "nsx.segments",
   "nsx.tier1s",
   "nsx.groups",
@@ -63,6 +70,7 @@ export const builtinSources = [
 
 /** The built-in source a widget is made for, set when the field is added. */
 const widgetSource: Partial<Record<UiWidget, string>> = {
+  ...ownSources,
   vsphere_cluster: "vsphere.clusters",
   vsphere_datastore: "vsphere.datastores",
   vsphere_network: "vsphere.networks",

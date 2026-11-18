@@ -736,7 +736,15 @@ An item's tabs:
   - a table takes the **Fewest rows** and **Most rows**, and its
     **Columns**: each has a key (the property of its rows), a label, a
     widget (text, number, toggle or dropdown, with its **Choices**) and
-    whether every row needs it.
+    whether every row needs it;
+  - a multiple choice dropdown or a checklist takes its choices from its
+    options or a value source, as a dropdown does;
+  - a vSphere folder lists the VM folders of the datacenters the
+    project's placement uses: bind the blueprint's `folder` to it;
+  - a project, user, deployment or vSphere VM lists only what the
+    requester may see, from rvav itself. A deployment can keep one
+    catalog item's (**Catalog item**), and a VM one deployment's
+    (**Deployment**, such as `${inputs.server}`).
 - **Definition:** the whole version as YAML, to review or paste. A VM
   blueprint's or a composite's graph is beside it (below it on a narrow
   screen), drawn from the YAML as you type: a VM item's components (how

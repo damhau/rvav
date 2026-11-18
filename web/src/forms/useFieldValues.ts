@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api, call } from "@/lib/api/client";
-import type { FieldValuesQuery, UiField } from "@/lib/api/types";
+import type { FieldValuesQuery, UiField, UiWidget } from "@/lib/api/types";
 import { keys } from "@/lib/query";
 
 export interface FormContext {
@@ -14,11 +14,31 @@ export interface FormContext {
   revision?: number;
 }
 
+/** The built-in sources these widgets always take their choices from: the server checks them. */
+export const ownSources: Partial<Record<UiWidget, string>> = {
+  project: "rvav.projects",
+  user: "rvav.users",
+  deployment: "rvav.deployments",
+  vsphere_vm: "rvav.vms",
+};
+
+/** The field with the source its widget always has, when it names none (as the server resolves it). */
+export function withOwnSource(ui: UiField): UiField {
+  const name = ui.value_source ? undefined : ownSources[ui.widget];
+  return name ? { ...ui, value_source: { kind: "builtin", name } } : ui;
+}
+
 /**
  * Resolve a field's value source on the server. The query key holds the values
  * of the fields it depends on, so a change there fetches fresh options.
  */
-export function useFieldValues(name: string, ui: UiField, values: Record<string, unknown>, ctx: FormContext) {
+export function useFieldValues(
+  name: string,
+  ui: UiField,
+  values: Record<string, unknown>,
+  ctx: FormContext,
+  search?: { text: string; enabled: boolean },
+) {
   const deps = (ui.depends_on ?? []).map((d) => values[d] ?? null);
   // Keep the latest inputs for the request body without putting them in the key.
   const latest = useRef(values);
@@ -30,6 +50,7 @@ export function useFieldValues(name: string, ui: UiField, values: Record<string,
       ...keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
       ctx.asUserId,
       ctx.revision,
+      ...(search ? [search.text] : []),
     ],
     queryFn: ({ signal }) => {
       const body: FieldValuesQuery = {
@@ -39,10 +60,11 @@ export function useFieldValues(name: string, ui: UiField, values: Record<string,
         field: name,
         inputs: latest.current,
         ...(ctx.asUserId ? { as_user_id: ctx.asUserId } : {}),
+        ...(search ? { search: search.text } : {}),
       };
       return call(api.POST("/forms/values", { body, signal }));
     },
-    enabled: Boolean(ui.value_source),
+    enabled: Boolean(ui.value_source) && (search?.enabled ?? true),
     staleTime: (query) => (query.state.data?.cache_seconds ?? 30) * 1000,
   });
 }

@@ -44,6 +44,15 @@ describe("form designer model", () => {
     expect(name).toBe("text_2");
     ({ def, name } = addField(def, "info"));
     expect((def.form_schema.properties as Record<string, unknown>)[name]).toBeUndefined();
+    for (const [widget, source] of [
+      ["project", "rvav.projects"],
+      ["user", "rvav.users"],
+      ["deployment", "rvav.deployments"],
+      ["vsphere_vm", "rvav.vms"],
+    ] as const) {
+      ({ def, name } = addField(def, widget));
+      expect(def.ui_schema.fields[name]?.value_source).toEqual({ kind: "builtin", name: source });
+    }
   });
 
   it("moves fields within and across sections", () => {

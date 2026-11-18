@@ -4114,9 +4114,18 @@ export interface components {
              *     `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
              *     `awx.inventories`, `awx.credentials`, `naming.preview`,
              *     `rvav.templates` and `rvav.sizes` (what is offered to the
-             *     project and environment; ADR-0020), and `nsx.segments`
+             *     project and environment; ADR-0020), `nsx.segments`
              *     (`tier1` param), `nsx.tier1s`, `nsx.groups` (as `nsx:<ID>`)
-             *     and `nsx.services` (ADR-0028).
+             *     and `nsx.services` (ADR-0028), and rvav's own records, which
+             *     the `project`, `user`, `deployment` and `vsphere_vm` widgets
+             *     always take their choices from: `rvav.projects` (those the
+             *     requester may request in, by ID), `rvav.users` (people, by
+             *     ID; `search` finds them by name or email, or one by ID),
+             *     `rvav.deployments` (the project's, not deleted, by ID; the
+             *     `item` param keeps one catalog item's, by slug) and
+             *     `rvav.vms` (their VMs, by name; the `deployment` param keeps
+             *     one deployment's). The server refuses, on submit, a value
+             *     the requester couldn't have picked.
              * @example vsphere.datastores
              */
             name?: string;
@@ -4156,7 +4165,7 @@ export interface components {
             inputs: {
                 [key: string]: unknown;
             };
-            /** @description Text typed in a searchable select. */
+            /** @description Text typed in a searchable select (`rvav.users`). */
             search?: string;
             /**
              * @description With `catalog.manage` only: resolve as this user would (the form

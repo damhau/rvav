@@ -190,6 +190,16 @@ func (s *Store) ResourcesOfType(ctx context.Context, typ string) ([]Resource, er
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])
 }
 
+// ProjectVMs lists the VMs of a project's deployments that aren't deleted,
+// by name; of one deployment when deploymentID isn't "".
+func (s *Store) ProjectVMs(ctx context.Context, projectID, deploymentID string) ([]ProjectVM, error) {
+	rows, _ := s.Pool.Query(ctx, `select r.name, d.id as deployment_id, d.name as deployment_name
+		from resources r join deployments d on d.id = r.deployment_id
+		where d.project_id = $1 and d.status <> 'deleted' and ($2 = '' or d.id = $2) and r.type = 'vsphere.vm'
+		order by r.name, d.name, d.id`, projectID, deploymentID)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[ProjectVM])
+}
+
 func (s *Store) ListResources(ctx context.Context, deploymentID string) ([]Resource, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+resourceCols+` from resources where deployment_id = $1
 		order by case type when 'vsphere.vm' then 0 when 'ipam.address' then 1 else 2 end, name, id`, deploymentID)

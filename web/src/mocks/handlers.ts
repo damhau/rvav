@@ -553,7 +553,7 @@ export const handlers = [
     const env = body.environment ?? project.environments[0] ?? "dev";
     let result: S["FieldValues"] | null;
     try {
-      result = resolveField(db, item, project, env, body.field, body.inputs ?? {}, designer);
+      result = resolveField(db, item, project, env, body.field, body.inputs ?? {}, designer, body.search);
     } catch (e) {
       return problem(400, "bad-request", `The expression failed: ${String(e)}`);
     }

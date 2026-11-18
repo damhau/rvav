@@ -17,6 +17,7 @@ import {
   isRequired,
   moveToSection,
   namePattern,
+  ownSources,
   props,
   removeColumn,
   removeField,
@@ -195,7 +196,8 @@ function SourceEditor({
   test: SourceTest;
 }) {
   const ui = def.ui_schema.fields[name]!;
-  const src = ui.value_source;
+  const own = ownSources[ui.widget];
+  const src: ValueSource | undefined = ui.value_source ?? (own ? { kind: "builtin", name: own } : undefined);
   const params = (src?.params ?? {}) as Record<string, unknown>;
   const at = (p: string) =>
     problems.filter((x) => x.at === `value_source/${p}` || x.at.startsWith(`value_source/${p}/`));
@@ -228,46 +230,66 @@ function SourceEditor({
   return (
     <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
       <legend className="sr-only">Value source</legend>
-      <Field label="Value source" htmlFor="prop-src-kind">
-        <Select
-          id="prop-src-kind"
-          value={src?.kind ?? "none"}
-          onChange={(k) =>
-            setSource(
-              k === "none"
-                ? undefined
-                : k === "builtin"
-                  ? { kind: "builtin", name: builtinSources[0] }
-                  : k === "rest"
-                    ? { kind: "rest", params: { url: "https://", items: "$[*]", value: "$.id", label: "$.name" } }
-                    : { kind: "cel", params: { options: '["a", "b"]' } },
-            )
-          }
-          options={[
-            { value: "none", label: "None (static options or free input)" },
-            { value: "builtin", label: "Built in" },
-            { value: "rest", label: "REST service" },
-            { value: "cel", label: "CEL expression" },
-          ]}
-        />
-      </Field>
-      <ProblemList
-        id="prop-src-problems"
-        list={at("kind").concat(at("params").filter((p) => p.at === "value_source/params"))}
-      />
-      {src?.kind === "builtin" && (
+      {own ? (
         <>
-          <Field label="Source" htmlFor="prop-src-name">
+          <p className="text-secondary text-muted">
+            Its choices come from <span className={mono}>{own}</span>: only what the requester may see, which the server
+            checks on submit.
+          </p>
+          <ProblemList
+            id="prop-src-problems"
+            list={problems.filter((x) => ["value_source", "value_source/kind", "value_source/name"].includes(x.at))}
+          />
+          {(src?.kind !== "builtin" || src.name !== own) && (
+            <Button size="sm" variant="secondary" onClick={() => setSource({ kind: "builtin", name: own })}>
+              Take them from {own}
+            </Button>
+          )}
+          <BuiltinParams source={own} param={param} />
+        </>
+      ) : (
+        <>
+          <Field label="Value source" htmlFor="prop-src-kind">
             <Select
-              id="prop-src-name"
-              value={src.name ?? ""}
-              onChange={(v) => setSource({ ...src, name: v })}
-              options={builtinSources.map((s) => ({ value: s, label: s }))}
+              id="prop-src-kind"
+              value={src?.kind ?? "none"}
+              onChange={(k) =>
+                setSource(
+                  k === "none"
+                    ? undefined
+                    : k === "builtin"
+                      ? { kind: "builtin", name: builtinSources[0] }
+                      : k === "rest"
+                        ? { kind: "rest", params: { url: "https://", items: "$[*]", value: "$.id", label: "$.name" } }
+                        : { kind: "cel", params: { options: '["a", "b"]' } },
+                )
+              }
+              options={[
+                { value: "none", label: "None (static options or free input)" },
+                { value: "builtin", label: "Built in" },
+                { value: "rest", label: "REST service" },
+                { value: "cel", label: "CEL expression" },
+              ]}
             />
           </Field>
-          <ProblemList id="prop-src-name-problems" list={at("name")} />
-          {param("cluster", "Cluster", "For datastores: ${inputs.cluster}")}
-          {param("network", "Network", "For subnets and addresses: ${inputs.network}")}
+          <ProblemList
+            id="prop-src-problems"
+            list={at("kind").concat(at("params").filter((p) => p.at === "value_source/params"))}
+          />
+          {src?.kind === "builtin" && (
+            <>
+              <Field label="Source" htmlFor="prop-src-name">
+                <Select
+                  id="prop-src-name"
+                  value={src.name ?? ""}
+                  onChange={(v) => setSource({ ...src, name: v })}
+                  options={builtinSources.map((s) => ({ value: s, label: s }))}
+                />
+              </Field>
+              <ProblemList id="prop-src-name-problems" list={at("name")} />
+              <BuiltinParams source={src.name} param={param} />
+            </>
+          )}
         </>
       )}
       {src?.kind === "rest" && (
@@ -319,6 +341,32 @@ function SourceEditor({
       {src && <TestSource name={name} dependsOn={deps} test={test} />}
     </fieldset>
   );
+}
+
+/** The parameters of a built-in source, by source. */
+function BuiltinParams({
+  source,
+  param,
+}: {
+  source?: string;
+  param: (k: string, label: string, hint?: string) => React.ReactNode;
+}) {
+  switch (source) {
+    case "rvav.projects":
+    case "rvav.users":
+      return null;
+    case "rvav.deployments":
+      return param("item", "Catalog item", "Only this item's deployments: its slug.");
+    case "rvav.vms":
+      return param("deployment", "Deployment", "Only this deployment's VMs: ${inputs.deployment}");
+    default:
+      return (
+        <>
+          {param("cluster", "Cluster", "For datastores: ${inputs.cluster}")}
+          {param("network", "Network", "For subnets and addresses: ${inputs.network}")}
+        </>
+      );
+  }
 }
 
 const rules = [

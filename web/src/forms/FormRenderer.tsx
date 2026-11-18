@@ -6,7 +6,7 @@ import { FieldNote } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import type { FieldStates, RequestForm, UiField } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import type { FormContext } from "./useFieldValues";
+import { withOwnSource, type FormContext } from "./useFieldValues";
 import { selfLabelled, widgetFor, type JsonSchemaProp } from "./widgets";
 
 export interface FormRendererProps {
@@ -79,6 +79,7 @@ export function FormRenderer({
         const fields = section.fields
           .map((name) => ({ name, ui: form.ui_schema.fields[name] }))
           .filter((f): f is { name: string; ui: UiField } => Boolean(f.ui))
+          .map((f) => ({ ...f, ui: withOwnSource(f.ui) }))
           .map((f) => ({ ...f, state: fieldState(f.name, f.ui, schema, fieldStates) }))
           .filter((f) => f.state.visible);
         if (fields.length === 0 && !(i === 0 && leading)) return null;

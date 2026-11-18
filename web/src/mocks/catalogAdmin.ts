@@ -4,6 +4,7 @@
 import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
+import { ownSources } from "@/forms/useFieldValues";
 import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
@@ -59,7 +60,8 @@ function groupAt(db: Db, key: string, version = 0): S["PropertyGroup"] | undefin
 const builtinSources = [
   "vsphere.clusters", "vsphere.datastores", "vsphere.networks", "vsphere.templates", "vsphere.folders",
   "ipam.subnets", "ipam.next_free_address", "dns.zones", "awx.inventories", "awx.credentials", "naming.preview",
-  "rvav.templates", "rvav.sizes", "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services",
+  "rvav.templates", "rvav.sizes", "rvav.projects", "rvav.users", "rvav.deployments", "rvav.vms",
+  "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services",
 ]; // prettier-ignore
 
 /** Who may be previewed as, per project (as the server's seed). */
@@ -266,6 +268,13 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         });
     }
     const src = f.value_source;
+    const own = ownSources[f.widget];
+    if (own && src && (src.kind !== "builtin" || src.name !== own))
+      errors.push({
+        field: `${prefix}/ui_schema/fields/${name}/value_source`,
+        code: "widget_mismatch",
+        message: `A ${f.widget} field always takes its choices from ${own}: leave its value source out, or name that one.`,
+      });
     if (src?.kind === "builtin" && !builtinSources.includes(src.name ?? ""))
       errors.push({
         field: `${prefix}/ui_schema/fields/${name}/value_source/name`,

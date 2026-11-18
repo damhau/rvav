@@ -316,6 +316,13 @@ type Resource struct {
 	PreventDelete bool `db:"prevent_delete"`
 }
 
+// ProjectVM is a VM of one of a project's deployments.
+type ProjectVM struct {
+	Name           string `db:"name"`
+	DeploymentID   string `db:"deployment_id"`
+	DeploymentName string `db:"deployment_name"`
+}
+
 type InvCluster struct {
 	VCenter       string   `db:"vcenter"`
 	Moref         string   `db:"moref"`

@@ -19,6 +19,8 @@ import type {
 import type { components } from "@/lib/api/schema";
 
 type FieldState = components["schemas"]["FieldState"];
+import { withOwnSource } from "@/forms/useFieldValues";
+import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
 import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
@@ -72,6 +74,44 @@ export function vmNames(db: Db, project: Project, env: EnvironmentKey, role: str
   return Array.from({ length: count }, (_, i) => `${base}${String(highest + 1 + i).padStart(width, "0")}`);
 }
 
+/** What an rvav.* source offers the signed-in user requesting in a project, as the server works it out. */
+function rvavOptions(
+  db: Db,
+  project: Project,
+  source: string,
+  params: Record<string, string>,
+  search: string,
+): Option[] {
+  const live = db.deployments.filter((d) => d.project.id === project.id && d.status !== "deleted");
+  switch (source) {
+    case "rvav.projects":
+      return db.projects
+        .filter((p) => can(db.me, "request.submit", p.id))
+        .map((p) => ({ value: p.id, label: p.name, meta: p.code }));
+    case "rvav.users": {
+      const text = search.trim().toLowerCase();
+      const byId = db.users.find((u) => u.id === search.trim());
+      return (byId ? [byId] : db.users.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(text)))
+        .slice(0, 20)
+        .map((u) => ({ value: u.id, label: u.name, meta: u.email }));
+    }
+    case "rvav.deployments":
+      return live
+        .filter((d) => !params.item || d.catalog_item.slug === params.item)
+        .map((d) => ({ value: d.id, label: d.name, meta: `${d.catalog_item.name} · ${d.environment}` }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    default:
+      return live
+        .filter((d) => !params.deployment || d.id === params.deployment)
+        .flatMap((d) =>
+          d.resources
+            .filter((r) => r.type === "vsphere.vm")
+            .map((r) => ({ value: r.name, label: r.name, meta: d.name })),
+        )
+        .sort((a, b) => a.value.localeCompare(b.value));
+  }
+}
+
 function withDefaultOptions(field: string, inputs: Inputs, options: Option[]): FieldValues {
   const current = typeof inputs[field] === "string" ? inputs[field] : "";
   const valid = options.some((o) => o.value === current && !o.disabled);
@@ -86,8 +126,10 @@ export function resolveField(
   field: string,
   inputs: Inputs,
   designer?: { form: RequestForm; user: Record<string, unknown> },
+  search = "",
 ): FieldValues | null {
-  const ui = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
+  const stored = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
+  const ui = stored && withOwnSource(stored);
   const source = ui?.value_source;
   if (!ui || !source) return null;
   const params = resolveParams(source.params, inputs);
@@ -138,6 +180,11 @@ export function resolveField(
           .filter((n) => n.env === env && placed(db, project.id, env, "network", n.name))
           .map((n) => ({ value: n.name, label: n.name, meta: n.subnet })),
       );
+    case "rvav.projects":
+    case "rvav.users":
+    case "rvav.deployments":
+    case "rvav.vms":
+      return { field, options: rvavOptions(db, project, source.name, params, search), cache_seconds: 30 };
     // The VM folders of the placement's datacenters: every mock cluster is in GVA.
     case "vsphere.folders":
       return { field, options: vmFolders.map((f) => ({ value: f, label: f, meta: "GVA" })), cache_seconds: 60 };

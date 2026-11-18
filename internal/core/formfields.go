@@ -47,6 +47,10 @@ func checkFieldShape(name string, f api.UiField, prop map[string]any, ptr string
 				fmt.Sprintf("The %s widget needs %s.", f.Widget, shape.what)))
 		}
 	}
+	if own, ok := ownSources[f.Widget]; ok && f.ValueSource != nil && (f.ValueSource.Kind != api.Builtin || deref(f.ValueSource.Name) != own) {
+		errs = append(errs, fieldErr(at+"/value_source", "widget_mismatch",
+			fmt.Sprintf("A %s field always takes its choices from %s: leave its value source out, or name that one.", f.Widget, own)))
+	}
 	if f.Columns != nil && f.Widget != api.UiWidgetDatagrid {
 		errs = append(errs, fieldErr(at+"/columns", "invalid", "Only a table (datagrid) has columns."))
 	}

@@ -305,3 +305,75 @@ describe("multi-select from a value source", () => {
     await waitFor(() => expect(values()).toEqual({ site: "zrh" }));
   });
 });
+
+describe("people", () => {
+  const people = [
+    { value: "usr_lmartin", label: "Léa Martin", meta: "lea.martin@corp.example" },
+    { value: "usr_mkeller", label: "Marc Keller", meta: "marc.keller@corp.example" },
+  ];
+  const owner = (initial = {}) =>
+    formOf({ owner: { ui: { widget: "user", label: "Technical owner" }, schema: { type: "string" } } }, initial);
+
+  it("are searched by name and picked with the keyboard", async () => {
+    const user = userEvent.setup();
+    const asked: (string | undefined)[] = [];
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        asked.push(q.search);
+        const text = (q.search ?? "").toLowerCase();
+        return HttpResponse.json({
+          field: q.field,
+          options: people.filter((p) => p.value === q.search || p.label.toLowerCase().includes(text)),
+        });
+      }),
+    );
+    renderWithQuery(<Harness form={owner()} />);
+    const box = screen.getByRole("combobox", { name: "Technical owner" });
+    await user.type(box, "ma");
+    expect(await screen.findByText("2 people found: use the arrow keys, then Enter.")).toBeInTheDocument();
+    expect(box).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("option", { name: /Léa Martin/ })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowDown}");
+    expect(box).toHaveAttribute("aria-activedescendant", "f-owner-people-1");
+    await user.keyboard("{Enter}");
+    expect(values()).toEqual({ owner: "usr_mkeller" });
+    expect(box).toHaveValue("Marc Keller");
+    expect(box).toHaveAccessibleDescription(/marc.keller@corp.example/);
+    expect(box).toHaveAttribute("aria-expanded", "false");
+    await user.type(box, "x");
+    expect(values()).toEqual({});
+    expect(asked).not.toContain("m");
+  });
+
+  it("name the person a form was given", async () => {
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        return HttpResponse.json({ field: q.field, options: people.filter((p) => p.value === q.search) });
+      }),
+    );
+    renderWithQuery(<Harness form={owner({ owner: "usr_lmartin" })} />);
+    expect(await screen.findByDisplayValue("Léa Martin")).toHaveAccessibleDescription(/lea.martin@corp.example/);
+  });
+});
+
+describe("rvav's own records", () => {
+  it("are offered by a deployment field that names no source", async () => {
+    const asked: FieldValuesQuery[] = [];
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        asked.push(q);
+        return HttpResponse.json({ field: q.field, options: [{ value: "dep_web_app", label: "web-dev-app001" }] });
+      }),
+    );
+    renderWithQuery(
+      <Harness
+        form={formOf({ deployment: { ui: { widget: "deployment", label: "Web server" }, schema: { type: "string" } } })}
+      />,
+    );
+    await waitFor(() => expect(asked.map((q) => q.field)).toEqual(["deployment"]));
+    expect(screen.getByRole("combobox", { name: "Web server" })).toBeEnabled();
+  });
+});

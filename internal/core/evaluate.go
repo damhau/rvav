@@ -196,7 +196,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 		}
 	}
 	ev.Errors = append(ev.Errors, fieldErrs...)
-	if err := s.evaluatePickers(ctx, ev, strict); err != nil {
+	if err := s.evaluatePickers(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
 
@@ -256,13 +256,13 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 // awx.credentials against what those sources offer now: the picker alone
 // doesn't stop another value. On submit a value that can't be checked is
 // an error; in the preview it is skipped.
-func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bool) error {
+func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {
 	var ui api.UiSchema
 	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
 		return err
 	}
 	for name, f := range ui.Fields {
-		src := f.ValueSource
+		src := sourceOf(f)
 		if src == nil || src.Kind != api.Builtin || src.Name == nil {
 			continue
 		}
@@ -287,6 +287,8 @@ func (s *Service) evaluatePickers(ctx context.Context, ev *Evaluation, strict bo
 			for _, f := range folders {
 				allowed = append(allowed, f.Path)
 			}
+		case "rvav.projects", "rvav.users", "rvav.deployments", "rvav.vms":
+			allowed, err = s.rvavAllowed(ctx, p, ev.Project, *src.Name, resolveParams(src.Params, ev.Inputs), values)
 		case "rvav.templates":
 			allowed, err = s.Store.OfferedKeys(ctx, "template", ev.Project.ID, ev.Env.Key)
 		case "rvav.sizes":

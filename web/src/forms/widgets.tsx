@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import type { Option, UiField, UiWidget } from "@/lib/api/types";
 import { cn, localInput, withOffset, withUnits, zoneLabel } from "@/lib/utils";
 import { DatagridWidget, KeyValueWidget, TagsWidget } from "./collections";
+import { UserWidget } from "./people";
 import { useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -451,7 +452,7 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   awx_inventory: SourcedSelectWidget,
   awx_credential: SourcedSelectWidget,
   project: SourcedSelectWidget,
-  user: SourcedSelectWidget,
+  user: UserWidget,
   deployment: SourcedSelectWidget,
 };
 

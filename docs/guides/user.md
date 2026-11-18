@@ -88,6 +88,10 @@ Some fields take several values:
   the list depends on, it may offer other choices, and the ones it no
   longer offers are cleared.
 
+To pick a person, type two letters or more of their name or email, then
+select them in the list, or move to them with the arrow keys and press
+Enter. A project, deployment or VM field lists only those you may see.
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

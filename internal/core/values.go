@@ -129,13 +129,13 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	if !ok {
 		return out, &BadRequestError{Msg: fmt.Sprintf("The form has no field %q.", q.Field)}
 	}
-	if field.ValueSource == nil {
+	src := sourceOf(field)
+	if src == nil {
 		if field.Options != nil {
 			out.Options = field.Options
 		}
 		return out, nil
 	}
-	src := field.ValueSource
 	env := ""
 	if q.Environment != nil {
 		env = *q.Environment
@@ -422,6 +422,14 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		}
 		out.Options = &opts
 		cache(60)
+
+	case "rvav.projects", "rvav.users", "rvav.deployments", "rvav.vms":
+		opts, err := s.rvavOptions(ctx, p, proj, *src.Name, params, deref(q.Search))
+		if err != nil {
+			return out, err
+		}
+		out.Options = &opts
+		cache(30)
 
 	case "dns.zones":
 		zones, err := s.dnsZones(ctx)

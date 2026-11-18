@@ -167,6 +167,13 @@ func TestFieldShapes(t *testing.T) {
 		{api.UiField{Widget: api.UiWidgetTags}, map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, nil},
 		{api.UiField{Widget: api.UiWidgetKeyValue}, map[string]any{"type": "array"}, []string{"/form_schema/properties/f widget_mismatch"}},
 		{api.UiField{Widget: api.UiWidgetText, Columns: &cols}, map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/columns invalid"}},
+		{api.UiField{Widget: api.UiWidgetDeployment}, map[string]any{"type": "string"}, nil},
+		{api.UiField{Widget: api.UiWidgetUser, ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("rvav.users")}},
+			map[string]any{"type": "string"}, nil},
+		{api.UiField{Widget: api.UiWidgetVsphereVm, ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("vsphere.templates")}},
+			map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/value_source widget_mismatch"}},
+		{api.UiField{Widget: api.UiWidgetProject, ValueSource: &api.ValueSource{Kind: api.Cel}},
+			map[string]any{"type": "string"}, []string{"/ui_schema/fields/f/value_source widget_mismatch"}},
 	} {
 		var got []string
 		for _, e := range checkFieldShape("f", c.f, c.prop, "") {
@@ -196,5 +203,19 @@ func TestLocateNested(t *testing.T) {
 	want := []string{"Row 2, Size (GB): Enter 10 or more.", "Row 1: Wrong.", "team/app: Enter text.", "Item 3: Not category/tag.", "Twice."}
 	if !slices.Equal(got, want) {
 		t.Fatalf("%q, want %q", got, want)
+	}
+}
+
+func TestSourceOf(t *testing.T) {
+	if got := sourceOf(api.UiField{Widget: api.UiWidgetDeployment}); got == nil || got.Kind != api.Builtin || deref(got.Name) != "rvav.deployments" {
+		t.Errorf("a deployment field without a source resolves %+v", got)
+	}
+	params := map[string]any{"item": "rhel9-server"}
+	own := &api.ValueSource{Kind: api.Builtin, Name: new("rvav.deployments"), Params: &params}
+	if got := sourceOf(api.UiField{Widget: api.UiWidgetDeployment, ValueSource: own}); got != own {
+		t.Errorf("a deployment field naming its source resolves %+v", got)
+	}
+	if got := sourceOf(api.UiField{Widget: api.UiWidgetText}); got != nil {
+		t.Errorf("a text field resolves %+v", got)
 	}
 }

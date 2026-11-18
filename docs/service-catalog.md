@@ -631,6 +631,10 @@ as a list.
 | `tags` | `array` of `string`, `uniqueItems: true` | `["backup/daily", "tier/gold"]` |
 | `key_value` | `object`, `additionalProperties: {type: string}` | `{"app": "billing", "owner": "ops"}` |
 | `datagrid` | `array` of `object`, with `ui.columns` | `[{"size_gb": 50, "tier": "gold"}]` |
+| `project` | `string` | A project's ID, `prj_web`: one the requester may request in |
+| `user` | `string` | A person's ID, `usr_lmartin`, found by typing their name or email |
+| `deployment` | `string` | A deployment's ID, `dep_7f3k2`: one of the project's, not deleted |
+| `vsphere_vm` | `string` | A VM's name, `web-dev-app001`: one of the project's deployments' VMs |
 
 A date or a time takes its bounds in `formatMinimum` and `formatMaximum`,
 written in the input's format; a time without a time zone is refused. A
@@ -742,6 +746,32 @@ ui_schema:
 blueprint:
   kind: vm
   folder: ${inputs.folder}
+```
+
+The `project`, `user`, `deployment` and `vsphere_vm` widgets always take
+their choices from rvav's own records: `rvav.projects`, `rvav.users`,
+`rvav.deployments` and `rvav.vms`. A field may leave its `value_source`
+out; another source is refused when the version is saved. Each offers only
+what the requester may see, and the server refuses, on preview and submit,
+a value they couldn't have picked, such as another project's deployment.
+To narrow the choices, give the source parameters:
+- `rvav.deployments`: `item`, a catalog item's slug, keeps its deployments.
+- `rvav.vms`: `deployment`, a deployment's ID, keeps its VMs. With
+  `${inputs.deployment}` and `depends_on`, the VMs follow the deployment
+  picked.
+
+```yaml
+ui_schema:
+  fields:
+    server:
+      widget: deployment
+      label: Web server
+      value_source: { kind: builtin, name: rvav.deployments, params: { item: rhel9-server } }
+    vm:
+      widget: vsphere_vm
+      label: VM
+      depends_on: [server]
+      value_source: { kind: builtin, name: rvav.vms, params: { deployment: "${inputs.server}" } }
 ```
 
 ### Behaviour
