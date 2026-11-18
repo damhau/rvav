@@ -7840,7 +7840,7 @@ components:
             - type: "null"
     VmTemplate:
       type: object
-      required: [key, label, sources, os_family, customization, description, offers]
+      required: [key, label, sources, os_family, customization, description, user_data, constraints, offers]
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, examples: [RHEL 9.4] }
@@ -7853,9 +7853,22 @@ components:
           type: string
           description: "A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone)."
         description: { type: string }
+        user_data:
+          type: string
+          description: "cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none."
+        constraints: { $ref: "#/components/schemas/TemplateConstraints" }
         offers:
           type: array
           items: { $ref: "#/components/schemas/Offer" }
+    TemplateConstraints:
+      type: object
+      required: [compute, storage, network]
+      additionalProperties: false
+      description: "Constraint tags its VMs get on top of the blueprint's (ADR-0035, ADR-0037): `[!]category/tag[:hard|:soft]`, without `${...}`."
+      properties:
+        compute: { type: array, maxItems: 20, items: { type: string, minLength: 1 }, examples: [[rvav-os/rhel9]] }
+        storage: { type: array, maxItems: 20, items: { type: string, minLength: 1 } }
+        network: { type: array, maxItems: 20, items: { type: string, minLength: 1 } }
     VmTemplateSource:
       type: object
       required: [vcenter, template, content_library]
@@ -7895,6 +7908,8 @@ components:
         os_family: { type: string, enum: [linux, windows] }
         customization: { type: string }
         description: { type: string, maxLength: 500 }
+        user_data: { type: string, maxLength: 65536 }
+        constraints: { $ref: "#/components/schemas/TemplateConstraints" }
         offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
     VmTemplateList:
       type: object

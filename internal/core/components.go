@@ -246,6 +246,10 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 				part.guest.CustomizationSpec = t.Customization
 			}
 		}
+		if part.image != nil && part.image.UserData != "" && part.guest.CustomizationSpec != "" {
+			add(field("template"), "invalid", fmt.Sprintf("%s configures its VMs with cloud-init, and this item names the customization specification %s. Ask a catalog admin to check this item.",
+				part.image.Label, part.guest.CustomizationSpec))
+		}
 	}
 	part.vm = plan
 	if part.count == 0 {
@@ -325,7 +329,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	// datastores, the blueprint doesn't bind (ADR-0024), and its network
 	// when constraints choose it, among what the constraints allow
 	// (ADR-0035). A segment made for the deployment has no tags.
-	cons := constraintsOf(ev, c, strict, add)
+	cons := append(constraintsOf(ev, c, strict, add), imageConstraints(part.image)...)
 	if part.segment != "" {
 		cons = slices.DeleteFunc(cons, func(k blueprint.Constraint) bool { return k.Kind == blueprint.Network })
 	}
@@ -829,6 +833,9 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder
+	}
+	if p.image != nil {
+		vm.ImageUserData = p.image.UserData
 	}
 	vm.ResourcePool, vm.Hosts = p.vm.ResourcePool, p.hosts
 	if p.sdrs {

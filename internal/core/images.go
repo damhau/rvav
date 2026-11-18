@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -138,4 +139,70 @@ func (s *Service) presentSources(t store.VMTemplate, inv []store.InvTemplate, ad
 		}
 	}
 	return out
+}
+
+// checkImage checks a template's own user data and constraint tags.
+func checkImage(w api.VmTemplateWrite) (string, store.TemplateConstraints, []api.FieldError) {
+	var errs []api.FieldError
+	ud := strings.TrimSpace(deref(w.UserData))
+	switch {
+	case ud == "":
+	case w.OsFamily == api.VmTemplateWriteOsFamilyWindows:
+		errs = append(errs, fieldErr("/user_data", "invalid", "cloud-init is for Linux templates."))
+	case strings.TrimSpace(deref(w.Customization)) != "":
+		errs = append(errs, fieldErr("/user_data", "invalid",
+			"A template whose VMs cloud-init configures doesn't use a customization specification: clear one of them."))
+	case !strings.HasPrefix(ud, "#cloud-config") && !strings.HasPrefix(ud, "#!"):
+		errs = append(errs, fieldErr("/user_data", "invalid", "Start the user data with #cloud-config, or with #! for a script."))
+	default:
+		if err := blueprint.CheckUserData(ud); err != nil {
+			errs = append(errs, fieldErr("/user_data", "invalid", "The user data is not a valid template: "+err.Error()))
+		}
+	}
+	var cons store.TemplateConstraints
+	if w.Constraints == nil {
+		return ud, cons, errs
+	}
+	check := func(kind string, list []string) []string {
+		var out []string
+		for i, e := range list {
+			e = strings.TrimSpace(e)
+			at := fmt.Sprintf("/constraints/%s/%d", kind, i)
+			if blueprint.HasExpr(e) {
+				errs = append(errs, fieldErr(at, "invalid", "A template's constraints are tags as they are: ${...} is for blueprints."))
+			} else if _, err := blueprint.ParseConstraint(e); err != nil {
+				errs = append(errs, fieldErr(at, "invalid", err.Error()+"."))
+			}
+			out = append(out, e)
+		}
+		return out
+	}
+	cons.Compute = check(blueprint.Compute, w.Constraints.Compute)
+	cons.Storage = check(blueprint.Storage, w.Constraints.Storage)
+	cons.Network = check(blueprint.Network, w.Constraints.Network)
+	return ud, cons, errs
+}
+
+// imageConstraints are the constraints a template adds to its VMs'.
+func imageConstraints(t *store.VMTemplate) []blueprint.Constraint {
+	if t == nil {
+		return nil
+	}
+	var out []blueprint.Constraint
+	for _, k := range []struct {
+		kind string
+		list []string
+	}{{blueprint.Compute, t.Constraints.Compute}, {blueprint.Storage, t.Constraints.Storage}, {blueprint.Network, t.Constraints.Network}} {
+		for _, e := range k.list {
+			if c, err := blueprint.ParseConstraint(e); err == nil {
+				c.Kind = k.kind
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
+func presentTemplateConstraints(c store.TemplateConstraints) api.TemplateConstraints {
+	return api.TemplateConstraints{Compute: nonNilStrings(c.Compute), Storage: nonNilStrings(c.Storage), Network: nonNilStrings(c.Network)}
 }

@@ -1,9 +1,13 @@
 package core
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -79,5 +83,50 @@ func TestVCenterNames(t *testing.T) {
 	}
 	if got := vcenterNames([]string{"", "vc02"}); got != "vCenters the vCenter integration's, vc02" {
 		t.Error(got)
+	}
+}
+
+func TestCheckImage(t *testing.T) {
+	linux := func(ud string, cons *api.TemplateConstraints) api.VmTemplateWrite {
+		return api.VmTemplateWrite{OsFamily: api.VmTemplateWriteOsFamilyLinux, UserData: &ud, Constraints: cons}
+	}
+	errsOf := func(w api.VmTemplateWrite) map[string]string {
+		_, _, errs := checkImage(w)
+		out := map[string]string{}
+		for _, e := range errs {
+			out[e.Field] = e.Message
+		}
+		return out
+	}
+	ud, cons, errs := checkImage(linux("  #cloud-config\npackages: [chrony]\nfqdn: {{ .vm.fqdn }}\n", &api.TemplateConstraints{
+		Compute: []string{" rvav-os/rhel9 "}, Storage: []string{"!rvav-tier/bronze:soft"}, Network: []string{}}))
+	if len(errs) > 0 || ud != "#cloud-config\npackages: [chrony]\nfqdn: {{ .vm.fqdn }}" ||
+		!slices.Equal(cons.Compute, []string{"rvav-os/rhel9"}) || !slices.Equal(cons.Storage, []string{"!rvav-tier/bronze:soft"}) {
+		t.Fatalf("%q %v %v", ud, cons, errs)
+	}
+	win := linux("#cloud-config\n", nil)
+	win.OsFamily = api.VmTemplateWriteOsFamilyWindows
+	spec := linux("#cloud-config\n", nil)
+	spec.Customization = present.Ptr("linux-base")
+	for _, tc := range []struct {
+		w     api.VmTemplateWrite
+		field string
+		msg   string
+	}{
+		{win, "/user_data", "cloud-init is for Linux templates."},
+		{spec, "/user_data", "doesn't use a customization specification"},
+		{linux("packages: [chrony]", nil), "/user_data", "Start the user data with #cloud-config"},
+		{linux("#cloud-config\nmotd: {{ .inputs.motd }}", nil), "/user_data", "print inputs through json"},
+		{linux("#!/bin/sh\necho {{ .vm.name ", nil), "/user_data", "not a valid template"},
+		{linux("", &api.TemplateConstraints{Compute: []string{"${inputs.zone}"}}), "/constraints/compute/0", "${...} is for blueprints"},
+		{linux("", &api.TemplateConstraints{Network: []string{"ok/tag", "env:prod"}}), "/constraints/network/1", "vRA's way"},
+	} {
+		if got := errsOf(tc.w)[tc.field]; !strings.Contains(got, tc.msg) {
+			t.Errorf("%s: %q, want %q", tc.field, got, tc.msg)
+		}
+	}
+	if got := imageConstraints(&store.VMTemplate{Constraints: cons}); len(got) != 2 || got[0].Kind != blueprint.Compute ||
+		got[0].Tag != "rvav-os/rhel9" || got[1].Kind != blueprint.Storage || !got[1].Not || !got[1].Soft {
+		t.Fatalf("image constraints %+v", got)
 	}
 }

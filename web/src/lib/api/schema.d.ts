@@ -5946,7 +5946,21 @@ export interface components {
             /** @description A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone). */
             customization: string;
             description: string;
+            /** @description cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none. */
+            user_data: string;
+            constraints: components["schemas"]["TemplateConstraints"];
             offers: components["schemas"]["Offer"][];
+        };
+        /** @description Constraint tags its VMs get on top of the blueprint's (ADR-0035, ADR-0037): `[!]category/tag[:hard|:soft]`, without `${...}`. */
+        TemplateConstraints: {
+            /**
+             * @example [
+             *       "rvav-os/rhel9"
+             *     ]
+             */
+            compute: string[];
+            storage: string[];
+            network: string[];
         };
         VmTemplateSource: {
             /**
@@ -5979,6 +5993,8 @@ export interface components {
             os_family: "linux" | "windows";
             customization?: string;
             description?: string;
+            user_data?: string;
+            constraints?: components["schemas"]["TemplateConstraints"];
             offers?: components["schemas"]["Offer"][];
         };
         VmTemplateList: {

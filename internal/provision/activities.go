@@ -676,7 +676,7 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 			}
 			extra = append(extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
 		}
-		if in.Guest.CloudInit != nil && in.Guest.OSFamily != "windows" {
+		if (in.Guest.CloudInit != nil || in.VM.ImageUserData != "") && in.Guest.OSFamily != "windows" {
 			return a.cloudInit(ctx, in, extra)
 		}
 		cu := vsphere.Customization{
@@ -799,21 +799,38 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	for _, n := range nics[1:] {
 		ips = append(ips, n.IP)
 	}
-	user, err := renderUserData(in.Guest.CloudInit.UserData, map[string]any{
+	vars := map[string]any{
 		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.IP, "ips": ips, "domain": in.Guest.Domain,
 			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID, "index": in.VM.Index},
 		"components": integers(in.Components),
 		"inputs":     inputs, "project": r.ProjectCode, "environment": r.Environment,
 		"request": map[string]any{"id": r.ID, "number": r.Number},
-	})
+	}
+	var own, image string
+	if in.Guest.CloudInit != nil {
+		if own, err = renderUserData(in.Guest.CloudInit.UserData, vars); err != nil {
+			return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
+		}
+	}
+	if in.VM.ImageUserData != "" {
+		if image, err = renderUserData(in.VM.ImageUserData, vars); err != nil {
+			return "", "", permanent("the template's cloud-init user data: %v. Ask an administrator to check the template.", err)
+		}
+	}
+	user, err := mergeUserData(image, own)
 	if err != nil {
 		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 	}
 	if err := vc.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
 		return "", "", fmt.Errorf("vCenter: %w", err)
 	}
-	return "Wrote cloud-init metadata and user data", fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo",
-		in.VM.Name, in.IP, in.VM.PrefixLength), nil
+	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo", in.VM.Name, in.IP, in.VM.PrefixLength)
+	if image != "" && own != "" {
+		detail += ", the template's user data merged with the item's"
+	} else if image != "" {
+		detail += ", the template's user data"
+	}
+	return "Wrote cloud-init metadata and user data", detail, nil
 }
 
 func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {

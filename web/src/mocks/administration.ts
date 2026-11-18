@@ -293,11 +293,13 @@ export function adminState(db: Db): AdminState {
         key: "rhel9", label: "RHEL 9.4", os_family: "linux", customization: "",
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-rhel9.4-2026.10", content_library: "", in_inventory: true }],
         description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }],
+        user_data: "#cloud-config\npackages: [chrony, qualys-agent]", constraints: { compute: [], storage: [], network: [] },
       },
       {
         key: "win2025", label: "Windows Server 2025", os_family: "windows", customization: "", description: "",
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09", content_library: "", in_inventory: true }],
         offers: [{ project_id: "prj_web", environment: null }],
+        user_data: "", constraints: { compute: [], storage: [], network: [] },
       },
     ], // prettier-ignore
     sizes: [
@@ -767,13 +769,47 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     });
     return out;
   };
-  const storedSources = (sources: S["VmTemplateSourceWrite"][]): S["VmTemplateSource"][] =>
-    sources.map((src) => ({
+  const templateErrors = (w: S["VmTemplateWrite"]) => {
+    const out = templateSourceErrors(w.sources ?? []);
+    const ud = (w.user_data ?? "").trim();
+    if (ud && w.os_family === "windows") out.push(err("/user_data", "cloud-init is for Linux templates."));
+    else if (ud && w.customization?.trim())
+      out.push(
+        err(
+          "/user_data",
+          "A template whose VMs cloud-init configures doesn't use a customization specification: clear one of them.",
+        ),
+      );
+    else if (ud && !ud.startsWith("#cloud-config") && !ud.startsWith("#!"))
+      out.push(err("/user_data", "Start the user data with #cloud-config, or with #! for a script."));
+    for (const kind of ["compute", "storage", "network"] as const)
+      (w.constraints?.[kind] ?? []).forEach((tag, i) => {
+        if (tag.includes("${"))
+          out.push(
+            err(
+              `/constraints/${kind}/${i}`,
+              "A template's constraints are tags as they are: ${...} is for blueprints.",
+            ),
+          );
+        else if (!/^!?[^/:]+\/[^/:]+(:hard|:soft)?$/.test(tag.trim()))
+          out.push(err(`/constraints/${kind}/${i}`, `"${tag}" is not category/tag, as rvav-tier/gold.`));
+      });
+    return out;
+  };
+  const storedTemplate = (w: S["VmTemplateWrite"]) => ({
+    user_data: (w.user_data ?? "").trim(),
+    constraints: {
+      compute: w.constraints?.compute ?? [],
+      storage: w.constraints?.storage ?? [],
+      network: w.constraints?.network ?? [],
+    },
+    sources: (w.sources ?? []).map((src): S["VmTemplateSource"] => ({
       vcenter: src.vcenter || primaryVCenter(),
       template: src.template.trim(),
       content_library: src.content_library ?? "",
       in_inventory: true,
-    }));
+    })),
+  });
   const project = (id: string) => db.projects.find((p) => p.id === id || p.code === id);
   const user = (id: string) => db.users.find((u) => u.id === id);
   const adminProject = (p: Db["projects"][number]): S["AdminProject"] => {
@@ -1460,10 +1496,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         }),
         http.post(`${base}/admin/${path}`, async ({ request }) => {
           await wait();
-          const w = (await request.json()) as { key: string; label: string; sources?: S["VmTemplateSourceWrite"][] };
+          const w = (await request.json()) as S["VmTemplateWrite"];
           if (!w.label?.trim()) return invalid([err("/label", "Give it a label.")]);
           if (kind === "template") {
-            const bad = templateSourceErrors(w.sources ?? []);
+            const bad = templateErrors(w);
             if (bad.length) return invalid(bad);
           }
           if (list().some((x) => x.key === w.key))
@@ -1472,7 +1508,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             offers: [],
             ...(kind === "template" ? { customization: "", description: "" } : {}),
             ...w,
-            ...(kind === "template" ? { sources: storedSources(w.sources ?? []) } : {}),
+            ...(kind === "template" ? storedTemplate(w) : {}),
           };
           list().push(row);
           audited(db, `${kind}.create`, kind, w.key);
@@ -1480,17 +1516,17 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         }),
         http.put(`${base}/admin/${path}/:key`, async ({ params, request }) => {
           await wait();
-          const w = (await request.json()) as { key: string; sources?: S["VmTemplateSourceWrite"][] };
+          const w = (await request.json()) as S["VmTemplateWrite"];
           const i = list().findIndex((x) => x.key === params.key);
           if (i < 0) return problem(404, "Not found");
           if (kind === "template") {
-            const bad = templateSourceErrors(w.sources ?? []);
+            const bad = templateErrors(w);
             if (bad.length) return invalid(bad);
           }
           list()[i] = {
             ...list()[i],
             ...w,
-            ...(kind === "template" ? { sources: storedSources(w.sources ?? []) } : {}),
+            ...(kind === "template" ? storedTemplate(w) : {}),
             key: String(params.key),
           };
           audited(db, `${kind}.update`, kind, String(params.key));

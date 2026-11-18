@@ -325,7 +325,15 @@ that vCenter's source, a VM template or a content library item. The
 clusters of the vCenters without a source aren't used, and the preview
 names those vCenters. A bound cluster in a vCenter without a source is an
 error. A blueprint's own `template`, without the binding, is cloned in the
-vCenters that have a template of that name.
+vCenters that have a template of that name. Such a template may have
+cloud-init user data and constraint tags of its own: its constraints are
+added to the component's, and its user data is merged with
+`guest.cloud_init.user_data` when the VM is customized (two
+`#cloud-config` documents: maps merged, the template's list entries
+first, the blueprint's other values; else a multipart document, the
+template's part first). Its VMs are configured by cloud-init even when
+the blueprint has no `cloud_init`, so the blueprint can't name a
+`customization_spec` then.
 
 **Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
 placement rule may put the VMs in a resource pool, on some hosts, or in a

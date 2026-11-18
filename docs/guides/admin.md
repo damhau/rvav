@@ -333,6 +333,35 @@ the request's preview names those vCenters, and says so when none is
 left. A blueprint that names a vCenter template itself, without a
 picker, is placed where vCenter has a template of that name.
 
+### Cloud-init and constraint tags of a template
+
+A template can say what its VMs need, whatever the catalog item: an
+agent to install, an NTP server, the clusters its operating system is
+supported on.
+
+- **Cloud-init user data** (Linux templates only): user data merged with
+  the item's, written as a blueprint's: a Go template whose inputs are
+  printed through `json`. Start it with `#cloud-config`, or with `#!` for
+  a script. A VM of such a template is configured by cloud-init, even when
+  its item has no user data, so the template needs no customization
+  specification: rvav refuses both on one template.
+- **Constraint tags:** tags added to the item's, separated by commas, for
+  example `rvav-os/rhel9` under **Compute** or `!rvav-tier/bronze` under
+  **Storage** ([constraint tags](#tags-on-vcenter-objects)). They can't
+  depend on the request: `${...}` is for blueprints.
+
+When both the template's user data and the item's are `#cloud-config`,
+the VM gets one document: maps merged key by key, the template's list
+entries then the item's (for example `packages` or `runcmd`), and the
+item's value for anything else. When either is a script, the VM gets
+both, the template's first. On the request's timeline, the step **Wrote
+cloud-init metadata and user data** says whether the template's user data
+was used.
+
+Keep a template's user data to what every item offering it can use: a
+value it reads that the request doesn't have, such as an input other
+items don't ask for, fails the build.
+
 ## Placement rules
 
 A placement rule says where a project's VMs go in an environment

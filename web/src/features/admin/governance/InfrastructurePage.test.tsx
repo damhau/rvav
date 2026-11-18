@@ -65,6 +65,45 @@ describe("Templates and networks", () => {
     expect(row).toHaveTextContent("tpl-rhel9.4-2026.10, tpl-rhel9.4-zrh");
   });
 
+  it("gives a template its own cloud-init user data and constraint tags", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    const region = await screen.findByRole("region", { name: "VM templates" });
+    expect(await within(region).findByRole("row", { name: /RHEL 9.4/ })).toHaveTextContent("cloud-init");
+    await user.click(await within(region).findByRole("button", { name: "Actions for RHEL 9.4" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Change RHEL 9.4" });
+    const userData = within(sheet).getByRole("textbox", { name: "Cloud-init user data" });
+    expect(userData).toHaveValue("#cloud-config\npackages: [chrony, qualys-agent]");
+    await user.clear(userData);
+    await user.paste("packages: [chrony]");
+    const compute = within(sheet).getByRole("textbox", { name: "Compute" });
+    await user.click(compute);
+    await user.paste("rvav-os/rhel9, env:prod");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    expect(await within(sheet).findByText(/Start the user data with #cloud-config/)).toBeInTheDocument();
+    expect(userData).toHaveAttribute("aria-invalid", "true");
+    expect(within(sheet).getByText(/"env:prod" is not category\/tag/)).toBeInTheDocument();
+    expect(compute).toHaveAttribute("aria-invalid", "true");
+
+    await user.clear(userData);
+    await user.paste("#cloud-config\npackages: [chrony]");
+    await user.clear(compute);
+    await user.paste("rvav-os/rhel9, !rvav-zone/pci");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(within(region).getByRole("row", { name: /RHEL 9.4/ })).toHaveTextContent("rvav-os/rhel9, !rvav-zone/pci"),
+    );
+
+    // A Windows template has no cloud-init.
+    await user.click(await within(region).findByRole("button", { name: "Actions for Windows Server 2025" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const win = await screen.findByRole("dialog", { name: "Change Windows Server 2025" });
+    expect(within(win).queryByRole("textbox", { name: "Cloud-init user data" })).toBeNull();
+  });
+
   it("changes a size in a side panel opened from its row", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

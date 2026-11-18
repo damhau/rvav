@@ -66,6 +66,17 @@ type VMTemplate struct {
 	CreatedAt     time.Time `db:"created_at"`
 	// Sources are where it is, one per vCenter (ADR-0037).
 	Sources []TemplateSource `db:"sources"`
+	// UserData is cloud-init user data of its own, and Constraints tags
+	// its VMs get, both on top of the blueprint's (ADR-0037).
+	UserData    string              `db:"user_data"`
+	Constraints TemplateConstraints `db:"constraints"`
+}
+
+// TemplateConstraints are a template's constraint tags by kind (ADR-0035).
+type TemplateConstraints struct {
+	Compute []string `json:"compute,omitempty"`
+	Storage []string `json:"storage,omitempty"`
+	Network []string `json:"network,omitempty"`
 }
 
 // TemplateSource is a catalogue template in one vCenter: "" for the
@@ -77,7 +88,7 @@ type TemplateSource struct {
 	Library string `json:"content_library"`
 }
 
-const templateCols = `key, label, os_family, customization, description, created_at,
+const templateCols = `key, label, os_family, customization, description, created_at, user_data, constraints,
 	coalesce((select json_agg(json_build_object('vcenter', s.vcenter, 'template', s.template, 'content_library', s.content_library)
 		order by s.vcenter) from vm_template_sources s where s.template_key = vm_templates.key), '[]') as sources`
 
@@ -97,13 +108,13 @@ func (s *Store) GetVMTemplate(ctx context.Context, key string) (VMTemplate, erro
 func (s *Store) SaveVMTemplate(ctx context.Context, t VMTemplate, offers []Offer, create bool) error {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		if create {
-			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description)
-				values ($1, $2, $3, $4, $5)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description); err != nil {
+			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description, user_data, constraints)
+				values ($1, $2, $3, $4, $5, $6, $7)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData, t.Constraints); err != nil {
 				return err
 			}
 		} else {
-			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, os_family = $3, customization = $4, description = $5
-				where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description)
+			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, os_family = $3, customization = $4, description = $5,
+				user_data = $6, constraints = $7 where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData, t.Constraints)
 			if err != nil {
 				return err
 			}

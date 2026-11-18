@@ -13,7 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -155,6 +155,51 @@ function SourceEditor({
   );
 }
 
+type ConsKind = keyof S["TemplateConstraints"];
+const kinds: { kind: ConsKind; label: string }[] = [
+  { kind: "compute", label: "Compute" },
+  { kind: "storage", label: "Storage" },
+  { kind: "network", label: "Network" },
+];
+const tagList = (text: string) =>
+  text
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+/** A template's own constraint tags (ADR-0035), typed comma-separated by kind. */
+function ConstraintFields({
+  value,
+  onChange,
+  errors,
+}: {
+  value: Record<ConsKind, string>;
+  onChange: (v: Record<ConsKind, string>) => void;
+  errors: Record<string, string>;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-secondary font-medium">Constraint tags</legend>
+      <p className="text-secondary text-muted">
+        Added to the item's, separated by commas: <span className="font-mono">rvav-os/rhel9</span>,{" "}
+        <span className="font-mono">!rvav-zone/pci</span>, <span className="font-mono">rvav-tier/gold:soft</span>.
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {kinds.map(({ kind, label }) => (
+          <Field key={kind} label={label} htmlFor={`tpl-cons-${kind}`} error={errorAt(errors, `/constraints/${kind}`)}>
+            <Input
+              id={`tpl-cons-${kind}`}
+              className="font-mono"
+              value={value[kind]}
+              onChange={(e) => onChange({ ...value, [kind]: e.target.value })}
+            />
+          </Field>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState<S["VmTemplateWrite"]>(
@@ -170,15 +215,27 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           os_family: "linux",
           customization: "",
           description: "",
+          user_data: "",
           offers: [{ project_id: null, environment: null }],
         },
   );
+  const [tags, setTags] = useState<Record<ConsKind, string>>({
+    compute: template?.constraints.compute.join(", ") ?? "",
+    storage: template?.constraints.storage.join(", ") ?? "",
+    network: template?.constraints.network.join(", ") ?? "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
-    mutationFn: () =>
-      template
-        ? call(api.PUT("/admin/templates/{key}", { params: { path: { key: template.key } }, body: f }))
-        : call(api.POST("/admin/templates", { body: f })),
+    mutationFn: () => {
+      const body: S["VmTemplateWrite"] = {
+        ...f,
+        user_data: f.os_family === "linux" ? f.user_data : "",
+        constraints: { compute: tagList(tags.compute), storage: tagList(tags.storage), network: tagList(tags.network) },
+      };
+      return template
+        ? call(api.PUT("/admin/templates/{key}", { params: { path: { key: template.key } }, body }))
+        : call(api.POST("/admin/templates", { body }));
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "templates"] });
       toast.success(`${f.label} saved`);
@@ -249,6 +306,24 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
+      {f.os_family === "linux" && (
+        <Field
+          label="Cloud-init user data"
+          htmlFor="tpl-ud"
+          error={errors["/user_data"]}
+          hint="Merged with the item's. A Go template, as a blueprint's: print inputs through json. Empty for none."
+        >
+          <Textarea
+            id="tpl-ud"
+            className="font-mono"
+            rows={6}
+            placeholder="#cloud-config"
+            value={f.user_data ?? ""}
+            onChange={(e) => setF({ ...f, user_data: e.target.value })}
+          />
+        </Field>
+      )}
+      <ConstraintFields value={tags} onChange={setTags} errors={errors} />
       <OfferEditor
         value={f.offers ?? []}
         onChange={(offers) => setF({ ...f, offers })}
@@ -289,12 +364,23 @@ function Templates({ canEdit }: { canEdit: boolean }) {
       id: "template",
       header: "Template",
       sortValue: (t) => t.label,
-      cell: (t) => (
-        <>
-          <span className="font-medium">{t.label}</span>{" "}
-          <span className="font-mono text-caption text-muted">{t.key}</span>
-        </>
-      ),
+      cell: (t) => {
+        const tags = [...t.constraints.compute, ...t.constraints.storage, ...t.constraints.network];
+        return (
+          <span className="flex flex-col">
+            <span>
+              <span className="font-medium">{t.label}</span>{" "}
+              <span className="font-mono text-caption text-muted">{t.key}</span>
+              {t.user_data && (
+                <Badge tone="outline" className="ml-2">
+                  cloud-init
+                </Badge>
+              )}
+            </span>
+            {tags.length > 0 && <span className="font-mono text-caption text-muted">{tags.join(", ")}</span>}
+          </span>
+        );
+      },
     },
     {
       id: "vcenter",

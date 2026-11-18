@@ -380,6 +380,9 @@ type VMUnit struct {
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	// Provisioning is its template's disks' (ADR-0036).
 	Provisioning string `json:"provisioning,omitempty"`
+	// ImageUserData is its catalogue template's cloud-init user data,
+	// merged with the blueprint's (ADR-0037).
+	ImageUserData string `json:"image_user_data,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).
 	VCenter string `json:"vcenter,omitempty"`
 	// Segment is the key of the NSX segment made for its deployment that

@@ -93,7 +93,7 @@ func (s *Service) vmTemplates(ctx context.Context) ([]api.VmTemplate, error) {
 	for i, t := range list {
 		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, Sources: s.presentSources(t, inv, added),
 			OsFamily: api.VmTemplateOsFamily(t.OSFamily), Customization: t.Customization, Description: t.Description,
-			Offers: presentOffers(offers[t.Key])}
+			UserData: t.UserData, Constraints: presentTemplateConstraints(t.Constraints), Offers: presentOffers(offers[t.Key])}
 	}
 	return out, nil
 }
@@ -118,6 +118,8 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	if w.OsFamily != api.VmTemplateWriteOsFamilyLinux && w.OsFamily != api.VmTemplateWriteOsFamilyWindows {
 		errs = append(errs, fieldErr("/os_family", "enum", "linux or windows."))
 	}
+	userData, cons, imageErrs := checkImage(w)
+	errs = append(errs, imageErrs...)
 	offers, offerErrs, err := s.checkOffers(ctx, w.Offers)
 	if err != nil {
 		return api.VmTemplate{}, err
@@ -129,7 +131,8 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 		key = w.Key
 	}
 	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), Sources: sources,
-		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description)}
+		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description),
+		UserData: userData, Constraints: cons}
 	switch err := s.Store.SaveVMTemplate(ctx, t, offers, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.VmTemplate{}, &ConflictError{Msg: "A template has the key " + key + "."}
