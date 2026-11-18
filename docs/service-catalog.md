@@ -864,14 +864,23 @@ All policies have a scope (global, project or item), a CEL condition, and a prio
 - Hard (block) or soft (warn, or require approval).
 
 ### Placement
-- Project → allowed compute, storage and network targets.
-- Strategy: first fit, most free capacity, or round robin; constraint tags
-  (for example `rvav-env/prod`, `rvav-tier/gold:soft`; see VM blueprints).
+- Project → allowed compute, storage and network targets: clusters, with a
+  resource pool and host patterns; datastores or a datastore cluster;
+  networks ([ADR-0036](adr/0036-placement-targets.md)).
+- Strategy, per placement rule, for choosing among the clusters left: most
+  free memory (the default), binpack (the fullest cluster that still has
+  room), or spread (the fewest of rvav's VMs). Constraint tags narrow the
+  targets first (for example `rvav-env/prod`, `rvav-tier/gold:soft`; see VM
+  blueprints).
 - The form can let the user choose among allowed targets, or hide them entirely.
 
 ### Naming
-- Template such as `{project.code}-{inputs.env}-{inputs.role}{seq:03}`.
-- Counter scope (global, project, template), uniqueness checked in vCenter and DNS.
+- Template such as `{project}-{environment}-{inputs.role}{seq:03}`
+  (`{role}` is short for `{inputs.role}`), offered by item, project or
+  environment.
+- Counter: one per name prefix (`web-prd-app`, `web-prd-db`…) or one for the
+  whole policy, with where it starts and how much it moves (**Start at** 100
+  and **Increment** 10 give 100, 110, 120). Uniqueness checked in vCenter and DNS.
 
 ## 6. Deployments
 

@@ -25,7 +25,9 @@ form inputs, which put the choice on the requester.
   `category/tag`, through the tagging service. rvav keeps no tags of its
   own: an administrator tags vCenter objects in the vSphere Client. Host
   tags aren't read: hosts aren't in the inventory, and placing on a host is
-  T1.3's (#136).
+  T1.3's (#136). [ADR-0036](0036-placement-targets.md) ("Host tags") has
+  since put hosts in the inventory with their tags: a compute constraint is
+  met by a host carrying the tag or by its cluster.
 - Administration › Templates and networks › vCenter objects lists each
   cluster, datastore and network with its tags (`GET /admin/inventory`).
 
