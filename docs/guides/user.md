@@ -121,8 +121,12 @@ their times and tasks.
 
 ## Your deployments
 
-**Deployments** lists what your requests made. Filter by status,
-environment or a lease ending soon. A deployment shows:
+**Deployments** lists what your requests made. Search by name, IP or
+owner, choose a status or an environment, or select **Lease ends within 7
+days** or **Only mine**. The address keeps what you choose. Select a row to
+open its deployment, or its **⋯** menu for its actions. To act on several
+at once, select their checkboxes: power them on or off, shut down their
+guests, take a snapshot, or delete them. A deployment shows:
 - its VMs, their addresses and DNS records;
 - their state in vCenter, live;
 - its history.

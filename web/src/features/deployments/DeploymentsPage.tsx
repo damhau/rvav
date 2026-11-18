@@ -1,23 +1,26 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Plus, SearchX, Server } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable, TableSearch, type Column, type Sort } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
 import type { Deployment, DeploymentStatus } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentFilters } from "@/lib/query";
 import { cn, daysUntil, leaseLabel } from "@/lib/utils";
-import { RowActions } from "./actions";
+import { RowActionItems, usePickedAction } from "./actions";
 import { BulkDialog, bulkActions } from "./bulk";
 
 export interface DeploymentsSearch {
-  status?: string;
+  status?: "ready" | "provisioning" | "failed";
   env?: string;
   q?: string;
   mine?: boolean;
@@ -25,26 +28,32 @@ export interface DeploymentsSearch {
   sort?: DeploymentFilters["sort"];
 }
 
-const statusFilters: { key: string; label: string; statuses?: DeploymentStatus[] }[] = [
-  { key: "all", label: "All" },
-  { key: "ready", label: "Ready", statuses: ["ready"] },
-  { key: "provisioning", label: "Provisioning", statuses: ["provisioning", "updating"] },
-  { key: "failed", label: "Failed", statuses: ["failed"] },
-];
+const statuses: Record<NonNullable<DeploymentsSearch["status"]>, { label: string; statuses: DeploymentStatus[] }> = {
+  ready: { label: "Ready", statuses: ["ready"] },
+  provisioning: { label: "Provisioning", statuses: ["provisioning", "updating"] },
+  failed: { label: "Failed", statuses: ["failed"] },
+};
+
+// Only what the API sorts by: sorting the loaded pages alone would hide the rest of the list.
+const sortKeys: Record<string, "name" | "lease_expires_at"> = { name: "name", lease: "lease_expires_at" };
+
+const toSort = (s: DeploymentsSearch["sort"]): Sort | null => {
+  const key = (s ?? "name").replace(/^-/, "");
+  const id = Object.keys(sortKeys).find((k) => sortKeys[k] === key);
+  return id ? { id, desc: Boolean(s?.startsWith("-")) } : null;
+};
+
+const fromSort = (s: Sort | null): DeploymentsSearch["sort"] => {
+  const key = s && sortKeys[s.id];
+  if (!key || (key === "name" && !s.desc)) return undefined;
+  return s.desc ? `-${key}` : key;
+};
 
 const weekAhead = () => new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000 + 7 * 86_400_000).toISOString();
 
-const chip = (on: boolean) =>
-  cn(
-    "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5",
-    on
-      ? "border-fg bg-fg text-bg hover:text-bg"
-      : "border-line bg-surface text-muted hover:border-line-strong hover:text-fg",
-  );
-
 function Dots({ d }: { d: Deployment }) {
   return (
-    <span className="inline-flex items-center gap-1" title={`${d.vms_powered_on} of ${d.vm_count} powered on`}>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
       {Array.from({ length: Math.min(d.vm_count, 6) }, (_, i) => (
         <span
           key={i}
@@ -64,9 +73,9 @@ function Lease({ expiresAt }: { expiresAt: string | null }) {
   return (
     <span
       className={cn(
-        "tnum",
+        "tnum whitespace-nowrap",
         days === null
-          ? "text-faint"
+          ? "text-muted"
           : days <= 1
             ? "font-medium text-bad"
             : days <= 7
@@ -79,18 +88,64 @@ function Lease({ expiresAt }: { expiresAt: string | null }) {
   );
 }
 
+const columns: Column<Deployment>[] = [
+  {
+    id: "name",
+    header: "Deployment",
+    sortValue: (d) => d.name,
+    cell: (d) => (
+      <>
+        <Link
+          to="/deployments/$deploymentId"
+          params={{ deploymentId: d.id }}
+          className="font-medium text-fg hover:text-accent"
+        >
+          {d.name}
+        </Link>
+        <div className="text-caption text-muted">
+          {d.catalog_item.name} · {d.version.number}
+        </div>
+      </>
+    ),
+  },
+  { id: "env", header: "Environment", cell: (d) => <EnvBadge env={d.environment} /> },
+  { id: "status", header: "Status", cell: (d) => <DeploymentStatusBadge status={d.status} /> },
+  { id: "vms", header: "VMs", cell: (d) => <Dots d={d} /> },
+  {
+    id: "address",
+    header: "Address",
+    cell: (d) => (
+      <>
+        <span className="font-mono text-secondary">
+          {d.primary_address?.ip || "–"}
+          {d.vm_count > 1 && <span className="text-muted"> +{d.vm_count - 1}</span>}
+        </span>
+        {d.primary_address?.fqdn && <div className="font-mono text-caption text-muted">{d.primary_address.fqdn}</div>}
+      </>
+    ),
+  },
+  { id: "owner", header: "Owner", cell: (d) => <span className="text-muted">{d.owner.name}</span> },
+  {
+    id: "lease",
+    header: "Lease",
+    sortValue: (d) => d.lease.expires_at,
+    cell: (d) => <Lease expiresAt={d.lease.expires_at} />,
+  },
+];
+
 export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const { projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
   const [text, setText] = useState(search.q ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<(typeof bulkActions)[number] | null>(null);
-  const status = statusFilters.find((f) => f.key === (search.status ?? "all")) ?? statusFilters[0]!;
+  const { pick, dialog } = usePickedAction();
+  const environments = useQuery(q.environments());
   const envs = (search.env ?? "").split(",").filter(Boolean);
   const list = useInfiniteQuery(
     q.deployments({
       projectId,
-      status: status.statuses,
+      status: search.status ? statuses[search.status].statuses : undefined,
       environment: envs.length ? envs : undefined,
       owner: search.mine ? "me" : undefined,
       q: search.q,
@@ -98,7 +153,9 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       sort: search.sort ?? "name",
     }),
   );
+  const filtered = Boolean(search.status || envs.length || search.mine || search.q || search.expiring);
 
+  // Keep the URL in step with the search box, without a history entry per keystroke.
   useEffect(() => {
     const t = setTimeout(() => {
       const next = text.trim() || undefined;
@@ -107,24 +164,34 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
     return () => clearTimeout(t);
   }, [text, search.q, navigate]);
 
-  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
-  const vms = items.reduce((n, d) => n + d.vm_count, 0);
-  const on = items.reduce((n, d) => n + d.vms_powered_on, 0);
-  const expiring = items.filter((d) => d.lease.expires_at && daysUntil(d.lease.expires_at) <= 7).length;
-  const visibleSelected = items.filter((d) => selected.has(d.id));
-  const toggleEnv = (e: string) => {
-    const next = envs.includes(e) ? envs.filter((x) => x !== e) : [...envs, e];
-    return next.length ? next.join(",") : undefined;
+  const set = (patch: Partial<DeploymentsSearch>) =>
+    void navigate({ search: (s: DeploymentsSearch) => ({ ...s, ...patch }), replace: true });
+  const clear = () => {
+    setText("");
+    void navigate({ search: (s: DeploymentsSearch) => ({ sort: s.sort }), replace: true });
   };
+
+  const items = list.data?.pages.flatMap((p) => p.items);
+  const shown = items ?? [];
+  const vms = shown.reduce((n, d) => n + d.vm_count, 0);
+  const on = shown.reduce((n, d) => n + d.vms_powered_on, 0);
+  const expiring = shown.filter((d) => d.lease.expires_at && daysUntil(d.lease.expires_at) <= 7).length;
+  const visibleSelected = shown.filter((d) => selected.has(d.id));
+  const envOptions = [
+    { value: "any", label: "All environments" },
+    ...(environments.data?.items.map((e) => ({ value: e.key, label: e.name, meta: e.key })) ??
+      ["dev", "tst", "prd"].map((k) => ({ value: k, label: k }))),
+    ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
+  ];
 
   return (
     <Page>
       <PageHeader
         title="Deployments"
+        description={`What requests built in ${project.name}. Power state and addresses come from vCenter, live.`}
         meta={
-          list.data
-            ? `${items.length} deployments · ${vms} VMs, ${on} powered on${expiring ? ` · ${expiring} lease${expiring === 1 ? "" : "s"} end within 7 days` : ""}`
-            : `Everything created in ${project.name}`
+          items &&
+          `${shown.length} deployment${shown.length === 1 ? "" : "s"} · ${vms} VMs, ${on} powered on${expiring ? ` · ${expiring} lease${expiring === 1 ? "" : "s"} end within 7 days` : ""}`
         }
         actions={
           <Button variant="primary" asChild>
@@ -134,65 +201,6 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
           </Button>
         }
       />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="deployments-search" className="sr-only">
-          Filter deployments by name, IP or owner
-        </label>
-        <Input
-          id="deployments-search"
-          type="search"
-          placeholder="Name, IP or owner"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="w-64 max-w-full"
-        />
-        <div role="group" aria-label="Status" className="flex flex-wrap gap-1.5">
-          {statusFilters.map((f) => (
-            <Link
-              key={f.key}
-              to="/deployments"
-              search={(s: DeploymentsSearch) => ({ ...s, status: f.key === "all" ? undefined : f.key })}
-              aria-current={f.key === status.key ? "true" : undefined}
-              className={chip(f.key === status.key)}
-            >
-              {f.label}
-            </Link>
-          ))}
-        </div>
-        <div role="group" aria-label="Environment" className="flex flex-wrap gap-1.5">
-          {["dev", "tst", "prd"].map((e) => (
-            <Link
-              key={e}
-              to="/deployments"
-              search={(s: DeploymentsSearch) => ({ ...s, env: toggleEnv(e) })}
-              aria-current={envs.includes(e) ? "true" : undefined}
-              className={cn(chip(envs.includes(e)), "font-mono text-caption uppercase")}
-            >
-              {e}
-            </Link>
-          ))}
-        </div>
-        <Link
-          to="/deployments"
-          search={(s: DeploymentsSearch) => ({ ...s, expiring: s.expiring ? undefined : true })}
-          aria-current={search.expiring ? "true" : undefined}
-          className={chip(Boolean(search.expiring))}
-        >
-          Lease ends ≤ 7 days
-        </Link>
-        <label className="ml-auto flex items-center gap-2 text-secondary text-muted">
-          <input
-            type="checkbox"
-            checked={Boolean(search.mine)}
-            onChange={(e) =>
-              void navigate({ search: (s: DeploymentsSearch) => ({ ...s, mine: e.target.checked || undefined }) })
-            }
-            className="size-3.5 accent-[var(--accent)]"
-          />
-          Only mine
-        </label>
-      </div>
 
       {visibleSelected.length > 0 && (
         <div
@@ -220,126 +228,106 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        {list.isPending ? (
-          <SkeletonRows rows={7} cols={6} />
-        ) : list.isError ? (
-          <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-        ) : items.length === 0 ? (
-          <EmptyState
-            title="No deployments match these filters"
-            body={`Clear the search or choose “All” to see every deployment in ${project.name}.`}
-          />
-        ) : (
-          <table className="w-full min-w-[980px] border-collapse">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className="w-9 border-b border-line py-2.5 pl-3.5">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={visibleSelected.length === items.length}
-                    onChange={(e) => setSelected(e.target.checked ? new Set(items.map((d) => d.id)) : new Set())}
-                    className="size-3.5 accent-[var(--accent)]"
-                  />
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Deployment
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Env
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  VMs
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Address
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Owner
-                </th>
-                <th scope="col" className="border-b border-line px-3 py-2.5 font-medium">
-                  Lease
-                </th>
-                <th scope="col" className="w-11 border-b border-line py-2.5 pr-3.5">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((d) => {
-                const isSel = selected.has(d.id);
-                return (
-                  <tr key={d.id} className={cn(isSel ? "bg-accent-soft" : "hover:bg-sunken")}>
-                    <td className="border-b border-line py-2.5 pl-3.5">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${d.name}`}
-                        checked={isSel}
-                        onChange={() =>
-                          setSelected((s) => {
-                            const n = new Set(s);
-                            if (n.has(d.id)) n.delete(d.id);
-                            else n.add(d.id);
-                            return n;
-                          })
-                        }
-                        className="size-3.5 accent-[var(--accent)]"
-                      />
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <Link
-                        to="/deployments/$deploymentId"
-                        params={{ deploymentId: d.id }}
-                        className="font-medium text-fg hover:text-accent"
-                      >
-                        {d.name}
-                      </Link>
-                      <div className="text-caption text-faint">
-                        {d.catalog_item.name} · {d.version.number}
-                      </div>
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <EnvBadge env={d.environment} />
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <DeploymentStatusBadge status={d.status} />
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <Dots d={d} />
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <span className="font-mono text-secondary">
-                        {d.primary_address?.ip || "–"}
-                        {d.vm_count > 1 && <span className="text-faint"> +{d.vm_count - 1}</span>}
-                      </span>
-                      {d.primary_address?.fqdn && (
-                        <div className="font-mono text-caption text-faint">{d.primary_address.fqdn}</div>
-                      )}
-                    </td>
-                    <td className="border-b border-line px-3 py-2.5 text-muted">{d.owner.name}</td>
-                    <td className="border-b border-line px-3 py-2.5">
-                      <Lease expiresAt={d.lease.expires_at} />
-                    </td>
-                    <td className="border-b border-line py-2.5 pr-3.5 text-right">
-                      <RowActions deployment={d} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {list.hasNextPage && (
-        <Button className="self-start" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-          {list.isFetchingNextPage ? "Loading…" : "Load more"}
-        </Button>
-      )}
-      <p className="text-secondary text-faint">Power state and addresses come from vCenter and update live.</p>
+      <Panel
+        flush
+        footer={
+          list.hasNextPage && (
+            <Button size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
+              {list.isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          )
+        }
+      >
+        <DataTable
+          label="Deployments"
+          columns={columns}
+          rows={items}
+          rowKey={(d) => d.id}
+          rowLinks
+          rowMenu={(d) => <RowActionItems deployment={d} onPick={pick} />}
+          rowMenuLabel={(d) => `Actions for ${d.name}`}
+          selection={{
+            selected,
+            onChange: setSelected,
+            label: (d) => `Select ${d.name}`,
+            allLabel: list.hasNextPage ? "Select all shown" : "Select all",
+          }}
+          sort={toSort(search.sort)}
+          onSortChange={(s) => set({ sort: fromSort(s) })}
+          minWidth={980}
+          loading={list.isPending}
+          error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
+          toolbar={
+            <>
+              <TableSearch label="Search deployments" placeholder="Name, IP or owner" value={text} onChange={setText} />
+              <Select
+                aria-label="Status"
+                value={search.status ?? "any"}
+                onChange={(v) => set({ status: v === "any" ? undefined : (v as DeploymentsSearch["status"]) })}
+                options={[
+                  { value: "any", label: "All statuses" },
+                  ...Object.entries(statuses).map(([k, s]) => ({ value: k, label: s.label })),
+                ]}
+                className="w-40"
+              />
+              <Select
+                aria-label="Environment"
+                value={search.env ?? "any"}
+                onChange={(v) => set({ env: v === "any" ? undefined : v })}
+                options={envOptions}
+                className="w-48"
+              />
+              <span className="flex items-center gap-2 text-body">
+                <Checkbox
+                  id="deployments-expiring"
+                  checked={Boolean(search.expiring)}
+                  onChange={(v) => set({ expiring: v || undefined })}
+                />
+                <label htmlFor="deployments-expiring">Lease ends within 7 days</label>
+              </span>
+              <span className="flex items-center gap-2 text-body">
+                <Checkbox
+                  id="deployments-mine"
+                  checked={Boolean(search.mine)}
+                  onChange={(v) => set({ mine: v || undefined })}
+                />
+                <label htmlFor="deployments-mine">Only mine</label>
+              </span>
+              {filtered && (
+                <Button variant="quiet" onClick={clear}>
+                  Clear filters
+                </Button>
+              )}
+            </>
+          }
+          empty={
+            filtered ? (
+              <EmptyState
+                icon={SearchX}
+                title="No deployments match"
+                body="Try other words, or another status or environment."
+                action={
+                  <Button size="sm" onClick={clear}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Server}
+                title={`Nothing deployed in ${project.name} yet`}
+                body="What your requests build shows here, with its VMs, addresses and lease."
+                action={
+                  <Button size="sm" asChild>
+                    <Link to="/catalog">Request something from the catalog</Link>
+                  </Button>
+                }
+              />
+            )
+          }
+        />
+      </Panel>
+      {dialog}
       {bulk && (
         <BulkDialog
           bulk={bulk}

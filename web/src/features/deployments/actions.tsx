@@ -1,6 +1,6 @@
 // Day-2 actions (ADR-0013): the menu of what may run on a deployment or a
 // VM, and the dialog that confirms, asks for inputs and starts the request.
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Ellipsis, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -37,21 +37,24 @@ export function actionFailed(e: unknown) {
   });
 }
 
-/** Start a day-2 action; the toast links to its request. */
-export function useRunAction(deploymentId: string) {
+/**
+ * Start a day-2 action; the toast links to its request. A list, which has no
+ * one deployment, passes each action's with it.
+ */
+export function useRunAction(deploymentId?: string) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   return useMutation({
-    mutationFn: ({ draft, key }: { draft: Day2Draft; key: string }) =>
+    mutationFn: ({ draft, key, deployment = deploymentId }: { draft: Day2Draft; key: string; deployment?: string }) =>
       call(
         api.POST("/deployments/{deploymentId}/actions", {
-          params: { path: { deploymentId }, header: { "Idempotency-Key": key } },
+          params: { path: { deploymentId: deployment ?? "" }, header: { "Idempotency-Key": key } },
           body: draft,
         }),
       ),
-    onSuccess: (r) => {
-      void qc.invalidateQueries({ queryKey: keys.deployments.actions(deploymentId) });
-      void qc.invalidateQueries({ queryKey: keys.deployments.history(deploymentId) });
+    onSuccess: (r, { deployment = deploymentId ?? "" }) => {
+      void qc.invalidateQueries({ queryKey: keys.deployments.actions(deployment) });
+      void qc.invalidateQueries({ queryKey: keys.deployments.history(deployment) });
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       toast.success(r.title, {
         description: r.status === "pending_approval" ? `${r.number} waits for approval.` : `${r.number} has started.`,
@@ -284,57 +287,52 @@ function ActionItems({
   );
 }
 
-/** A deployment's actions menu in a list: its actions load when it opens. */
-export function RowActions({ deployment }: { deployment: Deployment }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<Day2Action | null>(null);
-  const qc = useQueryClient();
-  const run = useRunAction(deployment.id);
-  const [actions, setActions] = useState<Day2Action[] | null>(null);
-  const load = async () => {
-    const list = await qc.fetchQuery({ ...q.deploymentActions(deployment.id), staleTime: 0 });
-    // One VM: its actions too; several: only the deployment's (each VM's are on its page).
-    const vms = new Set(list.items.filter((a) => a.resource_id).map((a) => a.resource_id));
-    setActions(list.items.filter((a) => !a.resource_id || vms.size === 1));
-  };
-  const vm = actions?.find((a) => a.resource_id)?.resource_id;
+/**
+ * A deployment's actions, for a list row's ⋯ menu: they load as it opens.
+ * One VM: its actions too; several: only the deployment's (each VM's are on
+ * its page).
+ */
+export function RowActionItems({
+  deployment,
+  onPick,
+}: {
+  deployment: Deployment;
+  onPick: (deployment: Deployment, a: Day2Action) => void;
+}) {
+  const list = useQuery({ ...q.deploymentActions(deployment.id), staleTime: 0 });
+  if (list.isPending) return <MenuLabel>Loading…</MenuLabel>;
+  if (list.isError) return <MenuLabel>The actions could not be loaded</MenuLabel>;
+  const vms = new Set(list.data.items.filter((a) => a.resource_id).map((a) => a.resource_id));
+  const actions = list.data.items.filter((a) => !a.resource_id || vms.size === 1);
+  const vm = actions.find((a) => a.resource_id)?.resource_id;
   return (
-    <>
-      <Menu
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (o) void load();
-        }}
-      >
-        <MenuTrigger asChild>
-          <Button variant="quiet" size="icon" aria-label={`Actions for ${deployment.name}`}>
-            <Ellipsis />
-          </Button>
-        </MenuTrigger>
-        <MenuContent className="min-w-60">
-          {actions === null ? (
-            <MenuLabel>Loading…</MenuLabel>
-          ) : (
-            <ActionItems
-              actions={actions}
-              consoleLink={vm ? { deploymentId: deployment.id, resourceId: vm } : undefined}
-              onPick={(a) => {
-                if (runsDirectly(a)) {
-                  run.mutate(
-                    {
-                      draft: { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} },
-                      key: newIdempotencyKey(),
-                    },
-                    { onError: actionFailed },
-                  );
-                } else setPicked(a);
-              }}
-            />
-          )}
-        </MenuContent>
-      </Menu>
-      {picked && <ActionDialog deployment={deployment} action={picked} onClose={() => setPicked(null)} />}
-    </>
+    <div className="min-w-56">
+      <ActionItems
+        actions={actions}
+        consoleLink={vm ? { deploymentId: deployment.id, resourceId: vm } : undefined}
+        onPick={(a) => onPick(deployment, a)}
+      />
+    </div>
   );
+}
+
+/** What a list's row menus picked: it runs at once when it asks nothing, else through its dialog. */
+export function usePickedAction() {
+  const [picked, setPicked] = useState<{ deployment: Deployment; action: Day2Action } | null>(null);
+  const run = useRunAction();
+  const pick = (deployment: Deployment, a: Day2Action) => {
+    if (!runsDirectly(a)) return setPicked({ deployment, action: a });
+    run.mutate(
+      {
+        deployment: deployment.id,
+        draft: { action: a.key, ...(a.resource_id ? { resource_id: a.resource_id } : {}), inputs: {} },
+        key: newIdempotencyKey(),
+      },
+      { onError: actionFailed },
+    );
+  };
+  const dialog = picked && (
+    <ActionDialog deployment={picked.deployment} action={picked.action} onClose={() => setPicked(null)} />
+  );
+  return { pick, dialog };
 }

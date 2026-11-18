@@ -84,7 +84,8 @@ stdout in a drawer. If something fails, the step shows the error, a link to the
 AWX job, and Retry or Rollback buttons (permission-dependent).
 
 ### Deployments
-- A table or card view with saved filters and bulk actions.
+- A table with its filters in the toolbar, kept in the address; each row's
+  ⋯ menu holds its actions, and selected rows get bulk actions.
 - Detail page with tabs: Overview (resources, live state), Actions, History
   (timeline), Inputs, Lease, Audit.
 - VM row: power indicator, IP and FQDN (click to copy), console button, actions menu.
