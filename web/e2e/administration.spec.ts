@@ -91,7 +91,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await expect(list.getByRole("link", { name: "Payments" })).toBeVisible();
 });
 
-test("environments and OIDC group mappings", async ({ page }) => {
+test("environments and identity provider groups", async ({ page }) => {
   await open(page, "Projects", "Projects");
   await page.getByRole("tab", { name: "Environments" }).click();
   const envs = page.getByRole("region", { name: "Environments" });
@@ -112,8 +112,8 @@ test("environments and OIDC group mappings", async ({ page }) => {
     .click();
   await expect(envs.getByRole("row", { name: /Quality/ })).toBeHidden();
 
-  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
-  const groups = page.getByRole("region", { name: "OIDC group mappings" });
+  await page.getByRole("tab", { name: "Identity provider groups" }).click();
+  const groups = page.getByRole("region", { name: "Identity provider groups" });
   await groups.getByRole("button", { name: "Map a group" }).click();
   const map = page.getByRole("dialog", { name: "Map a group" });
   await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-auditors");
@@ -445,8 +445,8 @@ test("an auditor reads the administration pages without changing them", async ({
   await expect(envs.getByRole("row", { name: /Production/ })).toBeVisible();
   await expect(envs.getByRole("button", { name: "Actions for Production" })).toBeHidden();
   await expect(envs.getByRole("button", { name: "New environment" })).toBeHidden();
-  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
-  const mappings = page.getByRole("region", { name: "OIDC group mappings" });
+  await page.getByRole("tab", { name: "Identity provider groups" }).click();
+  const mappings = page.getByRole("region", { name: "Identity provider groups" });
   await expect(mappings.getByRole("row", { name: /rvav-admins/ })).toBeVisible();
   await expect(mappings.getByRole("button", { name: "Map a group" })).toBeHidden();
   await page.getByRole("tab", { name: "Projects", exact: true }).click();

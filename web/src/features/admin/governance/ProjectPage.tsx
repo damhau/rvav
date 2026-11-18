@@ -799,6 +799,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
       </Panel>
       <Panel title={`What ${project.name} gets in ${env}`}>
         {preview.isPending && <Skeleton className="h-24" />}
+        {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
         {preview.data && (
           <div className="flex flex-col gap-2 text-secondary">
             {preview.data.problems.length > 0 && (
@@ -905,20 +906,23 @@ function firstFree(limits: S["QuotaLimit"][], environments: string[]) {
   return { resource: resources[0]!.value, environment: "" };
 }
 
+/** A limit's resource and environment: a project has one limit of each. */
+const limitKey = (l: S["QuotaLimit"]) => `${l.resource}/${l.environment ?? ""}`;
+
 function LimitSheet({
   project,
   limits,
-  index,
+  editing,
   onClose,
 }: {
   project: S["AdminProject"];
   limits: S["QuotaLimit"][];
-  /** The limit changed; none for a new one. */
-  index?: number;
+  /** The limit changed, by its limitKey; none for a new one. */
+  editing?: string;
   onClose: () => void;
 }) {
   const save = useSaveQuotas(project);
-  const existing = index === undefined ? undefined : limits[index];
+  const existing = editing === undefined ? undefined : limits.find((l) => limitKey(l) === editing);
   const [f, setF] = useState(() => ({
     ...(existing
       ? { resource: existing.resource, environment: existing.environment ?? "" }
@@ -926,7 +930,9 @@ function LimitSheet({
     limit: existing?.limit == null ? "" : String(existing.limit),
     enforcement: existing?.enforcement ?? "hard",
   }));
-  const twin = limits.some((l, i) => i !== index && l.resource === f.resource && l.environment === f.environment);
+  const twin = limits.some(
+    (l) => limitKey(l) !== editing && l.resource === f.resource && (l.environment ?? "") === f.environment,
+  );
   const value = Number(f.limit);
   const valid = f.limit.trim() === "" || (Number.isInteger(value) && value >= 0);
   return (
@@ -945,7 +951,7 @@ function LimitSheet({
           limit: f.limit.trim() === "" ? null : value,
           enforcement: f.enforcement,
         };
-        const items = existing ? limits.map((l, i) => (i === index ? row : l)) : [...limits, row];
+        const items = existing ? limits.map((l) => (limitKey(l) === editing ? row : l)) : [...limits, row];
         save.mutate(items, {
           onSuccess: () => {
             toast.success("Limit saved");
@@ -1014,16 +1020,15 @@ function LimitUse({ project, limit }: { project: S["AdminProject"]; limit: S["Qu
   return <span className={cn("tabular-nums", quotaTone(shown))}>{takenText(shown)}</span>;
 }
 
-type Row = S["QuotaLimit"] & { index: number };
-
 function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const quotas = useQuery(adm.quotas(project.id));
   const save = useSaveQuotas(project);
-  const [editing, setEditing] = useState<number | "new" | null>(null);
-  const [removing, setRemoving] = useState<Row | null>(null);
+  // Limits go by their resource and environment, not their place: a refetch may reorder them.
+  const [editing, setEditing] = useState<{ key?: string } | null>(null);
+  const [removing, setRemoving] = useState<S["QuotaLimit"] | null>(null);
   const limits = quotas.data?.items ?? [];
   const where = (l: S["QuotaLimit"]) => (l.environment ? `in ${l.environment}` : "in the whole project");
-  const columns: Column<Row>[] = [
+  const columns: Column<S["QuotaLimit"]>[] = [
     {
       id: "resource",
       header: "Resource",
@@ -1056,7 +1061,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
     },
   ];
   const add = isAdmin && (
-    <Button size="sm" variant="primary" disabled={!quotas.data} onClick={() => setEditing("new")}>
+    <Button size="sm" variant="primary" disabled={!quotas.data} onClick={() => setEditing({})}>
       Add a limit
     </Button>
   );
@@ -1070,8 +1075,8 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
       <DataTable
         label="Quota limits"
         columns={columns}
-        rows={quotas.data && limits.map((l, index) => ({ ...l, index }))}
-        rowKey={(l) => `${l.resource}/${l.environment}/${l.index}`}
+        rows={quotas.data && limits}
+        rowKey={limitKey}
         minWidth={640}
         loading={quotas.isPending}
         error={quotas.isError && <ErrorState error={quotas.error} onRetry={() => void quotas.refetch()} />}
@@ -1088,7 +1093,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
           isAdmin
             ? (l) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(l.index)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing({ key: limitKey(l) })}>Change</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger onSelect={() => setRemoving(l)}>
                     Remove
@@ -1099,12 +1104,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
         }
       />
       {editing !== null && (
-        <LimitSheet
-          project={project}
-          limits={limits}
-          index={editing === "new" ? undefined : editing}
-          onClose={() => setEditing(null)}
-        />
+        <LimitSheet project={project} limits={limits} editing={editing.key} onClose={() => setEditing(null)} />
       )}
       {removing && (
         <ConfirmDialog
@@ -1121,7 +1121,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
           pending={save.isPending}
           onConfirm={() =>
             save.mutate(
-              limits.filter((_, i) => i !== removing.index),
+              limits.filter((l) => limitKey(l) !== limitKey(removing)),
               {
                 onSuccess: () => {
                   toast.success("Limit removed");

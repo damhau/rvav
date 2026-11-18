@@ -41,7 +41,7 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   admin_group: {
     title: "Map a group to admin",
     what: "Its members administer rvav once they sign in with the provider, so the local account is kept for when the provider is down.",
-    target: { to: "/admin/projects", tab: "groups", label: "OIDC group mappings" },
+    target: { to: "/admin/projects", tab: "groups", label: "Identity provider groups" },
   },
   vcenter: {
     title: "Connect vCenter",

@@ -10,12 +10,10 @@ import { Button } from "@/components/ui/button";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
+import { longDay } from "@/lib/utils";
 import { failed } from "./governance/common";
 
 type S = components["schemas"];
-
-const day = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
 /** The bundle with a certificate added at its end. */
 export function withCertificate(bundle: string, pem: string): string {
@@ -97,7 +95,7 @@ export function ServerCertificate({
         <dd>{cert.issuer}</dd>
         <dt className="text-muted">Valid</dt>
         <dd>
-          {day(cert.not_before)} to {day(cert.not_after)}
+          {longDay(cert.not_before)} to {longDay(cert.not_after)}
         </dd>
         {cert.names.length > 0 && (
           <>

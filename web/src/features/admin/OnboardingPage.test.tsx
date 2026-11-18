@@ -34,7 +34,9 @@ describe("Onboarding", () => {
     expect(screen.getByText("12 VMs · 1 selected, 1 not shown")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.getByRole("button", { name: "Adopt VMs…" })).toBeDisabled();
+    // Nothing selected, nothing to adopt: no button waits disabled for a reason it doesn't say.
+    expect(screen.queryByRole("region", { name: "Selected VMs" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Adopt/ })).toBeNull();
   });
 
   it("adopts the selected VMs from a side panel", { timeout: 15_000 }, async () => {
@@ -56,7 +58,7 @@ describe("Onboarding", () => {
 
     expect(await screen.findByRole("region", { name: "Adopted 2 VMs into 2 deployments" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Adopt 2 VMs" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Adopt VMs…" })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "Selected VMs" })).toBeNull();
   });
 
   it("offers to clear filters that match nothing", { timeout: 15_000 }, async () => {

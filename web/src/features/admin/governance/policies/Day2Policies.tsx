@@ -238,7 +238,7 @@ export function Day2Policies({ canEdit }: { canEdit: boolean }) {
       title="Day-2 policies"
       description="The first policy that matches an action decides; when none does, the action is denied."
       flush
-      actions={canEdit && items?.length !== 0 && add}
+      actions={canEdit && Boolean(items?.length) && add}
     >
       <DataTable
         label="Day-2 policies"

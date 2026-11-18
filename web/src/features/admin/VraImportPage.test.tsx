@@ -55,6 +55,8 @@ describe("vRA import", () => {
       .find((li) => li.getAttribute("aria-current") === "step");
     expect(now).toHaveTextContent(/Map the projects: now/);
     expect(within(steps).getAllByRole("listitem")[0]).toHaveTextContent(/Read vRA: done/);
+    // The plan opens where that step is done.
+    expect(await screen.findByRole("tab", { name: "Projects", selected: true })).toBeInTheDocument();
 
     await user.click(await screen.findByRole("tab", { name: /Cutover/ }));
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: "cutover" }));
@@ -62,7 +64,7 @@ describe("vRA import", () => {
 
   it("opens a template's notes in a side panel", async () => {
     const user = userEvent.setup();
-    renderApp("/admin/vra-import");
+    renderApp("/admin/vra-import?tab=items");
     await user.click(await screen.findByRole("button", { name: "Notes on RHEL 9 Server: 2 notes" }));
     const sheet = await screen.findByRole("dialog", { name: "Notes on RHEL 9 Server" });
     expect(sheet).toHaveTextContent(/Placed by its constraint tags/);

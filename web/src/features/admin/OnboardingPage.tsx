@@ -322,17 +322,27 @@ export function OnboardingPage() {
       <PageHeader
         title="Onboarding"
         description="VMs in vCenter that rvav doesn't manage. Select them, then adopt them into deployments with an owner, a project and a lease."
-        actions={
-          <Button
-            variant="primary"
-            disabled={selected.size === 0 || selected.size > MAX_ADOPT}
-            onClick={() => setAdopting(true)}
-          >
-            {selected.size === 0 ? "Adopt VMs…" : `Adopt ${vmsText(selected.size)}…`}
-          </Button>
-        }
       />
       {result && <Adopted result={result} onClose={() => setResult(null)} />}
+      {selected.size > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-2"
+          role="region"
+          aria-label="Selected VMs"
+        >
+          <span className="font-medium">{vmsText(selected.size)} selected</span>
+          {selected.size > MAX_ADOPT && (
+            <span className="text-secondary text-muted">At most {MAX_ADOPT} at once: select fewer to adopt them.</span>
+          )}
+          <span className="flex-1" />
+          <Button size="sm" variant="primary" disabled={selected.size > MAX_ADOPT} onClick={() => setAdopting(true)}>
+            Adopt {vmsText(selected.size)}…
+          </Button>
+          <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
+            Clear selection
+          </Button>
+        </div>
+      )}
       <Panel
         flush
         footer={
@@ -391,21 +401,11 @@ export function OnboardingPage() {
                   ]}
                 />
               </Field>
-              <span
-                className="ml-auto flex items-center gap-2 self-center text-secondary text-muted"
-                aria-live="polite"
-              >
-                <span>
-                  {list.data ? vmsText(total) : ""}
-                  {selected.size > 0 ? ` · ${selected.size} selected` : ""}
-                  {hidden > 0 ? `, ${hidden} not shown` : ""}
-                  {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
-                </span>
-                {selected.size > 0 && (
-                  <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
-                    Clear selection
-                  </Button>
-                )}
+              <span className="ml-auto self-center text-secondary text-muted" aria-live="polite">
+                {list.data ? vmsText(total) : ""}
+                {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+                {hidden > 0 ? `, ${hidden} not shown` : ""}
+                {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
               </span>
             </div>
           }

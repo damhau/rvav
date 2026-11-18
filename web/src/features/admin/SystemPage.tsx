@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { cn, fullDate, relative } from "@/lib/utils";
 import { roles } from "./Applying";
 import { integrationPage, integrationTitle } from "./IntegrationSettings";
 
@@ -35,7 +35,13 @@ function Applies({ value }: { value: S["SettingsRevision"]["applies"] }) {
   const Icon = value === "applying" ? LoaderCircle : value === "applied" ? CircleCheck : Clock;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Icon className={value === "applying" ? "size-3.5 animate-spin text-warn" : "size-3.5 text-ok"} aria-hidden />
+      <Icon
+        className={cn(
+          "size-3.5",
+          value === "applying" ? "animate-spin text-warn" : value === "applied" ? "text-ok" : "text-muted",
+        )}
+        aria-hidden
+      />
       {applies[value]}
     </span>
   );

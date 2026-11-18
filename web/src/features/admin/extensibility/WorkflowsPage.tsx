@@ -374,7 +374,7 @@ export function WorkflowsPage() {
       <PageHeader
         title="Custom workflows"
         description="Temporal workflows your teams write, run by their own workers; rvav starts them, shows their steps and asks for their approvals."
-        actions={register}
+        actions={workflows.data?.items.length ? register : undefined}
       />
       <Panel title="Registered workflows" flush>
         <DataTable

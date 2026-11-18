@@ -52,8 +52,8 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await expect(step(page, "Set the identity provider")).toContainText("Done: https://login.corp.example/realms/rvav");
 
   // A group mapped to admin, an environment and a project, on the Projects page.
-  await step(page, "Map a group to admin").getByRole("link", { name: "OIDC group mappings" }).click();
-  const groups = page.getByRole("region", { name: "OIDC group mappings" });
+  await step(page, "Map a group to admin").getByRole("link", { name: "Identity provider groups" }).click();
+  const groups = page.getByRole("region", { name: "Identity provider groups" });
   await groups.getByRole("button", { name: "Map a group" }).click();
   const map = page.getByRole("dialog", { name: "Map a group" });
   await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-admins");

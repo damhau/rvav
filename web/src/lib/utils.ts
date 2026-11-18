@@ -41,6 +41,11 @@ export function fullDate(iso: string) {
   });
 }
 
+/** A day without its time, as "12 March 2027". */
+export function longDay(iso: string) {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
 export function clock(iso?: string | null) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

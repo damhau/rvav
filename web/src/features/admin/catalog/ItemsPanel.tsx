@@ -272,6 +272,8 @@ export function ItemsPanel() {
   const categoryName = (key: string) => categories.data?.items.find((c) => c.key === key)?.name ?? key;
   const rows = items.data?.items.filter((it) => kind === "any" || it.type === kind);
   const filtered = Boolean(filters.q || filters.category || filters.state || kind !== "any");
+  // An empty catalog offers New item in its empty state only: one primary action at a time.
+  const listed = filtered || Boolean(rows?.length);
   const requestable = (it: AdminCatalogItem) => requestableIn(it, projectId);
 
   const columns: Column<AdminCatalogItem>[] = [
@@ -336,7 +338,7 @@ export function ItemsPanel() {
           <Button size="sm" onClick={() => setSheet("import")}>
             Import YAML
           </Button>
-          {add}
+          {listed && add}
         </>
       }
     >
@@ -345,6 +347,7 @@ export function ItemsPanel() {
         columns={columns}
         rows={rows}
         rowKey={(it) => it.id}
+        rowLinks
         minWidth={820}
         loading={items.isPending}
         error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}

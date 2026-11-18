@@ -21,6 +21,7 @@ import { projectsWith } from "@/lib/can";
 import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q, type AuditFilters } from "@/lib/query";
+import { fullDate } from "@/lib/utils";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
 
@@ -49,8 +50,6 @@ function dayStart(day: string, after = false): string {
   return d.toISOString();
 }
 
-const time = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-
 const target = (e: AuditEvent) => (
   <>
     <span className="text-faint">{e.target_type.replace("_", " ")}</span>{" "}
@@ -71,7 +70,7 @@ const value = (v: unknown) =>
 
 function EventSheet({ e, onClose }: { e: AuditEvent; onClose: () => void }) {
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()} title={e.action} description={time(e.at)}>
+    <Sheet open onOpenChange={(o) => !o && onClose()} title={e.action} description={fullDate(e.at)}>
       <KeyValues
         items={[
           {
@@ -109,7 +108,7 @@ const columns = (open: (e: AuditEvent) => void): Column<AuditEvent>[] => [
         onClick={() => open(e)}
       >
         <span className="sr-only">Open the event from </span>
-        <time dateTime={e.at}>{time(e.at)}</time>
+        <time dateTime={e.at}>{fullDate(e.at)}</time>
       </button>
     ),
   },

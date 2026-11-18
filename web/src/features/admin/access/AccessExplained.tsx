@@ -256,7 +256,10 @@ export function MyAccessPage({ project }: { project?: string }) {
   const chosen = project ?? (current || RVAV);
   return (
     <Page>
-      <PageHeader title="What I may do" meta="Each permission, held or not, and which of your roles grants it." />
+      <PageHeader
+        title="What I may do"
+        description="Each permission, held or not, and which of your roles grants it."
+      />
       <Panel title="Your permissions" flush>
         <AccessExplained
           userId={me.user.id}

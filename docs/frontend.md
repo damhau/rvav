@@ -429,7 +429,7 @@ it.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)
-  and the OIDC group mappings (any role, for all of rvav or in one
+  and the identity provider groups (any role, for all of rvav or in one
   project, as the role can be given; a role with `access.manage` warns
   that the group's members are administrators in all but name). Project
   admins see their own projects only.

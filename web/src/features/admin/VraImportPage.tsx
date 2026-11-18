@@ -168,12 +168,26 @@ function Summary({ plan }: { plan: Plan }) {
   );
 }
 
-/** Where the move stands: read, map, import, move each project. */
-function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
+function planLeft(plan?: Plan) {
   const unplaced = plan?.projects.filter((p) => p.how === "none").length ?? 0;
   const s = plan?.summary;
   const items = s ? s.templates_create + s.items_create + s.items_update : 0;
   const left = s ? items + s.shares_add + s.deployments_adopt : 0;
+  return { unplaced, items, left };
+}
+
+/** The plan's tab for the step the move is at: projects to map, then what to import, then the move. */
+function tabForStep(plan: Plan): VraTab {
+  const { unplaced, left } = planLeft(plan);
+  if (unplaced > 0) return "projects";
+  if (left === 0) return "cutover";
+  return plan.summary.deployments_adopt === left ? "deployments" : "items";
+}
+
+/** Where the move stands: read, map, import, move each project. */
+function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
+  const { unplaced, items, left } = planLeft(plan);
+  const s = plan?.summary;
   const steps = [
     {
       title: "Read vRA",
@@ -245,6 +259,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
   const qc = useQueryClient();
   const projects = useQuery(adm.projectNames());
   const map = useMutation({
+    mutationKey: busyKey,
     mutationFn: ({ vra, to }: { vra: string; to: string }) =>
       call(
         api.PUT("/admin/vra/projects/{vraProjectId}", {
@@ -786,16 +801,17 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
                 <Button size="sm" variant="quiet" aria-label={`Not moved… (${cp.name})`} onClick={() => setUndoing(cp)}>
                   Not moved…
                 </Button>
-              ) : (
+              ) : cp.rvav_project_id ? (
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={!cp.rvav_project_id}
                   aria-label={`Mark as moved… (${cp.name})`}
                   onClick={() => setMoving(cp)}
                 >
                   Mark as moved…
                 </Button>
+              ) : (
+                <span className="self-center text-secondary text-muted">Moves once mapped to an rvav project</span>
               )}
             </span>
           </div>
@@ -923,7 +939,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
   );
 }
 
-export function VraImportPage({ tab = "items" }: { tab?: VraTab }) {
+export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const file = useRef<HTMLInputElement>(null);
@@ -963,6 +979,9 @@ export function VraImportPage({ tab = "items" }: { tab?: VraTab }) {
     onError: (e) => failed(e, "vRA could not be read"),
   });
   const p = plan.data;
+  // Chosen once, as the plan first comes: mapping the last project mustn't move the tab away.
+  const [opened, setOpened] = useState<VraTab>();
+  if (p && !opened) setOpened(tabForStep(p));
   // What the plan was made from; the status's until there is one.
   const shown = p?.snapshot ?? snap;
   const configured = Boolean(status.data?.configured);
@@ -1078,7 +1097,7 @@ export function VraImportPage({ tab = "items" }: { tab?: VraTab }) {
           <Summary plan={p} />
           <Panel flush>
             <Tabs
-              value={tab}
+              value={asked ?? opened ?? tabForStep(p)}
               onValueChange={(v) =>
                 void navigate({ to: "/admin/vra-import", search: { tab: v as VraTab }, replace: true })
               }

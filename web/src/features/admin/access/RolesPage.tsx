@@ -218,7 +218,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
         <span className="mr-auto">
           Groups of the identity provider get a role for all of rvav through a group mapping without a project, in{" "}
           <Link to="/admin/projects" search={{ tab: "groups" }} className="text-accent underline underline-offset-2">
-            Projects › OIDC group mappings
+            Projects › Identity provider groups
           </Link>
           . Roles in a project are given on the project&apos;s page.
         </span>

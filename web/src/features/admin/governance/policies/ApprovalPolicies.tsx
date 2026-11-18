@@ -209,7 +209,7 @@ export function ApprovalPolicies({ canEdit }: { canEdit: boolean }) {
       title="Approval policies"
       description="Every policy that matches a request adds its levels of approvers, lower priority first."
       flush
-      actions={canEdit && items?.length !== 0 && add}
+      actions={canEdit && Boolean(items?.length) && add}
     >
       <DataTable
         label="Approval policies"

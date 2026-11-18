@@ -192,7 +192,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
         <p className="max-w-3xl text-secondary text-muted">
           Everyone but the local administrator signs in here, and gets roles from the groups mapped in{" "}
           <Link to="/admin/projects" search={{ tab: "groups" }} className="text-accent underline underline-offset-2">
-            Projects › OIDC group mappings
+            Projects › Identity provider groups
           </Link>
           . A saved provider applies without a restart. The local administrator still signs in when it is down.
         </p>

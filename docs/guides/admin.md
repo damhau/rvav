@@ -53,7 +53,7 @@ opening by itself once every step is done.
 0. **Sign in as `admin`** and choose its password.
 1. **The identity provider** (**Integrations › Identity provider**), and
    a group of it mapped to `admin`, or to a role of your own holding
-   `access.manage`, for all of rvav (**Projects › OIDC group mappings**):
+   `access.manage`, for all of rvav (**Projects › Identity provider groups**):
    [the identity provider](#the-identity-provider).
 2. **Integrations:** vCenter, AWX and EfficientIP, with rvav's service
    accounts ([integrations.md](../integrations.md)). Each has a test. Its
@@ -183,7 +183,7 @@ in **Administration › Integrations › Identity provider**:
    in the panel, before they are saved. The panel then shows the token's
    claims, the groups rvav reads, and the roles the group mappings give,
    or why rvav refuses the token. Nothing is saved, and no user is made.
-5. **Map a group to `admin`** (**Projects › OIDC group mappings**), and
+5. **Map a group to `admin`** (**Projects › Identity provider groups**), and
    others to the projects' roles. Use the values the trial showed.
 6. **Save settings.** The provider applies within seconds, without a
    restart. A provider changed or cleared no longer signs anyone in. The
@@ -468,7 +468,7 @@ With an NSX Manager set in **Integrations**
 - **Environments:** where projects deploy, whether each is production,
   and the snapshots kept per VM. You can't remove an environment that a
   project deploys to or that has deployments in it.
-- **OIDC group mappings:** the roles that the identity provider's groups
+- **Identity provider groups:** the roles that groups of the identity provider
   give ([Roles and permissions](#roles-and-permissions)).
 
 A project's page has four tabs:
@@ -534,7 +534,7 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
   holds the page's permission for all of rvav, without
   `project.settings.read`: offers in **Templates and networks** and
   naming policies, **Policies**, **Custom workflows**, **Map a group** in
-  **OIDC group mappings**, **Onboarding**, **vRA import**, **What someone
+  **Identity provider groups**, **Onboarding**, **vRA import**, **What someone
   may do**, and the **Audit log**'s **Project** filter, archived projects
   included (`GET /api/v1/admin/project-names`: ID, code and name only).
   To adopt VMs into a project in **Onboarding**, you also need
@@ -555,7 +555,7 @@ To give a role:
   (`PUT /api/v1/projects/{id}/members/{user}` with `roles`). Someone may hold several roles in a project, each given
   there or through a group. A project admin is offered only the roles
   whose permissions they hold in the project;
-- in a project, to a group: in **Projects › OIDC group mappings**, select
+- in a project, to a group: in **Projects › Identity provider groups**, select
   **Map a group**, then choose the project and the role;
 - for all of rvav, to a user: in **Administration › Roles › For all of
   rvav**, choose the role, then the person in **Give someone**
@@ -593,7 +593,7 @@ To let someone power a project's VMs on and off, and nothing else:
 4. Select **Make role**.
 5. On the project's page, under **Members**, choose **VM operator** in
    **As** and add the person. To give it to a team, map their OIDC group
-   to it in **Projects › OIDC group mappings**, with the project.
+   to it in **Projects › Identity provider groups**, with the project.
 
 On the project's deployments, the operator's VM menu offers **Power off**,
 or **Power on** once the VM is off. Every other action is disabled, the

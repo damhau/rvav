@@ -244,7 +244,7 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
       title="Naming policies"
       description="The most specific offer wins over a blueprint's own template. A name is never given twice: rvav checks vCenter, DNS and every deployment it made."
       flush
-      actions={canEdit && items?.length !== 0 && add}
+      actions={canEdit && Boolean(items?.length) && add}
     >
       <DataTable
         label="Naming policies"

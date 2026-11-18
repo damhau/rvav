@@ -145,7 +145,7 @@ export function CatalogItemsPage({ tab }: { tab?: CatalogTab }) {
     <Page>
       <PageHeader
         title="Catalog items"
-        meta="Build items, publish their versions and choose which projects may request them."
+        description="Build items, publish their versions and choose which projects may request them."
       />
       <Tabs
         value={tab ?? "items"}

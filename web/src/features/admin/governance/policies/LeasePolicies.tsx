@@ -201,7 +201,7 @@ export function LeasePolicies({ canEdit }: { canEdit: boolean }) {
       title="Lease policies"
       description="How long deployments live in each environment, and what happens when the lease ends."
       flush
-      actions={canEdit && items?.length !== 0 && add}
+      actions={canEdit && Boolean(items?.length) && add}
     >
       <DataTable
         label="Lease policies"

@@ -66,6 +66,16 @@ export function useOrderedPolicies<T extends Ordered>(key: string, put: (p: T) =
   return { move, update };
 }
 
+/** A menu item's label, with why it is off under it. */
+function WithReason({ label, why }: { label: string; why?: string }) {
+  if (!why) return label;
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span>{label}</span> <span className="text-caption leading-snug text-faint">{why}</span>
+    </span>
+  );
+}
+
 /** A row menu's items for a policy whose place in the list matters. */
 export function OrderedMenu<T extends Ordered>({
   policy,
@@ -85,18 +95,18 @@ export function OrderedMenu<T extends Ordered>({
   onRemove: () => void;
 }) {
   const busy = ops.move.isPending || ops.update.isPending;
+  const waits = busy ? "Waits for the change running" : undefined;
+  const up = waits ?? (index === 0 ? "It comes first already" : undefined);
+  const down = waits ?? (index === items.length - 1 ? "It comes last already" : undefined);
   return (
     <>
       <MenuItem onSelect={onChange}>Change</MenuItem>
       <MenuSeparator />
-      <MenuItem disabled={busy || index === 0} onSelect={() => ops.move.mutate({ items, from: index, to: index - 1 })}>
-        Move up
+      <MenuItem disabled={Boolean(up)} onSelect={() => ops.move.mutate({ items, from: index, to: index - 1 })}>
+        <WithReason label="Move up" why={up} />
       </MenuItem>
-      <MenuItem
-        disabled={busy || index === items.length - 1}
-        onSelect={() => ops.move.mutate({ items, from: index, to: index + 1 })}
-      >
-        Move down
+      <MenuItem disabled={Boolean(down)} onSelect={() => ops.move.mutate({ items, from: index, to: index + 1 })}>
+        <WithReason label="Move down" why={down} />
       </MenuItem>
       <MenuItem onSelect={onPriority}>Set priority</MenuItem>
       <MenuSeparator />

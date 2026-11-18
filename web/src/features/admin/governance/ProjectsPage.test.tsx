@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { renderApp } from "@/test/render";
 
-// OIDC group mappings on the Projects page, with the app's own staleTime
+// Identity provider groups on the Projects page, with the app's own staleTime
 // (main.tsx): what a mapping changes elsewhere is fetched again.
 describe("a group mapping", () => {
   it("shows at once in the roles' holders", async () => {
@@ -16,7 +16,7 @@ describe("a group mapping", () => {
     expect(await screen.findByRole("row", { name: /^Auditor/ })).toHaveTextContent("Nobody");
 
     await router.navigate({ to: "/admin/projects", search: { tab: "groups" } });
-    const groups = await screen.findByRole("region", { name: "OIDC group mappings" });
+    const groups = await screen.findByRole("region", { name: "Identity provider groups" });
     await user.click(await within(groups).findByRole("button", { name: "Map a group" }));
     const sheet = await screen.findByRole("dialog", { name: "Map a group" });
     expect(within(sheet).getByRole("textbox", { name: "OIDC group" })).toHaveFocus();
@@ -31,7 +31,7 @@ describe("a group mapping", () => {
   it("is removed after saying who loses the role", async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects?tab=groups");
-    const groups = await screen.findByRole("region", { name: "OIDC group mappings" });
+    const groups = await screen.findByRole("region", { name: "Identity provider groups" });
     await user.click(await within(groups).findByRole("button", { name: "Actions for rvav-web" }));
     await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove the mapping of rvav-web?" });

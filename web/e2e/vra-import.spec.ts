@@ -13,7 +13,11 @@ test("see the dry run, map projects, import, and import again", async ({ page })
   await expect(page.getByRole("heading", { name: "vRA import" })).toBeVisible();
   await expect(page.getByText("3 projects · 5 templates · 4 deployments · 7 vRO workflows")).toBeVisible();
 
+  // It opens on the step it is at: two vRA projects have no rvav project of their name.
+  await expect(page.getByRole("tab", { name: "Projects", selected: true })).toBeVisible();
+
   // The dry run: three items to make, the RHEL one there already.
+  await page.getByRole("tab", { name: /Catalog items/ }).click();
   const templates = page.getByRole("table", { name: "Cloud templates" });
   const rhel = templates.getByRole("row", { name: /RHEL 9 Server/ });
   await expect(rhel.getByText("Unchanged")).toBeVisible();
@@ -95,7 +99,8 @@ test("adopt one project's deployments, mark it moved, then not", async ({ page }
   await expect(page.getByText("0 of 3 projects moved")).toBeVisible();
   const legacy = page.getByRole("region", { name: "Legacy Apps" });
   await expect(legacy.getByText("Map it to an rvav project, or create one.")).toBeVisible();
-  await expect(legacy.getByRole("button", { name: "Mark as moved… (Legacy Apps)" })).toBeDisabled();
+  await expect(legacy.getByText("Moves once mapped to an rvav project")).toBeVisible();
+  await expect(legacy.getByRole("button", { name: "Mark as moved… (Legacy Apps)" })).toHaveCount(0);
 
   // Web Platform's two deployments its published item allows.
   const web = page.getByRole("region", { name: "Web Platform" });

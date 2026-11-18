@@ -26,7 +26,9 @@ describe("Policies", () => {
     expect(rows(region)[2]).toMatch(/^Members operate their VMs/);
 
     await user.click(within(region).getByRole("button", { name: "Actions for Members operate their VMs" }));
-    expect(await screen.findByRole("menuitem", { name: "Move down" })).toHaveAttribute("aria-disabled", "true");
+    const down = await screen.findByRole("menuitem", { name: /^Move down/ });
+    expect(down).toHaveAttribute("aria-disabled", "true");
+    expect(down).toHaveTextContent("It comes last already");
     await user.click(screen.getByRole("menuitem", { name: "Move up" }));
     await waitFor(() => expect(rows(region)[1]).toMatch(/^Members operate their VMs/));
 

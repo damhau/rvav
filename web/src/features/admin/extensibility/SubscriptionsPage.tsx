@@ -449,7 +449,7 @@ export function SubscriptionsPage() {
       <PageHeader
         title="Subscriptions"
         description="Webhooks, AWX templates and custom workflows that hear about requests, provisioning, day-2 actions, deletions and leases. A blocking one may stop a request."
-        actions={create}
+        actions={subs.data?.items.length ? create : undefined}
       />
       <Panel title="All subscriptions" flush>
         <DataTable

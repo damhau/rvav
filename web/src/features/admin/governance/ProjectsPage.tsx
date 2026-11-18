@@ -1,4 +1,4 @@
-// Projects, environments and OIDC group mappings (S9, ADR-0020).
+// Projects, environments and identity provider groups (S9, ADR-0020).
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FolderKanban, Layers, UsersRound } from "lucide-react";
@@ -334,6 +334,7 @@ function ProjectsPanel() {
         columns={columns}
         rows={projects.data?.items}
         rowKey={(p) => p.id}
+        rowLinks
         minWidth={720}
         loading={projects.isPending}
         error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
@@ -773,7 +774,7 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
   const list = mappings.data?.items;
   return (
     <Panel
-      title="OIDC group mappings"
+      title="Identity provider groups"
       description="Roles given to everyone in a group of the identity provider."
       flush
       actions={list?.length ? add : undefined}
@@ -784,7 +785,7 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
       <DataTable
-        label="OIDC group mappings"
+        label="Identity provider groups"
         columns={columns}
         rows={list}
         rowKey={(m) => m.id}
@@ -837,12 +838,15 @@ export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
   const tabs = [
     { value: "projects", label: "Projects", show: true },
     { value: "environments", label: "Environments", show: can(me, "environments.read") },
-    { value: "groups", label: "OIDC group mappings", show: can(me, "access.read") },
+    { value: "groups", label: "Identity provider groups", show: can(me, "access.read") },
   ].filter((t) => t.show);
   const shown = tabs.some((t) => t.value === tab) ? tab : "projects";
   return (
     <Page>
-      <PageHeader title="Projects" meta="Projects, the environments they deploy to, and the groups that give roles." />
+      <PageHeader
+        title="Projects"
+        description="Projects, the environments they deploy to, and the groups that give roles."
+      />
       {tabs.length === 1 ? (
         <ProjectsPanel />
       ) : (

@@ -143,8 +143,8 @@ test("give a custom role in a project and to a group; what it then refuses", asy
 
   // A group mapped to it in the project.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects", exact: true }).click();
-  await page.getByRole("tab", { name: "OIDC group mappings" }).click();
-  const groups = page.getByRole("region", { name: "OIDC group mappings" });
+  await page.getByRole("tab", { name: "Identity provider groups" }).click();
+  const groups = page.getByRole("region", { name: "Identity provider groups" });
   await groups.getByRole("button", { name: "Map a group" }).click();
   const map = page.getByRole("dialog", { name: "Map a group" });
   await map.getByRole("textbox", { name: "OIDC group" }).fill("rvav-operators");

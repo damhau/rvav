@@ -82,7 +82,16 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
         );
       }}
     >
-      <Field label="Name" htmlFor="awx-action-name" hint="What the action menu says" error={errors["/name"]}>
+      <Field
+        label="Name"
+        htmlFor="awx-action-name"
+        hint={
+          name.trim() === ""
+            ? "What the action menu says: the action needs one to be saved"
+            : "What the action menu says"
+        }
+        error={errors["/name"]}
+      >
         <Input id="awx-action-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
       </Field>
       <fieldset
@@ -234,7 +243,7 @@ export function Day2ActionsPage() {
         title="From AWX"
         description="Templates of rvav's AWX organisation with the day2 label become actions here, every few minutes or when you sync. Their survey is the form people fill in."
         flush
-        actions={syncButton}
+        actions={actions.data?.items.length ? syncButton : undefined}
       >
         <DataTable
           label="AWX day-2 actions"
