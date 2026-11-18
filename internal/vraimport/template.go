@@ -31,6 +31,7 @@ type tmpl struct {
 	Inputs    map[string]map[string]any `yaml:"inputs"`
 	Resources map[string]struct {
 		Type       string         `yaml:"type"`
+		DependsOn  []string       `yaml:"dependsOn"`
 		Properties map[string]any `yaml:"properties"`
 	} `yaml:"resources"`
 }
@@ -171,6 +172,11 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	}
 
 	nx := mapNSX(t, note)
+	machineRefs, keys := map[string]machineRef{}, map[string]bool{}
+	for _, name := range machines {
+		_, many := t.Resources[name].Properties["count"]
+		machineRefs[name] = machineRef{key: resourceKey(name, "vm", keys), many: many}
+	}
 
 	// Each machine is a component; one machine without a count is the
 	// item's VM itself.
@@ -181,7 +187,8 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	for _, name := range machines {
 		r := t.Resources[name]
 		where := "resources." + name
-		c := map[string]any{"key": slug(name), "title": name}
+		sc := scope{machines: machineRefs, self: name}
+		c := map[string]any{"key": machineRefs[name].key, "title": name}
 		bindings := map[string]any{}
 		if img, _ := r.Properties["image"].(string); img != "" {
 			if strings.Contains(img, "${") {
@@ -205,7 +212,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			note(Info, where+".customizationSpec", "vCenter customization specification "+spec+" kept.")
 		}
 		if ci, _ := r.Properties["cloudConfig"].(string); ci != "" {
-			ud, problems := userData(ci)
+			ud, problems := sc.userData(ci)
 			g, _ := c["guest"].(map[string]any)
 			if g == nil {
 				g = map[string]any{}
@@ -245,10 +252,16 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			bindings[k] = "inputs." + k
 		}
 		nx.machine(r.Properties, where, c, bindings, note)
+		sc.tags(r.Properties["tags"], where+".tags", c, bindings, note)
 		c["bindings"] = bindings
 		if count, ok := r.Properties["count"]; ok {
-			c["count"] = countExpr(count)
+			if n, err := sc.count(count); err != nil {
+				note(Unmapped, where+".count", fmt.Sprintf("The count %v: %v. It is left out: one VM.", count, err))
+			} else {
+				c["count"] = n
+			}
 		}
+		mapDependsOn(t, name, machineRefs, unmapped, c, note)
 		if len(machines) == 1 && c["count"] == nil {
 			single = c
 		}
@@ -293,7 +306,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 	} else {
 		for _, c := range comps {
-			c["naming"] = "{project}-{environment}-" + strings.ReplaceAll(c["key"].(string), "-", "") + "{seq:02}"
+			c["naming"] = "{project}-{environment}-" + c["key"].(string) + "{seq:02}"
 		}
 		blueprint["components"] = comps
 		blueprint["deployment_name"] = "{project}-{environment}-" + slug(bp.Name)
@@ -481,28 +494,28 @@ func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, w
 	return out
 }
 
-var refPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
-
-// userData translates cloud-init's vRA expressions into the Go template
-// rvav renders, and lists those it can't.
-func userData(src string) (string, []string) {
-	var problems []string
-	out := refPattern.ReplaceAllStringFunc(src, func(m string) string {
-		ref := m[2 : len(m)-1]
+// mapDependsOn maps a machine's dependsOn: the machines it names are
+// components it is built after. rvav makes networks, disks and security
+// groups before any VM.
+func mapDependsOn(t tmpl, name string, machines map[string]machineRef, unmapped []string, c map[string]any,
+	note func(level, where, text string)) {
+	var deps []string
+	where := "resources." + name + ".dependsOn"
+	for _, d := range t.Resources[name].DependsOn {
+		r, ok := t.Resources[d]
 		switch {
-		case ref == "self.resourceName" || ref == "self.name":
-			return "{{ .vm.name }}"
-		case ref == "self.address":
-			return "{{ .vm.ip }}"
-		case strings.HasPrefix(ref, "input.") && environmentInput(strings.TrimPrefix(ref, "input.")):
-			return "{{ .environment }}"
-		case strings.HasPrefix(ref, "input."):
-			return "{{ .inputs." + strings.TrimPrefix(ref, "input.") + " }}"
+		case machines[d].key != "":
+			deps = append(deps, machines[d].key)
+		case !ok:
+			note(Unmapped, where, "It depends on "+d+", which the template doesn't have: left out.")
+		case slices.Contains(unmapped, d):
+			note(Unmapped, where, "It depends on "+d+" ("+r.Type+"), which is left out: an AWX job before it, in a composite item, can do what it did.")
 		}
-		problems = append(problems, "cloud-init uses "+m+", which rvav doesn't give: it is left as it was.")
-		return m
-	})
-	return out, problems
+	}
+	if len(deps) > 0 {
+		c["depends_on"] = deps
+		note(Info, where, "Built after "+strings.Join(deps, ", ")+" (depends_on).")
+	}
 }
 
 // applyForm takes a custom form's labels, help, choices, defaults,
@@ -724,15 +737,6 @@ func expr(v any) string {
 		return s
 	}
 	return fmt.Sprint(v)
-}
-
-func countExpr(v any) any {
-	if s, ok := v.(string); ok {
-		if in := inputRef(s); in != "" {
-			return "inputs." + in
-		}
-	}
-	return v
 }
 
 // versionNumber is vRA's version as rvav's major.minor.

@@ -103,11 +103,15 @@ check it) or *unmapped* (left out).
 | Released versions | The catalog item's versions, imported as drafts (`1` becomes `1.0`). Unreleased versions are left out. |
 | `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field. An input without a default is required. |
 | An input named `environment` or `env` | rvav's own request environment, not a field. |
-| `Cloud.vSphere.Machine` (or `Cloud.Machine`) | The VM. Several machines, or a `count`, make a multi-VM item with a component each (ADR-0024). |
+| `Cloud.vSphere.Machine` (or `Cloud.Machine`) | The VM. Several machines, or a `count`, make a multi-VM item with a component each (ADR-0024), its key the machine's name in lower-case letters and digits (`web_server` is `webserver`). |
+| `count` | The component's count: a number, or CEL over the inputs (`${input.ha ? 2 : 1}` is `inputs.ha ? 2 : 1`). A count that reads a machine is reported, and left out. |
+| `dependsOn` | The component's `depends_on`, for the machines it names: it is built after them. rvav makes networks, disks and security groups before any VM; a dependency on a resource left out is reported. |
+| `tags` | vSphere tags, the key as the category: fixed ones as the component's `tags`, those with expressions as its `tags` binding. The categories must exist in vCenter. A tag reading its own machines' addresses is reported. |
 | `image` | The vCenter template of vRA's image profile. An image from an input isn't mapped. |
 | `flavor` (fixed or from an input), `cpuCount`, `totalMemoryMB` | vCPU and memory: the flavor profile's sizes, as the item's sizes. |
 | `customizationSpec` | The guest's vCenter customization specification. |
-| `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}` and `${input.x}` are translated; others are reported. |
+| `cloudConfig` | cloud-init user data. `${self.resourceName}`, `${self.address}`, `${count.index}`, `${input.x}` (printed through `json`) and other machines' names, addresses and count are translated; functions, operators and other references are reported. |
+| Expressions in `count` and `tags` | CEL. `${input.x}` is `inputs.x`, `${count.index}` is `self.index`, `${self.address}` is `self.address`. Another machine's `address` (or `networks[0].address`), `resourceName` (or `name`) and `count`: `${resource.db.address}` is `components.db.addresses[0]`, or the list `components.db.addresses` for a machine with a `count`; `${resource.db[0].address}` is `components.db.vms[0].address`; `${resource.db[*].address}` is the list. `to_lower`, `to_upper`, `replace`, `join`, `split` and `substring` are CEL's `lowerAscii`, `upperAscii`, `replace`, `join`, `split` and `substring` (`${to_lower(input.app)}` is `inputs.app.lowerAscii()`). Other functions and references (`env.*`, a disk's or a network's properties) are reported. |
 | `Cloud.vSphere.Disk` attached by `attachedDisks` | An added disk of its `capacityGb`. |
 | `Cloud.vSphere.Network` (existing) | The item asks for cluster, datastore and network, within rvav's placement rules. A machine's other adapters on existing networks are reported (a warning): add them to the blueprint's `nics`. |
 | Constraint tags | Reported: write rvav placement rules for them. |

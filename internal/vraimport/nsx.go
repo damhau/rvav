@@ -18,9 +18,10 @@ import (
 // deployment.
 var onDemand = []string{"routed", "outbound", "private"}
 
-// nsxKey is a resource name as a segment's or group's key: lower-case
-// letters and digits, starting with a letter, at most 16, not taken.
-func nsxKey(name string, taken map[string]bool) string {
+// resourceKey is a resource name as a component's, segment's or group's
+// key: lower-case letters and digits, starting with a letter, at most 16,
+// not taken; fallback when the name has none.
+func resourceKey(name, fallback string, taken map[string]bool) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(name) {
 		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' && b.Len() > 0 {
@@ -29,7 +30,7 @@ func nsxKey(name string, taken map[string]bool) string {
 	}
 	k := b.String()
 	if k == "" {
-		k = "net"
+		k = fallback
 	}
 	k = k[:min(len(k), 14)]
 	key := k
@@ -65,7 +66,7 @@ func mapNSX(t tmpl, note func(level, where, text string)) *nsxPlan {
 			continue
 		}
 		if nt, _ := r.Properties["networkType"].(string); slices.Contains(onDemand, nt) {
-			p.segments[name] = nsxKey(name, taken)
+			p.segments[name] = resourceKey(name, "net", taken)
 			text := fmt.Sprintf("vRA's %s network is an NSX segment made for each deployment (%s): a placement rule of the project and environment says where (its Tier-1 and EfficientIP block).",
 				nt, p.segments[name])
 			if nt == "private" {
@@ -84,7 +85,7 @@ func mapNSX(t tmpl, note func(level, where, text string)) *nsxPlan {
 			note(Unmapped, "resources."+name, "An existing security group, chosen by constraint tags: rvav can't tell which NSX group it is. Add it to the blueprint's groups as nsx:<group ID>.")
 			continue
 		}
-		p.groups[name] = nsxKey(name, taken)
+		p.groups[name] = resourceKey(name, "net", taken)
 	}
 	for _, name := range names {
 		key, ok := p.groups[name]

@@ -2,6 +2,10 @@ package e2e
 
 import (
 	"context"
+	"encoding/base64"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,4 +109,93 @@ func publishDraft(h *harness, res api.CatalogImportResult) string {
 	draft := res.Versions[len(res.Versions)-1]
 	h.json("POST", "/api/v1/admin/catalog/items/"+res.ItemId+"/versions/"+draft.Id+"/publish", "mkeller", nil, 200, nil)
 	return draft.Id
+}
+
+// TestVRAReferences: a vRA template whose machines read each other, with
+// dependsOn, count.index and string functions, imports as an item whose
+// web servers are built after the database, with its address in their
+// tags and cloud-init (T1.1).
+func TestVRAReferences(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	const content = `formatVersion: 1
+inputs:
+  app:
+    type: string
+resources:
+  db:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: small
+  web:
+    type: Cloud.vSphere.Machine
+    dependsOn: [db]
+    properties:
+      image: rhel9
+      flavor: small
+      count: 2
+      tags:
+        - key: app
+          value: ${to_lower(input.app)}-${count.index}
+        - key: app
+          value: db-${replace(resource.db.address, '.', '-')}
+      cloudConfig: |
+        #cloud-config
+        write_files:
+          - path: /etc/app.conf
+            content: |
+              db=${resource.db.address} node=${count.index}
+`
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		e := vra.SampleEstate(time.Now())
+		e.Blueprints = []vra.Blueprint{{ID: "bp-refs", Name: "Shop", Versions: []vra.BlueprintVersion{
+			{Version: "1", Status: "RELEASED", Content: content}}}}
+		res := importVRAItems(h, &e)["bp-refs"]
+		draft := publishVRAItem(h, res)
+		in := api.RequestDraft{CatalogItemId: res.ItemId, VersionId: draft, ProjectId: "prj_web", Environment: "dev",
+			Inputs: map[string]any{"app": "Shop", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310"}}
+		var pv api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", in, 200, &pv)
+		if !pv.Valid || pv.Components == nil || len(*pv.Components) != 2 || (*pv.Components)[1].DependsOn == nil ||
+			!slices.Equal(*(*pv.Components)[1].DependsOn, []string{"db"}) {
+			t.Fatalf("preview: valid %v, components %+v, errors %+v", pv.Valid, pv.Components, pv.Errors)
+		}
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", in, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, cloudInitGuest(h, c))
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		var dbIP string
+		_ = h.store.Pool.QueryRow(ctx, `select name from resources where request_id = $1 and type = 'ipam.address'
+			and properties->>'hostname' = 'web-dev-db01'`, req.Id).Scan(&dbIP)
+		if dbIP == "" {
+			t.Fatal("the database has no address")
+		}
+		for i, name := range []string{"web-dev-web01", "web-dev-web02"} {
+			var moref string
+			_ = h.store.Pool.QueryRow(ctx, `select properties->'vm'->>'moref' from resources where request_id = $1
+				and type = 'vsphere.vm' and name = $2`, req.Id, name).Scan(&moref)
+			want := []string{"app/db-" + strings.ReplaceAll(dbIP, ".", "-"), "app/shop-" + strconv.Itoa(i)}
+			if tags, err := h.vc.VMTags(ctx, moref); err != nil || !slices.Equal(tags, want) {
+				t.Fatalf("%s's tags = %v (%v), want %v", name, tags, err, want)
+			}
+			var vm mo.VirtualMachine
+			if err := property.DefaultCollector(c).RetrieveOne(ctx, types.ManagedObjectReference{Type: "VirtualMachine", Value: moref},
+				[]string{"config.extraConfig"}, &vm); err != nil {
+				t.Fatal(err)
+			}
+			var user string
+			for _, o := range vm.Config.ExtraConfig {
+				if ov := o.GetOptionValue(); ov.Key == "guestinfo.userdata" {
+					b, _ := base64.StdEncoding.DecodeString(ov.Value.(string))
+					user = string(b)
+				}
+			}
+			if want := "db=" + dbIP + " node=" + strconv.Itoa(i); !strings.Contains(user, want) {
+				t.Fatalf("%s's user data lacks %q:\n%s", name, want, user)
+			}
+		}
+	})
 }
