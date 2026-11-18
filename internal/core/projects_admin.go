@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -36,7 +38,30 @@ func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProj
 	base := present.Project(pr.Project, p.PermissionsIn(pr.ID))
 	return api.AdminProject{Id: base.Id, Code: base.Code, Name: base.Name, Description: base.Description, CostCenter: base.CostCenter,
 		Environments: base.Environments, MyPermissions: base.MyPermissions, Archived: pr.ArchivedAt != nil,
-		ArchivedAt: pr.ArchivedAt, CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments}
+		ArchivedAt: pr.ArchivedAt, CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments,
+		Properties: api.CustomProperties(nonNilProps(pr.Properties))}
+}
+
+func nonNilProps(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
+}
+
+// checkProperties checks custom properties (ADR-0038): their keys become
+// vSphere custom attributes' names and CEL fields.
+func checkProperties(props map[string]string, ptr string) []api.FieldError {
+	var errs []api.FieldError
+	if len(props) > blueprint.MaxProperties {
+		errs = append(errs, fieldErr(ptr, "too_many", fmt.Sprintf("At most %d custom properties.", blueprint.MaxProperties)))
+	}
+	for _, k := range slices.Sorted(maps.Keys(props)) {
+		if msg := blueprint.CheckProperty(k, props[k]); msg != "" {
+			errs = append(errs, fieldErr(ptr+"/"+k, "invalid", msg))
+		}
+	}
+	return errs
 }
 
 // AdminProjects lists projects for those who read every project's settings.
@@ -136,6 +161,9 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 		return api.AdminProject{}, err
 	}
 	errs = append(errs, envErrs...)
+	if c.Properties != nil {
+		errs = append(errs, checkProperties(*c.Properties, "/properties")...)
+	}
 	var admins []string
 	if c.ProjectAdmins != nil {
 		admins = *c.ProjectAdmins
@@ -156,6 +184,9 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 	}
 	pr := store.Project{ID: ids.New(ids.Project), Code: c.Code, Name: strings.TrimSpace(c.Name), Description: deref(c.Description),
 		CostCenter: deref(c.CostCenter), Environments: c.Environments}
+	if c.Properties != nil {
+		pr.Properties = *c.Properties
+	}
 	if err := s.Store.CreateProject(ctx, pr, admins); errors.Is(err, store.ErrInUse) {
 		return api.AdminProject{}, &ConflictError{Msg: "A project has the code " + c.Code + "."}
 	} else if err != nil {
@@ -190,11 +221,14 @@ func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id strin
 		}
 		errs = append(errs, envErrs...)
 	}
+	if u.Properties != nil {
+		errs = append(errs, checkProperties(*u.Properties, "/properties")...)
+	}
 	if len(errs) > 0 {
 		return api.AdminProject{}, &ValidationError{Errors: errs}
 	}
 	if err := s.Store.UpdateProject(ctx, pr.ID, store.ProjectUpdate{Name: u.Name, Description: u.Description, CostCenter: u.CostCenter,
-		Environments: u.Environments, Archived: u.Archived}); err != nil {
+		Environments: u.Environments, Archived: u.Archived, Properties: (*map[string]string)(u.Properties)}); err != nil {
 		return api.AdminProject{}, err
 	}
 	action := "project.update"

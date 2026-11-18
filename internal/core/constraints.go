@@ -60,7 +60,7 @@ func soft(list []blueprint.Constraint) []blueprint.Constraint {
 func constraintVars(ev *Evaluation) policy.Vars {
 	vars := ev.Blueprint.Vars(ev.Inputs)
 	vars["environment"] = ev.Env.Key
-	vars["project"] = map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name}
+	vars["project"] = projectVars(ev.Project)
 	return vars
 }
 

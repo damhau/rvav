@@ -72,6 +72,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	errs = append(errs, checkParts(ptr, b.Disks, b.NICs, b.Tags)...)
 	errs = append(errs, checkConstraints(ptr, b.Constraints)...)
 	errs = append(errs, checkProvisioning(ptr, b.Provisioning)...)
+	errs = append(errs, checkPropertiesAndFolder(ptr, b.Properties, b.Folder)...)
 
 	// NSX segments made for each deployment (ADR-0028).
 	segKeys := map[string]bool{}
@@ -131,6 +132,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		errs = append(errs, checkParts(at, c.Disks, c.NICs, c.Tags)...)
 		errs = append(errs, checkConstraints(at, c.Constraints)...)
 		errs = append(errs, checkProvisioning(at, c.Provisioning)...)
+		errs = append(errs, checkPropertiesAndFolder(at, c.Properties, c.Folder)...)
 	}
 	if total > blueprint.MaxVMs {
 		add(ptr+"/components", "out_of_range", fmt.Sprintf("A request builds at most %d VMs; these components have %d.", blueprint.MaxVMs, total))
@@ -322,6 +324,36 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 	for i, t := range tags {
 		if cat, tag, ok := strings.Cut(t, "/"); !ok || strings.TrimSpace(cat) == "" || strings.TrimSpace(tag) == "" || strings.Contains(tag, "/") {
 			add(fmt.Sprintf("%s/tags/%d", ptr, i), "invalid", "A vSphere tag as category/tag, for example backup/daily.")
+		}
+	}
+	return errs
+}
+
+// checkPropertiesAndFolder checks a blueprint's or a component's custom
+// properties and folder (ADR-0038): text, or ${CEL} over the inputs and
+// the project worked out when the request is made.
+func checkPropertiesAndFolder(ptr string, props map[string]string, folder string) []api.FieldError {
+	errs := checkProperties(props, ptr+"/properties")
+	exprs := func(at, text string) {
+		list, err := blueprint.ExprsOf(text)
+		if err != nil {
+			errs = append(errs, fieldErr(at, "invalid", "Its ${...} is not closed or is empty."))
+			return
+		}
+		for _, e := range list {
+			if err := policy.Check(e); err != nil {
+				errs = append(errs, fieldErr(at, "invalid", "${"+e+"} is not valid CEL: "+err.Error()))
+			}
+		}
+	}
+	for _, k := range sortedKeys(props) {
+		exprs(ptr+"/properties/"+k, props[k])
+	}
+	if folder != "" {
+		if msg := blueprint.CheckFolder(folder); msg != "" {
+			errs = append(errs, fieldErr(ptr+"/folder", "invalid", msg))
+		} else {
+			exprs(ptr+"/folder", folder)
 		}
 	}
 	return errs

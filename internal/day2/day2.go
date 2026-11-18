@@ -52,6 +52,8 @@ type Resource struct {
 	VM             api.VmProperties
 	// Properties are what rvav recorded of it.
 	Properties json.RawMessage
+	// PreventDelete: a VM kept from deletion (ADR-0038).
+	PreventDelete bool
 }
 
 // DeploymentType is the target type of actions on a whole deployment.
@@ -123,6 +125,9 @@ type Action struct {
 	Direct bool
 	// Hidden actions are not offered: only rvav runs them (lease expiry).
 	Hidden bool
+	// Admin actions are offered only to those who change the deployment's
+	// project (project.update), whatever the day-2 policies allow.
+	Admin bool
 	// Approval says why the action needs approval on top of the day-2
 	// policies ("" when it doesn't); inputs is nil when listing actions.
 	Approval func(t Target, c Choices, inputs map[string]any) string

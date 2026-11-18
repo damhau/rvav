@@ -58,6 +58,9 @@ type VMSpec struct {
 	Annotation string
 	// ExtraConfig is written to the VM, for example rvav.deployment.
 	ExtraConfig map[string]string
+	// CustomAttributes are set on the VM, those vCenter doesn't have yet
+	// defined for VMs (ADR-0038).
+	CustomAttributes map[string]string
 	// HostIndex picks the cluster's eligible hosts in turn: VMs kept apart
 	// get 0, 1, 2… so they start on separate hosts (ADR-0024).
 	HostIndex int
@@ -957,6 +960,49 @@ func (cl *Client) finish(ctx context.Context, c *vim25.Client, vm *object.Virtua
 	}
 	if err := cl.addHardware(ctx, vm, spec, disks, nics); err != nil {
 		return fmt.Errorf("add disks and adapters: %w", err)
+	}
+	if err := setCustomAttributes(ctx, c, vm.Reference(), spec.CustomAttributes); err != nil {
+		return fmt.Errorf("custom attributes: %w", err)
+	}
+	return nil
+}
+
+// setCustomAttributes sets a VM's custom attributes, defining for VMs those
+// vCenter doesn't have.
+func setCustomAttributes(ctx context.Context, c *vim25.Client, vm types.ManagedObjectReference, attrs map[string]string) error {
+	if len(attrs) == 0 {
+		return nil
+	}
+	m, err := object.GetCustomFieldsManager(c)
+	if err != nil {
+		return err
+	}
+	fields, err := m.Field(ctx)
+	if err != nil {
+		return err
+	}
+	keys := map[string]int32{}
+	for _, f := range fields {
+		if f.ManagedObjectType == "" || f.ManagedObjectType == "VirtualMachine" {
+			keys[f.Name] = f.Key
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(attrs)) {
+		key, ok := keys[name]
+		if !ok {
+			def, err := m.Add(ctx, name, "VirtualMachine", nil, nil)
+			if err != nil {
+				// Another VM's clone may have defined it meanwhile.
+				if key, err = m.FindKey(ctx, name); err != nil {
+					return fmt.Errorf("define %s: %w", name, err)
+				}
+			} else {
+				key = def.Key
+			}
+		}
+		if err := m.Set(ctx, vm, key, attrs[name]); err != nil {
+			return fmt.Errorf("set %s: %w", name, err)
+		}
 	}
 	return nil
 }

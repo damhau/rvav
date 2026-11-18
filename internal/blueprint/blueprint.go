@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -51,6 +52,13 @@ type Blueprint struct {
 	// snapshot, or full clones; when absent, as the catalogue template the
 	// form chose says (ADR-0037).
 	LinkedClone *bool `json:"linked_clone,omitempty"`
+	// Properties are written to its VMs as vSphere custom attributes, over
+	// the project's; Folder puts them in a folder rather than the
+	// placement rule's; PreventDelete keeps them from being deleted until
+	// an administrator allows it (ADR-0038).
+	Properties    map[string]string `json:"properties,omitempty"`
+	Folder        string            `json:"folder,omitempty"`
+	PreventDelete bool              `json:"prevent_delete,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
 	Components []Component `json:"components,omitempty"`
@@ -67,6 +75,9 @@ type Blueprint struct {
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
+
+	// context is what bindings read besides the inputs (WithContext).
+	context policy.Vars
 
 	// Workflow items: the key of the custom workflow they start, with the
 	// inputs.
@@ -190,6 +201,11 @@ type Component struct {
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	Provisioning  string `json:"provisioning,omitempty"`
 	LinkedClone   *bool  `json:"linked_clone,omitempty"`
+	// Properties go over the blueprint's, Folder and PreventDelete in its
+	// place (ADR-0038).
+	Properties    map[string]string `json:"properties,omitempty"`
+	Folder        string            `json:"folder,omitempty"`
+	PreventDelete *bool             `json:"prevent_delete,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 	// Groups are the NSX security groups its VMs are in (ADR-0028).
@@ -248,7 +264,8 @@ func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
 			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups,
-			Constraints: b.Constraints, Provisioning: b.Provisioning, LinkedClone: b.LinkedClone}}
+			Constraints: b.Constraints, Provisioning: b.Provisioning, LinkedClone: b.LinkedClone,
+			Properties: b.Properties, Folder: b.Folder, PreventDelete: &b.PreventDelete}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -290,6 +307,13 @@ func (b Blueprint) ComponentList() []Component {
 		}
 		if r.LinkedClone == nil {
 			r.LinkedClone = b.LinkedClone
+		}
+		r.Properties = mergeProperties(b.Properties, c.Properties)
+		if r.Folder == "" {
+			r.Folder = b.Folder
+		}
+		if r.PreventDelete == nil {
+			r.PreventDelete = &b.PreventDelete
 		}
 		out[i] = r
 	}
@@ -353,6 +377,11 @@ type VMPlan struct {
 	ResourcePool     string `json:"resource_pool,omitempty"`
 	Host             string `json:"host,omitempty"`
 	DatastoreCluster string `json:"datastore_cluster,omitempty"`
+	// Properties, Folder and PreventDelete are the component's, worked
+	// out (ADR-0038); Folder is as written, relative or from the root.
+	Properties    map[string]string `json:"properties,omitempty"`
+	Folder        string            `json:"folder,omitempty"`
+	PreventDelete bool              `json:"prevent_delete,omitempty"`
 }
 
 // StorageGB is the VM's storage: its first disk and those added.
@@ -400,7 +429,20 @@ func (b Blueprint) Vars(inputs map[string]any) policy.Vars {
 	for _, s := range b.Segments {
 		segments[s.Key] = SegmentRef + s.Key
 	}
-	return policy.Vars{"inputs": inputs, "sizes": sizes, "segments": segments}
+	vars := policy.Vars{"inputs": inputs, "sizes": sizes, "segments": segments}
+	for k, v := range b.context {
+		if _, ok := vars[k]; !ok {
+			vars[k] = v
+		}
+	}
+	return vars
+}
+
+// WithContext is the blueprint whose bindings read these variables too,
+// such as the project.
+func (b Blueprint) WithContext(vars policy.Vars) Blueprint {
+	b.context = vars
+	return b
 }
 
 // EvaluateVM evaluates the bindings of a blueprint without components.
@@ -473,6 +515,25 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 		}
 	}
 	plan.Template, plan.Library, plan.StoragePolicy, plan.Provisioning = c.Template, c.Library, c.StoragePolicy, c.Provisioning
+	plan.PreventDelete = c.PreventDelete != nil && *c.PreventDelete
+	for _, k := range slices.Sorted(maps.Keys(c.Properties)) {
+		v, err := Interpolate(c.Properties[k], vars)
+		if err != nil {
+			missing = append(missing, "properties/"+k)
+			continue
+		}
+		if plan.Properties == nil {
+			plan.Properties = map[string]string{}
+		}
+		plan.Properties[k] = v
+	}
+	if c.Folder != "" {
+		if f, err := Interpolate(c.Folder, vars); err != nil || strings.TrimSpace(f) == "" || CheckFolder(f) != "" {
+			missing = append(missing, "folder")
+		} else {
+			plan.Folder = f
+		}
+	}
 	plan.Tags = append(plan.Tags, c.Tags...)
 	plan.Groups = append(plan.Groups, c.Groups...)
 	for i, d := range c.Disks {

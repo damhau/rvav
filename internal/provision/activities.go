@@ -577,7 +577,7 @@ func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput
 		ext = vm.Moref
 	}
 	res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.VM.DeploymentID,
-		RequestID: &in.RequestID, Type: "vsphere.vm", Name: vm.Name, ExternalID: &ext, Properties: props})
+		RequestID: &in.RequestID, Type: "vsphere.vm", Name: vm.Name, ExternalID: &ext, Properties: props, PreventDelete: in.VM.PreventDelete})
 	if err == nil {
 		a.Events.Resource(ctx, in.ProjectID, res)
 		a.Events.Deployment(ctx, in.VM.DeploymentID)
@@ -606,7 +606,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 			vm, err = vc.CloneVM(ctx, vsphere.VMSpec{
 				Name: in.VM.Name, Template: in.VM.Template, Cluster: in.VM.Cluster, Datastore: in.VM.Datastore,
 				Network: in.VM.Network, Folder: in.VM.Folder, VCPU: in.VM.VCPU, MemoryMB: in.VM.MemoryGB * 1024,
-				DiskGB: in.VM.DiskGB, Annotation: "Managed by rvav. Deployment " + in.VM.DeploymentID,
+				DiskGB: in.VM.DiskGB, Annotation: in.VM.Notes(), CustomAttributes: in.VM.Properties,
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
 				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
 				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy, ResourcePool: in.VM.ResourcePool, Hosts: in.VM.Hosts,

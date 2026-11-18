@@ -83,7 +83,7 @@ func formVars(inputs map[string]any, proj store.Project, environment string, p *
 	return policy.Vars{
 		"inputs":      inputs,
 		"environment": environment,
-		"project":     map[string]any{"id": proj.ID, "code": proj.Code, "name": proj.Name},
+		"project":     projectVars(proj),
 		"user":        user,
 	}
 }

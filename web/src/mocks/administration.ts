@@ -35,7 +35,7 @@ interface Member {
 }
 
 interface AdminState {
-  extra: Record<string, { archived_at?: string; created_at: string }>;
+  extra: Record<string, { archived_at?: string; created_at: string; properties?: Record<string, string> }>;
   members: Record<string, Member[]>;
   groups: S["GroupMapping"][];
   /** Roles given for all of rvav: those with no id rvav set itself. */
@@ -200,6 +200,8 @@ const MOCK_INSTALL: S["InstallSetting"][] = (
 /** A setting's text, "" when it isn't a string. */
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
+const seedProperties: Record<string, Record<string, string>> = { prj_web: { backupPolicy: "gold" } };
+
 /** The administration's state, made on first use from the projects the mock holds then. */
 export function adminState(db: Db): AdminState {
   const d = db as Db & { administration?: AdminState };
@@ -236,7 +238,9 @@ export function adminState(db: Db): AdminState {
   const level = (name: string, group: string): S["ApprovalLevel"] => ({ name, group, mode: "any" });
   d.administration = {
     seq: 1000,
-    extra: Object.fromEntries(db.projects.map((p) => [p.id, { created_at: ago(400) }])),
+    extra: Object.fromEntries(
+      db.projects.map((p) => [p.id, { created_at: ago(400), properties: { ...seedProperties[p.id] } }]),
+    ),
     // The mock user's roles in a project are /me's.
     members: Object.fromEntries(
       (
@@ -555,6 +559,16 @@ export function placementFolder(db: Db, projectId: string, env: string): string 
     .sort((a, b) => a.priority - b.priority)[0]?.folder;
 }
 
+/** As the server: a custom property's key names a vSphere custom attribute. */
+function propertyProblems(props: Record<string, string>): S["FieldError"][] {
+  return Object.entries(props).flatMap(([k, v]) => {
+    if (!/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(k))
+      return [err(`/properties/${k}`, "A key of up to 64 letters, digits, '.', '_' and '-', starting with a letter.")];
+    if (v.length > 512) return [err(`/properties/${k}`, "A value of up to 512 characters.")];
+    return [];
+  });
+}
+
 /** As the server: a naming counter starts at 0 or more and moves by 1 to 1000. */
 function counterProblems(start: number, increment: number): S["FieldError"][] {
   const out: S["FieldError"][] = [];
@@ -838,6 +852,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       archived: Boolean(x.archived_at),
       ...(x.archived_at ? { archived_at: x.archived_at } : {}),
       created_at: x.created_at,
+      properties: x.properties ?? {},
       members: (st().members[p.id] ?? []).length,
       deployments: db.deployments.filter((d) => d.project.id === p.id && d.status !== "deleted").length,
     };
@@ -1005,6 +1020,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (!/^[a-z][a-z0-9]{1,7}$/.test(c.code))
         errors.push(err("/code", "2 to 8 lower-case letters and digits, starting with a letter."));
       if (!c.name.trim()) errors.push(err("/name", "Give the project a name."));
+      errors.push(...propertyProblems(c.properties ?? {}));
       if (errors.length) return invalid(errors);
       if (db.projects.some((p) => p.code === c.code))
         return problem(409, "Conflict", undefined, `A project has the code ${c.code}.`);
@@ -1021,7 +1037,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         limits: { vcpu: null, memory_gb: null, storage_gb: null, vm_count: null },
         used: { vcpu: 0, memory_gb: 0, storage_gb: 0, vm_count: 0 },
       };
-      st().extra[p.id] = { created_at: now() };
+      st().extra[p.id] = { created_at: now(), properties: c.properties ?? {} };
       st().members[p.id] = (c.project_admins ?? []).map((u) => ({ userId: u, role: "project-admin" }));
       refreshMe(p.id);
       st().quotas[p.id] = [];
@@ -1038,6 +1054,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const p = project(String(params.id));
       if (!p) return problem(404, "Not found");
       const u = (await request.json()) as S["AdminProjectUpdate"];
+      const errors = propertyProblems(u.properties ?? {});
+      if (errors.length) return invalid(errors);
+      if (u.properties) st().extra[p.id]!.properties = u.properties;
       if (u.name !== undefined) p.name = u.name;
       if (u.description !== undefined) p.description = u.description;
       if (u.cost_center !== undefined) p.cost_center = u.cost_center;

@@ -98,6 +98,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "", v.UnmountISO(ctx, in.Moref)
 	case "set_owner":
 		return a.setOwner(ctx, in)
+	case "allow_delete":
+		return a.allowDelete(ctx, in)
 	case "move_folder":
 		return a.moveFolder(ctx, in)
 	case "set_project":

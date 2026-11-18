@@ -276,9 +276,10 @@ sent.`, and a requester's form only whether the requester or the owner is told.
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
 Strings in `bindings` and `count`, a disk's `size_gb` and `datastore` and
-an adapter's `network` are CEL over `inputs` and `sizes` (a literal is
-quoted: `'"vsan-01"'`); numbers are themselves. The other fields are plain
-values.
+an adapter's `network` are CEL over `inputs`, `sizes` and `project` (a
+literal is quoted: `'"vsan-01"'`); numbers are themselves. `project` has
+`id`, `code`, `name` and `properties`, the project's custom properties.
+The other fields are plain values.
 
 CEL in rvav, here as in form rules, policies, composites and
 subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
@@ -304,9 +305,12 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `provisioning` | How the VMs' disks are provisioned, the template's included ([ADR-0036](adr/0036-placement-targets.md)): `thin`, `thick_lazy_zeroed` or `thick_eager_zeroed`. Without it, the template's disks stay as they are and added disks are provisioned as the template's first disk |
 | `linked_clone` | `true` to clone the VMs from the template's current snapshot as linked clones, `false` for full clones ([ADR-0037](adr/0037-images-per-vcenter.md)). Without it, as the template of **Templates and networks** the `template` binding chose says, else full clones. Not with `library` |
+| `properties` | Custom properties of the VMs, over the project's of the same key ([ADR-0038](adr/0038-names-groups-secrets-properties.md)): text, or text with `${CEL}` over `inputs` and `project` (`${inputs.app}`, `${project.properties.costCenter}`). Each VM gets them as vSphere custom attributes and in its notes |
+| `folder` | The VMs' folder instead of the placement rule's: a path from the root (`/GVA/vm/shop`), or below the VM folder of the rule folder's datacenter (`shop/${inputs.app}` for a rule folder `/GVA/vm/rvav/web/dev` gives `/GVA/vm/shop/...`). Missing folders are created. No `..` |
+| `prevent_delete` | `true` keeps the VMs from being deleted: the deployment's **Delete** is refused and names them, and the end of its lease doesn't delete it. An administrator (anyone holding `project.update` in the project) runs the deployment's **Allow deletion** first; project admins and owners can't |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `provisioning`, `linked_clone`, `groups`, `constraints`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `provisioning`, `linked_clone`, `groups`, `constraints`, `folder`, `prevent_delete`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind), and `properties`, added to the blueprint's key by key |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for
@@ -662,7 +666,9 @@ Power on, off, shut down guest, reset, restart guest · reconfigure CPU and RAM
 (hot-add aware) · add or extend disk · add or remove NIC · change network ·
 snapshot create, revert, delete (with a retention policy) · web console (VMRC/HTML
 console ticket) · rename (vCenter + DNS) · mount or unmount ISO · change owner or
-project · extend lease · delete (VM + IPAM/DNS release).
+project · extend lease · delete (VM + IPAM/DNS release; refused while the
+blueprint's `prevent_delete` keeps a VM) · allow deletion (administrators
+only).
 
 ### AWX-backed custom actions
 - Any job template can become a day-2 action bound to resource types and

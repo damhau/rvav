@@ -252,6 +252,20 @@ func (a *Activities) setOwner(ctx context.Context, in OpInput) (string, error) {
 	return "From " + d.OwnerName + " to " + owner.Name, nil
 }
 
+// allowDelete lets the deployment's VMs kept from deletion be deleted
+// (ADR-0038).
+func (a *Activities) allowDelete(ctx context.Context, in OpInput) (string, error) {
+	names, err := a.Store.AllowDelete(ctx, a.Store.Pool, in.DeploymentID)
+	if err != nil {
+		return "", err
+	}
+	a.Events.Deployment(ctx, in.DeploymentID)
+	if len(names) == 0 {
+		return "Its VMs could already be deleted", nil
+	}
+	return strings.Join(names, ", ") + " can be deleted", nil
+}
+
 // moveFolder moves the VMs into the folder the new project's placement
 // rules give their cluster.
 func (a *Activities) moveFolder(ctx context.Context, in OpInput) (string, error) {

@@ -7221,8 +7221,9 @@ components:
       allOf:
         - $ref: "#/components/schemas/Project"
         - type: object
-          required: [archived, created_at, members, deployments]
+          required: [archived, created_at, members, deployments, properties]
           properties:
+            properties: { $ref: "#/components/schemas/CustomProperties" }
             archived: { type: boolean }
             archived_at: { type: string, format: date-time }
             created_at: { type: string, format: date-time }
@@ -7247,6 +7248,7 @@ components:
         environments:
           type: array
           items: { $ref: "#/components/schemas/EnvironmentKey" }
+        properties: { $ref: "#/components/schemas/CustomProperties" }
         project_admins:
           type: array
           description: |
@@ -7263,7 +7265,19 @@ components:
         environments:
           type: array
           items: { $ref: "#/components/schemas/EnvironmentKey" }
+        properties:
+          $ref: "#/components/schemas/CustomProperties"
+          description: All of the project's custom properties, replacing those it has.
         archived: { type: boolean }
+    CustomProperties:
+      type: object
+      description: |
+        Custom properties: each of the project's VMs gets them as vSphere
+        custom attributes and in its notes, and bindings read them as
+        `project.properties.<key>`. Keys are letters, digits, `.`, `_` and
+        `-`, starting with a letter.
+      maxProperties: 50
+      additionalProperties: { type: string, maxLength: 512 }
     ProjectMember:
       type: object
       required: [user, role, roles, direct, direct_roles, groups]

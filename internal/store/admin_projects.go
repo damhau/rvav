@@ -44,8 +44,9 @@ func (s *Store) GetAdminProject(ctx context.Context, idOrCode string) (AdminProj
 // when the code is taken).
 func (s *Store) CreateProject(ctx context.Context, p Project, admins []string) error {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `insert into projects (id, code, name, description, cost_center, environments)
-			values ($1, $2, $3, $4, $5, $6)`, p.ID, p.Code, p.Name, p.Description, p.CostCenter, nonNilStrings(p.Environments)); err != nil {
+		if _, err := tx.Exec(ctx, `insert into projects (id, code, name, description, cost_center, environments, properties)
+			values ($1, $2, $3, $4, $5, $6, $7)`, p.ID, p.Code, p.Name, p.Description, p.CostCenter, nonNilStrings(p.Environments),
+			nonNilProperties(p.Properties)); err != nil {
 			return err
 		}
 		for _, u := range admins {
@@ -67,6 +68,7 @@ type ProjectUpdate struct {
 	Name, Description, CostCenter *string
 	Environments                  *[]string
 	Archived                      *bool
+	Properties                    *map[string]string
 }
 
 func (s *Store) UpdateProject(ctx context.Context, id string, u ProjectUpdate) error {
@@ -74,14 +76,27 @@ func (s *Store) UpdateProject(ctx context.Context, id string, u ProjectUpdate) e
 	if u.Environments != nil {
 		envs = nonNilStrings(*u.Environments)
 	}
+	var props *map[string]string
+	if u.Properties != nil {
+		m := nonNilProperties(*u.Properties)
+		props = &m
+	}
 	tag, err := s.Pool.Exec(ctx, `update projects set name = coalesce($2, name), description = coalesce($3, description),
 		cost_center = coalesce($4, cost_center), environments = coalesce($5, environments),
-		archived_at = case when $6::bool is null then archived_at when $6 then coalesce(archived_at, now()) end
-		where id = $1`, id, u.Name, u.Description, u.CostCenter, envs, u.Archived)
+		archived_at = case when $6::bool is null then archived_at when $6 then coalesce(archived_at, now()) end,
+		properties = coalesce($7::jsonb, properties)
+		where id = $1`, id, u.Name, u.Description, u.CostCenter, envs, u.Archived, props)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
 	return err
+}
+
+func nonNilProperties(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 // MemberRole is a user's role in a project, directly or through a group.

@@ -166,9 +166,29 @@ func init() {
 		},
 	})
 	register(&Action{
+		Key: "allow_delete", Name: "Allow deletion", Group: GroupLifecycle, Types: []string{DeploymentType}, Admin: true, OnFailed: true,
+		Unavailable: func(t Target, _ Choices) string {
+			if len(protected(t)) == 0 {
+				return "Nothing keeps its VMs from being deleted."
+			}
+			return ""
+		},
+		Confirm: "Its blueprint keeps these VMs from being deleted. Once allowed, those who may delete the deployment can.",
+		Ops: func(t Target, _ map[string]any) []Op {
+			return []Op{{Key: "rvav.allow_delete", Title: "Allow deleting " + strings.Join(protected(t), ", "), System: "rvav",
+				Op: "allow_delete"}}
+		},
+	})
+	register(&Action{
 		Key: "delete", Name: "Delete", Group: GroupLifecycle, Types: []string{DeploymentType}, Destructive: true, TypeName: true,
 		During: "deleting", After: "deleted", OnFailed: true,
 		Confirm: "Deletes the VMs and releases their IP addresses and DNS records. This can't be undone.",
+		Unavailable: func(t Target, _ Choices) string {
+			if names := protected(t); len(names) > 0 {
+				return "Its blueprint keeps " + strings.Join(names, ", ") + " from being deleted: an administrator allows it first (Allow deletion)."
+			}
+			return ""
+		},
 		Ops: func(t Target, in map[string]any) []Op {
 			var ops []Op
 			if in["lease"] == true {
@@ -227,4 +247,15 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// protected are the deployment's VMs kept from deletion (ADR-0038).
+func protected(t Target) []string {
+	var names []string
+	for _, r := range t.Resources {
+		if r.PreventDelete {
+			names = append(names, r.Name)
+		}
+	}
+	return names
 }

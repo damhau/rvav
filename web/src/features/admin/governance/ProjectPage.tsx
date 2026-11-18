@@ -2,7 +2,7 @@
 // with its preview, and quotas.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Gauge, Route as RouteIcon, UserRound } from "lucide-react";
+import { Gauge, Plus, Route as RouteIcon, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
@@ -42,6 +42,72 @@ const list = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+type Property = { key: string; value: string };
+
+/** A project's custom properties, a row each, in the order they were added. */
+function PropertiesEditor({
+  value,
+  onChange,
+  disabled,
+  errors,
+}: {
+  value: Property[];
+  onChange: (v: Property[]) => void;
+  disabled: boolean;
+  errors: Record<string, string>;
+}) {
+  const set = (i: number, p: Property) => onChange(value.map((x, j) => (j === i ? p : x)));
+  return (
+    <fieldset className="flex flex-col gap-2 md:col-span-2">
+      <legend className="mb-1 text-secondary font-medium">Custom properties</legend>
+      <p className="text-secondary text-muted">
+        Each VM of the project gets them as vSphere custom attributes and in its notes. Bindings read them as{" "}
+        <code className="font-mono">project.properties.&lt;key&gt;</code>.
+      </p>
+      {value.map((p, i) => (
+        <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-start gap-2">
+          <Field label="Key" htmlFor={`p-prop-${i}-key`} error={errors[`/properties/${p.key}`]}>
+            <Input
+              id={`p-prop-${i}-key`}
+              className="font-mono"
+              value={p.key}
+              disabled={disabled}
+              onChange={(e) => set(i, { ...p, key: e.target.value })}
+            />
+          </Field>
+          <Field label="Value" htmlFor={`p-prop-${i}-value`}>
+            <Input
+              id={`p-prop-${i}-value`}
+              value={p.value}
+              disabled={disabled}
+              onChange={(e) => set(i, { ...p, value: e.target.value })}
+            />
+          </Field>
+          {!disabled && (
+            <Button
+              type="button"
+              size="icon"
+              variant="quiet"
+              className="mt-6"
+              aria-label={`Remove property ${p.key || i + 1}`}
+              onClick={() => onChange(value.filter((_, j) => j !== i))}
+            >
+              <X className="size-3.5" />
+            </Button>
+          )}
+        </div>
+      ))}
+      {!disabled && (
+        <div>
+          <Button type="button" variant="secondary" onClick={() => onChange([...value, { key: "", value: "" }])}>
+            <Plus className="size-3.5" /> Add property
+          </Button>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const qc = useQueryClient();
   const envs = useQuery(q.environments());
@@ -52,6 +118,9 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
     cost_center: project.cost_center ?? "",
     environments: project.environments,
   });
+  const [props, setProps] = useState<Property[]>(() =>
+    Object.entries(project.properties).map(([key, value]) => ({ key, value })),
+  );
   const save = useMutation({
     mutationFn: (body: S["AdminProjectUpdate"]) =>
       call(api.PATCH("/admin/projects/{projectId}", { params: { path: { projectId: project.id } }, body })),
@@ -62,6 +131,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
     },
     onError: (e) => failed(e, "Not saved"),
   });
+  const errors = fieldErrors(save.error);
   return (
     <Panel
       title="Details"
@@ -83,7 +153,10 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
         className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
-          save.mutate(f);
+          save.mutate({
+            ...f,
+            properties: Object.fromEntries(props.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+          });
         }}
       >
         <Field label="Name" htmlFor="p-name">
@@ -129,6 +202,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             </label>
           ))}
         </fieldset>
+        <PropertiesEditor value={props} onChange={setProps} disabled={!isAdmin} errors={errors} />
       </form>
       {archiving && <ArchiveDialog project={project} onClose={() => setArchiving(false)} />}
     </Panel>
@@ -1123,7 +1197,14 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <Details
-            key={[p.name, p.description, p.cost_center, p.environments.join(), p.archived].join("|")}
+            key={[
+              p.name,
+              p.description,
+              p.cost_center,
+              p.environments.join(),
+              p.archived,
+              JSON.stringify(p.properties),
+            ].join("|")}
             project={p}
             isAdmin={can(me, "project.update", p.id)}
           />

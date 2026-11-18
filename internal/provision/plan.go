@@ -6,6 +6,8 @@ package provision
 import (
 	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -405,6 +407,21 @@ type VMUnit struct {
 	Hosts            []string `json:"hosts,omitempty"`
 	DatastoreCluster string   `json:"datastore_cluster,omitempty"`
 	PodDatastores    []string `json:"pod_datastores,omitempty"`
+	// Properties are its project's custom properties and its component's
+	// over them, written to it as vSphere custom attributes and in its
+	// notes; PreventDelete keeps it from being deleted (ADR-0038).
+	Properties    map[string]string `json:"properties,omitempty"`
+	PreventDelete bool              `json:"prevent_delete,omitempty"`
+}
+
+// Notes are what a VM's notes (its vSphere annotation) say: that rvav
+// manages it, and its custom properties.
+func (v VMUnit) Notes() string {
+	notes := "Managed by rvav. Deployment " + v.DeploymentID
+	for _, k := range slices.Sorted(maps.Keys(v.Properties)) {
+		notes += "\n" + k + ": " + v.Properties[k]
+	}
+	return notes
 }
 
 // VMGroup is an NSX group a VM joins: one made for its deployment (Key),

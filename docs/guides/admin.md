@@ -482,10 +482,22 @@ A project's page has four tabs:
   project or one environment, with what the project takes now. A hard
   limit refuses a request that would pass it; a soft one asks for an
   approval.
-- **Details:** name, cost centre, description and environments; **Archive**.
+- **Details:** name, cost centre, description, environments and custom
+  properties; **Archive**. Each VM built in the project gets the custom
+  properties as vSphere custom attributes and in its notes, and bindings
+  read them as `project.properties.<key>`. A key has letters, digits, `.`,
+  `_` and `-`, and starts with a letter. A blueprint's own properties of
+  the same key win. VMs built before a change keep the properties they
+  were given.
 
 Each tab is in the page's address, so a link can open it, for example
 `/admin/projects?tab=groups`.
+
+A deployment whose blueprint sets `prevent_delete` can't be deleted, by
+its owner, a project admin or the end of its lease: **Delete** names the
+VMs it keeps. To let it be deleted, open the deployment and select
+**Allow deletion** in its **Actions** menu. You need `project.update` in
+its project, which administrators hold.
 
 ## Roles and permissions
 

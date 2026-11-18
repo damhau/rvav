@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -153,7 +154,7 @@ func (s *Store) SetDeploymentsStatusForRequest(ctx context.Context, db DB, reque
 	return err
 }
 
-const resourceCols = `id, deployment_id, request_id, type, name, external_id, sync_state, properties`
+const resourceCols = `id, deployment_id, request_id, type, name, external_id, sync_state, properties, prevent_delete`
 
 // UpsertResource creates a resource or replaces its properties, keyed by type
 // and external ID.
@@ -161,13 +162,15 @@ const resourceCols = `id, deployment_id, request_id, type, name, external_id, sy
 // deployment already has it. An object another deployment has is ErrTaken:
 // it is never moved.
 func (s *Store) UpsertResource(ctx context.Context, db DB, r Resource) (Resource, error) {
-	rows, _ := db.Query(ctx, `insert into resources (id, deployment_id, request_id, type, name, external_id, sync_state, properties)
-		values ($1,$2,$3,$4,$5,$6,$7,$8)
+	rows, _ := db.Query(ctx, `insert into resources (id, deployment_id, request_id, type, name, external_id, sync_state, properties,
+			prevent_delete)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		on conflict (type, external_id) do update set name = excluded.name, properties = excluded.properties,
 		       sync_state = excluded.sync_state, updated_at = now()
 		where resources.deployment_id = excluded.deployment_id
 		returning `+resourceCols,
-		r.ID, r.DeploymentID, r.RequestID, r.Type, r.Name, r.ExternalID, orDefault(r.SyncState, "in_sync"), jsonOr(r.Properties, "{}"))
+		r.ID, r.DeploymentID, r.RequestID, r.Type, r.Name, r.ExternalID, orDefault(r.SyncState, "in_sync"), jsonOr(r.Properties, "{}"),
+		r.PreventDelete)
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Resource])
 	if errors.Is(err, pgx.ErrNoRows) {
 		return res, fmt.Errorf("%s %s: %w", r.Type, r.Name, ErrTaken)
@@ -204,6 +207,16 @@ func (s *Store) FindResource(ctx context.Context, typ, externalID string) (Resou
 	return r, notFound(err)
 }
 
+// AllowDelete lets a deployment's VMs be deleted, and names those that
+// weren't (ADR-0038).
+func (s *Store) AllowDelete(ctx context.Context, db DB, deploymentID string) ([]string, error) {
+	rows, _ := db.Query(ctx, `update resources set prevent_delete = false, updated_at = now()
+		where deployment_id = $1 and prevent_delete returning name`, deploymentID)
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	slices.Sort(names)
+	return names, err
+}
+
 func (s *Store) DeleteResource(ctx context.Context, db DB, id string) error {
 	_, err := db.Exec(ctx, `delete from resources where id = $1`, id)
 	return err
@@ -211,7 +224,8 @@ func (s *Store) DeleteResource(ctx context.Context, db DB, id string) error {
 
 // VMResources returns every VM resource of live deployments, for inventory sync.
 func (s *Store) VMResources(ctx context.Context) ([]Resource, error) {
-	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state, r.properties
+	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state, r.properties,
+			r.prevent_delete
 		from resources r join deployments d on d.id = r.deployment_id
 		where r.type = 'vsphere.vm' and d.status <> 'deleted'`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])
@@ -220,7 +234,8 @@ func (s *Store) VMResources(ctx context.Context) ([]Resource, error) {
 // VMResourcesOf are the VM resources of a VM, by its instance UUID, in
 // deployments not deleted.
 func (s *Store) VMResourcesOf(ctx context.Context, instanceUUID string) ([]Resource, error) {
-	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state, r.properties
+	rows, _ := s.Pool.Query(ctx, `select r.id, r.deployment_id, r.request_id, r.type, r.name, r.external_id, r.sync_state, r.properties,
+			r.prevent_delete
 		from resources r join deployments d on d.id = r.deployment_id
 		where r.type = 'vsphere.vm' and d.status <> 'deleted' and r.external_id = $1`, instanceUUID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Resource])

@@ -151,4 +151,26 @@ describe("a project's placement and quotas", () => {
     expect(await screen.findByRole("region", { name: "Details" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("adds a custom property, says a bad key by its field, and removes one", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=details");
+    const details = await screen.findByRole("region", { name: "Details" });
+    expect(await within(details).findByDisplayValue("backupPolicy")).toBeInTheDocument();
+    await user.click(within(details).getByRole("button", { name: "Add property" }));
+    const keys = within(details).getAllByRole("textbox", { name: "Key" });
+    await user.click(keys[1]!);
+    await user.paste("1st");
+    await user.click(within(details).getAllByRole("textbox", { name: "Value" })[1]!);
+    await user.paste("CC-1001");
+    await user.click(within(details).getByRole("button", { name: "Save details" }));
+    expect(await within(details).findByText(/A key of up to 64 letters/)).toBeInTheDocument();
+
+    await user.clear(keys[1]!);
+    await user.paste("costCenter");
+    await user.click(within(details).getByRole("button", { name: "Remove property backupPolicy" }));
+    await user.click(within(details).getByRole("button", { name: "Save details" }));
+    expect(await screen.findByText("Web Platform saved")).toBeInTheDocument();
+    expect(adminState(db).extra.prj_web!.properties).toEqual({ costCenter: "CC-1001" });
+  });
 });

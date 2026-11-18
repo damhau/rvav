@@ -5494,6 +5494,7 @@ export interface components {
             items: components["schemas"]["UserRef"][];
         };
         AdminProject: components["schemas"]["Project"] & {
+            properties: components["schemas"]["CustomProperties"];
             archived: boolean;
             /** Format: date-time */
             archived_at?: string;
@@ -5514,6 +5515,7 @@ export interface components {
             description?: string;
             cost_center?: string;
             environments: components["schemas"]["EnvironmentKey"][];
+            properties?: components["schemas"]["CustomProperties"];
             /**
              * @description Users made project admins of it, the caller too when named:
              *     `project.create` is enough, whatever roles the caller may give.
@@ -5525,7 +5527,18 @@ export interface components {
             description?: string;
             cost_center?: string;
             environments?: components["schemas"]["EnvironmentKey"][];
+            /** @description All of the project's custom properties, replacing those it has. */
+            properties?: components["schemas"]["CustomProperties"];
             archived?: boolean;
+        };
+        /**
+         * @description Custom properties: each of the project's VMs gets them as vSphere
+         *     custom attributes and in its notes, and bindings read them as
+         *     `project.properties.<key>`. Keys are letters, digits, `.`, `_` and
+         *     `-`, starting with a letter.
+         */
+        CustomProperties: {
+            [key: string]: string;
         };
         ProjectMember: {
             user: components["schemas"]["UserRef"];

@@ -34,6 +34,8 @@ type Project struct {
 	Environments []string `db:"environments"`
 	// ArchivedAt: archived projects request nothing new (ADR-0020).
 	ArchivedAt *time.Time `db:"archived_at"`
+	// Properties are written to its VMs as custom attributes (ADR-0038).
+	Properties map[string]string `db:"properties"`
 }
 
 type QuotaLimit struct {
@@ -306,6 +308,9 @@ type Resource struct {
 	ExternalID   *string         `db:"external_id"`
 	SyncState    string          `db:"sync_state"`
 	Properties   json.RawMessage `db:"properties"`
+	// PreventDelete keeps a VM from being deleted until an administrator
+	// allows it (ADR-0038).
+	PreventDelete bool `db:"prevent_delete"`
 }
 
 type InvCluster struct {

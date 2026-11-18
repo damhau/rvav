@@ -154,7 +154,10 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 			return nil, err
 		}
 	}
-	if ev.Blueprint, err = blueprint.Parse(ev.Version.Blueprint); err != nil {
+	if ev.Blueprint, err = blueprint.Parse(ev.Version.Blueprint); err == nil {
+		ev.Blueprint = ev.Blueprint.WithContext(policy.Vars{"project": projectVars(ev.Project)})
+	}
+	if err != nil {
 		return nil, err
 	}
 	switch ev.Blueprint.Kind {
@@ -365,13 +368,23 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 	return policy.Vars{
 		"inputs":      ev.Inputs,
 		"environment": ev.Env.Key,
-		"project":     map[string]any{"id": ev.Project.ID, "code": ev.Project.Code, "name": ev.Project.Name},
+		"project":     projectVars(ev.Project),
 		"item":        map[string]any{"slug": ev.Item.Slug, "category": ev.Item.Category, "type": ev.Item.Type},
 		"vm":          ev.vmPolicy(),
 		"vms":         ev.vmVars(),
 		"user":        user,
 		"quota":       quotaVars(ev.OverSoft),
 	}
+}
+
+// projectVars is what CEL reads of a project: project.properties are its
+// custom properties (ADR-0038).
+func projectVars(p store.Project) map[string]any {
+	props := map[string]any{}
+	for k, v := range p.Properties {
+		props[k] = v
+	}
+	return map[string]any{"id": p.ID, "code": p.Code, "name": p.Name, "properties": props}
 }
 
 // quotaVars is what policies see of the quota: whether a soft limit is

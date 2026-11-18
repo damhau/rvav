@@ -771,7 +771,7 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			c.Placement.Chosen = present.Ptr(true)
 		}
 		if p.rule != nil {
-			c.Placement.Folder = str(p.rule.Folder)
+			c.Placement.Folder = str(blueprint.FolderUnder(p.rule.Folder, p.vm.Folder))
 		}
 		type disk = struct {
 			Datastore     *string `json:"datastore,omitempty"`
@@ -847,10 +847,16 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		LinkedClone: p.linkedClone,
 	}
 	if p.rule != nil {
-		vm.Folder = p.rule.Folder
+		vm.Folder = blueprint.FolderUnder(p.rule.Folder, p.vm.Folder)
 	}
 	if p.image != nil {
 		vm.ImageUserData = p.image.UserData
+	}
+	vm.PreventDelete = p.vm.PreventDelete
+	if len(ev.Project.Properties)+len(p.vm.Properties) > 0 {
+		vm.Properties = map[string]string{}
+		maps.Copy(vm.Properties, ev.Project.Properties)
+		maps.Copy(vm.Properties, p.vm.Properties)
 	}
 	vm.ResourcePool, vm.Hosts = p.vm.ResourcePool, p.hosts
 	if p.sdrs {
