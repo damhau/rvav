@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -27,6 +28,11 @@ func TestFitWidget(t *testing.T) {
 		{"tags", map[string]any{"type": "array", "items": map[string]any{"type": "object"}}, "tags", false, nil},
 		{"tags", map[string]any{"type": "string"}, "tags", false, nil},
 		{"multiselect", map[string]any{"type": "array"}, "multiselect", true, nil},
+		{"multiselect", map[string]any{"type": "array", "items": map[string]any{"type": "object"}}, "multiselect", false, nil},
+		{"datagrid", map[string]any{"type": "array", "items": map[string]any{"type": "object"}}, "datagrid", true, nil},
+		{"datagrid", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "datagrid", false, nil},
+		{"secret", map[string]any{"type": "integer"}, "secret", false, nil},
+		{"text", map[string]any{"type": "array"}, "text", false, nil},
 	} {
 		got, fits := fitWidget(c.widget, c.prop)
 		if got != c.want || fits != c.fits {
@@ -270,5 +276,84 @@ resources:
 		if !has(p, want.level, want.where, want.text) {
 			t.Errorf("no %s note at %s with %q: %+v", want.level, want.where, want.text, p.Notes)
 		}
+	}
+}
+
+// TestMapFieldTypes: each of vRA's form widgets on an input of each type
+// becomes rvav's field, or is reported; a secret keeps no default (F1.1).
+func TestMapFieldTypes(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	bp, form := vra.SampleFieldTypes()
+	e.Blueprints, e.Forms = append(e.Blueprints, bp), append(e.Forms, form)
+	p := MapTemplate(&e, bp)
+	if p.Doc == nil {
+		t.Fatalf("plan = %s %+v", p.Status, p.Notes)
+	}
+	v := p.Doc.Versions[0]
+	props := v.FormSchema["properties"].(map[string]any)
+	fields := v.UISchema["fields"].(map[string]any)
+	prop := func(name string) map[string]any { p, _ := props[name].(map[string]any); return p }
+	field := func(name string) map[string]any { f, _ := fields[name].(map[string]any); return f }
+	widget := func(name string) any { return field(name)["widget"] }
+
+	if widget("window") != "datetime" || prop("window")["format"] != "date-time" {
+		t.Errorf("window = %v %v", field("window"), prop("window"))
+	}
+	if widget("ratio") != "number" || prop("ratio")["type"] != "number" || prop("ratio")["minimum"] != 0.5 {
+		t.Errorf("ratio = %v %v", field("ratio"), prop("ratio"))
+	}
+	required, _ := v.FormSchema["required"].([]string)
+	for _, s := range []string{"adminPassword", "apiToken"} {
+		if widget(s) != "secret" || field(s)["secret"] != true || v.InitialValues[s] != nil || !slices.Contains(required, s) {
+			t.Errorf("%s = %v, initial %v, required %v", s, field(s), v.InitialValues[s], required)
+		}
+	}
+	if items := prop("labels")["items"].(map[string]any); widget("labels") != "tags" || items["enum"] != nil || len(field("labels")["options"].([]map[string]any)) != 2 {
+		t.Errorf("labels = %v %v", field("labels"), prop("labels"))
+	}
+	features := prop("features")["items"].(map[string]any)
+	if widget("features") != "multiselect" || !reflect.DeepEqual(features["enum"], []any{"backup", "monitoring"}) ||
+		field("features")["options"].([]map[string]any)[0]["label"] != "Back up" || !reflect.DeepEqual(v.InitialValues["features"], []any{"backup"}) {
+		t.Errorf("features = %v %v, initial %v", field("features"), prop("features"), v.InitialValues["features"])
+	}
+	if widget("owners") != "tags" {
+		t.Errorf("owners = %v", field("owners"))
+	}
+	var cols []string
+	for _, c := range field("disks")["columns"].([]map[string]any) {
+		cols = append(cols, fmt.Sprintf("%s:%s:%s", c["key"], c["label"], c["widget"]))
+	}
+	rows := prop("disks")["items"].(map[string]any)
+	if widget("disks") != "datagrid" || !slices.Equal(cols, []string{"size:Size (GB):number", "tier:Tier:select", "label:Label:text", "thin:Thin:toggle"}) ||
+		!reflect.DeepEqual(rows["required"], []any{"size"}) || prop("disks")["maxItems"] != 4 ||
+		!reflect.DeepEqual(rows["properties"].(map[string]any)["tier"], map[string]any{"type": "string", "enum": []any{"gold", "silver"}}) {
+		t.Errorf("disks = %v, columns %v, rows %v", prop("disks"), cols, rows)
+	}
+	for _, gone := range []string{"ports", "meta"} {
+		if _, ok := props[gone]; ok {
+			t.Errorf("%s became a field: %v", gone, props[gone])
+		}
+		for _, s := range v.UISchema["layout"].(map[string]any)["sections"].([]map[string]any) {
+			if slices.Contains(s["fields"].([]string), gone) {
+				t.Errorf("section %s names %s, which is left out", s["key"], gone)
+			}
+		}
+	}
+	for _, want := range []struct{ level, where, text string }{
+		{Info, "inputs.adminPassword", "Encrypted in vRA"},
+		{Warning, "inputs.adminPassword", "default isn't kept"},
+		{Warning, "form.apiToken", "default isn't kept"},
+		{Unmapped, "form.owners", "Until then, it is tags"},
+		{Unmapped, "form.catalog", "valuePicker in vRA, which rvav has no widget for"},
+		{Unmapped, "form.catalog", "com.corp.cmdb/search"},
+		{Unmapped, "inputs.ports", "A list of integer values"},
+		{Unmapped, "inputs.meta", "An input of type object"},
+	} {
+		if !has(p, want.level, want.where, want.text) {
+			t.Errorf("no %s note at %s with %q: %+v", want.level, want.where, want.text, p.Notes)
+		}
+	}
+	if has(p, Warning, "form.adminPassword", "default isn't kept") {
+		t.Errorf("the dropped default is reported twice: %+v", p.Notes)
 	}
 }

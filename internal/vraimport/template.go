@@ -388,7 +388,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	vd.FormSchema = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
 		"additionalProperties": false, "required": required, "properties": props}
 	sections := []map[string]any{{"key": "inputs", "title": "Request", "columns": 2,
-		"fields": slices.DeleteFunc(slices.Clone(order), func(f string) bool { return slices.Contains(placed, f) })}}
+		"fields": slices.DeleteFunc(slices.Clone(order), func(f string) bool { return slices.Contains(placed, f) || fields[f] == nil })}}
 	if len(placed) > 0 {
 		sections = append(sections, map[string]any{"key": "placement", "title": "Placement and network", "columns": 2, "fields": placed})
 	}
@@ -461,11 +461,7 @@ func mapInput(name string, in map[string]any, note func(level, where, text strin
 	switch typ {
 	case "string", "":
 		prop["type"] = "string"
-		for _, k := range []string{"pattern", "minLength", "maxLength"} {
-			if v, ok := in[k]; ok {
-				prop[k] = v
-			}
-		}
+		copyKeys(in, prop, "pattern", "minLength", "maxLength")
 		switch in["format"] {
 		case "date":
 			field["widget"], prop["format"] = "date", "date"
@@ -478,43 +474,136 @@ func mapInput(name string, in map[string]any, note func(level, where, text strin
 		}
 	case "integer", "number":
 		prop["type"] = typ
-		for _, k := range []string{"minimum", "maximum"} {
-			if v, ok := in[k]; ok {
-				prop[k] = v
-			}
-		}
+		copyKeys(in, prop, "minimum", "maximum")
 		field["widget"] = "number"
 	case "boolean":
 		prop["type"] = "boolean"
 		field["widget"] = "toggle"
+	case "array":
+		if !mapList(where, in, prop, field, note) {
+			return nil, nil, false, nil
+		}
 	default:
 		note(Unmapped, where, fmt.Sprintf("An input of type %s: left out of the form.", typ))
 		return nil, nil, false, nil
 	}
-	if e, ok := in["enum"].([]any); ok {
-		var vals []any
-		var opts []map[string]any
-		for _, v := range e {
-			vals = append(vals, v)
-			opts = append(opts, map[string]any{"value": fmt.Sprint(v), "label": fmt.Sprint(v)})
-		}
-		prop["enum"], field["widget"], field["options"] = vals, "select", opts
-	}
-	if one, ok := in["oneOf"].([]any); ok {
-		var vals []any
-		var opts []map[string]any
-		for _, o := range one {
-			m, _ := o.(map[string]any)
-			vals = append(vals, m["const"])
-			opts = append(opts, map[string]any{"value": fmt.Sprint(m["const"]), "label": fmt.Sprint(m["title"])})
-		}
+	if vals, opts := choices(in); vals != nil && typ != "array" {
 		prop["enum"], field["widget"], field["options"] = vals, "select", opts
 	}
 	def = in["default"]
 	// vRA asks for an input without a default; one with a default can be
 	// left as it is.
 	required = def == nil
+	if field["secret"] == true && def != nil {
+		def, required = nil, true
+		note(Warning, where, secretDefault)
+	}
 	return prop, field, required, def
+}
+
+// secretDefault is the note on a secret's default, which the import drops.
+const secretDefault = "Its default isn't kept, since anyone who reads the item would see it: the requester types the secret."
+
+// choices are an input's values and options: its oneOf (with titles), or
+// its enum.
+func choices(in map[string]any) (vals []any, opts []map[string]any) {
+	if one, ok := in["oneOf"].([]any); ok {
+		for _, o := range one {
+			m, _ := o.(map[string]any)
+			label, _ := m["title"].(string)
+			if label == "" {
+				label = fmt.Sprint(m["const"])
+			}
+			vals = append(vals, m["const"])
+			opts = append(opts, map[string]any{"value": fmt.Sprint(m["const"]), "label": label})
+		}
+		return vals, opts
+	}
+	e, _ := in["enum"].([]any)
+	for _, v := range e {
+		vals = append(vals, v)
+		opts = append(opts, map[string]any{"value": fmt.Sprint(v), "label": fmt.Sprint(v)})
+	}
+	return vals, opts
+}
+
+// mapList types a list input: a multi-select when its items are text with
+// choices, tags when they are text, a table when they are objects.
+func mapList(where string, in, prop, field map[string]any, note func(level, where, text string)) bool {
+	items, _ := in["items"].(map[string]any)
+	typ, _ := items["type"].(string)
+	prop["type"] = "array"
+	copyKeys(in, prop, "minItems", "maxItems", "uniqueItems")
+	switch typ {
+	case "string", "":
+		it := map[string]any{"type": "string"}
+		prop["items"] = it
+		if vals, opts := choices(items); vals != nil {
+			it["enum"], field["widget"], field["options"] = vals, "multiselect", opts
+		} else {
+			field["widget"] = "tags"
+		}
+		return true
+	case "object":
+		cols, rows, why := mapRows(items)
+		if why != "" {
+			note(Unmapped, where, why)
+			return false
+		}
+		prop["items"], field["widget"], field["columns"] = rows, "datagrid", cols
+		return true
+	}
+	note(Unmapped, where, fmt.Sprintf("A list of %s values: rvav's lists hold text (tags or a multi-select) or rows (a table). Left out of the form.", typ))
+	return false
+}
+
+// mapRows are a table's columns and its rows' schema, from a list's object
+// items: a column per property of text, a number or a boolean. why says
+// what rvav can't show.
+func mapRows(items map[string]any) (cols []map[string]any, rows map[string]any, why string) {
+	cells, _ := items["properties"].(map[string]any)
+	if len(cells) == 0 {
+		return nil, nil, "A list of objects without properties: rvav's table needs a column per property. Left out of the form."
+	}
+	props := map[string]any{}
+	for _, k := range slices.Sorted(maps.Keys(cells)) {
+		c, _ := cells[k].(map[string]any)
+		label, _ := c["title"].(string)
+		if label == "" {
+			label = humanize(k)
+		}
+		col, cell := map[string]any{"key": k, "label": label}, map[string]any{"type": c["type"]}
+		switch c["type"] {
+		case "string", nil:
+			cell["type"], col["widget"] = "string", "text"
+			copyKeys(c, cell, "pattern", "minLength", "maxLength")
+			if vals, opts := choices(c); vals != nil {
+				cell["enum"], col["widget"], col["options"] = vals, "select", opts
+			}
+		case "integer", "number":
+			col["widget"] = "number"
+			copyKeys(c, cell, "minimum", "maximum")
+		case "boolean":
+			col["widget"] = "toggle"
+		default:
+			return nil, nil, fmt.Sprintf("Its rows' %s is of type %v: rvav's table columns hold text, numbers, booleans or choices. Left out of the form.", k, c["type"])
+		}
+		props[k], cols = cell, append(cols, col)
+	}
+	rows = map[string]any{"type": "object", "properties": props}
+	if r, ok := items["required"]; ok {
+		rows["required"] = r
+	}
+	return cols, rows, ""
+}
+
+// copyKeys copies those of keys that from has to to.
+func copyKeys(from, to map[string]any, keys ...string) {
+	for _, k := range keys {
+		if v, ok := from[k]; ok {
+			to[k] = v
+		}
+	}
 }
 
 // mapFlavor sets the machine's CPU and memory: from a flavor (fixed, or
@@ -642,11 +731,13 @@ func mapDependsOn(t tmpl, name string, machines map[string]machineRef, unmapped 
 
 // fitWidget is the rvav widget for a vRA form's, if it can edit the input
 // as rvav typed it: vRA's date and time picker is a date picker on a date
-// input, and gives any other text input the date-time format.
+// input, and gives any other text input the date-time format. Only list
+// widgets edit a list.
 func fitWidget(w string, prop map[string]any) (string, bool) {
 	if prop == nil {
 		return w, true
 	}
+	items, _ := prop["items"].(map[string]any)
 	switch w {
 	case "datetime":
 		if prop["type"] != "string" {
@@ -660,20 +751,42 @@ func fitWidget(w string, prop map[string]any) (string, bool) {
 		return w, prop["type"] == "integer" || prop["type"] == "number"
 	case "toggle":
 		return w, prop["type"] == "boolean"
-	case "multiselect":
-		return w, prop["type"] == "array"
-	case "tags":
+	case "secret":
+		return w, prop["type"] == "string"
+	case "multiselect", "tags":
 		if prop["type"] != "array" {
 			return w, false
 		}
-		items, _ := prop["items"].(map[string]any)
 		if items == nil {
 			prop["items"] = map[string]any{"type": "string"}
 			return w, true
 		}
 		return w, items["type"] == "string"
+	case "datagrid":
+		return w, prop["type"] == "array" && items["type"] == "object"
 	}
-	return w, true
+	return w, prop["type"] != "array"
+}
+
+// formColumns orders and labels a table's columns as the form's datagrid
+// does.
+func formColumns(field, sch map[string]any) {
+	typ, _ := sch["type"].(map[string]any)
+	defs, _ := typ["fields"].([]any)
+	cols, _ := field["columns"].([]map[string]any)
+	var out []map[string]any
+	for _, d := range defs {
+		m, _ := d.(map[string]any)
+		i := slices.IndexFunc(cols, func(c map[string]any) bool { return c["key"] == m["id"] })
+		if i < 0 {
+			continue
+		}
+		if l, _ := m["label"].(string); l != "" {
+			cols[i]["label"] = l
+		}
+		out, cols = append(out, cols[i]), slices.Delete(cols, i, i+1)
+	}
+	field["columns"] = append(out, cols...)
 }
 
 // applyForm takes a custom form's labels, help, choices, defaults,
@@ -703,7 +816,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 	}
 	widgets := map[string]string{"textField": "text", "textArea": "textarea", "dropDown": "select", "radio": "radio_cards",
 		"checkbox": "toggle", "integerField": "number", "decimalField": "number", "passwordField": "secret", "datetime": "datetime",
-		"multiSelect": "multiselect", "dualList": "multiselect", "tagField": "tags"}
+		"multiSelect": "multiselect", "dualList": "multiselect", "tagField": "tags", "datagrid": "datagrid"}
 	var sections []map[string]any
 	seen := map[string]bool{}
 	for pi, page := range def.Layout.Pages {
@@ -720,17 +833,28 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				}
 				names, seen[fd.ID] = append(names, fd.ID), true
 				prop, _ := props[fd.ID].(map[string]any)
+				// A secret's default would be readable in the item.
+				noDefault := func() {
+					delete(initial, fd.ID)
+					if !slices.Contains(*required, fd.ID) {
+						*required = append(*required, fd.ID)
+						note(Warning, where, secretDefault)
+					}
+				}
 				w, ok := widgets[fd.Display]
 				if fit, fits := fitWidget(w, prop); ok && fits {
 					field["widget"] = fit
 					if fit == "secret" {
 						field["secret"] = true
+						if _, ok := initial[fd.ID]; ok {
+							noDefault()
+						}
 					}
 				} else if ok {
 					note(Warning, where, fmt.Sprintf("Shown as %s in vRA, which doesn't fit an input of type %v in rvav: shown as %v.",
 						fd.Display, prop["type"], field["widget"]))
 				} else if fd.Display != "" {
-					note(Warning, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
+					note(Unmapped, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
 				}
 				for k, v := range fd.State {
 					if b, ok := v.(bool); ok {
@@ -754,11 +878,19 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				if h, _ := sch["signpost"].(string); h != "" {
 					field["help"] = h
 				}
-				if d, ok := sch["default"]; ok {
+				if d, ok := sch["default"]; ok && field["secret"] == true {
+					noDefault()
+				} else if ok {
 					initial[fd.ID] = d
+				}
+				if field["widget"] == "datagrid" {
+					formColumns(field, sch)
 				}
 				switch vl := sch["valueList"].(type) {
 				case []any:
+					if field["widget"] == "datagrid" {
+						break
+					}
 					var vals []any
 					var opts []map[string]any
 					for _, o := range vl {
@@ -767,12 +899,24 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 						opts = append(opts, map[string]any{"value": fmt.Sprint(m["value"]), "label": fmt.Sprint(m["label"])})
 					}
 					field["options"] = opts
-					if prop != nil {
+					switch {
+					case prop == nil || field["widget"] == "tags":
+						// A tag field's choices are suggestions.
+					case field["widget"] == "multiselect":
+						if items, ok := prop["items"].(map[string]any); ok {
+							items["enum"] = vals
+						}
+					default:
 						prop["enum"] = vals
 					}
 				case map[string]any:
-					note(Unmapped, where, fmt.Sprintf("Its choices come from %s %v in vRA: give the field an rvav value source (REST or CEL), or an AWX inventory.",
-						vl["type"], vl["id"]))
+					text := fmt.Sprintf("Its choices come from %s %v in vRA: give the field an rvav value source (REST or CEL), or an AWX inventory.",
+						vl["type"], vl["id"])
+					if field["widget"] == "multiselect" && field["options"] == nil {
+						field["widget"] = "tags"
+						text += " Until then, it is tags, which take any value typed: make it a multi-select again once it has a source."
+					}
+					note(Unmapped, where, text)
 				}
 				if c, ok := sch["constraints"].(map[string]any); ok {
 					if req, _ := c["required"].(bool); req && !slices.Contains(*required, fd.ID) {
