@@ -316,6 +316,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			bindings[k] = "inputs." + k
 		}
 		nx.machine(r.Properties, where, c, bindings, note)
+		mapAddressing(r.Properties, nx.segments, where, c, note)
 		placeByConstraints(cs, r.Properties, netConstraints, where, c, bindings, note)
 		sc.tags(r.Properties["tags"], where+".tags", c, bindings, note)
 		c["bindings"] = bindings
@@ -334,6 +335,11 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	}
 	for name := range disks {
 		note(Unmapped, "resources."+name, "A disk attached to no machine: left out.")
+	}
+	// After every machine: the user's name is checked against the item's
+	// guest OS, which any Windows image makes Windows.
+	for i, name := range machines {
+		mapRemoteAccess(t.Resources[name].Properties, fields, osFamily == "windows", "resources."+name, comps[i], note)
 	}
 
 	// The placement inputs rvav's VM items ask for, those a VM reads: no

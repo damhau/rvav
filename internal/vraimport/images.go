@@ -207,7 +207,8 @@ func PlanTemplates(e *vra.Estate, r Rvav) []TemplateImport {
 			if ci := strings.TrimSpace(first.mapping.CloudConfig); ci != "" {
 				switch {
 				case t.OSFamily == "windows":
-					note(Unmapped, where+".cloudConfig", "cloud-init (cloudbase-init) on a Windows image: rvav's Windows templates are customized by a specification. Left out.")
+					note(Unmapped, where+".cloudConfig", "cloud-init (cloudbase-init) on a Windows image: left out, since rvav customizes a Windows "+
+						"template by a specification unless it is marked as using cloudbase-init. If it does, mark it, and give it this user data.")
 				case !strings.HasPrefix(ci, "#cloud-config") && !strings.HasPrefix(ci, "#!"):
 					note(Unmapped, where+".cloudConfig", "The cloud-init doesn't start with #cloud-config or #!. Left out.")
 				default:

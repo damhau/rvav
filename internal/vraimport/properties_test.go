@@ -92,13 +92,14 @@ func TestMapKeptTemplate(t *testing.T) {
 		{Info, "resources.Cloud_vSphere_Machine_1.properties", "costCenter, owner, replicas"},
 		{Warning, "resources.Cloud_vSphere_Machine_1.cloudConfig", "secret root-password"},
 		{Warning, "resources.Cloud_vSphere_Machine_1.cloudConfig", "secret api-token"},
+		{Unmapped, "resources.Cloud_vSphere_Machine_1.remoteAccess.username", "No user name"},
 	} {
 		if !has(p, n.level, n.where, n.text) {
 			t.Errorf("no %s note at %s with %q in %+v", n.level, n.where, n.text, p.Notes)
 		}
 	}
 	for _, n := range p.Notes {
-		if strings.Contains(n.Where, "metadata") || strings.Contains(n.Where, "remoteAccess") {
+		if strings.Contains(n.Where, "metadata") {
 			t.Errorf("note on what isn't a custom property: %+v", n)
 		}
 	}

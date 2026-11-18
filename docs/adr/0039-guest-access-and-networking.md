@@ -191,3 +191,45 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
 - A SOLIDserver without the IPv6 module, or an account without the right
   to it, answers the `ip6_*` services with a 4xx: the sync, the
   reconciliation and the listings go on with IPv4 only.
+
+### The importer
+- A vRA machine's `remoteAccess` is its component's
+  `guest.remote_access`: `publicPrivateKey` is `ssh_key` (the `sshKey`
+  written in, or an input the form has, `${input.x}` as `${inputs.x}`),
+  `generatedPublicPrivateKey` is `generated_key` and `usernamePassword`
+  is `password` when the password is an `encrypted` input. The importer
+  applies the checks saving does, so an imported item saves: what they
+  would refuse (a password written in the template or from a plain
+  input, a user name from an input or one the OS refuses, a
+  customization specification with anything but Windows' `Administrator`
+  and a password) is reported and left out, and a password is never
+  repeated in a note.
+  vRA's `keyPairName` names a key pair of a public cloud: it has no
+  vSphere meaning, and is reported.
+- On a machine's first adapter, `assignment: dynamic` is `ipam: dhcp`
+  and `assignIPv6Address: true` is `ipv6: true`, unless the adapter is on
+  a segment made for the deployment, or both are asked together. A fixed
+  `address` and the adapters' other settings are reported.
+- A Windows image's `cloudConfig` in an image mapping stays unmapped:
+  only an administrator knows whether the vCenter template runs
+  cloudbase-init, and marking it changes how every VM of the template is
+  customized.
+
+## Consequences
+- People sign in to rvav's VMs as they did to vRA's, without user data
+  written by hand, and parity rows C22 and C23 are covered on vSphere.
+- A generated private key is handed out once: an owner who loses it gets
+  in another way, as the user guide says, rather than downloading it
+  again.
+- Windows VMs get keys, users other than `Administrator` and user data
+  only on templates with cloudbase-init, which administrators prepare and
+  mark; the others keep vCenter's customization and its `Administrator`
+  password.
+- The VM's address is still one IPv4 address. What reads it (AWX's
+  inventory, outbox events, components' references) is unchanged, and a
+  service that needs the IPv6 one reads the deployment's resources.
+- A DHCP VM has no DNS record from rvav: its name resolves only where the
+  DHCP server registers it.
+- vcsim doesn't run a guest: cloudbase-init's run, a real guest's DHCP
+  lease and IPv6 address, and SOLIDserver's IPv6 services are checked on
+  a real vCenter and SOLIDserver (#140).
