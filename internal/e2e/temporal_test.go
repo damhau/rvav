@@ -13,6 +13,8 @@ import (
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"go.temporal.io/api/enums/v1"
+	historypb "go.temporal.io/api/history/v1"
+	"go.temporal.io/api/temporalproto"
 	"go.temporal.io/sdk/client"
 	sdklog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
@@ -183,6 +185,33 @@ func settle(t *testing.T, ctx context.Context, tc client.Client, requestID strin
 			t.Fatalf("request %s's workflow has a task pending: %v, %v", requestID, desc.PendingActivities, desc.PendingWorkflowTask)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// recordHistory writes a finished request's workflow history to
+// $RVAV_RECORD_HISTORIES/<name>.json, as TestReplayHistories reads it, when
+// that names a directory (docs/operations/upgrades.md).
+func recordHistory(t *testing.T, ctx context.Context, tc client.Client, requestID, name string) {
+	t.Helper()
+	dir := os.Getenv("RVAV_RECORD_HISTORIES")
+	if dir == "" {
+		return
+	}
+	var h historypb.History
+	iter := tc.GetWorkflowHistory(ctx, provision.WorkflowID(requestID), "", false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	for iter.HasNext() {
+		ev, err := iter.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.Events = append(h.Events, ev)
+	}
+	b, err := temporalproto.CustomJSONMarshalOptions{Indent: "  "}.Marshal(&h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".json"), append(b, '\n'), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

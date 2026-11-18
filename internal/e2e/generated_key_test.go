@@ -22,7 +22,8 @@ import (
 
 // cloudInitDriver stands in for cloud-init on a real worker, as
 // cloudInitGuest does for the test workflow environment: a VM powered on
-// gets the address its guestinfo metadata gives its first adapter.
+// gets the address its guestinfo metadata gives its first adapter, or
+// dhcpLease when that adapter is on DHCP.
 type cloudInitDriver struct {
 	vsphere.Driver
 	c *vim25.Client
@@ -40,15 +41,21 @@ func (d cloudInitDriver) PowerOn(ctx context.Context, moref string) error {
 	raw, _ := base64.StdEncoding.DecodeString(info["guestinfo.metadata"])
 	var meta struct {
 		Network struct {
-			Ethernets map[string]struct{ Addresses []string }
+			Ethernets map[string]struct {
+				Addresses []string
+				DHCP4     bool `json:"dhcp4"`
+			}
 		}
 	}
 	_ = json.Unmarshal(raw, &meta)
-	addrs := meta.Network.Ethernets["nic0"].Addresses
-	if len(addrs) == 0 {
+	nic := meta.Network.Ethernets["nic0"]
+	ip := dhcpLease
+	switch {
+	case len(nic.Addresses) > 0:
+		ip, _, _ = strings.Cut(nic.Addresses[0], "/")
+	case !nic.DHCP4:
 		return nil
 	}
-	ip, _, _ := strings.Cut(addrs[0], "/")
 	task, err := object.NewVirtualMachine(d.c, ref).Reconfigure(ctx, types.VirtualMachineConfigSpec{
 		ExtraConfig: []types.BaseOptionValue{&types.OptionValue{Key: "SET.guest.ipAddress", Value: ip}}})
 	if err != nil {

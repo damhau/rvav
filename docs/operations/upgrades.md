@@ -70,12 +70,23 @@ workflows in flight fails there, not in production. The histories in
 - day-2 actions;
 - housekeeping;
 - a composite's poll whose last check was read after its deadline, recorded
-  before `poll-last-check` (#125) on the end-to-end tests' dev server.
+  before `poll-last-check` (#125) on the end-to-end tests' dev server;
+- a build in two rounds (T1.7): a database on DHCP, then web servers whose
+  cloud-init reads its address, with a key pair rvav made, recorded by
+  `TestT1Acceptance`.
 
 Add a history whenever a workflow gains a path:
 
 ```
 temporal workflow show -w request-<id> -o json > internal/provision/testdata/histories/<name>.json
+```
+
+An end-to-end test that runs on the Temporal dev server records its
+requests when it calls `recordHistory` and `RVAV_RECORD_HISTORIES` names a
+directory:
+
+```
+RVAV_RECORD_HISTORIES=/tmp/histories go test ./internal/e2e/ -run '^TestT1Acceptance$'
 ```
 
 Look through it for anything secret first. A secret form field's answer
