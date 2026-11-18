@@ -118,9 +118,10 @@ Until every project has moved, vRA and rvav both run:
 
 ## Moving a project back
 
-**Not moved…** on the project undoes the mark, and vRA's administrators
-offer its items again. Its adopted deployments stay in rvav: rvav can't
-give them back to vRA, which still has its own record of them.
+**Not moved…** on the project undoes the mark once you confirm, and
+vRA's administrators offer its items again. Its adopted deployments stay
+in rvav: rvav can't give them back to vRA, which still has its own record
+of them.
 
 If its people get their vRA role back, tell them: **deleting an adopted
 deployment in vRA deletes its VMs**, which rvav manages. Act on adopted

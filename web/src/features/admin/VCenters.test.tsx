@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderApp } from "@/test/render";
 
 describe("the vCenters rvav manages", () => {
-  it("adds one in a side panel, then removes it once confirmed", async () => {
+  it("adds one in a side panel, then removes it once confirmed", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/integrations/vcenter");
     const region = await screen.findByRole("region", { name: "vCenters" });

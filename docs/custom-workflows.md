@@ -181,7 +181,8 @@ with `POST /api/v1/admin/workflows`:
     `with` bindings and an optional `undo`.
 
 Auditors read registrations, with their runs not ended and what uses
-them. A registration in use, or with runs, can only be disabled.
+them. A registration in use, or with runs, can only be disabled: in its
+row's menu, **Remove** says why, and **Turn off** disables it.
 
 ## 5. Change it
 

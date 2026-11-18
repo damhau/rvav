@@ -201,13 +201,14 @@ it and works in both themes.
 | `Breadcrumbs` | A `Breadcrumb` navigation landmark: links to the pages above this one, top-level first. The page's own title follows it, so it isn't repeated. | In `PageHeader`'s `breadcrumbs` on every page below a top-level one: a deployment, a request, a request form, a catalog item, a project, a role. Top-level pages have none. |
 | `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. |
 | `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |
-| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. |
+| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. Selecting all selects the rows shown; unticking it leaves selected rows the filters hide as they are (name it **Select all shown** with `selection.allLabel` when filters or paging hide rows). |
 | `EmptyState` | An icon, a title, one line, and the next step | A list or panel with nothing in it yet: say what goes there, and offer the step that adds it. |
 | `Sheet` | A side panel on the Radix dialog. It opens on its first field, keeps the focus inside, closes with Escape, and gives the focus back to what opened it, a row menu's button included. | Creating and editing a record, with the list still in view. Pass `onSubmit` and `submitLabel` for a Cancel and Save footer. |
 | `ConfirmDialog` | An alert dialog that says what will be removed (`description`) and what depends on it (`consequences`) | Before removing or breaking something. |
 | `DialogContent` | A centred modal | Short questions and small forms that aren't a record's: a reason, a choice, a result. |
 | `Button` | Variants `primary`, `secondary`, `quiet`, `danger` and `danger-solid`; sizes `sm`, `md` and `icon` | One `primary` per page or panel; `secondary` for the others; `quiet` in rows and toolbars; `danger` for an action that asks before it removes, and `danger-solid` for the button that confirms. |
 | `IconButton` | A button that shows only an icon, named by its `label` | Close, more actions, copy: actions whose icon is clear. |
+| `StepMark` | A step's number, a tick once done, the accent for the step to do now (`stepNow` marks its row) | A list of steps in order: the setup checklist, the vRA import's steps. The step's own text says its state to screen readers. |
 | `Field` | A control's label, a line of help, and the problem with its value, tied to the control (`aria-describedby`, `aria-invalid`) | Every form control. |
 
 `components/common` has the rest: `Page` (a page's width and padding),
@@ -408,14 +409,18 @@ it.
 
 - **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
   checklist, from `GET /admin/setup`, read again each time it opens. Each
-  step links to its page (an integration's at `/admin/integrations/<kind>`). While it
+  step links to its page (an integration's at `/admin/integrations/<kind>`).
+  The first step not done that this administrator can do is current
+  (`aria-current="step"`, its link the primary button); the password
+  step is skipped when signed in with the provider. While it
   is open, an administrator lands on it from the Overview once per page
   load (`SetupLanding` in `AppShell.tsx`), and the Overview offers the way
   back. Administration pages work without a project, so an administrator
   in none can set rvav up.
 - **System** (`features/admin/SystemPage.tsx`): `GET /admin/system`,
   read every 10 seconds; read only, each saved setting linking to its
-  integration's page.
+  integration's page. Its tables have no sortable column, so the page has
+  nothing to press.
 - **Projects**: the projects (search, archived ones on request, **New
   project** with its environments and first project admins), the
   environments (production or not, snapshots kept, removable while unused)
@@ -423,25 +428,38 @@ it.
   project, as the role can be given; a role with `access.manage` warns
   that the group's members are administrators in all but name). Project
   admins see their own projects only.
-- **Roles** (`access.read`), in tabs: **Roles**, the built-in and custom
-  roles, where each can be given and how often it is; **For all of rvav**,
-  the roles given to users for all of rvav (given and taken away with
-  `access.manage`, the ones rvav sets read only); **What someone may do**,
-  for a user and a project or all of rvav (`?user=&project=` in the URL),
-  each permission held or not with the roles granting it and where each
-  comes from (`GET /admin/access/explain`,
+- **Roles** (`access.read`), in tabs, with **New role** as the page's
+  primary action: **Roles**, a table of the built-in and custom roles,
+  where each can be given and how often it is, whose rows open the role
+  and whose row menu makes a role from it or deletes a custom one;
+  **For all of rvav**, the roles given to users for all of rvav (given
+  from the table's toolbar and taken away from a row menu after a
+  confirm, with `access.manage`; the ones rvav sets have no menu);
+  **What someone may do**, for a user and a project or all of rvav
+  (`?user=&project=` in the URL), each permission held or not with the
+  roles granting it and where each comes from
+  (`GET /admin/access/explain`,
   `features/admin/access/AccessExplained.tsx`). A role's page (`/admin/roles/<key>`)
   says what it allows in the catalogue's sentences (`GET /permissions`)
   and where it can be given. A built-in role is read only, with **Make a
-  role from it** (`/admin/roles/new?from=<key>`). With `access.manage`, a
-  custom role's page is its editor: key fixed once made, name,
-  description, permissions by area, day-2 ones by group or single action,
-  a warning when `access.manage` is chosen, and **Delete role**. The
-  server's refusals show where they apply: a field's under its field (a
-  taken key under **Key**, a missing `project.see` or a permission for
-  all of rvav on a role given in a project above the permissions), a
-  conflict under the button that caused it (still given, named by a
-  day-2 policy, the last way anyone holds `access.manage`).
+  role from it** (`/admin/roles/new?from=<key>`) in its header. With
+  `access.manage`, a custom role's page is its editor: key fixed once
+  made, name, description, permissions by area, day-2 ones by group or
+  single action, and a warning when `access.manage` is chosen. Its header
+  has **Save role** (**Make role** for a new one) and a menu with
+  **Delete role**. Deleting asks in a `ConfirmDialog`; while the role is
+  given or named by a day-2 policy, **Delete** is disabled and says why
+  (`cantDelete`), in the row menu too. The server's refusals show where
+  they apply: a field's under its field (a taken key under **Key**, a
+  missing `project.see` or a permission for all of rvav on a role given
+  in a project above the permissions), a conflict beside **What it
+  allows** (still given, named by a day-2 policy, the last way anyone
+  holds `access.manage`).
+- **Audit log** (`features/admin/AuditPage.tsx`): a table of events,
+  newest first, with search, what, project and date filters in its
+  toolbar and **Load older events** in the footer; an event's time opens
+  it in a side panel with its detail. **Export CSV** is the header's
+  action.
 - A **project's page**, in tabs: **Members** (each person's roles, several
   each, given here or through a group; add someone found by name or email
   with a role, change the roles given here in a dialog, remove; a project
@@ -799,21 +817,47 @@ The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
 
 **Administration → Onboarding** (`features/admin/OnboardingPage.tsx`,
 [ADR-0026](adr/0026-onboarding.md)) lists the VMs rvav doesn't manage:
-- **Filters:** search, vCenter and power, with how many match; pages of 100
-  with **Show more**.
-- **Selection:** a checkbox per VM, and one to select every VM shown. A
-  selection outlives the filters: the count says how many selected VMs
-  aren't shown, **Clear** empties it, and the dialog lists them. At most
-  200 at once.
-- **Adopting:** **Adopt N VMs…** asks for the project, environment, owner
-  (members who aren't viewers), catalog item (the project's VM items),
-  lease, and optionally one deployment for all with its name. The server's
-  errors show by field, a VM's naming it.
+- **Filters:** search, vCenter and power in the table's toolbar, with how
+  many match; pages of 100 with **Show more**. A filtered empty list
+  offers **Clear filters**.
+- **Selection:** a `DataTable` selection: a checkbox per VM, and **Select
+  all shown** (`allLabel`). A selection outlives the filters: unticking
+  **Select all shown** keeps the selected VMs the filters hide, the count
+  says how many are hidden, **Clear selection** empties it, and the side
+  panel lists them all. At most 200 at once.
+- **Adopting:** **Adopt N VMs…**, the page's primary action, opens a side
+  panel asking for the project, environment, owner (members who aren't
+  viewers), catalog item (the project's VM items), lease, and optionally
+  one deployment for all with its name. The server's errors show by
+  field, a VM's naming it.
 - **Result:** a panel lists the deployments made, with links, and the
   addresses and records found.
 
 The mock offers 60 VMs (`mocks/onboarding.ts`); EfficientIP knows half of
 them.
+
+## vRA import
+
+**Administration → vRA import** (`features/admin/VraImportPage.tsx`,
+[ADR-0027](adr/0027-vra-importer.md)) reads vRA, shows the plan and
+imports it:
+- **Steps:** read vRA, map the projects, import, move each project, each
+  with a `StepMark`; the first not done is current (`aria-current="step"`).
+- **Header:** the read's source and counts as `meta`; before a plan,
+  **Read vRA** (or **Upload file…** when rvav has no vRA set) is the
+  primary action, after it **Import…**.
+- **The plan,** in tabs kept in the address (`?tab=`, catalog items by
+  default): the vRA projects (each mapped with a select; the placement
+  strategy is the third column), cloud templates, vRA deployments and the
+  vRO triage are `DataTable`s; policies and cutover are sections named by
+  their policy or project.
+- **Side panels:** a row's notes, the import (catalog, deployments or
+  both) and **Mark as moved…**. **Not moved…** asks in a
+  `ConfirmDialog` that warns that deleting an adopted deployment in vRA
+  deletes its VMs.
+
+The mock's estate (`mocks/vra.ts`) is read after an earlier import: the
+RHEL item exists, published and offered to Web Platform.
 
 ## Notifications
 

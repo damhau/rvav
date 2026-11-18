@@ -45,9 +45,10 @@ revokes its API tokens, as changing the password does.
 
 The order that gets a first request through. On a new install,
 **Administration › Setup** lists these steps. It opens when `admin` signs
-in, and ticks each step once its page has what it needs. **Don't open it
-at sign-in** keeps it for later; it stops opening by itself once every
-step is done.
+in, and ticks each step once its page has what it needs. The first step
+you can do from there is marked as the one to do now, and its button
+opens its page. **Don't open it at sign-in** keeps it for later; it stops
+opening by itself once every step is done.
 
 0. **Sign in as `admin`** and choose its password.
 1. **The identity provider** (**Integrations › Identity provider**), and
@@ -103,7 +104,9 @@ takes the API to start again; with two or more, they take turns.
 
 Also in **Administration › Integrations**
 ([configuration.md](../operations/configuration.md) says where each
-setting is set):
+setting is set). Its **Connections** tab lists each integration, whether
+it is configured and when it was last saved; select one to open its
+page:
 - **vCenter › Console:** an account that may only open consoles, whose
   clone tickets VMRC links carry (without one, VMRC asks each user to
   sign in), and the WebMKS SDK's scripts, which open consoles in the
@@ -114,7 +117,7 @@ setting is set):
 - **Allowed hosts:** the hosts REST value sources, a composite's REST
   calls and webhooks may call.
   None listed, none is called.
-- **Sync intervals:** in each connection's tab, how often rvav reads it.
+- **Sync intervals:** on each connection's page, how often rvav reads it.
 - **Trusted certificates:** see [below](#trusted-certificates).
 - **AWX › Inventory token:** the token AWX's inventory source reads rvav's
   VMs with. rvav makes it for a user of its own (an auditor no one signs
@@ -440,7 +443,9 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
   one of them, for example `day2.power:power_off`. A day-2 policy that
   matches decides first; with none, the roles' day-2 permissions decide.
 - A role still given, mapped to a group or named by a day-2 policy can't
-  be deleted.
+  be deleted: in its menu, in the list or on its page, **Delete** says
+  why, for example "Delete: given 3 times". Otherwise rvav asks before
+  deleting it.
 
 To give a role:
 - in a project, to a member: on the project's page, **Members**, choose
@@ -453,7 +458,8 @@ To give a role:
   **Map a group**, then choose the project and the role;
 - for all of rvav, to a user: in **Administration › Roles › For all of
   rvav**, choose the role, then the person in **Give someone**
-  (`POST /api/v1/admin/role-assignments`);
+  (`POST /api/v1/admin/role-assignments`). To take it away, select
+  **Take it away** in their row's menu, then confirm;
 - for all of rvav, to a group: a group mapping with **For all of rvav**
   instead of a project.
 
@@ -514,16 +520,26 @@ role, open **What someone may do**, choose the person, and the project or
 
 ## Policies
 
-**Policies** has a tab each. **What applies here** shows, for a project
+**Policies** has a tab each, in the page's address, for example
+`/admin/policies?tab=lease`. **What applies here** shows, for a project
 and an environment, which policies would apply to a request and why.
 
 | Tab | What it decides |
 |---|---|
 | **Approval** | Which requests need approval, from whom (users or groups, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota. |
-| **Quotas** | Projects' limits, also set on each project. A hard limit refuses; a soft one asks for approval. |
 | **Lease** | Default and longest leases per environment or project, extensions, and the end: power off then delete, delete, or only tell the owner. |
 | **Day-2** | Who may run which action, where, and which need approval (deleting in production, by default). |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment. Names are never given twice, and are checked free in vCenter and DNS. |
+
+Each tab is a list. To add a policy, select **New approval policy** (or
+the tab's own); to change one, select **Change** in its row's menu. The
+form opens in a side panel. The row menu also moves approval and day-2
+policies up or down, sets their priority, and turns them off or on.
+Before **Remove** removes a policy, rvav says what changes, such as which
+policy decides instead.
+
+Quotas are set on each project's page, in its **Quotas** tab: a hard
+limit refuses a request, a soft one asks for approval.
 
 ## The catalog
 
@@ -781,13 +797,21 @@ sign it, GitLab sends it as its token.
   queue, offered as items or composite steps
   ([custom-workflows.md](../custom-workflows.md)).
 
+Each of these pages is a list. A row's menu changes the record in a side
+panel and turns it off or on (a day-2 action is offered or not). A
+subscription or custom workflow can also be removed from its menu: rvav
+first says what stops. A subscription's row opens its page, where
+**Change subscription** is the main action and a menu has the rest.
+
 ## Existing VMs and EfficientIP
 
-- **Onboarding:** adopt VMs rvav didn't build. Choose them in vCenter and
-  give each a project, an owner and an item. rvav finds their addresses
-  and DNS records in EfficientIP, and nothing is changed there
+- **Onboarding:** adopt VMs rvav didn't build. Search and filter the
+  list, select the VMs (a selection outlives a change of filters), then
+  select **Adopt N VMs…** and give them a project, an environment, an
+  owner and an item in the side panel. rvav finds their addresses and DNS
+  records in EfficientIP, and nothing is changed there
   ([ADR-0026](../adr/0026-onboarding.md)).
-- **EfficientIP reconcile** (under Integrations): addresses and records
+- **EfficientIP reconcile** (**Integrations › Checks**): addresses and records
   tagged as rvav's that no deployment owns, left by failures or restores.
   Delete them there, or adopt their VM.
 
@@ -797,7 +821,9 @@ sign it, GitLab sends it as its token.
   time, approval lead time, quota use, leases ending
   ([reports.md](../reports.md)).
 - **Audit log:** every administrative change and approver edit, with who
-  made it. Search it, and export it as CSV for the archive.
+  made it. Search and filter it by what changed, project and dates;
+  select an event's time to see its detail in a side panel. **Export
+  CSV** keeps it for the archive.
 - **Secrets:** stored secrets (domain-join accounts, webhook signing
   secrets, credentials for value sources) are sealed with the secrets key.
   They are written, never read back.

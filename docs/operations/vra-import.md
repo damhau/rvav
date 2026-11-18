@@ -5,7 +5,10 @@ How vRA 8 / Aria Automation's content and deployments move to rvav
 
 ## The importer
 
-Administration › **vRA import** is where it happens, for administrators:
+Administration › **vRA import** is where it happens, for administrators.
+Its **Steps** say where the move stands (read vRA, map the projects,
+import, move each project) and mark the one to do now. Each tab of the
+plan is in the page's address, for example `/admin/vra-import?tab=cutover`.
 
 1. **Read vRA** (rvav reads the vRA it is configured with), or **Upload
    file…** (what `rvav vra-export` wrote, where vRA is reachable). What was
@@ -14,7 +17,8 @@ Administration › **vRA import** is where it happens, for administrators:
    nothing:
    - **Catalog items:** for each cloud template, how much of it maps,
      what the import would do (create, new draft, unchanged, conflict,
-     not imported), who it would be shared with, and the notes;
+     not imported), who it would be shared with, and the notes, which
+     open in a side panel;
    - **Deployments:** which would be adopted, and why the others stay in
      vRA;
    - **Policies:** what each becomes in rvav, with the values to set;

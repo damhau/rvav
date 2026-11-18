@@ -14,7 +14,7 @@ the code reads, and only those.
   it listens, the public URL), the web container's own settings, and
   development's fakes. **Administration › System** lists the API's, as
   it reads them, secrets hidden.
-- **Integrations › …**: in that tab of **Administration › Integrations**
+- **Integrations › …**: on that page of **Administration › Integrations**
   too, where the environment variable, when set, still wins and locks its
   field. An install can leave them all out and set them from the UI.
 
