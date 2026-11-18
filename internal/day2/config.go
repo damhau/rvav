@@ -58,11 +58,21 @@ func init() {
 	register(&Action{
 		Key: "disk_add", Name: "Add a disk", Group: GroupConfiguration, Types: []string{vmType},
 		Form: func(Target, Choices) *api.ActionForm {
-			return form("New disk", number("size_gb", "Size (GB)", "Thin provisioned, on the VM's datastore.", 1, maxDiskGB, 50))
+			p := choice("provisioning", "Provisioning", diskProvisionings, asFirstDisk)
+			p.optional = true
+			return form("New disk", number("size_gb", "Size (GB)", "On the VM's datastore.", 1, maxDiskGB, 50), p)
 		},
 		Ops: func(_ Target, in map[string]any) []Op {
-			size := intInput(in, "size_gb")
-			return []Op{vcenter("vsphere.disk_add", fmt.Sprintf("Add a %d GB disk", size), "add_disk", map[string]any{"size_gb": size})}
+			size, p := intInput(in, "size_gb"), strInput(in, "provisioning")
+			args := map[string]any{"size_gb": size}
+			if p != "" && p != asFirstDisk {
+				args["provisioning"] = p
+			}
+			op := vcenter("vsphere.disk_add", fmt.Sprintf("Add a %d GB disk", size), "add_disk", args)
+			if i := slices.IndexFunc(diskProvisionings, func(o api.Option) bool { return o.Value == args["provisioning"] }); i >= 0 {
+				op.Detail = diskProvisionings[i].Label
+			}
+			return []Op{op}
 		},
 	})
 	register(&Action{
@@ -189,13 +199,7 @@ func coldChange(t Target, cpu, memGB int) string {
 	return ""
 }
 
-type vmDisk = struct {
-	CapacityGb int     `json:"capacity_gb"`
-	Datastore  *string `json:"datastore,omitempty"`
-	Label      string  `json:"label"`
-}
-
-func disk(t Target, label string) *vmDisk {
+func disk(t Target, label string) *api.VmDisk {
 	for i := range t.VM.Disks {
 		if t.VM.Disks[i].Label == label {
 			return &t.VM.Disks[i]
@@ -234,6 +238,17 @@ func extraNICs(t Target) string {
 		return "The VM has only its first network adapter, which carries its address and DNS records."
 	}
 	return ""
+}
+
+// asFirstDisk is the Add a disk form's choice of no provisioning: the new
+// disk is provisioned as the VM's first disk (ADR-0036).
+const asFirstDisk = "as_first_disk"
+
+var diskProvisionings = []api.Option{
+	{Value: asFirstDisk, Label: "As the VM's first disk"},
+	{Value: "thin", Label: "Thin"},
+	{Value: "thick_lazy_zeroed", Label: "Thick, lazily zeroed"},
+	{Value: "thick_eager_zeroed", Label: "Thick, eagerly zeroed"},
 }
 
 func nicOptions(t Target) []api.Option {

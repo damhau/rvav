@@ -97,6 +97,34 @@ func TestSingleVMBlueprint(t *testing.T) {
 	}
 }
 
+// A component's provisioning is the blueprint's unless it has its own, and
+// an added disk's is its own, else its component's (ADR-0036).
+func TestDiskProvisioningInherits(t *testing.T) {
+	b, err := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "guest": {"os_family": "linux", "domain": "x"},
+		"provisioning": "thin", "disks": [{"size_gb": 10, "provisioning": "thick_eager_zeroed"}, {"size_gb": 5}],
+		"components": [{"key": "web"}, {"key": "db", "provisioning": "thick_lazy_zeroed"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := b.ComponentList()
+	for i, want := range []struct{ vm, disk0, disk1 string }{
+		{ProvisionThin, ProvisionThickEager, ProvisionThin},
+		{ProvisionThickLazy, ProvisionThickEager, ProvisionThickLazy},
+	} {
+		plan, _, _ := b.EvaluateComponent(cs[i], nil)
+		if plan.Provisioning != want.vm || plan.Disks[0].Provisioning != want.disk0 || plan.Disks[1].Provisioning != want.disk1 {
+			t.Fatalf("%s: plan %q, disks %+v", cs[i].Key, plan.Provisioning, plan.Disks)
+		}
+	}
+	single, err := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "disks": [{"size_gb": 10}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan, _ := single.EvaluateVM(nil); plan.Provisioning != "" || plan.Disks[0].Provisioning != "" {
+		t.Fatalf("without provisioning: %+v", plan)
+	}
+}
+
 func TestCheckUserData(t *testing.T) {
 	for text, ok := range map[string]bool{
 		"#cloud-config\nhostname: {{ .vm.name }}":              true,

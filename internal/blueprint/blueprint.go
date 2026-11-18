@@ -4,6 +4,7 @@
 package blueprint
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -42,6 +43,10 @@ type Blueprint struct {
 	Constraints *Constraints `json:"constraints,omitempty"`
 	// StoragePolicy is the VMs' storage policy, over the placement rule's.
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	// Provisioning is how the VMs' disks are provisioned, the template's
+	// included (ADR-0036): one of Provisionings, the template's first
+	// disk's when empty.
+	Provisioning string `json:"provisioning,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
 	Components []Component `json:"components,omitempty"`
@@ -176,8 +181,10 @@ type Component struct {
 	Tags     []string          `json:"tags,omitempty"`
 	// Constraints are its VMs' (ADR-0035).
 	Constraints *Constraints `json:"constraints,omitempty"`
-	// StoragePolicy is its VMs' storage policy.
+	// StoragePolicy is its VMs' storage policy, and Provisioning their
+	// disks'.
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	Provisioning  string `json:"provisioning,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 	// Groups are the NSX security groups its VMs are in (ADR-0028).
@@ -190,13 +197,24 @@ type Component struct {
 // Disk is a disk added after the template's: SizeGB is a number or CEL,
 // Datastore CEL (the VM's when empty). Constraints are its own storage
 // constraints (ADR-0035): rvav chooses its datastore by them when it isn't
-// given.
+// given. Provisioning wins over the component's (ADR-0036).
 type Disk struct {
 	SizeGB        any      `json:"size_gb"`
 	Datastore     string   `json:"datastore,omitempty"`
 	StoragePolicy string   `json:"storage_policy,omitempty"`
 	Constraints   []string `json:"constraints,omitempty"`
+	Provisioning  string   `json:"provisioning,omitempty"`
 }
+
+// How a disk is provisioned (ADR-0036).
+const (
+	ProvisionThin       = "thin"
+	ProvisionThickLazy  = "thick_lazy_zeroed"
+	ProvisionThickEager = "thick_eager_zeroed"
+)
+
+// Provisionings are the values of provisioning.
+var Provisionings = []string{ProvisionThin, ProvisionThickLazy, ProvisionThickEager}
 
 // NIC is a network adapter added after the template's: Network is CEL.
 type NIC struct {
@@ -225,7 +243,7 @@ func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
 			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups,
-			Constraints: b.Constraints}}
+			Constraints: b.Constraints, Provisioning: b.Provisioning}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -261,6 +279,9 @@ func (b Blueprint) ComponentList() []Component {
 		r.Constraints = c.Constraints.under(b.Constraints)
 		if r.StoragePolicy == "" {
 			r.StoragePolicy = b.StoragePolicy
+		}
+		if r.Provisioning == "" {
+			r.Provisioning = b.Provisioning
 		}
 		out[i] = r
 	}
@@ -309,6 +330,9 @@ type VMPlan struct {
 	PostConfig []string `json:"post_config"`
 	// StoragePolicy is the VM's (its home and disks without their own).
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	// Provisioning is its template's disks' (ADR-0036); empty, they stay
+	// as the template's are.
+	Provisioning string `json:"provisioning,omitempty"`
 	// Disks and NICs are those added after the template's first ones.
 	Disks []DiskPlan `json:"disks,omitempty"`
 	NICs  []NICPlan  `json:"nics,omitempty"`
@@ -336,6 +360,9 @@ type DiskPlan struct {
 	SizeGB        int    `json:"size_gb"`
 	Datastore     string `json:"datastore,omitempty"`
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	// Provisioning is the disk's or its component's; empty, as the VM's
+	// first disk (ADR-0036).
+	Provisioning string `json:"provisioning,omitempty"`
 }
 
 type NICPlan struct {
@@ -437,11 +464,11 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 			count = n
 		}
 	}
-	plan.Template, plan.Library, plan.StoragePolicy = c.Template, c.Library, c.StoragePolicy
+	plan.Template, plan.Library, plan.StoragePolicy, plan.Provisioning = c.Template, c.Library, c.StoragePolicy, c.Provisioning
 	plan.Tags = append(plan.Tags, c.Tags...)
 	plan.Groups = append(plan.Groups, c.Groups...)
 	for i, d := range c.Disks {
-		dp := DiskPlan{StoragePolicy: d.StoragePolicy}
+		dp := DiskPlan{StoragePolicy: d.StoragePolicy, Provisioning: cmp.Or(d.Provisioning, c.Provisioning)}
 		n, ok := numberOrCEL(d.SizeGB, vars)
 		if !ok {
 			missing = append(missing, fmt.Sprintf("disks/%d/size_gb", i))

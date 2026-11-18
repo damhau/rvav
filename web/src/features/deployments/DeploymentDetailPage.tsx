@@ -395,7 +395,7 @@ function toYaml(value: unknown, indent = 0): string {
 
 const tileHint: Record<string, string> = {
   resize: "CPU and memory, hot-add aware",
-  disk_add: "Thin, on the VM's datastore",
+  disk_add: "On the VM's datastore, thin or thick",
   snapshot_create: "Kept as long as the environment allows",
   change_owner: "Hand it to another member of the project",
   change_project: "The new project's quota and placement are checked",

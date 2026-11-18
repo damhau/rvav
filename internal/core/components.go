@@ -782,7 +782,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		DeploymentID: deploymentID, Component: p.comp.Key, Index: index, Name: name,
 		VCPU: p.vm.VCPU, MemoryGB: p.vm.MemoryGB, DiskGB: p.vm.DiskGB,
 		Cluster: p.vm.Cluster, Datastore: p.vm.Datastore, Network: p.vm.Network, Template: p.vm.Template,
-		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy, VCenter: p.vcenter,
+		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy, VCenter: p.vcenter, Provisioning: p.vm.Provisioning,
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder

@@ -610,7 +610,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				ExtraConfig: map[string]string{"guestinfo.rvav.deployment": in.VM.DeploymentID, "guestinfo.rvav.request": in.RequestID},
 				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
 				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy, ResourcePool: in.VM.ResourcePool, Hosts: in.VM.Hosts,
-				DatastoreCluster: in.VM.DatastoreCluster, PodDatastores: in.VM.PodDatastores,
+				DatastoreCluster: in.VM.DatastoreCluster, PodDatastores: in.VM.PodDatastores, Provisioning: in.VM.Provisioning,
 			})
 			return err
 		})
@@ -866,7 +866,8 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 func diskSpecs(vm VMUnit) []vsphere.DiskSpec {
 	var out []vsphere.DiskSpec
 	for _, d := range vm.Disks {
-		out = append(out, vsphere.DiskSpec{SizeGB: d.SizeGB, Datastore: d.Datastore, StoragePolicy: d.StoragePolicy})
+		out = append(out, vsphere.DiskSpec{SizeGB: d.SizeGB, Datastore: d.Datastore, StoragePolicy: d.StoragePolicy,
+			Provisioning: d.Provisioning})
 	}
 	return out
 }

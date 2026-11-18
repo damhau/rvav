@@ -231,8 +231,23 @@ export const catalogue: MockAction[] = [
         [
           "size_gb",
           { type: "integer", minimum: 1, maximum: 4096 },
-          { label: "Size (GB)", widget: "number", help: "Thin provisioned, on the VM's datastore." },
+          { label: "Size (GB)", widget: "number", help: "On the VM's datastore." },
           50,
+        ],
+        [
+          "provisioning",
+          { type: "string", enum: ["as_first_disk", "thin", "thick_lazy_zeroed", "thick_eager_zeroed"] },
+          {
+            label: "Provisioning",
+            widget: "select",
+            options: [
+              { value: "as_first_disk", label: "As the VM's first disk" },
+              { value: "thin", label: "Thin" },
+              { value: "thick_lazy_zeroed", label: "Thick, lazily zeroed" },
+              { value: "thick_eager_zeroed", label: "Thick, eagerly zeroed" },
+            ],
+          },
+          "as_first_disk",
         ],
       ]),
     ops: (_vm, i) => [

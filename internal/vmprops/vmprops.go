@@ -108,17 +108,16 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 		}
 		p.Snapshots = &list
 	}
-	p.Disks = make([]struct {
-		CapacityGb int     `json:"capacity_gb"`
-		Datastore  *string `json:"datastore,omitempty"`
-		Label      string  `json:"label"`
-	}, len(vm.Disks))
+	p.Disks = make([]api.VmDisk, len(vm.Disks))
 	for i, d := range vm.Disks {
 		label := d.Label
 		if label == "" {
 			label = "Hard disk " + strconv.Itoa(i+1)
 		}
 		p.Disks[i].CapacityGb, p.Disks[i].Datastore, p.Disks[i].Label = d.CapacityGB, set(d.Datastore), label
+		if d.Provisioning != "" {
+			p.Disks[i].Provisioning = present.Ptr(api.DiskProvisioning(d.Provisioning))
+		}
 	}
 	p.Nics = make([]struct {
 		IpAddresses *[]string `json:"ip_addresses,omitempty"`

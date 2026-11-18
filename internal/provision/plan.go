@@ -378,6 +378,8 @@ type VMUnit struct {
 	// StoragePolicy the VM's (ADR-0024).
 	Library       string `json:"library,omitempty"`
 	StoragePolicy string `json:"storage_policy,omitempty"`
+	// Provisioning is its template's disks' (ADR-0036).
+	Provisioning string `json:"provisioning,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).
 	VCenter string `json:"vcenter,omitempty"`
 	// Segment is the key of the NSX segment made for its deployment that

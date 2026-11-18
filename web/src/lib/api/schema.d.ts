@@ -5104,6 +5104,18 @@ export interface components {
              */
             vcenter?: string;
         };
+        VmDisk: {
+            /** @example Hard disk 1 */
+            label: string;
+            capacity_gb: number;
+            datastore?: string;
+            provisioning?: components["schemas"]["DiskProvisioning"];
+        };
+        /**
+         * @description How a disk is provisioned (ADR-0036). Absent on a VM's disk that isn't a flat file, an RDM say.
+         * @enum {string}
+         */
+        DiskProvisioning: "thin" | "thick_lazy_zeroed" | "thick_eager_zeroed";
         VmProperties: {
             /** @example vm-48217 */
             moref: string;
@@ -5117,12 +5129,7 @@ export interface components {
             guest_os?: string;
             cpu_count: number;
             memory_mb: number;
-            disks: {
-                /** @example Hard disk 1 */
-                label: string;
-                capacity_gb: number;
-                datastore?: string;
-            }[];
+            disks: components["schemas"]["VmDisk"][];
             nics: {
                 /** @example Network adapter 1 */
                 label?: string;

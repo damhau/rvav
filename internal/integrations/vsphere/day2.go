@@ -1,6 +1,7 @@
 package vsphere
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -120,8 +121,10 @@ func (cl *Client) Reconfigure(ctx context.Context, moref string, cpus, memoryMB 
 	return task.Wait(ctx)
 }
 
-// AddDisk adds a thin disk on the VM's datastore and returns its label.
-func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int) (string, error) {
+// AddDisk adds a disk on the VM's datastore and returns its label. It is
+// provisioned as provisioning says, as the VM's first disk when empty
+// (ADR-0036).
+func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error) {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return "", err
@@ -140,6 +143,7 @@ func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int) (string
 	}
 	disk := devices.CreateDisk(controller, types.ManagedObjectReference{}, "")
 	disk.CapacityInKB = int64(sizeGB) * 1024 * 1024
+	provision(disk, cmp.Or(provisioning, provisioningOf(firstDisk(devices))))
 	if err := vm.AddDevice(ctx, disk); err != nil {
 		return "", err
 	}

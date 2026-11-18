@@ -108,14 +108,23 @@ without hosts in the inventory are matched by their own tags, as before.
 - `provisioning:` on a blueprint or a component is how its VMs' disks are
   provisioned, the template's included: `thin`, `thick_lazy_zeroed` or
   `thick_eager_zeroed`. A disk's own `provisioning:` wins for that disk.
-  Without one, a disk is provisioned as the template's first disk is.
-- At clone, the template's disks are converted with the relocate spec's
-  disk locators (their backing's `thinProvisioned` and `eagerlyScrub`);
-  added disks are created with that backing. vcsim keeps the backing of
-  added disks and ignores disk locators, so the conversion of the
-  template's disks is checked by a unit test of the clone spec only.
-- The day-2 action Add a disk takes an optional `provisioning`; without
-  it, the disk is provisioned as the VM's first disk.
+  Without any, the template's disks stay as they are and an added disk is
+  provisioned as the VM's first disk. Until now added disks were always
+  thin: from a thick template, they are now thick.
+- At clone, the template's flat disks are converted with the relocate
+  spec's disk locators (their backing's `thinProvisioned` and
+  `eagerlyScrub`, on the VM's datastore and storage policy); added disks
+  are created with that backing. vcsim keeps the backing of added disks
+  and ignores disk locators, so the conversion of the template's disks is
+  checked by a unit test of the locators only.
+- A content library OVF is deployed with the matching
+  `storage_provisioning` (`thin`, `thick`, `eagerZeroedThick`). A library
+  VM template's deploy can't convert disks: its disks stay as they are,
+  and only added disks follow `provisioning`.
+- The day-2 action Add a disk asks for the provisioning, **As the VM's
+  first disk** by default; its op carries `provisioning` only when another
+  is chosen.
+- A VM's disks (`VmDisk`) say their `provisioning`, read from vCenter.
 
 ### The vRA importer
 - A project's `placementPolicy` (DEFAULT, BINPACK, SPREAD) becomes the
@@ -131,7 +140,8 @@ without hosts in the inventory are matched by their own tags, as before.
   environment, pin VMs to licensed hosts, use Storage DRS, and fill or
   spread clusters, without blueprint changes.
 - Without the new fields, placement is what it was: the root pool, today's
-  host choice, the most free memory, and the template's disk format.
+  host choice, the most free memory, and the template's disk format;
+  only added disks follow the template's first disk rather than being thin.
 - Requests placed before keep their plans: the new plan fields are left
   out when empty, and the workflows read them only when present.
 - The preview shows rvav's datastore; with Storage DRS on, the VM may end

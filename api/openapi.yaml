@@ -6795,6 +6795,20 @@ components:
           description: As it is in vCenter; absent for a disk or adapter removed outside rvav.
           examples: [16 GB]
 
+    VmDisk:
+      type: object
+      required: [label, capacity_gb]
+      properties:
+        label: { type: string, examples: [Hard disk 1] }
+        capacity_gb: { type: integer }
+        datastore: { type: string }
+        provisioning: { $ref: "#/components/schemas/DiskProvisioning" }
+
+    DiskProvisioning:
+      type: string
+      enum: [thin, thick_lazy_zeroed, thick_eager_zeroed]
+      description: How a disk is provisioned (ADR-0036). Absent on a VM's disk that isn't a flat file, an RDM say.
+
     VmProperties:
       type: object
       required: [moref, instance_uuid, vcenter, power_state, guest_state, cpu_count, memory_mb, disks, nics]
@@ -6809,13 +6823,7 @@ components:
         memory_mb: { type: integer }
         disks:
           type: array
-          items:
-            type: object
-            required: [label, capacity_gb]
-            properties:
-              label: { type: string, examples: [Hard disk 1] }
-              capacity_gb: { type: integer }
-              datastore: { type: string }
+          items: { $ref: "#/components/schemas/VmDisk" }
         nics:
           type: array
           items:

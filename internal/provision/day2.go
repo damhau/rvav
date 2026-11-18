@@ -72,7 +72,7 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 	case "reconfigure":
 		return "", v.Reconfigure(ctx, in.Moref, argInt(args, "cpu_count"), argInt(args, "memory_mb"))
 	case "add_disk":
-		label, err := v.AddDisk(ctx, in.Moref, argInt(args, "size_gb"))
+		label, err := v.AddDisk(ctx, in.Moref, argInt(args, "size_gb"), argStr(args, "provisioning"))
 		return label, err
 	case "extend_disk":
 		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, argStr(args, "disk"), argInt(args, "size_gb"))

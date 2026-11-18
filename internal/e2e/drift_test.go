@@ -123,7 +123,7 @@ func TestDrift(t *testing.T) {
 		expect()
 
 		// A disk added and the adapter moved in vCenter, then accepted.
-		label, err := h.vc.AddDisk(ctx, d.vm().Moref, 20)
+		label, err := h.vc.AddDisk(ctx, d.vm().Moref, 20, "")
 		if err != nil {
 			t.Fatal(err)
 		}

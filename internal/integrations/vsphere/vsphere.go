@@ -75,14 +75,19 @@ type VMSpec struct {
 	// Datastore when it recommends none of them (ADR-0036).
 	DatastoreCluster string
 	PodDatastores    []string
+	// Provisioning converts the template's disks at clone: thin,
+	// thick_lazy_zeroed or thick_eager_zeroed (as they are when empty).
+	Provisioning string
 }
 
 // DiskSpec is a disk added at provisioning, on Datastore (the VM's when
-// empty), with StoragePolicy (the VM's when empty).
+// empty), with StoragePolicy (the VM's when empty), provisioned as
+// Provisioning says (as the VM's first disk when empty).
 type DiskSpec struct {
 	SizeGB        int
 	Datastore     string
 	StoragePolicy string
+	Provisioning  string
 }
 
 // Customization is the guest identity and network applied before first boot.
@@ -159,6 +164,9 @@ type Disk struct {
 	Label      string
 	CapacityGB int
 	Datastore  string
+	// Provisioning is thin, thick_lazy_zeroed or thick_eager_zeroed; empty
+	// for a backing that isn't a flat file (an RDM, say).
+	Provisioning string
 }
 
 type NIC struct {
@@ -197,7 +205,7 @@ type Driver interface {
 	RebootGuest(ctx context.Context, moref string) error
 	Reset(ctx context.Context, moref string) error
 	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
-	AddDisk(ctx context.Context, moref string, sizeGB int) (string, error)
+	AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error)
 	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error
 	AddNIC(ctx context.Context, moref, network string) error
 	RemoveNIC(ctx context.Context, moref, label string) error
@@ -551,7 +559,7 @@ func toVM(m mo.VirtualMachine) VM {
 						ds = p.Datastore
 					}
 				}
-				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds})
+				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, Provisioning: provisioningOf(dev)})
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:
 				card := dev.GetVirtualEthernetCard()
@@ -1017,11 +1025,20 @@ func (cl *Client) cloneTemplate(ctx context.Context, c *vim25.Client, tpl *objec
 	if change != nil {
 		changes = append(changes, change)
 	}
+	var locators []types.VirtualMachineRelocateSpecDiskLocator
+	if spec.Provisioning != "" {
+		devices, err := tpl.Device(ctx)
+		if err != nil {
+			return none, err
+		}
+		locators = diskLocators(devices, dsRef, spec.Provisioning, policy)
+	}
 	cs := types.VirtualMachineCloneSpec{
 		Location: types.VirtualMachineRelocateSpec{
 			Pool:         &pool,
 			Host:         &host,
 			Datastore:    &dsRef,
+			Disk:         locators,
 			DeviceChange: changes,
 			Profile:      profile(policy),
 		},
@@ -1091,6 +1108,7 @@ func (cl *Client) addHardware(ctx context.Context, vm *object.VirtualMachine, sp
 				}
 			}
 			disk := devices.CreateDisk(controller, ds, "")
+			provision(disk, cmp.Or(d.Provisioning, provisioningOf(firstDisk(devices))))
 			if d.Datastore != "" {
 				// "[datastore]" alone: vCenter names the file, in the VM's
 				// folder on that datastore (CreateDisk would make it

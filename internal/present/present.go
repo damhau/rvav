@@ -316,11 +316,7 @@ func Resource(r store.Resource) (api.Resource, bool) {
 			return out, false
 		}
 		if p.VM.Disks == nil {
-			p.VM.Disks = []struct {
-				CapacityGb int     `json:"capacity_gb"`
-				Datastore  *string `json:"datastore,omitempty"`
-				Label      string  `json:"label"`
-			}{}
+			p.VM.Disks = []api.VmDisk{}
 		}
 		if p.VM.Nics == nil {
 			p.VM.Nics = []struct {

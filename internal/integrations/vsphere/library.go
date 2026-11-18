@@ -147,7 +147,7 @@ func (cl *Client) deployFromLibrary(ctx context.Context, c *vim25.Client, spec V
 	case library.ItemTypeOVF:
 		ref, err = vm.DeployLibraryItem(ctx, item.ID, vcenter.Deploy{
 			DeploymentSpec: vcenter.DeploymentSpec{Name: spec.Name, Annotation: spec.Annotation, AcceptAllEULA: true,
-				DefaultDatastoreID: ds.Value, StorageProfileID: policy},
+				DefaultDatastoreID: ds.Value, StorageProfileID: policy, StorageProvisioning: ovfProvisioning(spec.Provisioning)},
 			Target: vcenter.Target{ResourcePoolID: pool.Value, HostID: host.Value, FolderID: folder.Value}})
 	default:
 		return none, fmt.Errorf("item %q of content library %q is a %s, not a VM template or an OVF: %w", spec.Template, spec.Library,

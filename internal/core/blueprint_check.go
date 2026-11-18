@@ -71,6 +71,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	}
 	errs = append(errs, checkParts(ptr, b.Disks, b.NICs, b.Tags)...)
 	errs = append(errs, checkConstraints(ptr, b.Constraints)...)
+	errs = append(errs, checkProvisioning(ptr, b.Provisioning)...)
 
 	// NSX segments made for each deployment (ADR-0028).
 	segKeys := map[string]bool{}
@@ -129,6 +130,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		bindings(at+"/bindings", c.Bindings)
 		errs = append(errs, checkParts(at, c.Disks, c.NICs, c.Tags)...)
 		errs = append(errs, checkConstraints(at, c.Constraints)...)
+		errs = append(errs, checkProvisioning(at, c.Provisioning)...)
 	}
 	if total > blueprint.MaxVMs {
 		add(ptr+"/components", "out_of_range", fmt.Sprintf("A request builds at most %d VMs; these components have %d.", blueprint.MaxVMs, total))
@@ -290,6 +292,7 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 		for j, e := range d.Constraints {
 			errs = append(errs, checkConstraint(fmt.Sprintf("%s/constraints/%d", at, j), e)...)
 		}
+		errs = append(errs, checkProvisioning(at, d.Provisioning)...)
 	}
 	keys := map[string]bool{}
 	for i, n := range nics {
@@ -319,6 +322,15 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 		}
 	}
 	return errs
+}
+
+// checkProvisioning checks a disk provisioning (ADR-0036).
+func checkProvisioning(ptr, p string) []api.FieldError {
+	if p == "" || slices.Contains(blueprint.Provisionings, p) {
+		return nil
+	}
+	return []api.FieldError{fieldErr(ptr+"/provisioning", "enum",
+		"thin, thick_lazy_zeroed or thick_eager_zeroed; without it, disks are provisioned as the template's first disk.")}
 }
 
 // checkGuest checks a component's guest, as it inherits it.
