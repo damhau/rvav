@@ -82,14 +82,37 @@ func TestCheckRemoteAccess(t *testing.T) {
 		}
 	}
 
-	// Windows, or a Linux VM on a customization specification.
-	if got := check(map[string]any{"os_family": "windows", "remote_access": map[string]any{"kind": "password", "username": "ops", "secret": "pw"}}); !slices.Equal(got,
-		[]string{"/blueprint/guest/remote_access invalid"}) {
-		t.Errorf("Windows = %v", got)
+	// Windows: any kind, through cloudbase-init, or Administrator's
+	// password on a customization specification; never with
+	// admin_password. A Linux VM on a specification has none.
+	windows := func(ra map[string]any, more ...string) map[string]any {
+		g := map[string]any{"os_family": "windows", "remote_access": ra}
+		for i := 0; i < len(more); i += 2 {
+			g[more[i]] = more[i+1]
+		}
+		return g
 	}
-	if got := check(map[string]any{"os_family": "linux", "customization_spec": "lin", "remote_access": map[string]any{"kind": "generated_key", "username": "ops"}}); !slices.Equal(got,
-		[]string{"/blueprint/guest/remote_access invalid"}) {
-		t.Errorf("a specification = %v", got)
+	for _, c := range []struct {
+		guest map[string]any
+		want  []string
+	}{
+		{windows(map[string]any{"kind": "generated_key", "username": "Ops.Admin"}), nil},
+		{windows(map[string]any{"kind": "password", "username": "ops", "secret": "pw"}), nil},
+		{windows(map[string]any{"kind": "password", "username": "administrator", "secret": "pw"}, "customization_spec", "win"), nil},
+		{windows(map[string]any{"kind": "password", "username": "ops", "secret": "pw"}, "customization_spec", "win"),
+			[]string{"/blueprint/guest/remote_access/username invalid"}},
+		{windows(map[string]any{"kind": "ssh_key", "username": "ops", "secret": "k"}, "customization_spec", "win"),
+			[]string{"/blueprint/guest/remote_access/kind invalid"}},
+		{windows(map[string]any{"kind": "generated_key", "username": "ops"}, "admin_password", "win-admin"),
+			[]string{"/blueprint/guest/remote_access invalid"}},
+		{windows(map[string]any{"kind": "generated_key", "username": "a-name-of-21-letters!"}),
+			[]string{"/blueprint/guest/remote_access/username invalid"}},
+		{map[string]any{"os_family": "linux", "customization_spec": "lin", "remote_access": map[string]any{"kind": "generated_key", "username": "ops"}},
+			[]string{"/blueprint/guest/remote_access invalid"}},
+	} {
+		if got := check(c.guest); !slices.Equal(got, c.want) {
+			t.Errorf("%v = %v, want %v", c.guest, got, c.want)
+		}
 	}
 
 	// A component's own, or the blueprint's said once for all.
@@ -100,17 +123,35 @@ func TestCheckRemoteAccess(t *testing.T) {
 		t.Errorf("components = %v", got)
 	}
 
-	// The template the form chose decides at request time.
-	g := blueprint.Guest{OSFamily: "windows", RemoteAccess: &blueprint.RemoteAccess{Kind: "generated_key", Username: "ops"}}
-	if msg := accessProblem(g, &store.VMTemplate{Label: "Windows Server 2025"}); !strings.HasPrefix(msg, "Windows Server 2025 is a Windows template") {
-		t.Errorf("Windows template: %q", msg)
-	}
-	g.OSFamily, g.CustomizationSpec = "linux", "rhel-spec"
-	if msg := accessProblem(g, nil); !strings.Contains(msg, "customization specification rhel-spec") {
-		t.Errorf("a specification: %q", msg)
-	}
-	g.CustomizationSpec = ""
-	if msg := accessProblem(g, nil); msg != "" {
-		t.Errorf("Linux by cloud-init: %q", msg)
+	// The template the form chose decides at request time: whether it uses
+	// cloudbase-init, and its customization specification.
+	cbi := &store.VMTemplate{Label: "Windows Server 2025 (cloudbase-init)", CloudbaseInit: true}
+	sysprep := &store.VMTemplate{Label: "Windows Server 2025"}
+	genKey := &blueprint.RemoteAccess{Kind: "generated_key", Username: "ops"}
+	admin := &blueprint.RemoteAccess{Kind: "password", Username: "Administrator", Secret: "pw"}
+	for _, c := range []struct {
+		g     blueprint.Guest
+		image *store.VMTemplate
+		want  string
+	}{
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: genKey}, cbi, ""},
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: admin}, sysprep, ""},
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: admin}, nil, ""},
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: genKey}, sysprep, "Windows Server 2025 doesn't use cloudbase-init, which a Windows VM needs to be given an SSH key"},
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: &blueprint.RemoteAccess{Kind: "password", Username: "ops"}}, nil,
+			"The template doesn't use cloudbase-init: the only user vCenter's customization sets a password for is Administrator, not ops"},
+		{blueprint.Guest{OSFamily: "windows", CloudInit: &blueprint.CloudInit{UserData: "#ps1"}}, sysprep, "Windows Server 2025 doesn't use cloudbase-init, and this item gives its VMs user data"},
+		{blueprint.Guest{OSFamily: "windows", CloudInit: &blueprint.CloudInit{UserData: "#ps1"}}, cbi, ""},
+		{blueprint.Guest{OSFamily: "windows", CustomizationSpec: "win"}, cbi, "configures its VMs with cloudbase-init, and this item names the customization specification win"},
+		{blueprint.Guest{OSFamily: "windows", DomainJoin: &blueprint.DomainJoin{Domain: "corp.example"}}, cbi, "which doesn't join them to a domain"},
+		{blueprint.Guest{OSFamily: "windows", RemoteAccess: &blueprint.RemoteAccess{Kind: "generated_key", Username: "a-very-long-windows-user"}}, cbi,
+			"can't have the user a-very-long-windows-user"},
+		{blueprint.Guest{OSFamily: "linux", CustomizationSpec: "rhel-spec", RemoteAccess: genKey}, nil, "customization specification rhel-spec"},
+		{blueprint.Guest{OSFamily: "linux", RemoteAccess: genKey}, nil, ""},
+	} {
+		msg := accessProblem(c.g, c.image)
+		if c.want == "" && msg != "" || !strings.Contains(msg, c.want) {
+			t.Errorf("%+v on %v: %q, want %q", c.g, c.image, msg, c.want)
+		}
 	}
 }

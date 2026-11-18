@@ -141,18 +141,39 @@ func (s *Service) presentSources(t store.VMTemplate, inv []store.InvTemplate, ad
 	return out
 }
 
+// windowsUserData: the user data starts as cloudbase-init runs it.
+func windowsUserData(ud string) bool {
+	for _, p := range []string{"#cloud-config", "#ps1", "rem cmd", "#!"} {
+		if strings.HasPrefix(ud, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // checkImage checks a template's own user data and constraint tags.
 func checkImage(w api.VmTemplateWrite) (string, store.TemplateConstraints, []api.FieldError) {
 	var errs []api.FieldError
 	ud := strings.TrimSpace(deref(w.UserData))
+	windows := w.OsFamily == api.VmTemplateWriteOsFamilyWindows
+	cloudbase := w.CloudbaseInit != nil && *w.CloudbaseInit
+	switch {
+	case cloudbase && !windows:
+		errs = append(errs, fieldErr("/cloudbase_init", "invalid", "cloudbase-init is for Windows templates: a Linux template's VMs get cloud-init."))
+	case cloudbase && strings.TrimSpace(deref(w.Customization)) != "":
+		errs = append(errs, fieldErr("/cloudbase_init", "invalid",
+			"A template whose VMs cloudbase-init configures doesn't use a customization specification: clear one of them."))
+	}
 	switch {
 	case ud == "":
-	case w.OsFamily == api.VmTemplateWriteOsFamilyWindows:
-		errs = append(errs, fieldErr("/user_data", "invalid", "cloud-init is for Linux templates."))
-	case strings.TrimSpace(deref(w.Customization)) != "":
+	case windows && !cloudbase:
+		errs = append(errs, fieldErr("/user_data", "invalid", "A Windows template's VMs read user data with cloudbase-init: mark the template as using it."))
+	case !windows && strings.TrimSpace(deref(w.Customization)) != "":
 		errs = append(errs, fieldErr("/user_data", "invalid",
 			"A template whose VMs cloud-init configures doesn't use a customization specification: clear one of them."))
-	case !strings.HasPrefix(ud, "#cloud-config") && !strings.HasPrefix(ud, "#!"):
+	case windows && !windowsUserData(ud):
+		errs = append(errs, fieldErr("/user_data", "invalid", "Start the user data with #cloud-config, #ps1_sysnative, #ps1, rem cmd or #!."))
+	case !windows && !strings.HasPrefix(ud, "#cloud-config") && !strings.HasPrefix(ud, "#!"):
 		errs = append(errs, fieldErr("/user_data", "invalid", "Start the user data with #cloud-config, or with #! for a script."))
 	default:
 		if err := blueprint.CheckUserData(ud); err != nil {

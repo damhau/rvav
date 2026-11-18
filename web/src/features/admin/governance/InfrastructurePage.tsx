@@ -219,6 +219,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           description: "",
           user_data: "",
           linked_clone: false,
+          cloudbase_init: false,
           offers: [{ project_id: null, environment: null }],
         },
   );
@@ -232,7 +233,8 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
     mutationFn: () => {
       const body: S["VmTemplateWrite"] = {
         ...f,
-        user_data: f.os_family === "linux" ? f.user_data : "",
+        user_data: f.os_family === "linux" || f.cloudbase_init ? f.user_data : "",
+        cloudbase_init: f.os_family === "windows" && (f.cloudbase_init ?? false),
         constraints: { compute: tagList(tags.compute), storage: tagList(tags.storage), network: tagList(tags.network) },
       };
       return template
@@ -334,18 +336,48 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
-      {f.os_family === "linux" && (
+      {f.os_family === "windows" && (
+        <div className="flex items-start gap-2">
+          <Checkbox
+            id="tpl-cbi"
+            className="mt-0.5"
+            aria-describedby="tpl-cbi-note"
+            checked={f.cloudbase_init ?? false}
+            onChange={(cloudbase_init) => setF({ ...f, cloudbase_init })}
+          />
+          <div className="flex flex-col">
+            <label htmlFor="tpl-cbi" className="text-body font-medium">
+              Uses cloudbase-init
+            </label>
+            {errors["/cloudbase_init"] ? (
+              <p id="tpl-cbi-note" className="text-secondary text-bad">
+                {errors["/cloudbase_init"]}
+              </p>
+            ) : (
+              <p id="tpl-cbi-note" className="text-secondary text-muted">
+                The template has cloudbase-init with its VMware GuestInfo service. rvav gives its VMs their name,
+                network, user and user data through guestinfo instead of a customization specification.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {(f.os_family === "linux" || f.cloudbase_init) && (
         <Field
-          label="Cloud-init user data"
+          label={f.os_family === "linux" ? "Cloud-init user data" : "cloudbase-init user data"}
           htmlFor="tpl-ud"
           error={errors["/user_data"]}
-          hint="Merged with the item's. A Go template, as a blueprint's: print inputs through json. Empty for none."
+          hint={
+            f.os_family === "linux"
+              ? "Merged with the item's. A Go template, as a blueprint's: print inputs through json. Empty for none."
+              : "Run before the item's: #ps1_sysnative, rem cmd or #cloud-config. A Go template, as a blueprint's. Empty for none."
+          }
         >
           <Textarea
             id="tpl-ud"
             className="font-mono"
             rows={6}
-            placeholder="#cloud-config"
+            placeholder={f.os_family === "linux" ? "#cloud-config" : "#ps1_sysnative"}
             value={f.user_data ?? ""}
             onChange={(e) => setF({ ...f, user_data: e.target.value })}
           />
@@ -399,7 +431,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
             <span>
               <span className="font-medium">{t.label}</span>{" "}
               <span className="font-mono text-caption text-muted">{t.key}</span>
-              {t.user_data && (
+              {t.user_data && !t.cloudbase_init && (
                 <Badge tone="outline" className="ml-2">
                   cloud-init
                 </Badge>
@@ -407,6 +439,11 @@ function Templates({ canEdit }: { canEdit: boolean }) {
               {t.linked_clone && (
                 <Badge tone="outline" className="ml-2">
                   linked clones
+                </Badge>
+              )}
+              {t.cloudbase_init && (
+                <Badge tone="outline" className="ml-2">
+                  cloudbase-init
                 </Badge>
               )}
             </span>

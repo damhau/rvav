@@ -27,6 +27,11 @@ const (
 	AccessPassword     = "password"
 )
 
+// WindowsAdministrator is the user whose password vCenter's Windows
+// customization sets: a Windows VM's only remote access without
+// cloudbase-init.
+const WindowsAdministrator = "Administrator"
+
 // UsesKey says whether people sign in with a key rather than a password.
 func (r RemoteAccess) UsesKey() bool { return r.Kind == AccessSSHKey || r.Kind == AccessGeneratedKey }
 

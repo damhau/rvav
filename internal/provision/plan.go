@@ -385,6 +385,9 @@ type VMUnit struct {
 	// ImageUserData is its catalogue template's cloud-init user data,
 	// merged with the blueprint's (ADR-0037).
 	ImageUserData string `json:"image_user_data,omitempty"`
+	// CloudbaseInit: a Windows VM cloudbase-init configures from
+	// guestinfo, not vCenter's customization (ADR-0039).
+	CloudbaseInit bool `json:"cloudbase_init,omitempty"`
 	// LinkedClone: cloned from its template's current snapshot.
 	LinkedClone bool `json:"linked_clone,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).

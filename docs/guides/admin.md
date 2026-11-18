@@ -392,6 +392,51 @@ Keep these limits in mind:
 A blueprint can say otherwise with `linked_clone` (see the [service
 catalog guide](../service-catalog.md)).
 
+### Windows templates with cloudbase-init
+
+By default, rvav configures a Windows VM with a vCenter customization
+specification: its name, network, time zone, domain and the
+`Administrator` password. A Windows template that has
+[cloudbase-init](https://cloudbase-init.readthedocs.io/) can be
+configured the way Linux VMs are with cloud-init: rvav writes the VM's
+name, network, user and user data in its guestinfo, where cloudbase-init's
+VMware GuestInfo service reads them. Its VMs can then get any remote
+access a blueprint gives (an SSH key, the deployment's key, or a user
+with a password) and user data.
+
+To prepare such a template:
+1. In the Windows template, install VMware Tools and cloudbase-init.
+2. In `cloudbase-init.conf` and `cloudbase-init-unattend.conf`, set
+   `metadata_services=cloudbaseinit.metadata.services.vmwareguestinfoservice.VMwareGuestInfoService`.
+   Keep the default plugins, which make the user, set its password and
+   keys, and run the user data.
+3. For SSH keys, install OpenSSH Server. cloudbase-init writes the keys
+   to the user's `.ssh\authorized_keys`: in `sshd_config`, remove the
+   `Match Group administrators` block, which reads another file for
+   members of Administrators.
+4. Generalize the template as cloudbase-init's documentation says, and
+   don't give it a customization specification.
+
+Then mark it in rvav:
+1. In **Templates and networks**, click the template's **⋯** menu, then
+   **Change**. The template's operating system is **Windows**.
+2. Select **Uses cloudbase-init**, and clear **Customization spec**.
+3. Optional: in **cloudbase-init user data**, give user data every VM of
+   the template gets, before the item's: a PowerShell script
+   (`#ps1_sysnative`), a batch script (`rem cmd`) or `#cloud-config`.
+4. Click **Save template**.
+
+The **Template** column shows **cloudbase-init**. On the request's
+timeline, the step **Wrote cloudbase-init metadata and user data** names
+the user. A password goes in the VM's metadata: rvav adds a last script to
+the user data that writes the metadata again without it, once
+cloudbase-init has read it. Keep in mind:
+- cloudbase-init doesn't join a domain: an item with `domain_join` is
+  refused on such a template. Join with a post-configuration AWX template
+  instead.
+- A template without cloudbase-init gives remote access only as the
+  `Administrator` password, through the customization specification.
+
 ## Placement rules
 
 A placement rule says where a project's VMs go in an environment

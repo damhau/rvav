@@ -138,15 +138,17 @@ func TestRemoteAccess(t *testing.T) {
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		h := accessHarness{setup(t, ctx, c), t}
 
-		// Windows has no remote access here, and a password must be a
+		// A Windows VM gets one administrator, and a password must be a
 		// secret input's.
 		var problem struct{ Errors []api.FieldError }
-		win := guestItem("tpl-win2025-std-2026.09", map[string]any{"os_family": "windows", "domain": "corp.example",
+		h.json("POST", "/api/v1/admin/secrets", "mkeller", api.SecretWrite{Name: "win-admin", Kind: api.SecretWriteKindToken,
+			Value: present.Ptr("L0cal-S3cret!")}, 201, nil)
+		win := guestItem("tpl-win2025-std-2026.09", map[string]any{"os_family": "windows", "domain": "corp.example", "admin_password": "win-admin",
 			"remote_access": map[string]any{"kind": "password", "username": "ops", "secret": "win-admin"}})
 		h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: "win-access", Name: "w", Summary: "w",
 			Category: "compute", Type: api.VmBlueprint, Definition: &win}, 422, &problem)
-		if got := fieldsOf(problem.Errors); !strings.Contains(strings.Join(got, " "), "/guest/remote_access") {
-			t.Fatalf("Windows remote access = %v", problem.Errors)
+		if got := fieldsOf(problem.Errors); len(got) != 1 || !strings.HasSuffix(got[0], "/guest/remote_access") {
+			t.Fatalf("Windows remote access and admin_password = %v", problem.Errors)
 		}
 		plain := accessItem(map[string]any{"kind": "password", "username": "ops", "password": "${inputs.role}"})
 		h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: "plain-pw", Name: "p", Summary: "p",

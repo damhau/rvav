@@ -108,12 +108,27 @@ func TestCheckImage(t *testing.T) {
 	win.OsFamily = api.VmTemplateWriteOsFamilyWindows
 	spec := linux("#cloud-config\n", nil)
 	spec.Customization = present.Ptr("linux-base")
+	windows := func(ud string, cloudbase bool, customization string) api.VmTemplateWrite {
+		w := linux(ud, nil)
+		w.OsFamily, w.CloudbaseInit, w.Customization = api.VmTemplateWriteOsFamilyWindows, &cloudbase, &customization
+		return w
+	}
+	for _, ud := range []string{"#ps1_sysnative\nWrite-Host {{ .vm.name | json }}", "rem cmd\necho on", "#cloud-config\nset_timezone: UTC", ""} {
+		if _, _, errs := checkImage(windows(ud, true, "")); len(errs) > 0 {
+			t.Errorf("cloudbase-init user data %q: %v", ud, errs)
+		}
+	}
+	cbiLinux := linux("", nil)
+	cbiLinux.CloudbaseInit = present.Ptr(true)
 	for _, tc := range []struct {
 		w     api.VmTemplateWrite
 		field string
 		msg   string
 	}{
-		{win, "/user_data", "cloud-init is for Linux templates."},
+		{win, "/user_data", "read user data with cloudbase-init: mark the template as using it"},
+		{windows("echo hi", true, ""), "/user_data", "Start the user data with #cloud-config, #ps1_sysnative"},
+		{windows("", true, "win-base"), "/cloudbase_init", "doesn't use a customization specification"},
+		{cbiLinux, "/cloudbase_init", "cloudbase-init is for Windows templates"},
 		{spec, "/user_data", "doesn't use a customization specification"},
 		{linux("packages: [chrony]", nil), "/user_data", "Start the user data with #cloud-config"},
 		{linux("#cloud-config\nmotd: {{ .inputs.motd }}", nil), "/user_data", "print inputs through json"},

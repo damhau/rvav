@@ -684,7 +684,11 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 			}
 			extra = append(extra, vsphere.NICSetting{IP: ip, PrefixLength: n.PrefixLength, DNSServers: n.DNSServers})
 		}
-		if (in.Guest.CloudInit != nil || in.VM.ImageUserData != "" || in.Guest.RemoteAccess != nil) && in.Guest.OSFamily != "windows" {
+		windows := in.Guest.OSFamily == "windows"
+		if windows && in.VM.CloudbaseInit {
+			return a.cloudbaseInit(ctx, in, extra)
+		}
+		if (in.Guest.CloudInit != nil || in.VM.ImageUserData != "" || in.Guest.RemoteAccess != nil) && !windows {
 			return a.cloudInit(ctx, in, extra)
 		}
 		cu := vsphere.Customization{
@@ -693,7 +697,21 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 			Spec: in.Guest.CustomizationSpec, Extra: extra,
 		}
 		detail := fmt.Sprintf("Hostname %s, static IP %s/%d", in.VM.Name, in.IP, in.VM.PrefixLength)
-		if in.Guest.OSFamily == "windows" {
+		var acc *access
+		if windows {
+			// Without cloudbase-init, remote access is Administrator's
+			// password (ADR-0039).
+			if in.Guest.RemoteAccess != nil {
+				g, err := a.guestData(ctx, in, []ciNIC{{IP: in.IP}})
+				if err != nil {
+					return "", "", err
+				}
+				if acc = g.acc; acc.password == "" {
+					return "", "", permanent("A Windows VM without cloudbase-init gets a password only, not an SSH key. Ask a catalog admin to check this item.")
+				}
+				cu.AdminPassword = acc.password
+				detail += ", " + acc.describe()
+			}
 			if name := in.Guest.AdminPassword; name != "" {
 				_, pw, err := a.secret(ctx, in.ProjectID, name)
 				if err != nil {
@@ -727,6 +745,9 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		if err != nil {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
+		if err := a.recordAccess(ctx, in, acc); err != nil {
+			return "", "", err
+		}
 		return "Applied guest customization", detail, nil
 	})
 }
@@ -758,25 +779,25 @@ func (a *Activities) openSecret(ctx context.Context, project, name string) (stor
 	return v, string(plain), nil
 }
 
-// cloudInit gives a Linux VM its host name, addresses and user data
-// through guestinfo, for cloud-init, instead of vCenter's customization.
-func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (string, string, error) {
+// guestNICs are the VM's adapters as cloud-init and cloudbase-init
+// configure them: the first, the template's others (DHCP), then those
+// added, last. None when the VM is on: the guest configured itself on its
+// first boot.
+func (a *Activities) guestNICs(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (vsphere.Driver, []ciNIC, error) {
 	vc, err := a.vc(ctx, in.VM.VCenter)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	vm, err := vc.GetVM(ctx, in.Moref)
 	if err != nil {
-		return "", "", fmt.Errorf("vCenter: %w", err)
+		return nil, nil, fmt.Errorf("vCenter: %w", err)
 	}
 	if vm.PowerState == "on" {
-		return "", "", nil // cloud-init already ran on first boot
+		return vc, nil, nil
 	}
 	if len(vm.NICs) < 1+len(extra) {
-		return "", "", permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
+		return nil, nil, permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
 	}
-	// The first adapter, the template's others (DHCP), then those added,
-	// last.
 	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
 	added := len(vm.NICs) - len(extra)
 	for _, n := range vm.NICs[1:added] {
@@ -789,20 +810,28 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 		}
 		nics = append(nics, c)
 	}
-	meta, err := cloudInitMetadata(in.VM.DeploymentID+"/"+in.VM.Name, in.VM.Name, in.Guest.Domain, nics)
-	if err != nil {
-		return "", "", err
-	}
+	return vc, nics, nil
+}
+
+// guestData is what the guest is given besides its network: the
+// template's and the item's user data, rendered, and its remote access.
+type guestData struct {
+	image, own string
+	acc        *access
+}
+
+// guestData renders the user data over the VM and its request, its
+// secret inputs and stored secrets opened here, never returned.
+func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (guestData, error) {
+	var out guestData
 	r, err := a.Store.GetRequest(ctx, in.RequestID)
 	if err != nil {
-		return "", "", err
+		return out, err
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
-	// The blueprint's user data may use secret inputs (S14.6): opened here,
-	// never returned.
 	if inputs, err = a.openSecretInputs(ctx, r.ID, inputs); err != nil {
-		return "", "", permanent("%v", err)
+		return out, permanent("%v", err)
 	}
 	ips := []string{in.IP}
 	for _, n := range nics[1:] {
@@ -819,26 +848,51 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 		_, v, err := a.openSecret(ctx, in.ProjectID, name)
 		return v, err
 	}
-	var own, image string
 	if in.Guest.CloudInit != nil {
-		if own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret); err != nil {
-			return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
+		if out.own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret); err != nil {
+			return out, permanent("user data: %v. Ask a catalog admin to check this item.", err)
 		}
 	}
 	if in.VM.ImageUserData != "" {
-		if image, err = renderUserData(in.VM.ImageUserData, vars, secret); err != nil {
-			return "", "", permanent("the template's cloud-init user data: %v. Ask an administrator to check the template.", err)
+		if out.image, err = renderUserData(in.VM.ImageUserData, vars, secret); err != nil {
+			return out, permanent("the template's user data: %v. Ask an administrator to check the template.", err)
 		}
 	}
-	acc, err := a.remoteAccess(ctx, in, inputs)
+	out.acc, err = a.remoteAccess(ctx, in, inputs)
+	return out, err
+}
+
+// describe says where the user data came from, for a step's detail.
+func (g guestData) describe() string {
+	switch {
+	case g.image != "" && g.own != "":
+		return ", the template's user data merged with the item's"
+	case g.image != "":
+		return ", the template's user data"
+	}
+	return ""
+}
+
+// cloudInit gives a Linux VM its host name, addresses and user data
+// through guestinfo, for cloud-init, instead of vCenter's customization.
+func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (string, string, error) {
+	vc, nics, err := a.guestNICs(ctx, in, extra)
+	if err != nil || nics == nil {
+		return "", "", err
+	}
+	meta, err := cloudInitMetadata(in.VM.DeploymentID+"/"+in.VM.Name, in.VM.Name, in.Guest.Domain, nics)
 	if err != nil {
 		return "", "", err
 	}
-	user, err := userData(image, own, acc)
+	g, err := a.guestData(ctx, in, nics)
+	if err != nil {
+		return "", "", err
+	}
+	user, err := userData(g.image, g.own, g.acc)
 	if err != nil {
 		return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 	}
-	if acc != nil && acc.password != "" {
+	if g.acc != nil && g.acc.password != "" {
 		if meta, err = withCleanup(meta); err != nil {
 			return "", "", err
 		}
@@ -846,19 +900,73 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	if err := vc.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
 		return "", "", fmt.Errorf("vCenter: %w", err)
 	}
-	if err := a.recordAccess(ctx, in, acc); err != nil {
+	if err := a.recordAccess(ctx, in, g.acc); err != nil {
 		return "", "", err
 	}
-	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo", in.VM.Name, in.IP, in.VM.PrefixLength)
-	if image != "" && own != "" {
-		detail += ", the template's user data merged with the item's"
-	} else if image != "" {
-		detail += ", the template's user data"
-	}
-	if acc != nil {
-		detail += ", " + acc.describe()
+	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo", in.VM.Name, in.IP, in.VM.PrefixLength) + g.describe()
+	if g.acc != nil {
+		detail += ", " + g.acc.describe()
 	}
 	return "Wrote cloud-init metadata and user data", detail, nil
+}
+
+// cloudbaseInit gives a Windows VM its host name, addresses, user and user
+// data through guestinfo, where cloudbase-init's VMware GuestInfo service
+// reads them, instead of vCenter's customization (ADR-0039).
+func (a *Activities) cloudbaseInit(ctx context.Context, in VMInput, extra []vsphere.NICSetting) (string, string, error) {
+	vc, nics, err := a.guestNICs(ctx, in, extra)
+	if err != nil || nics == nil {
+		return "", "", err
+	}
+	g, err := a.guestData(ctx, in, nics)
+	if err != nil {
+		return "", "", err
+	}
+	admin := adminUser{}
+	switch {
+	case g.acc != nil:
+		admin = adminUser{username: g.acc.username, password: g.acc.password}
+		if g.acc.publicKey != "" {
+			admin.keys = []string{g.acc.publicKey}
+		}
+	case in.Guest.AdminPassword != "":
+		_, pw, err := a.secret(ctx, in.ProjectID, in.Guest.AdminPassword)
+		if err != nil {
+			return "", "", err
+		}
+		admin = adminUser{username: blueprint.WindowsAdministrator, password: pw}
+	}
+	id := in.VM.DeploymentID + "/" + in.VM.Name
+	meta, err := cloudbaseMetadata(id, in.VM.Name, in.Guest.Domain, nics, admin)
+	if err != nil {
+		return "", "", err
+	}
+	var cleared []byte
+	if admin.password != "" {
+		without := admin
+		without.password = ""
+		if cleared, err = cloudbaseMetadata(id, in.VM.Name, in.Guest.Domain, nics, without); err != nil {
+			return "", "", err
+		}
+	}
+	user, err := cloudbaseUserData(g.image, g.own, cleared)
+	if err != nil {
+		return "", "", permanent("user data: %v. Ask a catalog admin to check this item.", err)
+	}
+	if err := vc.SetGuestInfo(ctx, in.Moref, guestInfo(meta, user)); err != nil {
+		return "", "", fmt.Errorf("vCenter: %w", err)
+	}
+	if err := a.recordAccess(ctx, in, g.acc); err != nil {
+		return "", "", err
+	}
+	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo for cloudbase-init", in.VM.Name, in.IP, in.VM.PrefixLength) + g.describe()
+	switch {
+	case g.acc != nil:
+		detail += ", " + g.acc.describe()
+	case admin.password != "":
+		detail += ", " + blueprint.WindowsAdministrator + "'s password"
+	}
+	return "Wrote cloudbase-init metadata and user data", detail, nil
 }
 
 func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {

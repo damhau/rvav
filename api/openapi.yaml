@@ -8187,7 +8187,7 @@ components:
             - type: "null"
     VmTemplate:
       type: object
-      required: [key, label, sources, os_family, customization, description, user_data, constraints, linked_clone, offers]
+      required: [key, label, sources, os_family, customization, description, user_data, constraints, linked_clone, cloudbase_init, offers]
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, examples: [RHEL 9.4] }
@@ -8202,11 +8202,14 @@ components:
         description: { type: string }
         user_data:
           type: string
-          description: "cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none."
+          description: "User data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's. Its Linux VMs are then configured by cloud-init; a Windows template's needs `cloudbase_init`. Empty for none."
         constraints: { $ref: "#/components/schemas/TemplateConstraints" }
         linked_clone:
           type: boolean
           description: "Its VMs are linked clones of the vCenter template's current snapshot, unless the blueprint says otherwise (ADR-0037). Not for content library items."
+        cloudbase_init:
+          type: boolean
+          description: "A Windows template with cloudbase-init and its VMware GuestInfo service: rvav gives its VMs their name, addresses, user and user data through guestinfo instead of a vCenter customization (ADR-0039). Not with `customization`."
         offers:
           type: array
           items: { $ref: "#/components/schemas/Offer" }
@@ -8261,6 +8264,7 @@ components:
         user_data: { type: string, maxLength: 65536 }
         constraints: { $ref: "#/components/schemas/TemplateConstraints" }
         linked_clone: { type: boolean }
+        cloudbase_init: { type: boolean }
         offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
     VmTemplateList:
       type: object

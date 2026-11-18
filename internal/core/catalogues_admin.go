@@ -96,7 +96,7 @@ func (s *Service) vmTemplates(ctx context.Context) ([]api.VmTemplate, error) {
 		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, Sources: s.presentSources(t, inv, added),
 			OsFamily: api.VmTemplateOsFamily(t.OSFamily), Customization: t.Customization, Description: t.Description,
 			UserData: t.UserData, Constraints: presentTemplateConstraints(t.Constraints), LinkedClone: t.LinkedClone,
-			Offers: presentOffers(offers[t.Key])}
+			CloudbaseInit: t.CloudbaseInit, Offers: presentOffers(offers[t.Key])}
 	}
 	return out, nil
 }
@@ -149,7 +149,7 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	}
 	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), Sources: sources,
 		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description),
-		UserData: userData, Constraints: cons, LinkedClone: linked}
+		UserData: userData, Constraints: cons, LinkedClone: linked, CloudbaseInit: w.CloudbaseInit != nil && *w.CloudbaseInit}
 	switch err := s.Store.SaveVMTemplate(ctx, t, offers, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.VmTemplate{}, &ConflictError{Msg: "A template has the key " + key + "."}

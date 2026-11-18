@@ -130,6 +130,33 @@ describe("Templates and networks", () => {
     );
   });
 
+  it("marks a Windows template as using cloudbase-init, which takes user data", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    const region = await screen.findByRole("region", { name: "VM templates" });
+    await user.click(await within(region).findByRole("button", { name: "Actions for Windows Server 2025" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Change Windows Server 2025" });
+    const cbi = within(sheet).getByRole("checkbox", { name: "Uses cloudbase-init" });
+    expect(cbi).toHaveAccessibleDescription(/VMware GuestInfo service/);
+    expect(within(sheet).queryByRole("textbox", { name: "cloudbase-init user data" })).toBeNull();
+    await user.click(cbi);
+    await user.click(within(sheet).getByRole("textbox", { name: "Customization spec" }));
+    await user.paste("win-base");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(cbi).toHaveAccessibleDescription(/doesn't use a customization specification/));
+
+    await user.clear(within(sheet).getByRole("textbox", { name: "Customization spec" }));
+    await user.click(within(sheet).getByRole("textbox", { name: "cloudbase-init user data" }));
+    await user.paste("#ps1_sysnative\nSet-TimeZone -Id 'W. Europe Standard Time'");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(within(region).getByRole("row", { name: /Windows Server 2025/ })).toHaveTextContent("cloudbase-init"),
+    );
+  });
+
   it("changes a size in a side panel opened from its row", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

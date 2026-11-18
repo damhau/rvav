@@ -298,13 +298,13 @@ export function adminState(db: Db): AdminState {
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-rhel9.4-2026.10", content_library: "", in_inventory: true }],
         description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }],
         user_data: "#cloud-config\npackages: [chrony, qualys-agent]", constraints: { compute: [], storage: [], network: [] },
-        linked_clone: false,
+        linked_clone: false, cloudbase_init: false,
       },
       {
         key: "win2025", label: "Windows Server 2025", os_family: "windows", customization: "", description: "",
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09", content_library: "", in_inventory: true }],
         offers: [{ project_id: "prj_web", environment: null }],
-        user_data: "", constraints: { compute: [], storage: [], network: [] }, linked_clone: false,
+        user_data: "", constraints: { compute: [], storage: [], network: [] }, linked_clone: false, cloudbase_init: false,
       },
     ], // prettier-ignore
     sizes: [
@@ -797,8 +797,29 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
   const templateErrors = (w: S["VmTemplateWrite"]) => {
     const out = templateSourceErrors(w.sources ?? []);
     const ud = (w.user_data ?? "").trim();
-    if (ud && w.os_family === "windows") out.push(err("/user_data", "cloud-init is for Linux templates."));
-    else if (ud && w.customization?.trim())
+    const windows = w.os_family === "windows";
+    if (w.cloudbase_init && !windows)
+      out.push(
+        err("/cloudbase_init", "cloudbase-init is for Windows templates: a Linux template's VMs get cloud-init."),
+      );
+    else if (w.cloudbase_init && w.customization?.trim())
+      out.push(
+        err(
+          "/cloudbase_init",
+          "A template whose VMs cloudbase-init configures doesn't use a customization specification: clear one of them.",
+        ),
+      );
+    if (ud && windows && !w.cloudbase_init)
+      out.push(
+        err(
+          "/user_data",
+          "A Windows template's VMs read user data with cloudbase-init: mark the template as using it.",
+        ),
+      );
+    else if (ud && windows) {
+      if (!["#cloud-config", "#ps1", "rem cmd", "#!"].some((p) => ud.startsWith(p)))
+        out.push(err("/user_data", "Start the user data with #cloud-config, #ps1_sysnative, #ps1, rem cmd or #!."));
+    } else if (ud && w.customization?.trim())
       out.push(
         err(
           "/user_data",
@@ -831,6 +852,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
   const storedTemplate = (w: S["VmTemplateWrite"]) => ({
     user_data: (w.user_data ?? "").trim(),
     linked_clone: w.linked_clone ?? false,
+    cloudbase_init: w.cloudbase_init ?? false,
     constraints: {
       compute: w.constraints?.compute ?? [],
       storage: w.constraints?.storage ?? [],

@@ -30,10 +30,10 @@ password). rvav's only way was user data written by hand (parity C22).
 - `generated_key`: below.
 - Saving the item refuses fields that don't apply to the kind, an unknown
   input, a user name the OS refuses (on Linux: `^[a-z_][a-z0-9_-]{0,31}$`,
-  not `root`), Windows (for now; see below) and a Linux guest with a
-  `customization_spec`. A request is refused when the catalogue template
-  its `template` binding chose is Windows or names a customization
-  specification, with the template's name.
+  not `root`; on Windows: up to 20 letters, digits, `.`, `-`, `_`) and a
+  Linux guest with a `customization_spec`; Windows has its own rules,
+  below. A request is refused, with the template's name, when the
+  catalogue template its `template` binding chose doesn't allow it.
 - On Linux, the user is a cloud-init `users` entry: a shell, `sudo`
   without a password (vRA's remote access user can administer the
   machine), and either `ssh_authorized_keys` with the password locked or
@@ -56,6 +56,41 @@ password). rvav's only way was user data written by hand (parity C22).
 - Each component with remote access gets a `guest.access` resource:
   component, kind, user and fingerprint, which the deployment page shows.
   Migration 00062 adds the type.
+
+### Windows and cloudbase-init
+- A catalogue template can be marked `cloudbase_init` (migration 00063):
+  a Windows template with cloudbase-init and its VMware GuestInfo service,
+  without a customization specification (refused together, as user data
+  and a specification on Linux). A request picks it up from the template
+  its `template` binding chose, or the one whose source is the
+  blueprint's own `template`, and the plan's VM says `cloudbase_init`.
+- Such a VM isn't customized by vCenter. `Customize` writes
+  `guestinfo.metadata` and `guestinfo.userdata` as for cloud-init: the
+  same metadata (cloudbase-init parses network config version 2, `to:
+  default` included), with `admin-username`, `admin-password` and
+  `public-keys-data`, the keys its service reads. The remote access's
+  user is the admin user; with `admin_password` and no remote access, it
+  is `Administrator`. The user data is the template's then the item's, as
+  for cloud-init: one `#cloud-config` when both are, else a multipart
+  document whose scripts are named `part-NNN.ps1`, `.cmd`, `.sh` or `.py`,
+  because cloudbase-init runs a part by its file name's extension.
+- cloudbase-init doesn't clear guestinfo, as cloud-init's
+  `cleanup-guestinfo` does. With a password, rvav adds a last part,
+  `#ps1_sysnative`, that runs VMware Tools' `rpctool.exe "info-set
+  guestinfo.metadata …"` with the metadata without the password.
+  cloudbase-init keeps the metadata it loaded for the rest of its run, so
+  its password plugin, after the user data plugin, still sets it.
+- Without cloudbase-init, a Windows VM's remote access is `password` for
+  `Administrator` only: the customization specification's administrator
+  password, as `admin_password` is. Anything else (a key, another user,
+  user data) is refused when the request is made; with a
+  `customization_spec` in the blueprint, when the item is saved.
+- `remote_access` and `admin_password` are refused together on Windows:
+  cloudbase-init makes one admin user from the metadata, and on the
+  specification path both would set the same password.
+- `domain_join` with cloudbase-init is refused: cloudbase-init's GuestInfo
+  service has no domain to join. A post-configuration AWX template joins
+  instead.
 
 ### Generated keys
 - rvav makes one ed25519 key pair per deployment, on the first VM that

@@ -80,6 +80,10 @@ type vmPart struct {
 	check    *nameCheck
 	// addresses is the next free address of its network, as a hint.
 	addresses []string
+	// cloned is the catalogue template its VMs are cloned from: the one
+	// the form chose, or the one with the blueprint's template as a
+	// source; nil for none.
+	cloned *store.VMTemplate
 	// constraints are what its constraints did (ADR-0035).
 	constraints []constraintResult
 	// hosts are those its VMs start on when narrowed; pod is the datastore
@@ -248,13 +252,16 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			if ours && part.guest.CustomizationSpec == "" && t.Customization != "" {
 				part.guest.CustomizationSpec = t.Customization
 			}
+			if ours && part.cloned == nil {
+				part.cloned = &t
+			}
 		}
-		if part.image != nil && part.image.UserData != "" && part.guest.CustomizationSpec != "" {
+		if part.image != nil && part.image.UserData != "" && part.guest.CustomizationSpec != "" && part.guest.OSFamily != "windows" {
 			add(field("template"), "invalid", fmt.Sprintf("%s configures its VMs with cloud-init, and this item names the customization specification %s. Ask a catalog admin to check this item.",
 				part.image.Label, part.guest.CustomizationSpec))
 		}
 	}
-	if msg := accessProblem(part.guest, part.image); msg != "" {
+	if msg := accessProblem(part.guest, part.cloned); msg != "" {
 		add(field("template"), "invalid", msg)
 	}
 	part.linkedClone = part.image != nil && part.image.LinkedClone
@@ -855,6 +862,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	if p.image != nil {
 		vm.ImageUserData = p.image.UserData
 	}
+	vm.CloudbaseInit = p.cloned != nil && p.cloned.CloudbaseInit && p.guest.OSFamily == "windows"
 	vm.PreventDelete = p.vm.PreventDelete
 	if len(ev.Project.Properties)+len(p.vm.Properties) > 0 {
 		vm.Properties = map[string]string{}

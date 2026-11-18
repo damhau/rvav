@@ -6214,11 +6214,13 @@ export interface components {
             /** @description A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone). */
             customization: string;
             description: string;
-            /** @description cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none. */
+            /** @description User data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's. Its Linux VMs are then configured by cloud-init; a Windows template's needs `cloudbase_init`. Empty for none. */
             user_data: string;
             constraints: components["schemas"]["TemplateConstraints"];
             /** @description Its VMs are linked clones of the vCenter template's current snapshot, unless the blueprint says otherwise (ADR-0037). Not for content library items. */
             linked_clone: boolean;
+            /** @description A Windows template with cloudbase-init and its VMware GuestInfo service: rvav gives its VMs their name, addresses, user and user data through guestinfo instead of a vCenter customization (ADR-0039). Not with `customization`. */
+            cloudbase_init: boolean;
             offers: components["schemas"]["Offer"][];
         };
         /** @description Constraint tags its VMs get on top of the blueprint's (ADR-0035, ADR-0037): `[!]category/tag[:hard|:soft]`, without `${...}`. */
@@ -6266,6 +6268,7 @@ export interface components {
             user_data?: string;
             constraints?: components["schemas"]["TemplateConstraints"];
             linked_clone?: boolean;
+            cloudbase_init?: boolean;
             offers?: components["schemas"]["Offer"][];
         };
         VmTemplateList: {

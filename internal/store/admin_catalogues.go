@@ -72,6 +72,9 @@ type VMTemplate struct {
 	Constraints TemplateConstraints `db:"constraints"`
 	// LinkedClone: its VMs are linked clones, unless the blueprint says.
 	LinkedClone bool `db:"linked_clone"`
+	// CloudbaseInit: a Windows template whose VMs cloudbase-init configures
+	// from guestinfo (ADR-0039).
+	CloudbaseInit bool `db:"cloudbase_init"`
 }
 
 // TemplateConstraints are a template's constraint tags by kind (ADR-0035).
@@ -90,7 +93,7 @@ type TemplateSource struct {
 	Library string `json:"content_library"`
 }
 
-const templateCols = `key, label, os_family, customization, description, created_at, user_data, constraints, linked_clone,
+const templateCols = `key, label, os_family, customization, description, created_at, user_data, constraints, linked_clone, cloudbase_init,
 	coalesce((select json_agg(json_build_object('vcenter', s.vcenter, 'template', s.template, 'content_library', s.content_library)
 		order by s.vcenter) from vm_template_sources s where s.template_key = vm_templates.key), '[]') as sources`
 
@@ -111,14 +114,14 @@ func (s *Store) SaveVMTemplate(ctx context.Context, t VMTemplate, offers []Offer
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		if create {
 			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description, user_data, constraints,
-				linked_clone) values ($1, $2, $3, $4, $5, $6, $7, $8)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData,
-				t.Constraints, t.LinkedClone); err != nil {
+				linked_clone, cloudbase_init) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, t.Key, t.Label, t.OSFamily, t.Customization,
+				t.Description, t.UserData, t.Constraints, t.LinkedClone, t.CloudbaseInit); err != nil {
 				return err
 			}
 		} else {
 			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, os_family = $3, customization = $4, description = $5,
-				user_data = $6, constraints = $7, linked_clone = $8 where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description,
-				t.UserData, t.Constraints, t.LinkedClone)
+				user_data = $6, constraints = $7, linked_clone = $8, cloudbase_init = $9 where key = $1`, t.Key, t.Label, t.OSFamily,
+				t.Customization, t.Description, t.UserData, t.Constraints, t.LinkedClone, t.CloudbaseInit)
 			if err != nil {
 				return err
 			}

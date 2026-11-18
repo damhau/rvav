@@ -142,12 +142,22 @@ func mergeConfig(a, b map[string]any) map[string]any {
 // multipartUserData puts each document in a part of its own; cloud-init
 // names them part-001, part-002 in order.
 func multipartUserData(docs ...string) (string, error) {
+	return mimeParts(docs, false)
+}
+
+// mimeParts is a MIME multipart document of docs. named gives each script
+// a file name whose extension says how to run it: cloudbase-init runs a
+// part by its file name's extension.
+func mimeParts(docs []string, named bool) (string, error) {
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	for _, d := range docs {
+	for i, d := range docs {
 		h := textproto.MIMEHeader{}
 		h.Set("Content-Type", userDataType(d)+`; charset="utf-8"`)
 		h.Set("MIME-Version", "1.0")
+		if ext := scriptExt(d); named && ext != "" {
+			h.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="part-%03d%s"`, i+1, ext))
+		}
 		p, err := w.CreatePart(h)
 		if err != nil {
 			return "", err
@@ -168,10 +178,27 @@ func userDataType(doc string) string {
 	switch doc = strings.TrimLeft(doc, " \t\r\n"); {
 	case strings.HasPrefix(doc, "#cloud-config"):
 		return "text/cloud-config"
-	case strings.HasPrefix(doc, "#!"):
+	case scriptExt(doc) != "":
 		return "text/x-shellscript"
 	}
 	return "text/plain"
+}
+
+// scriptExt is the extension a script's file needs for cloudbase-init to
+// run it, from its first line; "" for one that isn't a script.
+func scriptExt(doc string) string {
+	switch doc = strings.TrimLeft(doc, " \t\r\n"); {
+	case strings.HasPrefix(doc, "#ps1"):
+		return ".ps1"
+	case strings.HasPrefix(doc, "rem cmd"):
+		return ".cmd"
+	case strings.HasPrefix(doc, "#!"):
+		if first, _, _ := strings.Cut(doc, "\n"); strings.Contains(first, "python") {
+			return ".py"
+		}
+		return ".sh"
+	}
+	return ""
 }
 
 // guestInfo is what cloud-init reads: both documents, base64.

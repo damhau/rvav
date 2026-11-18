@@ -397,8 +397,8 @@ func checkGuest(ptr string, g blueprint.Guest, publish bool) []api.FieldError {
 		add(ptr+"/admin_password", "invalid", "Only Windows VMs get a local administrator password here.")
 	}
 	if ci := g.CloudInit; ci != nil {
-		if windows {
-			add(ptr+"/cloud_init", "invalid", "cloud-init is for Linux VMs.")
+		if windows && g.DomainJoin != nil {
+			add(ptr+"/cloud_init", "invalid", "A Windows VM reads user data with cloudbase-init, which doesn't join it to a domain: remove domain_join or cloud_init.")
 		}
 		if strings.TrimSpace(ci.UserData) == "" {
 			add(ptr+"/cloud_init/user_data", "required", "Give the user data, for example a #cloud-config document.")

@@ -70,23 +70,45 @@ func (s *Service) DownloadPrivateKey(ctx context.Context, p *auth.Principal, dep
 	return out, nil
 }
 
-// accessProblem says why the guest's remote access can't be given on the
-// template the form chose, or "": a catalogue template sets the OS family
-// and may name a customization specification (ADR-0037).
+// accessProblem says why the guest's remote access, user data or domain
+// join can't be given on the template the form chose, or "": a catalogue
+// template sets the OS family, may name a customization specification, and
+// may use cloudbase-init (ADR-0037, ADR-0039).
 func accessProblem(g blueprint.Guest, image *store.VMTemplate) string {
-	if g.RemoteAccess == nil {
-		return ""
-	}
 	label := "The template"
+	cloudbase := image != nil && image.CloudbaseInit
 	if image != nil {
 		label = image.Label
 	}
+	const ask = " Ask a catalog admin to check this item."
+	if g.OSFamily == "windows" {
+		switch {
+		case cloudbase && g.CustomizationSpec != "":
+			return fmt.Sprintf("%s configures its VMs with cloudbase-init, and this item names the customization specification %s.%s",
+				label, g.CustomizationSpec, ask)
+		case cloudbase && g.DomainJoin != nil:
+			return label + " configures its VMs with cloudbase-init, which doesn't join them to a domain, and this item joins them to " +
+				g.DomainJoin.Domain + "." + ask
+		case !cloudbase && g.CloudInit != nil:
+			return label + " doesn't use cloudbase-init, and this item gives its VMs user data." + ask
+		}
+	}
+	ra := g.RemoteAccess
+	if ra == nil {
+		return ""
+	}
+	if msg := blueprint.CheckUsername(g.OSFamily, ra.Username); msg != "" {
+		return fmt.Sprintf("%s's VMs can't have the user %s: %s%s", label, ra.Username, msg, ask)
+	}
 	switch {
-	case g.OSFamily == "windows":
-		return label + " is a Windows template, and this item's remote access is for Linux VMs. Ask a catalog admin to check this item."
-	case g.CustomizationSpec != "":
-		return fmt.Sprintf("%s configures its VMs with the customization specification %s, and this item's remote access needs cloud-init. Ask a catalog admin to check this item.",
-			label, g.CustomizationSpec)
+	case g.OSFamily == "windows" && !cloudbase && ra.UsesKey():
+		return label + " doesn't use cloudbase-init, which a Windows VM needs to be given an SSH key." + ask
+	case g.OSFamily == "windows" && !cloudbase && !strings.EqualFold(ra.Username, blueprint.WindowsAdministrator):
+		return fmt.Sprintf("%s doesn't use cloudbase-init: the only user vCenter's customization sets a password for is %s, not %s.%s",
+			label, blueprint.WindowsAdministrator, ra.Username, ask)
+	case g.OSFamily != "windows" && g.CustomizationSpec != "":
+		return fmt.Sprintf("%s configures its VMs with the customization specification %s, and this item's remote access needs cloud-init.%s",
+			label, g.CustomizationSpec, ask)
 	}
 	return ""
 }
@@ -169,9 +191,14 @@ func checkRemoteAccess(b blueprint.Blueprint, fields map[string]api.UiField, ptr
 				add(at+"/public_key", "invalid", "People sign in with the password: leave out the public key.")
 			}
 		}
-		if windows {
-			add(at, "invalid", "Remote access is for Linux VMs: a Windows VM's administrator password is admin_password.")
-		} else if c.Guest.CustomizationSpec != "" {
+		switch {
+		case windows && c.Guest.AdminPassword != "":
+			add(at, "invalid", "A Windows VM gets one administrator here: remote_access's user or admin_password, not both.")
+		case windows && c.Guest.CustomizationSpec != "" && ra.UsesKey():
+			add(at+"/kind", "invalid", "A Windows VM gets an SSH key through cloudbase-init, which doesn't use a customization specification.")
+		case windows && c.Guest.CustomizationSpec != "" && ra.Username != "" && !strings.EqualFold(ra.Username, blueprint.WindowsAdministrator):
+			add(at+"/username", "invalid", "With a customization specification, the only user whose password vCenter sets is Administrator.")
+		case !windows && c.Guest.CustomizationSpec != "":
 			add(at, "invalid", "Remote access on Linux goes through cloud-init, which doesn't use a customization specification.")
 		}
 	}

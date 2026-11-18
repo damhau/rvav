@@ -301,7 +301,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, `{bindings.<key>}` (a binding of the VMs it names, such as `inputs.app.lowerAscii()`), ending with `{seq}` or `{seq:03}` |
 | `template`, `library` | The vCenter template; with `library`, the item of that content library. The `template` binding gives the key of a template of **Templates and networks** instead (the `rvav.templates` picker): see **Templates per vCenter** below |
-| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`; a stored secret as `{{ secret "name" \| json }}`, its name in quotes, opened only when the VM is built; saving refuses a secret that doesn't exist, with its line); `remote_access` (the user people sign in as: see **Remote access** below) |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux, or Windows on a template with cloudbase-init: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`; a stored secret as `{{ secret "name" \| json }}`, its name in quotes, opened only when the VM is built; saving refuses a secret that doesn't exist, with its line); `remote_access` (the user people sign in as: see **Remote access** below) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `resource_pool` (a pool's path below the cluster's root pool, such as `rvav/dev`), `host`, `datastore`, `datastore_cluster`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy`, `constraints` (the disk's own storage constraints, below), `provisioning` (over the blueprint's) |
@@ -379,10 +379,25 @@ default user (`ubuntu`, `cloud-user`) stays unless the user data lists
 cloud-init clear the user data from the VM's guestinfo once it read it.
 The VMs are configured by cloud-init, so the blueprint can't name a
 `customization_spec` with `remote_access`, and a request is refused when
-the `template` binding chooses a Windows template or one with a
-customization specification. The deployment's request shows the user
-and the key's fingerprint on its customize step, never the key or the
-password.
+the `template` binding chooses a template with a customization
+specification.
+
+On Windows, how the user is given depends on the template the `template`
+binding chooses:
+- **A template with cloudbase-init** (see the administrator's guide): any
+  kind. cloudbase-init makes the user, a member of Administrators, with
+  its password or its keys. The VM's user data (`cloud_init.user_data`, a
+  PowerShell script starting `#ps1_sysnative`, `rem cmd` or
+  `#cloud-config`) runs after the template's. `domain_join` and
+  `customization_spec` are refused.
+- **Any other Windows template:** `password` only, for the user
+  `Administrator`, set by vCenter's customization. A key, another user, or
+  `cloud_init` is refused when the request is made.
+
+A Windows guest can't have both `remote_access` and `admin_password`. The
+user name has up to 20 letters, digits, dots, dashes and underscores. The
+deployment's request shows the user and the key's fingerprint on its
+customize step, never the key or the password.
 
 With `generated_key`, rvav makes one key pair for the deployment and puts
 its public key on every VM whose component has `generated_key`. The
