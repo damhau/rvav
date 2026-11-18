@@ -384,6 +384,13 @@ customization specification. The deployment's request shows the user
 and the key's fingerprint on its customize step, never the key or the
 password.
 
+With `generated_key`, rvav makes one key pair for the deployment and puts
+its public key on every VM whose component has `generated_key`. The
+deployment's page shows the user and the key's fingerprint under **Remote
+access**, where the deployment's owner downloads the private key once:
+rvav forgets it as it hands it over, and when the deployment's VMs are
+deleted.
+
 **Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
 placement rule may put the VMs in a resource pool, on some hosts, or in a
 datastore cluster. Bindings narrow them further, within what the rule

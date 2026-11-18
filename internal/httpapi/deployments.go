@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
@@ -69,5 +70,26 @@ func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymen
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, present.DeploymentDetail(d, resources, s.secretFields(r, d.VersionID)))
+	out := present.DeploymentDetail(d, resources, s.secretFields(r, d.VersionID))
+	key, err := s.Store.DeploymentKey(r.Context(), s.Store.Pool, d.ID)
+	switch {
+	case err == nil:
+		out.GeneratedKey = present.GeneratedKey(key)
+	case !errors.Is(err, store.ErrNotFound):
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// DownloadPrivateKey hands the deployment's owner its generated private
+// key, once (ADR-0039).
+func (s *Server) DownloadPrivateKey(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath) {
+	k, err := s.Core.DownloadPrivateKey(r.Context(), principal(r), deploymentID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, api.PrivateKey{PrivateKey: k.PEM, Username: k.Username, Fingerprint: k.Fingerprint})
 }

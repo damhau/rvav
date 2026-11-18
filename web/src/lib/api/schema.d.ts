@@ -920,6 +920,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployments/{deploymentId}/private-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download the private key rvav made for the deployment, once (ADR-0039)
+         * @description Only the deployment's owner may, and only once: rvav forgets the
+         *     private key as it returns it. Recorded in the audit log, without
+         *     the key. 404 when the deployment has no generated key; 409 when it
+         *     was downloaded, or forgotten when the deployment was deleted.
+         */
+        post: operations["downloadPrivateKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments/{deploymentId}/resources/{resourceId}/console": {
         parameters: {
             query?: never;
@@ -4780,6 +4805,36 @@ export interface components {
                 [key: string]: unknown;
             };
             resources: components["schemas"]["Resource"][];
+            /** @description The users people sign in to the VMs as, one per component that has one (ADR-0039). */
+            remote_access?: components["schemas"]["RemoteAccess"][];
+            generated_key?: components["schemas"]["GeneratedKey"];
+        };
+        /** @description The user a component's VMs were given to sign in as. */
+        RemoteAccess: {
+            /** @description The component's key; `vm` without components. */
+            component: string;
+            /** @enum {string} */
+            kind: "ssh_key" | "generated_key" | "password";
+            username: string;
+            /** @description The public key's SHA-256 fingerprint, as `ssh-keygen -l` prints it. Not with a password. */
+            fingerprint?: string;
+        };
+        /** @description The key pair rvav made for the deployment. Its private key can be downloaded once, by the owner. */
+        GeneratedKey: {
+            username: string;
+            fingerprint: string;
+            /** @description rvav still has the private key. */
+            available: boolean;
+            /** Format: date-time */
+            downloaded_at?: string;
+            downloaded_by?: components["schemas"]["UserRef"];
+        };
+        /** @description A deployment's generated private key, which rvav no longer has. */
+        PrivateKey: {
+            /** @description The private key in OpenSSH format. */
+            private_key: string;
+            username: string;
+            fingerprint: string;
         };
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
@@ -8569,6 +8624,33 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    downloadPrivateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateKey"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     openConsole: {

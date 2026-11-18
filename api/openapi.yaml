@@ -1130,6 +1130,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /deployments/{deploymentId}/private-key:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    post:
+      tags: [deployments]
+      operationId: downloadPrivateKey
+      summary: Download the private key rvav made for the deployment, once (ADR-0039)
+      description: |
+        Only the deployment's owner may, and only once: rvav forgets the
+        private key as it returns it. Recorded in the audit log, without
+        the key. 404 when the deployment has no generated key; 409 when it
+        was downloaded, or forgotten when the deployment was deleted.
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /deployments/{deploymentId}/resources/{resourceId}/console:
     parameters:
       - { $ref: "#/components/parameters/DeploymentIdPath" }
@@ -6438,6 +6464,42 @@ components:
             resources:
               type: array
               items: { $ref: "#/components/schemas/Resource" }
+            remote_access:
+              type: array
+              description: The users people sign in to the VMs as, one per component that has one (ADR-0039).
+              items: { $ref: "#/components/schemas/RemoteAccess" }
+            generated_key:
+              $ref: "#/components/schemas/GeneratedKey"
+
+    RemoteAccess:
+      description: The user a component's VMs were given to sign in as.
+      type: object
+      required: [component, kind, username]
+      properties:
+        component: { type: string, description: "The component's key; `vm` without components." }
+        kind: { type: string, enum: [ssh_key, generated_key, password] }
+        username: { type: string }
+        fingerprint: { type: string, description: "The public key's SHA-256 fingerprint, as `ssh-keygen -l` prints it. Not with a password." }
+
+    GeneratedKey:
+      description: The key pair rvav made for the deployment. Its private key can be downloaded once, by the owner.
+      type: object
+      required: [username, fingerprint, available]
+      properties:
+        username: { type: string }
+        fingerprint: { type: string }
+        available: { type: boolean, description: rvav still has the private key. }
+        downloaded_at: { type: string, format: date-time }
+        downloaded_by: { $ref: "#/components/schemas/UserRef" }
+
+    PrivateKey:
+      description: A deployment's generated private key, which rvav no longer has.
+      type: object
+      required: [private_key, username, fingerprint]
+      properties:
+        private_key: { type: string, description: The private key in OpenSSH format. }
+        username: { type: string }
+        fingerprint: { type: string }
 
     DeploymentPage:
       allOf:

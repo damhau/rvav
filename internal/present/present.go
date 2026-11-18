@@ -294,6 +294,43 @@ func DeploymentDetail(d store.DeploymentRow, resources []store.Resource, secret 
 			out.Resources = append(out.Resources, res)
 		}
 	}
+	out.RemoteAccess = remoteAccess(resources)
+	return out
+}
+
+// remoteAccess lists the users the components' VMs were given (ADR-0039),
+// from their guest.access resources.
+func remoteAccess(resources []store.Resource) *[]api.RemoteAccess {
+	var out []api.RemoteAccess
+	for _, r := range resources {
+		if r.Type != "guest.access" {
+			continue
+		}
+		var p struct {
+			Component   string `json:"component"`
+			Kind        string `json:"kind"`
+			Username    string `json:"username"`
+			Fingerprint string `json:"fingerprint"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		out = append(out, api.RemoteAccess{Component: p.Component, Kind: api.RemoteAccessKind(p.Kind), Username: p.Username,
+			Fingerprint: strPtr(p.Fingerprint)})
+	}
+	if out == nil {
+		return nil
+	}
+	slices.SortFunc(out, func(a, b api.RemoteAccess) int { return strings.Compare(a.Component, b.Component) })
+	return &out
+}
+
+// GeneratedKey is the key pair rvav made for a deployment, without its
+// private key.
+func GeneratedKey(k store.DeploymentKey) *api.GeneratedKey {
+	out := &api.GeneratedKey{Username: k.Username, Fingerprint: k.Fingerprint, Available: k.Ciphertext != nil,
+		DownloadedAt: k.DownloadedAt}
+	if k.DownloadedBy != nil && k.DownloadedByName != nil {
+		out.DownloadedBy = &api.UserRef{Id: *k.DownloadedBy, Name: *k.DownloadedByName}
+	}
 	return out
 }
 

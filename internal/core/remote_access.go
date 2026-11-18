@@ -1,15 +1,74 @@
 package core
 
 import (
+	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/store"
 )
+
+// PrivateKey is a deployment's generated private key, handed out once.
+type PrivateKey struct {
+	PEM, Username, Fingerprint string
+}
+
+// DownloadPrivateKey gives the deployment's owner the private key rvav
+// made for it, and forgets it in the same transaction: a second call, or
+// one after the deployment's VMs were deleted, is refused (ADR-0039).
+func (s *Service) DownloadPrivateKey(ctx context.Context, p *auth.Principal, deploymentID string) (PrivateKey, error) {
+	var out PrivateKey
+	d, err := s.visibleDeployment(ctx, p, deploymentID)
+	if err != nil {
+		return out, err
+	}
+	if d.OwnerID != p.User.ID {
+		return out, fmt.Errorf("%w: only the deployment's owner, %s, can download its private key", ErrForbidden, d.OwnerName)
+	}
+	if s.Secrets == nil {
+		return out, &ConflictError{Msg: "rvav has no secrets key (RVAV_SECRETS_KEY), so it has no private key to give."}
+	}
+	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		k, err := s.Store.LockDeploymentKey(ctx, tx, d.ID)
+		if errors.Is(err, store.ErrNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		switch {
+		case k.DownloadedAt != nil:
+			return &ConflictError{Msg: fmt.Sprintf("%s downloaded the private key on %s, and rvav no longer has it.",
+				cmp.Or(deref(k.DownloadedByName), "Someone"), k.DownloadedAt.UTC().Format("2 Jan 2006 15:04 UTC"))}
+		case k.Ciphertext == nil:
+			return &ConflictError{Msg: "rvav no longer has the private key: it was forgotten when the deployment's VMs were deleted."}
+		}
+		plain, err := s.Secrets.Open(store.DeploymentKeyName(d.ID), deref(k.KeyID), k.Nonce, k.Ciphertext)
+		if err != nil {
+			return err
+		}
+		if err := s.Store.ForgetDeploymentKey(ctx, tx, d.ID, &p.User.ID); err != nil {
+			return err
+		}
+		out = PrivateKey{PEM: string(plain), Username: k.Username, Fingerprint: k.Fingerprint}
+		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "deployment.private_key.download",
+			TargetType: "deployment", TargetID: d.ID, ProjectID: &d.ProjectID, Detail: map[string]any{"fingerprint": k.Fingerprint}})
+	})
+	if err != nil {
+		return PrivateKey{}, err
+	}
+	if s.Events != nil {
+		s.Events.Deployment(ctx, d.ID)
+	}
+	return out, nil
+}
 
 // accessProblem says why the guest's remote access can't be given on the
 // template the form chose, or "": a catalogue template sets the OS family

@@ -27,6 +27,7 @@ import type {
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
+import { RemoteAccessPanel } from "./RemoteAccess";
 
 export type DeploymentTab = "overview" | "history" | "inputs";
 
@@ -565,6 +566,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
         <Panel title="Details">
           <Details d={d} />
         </Panel>
+        <RemoteAccessPanel d={d} />
         <Panel title="Lease">
           <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />
         </Panel>

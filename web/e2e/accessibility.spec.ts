@@ -175,6 +175,24 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "a deployment's Actions menu");
     });
 
+    // A generated key's private key, asked for, then shown once (ADR-0039).
+    test("axe: a deployment's private key", async ({ page }) => {
+      await page.goto("/deployments");
+      await page.getByRole("link", { name: "web-prd-front", exact: true }).click();
+      await loaded(page);
+      const access = page.getByRole("region", { name: "Remote access" });
+      await access.getByRole("button", { name: "Download the private key" }).click();
+      const sheet = page.getByRole("dialog", { name: "Download the private key" });
+      await expect(sheet.getByRole("button", { name: "Show the private key" })).toBeVisible();
+      await scan(page, "a deployment's private key (asked for)");
+      await sheet.getByRole("button", { name: "Show the private key" }).click();
+      await expect(page.getByRole("dialog", { name: "Your private key" }).getByRole("status")).toBeVisible();
+      await scan(page, "a deployment's private key (shown)");
+      await page.getByRole("button", { name: "Done" }).click();
+      await expect(access.getByText(/downloaded the private key/)).toBeVisible();
+      await scan(page, "a deployment's private key (downloaded)");
+    });
+
     test("axe: an approval's menu, then the approval in its side panel", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);

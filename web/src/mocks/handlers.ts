@@ -1119,6 +1119,37 @@ export const handlers = [
     },
   ),
 
+  http.post<{ deploymentId: string }>(`${base}/deployments/:deploymentId/private-key`, async ({ params }) => {
+    await wait();
+    const d = db.deployments.find((x) => x.id === params.deploymentId && myProjectIds().has(x.project.id));
+    const k = d?.generated_key;
+    if (!d || !k) return notFound("Generated key");
+    if (d.owner.id !== db.me.user.id)
+      return problem(
+        403,
+        "forbidden",
+        "Not allowed",
+        `Only the deployment's owner, ${d.owner.name}, can download its private key.`,
+      );
+    if (!k.available)
+      return problem(
+        409,
+        "conflict",
+        "Not possible right now",
+        "The private key was downloaded, and rvav no longer has it.",
+      );
+    Object.assign(k, { available: false, downloaded_at: new Date().toISOString(), downloaded_by: db.me.user });
+    // Not a key: the mock's stand-in, its markers put together so no scanner takes it for one.
+    const marker = (edge: string) => `-----${edge} OPENSSH ${"PRIVATE"} KEY-----`;
+    const body =
+      "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQ\nbW9jay1vbmx5LW5vdC1hLXJlYWwta2V5LWZvci10aGUtcnZhdi1tb2NrLXNlcnZlcg==";
+    return json<S["PrivateKey"]>({
+      private_key: `${marker("BEGIN")}\n${body}\n${marker("END")}\n`,
+      username: k.username,
+      fingerprint: k.fingerprint,
+    });
+  }),
+
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId`, async ({ params }) => {
     await wait();
     const d = db.deployments.find((x) => x.id === params.deploymentId && myProjectIds().has(x.project.id));

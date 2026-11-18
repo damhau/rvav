@@ -182,6 +182,34 @@ over a soft quota.
   What happens at the end (power off then delete, or delete) is the
   environment's policy.
 
+## Signing in to your VMs
+
+When the item gives the VMs a user, the deployment's **Overview** shows
+it under **Remote access**, with how you sign in as that user:
+- **With the SSH key given for it:** the public key you gave in the
+  request, or one your organisation stores. Sign in with its private key,
+  as `ssh <user>@<address>`.
+- **With the password given for it:** the password you gave in the
+  request, or one your organisation stores.
+- **With the deployment's key:** rvav made a key pair for the deployment.
+  You download its private key once, below.
+
+To download the deployment's private key:
+1. On the deployment's page, under **Remote access**, select **Download
+   the private key**. Only the deployment's owner can.
+2. Select **Show the private key**. rvav shows the key and forgets it: no
+   one can download it again, you included.
+3. Select **Save as** to save it as a file, or **Copy** to put it in your
+   password manager.
+4. Sign in with the command shown:
+   `chmod 600 <file> && ssh -i <file> <user>@<address>`.
+
+Afterwards, **Remote access** says who downloaded the key and when. If
+you lose the key, sign in another way (a password, the console) and add
+a new key to the user's `~/.ssh/authorized_keys`, or request a new
+deployment. Deleting the deployment's VMs forgets a key no one
+downloaded.
+
 ## Approving
 
 **Approvals** lists the requests waiting for you, oldest first, with why

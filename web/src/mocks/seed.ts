@@ -686,6 +686,24 @@ export function createDb(now = Date.now()): Db {
     ];
   }
 
+  // Remote access (ADR-0039): a key pair rvav made, its private key not
+  // downloaded yet; the requester's own key.
+  {
+    const front = deployments.find((d) => d.name === "web-prd-front")!;
+    const fingerprint = "SHA256:q3V0Zm1rS2V5Rm9yV2ViUHJkRnJvbnQwMDFNb2NrZWQ";
+    front.remote_access = [{ component: "vm", kind: "generated_key", username: "ops", fingerprint }];
+    front.generated_key = { username: "ops", fingerprint, available: true };
+    const edge = deployments.find((d) => d.name === "web-prd-edge")!;
+    edge.remote_access = [
+      {
+        component: "vm",
+        kind: "ssh_key",
+        username: "thomas",
+        fingerprint: "SHA256:dGhvbWFzQGxhcHRvcEVkMjU1MTlNb2NrS2V5RWRnZQ",
+      },
+    ];
+  }
+
   // On NSX (ADR-0028): a segment made for it, a group with the rules into it,
   // both VMs in it and in an existing group; one's tag was removed in NSX.
   {

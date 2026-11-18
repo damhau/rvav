@@ -70,3 +70,23 @@ password). rvav's only way was user data written by hand (parity C22).
 - Deleting the deployment's `guest.access` resources forgets the private
   key: the row keeps the public key and fingerprint, without the sealed
   key.
+- The deployment's owner downloads the private key once:
+  `POST /deployments/{id}/private-key`. It is a POST because it changes
+  something: in one transaction the API process locks the row, opens the
+  sealed key, forgets it (the row keeps who downloaded it and when) and
+  writes the audit entry `deployment.private_key.download` with the
+  fingerprint; the answer has `Cache-Control: no-store`. Anyone else,
+  administrators included, gets 403 naming the owner: the key signs in to
+  the owner's VMs, and an administrator who needs in has vCenter's
+  console. A second download, or one after the VMs were deleted, gets 409
+  saying which.
+- `GET /deployments/{id}` carries the users people sign in as
+  (`remote_access`, from the `guest.access` resources) and the generated
+  key's state (`generated_key`: user, fingerprint, `available`, who
+  downloaded it and when). The web shows them in a **Remote access**
+  panel, and the key in a sheet that shows it once, with **Save as** and
+  **Copy**; the key never goes into the query cache.
+- The key isn't kept for its owner to download again: a key rvav can
+  hand out twice goes as well to whoever has the owner's session or one
+  of their API tokens, and the owner sees nothing. Handed out once, with
+  who and when on the page, a second taker shows.
