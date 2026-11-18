@@ -59,11 +59,9 @@ test("a conflict: both sides, settled for the repository's change", async ({ pag
   await page.getByRole("button", { name: "New draft" }).click();
   await expect(page.getByText(/Draft 2\.5 made/)).toBeVisible();
   await page.getByRole("tab", { name: "Git" }).click();
-  page.once("dialog", (d) => {
-    expect(d.message()).toContain("Discard draft 2.5");
-    void d.accept();
-  });
   await git.getByRole("button", { name: "Take the repository's" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Discard draft 2.5?" });
+  await confirm.getByRole("button", { name: "Take the repository's" }).click();
   await expect(page.getByText("The repository's change is a draft")).toBeVisible();
   // Focus is on the file's state, now the draft's.
   await expect(git.locator("[tabindex='-1']")).toBeFocused();

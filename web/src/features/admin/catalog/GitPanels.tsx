@@ -10,6 +10,7 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -257,6 +258,7 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
   const git = item.git!;
   const detail = useQuery(q.catalogItemGit(item.id));
   const status = useRef<HTMLDivElement>(null);
+  const [taking, setTaking] = useState(false);
   const resolve = useMutation({
     mutationFn: (take: "rvav" | "repository") =>
       call(
@@ -330,18 +332,28 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
               <Button
                 size="sm"
                 disabled={resolve.isPending || deletedThere}
-                onClick={() => {
-                  if (
-                    !item.draft_version ||
-                    window.confirm(`Discard draft ${item.draft_version.number} and take the repository's change?`)
-                  )
-                    resolve.mutate("repository");
-                }}
+                onClick={() => (item.draft_version ? setTaking(true) : resolve.mutate("repository"))}
               >
                 Take the repository's
               </Button>
             </div>
           </div>
+        )}
+        {taking && item.draft_version && (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => !o && setTaking(false)}
+            title={`Discard draft ${item.draft_version.number}?`}
+            description="The repository's change becomes the item's draft, in place of rvav's."
+            consequences={`What draft ${item.draft_version.number} changed is lost. The published version stays as it is.`}
+            confirmLabel="Take the repository's"
+            onConfirm={() => {
+              // Closed before it runs: once settled, the focus goes to the
+              // file's state, not back to a button that is gone.
+              setTaking(false);
+              resolve.mutate("repository");
+            }}
+          />
         )}
         {detail.isError && <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />}
         {d && d.diff.some((l) => l.op !== "same") && (

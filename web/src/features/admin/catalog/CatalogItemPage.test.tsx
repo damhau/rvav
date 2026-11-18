@@ -170,3 +170,20 @@ describe("the item's header and versions", () => {
     expect(screen.getByRole("tab", { name: "Entitlements" })).toHaveAttribute("aria-selected", "true");
   });
 });
+
+describe("the item's Git tab", () => {
+  it("asks before the repository's change replaces an open draft", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/ubuntu-server");
+    await u.click(await screen.findByRole("button", { name: "New draft" }));
+    expect(await screen.findByText(/Draft 2\.5 made/)).toBeInTheDocument();
+    await u.click(screen.getByRole("tab", { name: "Git" }));
+    const git = await screen.findByRole("region", { name: "Git" });
+    await u.click(await within(git).findByRole("button", { name: "Take the repository's" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Discard draft 2.5?" });
+    expect(confirm).toHaveTextContent("What draft 2.5 changed is lost.");
+    await u.click(within(confirm).getByRole("button", { name: "Take the repository's" }));
+    expect(await screen.findByText("The repository's change is a draft")).toBeInTheDocument();
+    await waitFor(() => expect(within(git).queryByRole("button", { name: "Keep rvav's" })).toBeNull());
+  });
+});
