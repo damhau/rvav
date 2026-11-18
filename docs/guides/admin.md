@@ -646,7 +646,11 @@ limit refuses a request, a soft one asks for approval.
 
 **Catalog items** has four tabs: **Items**, which you can search and
 filter by kind, category and state; **Categories**; **Secrets**, for REST
-value sources and calls; and **AWX templates**, those imported from AWX.
+value sources and calls, Windows guests, cloud-init user data
+(`{{ secret "name" }}`) and AWX steps (`${secret.name}`); and **AWX
+templates**, those imported from AWX. A secret's **Used by** lists the items
+that name it, and the templates whose user data reads it
+(`template:<key>`): you can't remove it while one does.
 A row's menu has what you can do with it, and removing anything asks
 first and says what depends on it. An item that was ever requested can't
 be deleted: withdraw it instead.

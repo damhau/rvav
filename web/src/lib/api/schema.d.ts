@@ -3572,7 +3572,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
-            /** @description Items whose versions use it. */
+            /** @description Items whose versions name it, by slug, and templates whose user data reads it, as template:<key>. */
             used_by?: string[];
         };
         SecretWrite: {

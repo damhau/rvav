@@ -357,26 +357,42 @@ func (s *Service) checkSourceRefs(ctx context.Context, d api.CatalogVersionDefin
 		}
 		errs = append(errs, told...)
 	}
-	// Secrets a VM blueprint names (ADR-0024).
-	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {
-		refs := blueprintSecrets(b, prefix+"/blueprint")
-		for _, at := range sortedKeys(refs) {
-			name, kind := refs[at][0], refs[at][1]
-			v, err := s.Store.GetSecret(ctx, name)
-			switch {
-			case errors.Is(err, store.ErrNotFound):
-				errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("There is no secret %q.", name)))
-			case err != nil:
-				return nil, err
-			case kind != "" && v.Kind != kind:
-				errs = append(errs, fieldErr(at, "invalid", fmt.Sprintf("Secret %q must be a %s secret: a user name and its password.", name, kind)))
-			}
+	// Secrets a blueprint names (ADR-0024, ADR-0038).
+	if b, err := blueprint.Parse(raw); err == nil {
+		secretErrs, err := s.checkBlueprintSecrets(ctx, b, prefix+"/blueprint")
+		if err != nil {
+			return nil, err
 		}
+		errs = append(errs, secretErrs...)
+	}
+	if b, err := blueprint.Parse(raw); err == nil && b.Kind == blueprint.KindVM {
 		nsxErrs, err := s.checkNSXRefs(ctx, b, prefix+"/blueprint")
 		if err != nil {
 			return nil, err
 		}
 		errs = append(errs, nsxErrs...)
+	}
+	return errs, nil
+}
+
+// checkBlueprintSecrets checks the stored secrets a blueprint names: each
+// exists, and a domain join's is a user name and password.
+func (s *Service) checkBlueprintSecrets(ctx context.Context, b blueprint.Blueprint, ptr string) ([]api.FieldError, error) {
+	var errs []api.FieldError
+	for _, r := range b.Secrets() {
+		v, err := s.Store.GetSecret(ctx, r.Name)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			msg := fmt.Sprintf("There is no secret %q.", r.Name)
+			if r.Line > 0 {
+				msg = fmt.Sprintf("Line %d: there is no secret %q.", r.Line, r.Name)
+			}
+			errs = append(errs, fieldErr(ptr+r.Pointer, "unknown", msg))
+		case err != nil:
+			return nil, err
+		case strings.HasSuffix(r.Pointer, "/domain_join/credential") && v.Kind != "basic":
+			errs = append(errs, fieldErr(ptr+r.Pointer, "invalid", fmt.Sprintf("Secret %q must be a basic secret: a user name and its password.", r.Name)))
+		}
 	}
 	return errs, nil
 }

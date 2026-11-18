@@ -3,6 +3,7 @@ package provision
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -39,13 +40,22 @@ func TestCloudInit(t *testing.T) {
 		t.Fatalf("metadata = %s", raw)
 	}
 
-	user, err := renderUserData("#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ .inputs.role }}", map[string]any{
-		"vm": map[string]any{"fqdn": "web01.corp.example"}, "inputs": map[string]any{"role": "web"}})
-	if err != nil || user != "#cloud-config\nfqdn: web01.corp.example\nfinal_message: web" {
+	secret := func(name string) (string, error) {
+		if name == "app-pw" {
+			return `p"w: 1`, nil
+		}
+		return "", errors.New("There is no secret " + name)
+	}
+	user, err := renderUserData("#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ .inputs.role }}\npassword: {{ secret \"app-pw\" | json }}",
+		map[string]any{"vm": map[string]any{"fqdn": "web01.corp.example"}, "inputs": map[string]any{"role": "web"}}, secret)
+	if err != nil || user != "#cloud-config\nfqdn: web01.corp.example\nfinal_message: web\npassword: \"p\\\"w: 1\"" {
 		t.Fatalf("user data = %q, %v", user, err)
 	}
-	if _, err := renderUserData("{{ .inputs.missing }}", map[string]any{"inputs": map[string]any{}}); err == nil || !strings.Contains(err.Error(), "missing") {
+	if _, err := renderUserData("{{ .inputs.missing }}", map[string]any{"inputs": map[string]any{}}, secret); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("a missing input = %v", err)
+	}
+	if _, err := renderUserData(`{{ secret "gone" }}`, nil, secret); err == nil || !strings.Contains(err.Error(), "There is no secret gone") {
+		t.Fatalf("a missing secret = %v", err)
 	}
 	gi := guestInfo(raw, user)
 	if dec, _ := base64.StdEncoding.DecodeString(gi["guestinfo.userdata"]); string(dec) != user || gi["guestinfo.metadata.encoding"] != "base64" {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -122,6 +123,15 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	}
 	userData, cons, imageErrs := checkImage(w)
 	errs = append(errs, imageErrs...)
+	// The stored secrets its user data reads (ADR-0038).
+	refs, _ := blueprint.UserDataSecrets(userData)
+	for _, r := range refs {
+		if _, err := s.Store.GetSecret(ctx, r.Name); errors.Is(err, store.ErrNotFound) {
+			errs = append(errs, fieldErr("/user_data", "unknown", fmt.Sprintf("Line %d: there is no secret %q.", r.Line, r.Name)))
+		} else if err != nil {
+			return api.VmTemplate{}, err
+		}
+	}
 	linked := w.LinkedClone != nil && *w.LinkedClone
 	if linked && slices.ContainsFunc(sources, func(s store.TemplateSource) bool { return s.Library != "" }) {
 		errs = append(errs, fieldErr("/linked_clone", "invalid",

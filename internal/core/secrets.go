@@ -2,13 +2,16 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -19,7 +22,7 @@ import (
 var secretName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
 
 func (s *Service) presentSecret(ctx context.Context, v store.Secret) (api.Secret, error) {
-	users, err := s.Store.SecretUsers(ctx, v.Name)
+	users, err := s.secretUsers(ctx, v.Name)
 	out := api.Secret{Name: v.Name, Kind: api.SecretKind(v.Kind), Description: v.Description, CreatedAt: v.CreatedAt,
 		UpdatedAt: v.UpdatedAt, UsedBy: &users}
 	if v.Username != "" {
@@ -120,12 +123,12 @@ func (s *Service) DeleteSecret(ctx context.Context, p *auth.Principal, name stri
 	if !p.Everywhere(auth.CatalogManage) {
 		return ErrForbidden
 	}
-	users, err := s.Store.SecretUsers(ctx, name)
+	users, err := s.secretUsers(ctx, name)
 	if err != nil {
 		return err
 	}
 	if len(users) > 0 {
-		return &ConflictError{Msg: "Items use this secret: " + strings.Join(users, ", ") + "."}
+		return &ConflictError{Msg: "Items or templates use this secret: " + strings.Join(users, ", ") + "."}
 	}
 	if err := s.Store.DeleteSecret(ctx, name); errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
@@ -135,6 +138,42 @@ func (s *Service) DeleteSecret(ctx context.Context, p *auth.Principal, name stri
 	s.REST.Forget()
 	s.auditCatalog(ctx, p, "secret.delete", name, nil)
 	return nil
+}
+
+// secretUsers lists what uses a secret: the slugs of items whose versions
+// name it (in a REST value source or call, a Windows guest, user data or an
+// AWX step's binding), and template:<key> for templates whose user data
+// reads it.
+func (s *Service) secretUsers(ctx context.Context, name string) ([]string, error) {
+	users, err := s.Store.SecretUsers(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := s.Store.BlueprintsMentioning(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range versions {
+		var b blueprint.Blueprint
+		if json.Unmarshal(v.Blueprint, &b) != nil {
+			continue
+		}
+		if slices.ContainsFunc(b.Secrets(), func(r blueprint.SecretRef) bool { return r.Name == name }) {
+			users = append(users, v.Slug)
+		}
+	}
+	templates, err := s.Store.VMTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range templates {
+		refs, _ := blueprint.UserDataSecrets(t.UserData)
+		if slices.ContainsFunc(refs, func(r blueprint.SecretRef) bool { return r.Name == name }) {
+			users = append(users, "template:"+t.Key)
+		}
+	}
+	slices.Sort(users)
+	return slices.Compact(users), nil
 }
 
 // secretValue opens a stored secret.

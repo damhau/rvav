@@ -43,6 +43,15 @@ job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
 person's `answered`, `by`, `comment` and `answer`, a wait's `until`, a poll's
 `status`, `json` and `met`, a branch's `case`, a message's `told`.
 
+An AWX step's `with` value, or its undo's, can be a stored secret:
+`with: {password: "${secret.db-admin}"}`, the whole value. The job gets the
+secret's value as that extra variable; the request, its plan and Temporal's
+history keep only the name, and the worker opens it when it launches the job
+([ADR-0038](adr/0038-names-groups-secrets-properties.md)). Mark the
+playbook's tasks that use it `no_log`. `${secret.name}` anywhere else (an item
+step, a workflow, a message, a property) is refused on save, as is a secret
+that doesn't exist.
+
 #### A REST call step
 A step can call a REST API instead of running something
 ([ADR-0033](adr/0033-composite-step-kinds.md)). Any step with an undo can
@@ -292,7 +301,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, `{bindings.<key>}` (a binding of the VMs it names, such as `inputs.app.lowerAscii()`), ending with `{seq}` or `{seq:03}` |
 | `template`, `library` | The vCenter template; with `library`, the item of that content library. The `template` binding gives the key of a template of **Templates and networks** instead (the `rvav.templates` picker): see **Templates per vCenter** below |
-| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`; a stored secret as `{{ secret "name" \| json }}`, its name in quotes, opened only when the VM is built; saving refuses a secret that doesn't exist, with its line) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `resource_pool` (a pool's path below the cluster's root pool, such as `rvav/dev`), `host`, `datastore`, `datastore_cluster`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy`, `constraints` (the disk's own storage constraints, below), `provisioning` (over the blueprint's) |

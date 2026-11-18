@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -72,6 +73,20 @@ func (s *Store) SecretUsers(ctx context.Context, name string) ([]string, error) 
 		   or jsonb_path_exists(v.blueprint, '$.steps.**.rest ? (@.secret == $name)', jsonb_build_object('name', $1::text))
 		order by i.slug`, name)
 	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// ItemBlueprint is the blueprint of one of an item's versions.
+type ItemBlueprint struct {
+	Slug      string          `db:"slug"`
+	Blueprint json.RawMessage `db:"blueprint"`
+}
+
+// BlueprintsMentioning are the item versions whose blueprint holds text, to
+// be read for the secrets they name.
+func (s *Store) BlueprintsMentioning(ctx context.Context, text string) ([]ItemBlueprint, error) {
+	rows, _ := s.Pool.Query(ctx, `select i.slug, v.blueprint from catalog_item_versions v join catalog_items i on i.id = v.item_id
+		where strpos(v.blueprint::text, $1) > 0 order by i.slug`, text)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[ItemBlueprint])
 }
 
 // ResealSecret replaces a secret's sealed value only (key rotation), if it

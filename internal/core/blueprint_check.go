@@ -412,25 +412,6 @@ func checkGuest(ptr string, g blueprint.Guest, publish bool) []api.FieldError {
 	return errs
 }
 
-// blueprintSecrets lists the secrets a vm blueprint names, by where, and
-// the kind each must be.
-func blueprintSecrets(b blueprint.Blueprint, ptr string) map[string][2]string {
-	out := map[string][2]string{}
-	for i, c := range b.ComponentList() {
-		at := ptr + "/guest"
-		if b.Multi() {
-			at = fmt.Sprintf("%s/components/%d/guest", ptr, i)
-		}
-		if c.Guest.AdminPassword != "" {
-			out[at+"/admin_password"] = [2]string{c.Guest.AdminPassword, ""}
-		}
-		if j := c.Guest.DomainJoin; j != nil && j.Credential != "" {
-			out[at+"/domain_join/credential"] = [2]string{j.Credential, "basic"}
-		}
-	}
-	return out
-}
-
 // maxSecurityGroups is how many NSX groups one deployment can have made.
 const maxSecurityGroups = 8
 

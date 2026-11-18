@@ -1,5 +1,6 @@
-// Stored secrets for REST value sources and calls (ADR-0019, ADR-0033):
-// catalog admins add and replace them; their values are never shown again.
+// Stored secrets for REST value sources and calls, Windows guests, cloud-init
+// and AWX steps (ADR-0019, ADR-0033, ADR-0038): catalog admins add and
+// replace them; their values are never shown again.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
@@ -67,7 +68,7 @@ function SecretSheet({ existing, onClose }: { existing?: Secret; onClose: () => 
       open
       onOpenChange={(o) => !o && onClose()}
       title={existing ? `Replace ${existing.name}` : "New secret"}
-      description="Stored encrypted. Its value is never shown again; a REST value source or call names it."
+      description='Stored encrypted. Its value is never shown again. A REST value source or call names it, cloud-init user data reads it as {{ secret "name" }}, an AWX step as ${secret.name}.'
       submitLabel={save.isPending ? "Storing…" : existing ? "Replace" : "Store"}
       submitDisabled={!w.name || !w.value || save.isPending}
       onSubmit={() => {
@@ -170,7 +171,7 @@ export function SecretsPanel() {
       header: "Used by",
       sortValue: (s) => usedBy(s).length,
       cell: (s) => (
-        <span className="text-secondary text-muted">{usedBy(s).length ? usedBy(s).join(", ") : "No item"}</span>
+        <span className="text-secondary text-muted">{usedBy(s).length ? usedBy(s).join(", ") : "Nothing"}</span>
       ),
     },
     {
@@ -189,7 +190,7 @@ export function SecretsPanel() {
   return (
     <Panel
       title="Secrets"
-      description="What REST value sources and calls sign in to their service with."
+      description="What REST value sources and calls sign in with, and what Windows guests, cloud-init and AWX steps are given."
       flush
       actions={list?.length ? add : undefined}
     >
@@ -205,7 +206,7 @@ export function SecretsPanel() {
           <EmptyState
             icon={KeyRound}
             title="No secrets yet"
-            body="Store the token or password a REST value source or call needs; its value is never shown again."
+            body="Store the token or password a REST call, a guest or an AWX step needs; its value is never shown again."
             action={add}
           />
         }
@@ -215,7 +216,7 @@ export function SecretsPanel() {
             <MenuItem onSelect={() => setEditing(s)}>Replace the value</MenuItem>
             <MenuSeparator />
             <MenuItem danger disabled={usedBy(s).length > 0} onSelect={() => setRemoving(s)}>
-              {usedBy(s).length > 0 ? "Remove: items use it" : "Remove"}
+              {usedBy(s).length > 0 ? "Remove: in use" : "Remove"}
             </MenuItem>
           </>
         )}
@@ -227,7 +228,7 @@ export function SecretsPanel() {
           onOpenChange={(o) => !o && setRemoving(null)}
           title={`Remove ${removing.name}?`}
           description="Its value is deleted. Storing a secret of the same name later doesn't bring it back."
-          consequences="No item's form or call uses it today."
+          consequences="No item or template uses it today."
           confirmLabel="Remove secret"
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.name)}

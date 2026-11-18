@@ -74,3 +74,16 @@ func TestStepExpressionErrors(t *testing.T) {
 		}
 	}
 }
+
+// A binding that names a stored secret stays a name: the step's values,
+// which Temporal's history keeps, never hold the secret (ADR-0038).
+func TestResolveStepSecret(t *testing.T) {
+	r, err := resolveStep(ResolveInput{With: map[string]any{"token": "${secret.awx-token}", "role": "inputs.name", "n": 2}},
+		policy.Vars{"inputs": map[string]any{"name": "web"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Values) != 2 || r.Values["role"] != "web" || r.Values["n"] != 2 || len(r.Secrets) != 1 || r.Secrets["token"] != "awx-token" {
+		t.Fatalf("resolved = %+v", r)
+	}
+}

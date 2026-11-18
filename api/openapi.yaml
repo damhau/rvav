@@ -4754,7 +4754,7 @@ components:
         updated_at: { type: string, format: date-time }
         used_by:
           type: array
-          description: Items whose versions use it.
+          description: "Items whose versions name it, by slug, and templates whose user data reads it, as template:<key>."
           items: { type: string }
     SecretWrite:
       type: object

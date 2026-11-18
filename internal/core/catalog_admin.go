@@ -733,6 +733,18 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 			}
 		}
 	}
+	// ${secret.name} where it would be worked out with the request
+	// (ADR-0038): it isn't valid CEL either, so only why it is refused is
+	// said there.
+	misplaced := blueprint.MisplacedSecrets(raw)
+	errs = slices.DeleteFunc(errs, func(e api.FieldError) bool { return slices.Contains(misplaced, strings.TrimPrefix(e.Field, ptr)) })
+	for _, at := range misplaced {
+		msg := "A secret goes only in cloud-init user data, as {{ secret \"name\" }}, or as the whole binding of an AWX step, ${secret.name}: anywhere else it would be kept with the request."
+		if strings.HasSuffix(at, "/cloud_init/user_data") {
+			msg = "In user data, read a secret as {{ secret \"name\" }}."
+		}
+		errs = append(errs, fieldErr(ptr+at, "invalid", msg))
+	}
 	return errs
 }
 

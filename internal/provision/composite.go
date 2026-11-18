@@ -10,6 +10,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -146,6 +147,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		return stepResult{out: info.Outputs[key]}
 	}
 	values := map[string]any{}
+	var secretVars map[string]string
 	if c.When != "" || len(c.With) > 0 {
 		var r Resolved
 		in := ResolveInput{RequestID: info.RequestID, When: c.When, With: c.With, Steps: outputs}
@@ -157,7 +159,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			err := workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "skipped", "Its condition is false.").Get(ctx, nil)
 			return stepResult{err: err, failed: key, skipped: true}
 		}
-		values = r.Values
+		values, secretVars = r.Values, r.Secrets
 	}
 	var out map[string]any
 	switch {
@@ -200,7 +202,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			ctxVars[k] = v
 		}
 		vars["rvav"] = ctxVars
-		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job, ExtraVars: vars}
+		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job, ExtraVars: vars, Secrets: secretVars}
 		if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
 			return stepResult{failed: key, err: err}
 		}
@@ -313,7 +315,7 @@ func undoComposite(ctx workflow.Context, info Info, done []CompositeStep, output
 		case c.Undo.AWX != nil:
 			r.Values["rvav"] = info.Plan.Context
 			err = workflow.ExecuteActivity(jobCtx(dctx), a.RunJob, JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID,
-				StepKey: key, Job: *c.Undo.AWX, ExtraVars: r.Values}).Get(dctx, nil)
+				StepKey: key, Job: *c.Undo.AWX, ExtraVars: r.Values, Secrets: r.Secrets}).Get(dctx, nil)
 		case c.Undo.Workflow != nil:
 			call := *c.Undo.Workflow
 			call.Inputs = r.Values
@@ -337,10 +339,12 @@ type ResolveInput struct {
 	Steps     map[string]any `json:"steps,omitempty"`
 }
 
-// Resolved says whether the step runs, and with what.
+// Resolved says whether the step runs, and with what: Secrets are the
+// bindings that name a stored secret, kept by name (ADR-0038).
 type Resolved struct {
-	Skip   bool           `json:"skip"`
-	Values map[string]any `json:"values"`
+	Skip    bool              `json:"skip"`
+	Values  map[string]any    `json:"values"`
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 // ResolveStep evaluates a step's condition and bindings over the request's
@@ -368,6 +372,13 @@ func resolveStep(in ResolveInput, vars policy.Vars) (Resolved, error) {
 		}
 	}
 	for k, v := range in.With {
+		if name, ok := blueprint.BindingSecret(v); ok {
+			if out.Secrets == nil {
+				out.Secrets = map[string]string{}
+			}
+			out.Secrets[k] = name
+			continue
+		}
 		expr, ok := v.(string)
 		if !ok {
 			out.Values[k] = v

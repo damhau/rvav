@@ -162,6 +162,10 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 			exprs = append(exprs, stepExpr{sp + "/when", s.When})
 		}
 		for _, k := range sortedKeys(s.With) {
+			// ${secret.name} isn't CEL: the worker opens it (ADR-0038).
+			if _, secret := blueprint.BindingSecret(s.With[k]); secret {
+				continue
+			}
 			if e, ok := s.With[k].(string); ok {
 				exprs = append(exprs, stepExpr{sp + "/with/" + k, e})
 			}
@@ -247,6 +251,9 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				errs, undoExprs = append(errs, callErrs...), append(undoExprs, callExprs...)
 			}
 			for _, k := range sortedKeys(s.Undo.With) {
+				if _, secret := blueprint.BindingSecret(s.Undo.With[k]); secret {
+					continue
+				}
 				if e, ok := s.Undo.With[k].(string); ok {
 					undoExprs = append(undoExprs, stepExpr{sp + "/undo/with/" + k, e})
 				}

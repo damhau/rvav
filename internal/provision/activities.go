@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -170,6 +171,9 @@ type JobInput struct {
 	Job       Job            `json:"job"`
 	Limit     string         `json:"limit"`
 	ExtraVars map[string]any `json:"extra_vars"`
+	// Secrets are extra variables given a stored secret, by name: opened
+	// only for the launch (ADR-0038).
+	Secrets map[string]string `json:"secrets,omitempty"`
 	// Action is the AWX day-2 action the job runs, checked to be still
 	// offered before launching (ADR-0018).
 	Action string `json:"action,omitempty"`
@@ -810,14 +814,18 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 		"inputs":     inputs, "project": r.ProjectCode, "environment": r.Environment,
 		"request": map[string]any{"id": r.ID, "number": r.Number},
 	}
+	secret := func(name string) (string, error) {
+		_, v, err := a.openSecret(ctx, name)
+		return v, err
+	}
 	var own, image string
 	if in.Guest.CloudInit != nil {
-		if own, err = renderUserData(in.Guest.CloudInit.UserData, vars); err != nil {
+		if own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret); err != nil {
 			return "", "", permanent("cloud-init user data: %v. Ask a catalog admin to check this item.", err)
 		}
 	}
 	if in.VM.ImageUserData != "" {
-		if image, err = renderUserData(in.VM.ImageUserData, vars); err != nil {
+		if image, err = renderUserData(in.VM.ImageUserData, vars, secret); err != nil {
 			return "", "", permanent("the template's cloud-init user data: %v. Ask an administrator to check the template.", err)
 		}
 	}
@@ -1044,10 +1052,19 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 				return permanent("AWX: %v", err)
 			}
 		}
-		// Secret inputs opened only for the launch (S14.6).
+		// Secret inputs and stored secrets opened only for the launch
+		// (S14.6, ADR-0038).
 		extra, err := a.openSecretInputs(ctx, in.RequestID, in.ExtraVars)
 		if err != nil {
 			return permanent("%v", err)
+		}
+		if len(in.Secrets) > 0 {
+			extra = maps.Clone(extra)
+			for k, name := range in.Secrets {
+				if _, extra[k], err = a.openSecret(ctx, name); err != nil {
+					return err
+				}
+			}
 		}
 		launch := awx.LaunchRequest{Limit: in.Limit, ExtraVars: extra, Inventory: in.Job.Inventory, Credentials: in.Job.Credentials}
 		if in.Limit != "" {

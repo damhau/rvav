@@ -126,7 +126,7 @@ describe("Categories and secrets", () => {
     await u.click(await within(region).findByRole("button", { name: "Actions for cmdb" }));
     await u.click(await screen.findByRole("menuitem", { name: "Remove" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove cmdb?" });
-    expect(confirm).toHaveTextContent("No item's form or call uses it today.");
+    expect(confirm).toHaveTextContent("No item or template uses it today.");
     await u.click(within(confirm).getByRole("button", { name: "Remove secret" }));
     await waitFor(() => expect(within(region).queryByRole("row", { name: /cmdb/ })).toBeNull());
   });

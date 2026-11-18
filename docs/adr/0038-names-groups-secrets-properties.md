@@ -75,3 +75,38 @@ own `properties` (C30).
   separate step, recorded as a request, is the simplest way that keeps an
   accidental deletion from going through; a per-VM switch would need a
   VM-level delete, which rvav doesn't have.
+
+### Secrets in templates
+- vRA writes `${secret.name}` in a cloud template. rvav reads stored
+  secrets in the two places a value leaves rvav at build time, and only
+  there:
+  - cloud-init user data, a Go template, calls `{{ secret "name" }}`
+    (`secret.name` isn't a template field: names have dashes). The name is
+    a quoted literal: `{{ secret .inputs.x }}`, a pipe into `secret` or a
+    `call` of it is refused on save, so a requester never picks which
+    secret is opened. The value is printed as it is; `| json` quotes it
+    for YAML. The item's and the template's user data both may.
+  - an AWX step's `with` value, or its undo's, that is exactly
+    `${secret.name}`: kept out of CEL, it is set aside by name
+    (`Resolved.secrets`, then `JobInput.secrets`, both omitempty) and
+    opened by `RunJob` just before the launch, as secret inputs are.
+- So the plan, the step's resolved values, the activities' inputs and
+  results, and so Temporal's history, hold the name only; the timeline,
+  logs, events and audit never see the value. `TestSecretsInTemplates`
+  records every payload the workflow's data converter makes and finds the
+  name, not the value.
+- `${secret.` anywhere else in a blueprint (properties, folders, bindings
+  worked out at submit, messages, REST bodies, an item step's or a
+  workflow's inputs) is refused on save: its value would be worked out with
+  the request and kept in the plan. A REST call names its secret in
+  `secret`, as before.
+- Saving checks that each named secret exists: in user data, the error
+  says the line (`Line 3: there is no secret "nope".`). A template's user
+  data is checked when the template is saved.
+- A secret's **Used by** lists the items whose versions name it anywhere
+  (REST sources and calls, Windows guests, user data, AWX bindings), and
+  `template:<key>` for templates whose user data reads it; it can't be
+  removed while one does. Versions are found with `strpos` on the
+  blueprint's text, then read.
+- AWX shows a job's extra variables to those who see the job, and vCenter
+  users read guestinfo: the same limits as secret inputs (S14.6).
