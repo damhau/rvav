@@ -77,11 +77,11 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={policy ? `Change ${policy.name}` : "New day-2 policy"}
       description="The first policy that matches an action decides whether it runs."
       className="w-[min(640px,100vw)]"
-      submitLabel="Save policy"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save policy"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

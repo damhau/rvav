@@ -70,10 +70,10 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={lease ? "Change the lease policy" : "New lease policy"}
       description="How long deployments live in an environment, for every project or one; a project's own policy wins."
-      submitLabel="Save lease policy"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save lease policy"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

@@ -42,7 +42,28 @@ function Editing({ onSave }: { onSave: (name: string) => void }) {
   );
 }
 
+function Saving() {
+  const [open, setOpen] = useState(true);
+  return (
+    <Sheet open={open} onOpenChange={setOpen} title="New size" pending submitLabel="Saving…" onSubmit={() => {}}>
+      <Field label="Label" htmlFor="size-label">
+        <Input id="size-label" />
+      </Field>
+    </Sheet>
+  );
+}
+
 describe("Sheet", () => {
+  it("stays open while its change runs, its buttons waiting", async () => {
+    const user = userEvent.setup();
+    render(<Saving />);
+    const sheet = screen.getByRole("dialog", { name: "New size" });
+    for (const name of ["Close", "Cancel", "Saving…"])
+      expect(within(sheet).getByRole("button", { name })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "New size" })).toBeInTheDocument();
+  });
+
   it("is a named dialog whose footer saves the form", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
@@ -124,6 +145,28 @@ describe("ConfirmDialog", () => {
     await user.click(within(dialog).getByRole("button", { name: "Remove template" }));
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("stays while its change runs, Escape too", async () => {
+    const user = userEvent.setup();
+    function Pending() {
+      const [open, setOpen] = useState(true);
+      return (
+        <ConfirmDialog
+          open={open}
+          onOpenChange={setOpen}
+          title="Remove RHEL 9.4?"
+          description="Template pickers stop offering rhel9."
+          confirmLabel="Remove template"
+          pending
+          onConfirm={() => {}}
+        />
+      );
+    }
+    render(<Pending />);
+    await user.keyboard("{Escape}");
+    const dialog = screen.getByRole("alertdialog", { name: "Remove RHEL 9.4?" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
   it("does nothing on Cancel", async () => {

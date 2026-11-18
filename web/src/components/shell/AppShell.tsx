@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Dialog } from "radix-ui";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { useOpener } from "@/components/ui/opener";
 import { can } from "@/lib/can";
 import { useMediaQuery } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
@@ -80,6 +81,33 @@ function SetupLanding() {
   return null;
 }
 
+// Mounted as the drawer opens, so that it reads its opener then.
+function NavDrawer({ onNavigate }: { onNavigate: () => void }) {
+  const giveFocusBack = useOpener();
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <Dialog.Content
+      ref={ref}
+      className="fixed inset-y-0 left-0 z-50 w-[min(260px,85vw)] border-r border-line bg-rail lg:hidden"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      onOpenAutoFocus={(e) => {
+        const drawer = ref.current;
+        const here =
+          drawer?.querySelector<HTMLElement>('a[aria-current="page"]') ?? drawer?.querySelector<HTMLElement>("a[href]");
+        if (here) {
+          e.preventDefault();
+          here.focus();
+        }
+      }}
+      onCloseAutoFocus={giveFocusBack}
+    >
+      <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+      <Dialog.Description className="sr-only">Main sections of rvav</Dialog.Description>
+      <Sidebar onNavigate={onNavigate} />
+    </Dialog.Content>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { projectId } = useCurrentProject();
   // The location whose pages are on screen: while the next page's code loads,
@@ -120,14 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Dialog.Root open={navOpen} onOpenChange={setNavOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 lg:hidden" />
-          <Dialog.Content
-            className="fixed inset-y-0 left-0 z-50 w-[min(260px,85vw)] border-r border-line bg-rail lg:hidden"
-            style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-          >
-            <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-            <Dialog.Description className="sr-only">Main sections of rvav</Dialog.Description>
-            <Sidebar onNavigate={() => setNavOpen(false)} />
-          </Dialog.Content>
+          <NavDrawer onNavigate={() => setNavOpen(false)} />
         </Dialog.Portal>
       </Dialog.Root>
 

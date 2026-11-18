@@ -72,10 +72,11 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={create.isPending}
       title="New project"
       description="Its code is in VM names and can't change later."
       submitLabel={create.isPending ? "Creating…" : "Create"}
-      submitDisabled={!f.code || !f.name || create.isPending}
+      submitDisabled={!f.code || !f.name}
       onSubmit={() => {
         setErrors({});
         create.mutate();
@@ -451,10 +452,11 @@ function EnvironmentSheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={existing ? `Change ${existing.name}` : "New environment"}
       description="Projects deploy to environments; a VM's name carries its environment's key."
       submitLabel={save.isPending ? "Saving…" : existing ? "Save environment" : "Add environment"}
-      submitDisabled={!f.key || !f.name || !whole || save.isPending}
+      submitDisabled={!f.key || !f.name || !whole}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -662,10 +664,11 @@ function MapGroupSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={add.isPending}
       title="Map a group"
       description="Everyone in the identity provider's group gets the role, for all of rvav or in one project."
       submitLabel={add.isPending ? "Mapping…" : "Map group"}
-      submitDisabled={!f.group || add.isPending}
+      submitDisabled={!f.group}
       onSubmit={() => add.mutate()}
     >
       <Field label="OIDC group" htmlFor="map-group" hint="As the identity provider sends it in the groups claim.">

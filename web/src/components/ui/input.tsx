@@ -13,7 +13,13 @@ export function Textarea({ className, ...props }: React.ComponentProps<"textarea
   return <textarea className={cn(field, "min-h-16 py-1.5", className)} {...props} />;
 }
 
-/** A control's label, with a line of help under it, or the problem with its value. */
+type ControlProps = { "aria-describedby"?: string; "aria-invalid"?: boolean };
+
+/**
+ * A control's label, with a line of help under it, or the problem with its
+ * value. Its first child is the control: Field adds the note to the ids that
+ * describe it, and marks it invalid when there is a problem.
+ */
 export function Field({
   label,
   hint,
@@ -33,13 +39,17 @@ export function Field({
   aside?: React.ReactNode;
 }) {
   const noteId = htmlFor && (error || hint) ? `${htmlFor}-note` : undefined;
-  const control =
-    noteId && React.isValidElement<{ "aria-describedby"?: string; "aria-invalid"?: boolean }>(children)
-      ? React.cloneElement(children, {
-          "aria-describedby": children.props["aria-describedby"] ?? noteId,
-          ...(error ? { "aria-invalid": true } : {}),
-        })
-      : children;
+  let tied = false;
+  // The control is the first element: a list of the value's problems can follow it.
+  const control = React.Children.map(children, (child) => {
+    if (tied || !noteId || !React.isValidElement<ControlProps>(child)) return child;
+    tied = true;
+    const ids = new Set([...(child.props["aria-describedby"]?.split(" ") ?? []), noteId].filter(Boolean));
+    return React.cloneElement(child, {
+      "aria-describedby": [...ids].join(" "),
+      ...(error ? { "aria-invalid": true } : {}),
+    });
+  });
   return (
     <div className={cn("flex min-w-0 flex-col gap-1", className)}>
       <div className="flex items-baseline justify-between gap-2">

@@ -74,11 +74,11 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={policy ? `Change ${policy.name}` : "New approval policy"}
       description="Requests it applies to wait for each level's approvers, in order."
       className="w-[min(640px,100vw)]"
-      submitLabel="Save policy"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save policy"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

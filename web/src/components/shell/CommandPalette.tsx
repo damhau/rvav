@@ -2,7 +2,9 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
+import { Dialog as D } from "radix-ui";
 import { useDeferredValue, useState } from "react";
+import { useOpener } from "@/components/ui/opener";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { useTheme } from "@/lib/theme";
@@ -122,49 +124,64 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const loading = searching && (deployments.isFetching || requests.isFetching);
 
   return (
-    <Command.Dialog
-      open={open}
-      onOpenChange={(o) => (o ? onOpenChange(true) : close())}
-      label="Search or run a command"
-      shouldFilter={false}
-      overlayClassName="fixed inset-0 z-40 bg-black/40"
-      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
+    <D.Root open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
+      <D.Portal>
+        <D.Overlay className="fixed inset-0 z-40 bg-black/40" />
+        <PaletteContent>
+          <Command label="Search or run a command" shouldFilter={false}>
+            <Command.Input
+              value={search}
+              onValueChange={setSearch}
+              placeholder="Search VMs, IPs, requests, or type a command"
+              className="h-12 w-full border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-faint"
+            />
+            <Command.List className="max-h-[60vh] overflow-y-auto py-1.5">
+              {loading && <Command.Loading className="px-4 py-2 text-secondary text-faint">Searching…</Command.Loading>}
+              <Command.Empty className="px-4 py-5 text-body">
+                <span className="block font-medium">No matches for “{search}”</span>
+                <span className="text-secondary text-muted">
+                  Try a VM name, an IP address such as 10.21.10.37, or a request number.
+                </span>
+              </Command.Empty>
+              <Group heading="Deployments and VMs" entries={deps} />
+              <Group heading="Requests" entries={reqs} />
+              <Group heading="Request" entries={items} />
+              <Group heading="Go to" entries={nav} />
+              {admin.map((g) => (
+                <Group key={g.heading} heading={g.heading} entries={g.entries} />
+              ))}
+              <Group heading="Actions" entries={actions} />
+            </Command.List>
+            <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-caption text-faint">
+              <span>
+                <span className="font-mono">↑↓</span> move
+              </span>
+              <span>
+                <span className="font-mono">↵</span> open
+              </span>
+              <span>
+                <span className="font-mono">esc</span> close
+              </span>
+              <span className="ml-auto">Type 2+ characters to search deployments and requests</span>
+            </div>
+          </Command>
+        </PaletteContent>
+      </D.Portal>
+    </D.Root>
+  );
+}
+
+// Mounted as the palette opens, so that it reads what had the focus then.
+function PaletteContent({ children }: { children: React.ReactNode }) {
+  const giveFocusBack = useOpener();
+  return (
+    <D.Content
+      aria-describedby={undefined}
+      onCloseAutoFocus={giveFocusBack}
+      className="fixed top-[12vh] left-1/2 z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
     >
-      <Command.Input
-        value={search}
-        onValueChange={setSearch}
-        placeholder="Search VMs, IPs, requests, or type a command"
-        className="h-12 w-full border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-faint"
-      />
-      <Command.List className="max-h-[60vh] overflow-y-auto py-1.5">
-        {loading && <Command.Loading className="px-4 py-2 text-secondary text-faint">Searching…</Command.Loading>}
-        <Command.Empty className="px-4 py-5 text-body">
-          <span className="block font-medium">No matches for “{search}”</span>
-          <span className="text-secondary text-muted">
-            Try a VM name, an IP address such as 10.21.10.37, or a request number.
-          </span>
-        </Command.Empty>
-        <Group heading="Deployments and VMs" entries={deps} />
-        <Group heading="Requests" entries={reqs} />
-        <Group heading="Request" entries={items} />
-        <Group heading="Go to" entries={nav} />
-        {admin.map((g) => (
-          <Group key={g.heading} heading={g.heading} entries={g.entries} />
-        ))}
-        <Group heading="Actions" entries={actions} />
-      </Command.List>
-      <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-caption text-faint">
-        <span>
-          <span className="font-mono">↑↓</span> move
-        </span>
-        <span>
-          <span className="font-mono">↵</span> open
-        </span>
-        <span>
-          <span className="font-mono">esc</span> close
-        </span>
-        <span className="ml-auto">Type 2+ characters to search deployments and requests</span>
-      </div>
-    </Command.Dialog>
+      <D.Title className="sr-only">Search or run a command</D.Title>
+      {children}
+    </D.Content>
   );
 }

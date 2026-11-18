@@ -86,10 +86,11 @@ function SecretSheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={existing ? `Replace ${existing.name}` : "New secret"}
       description='Stored encrypted. Its value is never shown again. A REST value source or call names it, cloud-init user data reads it as {{ secret "name" }}, an AWX step as ${secret.name}.'
       submitLabel={save.isPending ? "Storing…" : existing ? "Replace" : "Store"}
-      submitDisabled={!w.name || !w.value || save.isPending}
+      submitDisabled={!w.name || !w.value}
       onSubmit={() => {
         setErrors({});
         save.mutate();

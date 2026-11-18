@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { SquareCheckBig } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +13,9 @@ import { type Column, DataTable } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Textarea } from "@/components/ui/input";
+import { openerOf } from "@/components/ui/opener";
 import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -285,6 +287,16 @@ function ApprovalSheet({
   useEffect(() => {
     if (focusComment && deciding) commentRef.current?.focus();
   }, [focusComment, deciding]);
+  // A panel that opened while its approval loaded has the focus on Close: the first field takes it once loaded.
+  const loaded = Boolean(a);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!loaded || !(active instanceof HTMLElement) || active.getAttribute("aria-label") !== "Close") return;
+    active
+      .closest('[role="dialog"]')
+      ?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])")
+      ?.focus();
+  }, [loaded]);
 
   const changed = (a?.editable_fields ?? []).filter((f) => f.field in edits && edits[f.field] !== f.value);
   const changeLabel = changed
@@ -319,6 +331,7 @@ function ApprovalSheet({
     <Sheet
       open
       onOpenChange={(open) => !open && onClose()}
+      pending={decide.isPending}
       title={a?.request.title ?? "Approval"}
       description={a ? levelText(a) : undefined}
       returnFocus={returnFocus}
@@ -454,22 +467,40 @@ function RowItems({
 export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
   useNow(30_000);
   const navigate = useNavigate({ from: "/approvals" });
+  const router = useRouter();
   const { me } = useCurrentProject();
   const decided = search.tab === "decided";
   const list = useQuery(q.approvals(decided ? ["approved", "rejected"] : ["pending"]));
   const listRef = useRef<HTMLDivElement>(null);
-  const [focusComment, setFocusComment] = useState(false);
+  // The approval whose comment takes the focus: Reject… from its row menu.
+  const [focusCommentOf, setFocusCommentOf] = useState<string>();
   // Set once a decision removes its row: the focus goes to the next one.
   const decidedId = useRef<string | null>(null);
+  // A row menu is gone by the time the panel opens: the focus goes back to its button.
+  const menuOpener = useRef<HTMLElement | null>(null);
+  // The panel opened over the list in this page's history entry: closing it steps back, so Back doesn't reopen it.
+  const [openedOverList, setOpenedOverList] = useState(false);
+  const [shownId, setShownId] = useState(search.id);
+  if (shownId !== search.id) {
+    setShownId(search.id);
+    setOpenedOverList(Boolean(search.id && !shownId));
+  }
 
-  const open = (id?: string, comment = false) => {
-    setFocusComment(comment);
-    void navigate({ search: (s: ApprovalsSearch) => ({ ...s, id }), replace: !id });
+  const open = (id: string, comment = false) => {
+    menuOpener.current = openerOf(document.activeElement);
+    setFocusCommentOf(comment ? id : undefined);
+    void navigate({ search: (s: ApprovalsSearch) => ({ ...s, id }) });
+  };
+  const close = () => {
+    if (openedOverList) router.history.back();
+    else void navigate({ search: (s: ApprovalsSearch) => ({ ...s, id: undefined }), replace: true });
   };
   const nextInList = () => {
     const gone = decidedId.current;
     decidedId.current = null;
-    if (!gone) return null;
+    const opener = menuOpener.current;
+    menuOpener.current = null;
+    if (!gone) return opener?.isConnected ? opener : null;
     const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>("tbody a[href]") ?? [])];
     return (
       links.find((l) => new URL(l.href).searchParams.get("id") !== gone) ??
@@ -500,57 +531,59 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
       />
       <Tabs
         value={decided ? "decided" : "waiting"}
-        onValueChange={(v) => void navigate({ search: v === "decided" ? { tab: "decided" } : {} })}
+        onValueChange={(v) => void navigate({ search: v === "decided" ? { tab: "decided" } : {}, replace: true })}
       >
         <TabsList aria-label="Approvals">
           <TabsTrigger value="waiting">Waiting for you</TabsTrigger>
           <TabsTrigger value="decided">Decided</TabsTrigger>
         </TabsList>
         <TabsContent value={decided ? "decided" : "waiting"} className="pt-4">
-          <div ref={listRef}>
-            <DataTable
-              label={decided ? "Decided approvals" : "Waiting for you"}
-              columns={columnsFor(decided)}
-              rows={list.data?.items}
-              rowKey={(a) => a.id}
-              rowLinks
-              rowMenu={(a) => (
-                <RowItems
-                  a={a}
-                  meId={me.user.id}
-                  onReview={() => open(a.id)}
-                  onReject={() => open(a.id, true)}
-                  onApprove={() => quick.mutate({ id: a.id, decision: "approve" })}
-                />
-              )}
-              rowMenuLabel={(a) => `Actions for ${a.request.number}`}
-              minWidth={900}
-              loading={list.isPending}
-              error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
-              empty={
-                <EmptyState
-                  icon={SquareCheckBig}
-                  title={decided ? "Nothing decided yet" : "Nothing is waiting for you"}
-                  body={
-                    decided
-                      ? "Approvals you approve or reject show up here."
-                      : "Requests that need your approval show up here, and you are notified when one arrives."
-                  }
-                />
-              }
-            />
-          </div>
+          <Panel flush>
+            <div ref={listRef}>
+              <DataTable
+                label={decided ? "Decided approvals" : "Waiting for you"}
+                columns={columnsFor(decided)}
+                rows={list.data?.items}
+                rowKey={(a) => a.id}
+                rowLinks
+                rowMenu={(a) => (
+                  <RowItems
+                    a={a}
+                    meId={me.user.id}
+                    onReview={() => open(a.id)}
+                    onReject={() => open(a.id, true)}
+                    onApprove={() => quick.mutate({ id: a.id, decision: "approve" })}
+                  />
+                )}
+                rowMenuLabel={(a) => `Actions for ${a.request.number}`}
+                minWidth={900}
+                loading={list.isPending}
+                error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
+                empty={
+                  <EmptyState
+                    icon={SquareCheckBig}
+                    title={decided ? "Nothing decided yet" : "Nothing is waiting for you"}
+                    body={
+                      decided
+                        ? "Approvals you approve or reject show up here."
+                        : "Requests that need your approval show up here, and you are notified when one arrives."
+                    }
+                  />
+                }
+              />
+            </div>
+          </Panel>
         </TabsContent>
       </Tabs>
       {search.id && (
         <ApprovalSheet
           key={search.id}
           id={search.id}
-          focusComment={focusComment}
-          onClose={() => open(undefined)}
+          focusComment={focusCommentOf === search.id}
+          onClose={close}
           onDecided={(a) => {
             if (a.status !== "pending") decidedId.current = a.id;
-            open(undefined);
+            close();
           }}
           returnFocus={nextInList}
         />

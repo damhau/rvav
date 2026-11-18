@@ -75,10 +75,11 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={create.isPending}
       title="New item"
       description="It starts as a draft 1.0; publish it when its form and blueprint are ready."
       submitLabel={create.isPending ? "Creating…" : "Create"}
-      submitDisabled={create.isPending || !form.name || !form.slug || !form.summary}
+      submitDisabled={!form.name || !form.slug || !form.summary}
       onSubmit={() => {
         setErrors({});
         create.mutate();
@@ -166,10 +167,11 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={run.isPending}
       title="Import an item"
       description="Paste or open an item exported as YAML. It comes in as a draft; nothing is published."
       submitLabel={run.isPending ? "Importing…" : "Import"}
-      submitDisabled={!text.trim() || run.isPending}
+      submitDisabled={!text.trim()}
       onSubmit={() => {
         setProblems([]);
         run.mutate();

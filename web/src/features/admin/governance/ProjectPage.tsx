@@ -253,10 +253,11 @@ function RolesSheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={`Roles of ${member.user.name}`}
       description={`Given to them in ${project.name} themselves. A role through a group changes with its mapping.`}
       submitLabel={save.isPending ? "Saving…" : "Save roles"}
-      submitDisabled={keys.length === 0 || save.isPending}
+      submitDisabled={keys.length === 0}
       onSubmit={() => save.mutate()}
     >
       <fieldset className="flex flex-col gap-1.5">
@@ -591,10 +592,10 @@ function RuleSheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={`${rule ? "Change" : "New"} placement rule for ${project.name} in ${env}`}
       description="Names take * patterns and are comma-separated; tags are category/tag, all of them needed."
       submitLabel={save.isPending ? "Saving…" : "Save rule"}
-      submitDisabled={save.isPending}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -932,10 +933,11 @@ function LimitSheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={existing ? "Change the limit" : "New limit"}
       description="Requests that would pass a limit are refused, or need an approval."
       submitLabel={save.isPending ? "Saving…" : "Save limit"}
-      submitDisabled={twin || !valid || save.isPending}
+      submitDisabled={twin || !valid}
       onSubmit={() => {
         const row: S["QuotaLimit"] = {
           resource: f.resource,

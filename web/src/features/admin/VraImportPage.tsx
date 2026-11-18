@@ -630,10 +630,10 @@ function MoveSheet({ project, onClose }: { project: S["VraCutoverProject"]; onCl
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={move.isPending}
       title={`Move ${project.name} to rvav`}
       onSubmit={() => move.mutate()}
-      submitLabel="Mark as moved"
-      submitDisabled={move.isPending}
+      submitLabel={move.isPending ? "Marking…" : "Mark as moved"}
     >
       <p className="text-body">
         From now on, {project.rvav_project_name}&apos;s people request in rvav. vRA&apos;s administrators stop offering
@@ -671,7 +671,7 @@ function UndoMove({ project, onClose }: { project: S["VraCutoverProject"]; onClo
   return (
     <ConfirmDialog
       open
-      onOpenChange={(o) => !o && !undo.isPending && onClose()}
+      onOpenChange={(o) => !o && onClose()}
       title={`Mark ${project.name} not moved?`}
       description='Its move date and note are cleared; marking it moved again starts the "Nothing new in vRA" check from then. Its adopted deployments stay in rvav.'
       consequences="If vRA's administrators give its people vRA back, warn them: deleting an adopted deployment in vRA deletes its VMs."
@@ -822,12 +822,13 @@ function ImportSheet({
   return (
     <Sheet
       open
-      onOpenChange={(o) => !o && !run.isPending && onClose()}
+      onOpenChange={(o) => !o && onClose()}
+      pending={run.isPending}
       title="Import from vRA"
       description="It can run again: only what changed in vRA, or isn't yet in rvav, is imported."
       onSubmit={() => run.mutate()}
       submitLabel={run.isPending ? "Importing…" : "Import"}
-      submitDisabled={(!catalog && !deployments) || run.isPending}
+      submitDisabled={!catalog && !deployments}
     >
       <label htmlFor="vra-catalog" className="flex items-start gap-2 text-body">
         <Checkbox id="vra-catalog" className="mt-0.5" checked={catalog} onChange={setCatalog} />

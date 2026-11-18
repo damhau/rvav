@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { MenuItem } from "./dropdown-menu";
+import { MenuItem, MenuLabel } from "./dropdown-menu";
 import { DataTable, TableSearch, type Column } from "./data-table";
 import { EmptyState } from "./empty-state";
 
@@ -95,6 +95,39 @@ describe("DataTable", () => {
     screen.getByRole("link", { name: "web-10" }).addEventListener("click", followed);
     await user.click(screen.getByRole("cell", { name: "2" }));
     expect(followed).toHaveBeenCalledOnce();
+    expect(screen.getByRole("link", { name: "web-10" })).toHaveFocus();
+  });
+
+  it("doesn't follow the link for a click inside the row's menu", async () => {
+    const user = userEvent.setup();
+    const followed = vi.fn((e: Event) => e.preventDefault());
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms}
+        rowKey={(v) => v.name}
+        rowLinks
+        rowMenuLabel={(v) => `Actions for ${v.name}`}
+        rowMenu={() => (
+          <>
+            <MenuLabel>Loading…</MenuLabel>
+            <MenuItem>Remove</MenuItem>
+          </>
+        )}
+      />,
+    );
+    screen.getByRole("link", { name: "web-10" }).addEventListener("click", followed);
+    await user.click(screen.getByRole("button", { name: "Actions for web-10" }));
+    await user.click(await screen.findByText("Loading…"));
+    expect(followed).not.toHaveBeenCalled();
+  });
+
+  it("lights up only rows that open under the pointer", () => {
+    const { rerender } = render(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} />);
+    expect(screen.getAllByRole("row")[1]).not.toHaveClass("hover:bg-sunken/60");
+    rerender(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} rowLinks />);
+    expect(screen.getAllByRole("row")[1]).toHaveClass("hover:bg-sunken/60");
   });
 
   it("selects rows one by one or all at once", async () => {

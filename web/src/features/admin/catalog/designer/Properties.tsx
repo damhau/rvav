@@ -57,6 +57,8 @@ export function CommitInput({
   label,
   placeholder,
   disabled,
+  "aria-describedby": noteIds,
+  "aria-invalid": markedInvalid,
 }: {
   id: string;
   value: string;
@@ -68,6 +70,9 @@ export function CommitInput({
   label?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Set by its Field: the field's help or problem. */
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const [shown, setShown] = useState(value);
@@ -83,8 +88,8 @@ export function CommitInput({
       onBlur={() => draft !== value && onCommit(draft)}
       onKeyDown={(e) => e.key === "Enter" && draft !== value && onCommit(draft)}
       className={className}
-      aria-invalid={invalid || undefined}
-      aria-describedby={describedBy}
+      aria-invalid={invalid || markedInvalid || undefined}
+      aria-describedby={[describedBy, noteIds].filter(Boolean).join(" ") || undefined}
       aria-label={label}
       placeholder={placeholder}
       disabled={disabled}
@@ -351,15 +356,13 @@ function FieldProperties({
       <Field
         label="Name"
         htmlFor="prop-name"
-        hint={
-          nameError || "The input's key: inputs." + name + " in rules and the blueprint, which a rename doesn't change."
-        }
+        hint={"The input's key: inputs." + name + " in rules and the blueprint, which a rename doesn't change."}
+        error={nameError || undefined}
       >
         <CommitInput
           id="prop-name"
           value={name}
           className={mono}
-          invalid={Boolean(nameError)}
           onCommit={(to) => {
             if (!namePattern.test(to)) return setNameError("A lower-case letter, then letters, digits and _.");
             if (to in def.ui_schema.fields || to in props(def)) return setNameError(`"${to}" is taken.`);
@@ -567,7 +570,16 @@ function FieldProperties({
   );
 }
 
-function OptionsInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+function OptionsInput({
+  value,
+  onCommit,
+  ...described
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
+}) {
   const [draft, setDraft] = useState(value);
   const [shown, setShown] = useState(value);
   if (shown !== value) {
@@ -581,6 +593,7 @@ function OptionsInput({ value, onCommit }: { value: string; onCommit: (v: string
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onCommit(draft)}
+      {...described}
     />
   );
 }
@@ -611,12 +624,11 @@ function SectionProperties({
           onChange={(e) => onChange(updateSection(def, s.key, { title: e.target.value }))}
         />
       </Field>
-      <Field label="Key" htmlFor="section-key" hint={keyError || undefined}>
+      <Field label="Key" htmlFor="section-key" error={keyError || undefined}>
         <CommitInput
           id="section-key"
           className={mono}
           value={s.key}
-          invalid={Boolean(keyError)}
           onCommit={(k) => {
             if (!k.trim()) return setKeyError("Give the section a key.");
             if (def.ui_schema.layout.sections.some((x) => x.key === k))

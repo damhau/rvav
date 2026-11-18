@@ -112,11 +112,11 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={wf ? `Change ${wf.title}` : "Register a workflow"}
       description="Its own workers run it in Temporal; rvav starts it with the form its input schema describes."
       className="w-[min(760px,100vw)]"
-      submitLabel="Save workflow"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save workflow"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

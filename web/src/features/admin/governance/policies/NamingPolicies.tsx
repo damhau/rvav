@@ -84,10 +84,10 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={policy ? `Change ${policy.name}` : "New naming policy"}
       description="It names the VMs of the items, projects and environments it is offered to."
-      submitLabel="Save naming policy"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save naming policy"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

@@ -1411,7 +1411,18 @@ function BranchFields({
 }
 
 /** A text that commits when it loses the focus; Enter is a new line. */
-function CommitText({ id, value, onCommit }: { id: string; value: string; onCommit: (v: string) => void }) {
+function CommitText({
+  id,
+  value,
+  onCommit,
+  ...described
+}: {
+  id: string;
+  value: string;
+  onCommit: (v: string) => void;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
+}) {
   const [draft, setDraft] = useState(value);
   const [shownValue, setShownValue] = useState(value);
   if (shownValue !== value) {
@@ -1424,6 +1435,7 @@ function CommitText({ id, value, onCommit }: { id: string; value: string; onComm
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onCommit(draft)}
+      {...described}
     />
   );
 }

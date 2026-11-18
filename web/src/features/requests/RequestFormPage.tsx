@@ -530,12 +530,7 @@ function RequestFormBody({
                   options={leaseOptions.map((d) => ({ value: String(d), label: `${d} days` }))}
                 />
               ) : (
-                <span
-                  id="lease"
-                  className="flex h-8 items-center rounded-md border border-dashed border-line-strong bg-sunken px-2.5 text-muted"
-                >
-                  No expiry
-                </span>
+                <Input id="lease" readOnly value="No expiry" className="border-dashed bg-sunken text-muted" />
               )}
             </Field>
             <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
@@ -576,7 +571,12 @@ function RequestFormBody({
                   value={later ? "later" : "now"}
                   onChange={(v) => setLater(v === "later")}
                   options={[
-                    { value: "now", label: "As soon as it is approved" },
+                    {
+                      value: "now",
+                      label: preview.data?.approval.required
+                        ? "As soon as it is approved"
+                        : "As soon as it is submitted",
+                    },
                     { value: "later", label: "At a time I choose" },
                   ]}
                 />

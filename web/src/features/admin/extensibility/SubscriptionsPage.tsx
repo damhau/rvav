@@ -118,11 +118,11 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={sub ? `Change ${sub.name}` : "New subscription"}
       description="What it hears about, and what is told."
       className="w-[min(720px,100vw)]"
-      submitLabel="Save subscription"
-      submitDisabled={save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save subscription"}
       onSubmit={() => {
         setErrors({});
         save.mutate();

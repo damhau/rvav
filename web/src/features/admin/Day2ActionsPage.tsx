@@ -58,6 +58,7 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={patch.isPending}
       title={`Change ${a.name}`}
       description={
         <>
@@ -65,8 +66,8 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
           the form people fill in.
         </>
       }
-      submitLabel="Save action"
-      submitDisabled={patch.isPending || types.length === 0 || name.trim() === ""}
+      submitLabel={patch.isPending ? "Saving…" : "Save action"}
+      submitDisabled={types.length === 0 || name.trim() === ""}
       onSubmit={() => {
         setErrors({});
         patch.mutate(

@@ -32,7 +32,7 @@ export interface DataTableProps<T> {
   rowMenu?: (row: T) => React.ReactNode;
   /** The ⋯ button's name, such as "Actions for RHEL 9.4". */
   rowMenuLabel?: (row: T) => string;
-  /** Clicking a row anywhere follows the first link in it. */
+  /** Clicking a row anywhere follows the first link in it; only such rows light up under the pointer. */
   rowLinks?: boolean;
   /** Search, filter selects and chips, above the table. */
   toolbar?: React.ReactNode;
@@ -193,15 +193,20 @@ export function DataTable<T>({
                     <tr
                       key={key}
                       className={cn(
-                        "border-b border-line last:border-b-0 hover:bg-sunken/60",
+                        "border-b border-line last:border-b-0",
                         selection?.selected.has(key) && "bg-accent-soft/40",
-                        rowLinks && "cursor-pointer",
+                        rowLinks && "cursor-pointer hover:bg-sunken/60",
                       )}
                       onClick={
                         rowLinks
                           ? (e) => {
+                              // The row menu is portalled out of the row, but React still bubbles its clicks here.
+                              if (!e.currentTarget.contains(e.target as Node)) return;
                               if ((e.target as Element).closest(interactive)) return;
-                              e.currentTarget.querySelector<HTMLAnchorElement>("a[href]")?.click();
+                              const link = e.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
+                              // What it opens gives the focus back to the link, not to the page.
+                              link?.focus({ preventScroll: true });
+                              link?.click();
                             }
                           : undefined
                       }

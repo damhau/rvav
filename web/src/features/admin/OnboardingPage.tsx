@@ -86,7 +86,8 @@ function AdoptSheet({
   return (
     <Sheet
       open
-      onOpenChange={(o) => !o && !adopt.isPending && onClose()}
+      onOpenChange={(o) => !o && onClose()}
+      pending={adopt.isPending}
       title={`Adopt ${vmsText(vms.length)}`}
       description="Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those."
       onSubmit={() => {
@@ -94,7 +95,6 @@ function AdoptSheet({
         adopt.mutate();
       }}
       submitLabel={adopt.isPending ? "Adopting…" : `Adopt ${vmsText(vms.length)}`}
-      submitDisabled={adopt.isPending}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Project" htmlFor="ob-project" error={errors["/project_id"]}>

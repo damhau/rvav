@@ -12,7 +12,7 @@ interface ConfirmProps {
   /** Says the action, as on the button that asked: "Remove template". */
   confirmLabel: string;
   onConfirm: () => void;
-  /** While the change runs: the buttons wait, and the dialog stays until the page closes it. */
+  /** While the change runs: the buttons wait, and the dialog stays (Escape too) until the page closes it. */
   pending?: boolean;
   /** "danger" for what can't be undone. */
   tone?: "danger" | "primary";
@@ -25,7 +25,7 @@ export function ConfirmDialog({
   ...props
 }: ConfirmProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
-    <A.Root open={open} onOpenChange={onOpenChange}>
+    <A.Root open={open} onOpenChange={(o) => (o || !props.pending) && onOpenChange(o)}>
       <A.Portal>
         <A.Overlay className="fixed inset-0 z-40 bg-black/40" />
         <ConfirmContent {...props} />

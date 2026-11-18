@@ -145,4 +145,18 @@ describe("Field", () => {
     expect(key).toBeInvalid();
     expect(screen.queryByText("Letters, digits and dashes.")).toBeNull();
   });
+
+  it("adds its note to what already describes the control, the first of its children", () => {
+    render(
+      <Field label="Pattern" htmlFor="pattern" hint="A regular expression.">
+        <Input id="pattern" aria-describedby="pattern-problems" />
+        <ul id="pattern-problems">
+          <li>Not a regular expression.</li>
+        </ul>
+      </Field>,
+    );
+    expect(screen.getByRole("textbox", { name: "Pattern" })).toHaveAccessibleDescription(
+      "Not a regular expression. A regular expression.",
+    );
+  });
 });

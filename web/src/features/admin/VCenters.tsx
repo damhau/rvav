@@ -100,11 +100,12 @@ function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={vc ? `Change ${vc.name}` : "Add a vCenter"}
       description="rvav syncs its inventory and builds VMs in it with this account."
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>

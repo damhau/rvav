@@ -14,8 +14,10 @@ interface PanelProps {
   /** Makes the sheet a form: its footer has Cancel and this submit button. */
   onSubmit?: () => void;
   submitLabel?: string;
-  /** Disables the submit button: a required value is missing, or the save is running. */
+  /** Disables the submit button: a required value is missing. */
   submitDisabled?: boolean;
+  /** While its change runs: the sheet stays open, and Cancel, Close and the submit button wait. */
+  pending?: boolean;
   /** A footer of its own, for a sheet that isn't a form. */
   footer?: React.ReactNode;
   /** Where the focus goes on closing, when not back to what opened the sheet: its action removed it. */
@@ -26,7 +28,7 @@ interface PanelProps {
 /**
  * A side panel for creating and editing: the page stays in view behind it.
  * It opens on its first field, keeps the focus inside, closes with Escape, and
- * gives the focus back to what opened it.
+ * gives the focus back to what opened it. While `pending`, it can't be closed.
  */
 export function Sheet({
   open,
@@ -34,7 +36,7 @@ export function Sheet({
   ...panel
 }: PanelProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
-    <D.Root open={open} onOpenChange={onOpenChange}>
+    <D.Root open={open} onOpenChange={(o) => (o || !panel.pending) && onOpenChange(o)}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <SheetPanel {...panel} />
@@ -51,6 +53,7 @@ function SheetPanel({
   onSubmit,
   submitLabel = "Save",
   submitDisabled,
+  pending,
   footer,
   returnFocus,
   className,
@@ -90,7 +93,7 @@ function SheetPanel({
           )}
         </div>
         <D.Close asChild>
-          <IconButton label="Close" className="-mt-1 -mr-2">
+          <IconButton label="Close" className="-mt-1 -mr-2" disabled={pending}>
             <X />
           </IconButton>
         </D.Close>
@@ -100,17 +103,17 @@ function SheetPanel({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit();
+            if (!pending) onSubmit();
           }}
         >
           {body}
           <div className={bar}>
             <D.Close asChild>
-              <Button type="button" variant="secondary">
+              <Button type="button" variant="secondary" disabled={pending}>
                 Cancel
               </Button>
             </D.Close>
-            <Button type="submit" variant="primary" disabled={submitDisabled}>
+            <Button type="submit" variant="primary" disabled={submitDisabled || pending}>
               {submitLabel}
             </Button>
           </div>

@@ -252,10 +252,11 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={template ? `Change ${template.label}` : "New VM template"}
       description="VM forms offer it in their template picker, to the projects and environments below."
-      submitLabel="Save template"
-      submitDisabled={!f.key || save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save template"}
+      submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -546,10 +547,11 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={size ? `Change ${size.label}` : "New size"}
       description="VM forms offer it in their size picker, to the projects and environments below."
-      submitLabel="Save size"
-      submitDisabled={!f.key || save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save size"}
+      submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -723,10 +725,11 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={mapping ? `Map ${mapping.network} by hand` : "Map a network"}
       description="A mapping by hand wins over EfficientIP's until it is removed."
-      submitLabel="Save mapping"
-      submitDisabled={!network || save.isPending}
+      submitLabel={save.isPending ? "Saving…" : "Save mapping"}
+      submitDisabled={!network}
       onSubmit={() => {
         setErrors({});
         save.mutate();

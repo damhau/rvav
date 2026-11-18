@@ -66,10 +66,11 @@ function CategorySheet({
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
+      pending={save.isPending}
       title={existing ? `Change ${existing.name}` : "New category"}
       description="The catalog groups its items by category, in this order."
       submitLabel={save.isPending ? "Saving…" : existing ? "Save category" : "Add category"}
-      submitDisabled={!key || !name || save.isPending}
+      submitDisabled={!key || !name}
       onSubmit={() => {
         setErrors({});
         save.mutate();
