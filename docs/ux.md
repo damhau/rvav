@@ -76,7 +76,41 @@ value source, dependencies and rules). A toggle switches to the YAML view.
 
 ## Design system
 
-- shadcn/ui on Radix primitives, Tailwind tokens for colour, spacing and radius.
+- Radix primitives and Tailwind tokens for colour and type, in a light and a
+  dark theme. [frontend.md](frontend.md#design-system) lists the tokens and the
+  building blocks every page is made of.
+- IBM Plex Sans for text; IBM Plex Mono only for identifiers, addresses and
+  code.
 - Lucide icons, plus custom catalog item icons (SVG upload).
-- Data tables: TanStack Table (virtualised, column visibility, saved views).
-- Charts: a lightweight library (for example Recharts) for reports.
+- Report charts are plain SVG in the `--chart-*` colours, and every value a
+  chart shows is in a table beside it.
+
+### Type scale
+
+| Name | Size | For |
+|---|---|---|
+| Title | 20 px, semibold | The page's title |
+| Section | 15 px, semibold | Panel, section and side panel titles |
+| Body | 14 px | Text, tables and controls |
+| Secondary | 13 px | Descriptions, help, a row's second line |
+| Caption | 12 px | Table headers and labels |
+| Badge | 11 px | Badges only |
+
+Secondary text has at least 4.5:1 contrast in both themes. Labels are
+sentence case.
+
+### Rules
+
+- **One primary action per page.** The page header holds it; a panel has at
+  most one of its own. Other actions are secondary or quiet buttons.
+- **Edit in a side panel.** Creating and editing a record opens a side panel
+  (`Sheet`) over the page, so the list stays in view. Dialogs are for
+  questions.
+- **Actions on the row.** A record's actions are in its row's ⋯ menu; the
+  panel header keeps the action that adds one.
+- **Empty states give a next step.** An empty list says what goes there and
+  offers the step that adds it, such as "New template".
+- **Removing asks first.** The confirmation names what goes and what depends
+  on it, such as the projects a template is offered to.
+- **Nothing that comes later.** A feature that doesn't work yet isn't shown,
+  not even as a disabled button.

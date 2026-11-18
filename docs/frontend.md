@@ -12,7 +12,7 @@ typed end to end, tested, fast, accessible, and consistent.
 | UI library | React 19 |
 | Routing | TanStack Router (file-based routes, typed params and search params, loaders) |
 | Server state | TanStack Query (caching, prefetching, optimistic updates, invalidation) |
-| Tables | TanStack Table plus TanStack Virtual |
+| Tables | Our own `DataTable` on a plain `<table>` (see [Building blocks](#building-blocks-componentsui)) |
 | Styling | Tailwind CSS v4 with design tokens as CSS variables |
 | Components | shadcn/ui (Radix primitives); code lives in the repo and we own it |
 | Icons | lucide-react |
@@ -26,7 +26,7 @@ typed end to end, tested, fast, accessible, and consistent.
 | API client | Generated from `api/openapi.yaml` with `openapi-typescript` + `openapi-fetch` |
 | Realtime | SSE (`EventSource`), bridged into the TanStack Query cache |
 | Dates | date-fns |
-| i18n | Ready from day one (`i18next`), English first |
+| i18n | None yet: the UI is in English, and its strings are in the components. Translation, starting with French, comes in [O1.3](https://github.com/damhau/rvav/issues/169) |
 | Lint and format | ESLint (typescript-eslint, react-hooks, jsx-a11y, tanstack-query plugin), Prettier with the Tailwind plugin |
 | Testing | Vitest + Testing Library, MSW for API mocks, Playwright for end-to-end and visual tests, Storybook for components |
 
@@ -64,9 +64,9 @@ web/
 │  │  ├─ day2/                 # action registry, dialogs
 │  │  └─ admin/catalog/        # catalog administration; designer/ is the form designer
 │  ├─ components/
-│  │  ├─ ui/                   # shadcn/ui primitives (generated, then owned)
-│  │  ├─ common/               # app-level building blocks: DataTable, PageHeader,
-│  │  │                        # EmptyState, StatusBadge, CopyButton, Timeline…
+│  │  ├─ ui/                   # primitives and the building blocks: PageHeader,
+│  │  │                        # Panel, DataTable, Sheet, ConfirmDialog, Button…
+│  │  ├─ common/               # app parts: Page, status badges, Timeline, Meter…
 │  │  └─ canvas/               # a blueprint as a graph (React Flow, dagre; ADR-0032)
 │  ├─ forms/                   # JSON Schema form renderer + widgets
 │  ├─ lib/
@@ -86,8 +86,9 @@ Rules:
   composition of `features/` components.
 - `features/*` doesn't import from other features' internals; anything shared
   goes into `components/common` or `lib`.
-- `components/ui` stays close to shadcn upstream; app-specific variants go in
-  `components/common`.
+- `components/ui` holds the primitives and the building blocks every page is
+  made of; `components/common` holds the parts that know rvav's domain, such as
+  status badges and the request timeline.
 
 ## Routing (TanStack Router)
 
@@ -153,35 +154,82 @@ read again after its answer.
 
 ## Design system
 
-### Tokens
-- Colours, radius, spacing, shadows and motion as CSS variables in `globals.css`
-  (shadcn convention: `--background`, `--foreground`, `--primary`, `--muted`, …),
-  plus semantic status tokens: `--status-success`, `--status-running`,
-  `--status-warning`, `--status-danger`, `--status-neutral`.
-- Light and dark themes, plus "system". Theme switching has no flash: the class
-  is set before React hydrates.
-- One typeface (Inter or Geist) with tabular numbers in tables; a monospaced font
-  for IDs, IPs and logs.
-- Density setting: comfortable or compact, for power users with big tables.
+The look is an operations console: a fixed left rail, one work column, IBM
+Plex Sans and a petrol accent. It aims to be calm and readable, in the manner
+of Linear, Vercel or GitHub's settings: few borders, one primary action per
+page, and secondary text that still reads.
 
-### Building blocks (`components/common`)
-`AppShell`, `PageHeader` (title, breadcrumbs, primary actions), `DataTable`
-(sorting, filtering, column visibility, row selection, bulk action bar, saved
-views, virtualisation), `EmptyState` (illustration, explanation, call to action),
-`StatusBadge` (one mapping from domain status to colour and icon), `Timeline`
-(nested steps, durations, expandable logs), `ResourceCard`, `PowerStateDot`,
-`CopyButton`, `RelativeTime` (with a full date in the tooltip), `ConfirmDialog`
-(typed confirmation for destructive actions), `KeyValueList`, `CodeBlock`,
-`LogViewer` (virtualised, ANSI colours, search, follow mode).
+### Tokens
+- Colours are CSS variables in `src/styles.css`, with a light and a dark set:
+  surfaces (`--bg`, `--surface`, `--sunken`, `--rail`), lines (`--line`,
+  `--line-strong`), text (`--fg`, `--fg-muted`, `--fg-faint`), the accent, and
+  status pairs (`--ok`, `--warn`, `--bad` and `--run`, each with a `-soft`
+  background). In Tailwind they're `bg-surface`, `text-muted`, `border-line`,
+  and so on.
+- Muted and faint text keep at least 4.5:1 contrast on every surface in both
+  themes, so you can use them for any secondary text.
+- The theme follows the system until the user picks one in the top bar
+  (`src/lib/theme.ts`).
+- IBM Plex Sans for text, with tabular numbers (`tnum`) where numbers line up.
+  IBM Plex Mono only for identifiers, addresses and code: a VM's name under its
+  label, an IP, a key, a path, YAML. Counts, times and step numbers stay in the
+  text face.
+
+### Type scale
+The body is 14 px, and nothing is under 12 px but badges. Tailwind's default
+sizes are cleared, so pages use these names; `typography.test.ts` fails on
+`text-xs`, `text-sm` or an arbitrary size such as `text-[13px]`.
+
+| Class | Size and line height | Use it for |
+|---|---|---|
+| `text-title` | 20 / 28 px, semibold | The page's `h1` |
+| `text-section` | 15 / 22 px, semibold | Panel, section, sheet and dialog titles |
+| `text-body` | 14 / 20 px | Text, table cells and controls: the default |
+| `text-secondary` | 13 / 18 px | Descriptions, help under a field, a row's second line |
+| `text-caption` | 12 / 16 px | Table headers and labels (`.label`), canvas cards |
+| `text-badge` | 11 / 16 px | Environment badges, avatars and key caps only |
+
+Labels and table headers are sentence case, not capitals.
+
+### Building blocks (`components/ui`)
+Make a page from these before writing markup of your own. Each has tests beside
+it and works in both themes.
+
+| Block | What it is | When to use it |
+|---|---|---|
+| `PageHeader` | The page's `h1`, a sentence on what the page is for (`description`), facts about what it shows (`meta`), `breadcrumbs` and `actions` | Once, at the top of every page. One of its actions is primary. |
+| `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. |
+| `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |
+| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. |
+| `EmptyState` | An icon, a title, one line, and the next step | A list or panel with nothing in it yet: say what goes there, and offer the step that adds it. |
+| `Sheet` | A side panel on the Radix dialog. It opens on its first field, keeps the focus inside, closes with Escape, and gives the focus back to what opened it, a row menu's button included. | Creating and editing a record, with the list still in view. Pass `onSubmit` and `submitLabel` for a Cancel and Save footer. |
+| `ConfirmDialog` | An alert dialog that says what will be removed (`description`) and what depends on it (`consequences`) | Before removing or breaking something. |
+| `DialogContent` | A centred modal | Short questions and small forms that aren't a record's: a reason, a choice, a result. |
+| `Button` | Variants `primary`, `secondary`, `quiet`, `danger` and `danger-solid`; sizes `sm`, `md` and `icon` | One `primary` per page or panel; `secondary` for the others; `quiet` in rows and toolbars; `danger` for an action that asks before it removes, and `danger-solid` for the button that confirms. |
+| `IconButton` | A button that shows only an icon, named by its `label` | Close, more actions, copy: actions whose icon is clear. |
+| `Field` | A control's label, a line of help, and the problem with its value, tied to the control (`aria-describedby`, `aria-invalid`) | Every form control. |
+
+`components/common` has the rest: `Page` (a page's width and padding),
+`KeyValues`, the status badges, `Timeline`, `Meter`, the skeletons and
+`ErrorState`.
 
 ### Interaction rules
-- Every list has: search, filters in the URL, an empty state, a loading
-  skeleton, and an error state.
-- Destructive actions need a confirmation; "delete prod" needs the name typed.
-- Every async button shows a pending state and is disabled to prevent double
-  submits.
+- One primary action per page, and at most one per panel.
+- Create and edit records in a `Sheet`, so the list stays in view. Keep dialogs
+  for questions.
+- A record's actions go in its row's ⋯ menu; the panel header keeps the action
+  that adds one.
+- Every list has an empty state with a next step, a loading state, and an
+  error state with a retry.
+- Ask before removing anything, and say what depends on it. Actions that need
+  it ask for the deployment's name to be typed.
+- An async button shows that it's pending and is disabled, so it can't submit
+  twice.
 - Toasts for results, inline messages for validation, never `alert()`.
-- Motion is short (150–200 ms), purposeful, and disabled with `prefers-reduced-motion`.
+- Don't show what doesn't work yet: no disabled buttons for features that come
+  later.
+- Motion is short (150–200 ms), answers the user's action, and is off with
+  `prefers-reduced-motion`.
 - Responsive down to tablet width; the approval flows also work on a phone.
 
 ## Command palette (⌘K)
