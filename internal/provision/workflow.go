@@ -509,16 +509,19 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 		// depends on it: DNS on the address, customization and power on the VM.
 		before := info.Built[vm.DeploymentID]
 		in.Key = key(KeyIPAM, vm)
-		newIP := !info.done(in.Key) || before.IP == ""
+		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP)
 		in.IP = before.IP
 		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
 				return nil, in.Key, err
 			}
 		}
+		if vm.DHCP {
+			in.IP = before.GuestIP
+		}
 		newVM := !info.done(key(KeyClone, vm)) || before.Moref == ""
 		in.Key = key(KeyDNS, vm)
-		if !info.done(in.Key) || newIP || newVM {
+		if vm.Reserves() && (!info.done(in.Key) || newIP || newVM) {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return nil, in.Key, err
 			}
@@ -538,7 +541,7 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 			if info.done(in.Key) && !newVM {
 				continue
 			}
-			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {
+			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, guestIP(vm, step.key, &in.IP)); err != nil {
 				return nil, in.Key, err
 			}
 		}
@@ -548,6 +551,15 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 		vms = append(vms, builtVM{vm: vm, ip: in.IP, moref: in.Moref})
 	}
 	return vms, "", nil
+}
+
+// guestIP is where a step's result goes: a DHCP VM's address is the one
+// VMware Tools reports once it is on (ADR-0039).
+func guestIP(vm VMUnit, step string, ip *string) any {
+	if vm.DHCP && step == KeyPowerOn {
+		return ip
+	}
+	return nil
 }
 
 // postConfig refreshes the AWX inventory, then runs the post-configuration

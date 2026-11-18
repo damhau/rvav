@@ -287,6 +287,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		return key
 	}
 	part.segment = segmentOf(plan.Network, field("network"))
+	if part.segment != "" && plan.DHCP {
+		add(field("network"), "not_allowed", "A segment made for the deployment has no DHCP: its VMs get their addresses from EfficientIP.")
+	}
 	// Where a missing placement rule for segments is said: the first adapter
 	// on one.
 	needsSegments, segmentAt := part.segment != "", field("network")
@@ -535,7 +538,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			}
 		}
 	}
-	if placed.Network != "" {
+	if placed.Network != "" && !plan.DHCP {
 		if sn, ok := pl.subnets[plan.Network]; ok {
 			part.subnet = &sn
 		} else {
@@ -801,6 +804,9 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			Subnet  *string                      `json:"subnet,omitempty"`
 		}
 		first := nic{Key: "nic1", Network: p.vm.Network, Ipam: api.PreviewComponentNicsIpam(blueprint.IPAMEfficientIP)}
+		if p.vm.DHCP {
+			first.Ipam = api.PreviewComponentNicsIpam(blueprint.IPAMDHCP)
+		}
 		if p.subnet != nil {
 			first.Subnet = str(p.subnet.Subnet)
 		}
@@ -905,6 +911,10 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 				vm.NSXOffered = append(vm.NSXOffered, eg)
 			}
 		}
+	}
+	// On DHCP, named in the guest's domain, without DNS records rvav makes.
+	if vm.DHCP = p.vm.DHCP; vm.DHCP {
+		vm.FQDN = strings.TrimSuffix(name+"."+p.guest.Domain, ".")
 	}
 	if sn := p.subnet; sn != nil {
 		vm.FQDN = name + "." + sn.DNSZone

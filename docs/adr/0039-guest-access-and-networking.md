@@ -12,6 +12,8 @@
 A vRA cloud template's machine says how people sign in to it
 (`remoteAccess`: a public key, a key pair vRA makes, or a user name and
 password). rvav's only way was user data written by hand (parity C22).
+Its first adapter can take its address from DHCP or add an IPv6 one;
+rvav's always had a static IPv4 address from EfficientIP (parity C23).
 
 ## Decision
 
@@ -125,3 +127,29 @@ password). rvav's only way was user data written by hand (parity C22).
   hand out twice goes as well to whoever has the owner's session or one
   of their API tokens, and the owner sees nothing. Handed out once, with
   who and when on the page, a second taker shows.
+
+### DHCP on the first adapter
+- `ipam: dhcp` on the blueprint or a component (a component's wins), as
+  added adapters already had in `nics[].ipam`, puts the first adapter on
+  DHCP. Without it, or with `efficientip`, nothing changes.
+- At request time the network needs no subnet, and a subnet it has is
+  not used; the FQDN is the VM's name in `guest.domain`, with no
+  EfficientIP DNS check. A segment made for the deployment has no DHCP
+  server, so DHCP on one is refused.
+- The plan's VM carries `dhcp`. Its reserve and DNS steps are left out
+  when nothing is reserved; with an added EfficientIP adapter they stay
+  and cover only it. Old plans have no `dhcp`, so their workflows replay
+  as before.
+- vCenter's customization gives the first adapter the DHCP generator and
+  no DNS servers; cloud-init and cloudbase-init network data give it
+  `dhcp4`. `.vm.ip` is empty in the VM's own user data: the address isn't
+  known when it is written.
+- `PowerOn` waits for the guest's IP as before and returns it. For a VM
+  on DHCP, the workflow uses it as the VM's address: AWX's extra vars,
+  and what later components read. A retried request reads it back from
+  the VM's properties.
+- The VM's properties say `dhcp: true`; its address is the first of the
+  first adapter's `ip_addresses`, as vCenter reports it. The deployment's
+  page shows it under **Network and addresses**, and AWX's inventory
+  falls back to it. The deployment has no `ipam.address` or `dns.record`
+  for the first adapter, so deleting it releases nothing in EfficientIP.

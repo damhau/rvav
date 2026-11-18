@@ -214,25 +214,33 @@ func TestGuests(t *testing.T) {
 	})
 }
 
+// dhcpLease is the address the network's DHCP server gives in tests.
+const dhcpLease = "10.20.31.217"
+
 // cloudInitGuest stands in for cloud-init in vcsim: once a VM is powered
 // on, its guest address is set (vcsim sets guest.ipAddress from the extra
-// config key SET.guest.ipAddress), as the guest would from the metadata.
+// config key SET.guest.ipAddress), as the guest would from the metadata,
+// or from DHCP (dhcpLease).
 func cloudInitGuest(h *harness, c *vim25.Client) func(env *testsuite.TestWorkflowEnvironment) {
 	return func(env *testsuite.TestWorkflowEnvironment) {
-		env.OnActivity(h.acts.PowerOn, mock.Anything, mock.Anything).Return(func(ctx context.Context, in provision.VMInput) error {
+		env.OnActivity(h.acts.PowerOn, mock.Anything, mock.Anything).Return(func(ctx context.Context, in provision.VMInput) (string, error) {
 			vm := object.NewVirtualMachine(c, types.ManagedObjectReference{Type: "VirtualMachine", Value: in.Moref})
 			if task, err := vm.PowerOn(ctx); err != nil {
-				return err
+				return "", err
 			} else if err := task.Wait(ctx); err != nil {
-				return err
+				return "", err
+			}
+			ip := in.IP
+			if in.VM.DHCP {
+				ip = dhcpLease
 			}
 			task, err := vm.Reconfigure(ctx, types.VirtualMachineConfigSpec{
-				ExtraConfig: []types.BaseOptionValue{&types.OptionValue{Key: "SET.guest.ipAddress", Value: in.IP}}})
+				ExtraConfig: []types.BaseOptionValue{&types.OptionValue{Key: "SET.guest.ipAddress", Value: ip}}})
 			if err == nil {
 				err = task.Wait(ctx)
 			}
 			if err != nil {
-				return err
+				return "", err
 			}
 			return h.acts.PowerOn(ctx, in)
 		})

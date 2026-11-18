@@ -702,6 +702,9 @@ export function createDb(now = Date.now()): Db {
         fingerprint: "SHA256:dGhvbWFzQGxhcHRvcEVkMjU1MTlNb2NrS2V5RWRnZQ",
       },
     ];
+    // Its VMs' first adapter is on DHCP: no address or records rvav made.
+    edge.resources = edge.resources.filter((r) => r.type !== "ipam.address" && r.type !== "dns.record");
+    for (const r of edge.resources) if (r.type === "vsphere.vm") r.vm.dhcp = true;
   }
 
   // On NSX (ADR-0028): a segment made for it, a group with the rules into it,

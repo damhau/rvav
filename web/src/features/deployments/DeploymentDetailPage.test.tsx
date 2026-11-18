@@ -96,4 +96,18 @@ describe("a deployment's page against the mock API", () => {
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: "inputs" }));
     expect(await screen.findByRole("region", { name: "Inputs" })).toHaveTextContent("role: worker");
   });
+
+  it("shows the address a VM on DHCP reports, once it has one", async () => {
+    const dep = db.deployments.find((d) => d.name === "web-prd-edge")!;
+    const second = dep.resources.find((r) => r.name === "web-prd-edge002")!;
+    if (second.type !== "vsphere.vm") throw new Error("no VM");
+    second.vm.nics[0]!.ip_addresses = [];
+    renderApp(`/deployments/${dep.id}`);
+    const network = await screen.findByRole("region", { name: "Network and addresses" }, { timeout: 5000 });
+    const rows = await within(network).findAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "10.21.10.12DHCP · web-prd-edge001",
+      "Address not known yetDHCP · web-prd-edge002",
+    ]);
+  });
 });

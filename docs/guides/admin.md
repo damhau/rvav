@@ -64,7 +64,8 @@ opening by itself once every step is done.
    - **Sizes:** the CPU, memory and disk choices.
    - **Networks:** each vSphere network's subnet. The subnets come from
      EfficientIP's class parameters; set one by hand where EfficientIP has
-     none.
+     none. A network that only items on DHCP use (`ipam: dhcp`) needs no
+     subnet.
    - **Placement:** which cluster and datastore serve which environment and
      project.
 4. **Projects:**

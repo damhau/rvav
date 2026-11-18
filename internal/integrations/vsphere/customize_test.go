@@ -52,6 +52,21 @@ func TestCustomizationSpecWindows(t *testing.T) {
 	}
 }
 
+// A first adapter on DHCP gets no address, gateway or DNS servers: DHCP
+// gives them (ADR-0039).
+func TestCustomizationSpecDHCP(t *testing.T) {
+	spec := CustomizationSpec(Customization{OSFamily: "linux", Hostname: "web-dev-app01", Domain: "corp.example", DHCP: true,
+		Extra: []NICSetting{{IP: "10.9.0.4", PrefixLength: 24}}}, nil)
+	first := spec.NicSettingMap[0].Adapter
+	if _, ok := first.Ip.(*types.CustomizationDhcpIpGenerator); !ok || first.Gateway != nil || first.SubnetMask != "" ||
+		first.DnsDomain != "corp.example" || len(spec.GlobalIPSettings.DnsServerList) != 0 {
+		t.Fatalf("first adapter = %+v, global = %+v", first, spec.GlobalIPSettings)
+	}
+	if ip, ok := spec.NicSettingMap[1].Adapter.Ip.(*types.CustomizationFixedIp); !ok || ip.IpAddress != "10.9.0.4" {
+		t.Fatalf("added adapter = %+v", spec.NicSettingMap[1].Adapter)
+	}
+}
+
 func TestCustomizationSpecLinux(t *testing.T) {
 	base := &types.CustomizationSpec{Identity: &types.CustomizationLinuxPrep{TimeZone: "UTC", Domain: "old.example"}}
 	lp := CustomizationSpec(Customization{OSFamily: "linux", Hostname: "web-dev-app01", Domain: "corp.example", IP: "10.0.0.2"}, base).

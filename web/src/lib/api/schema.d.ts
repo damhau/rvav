@@ -5440,6 +5440,8 @@ export interface components {
             template?: string;
             /** @description The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item. */
             component?: string;
+            /** @description Its first adapter gets its address from DHCP (ADR-0039): rvav reserved no address and made no DNS records for it. The address is the first of `nics[0].ip_addresses`, once VMware Tools reports it. */
+            dhcp?: boolean;
             snapshot_count?: number;
             /** @description Quick stats from vCenter, refreshed at each full read of the inventory (every 2 minutes by default). */
             usage?: {

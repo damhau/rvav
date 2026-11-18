@@ -209,15 +209,31 @@ function Network({
   ips,
   dns,
   segments,
+  dhcp,
 }: {
   ips: IpAddressResource[];
   dns: DnsRecordResource[];
   segments: SegmentResource[];
+  dhcp: VmResource[];
 }) {
-  if (ips.length + dns.length + segments.length === 0)
+  if (ips.length + dns.length + segments.length + dhcp.length === 0)
     return <p className="text-secondary text-muted">No network resources yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
+      {/* A VM whose first adapter is on DHCP: the address it reports, once it has one (ADR-0039). */}
+      {dhcp.map((r) => {
+        const ip = r.vm.nics[0]?.ip_addresses?.[0];
+        return (
+          <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
+            {ip ? (
+              <span className="font-mono text-secondary">{ip}</span>
+            ) : (
+              <span className="text-secondary text-muted">Address not known yet</span>
+            )}
+            <span className="text-caption text-faint">DHCP · {r.name}</span>
+          </li>
+        );
+      })}
       {/* NSX segments made for the deployment (ADR-0028). */}
       {segments.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -554,7 +570,7 @@ function Overview({ d, actions, onPick }: { d: DeploymentDetail; actions: Day2Ac
           <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} />
         </Panel>
         <Panel title="Network and addresses">
-          <Network ips={ips} dns={dns} segments={segments} />
+          <Network ips={ips} dns={dns} segments={segments} dhcp={vms.filter((v) => v.vm.dhcp)} />
         </Panel>
         {groups.length + members.length > 0 && (
           <Panel title="Security groups">

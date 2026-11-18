@@ -196,16 +196,19 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 		c, in := comps[vm.Component], input(vm, earlier)
 		before := info.BuiltVMs[vm.Name]
 		in.Key = keys.vm(c, KeyIPAM, vm)
-		newIP := !info.done(in.Key) || before.IP == ""
+		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP)
 		in.IP = before.IP
 		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
 				return in.Key, err
 			}
 		}
+		if vm.DHCP {
+			in.IP = before.GuestIP
+		}
 		newVM := !info.done(keys.vm(c, KeyClone, vm)) || before.Moref == ""
 		in.Key = keys.vm(c, KeyDNS, vm)
-		if !info.done(in.Key) || newIP || newVM {
+		if vm.Reserves() && (!info.done(in.Key) || newIP || newVM) {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return in.Key, err
 			}
@@ -264,10 +267,11 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 			if info.done(in.Key) && !fresh[i] {
 				continue
 			}
-			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, nil); err != nil {
+			if err := workflow.ExecuteActivity(ctx, step.fn, in).Get(ctx, guestIP(vm, step.key, &in.IP)); err != nil {
 				return in.Key, err
 			}
 		}
+		built[i].ip = in.IP
 		return joinGroups(ctx, info, in, keys.vm(c, KeyNSXTags, vm), fresh[i])
 	})
 	if err != nil {

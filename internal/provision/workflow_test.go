@@ -66,7 +66,7 @@ func TestProvisionRunsStepsInOrder(t *testing.T) {
 	env.OnActivity(a.CreateDNS, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.IP == "10.31.10.20" })).Run(track("dns")).Return(nil)
 	env.OnActivity(a.CloneVM, mock.Anything, mock.Anything).Run(track("clone")).Return("vm-42", nil)
 	env.OnActivity(a.Customize, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.Moref == "vm-42" })).Run(track("customize")).Return(nil)
-	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Run(track("power")).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Run(track("power")).Return("", nil)
 	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Run(track("inventory")).Return(nil)
 	env.OnActivity(a.RunJob, mock.Anything, mock.MatchedBy(func(in JobInput) bool {
 		rvav, _ := in.ExtraVars["rvav"].(map[string]any)
@@ -86,6 +86,50 @@ func TestProvisionRunsStepsInOrder(t *testing.T) {
 		if order[i] != want[i] {
 			t.Fatalf("order = %v, want %v", order, want)
 		}
+	}
+}
+
+// A VM on DHCP reserves nothing and has no records: its address is the
+// one it reports once on, which post-configuration gets (ADR-0039).
+func TestProvisionDHCP(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	info := vmPlan(false)
+	info.Plan.VMs[0].DHCP, info.Plan.VMs[0].Subnet = true, ""
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(info, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.CloneVM, mock.Anything, mock.Anything).Return("vm-42", nil)
+	env.OnActivity(a.Customize, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.address() == "" })).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return("10.31.10.77", nil)
+	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Return(nil)
+	env.OnActivity(a.RunJob, mock.Anything, mock.MatchedBy(func(in JobInput) bool {
+		res := in.ExtraVars["rvav"].(map[string]any)["resources"].([]any)
+		return res[0].(map[string]any)["ip"] == "10.31.10.77"
+	})).Return(nil)
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range info.Plan.Steps("dev") {
+		if s.Key == KeyIPAM || s.Key == KeyDNS {
+			t.Errorf("step %s planned", s.Key)
+		}
+		if s.Key == KeyCustomize && s.Detail != "Hostname, and DHCP for the address" {
+			t.Errorf("customize detail = %q", s.Detail)
+		}
+	}
+
+	// An added adapter with an address still has its steps.
+	vm := VMUnit{DHCP: true, FQDN: "web01", NICs: []NICUnit{{Key: "backup", IPAM: blueprint.IPAMEfficientIP, Subnet: "10.9.0.0/24",
+		FQDN: "web01-backup.corp.example"}}}
+	if !vm.Reserves() || vm.ipTitle() != "Reserve an IP address" || vm.subnets() != "Subnet 10.9.0.0/24" ||
+		vm.dnsDetail() != "web01-backup.corp.example" {
+		t.Errorf("an added adapter's steps = %v %q %q %q", vm.Reserves(), vm.ipTitle(), vm.subnets(), vm.dnsDetail())
+	}
+	if guestAddress([]string{"fe80::1", "10.1.2.3"}) != "10.1.2.3" || guestAddress([]string{"fd00::5"}) != "fd00::5" || guestAddress(nil) != "" {
+		t.Error("guestAddress doesn't prefer IPv4")
 	}
 }
 
@@ -118,7 +162,7 @@ func TestProvisionApprovedUsesTheNewPlan(t *testing.T) {
 	env.OnActivity(a.CreateDNS, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.CloneVM, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.VM.MemoryGB == 32 })).Return("vm-42", nil)
 	env.OnActivity(a.Customize, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return("", nil)
 	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Return(nil)
 	env.OnActivity(a.RunJob, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
@@ -235,7 +279,7 @@ func TestProvisionRetriesTransientErrors(t *testing.T) {
 	env.OnActivity(a.CreateDNS, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.CloneVM, mock.Anything, mock.Anything).Return("vm-42", nil)
 	env.OnActivity(a.Customize, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return("", nil)
 	env.OnActivity(a.RefreshInventory, mock.Anything, "req_1", "prj_web").Return(nil)
 	env.OnActivity(a.RunJob, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)

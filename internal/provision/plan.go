@@ -141,11 +141,12 @@ func componentSteps(vms []VMUnit, comps []ComponentUnit, keys vmKeys, parent str
 			steps = append(steps, StepDef{Key: p, Title: c.Title, Detail: strings.ReplaceAll(names(own), ",", ", "), System: "vcenter", Status: "pending"})
 		}
 		for _, vm := range own {
-			steps = append(steps,
+			steps = append(steps, vm.addressSteps(
 				StepDef{Key: keys.vm(c, KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: under},
-				StepDef{Key: keys.vm(c, KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyDNS, vm), Title: "Create A and PTR records · " + vm.Name, Detail: vm.dnsDetail(), System: "efficientip", Status: "pending", Parent: under})...)
+			steps = append(steps,
 				StepDef{Key: keys.vm(c, KeyClone, vm), Title: vm.cloneTitle() + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: under},
-				StepDef{Key: keys.vm(c, KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: under},
+				StepDef{Key: keys.vm(c, KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: vm.customizeDetail(), System: "vcenter", Status: "pending", Parent: under},
 				StepDef{Key: keys.vm(c, KeyPowerOn, vm), Title: "Power on and wait for guest IP · " + vm.Name, System: "vcenter", Status: "pending", Parent: under},
 			)
 			steps = append(steps, tagStep(keys.vm(c, KeyNSXTags, vm), "Join NSX security groups · "+vm.Name, vm, under)...)
@@ -232,11 +233,12 @@ func (c CompositeStep) stepDefs() []StepDef {
 		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: strings.ReplaceAll(c.Limit(), ",", ", "), System: "vcenter", Status: "pending"})
 		steps = append(steps, c.nsxSteps(parent)...)
 		for _, vm := range c.VMs {
-			steps = append(steps,
+			steps = append(steps, vm.addressSteps(
 				StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
-				StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, "Create A and PTR records", vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending", Parent: parent})...)
+			steps = append(steps,
 				StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
-				StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending", Parent: parent},
+				StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending", Parent: parent},
 				StepDef{Key: c.VMKey(KeyPowerOn, vm), Title: vmTitle(c.VMs, "Power on and wait for guest IP", vm), System: "vcenter", Status: "pending", Parent: parent},
 			)
 			steps = append(steps, tagStep(c.VMKey(KeyNSXTags, vm), vmTitle(c.VMs, "Join NSX security groups", vm), vm, parent)...)
@@ -390,6 +392,9 @@ type VMUnit struct {
 	CloudbaseInit bool `json:"cloudbase_init,omitempty"`
 	// LinkedClone: cloned from its template's current snapshot.
 	LinkedClone bool `json:"linked_clone,omitempty"`
+	// DHCP: its first adapter gets its address from DHCP, so it has no
+	// subnet, no reserved address and no DNS records (ADR-0039).
+	DHCP bool `json:"dhcp,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).
 	VCenter string `json:"vcenter,omitempty"`
 	// Segment is the key of the NSX segment made for its deployment that
@@ -525,10 +530,46 @@ func (vm VMUnit) cloneTitle() string {
 }
 
 func (vm VMUnit) ipTitle() string {
-	if len(vm.Addressed()) > 0 {
+	n := len(vm.Addressed())
+	if !vm.DHCP {
+		n++
+	}
+	if n > 1 {
 		return "Reserve IP addresses"
 	}
 	return "Reserve an IP address"
+}
+
+// Reserves says whether the VM has an address to reserve and records to
+// create: its first adapter's, or an added one's.
+func (vm VMUnit) Reserves() bool { return !vm.DHCP || len(vm.Addressed()) > 0 }
+
+// dnsDetail names the records' host names.
+func (vm VMUnit) dnsDetail() string {
+	if !vm.DHCP {
+		return vm.FQDN
+	}
+	var list []string
+	for _, n := range vm.Addressed() {
+		list = append(list, n.FQDN)
+	}
+	return strings.Join(list, ", ")
+}
+
+func (vm VMUnit) customizeDetail() string {
+	if vm.DHCP {
+		return "Hostname, and DHCP for the address"
+	}
+	return "Hostname, static IP and DNS"
+}
+
+// addressSteps are its reserve and DNS steps, when it has anything to
+// reserve.
+func (vm VMUnit) addressSteps(reserve, dns StepDef) []StepDef {
+	if !vm.Reserves() {
+		return nil
+	}
+	return []StepDef{reserve, dns}
 }
 
 func (vm VMUnit) subnets() string {
@@ -539,7 +580,10 @@ func (vm VMUnit) subnets() string {
 		}
 		return cidr
 	}
-	list := []string{subnet(vm.Subnet, vm.Segment)}
+	var list []string
+	if !vm.DHCP {
+		list = append(list, subnet(vm.Subnet, vm.Segment))
+	}
 	for _, n := range vm.Addressed() {
 		list = append(list, subnet(n.Subnet, n.Segment))
 	}
@@ -789,11 +833,12 @@ func (p Plan) Steps(environment string) []StepDef {
 			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
 	}
 	for _, vm := range p.VMs {
-		steps = append(steps,
+		steps = append(steps, vm.addressSteps(
 			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle("Create A and PTR records", vm), Detail: vm.FQDN, System: "efficientip", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle("Create A and PTR records", vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending"})...)
+		steps = append(steps,
 			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle(vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: "Hostname, static IP and DNS", System: "vcenter", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyPowerOn, vm), Title: p.vmTitle("Power on and wait for guest IP", vm), System: "vcenter", Status: "pending"},
 		)
 		steps = append(steps, tagStep(p.VMKey(KeyNSXTags, vm), p.vmTitle("Join NSX security groups", vm), vm, "")...)

@@ -51,9 +51,9 @@ func TestComponentsBuiltInRounds(t *testing.T) {
 		record("customize", in)
 		return nil
 	})
-	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(func(_ context.Context, in VMInput) error {
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(func(_ context.Context, in VMInput) (string, error) {
 		record("power", in)
-		return nil
+		return in.IP, nil
 	})
 	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
 
@@ -80,6 +80,47 @@ func TestComponentsBuiltInRounds(t *testing.T) {
 	}
 	if web := seen["customize web01"].Components["web"].(map[string]any); web["count"] != float64(1) && web["count"] != 1 {
 		t.Errorf("web's customization read %v of itself", web)
+	}
+}
+
+// A component on DHCP is read with the address its VMs report once on
+// (ADR-0039).
+func TestComponentsReadDHCPAddresses(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	info := Info{RequestID: "req_1", Number: "REQ-1", ProjectID: "prj_web", Status: "queued",
+		Plan: Plan{Kind: blueprint.KindVM,
+			VMs: []VMUnit{
+				{DeploymentID: "dep_1", Component: "web", Name: "web01", FQDN: "web01.corp"},
+				{DeploymentID: "dep_1", Component: "db", Name: "db01", FQDN: "db01.corp", DHCP: true}},
+			Components: []ComponentUnit{{Key: "web", DependsOn: []string{"db"}, Reads: []string{"db"}}, {Key: "db"}}}}
+	var web VMInput
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_1").Return(info, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_1").Return(true, nil)
+	env.OnActivity(a.MarkStep, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.ReserveIP, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.VM.Name == "web01" })).Return("10.0.0.30", nil).Once()
+	env.OnActivity(a.CreateDNS, mock.Anything, mock.MatchedBy(func(in VMInput) bool { return in.VM.Name == "web01" })).Return(nil).Once()
+	env.OnActivity(a.CloneVM, mock.Anything, mock.Anything).Return(func(_ context.Context, in VMInput) (string, error) {
+		if in.VM.Name == "web01" {
+			web = in
+		}
+		return "vm-" + in.VM.Name, nil
+	})
+	env.OnActivity(a.Customize, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.PowerOn, mock.Anything, mock.Anything).Return(func(_ context.Context, in VMInput) (string, error) {
+		if in.VM.DHCP {
+			return "10.0.0.99", nil
+		}
+		return in.IP, nil
+	})
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_1", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+
+	env.ExecuteWorkflow(Provision, "req_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := json.Marshal(web.Components["db"].(map[string]any)["addresses"]); string(got) != `["10.0.0.99"]` {
+		t.Errorf("web read db's addresses %s", got)
 	}
 }
 

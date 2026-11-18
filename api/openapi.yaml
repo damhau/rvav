@@ -7235,6 +7235,11 @@ components:
         component:
           type: string
           description: The blueprint component the VM belongs to (ADR-0024), for example `web`; `vm` for a single-VM item.
+        dhcp:
+          type: boolean
+          description: >-
+            Its first adapter gets its address from DHCP (ADR-0039): rvav reserved no address and made no DNS
+            records for it. The address is the first of `nics[0].ip_addresses`, once VMware Tools reports it.
         snapshot_count: { type: integer }
         usage:
           type: object

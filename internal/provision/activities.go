@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -119,10 +120,26 @@ type Info struct {
 	Outputs map[string]map[string]any `json:"outputs,omitempty"`
 }
 
-// Built is what earlier steps made for one VM.
+// guestAddress is the first IPv4 address of those VMware Tools reports for
+// an adapter, else the first: a dual-stack guest lists IPv6 ones too.
+func guestAddress(ips []string) string {
+	for _, s := range ips {
+		if ip, err := netip.ParseAddr(s); err == nil && ip.Is4() {
+			return s
+		}
+	}
+	if len(ips) > 0 {
+		return ips[0]
+	}
+	return ""
+}
+
+// Built is what earlier steps made for one VM. GuestIP is the address
+// VMware Tools last reported, a DHCP VM's (ADR-0039).
 type Built struct {
-	IP    string `json:"ip,omitempty"`
-	Moref string `json:"moref,omitempty"`
+	IP      string `json:"ip,omitempty"`
+	Moref   string `json:"moref,omitempty"`
+	GuestIP string `json:"guest_ip,omitempty"`
 }
 
 func (info Info) done(key string) bool { return slices.Contains(info.Done, key) }
@@ -148,6 +165,23 @@ type VMInput struct {
 	// Components are what the components its tags and cloud-init read
 	// built, by key (ComponentOutputs).
 	Components map[string]any `json:"components,omitempty"`
+}
+
+// address is the first adapter's static address: none on DHCP, where IP
+// is what VMware Tools last reported.
+func (in VMInput) address() string {
+	if in.VM.DHCP {
+		return ""
+	}
+	return in.IP
+}
+
+// addressing says how the first adapter is addressed, for a step's detail.
+func (in VMInput) addressing() string {
+	if in.VM.DHCP {
+		return "DHCP"
+	}
+	return fmt.Sprintf("static IP %s/%d", in.IP, in.VM.PrefixLength)
 }
 
 // RuleInput is a component's DRS rule: its VMs by name and moref.
@@ -318,6 +352,9 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 				NIC      string `json:"nic"`
 				VM       struct {
 					Moref string `json:"moref"`
+					NICs  []struct {
+						IPs []string `json:"ip_addresses"`
+					} `json:"nics"`
 				} `json:"vm"`
 			}
 			_ = json.Unmarshal(res.Properties, &p)
@@ -343,6 +380,10 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 				b.Moref = p.VM.Moref
 				bv = info.BuiltVMs[res.Name]
 				bv.Moref = p.VM.Moref
+				if len(p.VM.NICs) > 0 {
+					b.GuestIP = guestAddress(p.VM.NICs[0].IPs)
+					bv.GuestIP = b.GuestIP
+				}
 				info.BuiltVMs[res.Name] = bv
 			}
 			info.Built[res.DeploymentID] = b
@@ -501,14 +542,16 @@ func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Sub
 func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) {
 	var ip string
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		ip = a.addressOf(ctx, in.RequestID, in.VM, "")
-		if ip == "" {
-			var err error
-			if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
-				return "", "", err
+		var ips, subnets []string
+		if !in.VM.DHCP {
+			if ip = a.addressOf(ctx, in.RequestID, in.VM, ""); ip == "" {
+				var err error
+				if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
+					return "", "", err
+				}
 			}
+			ips, subnets = []string{ip}, []string{in.VM.Subnet}
 		}
-		ips, subnets := []string{ip}, []string{in.VM.Subnet}
 		for _, n := range in.VM.Addressed() {
 			nip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
 			if nip == "" {
@@ -521,7 +564,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			ips, subnets = append(ips, nip), append(subnets, n.Subnet)
 		}
 		if len(ips) == 1 {
-			return "Reserved " + ip, "Subnet " + in.VM.Subnet, nil
+			return "Reserved " + ips[0], "Subnet " + subnets[0], nil
 		}
 		return "Reserved " + strings.Join(ips, ", "), "Subnets " + strings.Join(subnets, ", "), nil
 	})
@@ -530,9 +573,11 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 
 func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		records := []efficientip.Record{
-			{FQDN: in.VM.FQDN, Type: "A", Value: in.IP, Zone: in.VM.DNSZone},
-			{FQDN: efficientip.PTRName(in.IP), Type: "PTR", Value: in.VM.FQDN, Zone: "in-addr.arpa"},
+		var records []efficientip.Record
+		if !in.VM.DHCP {
+			records = append(records,
+				efficientip.Record{FQDN: in.VM.FQDN, Type: "A", Value: in.IP, Zone: in.VM.DNSZone},
+				efficientip.Record{FQDN: efficientip.PTRName(in.IP), Type: "PTR", Value: in.VM.FQDN, Zone: "in-addr.arpa"})
 		}
 		// Each added adapter's address has its own name (ADR-0024).
 		for _, n := range in.VM.Addressed() {
@@ -566,14 +611,15 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 			a.Events.Resource(ctx, in.ProjectID, res)
 		}
 		if len(records) > 2 {
-			return "Created A and PTR records", fmt.Sprintf("%s → %s and %d more", in.VM.FQDN, in.IP, len(records)/2-1), nil
+			return "Created A and PTR records", fmt.Sprintf("%s → %s and %d more", records[0].FQDN, records[0].Value, len(records)/2-1), nil
 		}
-		return "Created A and PTR records", in.VM.FQDN + " → " + in.IP, nil
+		return "Created A and PTR records", records[0].FQDN + " → " + records[0].Value, nil
 	})
 }
 
 func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput, vm *vsphere.VM) (store.Resource, error) {
-	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component}, nil, 0)
+	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component,
+		DHCP: in.VM.DHCP}, nil, 0)
 	// The VM as rvav built it: what drift is measured from (S13.2).
 	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := vm.InstanceUUID
@@ -693,16 +739,16 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		}
 		cu := vsphere.Customization{
 			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
-			IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
+			IP: in.address(), DHCP: in.VM.DHCP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
 			Spec: in.Guest.CustomizationSpec, Extra: extra,
 		}
-		detail := fmt.Sprintf("Hostname %s, static IP %s/%d", in.VM.Name, in.IP, in.VM.PrefixLength)
+		detail := fmt.Sprintf("Hostname %s, %s", in.VM.Name, in.addressing())
 		var acc *access
 		if windows {
 			// Without cloudbase-init, remote access is Administrator's
 			// password (ADR-0039).
 			if in.Guest.RemoteAccess != nil {
-				g, err := a.guestData(ctx, in, []ciNIC{{IP: in.IP}})
+				g, err := a.guestData(ctx, in, []ciNIC{{IP: in.address()}})
 				if err != nil {
 					return "", "", err
 				}
@@ -798,7 +844,7 @@ func (a *Activities) guestNICs(ctx context.Context, in VMInput, extra []vsphere.
 	if len(vm.NICs) < 1+len(extra) {
 		return nil, nil, permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
 	}
-	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.IP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
+	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.address(), PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
 	added := len(vm.NICs) - len(extra)
 	for _, n := range vm.NICs[1:added] {
 		nics = append(nics, ciNIC{MAC: n.MAC})
@@ -833,12 +879,12 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 	if inputs, err = a.openSecretInputs(ctx, r.ID, inputs); err != nil {
 		return out, permanent("%v", err)
 	}
-	ips := []string{in.IP}
+	ips := []string{in.address()}
 	for _, n := range nics[1:] {
 		ips = append(ips, n.IP)
 	}
 	vars := map[string]any{
-		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.IP, "ips": ips, "domain": in.Guest.Domain,
+		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.address(), "ips": ips, "domain": in.Guest.Domain,
 			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID, "index": in.VM.Index},
 		"components": integers(in.Components),
 		"inputs":     inputs, "project": r.ProjectCode, "environment": r.Environment,
@@ -903,7 +949,7 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	if err := a.recordAccess(ctx, in, g.acc); err != nil {
 		return "", "", err
 	}
-	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo", in.VM.Name, in.IP, in.VM.PrefixLength) + g.describe()
+	detail := fmt.Sprintf("Hostname %s, %s, through guestinfo", in.VM.Name, in.addressing()) + g.describe()
 	if g.acc != nil {
 		detail += ", " + g.acc.describe()
 	}
@@ -959,7 +1005,7 @@ func (a *Activities) cloudbaseInit(ctx context.Context, in VMInput, extra []vsph
 	if err := a.recordAccess(ctx, in, g.acc); err != nil {
 		return "", "", err
 	}
-	detail := fmt.Sprintf("Hostname %s, static IP %s/%d, through guestinfo for cloudbase-init", in.VM.Name, in.IP, in.VM.PrefixLength) + g.describe()
+	detail := fmt.Sprintf("Hostname %s, %s, through guestinfo for cloudbase-init", in.VM.Name, in.addressing()) + g.describe()
 	switch {
 	case g.acc != nil:
 		detail += ", " + g.acc.describe()
@@ -969,8 +1015,11 @@ func (a *Activities) cloudbaseInit(ctx context.Context, in VMInput, extra []vsph
 	return "Wrote cloudbase-init metadata and user data", detail, nil
 }
 
-func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
-	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
+// PowerOn powers the VM on and waits for VMware Tools to report its
+// address, which it returns.
+func (a *Activities) PowerOn(ctx context.Context, in VMInput) (string, error) {
+	var ip string
+	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
 		vc, err := a.vc(ctx, in.VM.VCenter)
 		if err != nil {
 			return "", "", err
@@ -990,7 +1039,6 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 		}
 		wctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		var ip string
 		err = heartbeatWhile(ctx, func() error {
 			var err error
 			ip, err = vc.WaitForIP(wctx, in.Moref)
@@ -1008,11 +1056,15 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) error {
 			}
 		}
 		detail := "VMware Tools reports " + ip
-		if ip != in.IP {
+		switch {
+		case in.VM.DHCP:
+			detail += ", from DHCP"
+		case ip != in.IP:
 			detail += " (expected " + in.IP + ")"
 		}
 		return "Powered on, guest IP " + ip, detail, nil
 	})
+	return ip, err
 }
 
 // diskSpecs and nicNetworks are what is added to the VM after the clone.

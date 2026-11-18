@@ -123,6 +123,9 @@ type Customization struct {
 	PrefixLength   int
 	Gateway        string
 	DNSServers     []string
+	// DHCP: the first adapter gets its address, gateway and DNS servers
+	// from DHCP; IP, PrefixLength, Gateway and DNSServers are unused.
+	DHCP bool
 	// Extra are the added adapters, in order; OtherNICs the template's own
 	// after its first, which keep DHCP.
 	Extra     []NICSetting
@@ -1295,15 +1298,17 @@ func CustomizationSpec(cu Customization, base *types.CustomizationSpec) types.Cu
 	if cu.Domain != "" {
 		spec.GlobalIPSettings.DnsSuffixList = []string{cu.Domain}
 	}
-	spec.NicSettingMap = []types.CustomizationAdapterMapping{{
-		Adapter: types.CustomizationIPSettings{
-			Ip:            &types.CustomizationFixedIp{IpAddress: cu.IP},
-			SubnetMask:    prefixToMask(cu.PrefixLength),
-			Gateway:       []string{cu.Gateway},
-			DnsDomain:     cu.Domain,
-			DnsServerList: cu.DNSServers,
-		},
-	}}
+	first := types.CustomizationIPSettings{
+		Ip:            &types.CustomizationFixedIp{IpAddress: cu.IP},
+		SubnetMask:    prefixToMask(cu.PrefixLength),
+		Gateway:       []string{cu.Gateway},
+		DnsDomain:     cu.Domain,
+		DnsServerList: cu.DNSServers,
+	}
+	if cu.DHCP {
+		first = types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}, DnsDomain: cu.Domain}
+	}
+	spec.NicSettingMap = []types.CustomizationAdapterMapping{{Adapter: first}}
 	for range cu.OtherNICs {
 		spec.NicSettingMap = append(spec.NicSettingMap, types.CustomizationAdapterMapping{
 			Adapter: types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}}})

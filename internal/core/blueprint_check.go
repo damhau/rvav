@@ -73,6 +73,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	errs = append(errs, checkConstraints(ptr, b.Constraints)...)
 	errs = append(errs, checkProvisioning(ptr, b.Provisioning)...)
 	errs = append(errs, checkPropertiesAndFolder(ptr, b.Properties, b.Folder)...)
+	errs = append(errs, checkIPAM(ptr, b.IPAM)...)
 
 	// NSX segments made for each deployment (ADR-0028).
 	segKeys := map[string]bool{}
@@ -133,6 +134,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		errs = append(errs, checkConstraints(at, c.Constraints)...)
 		errs = append(errs, checkProvisioning(at, c.Provisioning)...)
 		errs = append(errs, checkPropertiesAndFolder(at, c.Properties, c.Folder)...)
+		errs = append(errs, checkIPAM(at, c.IPAM)...)
 	}
 	if total > blueprint.MaxVMs {
 		add(ptr+"/components", "out_of_range", fmt.Sprintf("A request builds at most %d VMs; these components have %d.", blueprint.MaxVMs, total))
@@ -315,11 +317,7 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 		} else if err := policy.Check(n.Network); err != nil {
 			add(at+"/network", "invalid", "The network is not valid CEL: "+err.Error()+` (a name is quoted: '"dvpg-backup-vl900"').`)
 		}
-		switch n.IPAM {
-		case "", blueprint.IPAMEfficientIP, blueprint.IPAMDHCP:
-		default:
-			add(at+"/ipam", "enum", "efficientip (an address and DNS records) or dhcp.")
-		}
+		errs = append(errs, checkIPAM(at, n.IPAM)...)
 	}
 	for i, t := range tags {
 		if cat, tag, ok := strings.Cut(t, "/"); !ok || strings.TrimSpace(cat) == "" || strings.TrimSpace(tag) == "" || strings.Contains(tag, "/") {
@@ -327,6 +325,15 @@ func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags [
 		}
 	}
 	return errs
+}
+
+// checkIPAM checks how an adapter gets its address.
+func checkIPAM(ptr, ipam string) []api.FieldError {
+	switch ipam {
+	case "", blueprint.IPAMEfficientIP, blueprint.IPAMDHCP:
+		return nil
+	}
+	return []api.FieldError{fieldErr(ptr+"/ipam", "enum", "efficientip (an address and DNS records) or dhcp.")}
 }
 
 // checkPropertiesAndFolder checks a blueprint's or a component's custom

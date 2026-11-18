@@ -146,6 +146,26 @@ func TestLinkedCloneInherits(t *testing.T) {
 	}
 }
 
+// A component's first adapter is on DHCP as the blueprint says, unless it
+// says otherwise (ADR-0039).
+func TestIPAMInherits(t *testing.T) {
+	b, err := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "ipam": "dhcp",
+		"components": [{"key": "web"}, {"key": "db", "ipam": "efficientip"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := b.ComponentList()
+	web, _, _ := b.EvaluateComponent(cs[0], nil)
+	db, _, _ := b.EvaluateComponent(cs[1], nil)
+	if !web.DHCP || db.DHCP {
+		t.Fatalf("web on DHCP: %v, db: %v", web.DHCP, db.DHCP)
+	}
+	single, _ := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "ipam": "dhcp"}`))
+	if vm, _, _ := single.EvaluateComponent(single.ComponentList()[0], nil); !vm.DHCP {
+		t.Fatal("a single VM isn't on DHCP")
+	}
+}
+
 func TestCheckUserData(t *testing.T) {
 	for text, ok := range map[string]bool{
 		"#cloud-config\nhostname: {{ .vm.name }}":              true,

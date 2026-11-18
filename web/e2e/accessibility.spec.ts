@@ -193,6 +193,34 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "a deployment's private key (downloaded)");
     });
 
+    // VMs on DHCP: the addresses they report, with no EfficientIP ones (ADR-0039).
+    test("axe: a deployment on DHCP", async ({ page }) => {
+      await page.goto("/deployments");
+      await page.getByRole("link", { name: "web-prd-edge", exact: true }).click();
+      await loaded(page);
+      await expect(
+        page.getByRole("region", { name: "Network and addresses" }).getByText("DHCP · web-prd-edge001"),
+      ).toBeVisible();
+      await scan(page, "a deployment on DHCP");
+    });
+
+    // A Windows template marked as using cloudbase-init, with its user
+    // data, then refused with a customization specification (ADR-0039).
+    test("axe: a Windows template with cloudbase-init", async ({ page }) => {
+      await page.goto("/admin/infrastructure");
+      await loaded(page);
+      await page.getByRole("button", { name: "Actions for Windows Server 2025" }).click();
+      await page.getByRole("menuitem", { name: "Change" }).click();
+      const sheet = page.getByRole("dialog", { name: "Change Windows Server 2025" });
+      await sheet.getByRole("checkbox", { name: "Uses cloudbase-init" }).check();
+      await expect(sheet.getByRole("textbox", { name: "cloudbase-init user data" })).toBeVisible();
+      await scan(page, "a Windows template with cloudbase-init");
+      await sheet.getByRole("textbox", { name: "Customization spec" }).fill("win-base");
+      await sheet.getByRole("button", { name: "Save template" }).click();
+      await expect(sheet.getByText(/doesn't use a customization specification/)).toBeVisible();
+      await scan(page, "a Windows template with cloudbase-init (refused)");
+    });
+
     test("axe: an approval's menu, then the approval in its side panel", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);
