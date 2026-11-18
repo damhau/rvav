@@ -199,7 +199,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	if err := s.evaluatePickers(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
-	if err := s.evaluateSearches(ctx, p, ev, strict); err != nil {
+	if err := s.evaluateFound(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
 
@@ -266,7 +266,7 @@ func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Ev
 	}
 	for name, f := range ui.Fields {
 		src := sourceOf(f)
-		if src == nil || src.Kind != api.Builtin || src.Name == nil || f.Widget == api.UiWidgetSearch {
+		if src == nil || src.Kind != api.Builtin || src.Name == nil || f.Widget == api.UiWidgetSearch || f.Widget == api.UiWidgetTree {
 			continue
 		}
 		values, ok := pickedValues(ev.Inputs[name])
@@ -323,11 +323,12 @@ func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Ev
 	return nil
 }
 
-// evaluateSearches checks each search field's value against what its
-// source finds when searched for that value, as the requester: a search
-// box sends any text. On submit a source that fails is an error; in the
+// evaluateFound checks the value of each search and tree field against
+// what its source offers the requester: a search field's source searched
+// for that value (a search box sends any text), a tree's whole source, or
+// its static options. On submit a source that fails is an error; in the
 // preview the field is skipped.
-func (s *Service) evaluateSearches(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {
+func (s *Service) evaluateFound(ctx context.Context, p *auth.Principal, ev *Evaluation, strict bool) error {
 	var ui api.UiSchema
 	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
 		return err
@@ -335,21 +336,33 @@ func (s *Service) evaluateSearches(ctx context.Context, p *auth.Principal, ev *E
 	for _, name := range sortedKeys(ui.Fields) {
 		f := ui.Fields[name]
 		at := "/inputs/" + name
-		if f.Widget != api.UiWidgetSearch || f.ValueSource == nil || slices.ContainsFunc(ev.Errors, func(e api.FieldError) bool { return e.Field == at }) {
+		if f.Widget != api.UiWidgetSearch && f.Widget != api.UiWidgetTree ||
+			slices.ContainsFunc(ev.Errors, func(e api.FieldError) bool { return e.Field == at }) {
 			continue
 		}
 		value, ok := ev.Inputs[name].(string)
 		if !ok || value == "" {
 			continue
 		}
-		found, err := s.sourceValues(ctx, p, ev.Project, ev.Env.Key, ev.Version, name, f, ev.Inputs, value)
-		if err != nil {
-			if strict {
-				return err
+		offered := optionsOf(f.Options)
+		switch {
+		case sourceOf(f) != nil:
+			search := ""
+			if f.Widget == api.UiWidgetSearch {
+				search = value
 			}
+			found, err := s.sourceValues(ctx, p, ev.Project, ev.Env.Key, ev.Version, name, f, ev.Inputs, search)
+			if err != nil {
+				if strict {
+					return err
+				}
+				continue
+			}
+			offered = optionsOf(found.Options)
+		case f.Widget == api.UiWidgetSearch:
 			continue
 		}
-		if found.Options == nil || !slices.ContainsFunc(*found.Options, func(o api.Option) bool { return o.Value == value && (o.Disabled == nil || !*o.Disabled) }) {
+		if !slices.ContainsFunc(offered, func(o api.Option) bool { return o.Value == value && (o.Disabled == nil || !*o.Disabled) }) {
 			ev.Errors = append(ev.Errors, fieldErr(at, "not_allowed", fmt.Sprintf("%s is not one of the choices for %s.", value, f.Label)))
 		}
 	}

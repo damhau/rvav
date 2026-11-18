@@ -204,6 +204,13 @@ describe("form designer model", () => {
       value_source: { kind: "rest", search: true, params: { url: "https://cmdb.corp.example/apps?q=${search}" } },
     });
     expect(prop(def, "search")).toEqual({ type: "string" });
+    def = updateUi(def, "tree", {
+      options: [
+        { value: "dmz", label: "DMZ" },
+        { value: "dmz-web", label: "Web", parent: "dmz" },
+      ],
+    });
+    expect(prop(def, "tree")).toEqual({ type: "string" });
     const back = fromYaml(toYaml(def));
     expect(back.problems).toEqual([]);
     expect(back.def).toEqual(def);

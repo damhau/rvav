@@ -21,6 +21,7 @@ export const widgetLabels: Record<UiWidget, string> = {
   radio_cards: "Cards",
   checklist: "Checklist",
   search: "Search",
+  tree: "Tree",
   date: "Date",
   datetime: "Date and time",
   tags: "Tags",
@@ -96,6 +97,7 @@ export const choiceWidgets: UiWidget[] = [
   "radio_cards",
   "checklist",
   "dual_list",
+  "tree",
 ];
 
 /** Widgets that edit properties through `columns`: a table its rows', an object its own. */

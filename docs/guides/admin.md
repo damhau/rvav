@@ -763,6 +763,12 @@ An item's tabs:
     keeps the options that contain the text. On submit, rvav searches the
     source for the value picked and refuses it unless the source finds
     it, so the source must find an option by its value too;
+  - a tree shows its options as a hierarchy: each option names the value
+    of the option it sits under. In **Options**, write one per line as
+    `value | label | parent`; a REST source maps **Parent** with a
+    JSONPath, and a CEL source's options give `parent`. With the
+    `vsphere.folders` source, a tree shows each VM folder under its
+    parent folder. On submit, rvav refuses a node the field doesn't offer;
   - a vSphere folder lists the VM folders of the datacenters the
     project's placement uses: bind the blueprint's `folder` to it;
   - a project, user, deployment or vSphere VM lists only what the

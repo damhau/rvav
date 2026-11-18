@@ -612,7 +612,7 @@ behaviour). The designer edits both visually; a code view shows the YAML.
 
 ### Field types
 text, textarea, number, slider, toggle, dropdown, multi-select, dual list,
-search (type-ahead), radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
+search (type-ahead), tree, radio cards, date/time, tags, key-value, datagrid (rows of sub-fields), group
 of fields (one object), secret, file upload,
 Markdown or info block, image, link, and resource pickers:
 - vSphere: cluster, datastore, network, folder, template, existing VM
@@ -639,6 +639,7 @@ as a list.
 | `dual_list` | `array` of `string`, `uniqueItems: true` | `["tnguyen", "lmartin"]`, in the order chosen |
 | `object` | `object` with `properties`, with `ui.columns` | `{"policy": "daily", "keep_days": 14}` |
 | `search` | `string` | `app-003`: an option its value source finds for the text typed |
+| `tree` | `string` | `/GVA/vm/rvav/web`: a node of a hierarchy its options or value source offer |
 | `project` | `string` | A project's ID, `prj_web`: one the requester may request in |
 | `user` | `string` | A person's ID, `usr_lmartin`, found by typing their name or email |
 | `deployment` | `string` | A deployment's ID, `dep_7f3k2`: one of the project's, not deleted |
@@ -910,6 +911,49 @@ ui_schema:
           meta: $.team
 ```
 
+A tree field (`tree`) shows its options as a hierarchy and takes one node.
+Each option names the option it sits under by that option's value, in
+`parent`; an option whose parent isn't offered sits at the top. The value
+is the node's, never a path of labels, so a label may hold any character
+and a source keeps its own IDs: a directory's distinguished names, a CMDB's
+keys. A `rest` source maps `parent` with a JSONPath in each item, as it maps
+`label`; a `cel` source's options give `parent` with `value` and `label`;
+static options give it as a third part, `value | label | parent`, in the
+designer.
+
+The built-in `vsphere.folders` gives each VM folder under its parent
+folder. In a tree, a folder shows its own name, and a folder at the top its
+path; in a dropdown, every folder shows its path. The tree opens at the
+chosen node. On preview and submit, the server refuses a node the field's
+options or source don't offer:
+
+```yaml
+ui_schema:
+  fields:
+    folder:
+      widget: tree
+      label: VM folder
+      value_source: { kind: builtin, name: vsphere.folders }
+    unit:
+      widget: tree
+      label: Directory unit
+      value_source:
+        kind: rest
+        params:
+          url: https://directory.corp.example/units
+          items: $.units
+          value: $.dn
+          label: $.name
+          parent: $.parent_dn
+    zone:
+      widget: tree
+      label: Zone
+      options:
+        - { value: dmz, label: DMZ }
+        - { value: dmz-web, label: Web, parent: dmz }
+        - { value: lan, label: LAN }
+```
+
 ### Behaviour
 - **Dynamic values**: options, defaults or validation results from a *value source*:
   - built-in sources (vSphere inventory cache, EfficientIP, AWX, app data),
@@ -937,7 +981,8 @@ ui_schema:
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
   project, user and environment). Dependencies re-resolve a field when the
   inputs it depends on change. A search field passes its text to the
-  source (`${search}`, `search`) or keeps the options that contain it.
+  source (`${search}`, `search`) or keeps the options that contain it. A
+  tree field's options name their `parent`.
 - NSX's ([ADR-0028](adr/0028-nsx-networking.md)): `nsx.segments` (existing
   segments, by the port group name a `network` binding takes; `tier1` to
   keep one Tier-1's), `nsx.tier1s`, `nsx.groups` (groups VMs can join by

@@ -106,8 +106,16 @@ export function CommitInput({
   );
 }
 
-function optionsText(options: { value: string; label: string }[] | undefined) {
-  return (options ?? []).map((o) => (o.label && o.label !== o.value ? `${o.value} | ${o.label}` : o.value)).join("\n");
+function optionsText(options: { value: string; label: string; parent?: string }[] | undefined) {
+  return (options ?? [])
+    .map((o) =>
+      o.parent !== undefined
+        ? `${o.value} | ${o.label} | ${o.parent}`
+        : o.label && o.label !== o.value
+          ? `${o.value} | ${o.label}`
+          : o.value,
+    )
+    .join("\n");
 }
 
 function parseOptions(text: string) {
@@ -116,8 +124,8 @@ function parseOptions(text: string) {
     .map((l) => l.trim())
     .filter(Boolean)
     .map((l) => {
-      const [value = "", label] = l.split("|").map((x) => x.trim());
-      return { value, label: label || value };
+      const [value = "", label, parent] = l.split("|").map((x) => x.trim());
+      return { value, label: label || value, ...(parent ? { parent } : {}) };
     });
 }
 
@@ -314,11 +322,19 @@ function SourceEditor({
           {param("value", "Value (JSONPath in an item)")}
           {param("label", "Label (JSONPath in an item)")}
           {param("meta", "Detail (JSONPath in an item)")}
+          {ui.widget === "tree" &&
+            param("parent", "Parent (JSONPath in an item)", "The value of the item it sits under.")}
         </>
       )}
       {src?.kind === "cel" && (
         <>
-          {param("options", "Options", "A list of strings or of {value, label, meta}.")}
+          {param(
+            "options",
+            "Options",
+            ui.widget === "tree"
+              ? "A list of {value, label, meta, parent}: parent is the value of the option it sits under."
+              : "A list of strings or of {value, label, meta}.",
+          )}
           {param("value", "Value", "A computed value instead of options.")}
         </>
       )}
@@ -644,7 +660,11 @@ function FieldProperties({
         </Field>
       )}
       {choiceWidgets.includes(ui.widget) && !ui.value_source && (
-        <Field label="Options" htmlFor="prop-options" hint="One per line: value | label.">
+        <Field
+          label="Options"
+          htmlFor="prop-options"
+          hint={ui.widget === "tree" ? "One per line: value | label | parent's value." : "One per line: value | label."}
+        >
           <OptionsInput
             value={optionsText(ui.options)}
             onCommit={(t) => onChange(updateUi(def, name, { options: parseOptions(t) }))}

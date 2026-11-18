@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // fieldProblems validates one input against one property's schema and
@@ -306,6 +307,38 @@ func TestMatching(t *testing.T) {
 	if !searchesItself(&api.ValueSource{Kind: api.Rest, Search: new(true)}) || searchesItself(&api.ValueSource{Kind: api.Rest}) ||
 		!searchesItself(&api.ValueSource{Kind: api.Builtin, Name: new("rvav.users")}) || searchesItself(nil) {
 		t.Error("searchesItself")
+	}
+}
+
+func TestFolderOptions(t *testing.T) {
+	folders := []store.InvFolder{{Path: "/GVA/vm", Datacenter: "GVA"}, {Path: "/GVA/vm/rvav", Datacenter: "GVA"},
+		{Path: "/GVA/vm/rvav/a%2fb", Datacenter: "GVA"}, {Path: "/ZRH/vm/shop", Datacenter: "ZRH"}}
+	show := func(opts []api.Option) []string {
+		var out []string
+		for _, o := range opts {
+			out = append(out, o.Value+" "+o.Label+" < "+deref(o.Parent))
+		}
+		return out
+	}
+	if got, want := show(folderOptions(folders, true)), []string{"/GVA/vm /GVA/vm < ", "/GVA/vm/rvav rvav < /GVA/vm",
+		"/GVA/vm/rvav/a%2fb a/b < /GVA/vm/rvav", "/ZRH/vm/shop /ZRH/vm/shop < "}; !slices.Equal(got, want) {
+		t.Errorf("in a tree: %q, want %q", got, want)
+	}
+	if got, want := show(folderOptions(folders, false))[2], "/GVA/vm/rvav/a%2fb /GVA/vm/rvav/a%2fb < /GVA/vm/rvav"; got != want {
+		t.Errorf("in a list: %q, want %q", got, want)
+	}
+}
+
+func TestOptionParents(t *testing.T) {
+	data := map[string]any{"ous": []any{map[string]any{"dn": "OU=apps,DC=corp", "name": "apps"},
+		map[string]any{"dn": "OU=web,OU=apps,DC=corp", "name": "web", "up": "OU=apps,DC=corp"}}}
+	opts, err := mapOptions(data, "$.ous", "$.dn", "$.name", "", "$.up")
+	if err != nil || len(opts) != 2 || opts[0].Parent != nil || deref(opts[1].Parent) != "OU=apps,DC=corp" || opts[1].Label != "web" {
+		t.Errorf("REST options with parents: %+v %v", opts, err)
+	}
+	list, _, err := celValues(map[string]any{"options": `[{"value": "apps", "label": "Apps"}, {"value": "web", "label": "Web", "parent": "apps"}]`}, nil)
+	if err != nil || list == nil || len(*list) != 2 || (*list)[0].Parent != nil || deref((*list)[1].Parent) != "apps" {
+		t.Errorf("CEL options with parents: %+v %v", list, err)
 	}
 }
 

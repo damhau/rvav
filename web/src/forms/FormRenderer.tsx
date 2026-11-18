@@ -88,6 +88,7 @@ const wideWidgets: UiWidget[] = [
   "key_value",
   "datagrid",
   "dual_list",
+  "tree",
   "object",
 ];
 

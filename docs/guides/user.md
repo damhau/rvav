@@ -108,6 +108,12 @@ A search field works the same way: type two letters or more, then pick
 what it finds. It lists 20 at most: if it finds more, type more to narrow
 them down. If the search fails, the field says so: select **Try again**.
 
+A tree shows choices inside one another, such as folders. To open a node,
+select its arrow or press the Right arrow key; to close it, press the Left
+arrow key. To choose a node, select it, or move to it with the arrow keys
+and press Enter. You can also type a letter to move to the next node that
+starts with it. Under the tree, **Chosen** shows the path to your choice.
+
 ## Following a request
 
 **Requests** lists every request in the project, newest first, under your

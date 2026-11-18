@@ -17,6 +17,7 @@ const widgets = [
   "Cards",
   "Checklist",
   "Search",
+  "Tree",
   "Date",
   "Date and time",
   "Tags",
@@ -73,6 +74,10 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await props.getByRole("textbox", { name: "Options" }).fill("web | Web team\ndb | Database team\nnet | Network team");
   await props.getByRole("textbox", { name: "Options" }).press("Tab");
   await expect(preview.getByRole("option", { name: "Database team" })).toBeVisible();
+  await fields.getByRole("button", { name: /^Tree/ }).click();
+  await props.getByRole("textbox", { name: "Options" }).fill("dmz | DMZ\ndmz-web | Web zone | dmz\nlan | LAN");
+  await props.getByRole("textbox", { name: "Options" }).press("Tab");
+  await expect(preview.getByRole("treeitem", { name: "DMZ", exact: true })).toHaveAttribute("aria-expanded", "false");
   await fields.getByRole("button", { name: /^Search/ }).click();
   await props.getByRole("combobox", { name: "Value source" }).click();
   await page.getByRole("option", { name: "REST service" }).click();
@@ -150,6 +155,13 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await expect(page.getByRole("status").filter({ hasText: "1 match" })).toBeVisible();
   await search.press("Enter");
   await expect(search).toHaveValue("Service 01");
+  const tree = page.getByRole("tree", { name: "Tree" });
+  await tree.getByRole("treeitem", { name: "DMZ", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(tree.getByRole("treeitem", { name: "Web zone" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(tree).toHaveAccessibleDescription("Chosen: DMZ › Web zone");
   await page.getByRole("combobox", { name: "Deployment" }).click();
   await page.getByRole("option", { name: /^web-dev-api/ }).click();
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("every");

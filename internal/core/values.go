@@ -81,6 +81,31 @@ func (s *Service) vmFolders(ctx context.Context, projectID, env string) ([]store
 	return out, nil
 }
 
+// folderOptions are VM folders by path, each under its parent folder when
+// that one is offered too. A tree names a folder under its parent by its
+// own name; a list, and a tree at its top, by its path.
+func folderOptions(folders []store.InvFolder, tree bool) []api.Option {
+	offered := map[string]bool{}
+	for _, f := range folders {
+		offered[f.Path] = true
+	}
+	opts := []api.Option{}
+	for _, f := range folders {
+		o := option(f.Path, f.Path, f.Datacenter)
+		if i := strings.LastIndex(f.Path, "/"); i > 0 && offered[f.Path[:i]] {
+			o.Parent = present.Ptr(f.Path[:i])
+			if tree {
+				o.Label = folderName.Replace(f.Path[i+1:])
+			}
+		}
+		opts = append(opts, o)
+	}
+	return opts
+}
+
+// folderName undoes how vSphere escapes a name in a path.
+var folderName = strings.NewReplacer("%2f", "/", "%2F", "/", "%5c", `\`, "%5C", `\`, "%25", "%")
+
 func formatGB(gb int64) string {
 	if gb >= 1024 {
 		return fmt.Sprintf("%.1f TB free", float64(gb)/1024)
@@ -309,11 +334,7 @@ func (s *Service) resolveSource(ctx context.Context, p *auth.Principal, proj sto
 		if err != nil {
 			return out, err
 		}
-		opts := []api.Option{}
-		for _, f := range folders {
-			opts = append(opts, option(f.Path, f.Path, f.Datacenter))
-		}
-		out.Options = &opts
+		out.Options = present.Ptr(folderOptions(folders, field.Widget == api.UiWidgetTree))
 		cache(60)
 
 	case "rvav.templates":

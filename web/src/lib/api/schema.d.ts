@@ -4175,7 +4175,7 @@ export interface components {
             fields: string[];
         };
         /** @enum {string} */
-        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "search" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
+        UiWidget: "text" | "textarea" | "number" | "slider" | "toggle" | "select" | "multiselect" | "segmented" | "radio_cards" | "checklist" | "search" | "tree" | "date" | "datetime" | "tags" | "key_value" | "datagrid" | "dual_list" | "object" | "secret" | "info" | "image" | "link" | "computed" | "vsphere_cluster" | "vsphere_datastore" | "vsphere_network" | "vsphere_template" | "vsphere_folder" | "vsphere_vm" | "ipam_subnet" | "ipam_address" | "dns_zone" | "awx_inventory" | "awx_credential" | "project" | "user" | "deployment";
         UiField: {
             widget: components["schemas"]["UiWidget"];
             /** @description The field's label; a `link` field's link text. */
@@ -4235,7 +4235,8 @@ export interface components {
              * @description For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
              *     `vsphere.networks`, `vsphere.templates`, `vsphere.folders`
              *     (the VM folders of the datacenters the project's placement
-             *     uses in the environment, by path; checked on submit),
+             *     uses in the environment, by path, each under its parent
+             *     folder; checked on submit),
              *     `ipam.subnets`, `ipam.next_free_address`, `dns.zones`,
              *     `awx.inventories`, `awx.credentials`, `naming.preview`,
              *     `rvav.templates` and `rvav.sizes` (what is offered to the
@@ -4266,9 +4267,9 @@ export interface components {
             /**
              * @description Source parameters. String values may reference inputs, for example `${inputs.cluster}`.
              *     For `rest`: `url` (on a host REST value sources may call: Allowed hosts, or RVAV_REST_SOURCE_HOSTS), `method` (GET or POST), `body`,
-             *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`
-             *     and `meta` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
-             *     expression giving a list of strings or of {value, label, meta}) or `value`.
+             *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`,
+             *     `meta` and `parent` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
+             *     expression giving a list of strings or of {value, label, meta, parent}) or `value`.
              */
             params?: {
                 [key: string]: unknown;
@@ -4283,6 +4284,12 @@ export interface components {
             description?: string;
             disabled?: boolean;
             disabled_reason?: string;
+            /**
+             * @description The value of the option this one sits under: a `tree` field
+             *     shows the options as a hierarchy. An option whose parent is
+             *     not among the options is at the top.
+             */
+            parent?: string;
         };
         FieldValuesQuery: {
             version_id: string;

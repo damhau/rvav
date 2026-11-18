@@ -646,6 +646,119 @@ describe("search fields", () => {
   });
 });
 
+describe("trees", () => {
+  const zones: Option[] = [
+    { value: "dmz", label: "DMZ" },
+    { value: "dmz-web", label: "Web", parent: "dmz" },
+    { value: "dmz-db", label: "Databases", parent: "dmz", meta: "PCI" },
+    { value: "lan", label: "LAN" },
+    { value: "lan-office", label: "Office", parent: "lan", disabled: true, disabled_reason: "Full" },
+  ];
+  const zone = (ui: Partial<UiField> = {}, initial = {}) =>
+    formOf(
+      { zone: { ui: { widget: "tree", label: "Zone", options: zones, ...ui }, schema: { type: "string" } } },
+      initial,
+    );
+  const item = (name: string) => screen.getByRole("treeitem", { name: new RegExp(`^${name}`) });
+
+  it("open, close and pick nodes with the keyboard", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={zone()} />);
+    const tree = screen.getByRole("tree", { name: "Zone" });
+    expect(
+      within(tree)
+        .getAllByRole("treeitem")
+        .map((n) => n.textContent),
+    ).toEqual(["DMZ", "LAN"]);
+    await user.tab();
+    expect(item("DMZ")).toHaveFocus();
+    expect(item("DMZ")).toHaveAttribute("aria-expanded", "false");
+
+    await user.keyboard("{ArrowRight}");
+    expect(item("DMZ")).toHaveAttribute("aria-expanded", "true");
+    expect(item("Web")).toHaveAttribute("aria-level", "2");
+    expect(item("Databases")).toHaveAttribute("aria-posinset", "2");
+    expect(item("Databases")).toHaveAttribute("aria-setsize", "2");
+    await user.keyboard("{ArrowRight}{ArrowDown}");
+    expect(item("Databases")).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(values()).toEqual({ zone: "dmz-db" });
+    expect(item("Databases")).toHaveAttribute("aria-selected", "true");
+    expect(tree).toHaveAccessibleDescription("Chosen: DMZ › Databases");
+
+    await user.keyboard("{ArrowLeft}");
+    expect(item("DMZ")).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(item("DMZ")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("treeitem", { name: /^Web/ })).not.toBeInTheDocument();
+    await user.keyboard("{End}{ArrowRight}{ArrowRight}");
+    expect(item("Office")).toHaveFocus();
+    expect(item("Office")).toHaveAttribute("aria-disabled", "true");
+    expect(item("Office")).toHaveTextContent("Full");
+    await user.keyboard(" ");
+    expect(values()).toEqual({ zone: "dmz-db" });
+    await user.keyboard("d{Home}");
+    expect(item("DMZ")).toHaveFocus();
+    await user.keyboard("{ArrowRight}w ");
+    expect(values()).toEqual({ zone: "dmz-web" });
+  });
+
+  it("open at the chosen node, and pick another with a click", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness form={zone({}, { zone: "dmz-web" })} />);
+    expect(item("Web")).toHaveAttribute("aria-selected", "true");
+    expect(item("LAN")).toHaveAttribute("aria-expanded", "false");
+    await user.tab();
+    expect(item("Web")).toHaveFocus();
+    await user.click(item("Databases"));
+    expect(values()).toEqual({ zone: "dmz-db" });
+    expect(screen.getByText("Chosen: DMZ › Databases")).toBeInTheDocument();
+    await user.click(item("LAN").querySelector("[data-toggle]")!);
+    expect(item("LAN")).toHaveAttribute("aria-expanded", "true");
+    expect(values()).toEqual({ zone: "dmz-db" });
+    await user.click(item("Office"));
+    expect(values()).toEqual({ zone: "dmz-db" });
+    await user.click(item("DMZ").querySelector("[data-toggle]")!);
+    expect(screen.queryByRole("treeitem", { name: /^Web/ })).not.toBeInTheDocument();
+    await user.click(item("DMZ"));
+    expect(values()).toEqual({ zone: "dmz" });
+    expect(item("Web")).toBeVisible();
+  });
+
+  it("take their nodes from a value source, and drop a pick it no longer offers", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.post("*/api/v1/forms/values", async ({ request }) => {
+        const q = (await request.json()) as FieldValuesQuery;
+        asked.push(q.field);
+        return HttpResponse.json({
+          field: q.field,
+          options: [
+            { value: "/GVA/vm", label: "/GVA/vm", meta: "GVA" },
+            { value: "/GVA/vm/rvav", label: "rvav", meta: "GVA", parent: "/GVA/vm" },
+            { value: "/GVA/vm/rvav/web", label: "web", meta: "GVA", parent: "/GVA/vm/rvav" },
+          ],
+        });
+      }),
+    );
+    renderWithQuery(
+      <Harness
+        form={zone(
+          { label: "Folder", options: undefined, value_source: { kind: "builtin", name: "vsphere.folders" } },
+          { zone: "/DC0/vm" },
+        )}
+      />,
+    );
+    expect(await screen.findByRole("tree", { name: "Folder" })).toBeInTheDocument();
+    expect(item("/GVA/vm")).toHaveAttribute("aria-expanded", "true");
+    expect(item("rvav")).toHaveTextContent("GVA");
+    expect(item("rvav")).toHaveAttribute("aria-posinset", "1");
+    expect(item("rvav")).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(values()).toEqual({}));
+    expect(asked).toEqual(["zone"]);
+  });
+});
+
 describe("rvav's own records", () => {
   it("are offered by a deployment field that names no source", async () => {
     const asked: FieldValuesQuery[] = [];

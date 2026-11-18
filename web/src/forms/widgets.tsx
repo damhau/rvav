@@ -13,6 +13,7 @@ import { DualListWidget } from "./dualList";
 import { SourceFailed } from "./failed";
 import { UserWidget } from "./people";
 import { SearchWidget } from "./search";
+import { TreeWidget } from "./tree";
 import { sourceFailed, useApplySuggestion, useFieldValues, type FormContext } from "./useFieldValues";
 
 export interface WidgetProps {
@@ -544,6 +545,7 @@ export const widgets: Partial<Record<UiWidget, React.ComponentType<WidgetProps>>
   checklist: ChecklistWidget,
   multiselect: ChecklistWidget,
   search: SearchWidget,
+  tree: TreeWidget,
   computed: ComputedWidget,
   info: InfoWidget,
   image: ImageWidget,

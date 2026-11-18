@@ -52,7 +52,7 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 		if m := strings.ToUpper(str("method")); m != "" && m != http.MethodGet && m != http.MethodPost {
 			errs = append(errs, fieldErr(ptr+"/params/method", "invalid", "GET or POST."))
 		}
-		for _, k := range []string{"items", "value", "label", "meta"} {
+		for _, k := range []string{"items", "value", "label", "meta", "parent"} {
 			if path := str(k); path != "" {
 				if _, err := jp.ParseString(path); err != nil {
 					errs = append(errs, fieldErr(ptr+"/params/"+k, "invalid", fmt.Sprintf("This is not valid JSONPath: %v", err)))
@@ -120,7 +120,11 @@ func celValues(params map[string]any, vars policy.Vars) (opts *[]api.Option, val
 	out := []api.Option{}
 	for _, item := range list {
 		if m, ok := item.(map[string]any); ok {
-			out = append(out, option(fmt.Sprint(m["value"]), fmt.Sprint(cmpOr(m["label"], m["value"])), str(m["meta"])))
+			o := option(fmt.Sprint(m["value"]), fmt.Sprint(cmpOr(m["label"], m["value"])), str(m["meta"]))
+			if parent := str(m["parent"]); parent != "" {
+				o.Parent = &parent
+			}
+			out = append(out, o)
 		} else {
 			out = append(out, option(fmt.Sprint(item), fmt.Sprint(item), ""))
 		}
@@ -248,7 +252,7 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 		sealedAs = sec.SealName()
 	}
 	// The mapping is in the key too: two fields may read one answer differently.
-	key := strings.Join([]string{method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta")}, "\n")
+	key := strings.Join([]string{method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta"), p("parent")}, "\n")
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Now().Before(e.until) {
 		r.mu.Unlock()
@@ -267,7 +271,7 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	if err != nil {
 		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("its answer is not JSON: %w", err)}
 	}
-	opts, err := mapOptions(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"), p("label"), p("meta"))
+	opts, err := mapOptions(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"), p("label"), p("meta"), p("parent"))
 	if err != nil {
 		return nil, 0, &BadRequestError{Msg: err.Error()}
 	}
@@ -289,11 +293,11 @@ func hostOf(target string) string {
 	return target
 }
 
-// mapOptions picks the items with a JSONPath, then each one's value, label
-// and meta.
-func mapOptions(data any, itemsPath, valuePath, labelPath, metaPath string) ([]api.Option, error) {
+// mapOptions picks the items with a JSONPath, then each one's value, label,
+// meta and parent.
+func mapOptions(data any, itemsPath, valuePath, labelPath, metaPath, parentPath string) ([]api.Option, error) {
 	paths := map[string]jp.Expr{}
-	for name, p := range map[string]string{"items": itemsPath, "value": valuePath, "label": labelPath, "meta": metaPath} {
+	for name, p := range map[string]string{"items": itemsPath, "value": valuePath, "label": labelPath, "meta": metaPath, "parent": parentPath} {
 		if p == "" {
 			continue
 		}
@@ -325,7 +329,11 @@ func mapOptions(data any, itemsPath, valuePath, labelPath, metaPath string) ([]a
 		if value == "" {
 			continue
 		}
-		out = append(out, option(value, cmp.Or(first("label", item), value), first("meta", item)))
+		o := option(value, cmp.Or(first("label", item), value), first("meta", item))
+		if parent := first("parent", item); parent != "" {
+			o.Parent = &parent
+		}
+		out = append(out, o)
 	}
 	return out, nil
 }

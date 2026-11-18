@@ -215,8 +215,16 @@ function resolveSource(
     case "rvav.vms":
       return { field, options: rvavOptions(db, project, source.name, params, search), cache_seconds: 30 };
     // The VM folders of the placement's datacenters: every mock cluster is in GVA.
-    case "vsphere.folders":
-      return { field, options: vmFolders.map((f) => ({ value: f, label: f, meta: "GVA" })), cache_seconds: 60 };
+    case "vsphere.folders": {
+      // As the server: each folder under its parent, named by its own name in a tree.
+      const tree = ui.widget === "tree";
+      const options = vmFolders.map((f): Option => {
+        const parent = f.slice(0, f.lastIndexOf("/"));
+        if (!vmFolders.includes(parent)) return { value: f, label: f, meta: "GVA" };
+        return { value: f, label: tree ? f.slice(parent.length + 1) : f, meta: "GVA", parent };
+      });
+      return { field, options, cache_seconds: 60 };
+    }
     case "ipam.subnets":
       return withDefault(
         networks
