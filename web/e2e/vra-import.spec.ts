@@ -19,7 +19,10 @@ test("see the dry run, map projects, import, and import again", async ({ page })
   await expect(rhel.getByText("Unchanged")).toBeVisible();
   await expect(rhel.getByText("Not Data Services, Legacy Apps: not mapped")).toBeVisible();
   await rhel.getByRole("button", { name: "Notes on RHEL 9 Server: 2 notes" }).click();
-  await expect(templates.getByText(/Placed by its constraint tags/)).toBeVisible();
+  const notes = page.getByRole("dialog", { name: "Notes on RHEL 9 Server" });
+  await expect(notes.getByText(/Placed by its constraint tags/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(notes).toBeHidden();
   await expect(templates.getByRole("row", { name: /Windows Server 2022/ }).getByText("Create")).toBeVisible();
   await expect(templates.getByRole("row", { name: /Work in progress/ }).getByText("Not imported")).toBeVisible();
 
@@ -112,7 +115,7 @@ test("adopt one project's deployments, mark it moved, then not", async ({ page }
 
   // Undone, once confirmed.
   await web.getByRole("button", { name: "Not moved… (Web Platform)" }).click();
-  const undo = page.getByRole("dialog", { name: "Web Platform not moved" });
+  const undo = page.getByRole("alertdialog", { name: "Mark Web Platform not moved?" });
   await expect(undo.getByText(/deleting an adopted deployment in vRA deletes its VMs/)).toBeVisible();
   await undo.getByRole("button", { name: "Not moved" }).click();
   await expect(undo).toBeHidden();

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -24,5 +24,44 @@ describe("vRA import", () => {
     const strategy = (id: string) => (within(table).getByText(id).closest("tr") as HTMLTableRowElement).cells[2];
     expect(strategy("vra-prj-web")).toHaveTextContent(/^SpreadvRA: SPREAD$/);
     expect(strategy("vra-prj-legacy")).toHaveTextContent(/^None$/);
+  });
+
+  it("says which step the move is at, and keeps the plan's tab in the address", async () => {
+    const user = userEvent.setup();
+    const { router } = renderApp("/admin/vra-import");
+    const steps = await screen.findByRole("list", { name: "Steps" });
+    await within(steps).findByText(/with no rvav project of the same name/);
+    const now = within(steps)
+      .getAllByRole("listitem")
+      .find((li) => li.getAttribute("aria-current") === "step");
+    expect(now).toHaveTextContent(/Map the projects: now/);
+    expect(within(steps).getAllByRole("listitem")[0]).toHaveTextContent(/Read vRA: done/);
+
+    await user.click(await screen.findByRole("tab", { name: /Cutover/ }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: "cutover" }));
+  });
+
+  it("opens a template's notes in a side panel", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import");
+    await user.click(await screen.findByRole("button", { name: "Notes on RHEL 9 Server: 2 notes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Notes on RHEL 9 Server" });
+    expect(sheet).toHaveTextContent(/Placed by its constraint tags/);
+  });
+
+  it("marks a project moved from a side panel, and not moved once confirmed", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=cutover");
+    await user.click(await screen.findByRole("button", { name: "Mark as moved… (Web Platform)" }));
+    const sheet = await screen.findByRole("dialog", { name: "Move Web Platform to rvav" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Note" }), "Cutover weekend");
+    await user.click(within(sheet).getByRole("button", { name: "Mark as moved" }));
+    expect(await screen.findByText("Web Platform moved to rvav")).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Not moved… (Web Platform)" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Mark Web Platform not moved?" });
+    expect(confirm).toHaveTextContent(/deleting an adopted deployment in vRA deletes its VMs/);
+    await user.click(within(confirm).getByRole("button", { name: "Not moved" }));
+    expect(await screen.findByText("Web Platform is no longer moved")).toBeInTheDocument();
   });
 });

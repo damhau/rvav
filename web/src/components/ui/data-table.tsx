@@ -46,6 +46,8 @@ export interface DataTableProps<T> {
     onChange: (next: Set<string>) => void;
     /** A row's checkbox name, such as "Select web-prd-front". */
     label: (row: T) => string;
+    /** The header checkbox's name: "Select all shown" when filters or paging hide rows. */
+    allLabel?: string;
   };
   defaultSort?: Sort;
   /** The sort, when the page keeps it (in the URL, say). */
@@ -118,12 +120,18 @@ export function DataTable<T>({
               {selection && (
                 <th scope="col" className="w-px border-b border-line py-2 pr-1 pl-4">
                   <Checkbox
-                    aria-label="Select all"
+                    aria-label={selection.allLabel ?? "Select all"}
                     checked={allSelected}
                     disabled={!sorted?.length}
-                    onChange={(on) =>
-                      selection.onChange(new Set(on ? [...selection.selected, ...(sorted ?? []).map(rowKey)] : []))
-                    }
+                    onChange={(on) => {
+                      const shown = new Set((sorted ?? []).map(rowKey));
+                      // Rows selected but not shown stay selected either way.
+                      selection.onChange(
+                        new Set(
+                          on ? [...selection.selected, ...shown] : [...selection.selected].filter((k) => !shown.has(k)),
+                        ),
+                      );
+                    }}
                   />
                 </th>
               )}

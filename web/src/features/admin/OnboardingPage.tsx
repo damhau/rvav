@@ -4,24 +4,26 @@
 // vCenter or EfficientIP.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ServerCog } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
 import { PowerDot } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
 import { adm, q } from "@/lib/query";
-import { failed, fieldErrors, td, th } from "./governance/common";
+import { failed, fieldErrors } from "./governance/common";
 
 type S = components["schemas"];
 type Vm = S["OnboardingVm"];
@@ -30,8 +32,9 @@ const keyOf = (v: Vm) => `${v.vcenter}/${v.moref}`;
 /** How many VMs one adoption takes (the server's limit). */
 const MAX_ADOPT = 200;
 const memory = (mb: number) => (mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`);
+const vmsText = (n: number) => `${n} VM${n === 1 ? "" : "s"}`;
 
-function AdoptDialog({
+function AdoptSheet({
   vms,
   onClose,
   onDone,
@@ -81,131 +84,118 @@ function AdoptDialog({
       return Number.isNaN(i) ? msg : `${vms[i]?.name ?? k}: ${msg}`;
     });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={`Adopt ${vms.length} VM${vms.length === 1 ? "" : "s"}`}
-        className="w-[min(560px,calc(100vw-32px))]"
-      >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            adopt.mutate();
-          }}
+    <Sheet
+      open
+      onOpenChange={(o) => !o && !adopt.isPending && onClose()}
+      title={`Adopt ${vmsText(vms.length)}`}
+      description="Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those."
+      onSubmit={() => {
+        setErrors({});
+        adopt.mutate();
+      }}
+      submitLabel={adopt.isPending ? "Adopting…" : `Adopt ${vmsText(vms.length)}`}
+      submitDisabled={adopt.isPending}
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Project" htmlFor="ob-project" error={errors["/project_id"]}>
+          <Select
+            id="ob-project"
+            value={f.project}
+            loading={projects.isPending}
+            onChange={(v) => setF({ ...f, project: v, environment: "", owner: "", item: "" })}
+            options={(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
+          />
+        </Field>
+        <Field label="Environment" htmlFor="ob-env" error={errors["/environment"]}>
+          <Select
+            id="ob-env"
+            value={f.environment}
+            disabled={!f.project}
+            onChange={(v) => setF({ ...f, environment: v })}
+            loading={project.isFetching}
+            options={(project.data?.environments ?? []).map((e) => ({ value: e, label: e }))}
+          />
+        </Field>
+        <Field label="Owner" htmlFor="ob-owner" hint="A member of the project" error={errors["/owner_id"]}>
+          <Select
+            id="ob-owner"
+            value={f.owner}
+            disabled={!f.project}
+            loading={members.isFetching}
+            onChange={(v) => setF({ ...f, owner: v })}
+            options={(members.data?.items ?? [])
+              .filter(requests)
+              .map((m) => ({ value: m.user.id, label: m.user.name }))}
+          />
+        </Field>
+        <Field
+          label="Catalog item"
+          htmlFor="ob-item"
+          hint="Their OS family and day-2 actions"
+          error={errors["/catalog_item_id"]}
         >
-          <p className="text-secondary text-muted">
-            Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records
-            EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those.
-          </p>
-          <details className="text-secondary">
-            <summary className="cursor-pointer text-muted">The VMs</summary>
-            <ul aria-label="VMs to adopt" className="mt-1 max-h-32 overflow-y-auto font-mono text-caption">
-              {vms.map((v) => (
-                <li key={keyOf(v)}>
-                  {v.name} <span className="text-faint">{v.vcenter}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Project" htmlFor="ob-project" error={errors["/project_id"]}>
-              <Select
-                id="ob-project"
-                value={f.project}
-                loading={projects.isPending}
-                onChange={(v) => setF({ ...f, project: v, environment: "", owner: "", item: "" })}
-                options={(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
-              />
-            </Field>
-            <Field label="Environment" htmlFor="ob-env" error={errors["/environment"]}>
-              <Select
-                id="ob-env"
-                value={f.environment}
-                disabled={!f.project}
-                onChange={(v) => setF({ ...f, environment: v })}
-                loading={project.isFetching}
-                options={(project.data?.environments ?? []).map((e) => ({ value: e, label: e }))}
-              />
-            </Field>
-            <Field label="Owner" htmlFor="ob-owner" hint="A member of the project" error={errors["/owner_id"]}>
-              <Select
-                id="ob-owner"
-                value={f.owner}
-                disabled={!f.project}
-                loading={members.isFetching}
-                onChange={(v) => setF({ ...f, owner: v })}
-                options={(members.data?.items ?? [])
-                  .filter(requests)
-                  .map((m) => ({ value: m.user.id, label: m.user.name }))}
-              />
-            </Field>
-            <Field
-              label="Catalog item"
-              htmlFor="ob-item"
-              hint="Their OS family and day-2 actions"
-              error={errors["/catalog_item_id"]}
-            >
-              <Select
-                id="ob-item"
-                value={f.item}
-                disabled={!f.project}
-                loading={items.isFetching}
-                onChange={(v) => setF({ ...f, item: v })}
-                options={(items.data?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
-              />
-            </Field>
-            <Field
-              label="Lease (days)"
-              htmlFor="ob-lease"
-              hint="Empty: the lease policy's default"
-              error={errors["/lease_days"]}
-            >
-              <Input
-                id="ob-lease"
-                type="number"
-                min={1}
-                value={f.lease}
-                onChange={(e) => setF({ ...f, lease: e.target.value })}
-              />
-            </Field>
-          </div>
-          <label htmlFor="ob-one" className="flex items-center gap-1.5 text-body">
-            <Checkbox id="ob-one" checked={f.one} onChange={(on) => setF({ ...f, one: on })} />
-            All in one deployment (else one each, named after its VM)
-          </label>
-          {f.one && (
-            <Field label="Deployment name" htmlFor="ob-name" error={errors["/deployment_name"]}>
-              <Input
-                id="ob-name"
-                className="font-mono text-secondary"
-                placeholder="erp-prd"
-                value={f.name}
-                onChange={(e) => setF({ ...f, name: e.target.value })}
-              />
-            </Field>
-          )}
-          {vmErrors.length > 0 && (
-            <ul
-              role="alert"
-              className="flex flex-col gap-0.5 rounded-md border border-bad/40 bg-bad-soft p-3 text-secondary"
-            >
-              {vmErrors.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={adopt.isPending}>
-              {adopt.isPending ? "Adopting…" : `Adopt ${vms.length} VM${vms.length === 1 ? "" : "s"}`}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <Select
+            id="ob-item"
+            value={f.item}
+            disabled={!f.project}
+            loading={items.isFetching}
+            onChange={(v) => setF({ ...f, item: v })}
+            options={(items.data?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
+          />
+        </Field>
+        <Field
+          label="Lease (days)"
+          htmlFor="ob-lease"
+          hint="Empty: the lease policy's default"
+          error={errors["/lease_days"]}
+        >
+          <Input
+            id="ob-lease"
+            type="number"
+            min={1}
+            value={f.lease}
+            onChange={(e) => setF({ ...f, lease: e.target.value })}
+          />
+        </Field>
+      </div>
+      <label htmlFor="ob-one" className="flex items-center gap-1.5 text-body">
+        <Checkbox id="ob-one" checked={f.one} onChange={(on) => setF({ ...f, one: on })} />
+        All in one deployment (else one each, named after its VM)
+      </label>
+      {f.one && (
+        <Field label="Deployment name" htmlFor="ob-name" error={errors["/deployment_name"]}>
+          <Input
+            id="ob-name"
+            className="font-mono text-secondary"
+            placeholder="erp-prd"
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+          />
+        </Field>
+      )}
+      {vmErrors.length > 0 && (
+        <ul
+          role="alert"
+          className="flex flex-col gap-0.5 rounded-md border border-bad/40 bg-bad-soft p-3 text-secondary"
+        >
+          {vmErrors.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      )}
+      <section aria-labelledby="ob-vms" className="flex flex-col gap-1.5">
+        <h3 id="ob-vms" className="label">
+          The VMs
+        </h3>
+        <ul aria-label="VMs to adopt" className="max-h-48 overflow-y-auto font-mono text-caption">
+          {vms.map((v) => (
+            <li key={keyOf(v)}>
+              {v.name} <span className="text-faint">{v.vcenter}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </Sheet>
   );
 }
 
@@ -213,7 +203,8 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
   const vms = result.deployments.reduce((n, d) => n + d.vms.length, 0);
   return (
     <Panel
-      title={`Adopted ${vms} VM${vms === 1 ? "" : "s"} into ${result.deployments.length} deployment${result.deployments.length === 1 ? "" : "s"}`}
+      title={`Adopted ${vmsText(vms)} into ${result.deployments.length} deployment${result.deployments.length === 1 ? "" : "s"}`}
+      description="Each is a deployment like any other: its owner runs its day-2 actions, and its lease runs from today."
       actions={
         <Button size="sm" variant="quiet" onClick={onClose}>
           Close
@@ -224,7 +215,11 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
       <ul className="max-h-64 overflow-y-auto text-body">
         {result.deployments.map((d) => (
           <li key={d.id} className="flex flex-wrap gap-x-3 border-b border-line px-4 py-1.5 last:border-0">
-            <Link to="/deployments/$deploymentId" params={{ deploymentId: d.id }} className="font-medium">
+            <Link
+              to="/deployments/$deploymentId"
+              params={{ deploymentId: d.id }}
+              className="font-medium text-accent underline underline-offset-2"
+            >
               {d.name}
             </Link>
             <span className="text-muted">
@@ -238,6 +233,52 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
   );
 }
 
+const columns: Column<Vm>[] = [
+  {
+    id: "name",
+    header: "Name",
+    cell: (v) => (
+      <span className="flex items-center gap-2">
+        <PowerDot on={v.power_state === "on"} />
+        <span className="flex flex-col">
+          <span className="font-medium">{v.name}</span>
+          <span className="font-mono text-caption text-faint">{v.moref}</span>
+        </span>
+      </span>
+    ),
+  },
+  {
+    id: "address",
+    header: "Address",
+    cell: (v) => (
+      <span className="font-mono text-secondary">
+        {v.ip_address ?? <span className="text-faint">none</span>}
+        {v.hostname && <div className="text-caption text-faint">{v.hostname}</div>}
+      </span>
+    ),
+  },
+  {
+    id: "size",
+    header: "Size",
+    cell: (v) => (
+      <span className="tnum">
+        {v.cpu_count} vCPU · {memory(v.memory_mb)}
+      </span>
+    ),
+  },
+  { id: "os", header: "Guest OS", cell: (v) => <span className="text-muted">{v.guest_os ?? ""}</span> },
+  {
+    id: "where",
+    header: "Where",
+    cell: (v) => (
+      <span className="text-secondary text-muted">
+        {v.cluster ?? ""}
+        <div className="text-caption text-faint">{v.vcenter}</div>
+      </span>
+    ),
+  },
+];
+
 export function OnboardingPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -245,11 +286,15 @@ export function OnboardingPage() {
   const [power, setPower] = useState("any");
   const debounced = useDebounced(search, 250);
   const vcenters = useQuery(adm.vcenters());
+  // Loaded with the page: the side panel then opens on its Project field,
+  // which stays disabled while it loads.
+  useQuery(adm.projectNames());
   const filters = {
     q: debounced || undefined,
     vcenter: vcenter === "any" ? undefined : vcenter,
     power_state: power === "any" ? undefined : (power as S["VmPowerState"]),
   };
+  const filtered = search !== "" || vcenter !== "any" || power !== "any";
   const list = useInfiniteQuery({
     queryKey: ["admin", "onboarding", filters],
     initialPageParam: undefined as string | undefined,
@@ -262,176 +307,130 @@ export function OnboardingPage() {
   const [selected, setSelected] = useState<Map<string, Vm>>(new Map());
   const [adopting, setAdopting] = useState(false);
   const [result, setResult] = useState<S["OnboardingResult"] | null>(null);
-  const vms = list.data?.pages.flatMap((p) => p.items) ?? [];
+  const vms = list.data?.pages.flatMap((p) => p.items);
   const total = list.data?.pages[0]?.total ?? 0;
-  const allShown = vms.length > 0 && vms.every((v) => selected.has(keyOf(v)));
   // A selection outlives the filters: what it holds that isn't shown is said.
-  const shown = new Set(vms.map(keyOf));
+  const shown = new Map((vms ?? []).map((v) => [keyOf(v), v]));
   const hidden = [...selected.keys()].filter((k) => !shown.has(k)).length;
-  const toggle = (v: Vm, on: boolean) => {
-    const next = new Map(selected);
-    if (on) next.set(keyOf(v), v);
-    else next.delete(keyOf(v));
-    setSelected(next);
+  const clearFilters = () => {
+    setSearch("");
+    setVcenter("any");
+    setPower("any");
   };
   return (
     <Page>
       <PageHeader
         title="Onboarding"
-        meta="VMs in vCenter that rvav doesn't manage. Adopt them into deployments, with an owner, a project and a lease."
+        description="VMs in vCenter that rvav doesn't manage. Select them, then adopt them into deployments with an owner, a project and a lease."
         actions={
           <Button
             variant="primary"
-            size="sm"
             disabled={selected.size === 0 || selected.size > MAX_ADOPT}
             onClick={() => setAdopting(true)}
           >
-            Adopt {selected.size || ""} VM{selected.size === 1 ? "" : "s"}…
+            {selected.size === 0 ? "Adopt VMs…" : `Adopt ${vmsText(selected.size)}…`}
           </Button>
         }
       />
       {result && <Adopted result={result} onClose={() => setResult(null)} />}
-      <Panel flush>
-        <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
-          <Field label="Search" htmlFor="ob-search" className="w-56">
-            <Input
-              id="ob-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, address or host name"
-            />
-          </Field>
-          <Field label="vCenter" htmlFor="ob-vcenter" className="w-48">
-            <Select
-              id="ob-vcenter"
-              value={vcenter}
-              onChange={setVcenter}
-              options={[
-                { value: "any", label: "Any" },
-                ...(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name })),
-              ]}
-            />
-          </Field>
-          <Field label="Power" htmlFor="ob-power" className="w-32">
-            <Select
-              id="ob-power"
-              value={power}
-              onChange={setPower}
-              options={[
-                { value: "any", label: "Any" },
-                { value: "on", label: "On" },
-                { value: "off", label: "Off" },
-                { value: "suspended", label: "Suspended" },
-              ]}
-            />
-          </Field>
-          <span className="ml-auto flex items-center gap-2 text-secondary text-muted" aria-live="polite">
-            <span>
-              {list.data ? `${total} VM${total === 1 ? "" : "s"}` : ""}
-              {selected.size > 0 ? ` · ${selected.size} selected` : ""}
-              {hidden > 0 ? `, ${hidden} not shown` : ""}
-              {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
-            </span>
-            {selected.size > 0 && (
-              <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
-                Clear
-              </Button>
-            )}
-          </span>
-        </div>
-        {list.isPending && <SkeletonRows rows={6} cols={6} />}
-        {list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
-        {list.data && vms.length === 0 && (
-          <EmptyState title="Nothing to adopt" body="Every VM the inventory has that matches is managed by rvav." />
-        )}
-        {vms.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-body" aria-label="VMs to adopt">
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className={th + " w-8"}>
-                    <Checkbox
-                      aria-label="Select all shown"
-                      checked={allShown}
-                      onChange={(on) => {
-                        const next = new Map(selected);
-                        for (const v of vms) {
-                          if (on) next.set(keyOf(v), v);
-                          else next.delete(keyOf(v));
-                        }
-                        setSelected(next);
-                      }}
-                    />
-                  </th>
-                  <th scope="col" className={th}>
-                    Name
-                  </th>
-                  <th scope="col" className={th}>
-                    Address
-                  </th>
-                  <th scope="col" className={th}>
-                    Size
-                  </th>
-                  <th scope="col" className={th}>
-                    Guest OS
-                  </th>
-                  <th scope="col" className={th}>
-                    Where
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {vms.map((v) => (
-                  <tr key={keyOf(v)} className="hover:bg-sunken">
-                    <td className={td}>
-                      <Checkbox
-                        aria-label={`Select ${v.name}`}
-                        checked={selected.has(keyOf(v))}
-                        onChange={(on) => toggle(v, on)}
-                      />
-                    </td>
-                    <td className={td}>
-                      <span className="flex items-center gap-2">
-                        <PowerDot on={v.power_state === "on"} />
-                        <span className="flex flex-col">
-                          <span className="font-medium">{v.name}</span>
-                          <span className="font-mono text-caption text-faint">{v.moref}</span>
-                        </span>
-                      </span>
-                    </td>
-                    <td className={td + " font-mono text-secondary"}>
-                      {v.ip_address ?? <span className="text-faint">none</span>}
-                      {v.hostname && <div className="text-caption text-faint">{v.hostname}</div>}
-                    </td>
-                    <td className={td + " tnum"}>
-                      {v.cpu_count} vCPU · {memory(v.memory_mb)}
-                    </td>
-                    <td className={td + " text-muted"}>{v.guest_os ?? ""}</td>
-                    <td className={td + " text-secondary text-muted"}>
-                      {v.cluster ?? ""}
-                      <div className="text-caption text-faint">{v.vcenter}</div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {list.hasNextPage && (
-          <div className="flex justify-center border-t border-line p-2">
-            <Button
-              size="sm"
-              variant="quiet"
-              disabled={list.isFetchingNextPage}
-              onClick={() => void list.fetchNextPage()}
-            >
-              {list.isFetchingNextPage ? "Loading…" : `Show more (${vms.length} of ${total})`}
+      <Panel
+        flush
+        footer={
+          list.hasNextPage && (
+            <Button size="sm" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+              {list.isFetchingNextPage ? "Loading…" : `Show more (${vms?.length ?? 0} of ${total})`}
             </Button>
-          </div>
-        )}
+          )
+        }
+      >
+        <DataTable
+          label="VMs to adopt"
+          columns={columns}
+          rows={vms}
+          rowKey={keyOf}
+          minWidth={760}
+          loading={list.isPending}
+          error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
+          selection={{
+            selected: new Set(selected.keys()),
+            onChange: (next) => setSelected(new Map([...next].map((k) => [k, selected.get(k) ?? shown.get(k)!]))),
+            label: (v) => `Select ${v.name}`,
+            allLabel: "Select all shown",
+          }}
+          toolbar={
+            <div className="flex w-full flex-wrap items-end gap-2">
+              <Field label="Search" htmlFor="ob-search" className="w-56">
+                <Input
+                  id="ob-search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Name, address or host name"
+                />
+              </Field>
+              <Field label="vCenter" htmlFor="ob-vcenter" className="w-48">
+                <Select
+                  id="ob-vcenter"
+                  value={vcenter}
+                  onChange={setVcenter}
+                  options={[
+                    { value: "any", label: "Any" },
+                    ...(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name })),
+                  ]}
+                />
+              </Field>
+              <Field label="Power" htmlFor="ob-power" className="w-32">
+                <Select
+                  id="ob-power"
+                  value={power}
+                  onChange={setPower}
+                  options={[
+                    { value: "any", label: "Any" },
+                    { value: "on", label: "On" },
+                    { value: "off", label: "Off" },
+                    { value: "suspended", label: "Suspended" },
+                  ]}
+                />
+              </Field>
+              <span
+                className="ml-auto flex items-center gap-2 self-center text-secondary text-muted"
+                aria-live="polite"
+              >
+                <span>
+                  {list.data ? vmsText(total) : ""}
+                  {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+                  {hidden > 0 ? `, ${hidden} not shown` : ""}
+                  {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
+                </span>
+                {selected.size > 0 && (
+                  <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
+                    Clear selection
+                  </Button>
+                )}
+              </span>
+            </div>
+          }
+          empty={
+            <EmptyState
+              icon={ServerCog}
+              title="Nothing to adopt"
+              body={
+                filtered
+                  ? "No VM rvav doesn't manage matches these filters."
+                  : "Every VM the inventory has is managed by rvav."
+              }
+              action={
+                filtered && (
+                  <Button size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )
+              }
+            />
+          }
+        />
       </Panel>
       {adopting && (
-        <AdoptDialog
+        <AdoptSheet
           vms={[...selected.values()]}
           onClose={() => setAdopting(false)}
           onDone={(r) => {
@@ -440,7 +439,7 @@ export function OnboardingPage() {
             setResult(r);
             void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
             void qc.invalidateQueries({ queryKey: ["deployments"] });
-            toast.success(`Adopted ${r.deployments.reduce((n, d) => n + d.vms.length, 0)} VMs`);
+            toast.success(`Adopted ${vmsText(r.deployments.reduce((n, d) => n + d.vms.length, 0))}`);
           }}
         />
       )}

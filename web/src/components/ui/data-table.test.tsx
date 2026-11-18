@@ -124,6 +124,28 @@ describe("DataTable", () => {
     expect(screen.getByRole("status")).toHaveTextContent("");
   });
 
+  it("leaves rows selected but not shown as they are", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms.slice(0, 2)}
+        rowKey={(v) => v.name}
+        selection={{
+          selected: new Set(["hidden-01"]),
+          onChange,
+          label: (v) => `Select ${v.name}`,
+          allLabel: "Select all shown",
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Select all shown" }));
+    const all = onChange.mock.calls[0]![0] as Set<string>;
+    expect([...all].sort()).toEqual(["hidden-01", ...vms.slice(0, 2).map((v) => v.name)].sort());
+  });
+
   it("says it is loading, keeping the headers", () => {
     render(<DataTable label="VMs" columns={columns} rows={undefined} rowKey={(v) => v.name} loading />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading");
