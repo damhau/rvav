@@ -194,7 +194,8 @@ test("templates, sizes and network mappings", async ({ page }) => {
   await expect(templates.getByRole("row", { name: /Ubuntu 24.04/ })).toContainText("rvav-templates / ubuntu-24.04");
 
   await page.getByRole("tab", { name: "Sizes" }).click();
-  await page.getByRole("button", { name: "Change Medium" }).click();
+  await page.getByRole("button", { name: "Actions for Medium" }).click();
+  await page.getByRole("menuitem", { name: "Change" }).click();
   const size = page.getByRole("dialog", { name: "Change Medium" });
   await size.getByRole("spinbutton", { name: "Memory (GB)" }).fill("12");
   await size.getByRole("button", { name: "Save size" }).click();
@@ -213,7 +214,12 @@ test("templates, sizes and network mappings", async ({ page }) => {
   await map.getByRole("button", { name: "Save mapping" }).click();
   const networks = page.getByRole("region", { name: "Network mappings" });
   await expect(networks.getByRole("row", { name: /dvpg-lab-dev-vl999/ })).toContainText("By hand");
-  await networks.getByRole("button", { name: "Remove the mapping of dvpg-lab-dev-vl999" }).click();
+  await networks.getByRole("button", { name: "Actions for dvpg-lab-dev-vl999" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Remove the mapping of dvpg-lab-dev-vl999?" });
+  await expect(confirm).toContainText("EfficientIP's subnet");
+  await confirm.getByRole("button", { name: "Remove mapping" }).click();
+  await expect(confirm).toBeHidden();
   await expect(networks.getByRole("row", { name: /dvpg-lab-dev-vl999/ })).toBeHidden();
 });
 

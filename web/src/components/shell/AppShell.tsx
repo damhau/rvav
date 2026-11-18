@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Dialog } from "radix-ui";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { FolderOpen } from "lucide-react";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ function NoProject() {
     return (
       <Page>
         <EmptyState
+          icon={FolderOpen}
           title="You are not in a project yet"
           body="Catalog, deployments and requests belong to projects. As an administrator, set rvav up: its connections, environments and projects, and a first catalog item."
           action={
@@ -45,6 +47,7 @@ function NoProject() {
   return (
     <Page>
       <EmptyState
+        icon={FolderOpen}
         title="You are not in a project yet"
         body="Catalog, deployments and requests belong to projects. Ask a project admin to add you. You can still decide the approvals that wait for you."
         action={

@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   Sun,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Kbd } from "@/components/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
@@ -38,9 +38,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
 
   return (
     <header className="flex flex-wrap items-center gap-2.5 border-b border-line bg-surface px-4 py-2.5 md:px-6">
-      <Button variant="quiet" size="icon" className="md:hidden" aria-label="Open navigation" onClick={onOpenNav}>
+      <IconButton label="Open navigation" className="md:hidden" onClick={onOpenNav}>
         <MenuIcon />
-      </Button>
+      </IconButton>
       <button
         type="button"
         onClick={onOpenPalette}
@@ -77,9 +77,9 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
 
         <Menu>
           <MenuTrigger asChild>
-            <Button variant="secondary" size="icon" className="size-[30px] border-line" aria-label={`Theme: ${theme}`}>
+            <IconButton variant="secondary" className="size-[30px] border-line" label={`Theme: ${theme}`}>
               <ThemeIcon />
-            </Button>
+            </IconButton>
           </MenuTrigger>
           <MenuContent>
             <MenuLabel>Theme</MenuLabel>

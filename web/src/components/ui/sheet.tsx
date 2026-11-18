@@ -1,8 +1,11 @@
 import { X } from "lucide-react";
 import { Dialog as D } from "radix-ui";
+import { useRef } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { useOpener } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
+
+const firstField = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])";
 
 interface PanelProps {
   title: string;
@@ -20,8 +23,8 @@ interface PanelProps {
 
 /**
  * A side panel for creating and editing: the page stays in view behind it.
- * Focus stays inside while it is open, Escape closes it, and the focus goes
- * back to what opened it.
+ * It opens on its first field, keeps the focus inside, closes with Escape, and
+ * gives the focus back to what opened it.
  */
 export function Sheet({
   open,
@@ -50,11 +53,23 @@ function SheetPanel({
   className,
 }: PanelProps & { ref?: React.Ref<HTMLDivElement> }) {
   const giveFocusBack = useOpener();
-  const body = <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">{children}</div>;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const body = (
+    <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+      {children}
+    </div>
+  );
   const bar = "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3";
   return (
     <D.Content
       ref={ref}
+      onOpenAutoFocus={(e) => {
+        const first = bodyRef.current?.querySelector<HTMLElement>(firstField);
+        if (first) {
+          e.preventDefault();
+          first.focus();
+        }
+      }}
       onCloseAutoFocus={giveFocusBack}
       className={cn(
         "fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-line bg-surface shadow-pop",

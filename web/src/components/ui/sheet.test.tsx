@@ -50,6 +50,7 @@ describe("Sheet", () => {
     await user.click(screen.getByRole("button", { name: "New size" }));
     const sheet = screen.getByRole("dialog", { name: "New size" });
     expect(sheet).toHaveAccessibleDescription("Size pickers offer it to the projects you choose.");
+    expect(within(sheet).getByRole("textbox", { name: "Label" })).toHaveFocus();
     expect(within(sheet).getByRole("button", { name: "Save size" })).toBeDisabled();
     await user.type(within(sheet).getByRole("textbox", { name: "Label" }), "Large");
     await user.click(within(sheet).getByRole("button", { name: "Save size" }));

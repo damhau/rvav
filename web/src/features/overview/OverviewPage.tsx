@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CircleX, Clock3, Hourglass, ListChecks, Plus } from "lucide-react";
+import { CircleCheck, CircleX, Clock3, Hourglass, Inbox, ListChecks, Plus, Star } from "lucide-react";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { ItemIcon, itemTypeLabel, Time } from "@/components/common/misc";
@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import type { QuotaResource } from "@/lib/api/types";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import type { QuotaResource, ServiceRequest } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
@@ -93,6 +94,7 @@ function Attention() {
   if (rows.length === 0) {
     return (
       <EmptyState
+        icon={CircleCheck}
         title="Nothing needs you right now"
         body="Failed requests, approvals and expiring leases show up here."
       />
@@ -125,70 +127,76 @@ function Attention() {
   );
 }
 
+type OpenRequest = ServiceRequest;
+
+const openColumns: Column<OpenRequest>[] = [
+  {
+    id: "request",
+    header: "Request",
+    cell: (r) => (
+      <div className="flex flex-col">
+        <Link
+          to="/requests/$requestId"
+          params={{ requestId: r.number }}
+          className="font-medium text-fg hover:text-accent"
+        >
+          {r.title}
+        </Link>
+        <span className="text-caption text-muted">
+          <span className="font-mono">{r.number}</span> · {r.environment} · {r.requester.name}
+        </span>
+      </div>
+    ),
+  },
+  { id: "status", header: "Status", cell: (r) => <RequestStatusBadge status={r.status} /> },
+  {
+    id: "step",
+    header: "Current step",
+    cell: (r) => (
+      <div className="flex flex-col gap-1">
+        <span className="text-muted">{r.current_step?.title ?? "–"}</span>
+        {r.status === "running" && <ProgressSegments request={r} />}
+      </div>
+    ),
+  },
+  {
+    id: "submitted",
+    header: "Submitted",
+    align: "end",
+    sortValue: (r) => r.submitted_at,
+    className: "whitespace-nowrap text-muted",
+    cell: (r) => <Time iso={r.submitted_at} />,
+  },
+];
+
 function OpenRequests() {
   const { projectId } = useCurrentProject();
   const open = useInfiniteQuery(
     q.requests({ projectId, status: ["running", "queued", "pending_approval", "scheduled", "cancelling"], limit: 8 }),
   );
-  if (open.isPending) return <SkeletonRows rows={3} />;
-  if (open.isError) return <ErrorState error={open.error} onRetry={() => void open.refetch()} />;
-  const items = open.data.pages[0]?.items ?? [];
-  if (items.length === 0) {
-    return (
-      <EmptyState title="No open requests" body="Requests that are running or waiting for approval appear here." />
-    );
-  }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse">
-        <thead>
-          <tr className="label text-left">
-            <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-              Request
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Status
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Current step
-            </th>
-            <th scope="col" className="border-b border-line px-4 py-2 text-right font-medium">
-              Submitted
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((r) => (
-            <tr key={r.id} className="hover:bg-sunken">
-              <td className="border-b border-line px-4 py-2 last:border-b-0">
-                <Link
-                  to="/requests/$requestId"
-                  params={{ requestId: r.number }}
-                  className="font-medium text-fg hover:text-accent"
-                >
-                  {r.title}
-                </Link>
-                <div className="font-mono text-caption text-faint">
-                  {r.number} · {r.environment} · {r.requester.name}
-                </div>
-              </td>
-              <td className="border-b border-line px-3 py-2">
-                <RequestStatusBadge status={r.status} />
-              </td>
-              <td className="border-b border-line px-3 py-2">
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted">{r.current_step?.title ?? "–"}</span>
-                  {r.status === "running" && <ProgressSegments request={r} />}
-                </div>
-              </td>
-              <td className="border-b border-line px-4 py-2 text-right text-muted">
-                <Time iso={r.submitted_at} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      label="Open requests"
+      columns={openColumns}
+      rows={open.data?.pages[0]?.items}
+      rowKey={(r) => r.id}
+      rowLinks
+      minWidth={640}
+      loading={open.isPending}
+      error={open.isError && <ErrorState error={open.error} onRetry={() => void open.refetch()} />}
+      empty={
+        <EmptyState
+          icon={Inbox}
+          title="No open requests"
+          body="Requests that are running or waiting for approval appear here."
+          action={
+            <Button size="sm" asChild>
+              <Link to="/catalog">Browse the catalog</Link>
+            </Button>
+          }
+        />
+      }
+    />
   );
 }
 
@@ -196,7 +204,7 @@ function Quota() {
   const { projectId, project } = useCurrentProject();
   const quota = useQuery(q.quota(projectId));
   return (
-    <Panel title="Quota" actions={<span className="text-caption text-faint">{project.name}</span>}>
+    <Panel title="Quota" description={`Used and reserved in ${project.name}`}>
       {quota.isPending ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
@@ -232,7 +240,16 @@ function Favourites() {
       ) : favs.isError ? (
         <ErrorState error={favs.error} />
       ) : favs.data.items.length === 0 ? (
-        <EmptyState title="No favourites yet" body="Star items in the catalog to request them again from here." />
+        <EmptyState
+          icon={Star}
+          title="No favourites yet"
+          body="Star items in the catalog to request them again from here."
+          action={
+            <Button size="sm" asChild>
+              <Link to="/catalog">Browse the catalog</Link>
+            </Button>
+          }
+        />
       ) : (
         <ul className="flex flex-col py-1">
           {favs.data.items.map((i) => (
@@ -321,9 +338,9 @@ export function OverviewPage() {
             title="Open requests"
             flush
             actions={
-              <Link to="/requests" className="text-secondary">
-                All requests
-              </Link>
+              <Button size="sm" variant="quiet" asChild>
+                <Link to="/requests">All requests</Link>
+              </Button>
             }
           >
             <OpenRequests />

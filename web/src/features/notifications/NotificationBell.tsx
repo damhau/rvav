@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -56,11 +56,10 @@ export function NotificationBell() {
   return (
     <Menu>
       <MenuTrigger asChild>
-        <Button
+        <IconButton
           variant="secondary"
-          size="icon"
           className="relative size-[30px] border-line"
-          aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+          label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
         >
           <Bell />
           {unread > 0 && (
@@ -71,7 +70,7 @@ export function NotificationBell() {
               {unread > 99 ? "99+" : unread}
             </span>
           )}
-        </Button>
+        </IconButton>
       </MenuTrigger>
       <MenuContent className="w-[min(380px,calc(100vw-32px))]">
         <MenuLabel>Notifications</MenuLabel>

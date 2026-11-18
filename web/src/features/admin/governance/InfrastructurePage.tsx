@@ -2,25 +2,29 @@
 // blueprints' template and size pickers offer, and the subnet each vCenter
 // network deploys into.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Cpu, HardDrive, Network } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
-import { errorAt, failed, fieldErrors, OfferEditor, offersText, td, th, writable } from "./common";
+import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "./common";
 
 type S = components["schemas"];
 
@@ -29,7 +33,7 @@ function useProjectName() {
   return (id: string) => projects.data?.items.find((p) => p.id === id)?.name ?? id;
 }
 
-function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
+function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState<S["VmTemplateWrite"]>(
     template
@@ -62,201 +66,210 @@ function TemplateDialog({ template, onClose }: { template?: S["VmTemplate"]; onC
     },
   });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={template ? `Change ${template.label}` : "New VM template"}
-        className="w-[min(620px,calc(100vw-32px))]"
-      >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
-        >
-          <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Key" htmlFor="tpl-key" error={errors["/key"]}>
-              <Input
-                id="tpl-key"
-                className="font-mono"
-                disabled={Boolean(template)}
-                value={f.key}
-                onChange={(e) => setF({ ...f, key: e.target.value })}
-              />
-            </Field>
-            <Field label="Label" htmlFor="tpl-label" error={errors["/label"]}>
-              <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
-              <Input
-                id="tpl-vc"
-                className="font-mono text-secondary"
-                value={f.vcenter_template}
-                onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
-              />
-            </Field>
-            <Field
-              label="Content library"
-              htmlFor="tpl-lib"
-              hint="When the template is an item of one"
-              error={errors["/content_library"]}
-            >
-              <Input
-                id="tpl-lib"
-                className="font-mono text-secondary"
-                value={f.content_library ?? ""}
-                onChange={(e) => setF({ ...f, content_library: e.target.value })}
-              />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Operating system" htmlFor="tpl-os">
-              <Select
-                id="tpl-os"
-                value={f.os_family}
-                onChange={(v) => setF({ ...f, os_family: v as S["VmTemplate"]["os_family"] })}
-                options={[
-                  { value: "linux", label: "Linux" },
-                  { value: "windows", label: "Windows" },
-                ]}
-              />
-            </Field>
-            <Field label="Customization spec" htmlFor="tpl-cust" hint="Empty for rvav's own">
-              <Input
-                id="tpl-cust"
-                value={f.customization ?? ""}
-                onChange={(e) => setF({ ...f, customization: e.target.value })}
-              />
-            </Field>
-          </div>
-          <Field label="Description" htmlFor="tpl-desc">
-            <Input
-              id="tpl-desc"
-              value={f.description ?? ""}
-              onChange={(e) => setF({ ...f, description: e.target.value })}
-            />
-          </Field>
-          <OfferEditor
-            value={f.offers ?? []}
-            onChange={(offers) => setF({ ...f, offers })}
-            error={errorAt(errors, "/offers")}
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={template ? `Change ${template.label}` : "New VM template"}
+      description="VM forms offer it in their template picker, to the projects and environments below."
+      submitLabel="Save template"
+      submitDisabled={!f.key || save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+    >
+      <div className="grid grid-cols-[140px_1fr] gap-3">
+        <Field label="Key" htmlFor="tpl-key" error={errors["/key"]}>
+          <Input
+            id="tpl-key"
+            className="font-mono"
+            disabled={Boolean(template)}
+            value={f.key}
+            onChange={(e) => setF({ ...f, key: e.target.value })}
           />
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!f.key || save.isPending}>
-              Save template
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </Field>
+        <Field label="Label" htmlFor="tpl-label" error={errors["/label"]}>
+          <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
+        <Input
+          id="tpl-vc"
+          className="font-mono"
+          value={f.vcenter_template}
+          onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
+        />
+      </Field>
+      <Field
+        label="Content library"
+        htmlFor="tpl-lib"
+        hint="When the template is an item of one"
+        error={errors["/content_library"]}
+      >
+        <Input
+          id="tpl-lib"
+          className="font-mono"
+          value={f.content_library ?? ""}
+          onChange={(e) => setF({ ...f, content_library: e.target.value })}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Operating system" htmlFor="tpl-os">
+          <Select
+            id="tpl-os"
+            value={f.os_family}
+            onChange={(v) => setF({ ...f, os_family: v as S["VmTemplate"]["os_family"] })}
+            options={[
+              { value: "linux", label: "Linux" },
+              { value: "windows", label: "Windows" },
+            ]}
+          />
+        </Field>
+        <Field label="Customization spec" htmlFor="tpl-cust" hint="Empty for rvav's own">
+          <Input
+            id="tpl-cust"
+            value={f.customization ?? ""}
+            onChange={(e) => setF({ ...f, customization: e.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label="Description" htmlFor="tpl-desc">
+        <Input
+          id="tpl-desc"
+          value={f.description ?? ""}
+          onChange={(e) => setF({ ...f, description: e.target.value })}
+        />
+      </Field>
+      <OfferEditor
+        value={f.offers ?? []}
+        onChange={(offers) => setF({ ...f, offers })}
+        error={errorAt(errors, "/offers")}
+      />
+    </Sheet>
   );
 }
 
-function Templates({ canEdit }: { canEdit: boolean }) {
+function useRemove(queryKey: string[], remove: (key: string) => Promise<unknown>) {
   const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key }: { key: string; label: string }) => remove(key),
+    onSuccess: (_, { label }) => {
+      void qc.invalidateQueries({ queryKey });
+      toast.success(`${label} removed`);
+    },
+    onError: (e) => failed(e, "Not removed"),
+  });
+}
+
+function Templates({ canEdit }: { canEdit: boolean }) {
   const templates = useQuery(adm.templates());
   const projectName = useProjectName();
   const [editing, setEditing] = useState<S["VmTemplate"] | "new" | null>(null);
-  const remove = useMutation({
-    mutationFn: (key: string) => call(api.DELETE("/admin/templates/{key}", { params: { path: { key } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "templates"] }),
-    onError: (e) => failed(e, "Not removed"),
-  });
+  const [removing, setRemoving] = useState<S["VmTemplate"] | null>(null);
+  const remove = useRemove(["admin", "templates"], (key) =>
+    call(api.DELETE("/admin/templates/{key}", { params: { path: { key } } })),
+  );
+  const items = templates.data?.items;
+  const add = (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      New template
+    </Button>
+  );
+  const columns: Column<S["VmTemplate"]>[] = [
+    {
+      id: "template",
+      header: "Template",
+      sortValue: (t) => t.label,
+      cell: (t) => (
+        <>
+          <span className="font-medium">{t.label}</span>{" "}
+          <span className="font-mono text-caption text-muted">{t.key}</span>
+        </>
+      ),
+    },
+    {
+      id: "vcenter",
+      header: "In vCenter",
+      sortValue: (t) => t.vcenter_template,
+      cell: (t) => (
+        <span className="font-mono text-secondary">
+          {t.content_library && <span className="text-muted">{t.content_library} / </span>}
+          {t.vcenter_template}
+          {!t.in_inventory && (
+            <Badge tone="warn" className="ml-2 font-sans">
+              Not found
+            </Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "offers",
+      header: "Offered to",
+      cell: (t) => <span className="text-secondary text-muted">{offersText(t.offers, projectName)}</span>,
+    },
+  ];
   return (
     <Panel
       title="VM templates"
+      description="What VM forms offer in their template picker, and to which projects."
       flush
-      actions={
-        canEdit && (
-          <Button size="sm" onClick={() => setEditing("new")}>
-            New template
-          </Button>
-        )
-      }
+      actions={canEdit && items?.length !== 0 && add}
     >
-      {templates.isPending && <SkeletonRows rows={2} cols={4} />}
-      {templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
-      {templates.data && templates.data.items.length === 0 && (
-        <EmptyState title="No template" body="Blueprints name a vCenter template themselves." />
-      )}
-      {templates.data && templates.data.items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Template
-                </th>
-                <th scope="col" className={th}>
-                  In vCenter
-                </th>
-                <th scope="col" className={th}>
-                  Offered to
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.data.items.map((t) => (
-                <tr key={t.key}>
-                  <td className={`${td} pl-4`}>
-                    <span className="font-medium">{t.label}</span>{" "}
-                    <span className="font-mono text-caption text-faint">{t.key}</span>
-                  </td>
-                  <td className={`${td} font-mono text-secondary`}>
-                    {t.content_library && <span className="text-faint">{t.content_library} / </span>}
-                    {t.vcenter_template}
-                    {!t.in_inventory && (
-                      <Badge tone="warn" className="ml-2">
-                        Not found
-                      </Badge>
-                    )}
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>{offersText(t.offers, projectName)}</td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {canEdit && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Change ${t.label}`}
-                          onClick={() => setEditing(t)}
-                        >
-                          Change
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Remove ${t.label}`}
-                          onClick={() => remove.mutate(t.key)}
-                        >
-                          Remove
-                        </Button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {editing && (
-        <TemplateDialog template={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />
+      <DataTable
+        label="VM templates"
+        columns={columns}
+        rows={items}
+        rowKey={(t) => t.key}
+        loading={templates.isPending}
+        error={templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
+        empty={
+          <EmptyState
+            icon={HardDrive}
+            title="No templates yet"
+            body="Blueprints name a vCenter template themselves until you add templates for their pickers."
+            action={canEdit && add}
+          />
+        }
+        rowMenuLabel={(t) => `Actions for ${t.label}`}
+        rowMenu={
+          canEdit
+            ? (t) => (
+                <>
+                  <MenuItem onSelect={() => setEditing(t)}>Change</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger onSelect={() => setRemoving(t)}>
+                    Remove
+                  </MenuItem>
+                </>
+              )
+            : undefined
+        }
+      />
+      {editing && <TemplateSheet template={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.label}?`}
+          description={
+            <>
+              VM forms stop offering <span className="font-mono">{removing.key}</span> in their template picker.
+            </>
+          }
+          consequences={`Offered to ${offersText(removing.offers, projectName)}. A blueprint that names its own template keeps it, and VMs built from this one aren't changed.`}
+          confirmLabel="Remove template"
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate({ key: removing.key, label: removing.label }, { onSuccess: () => setRemoving(null) })
+          }
+        />
       )}
     </Panel>
   );
 }
 
-function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => void }) {
+function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState<S["SizePresetWrite"]>(
     size ?? {
@@ -296,141 +309,148 @@ function SizeDialog({ size, onClose }: { size?: S["SizePreset"]; onClose: () => 
     </Field>
   );
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={size ? `Change ${size.label}` : "New size"} className="w-[min(620px,calc(100vw-32px))]">
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
-        >
-          <div className="grid grid-cols-[120px_1fr] gap-3">
-            <Field label="Key" htmlFor="size-key" error={errors["/key"]}>
-              <Input
-                id="size-key"
-                className="font-mono"
-                disabled={Boolean(size)}
-                value={f.key}
-                onChange={(e) => setF({ ...f, key: e.target.value })}
-              />
-            </Field>
-            <Field label="Label" htmlFor="size-label" error={errors["/label"]}>
-              <Input id="size-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {num("vcpu", "vCPU")}
-            {num("memory_gb", "Memory (GB)")}
-            {num("disk_gb", "System disk (GB)")}
-          </div>
-          <OfferEditor
-            value={f.offers ?? []}
-            onChange={(offers) => setF({ ...f, offers })}
-            error={errorAt(errors, "/offers")}
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={size ? `Change ${size.label}` : "New size"}
+      description="VM forms offer it in their size picker, to the projects and environments below."
+      submitLabel="Save size"
+      submitDisabled={!f.key || save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+    >
+      <div className="grid grid-cols-[140px_1fr] gap-3">
+        <Field label="Key" htmlFor="size-key" error={errors["/key"]}>
+          <Input
+            id="size-key"
+            className="font-mono"
+            disabled={Boolean(size)}
+            value={f.key}
+            onChange={(e) => setF({ ...f, key: e.target.value })}
           />
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!f.key || save.isPending}>
-              Save size
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </Field>
+        <Field label="Label" htmlFor="size-label" error={errors["/label"]}>
+          <Input id="size-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {num("vcpu", "vCPU")}
+        {num("memory_gb", "Memory (GB)")}
+        {num("disk_gb", "System disk (GB)")}
+      </div>
+      <OfferEditor
+        value={f.offers ?? []}
+        onChange={(offers) => setF({ ...f, offers })}
+        error={errorAt(errors, "/offers")}
+      />
+    </Sheet>
   );
 }
 
 function Sizes({ canEdit }: { canEdit: boolean }) {
-  const qc = useQueryClient();
   const sizes = useQuery(adm.sizes());
   const projectName = useProjectName();
   const [editing, setEditing] = useState<S["SizePreset"] | "new" | null>(null);
-  const remove = useMutation({
-    mutationFn: (key: string) => call(api.DELETE("/admin/sizes/{key}", { params: { path: { key } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "sizes"] }),
-    onError: (e) => failed(e, "Not removed"),
-  });
+  const [removing, setRemoving] = useState<S["SizePreset"] | null>(null);
+  const remove = useRemove(["admin", "sizes"], (key) =>
+    call(api.DELETE("/admin/sizes/{key}", { params: { path: { key } } })),
+  );
+  const items = sizes.data?.items;
+  const add = (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      New size
+    </Button>
+  );
+  const columns: Column<S["SizePreset"]>[] = [
+    {
+      id: "size",
+      header: "Size",
+      cell: (z) => (
+        <>
+          <span className="font-medium">{z.label}</span>{" "}
+          <span className="font-mono text-caption text-muted">{z.key}</span>
+        </>
+      ),
+    },
+    {
+      id: "shape",
+      header: "vCPU, memory, disk",
+      sortValue: (z) => z.vcpu * 1000 + z.memory_gb,
+      cell: (z) => (
+        <span className="tnum">
+          {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
+        </span>
+      ),
+    },
+    {
+      id: "offers",
+      header: "Offered to",
+      cell: (z) => <span className="text-secondary text-muted">{offersText(z.offers, projectName)}</span>,
+    },
+  ];
   return (
     <Panel
       title="Sizes"
+      description="What VM forms offer in their size picker: vCPU, memory and system disk."
       flush
-      actions={
-        canEdit && (
-          <Button size="sm" onClick={() => setEditing("new")}>
-            New size
-          </Button>
-        )
-      }
+      actions={canEdit && items?.length !== 0 && add}
     >
-      {sizes.isPending && <SkeletonRows rows={3} cols={4} />}
-      {sizes.data && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Size
-                </th>
-                <th scope="col" className={th}>
-                  vCPU, memory, disk
-                </th>
-                <th scope="col" className={th}>
-                  Offered to
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sizes.data.items.map((z) => (
-                <tr key={z.key}>
-                  <td className={`${td} pl-4`}>
-                    <span className="font-medium">{z.label}</span>{" "}
-                    <span className="font-mono text-caption text-faint">{z.key}</span>
-                  </td>
-                  <td className={`${td} text-secondary`}>
-                    {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
-                  </td>
-                  <td className={`${td} text-secondary text-muted`}>{offersText(z.offers, projectName)}</td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {canEdit && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Change ${z.label}`}
-                          onClick={() => setEditing(z)}
-                        >
-                          Change
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Remove ${z.label}`}
-                          onClick={() => remove.mutate(z.key)}
-                        >
-                          Remove
-                        </Button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <DataTable
+        label="Sizes"
+        columns={columns}
+        rows={items}
+        rowKey={(z) => z.key}
+        loading={sizes.isPending}
+        error={sizes.isError && <ErrorState error={sizes.error} onRetry={() => void sizes.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Cpu}
+            title="No sizes yet"
+            body="Blueprints set their own vCPU and memory until you add sizes for their pickers."
+            action={canEdit && add}
+          />
+        }
+        rowMenuLabel={(z) => `Actions for ${z.label}`}
+        rowMenu={
+          canEdit
+            ? (z) => (
+                <>
+                  <MenuItem onSelect={() => setEditing(z)}>Change</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger onSelect={() => setRemoving(z)}>
+                    Remove
+                  </MenuItem>
+                </>
+              )
+            : undefined
+        }
+      />
+      {editing && <SizeSheet size={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.label}?`}
+          description={
+            <>
+              VM forms stop offering <span className="font-mono">{removing.key}</span> in their size picker.
+            </>
+          }
+          consequences={`Offered to ${offersText(removing.offers, projectName)}. A blueprint that sets its own size keeps it, and VMs of this size aren't changed.`}
+          confirmLabel="Remove size"
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate({ key: removing.key, label: removing.label }, { onSuccess: () => setRemoving(null) })
+          }
+        />
       )}
-      {editing && <SizeDialog size={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
   );
 }
 
-function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onClose: () => void }) {
+function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [network, setNetwork] = useState(mapping?.network ?? "");
   const [f, setF] = useState({
@@ -466,167 +486,171 @@ function MappingDialog({ mapping, onClose }: { mapping?: S["NetworkMapping"]; on
     },
   });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        title={mapping ? `Map ${mapping.network} by hand` : "Map a network"}
-        description="A mapping by hand wins over EfficientIP's until it is removed."
-      >
-        <form
-          className="flex flex-col gap-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setErrors({});
-            save.mutate();
-          }}
-        >
-          <Field label="vCenter network" htmlFor="map-network">
-            <Input
-              id="map-network"
-              className="font-mono text-secondary"
-              disabled={Boolean(mapping)}
-              value={network}
-              onChange={(e) => setNetwork(e.target.value)}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Subnet" htmlFor="map-subnet" error={errors["/subnet"]}>
-              <Input
-                id="map-subnet"
-                className="font-mono text-secondary"
-                value={f.subnet}
-                onChange={(e) => setF({ ...f, subnet: e.target.value })}
-              />
-            </Field>
-            <Field label="Gateway" htmlFor="map-gateway" error={errors["/gateway"]}>
-              <Input
-                id="map-gateway"
-                className="font-mono text-secondary"
-                value={f.gateway}
-                onChange={(e) => setF({ ...f, gateway: e.target.value })}
-              />
-            </Field>
-            <Field label="DNS zone" htmlFor="map-zone" error={errors["/dns_zone"]}>
-              <Input id="map-zone" value={f.dns_zone} onChange={(e) => setF({ ...f, dns_zone: e.target.value })} />
-            </Field>
-            <Field label="DNS servers" htmlFor="map-dns" hint="Comma-separated">
-              <Input
-                id="map-dns"
-                className="font-mono text-secondary"
-                value={f.dns_servers}
-                onChange={(e) => setF({ ...f, dns_servers: e.target.value })}
-              />
-            </Field>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="quiet" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!network || save.isPending}>
-              Save mapping
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Sheet
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={mapping ? `Map ${mapping.network} by hand` : "Map a network"}
+      description="A mapping by hand wins over EfficientIP's until it is removed."
+      submitLabel="Save mapping"
+      submitDisabled={!network || save.isPending}
+      onSubmit={() => {
+        setErrors({});
+        save.mutate();
+      }}
+    >
+      <Field label="vCenter network" htmlFor="map-network">
+        <Input
+          id="map-network"
+          className="font-mono"
+          disabled={Boolean(mapping)}
+          value={network}
+          onChange={(e) => setNetwork(e.target.value)}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Subnet" htmlFor="map-subnet" error={errors["/subnet"]}>
+          <Input
+            id="map-subnet"
+            className="font-mono"
+            value={f.subnet}
+            onChange={(e) => setF({ ...f, subnet: e.target.value })}
+          />
+        </Field>
+        <Field label="Gateway" htmlFor="map-gateway" error={errors["/gateway"]}>
+          <Input
+            id="map-gateway"
+            className="font-mono"
+            value={f.gateway}
+            onChange={(e) => setF({ ...f, gateway: e.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label="DNS zone" htmlFor="map-zone" error={errors["/dns_zone"]}>
+        <Input id="map-zone" value={f.dns_zone} onChange={(e) => setF({ ...f, dns_zone: e.target.value })} />
+      </Field>
+      <Field label="DNS servers" htmlFor="map-dns" hint="Comma-separated">
+        <Input
+          id="map-dns"
+          className="font-mono"
+          value={f.dns_servers}
+          onChange={(e) => setF({ ...f, dns_servers: e.target.value })}
+        />
+      </Field>
+    </Sheet>
   );
 }
 
+const sourceLabel = { manual: "By hand", nsx: "NSX segment", efficientip: "EfficientIP" } as const;
+
 function Networks({ canEdit }: { canEdit: boolean }) {
-  const qc = useQueryClient();
   const mappings = useQuery(adm.networkMappings());
   const [editing, setEditing] = useState<S["NetworkMapping"] | "new" | null>(null);
-  const remove = useMutation({
-    mutationFn: (network: string) =>
-      call(api.DELETE("/admin/network-mappings/{network}", { params: { path: { network } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "network-mappings"] }),
-    onError: (e) => failed(e, "Not removed"),
-  });
+  const [removing, setRemoving] = useState<S["NetworkMapping"] | null>(null);
+  const remove = useRemove(["admin", "network-mappings"], (network) =>
+    call(api.DELETE("/admin/network-mappings/{network}", { params: { path: { network } } })),
+  );
+  const items = mappings.data?.items;
+  const add = (
+    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+      Map a network
+    </Button>
+  );
+  const columns: Column<S["NetworkMapping"]>[] = [
+    {
+      id: "network",
+      header: "Network",
+      sortValue: (m) => m.network,
+      cell: (m) => <span className="font-mono text-secondary">{m.network}</span>,
+    },
+    {
+      id: "subnet",
+      header: "Subnet",
+      cell: (m) => (
+        <span className="font-mono text-secondary">
+          {m.subnet} <span className="text-muted">via {m.gateway}</span>
+        </span>
+      ),
+    },
+    {
+      id: "dns",
+      header: "DNS",
+      cell: (m) => (
+        <span className="text-secondary">
+          {m.dns_zone} <span className="font-mono text-muted">{m.dns_servers.join(", ")}</span>
+        </span>
+      ),
+    },
+    {
+      id: "source",
+      header: "From",
+      sortValue: (m) => sourceLabel[m.source],
+      cell: (m) => <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{sourceLabel[m.source]}</Badge>,
+    },
+  ];
   return (
     <Panel
       title="Network mappings"
+      description="EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP doesn't say."
       flush
-      actions={
-        canEdit && (
-          <Button size="sm" onClick={() => setEditing("new")}>
-            Map a network
-          </Button>
-        )
-      }
+      actions={canEdit && items?.length !== 0 && add}
     >
-      <p className="border-b border-line px-4 py-2 text-secondary text-muted">
-        EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP
-        doesn't say.
-      </p>
-      {mappings.isPending && <SkeletonRows rows={3} cols={4} />}
-      {mappings.data && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-body">
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className={`${th} pl-4`}>
-                  Network
-                </th>
-                <th scope="col" className={th}>
-                  Subnet
-                </th>
-                <th scope="col" className={th}>
-                  DNS
-                </th>
-                <th scope="col" className={th}>
-                  From
-                </th>
-                <th scope="col" className={th}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.data.items.map((m) => (
-                <tr key={m.network}>
-                  <td className={`${td} pl-4 font-mono text-secondary`}>{m.network}</td>
-                  <td className={`${td} font-mono text-secondary`}>
-                    {m.subnet} <span className="text-faint">via {m.gateway}</span>
-                  </td>
-                  <td className={`${td} text-secondary`}>
-                    {m.dns_zone} <span className="text-faint">{m.dns_servers.join(", ")}</span>
-                  </td>
-                  <td className={td}>
-                    <Badge tone={m.source === "manual" ? "accent" : "neutral"}>
-                      {m.source === "manual" ? "By hand" : m.source === "nsx" ? "NSX segment" : "EfficientIP"}
-                    </Badge>
-                  </td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    {/* A segment made for a deployment goes with it (ADR-0028). */}
-                    {canEdit && m.source !== "nsx" && (
+      <DataTable
+        label="Network mappings"
+        columns={columns}
+        rows={items}
+        rowKey={(m) => m.network}
+        minWidth={720}
+        loading={mappings.isPending}
+        error={mappings.isError && <ErrorState error={mappings.error} onRetry={() => void mappings.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Network}
+            title="No networks mapped"
+            body="The EfficientIP sync maps the networks it knows. Map one by hand when it doesn't."
+            action={canEdit && add}
+          />
+        }
+        rowMenuLabel={(m) => `Actions for ${m.network}`}
+        rowMenu={
+          canEdit
+            ? (m) =>
+                // A segment made for a deployment goes with it (ADR-0028).
+                m.source === "nsx" ? null : (
+                  <>
+                    <MenuItem onSelect={() => setEditing(m)}>
+                      {m.source === "manual" ? "Change" : "Map by hand"}
+                    </MenuItem>
+                    {m.source === "manual" && (
                       <>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          aria-label={`Change: map ${m.network} by hand`}
-                          onClick={() => setEditing(m)}
-                        >
-                          Change
-                        </Button>
-                        {m.source === "manual" && (
-                          <Button
-                            size="sm"
-                            variant="quiet"
-                            aria-label={`Remove the mapping of ${m.network}`}
-                            onClick={() => remove.mutate(m.network)}
-                          >
-                            Remove
-                          </Button>
-                        )}
+                        <MenuSeparator />
+                        <MenuItem danger onSelect={() => setRemoving(m)}>
+                          Remove
+                        </MenuItem>
                       </>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </>
+                )
+            : undefined
+        }
+      />
+      {editing && <MappingSheet mapping={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove the mapping of ${removing.network}?`}
+          description={`Its subnet ${removing.subnet}, set by hand, stops applying.`}
+          consequences="The next EfficientIP sync brings back EfficientIP's subnet for the network, if it has one. VMs already on the network keep their addresses."
+          confirmLabel="Remove mapping"
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(
+              { key: removing.network, label: `The mapping of ${removing.network}` },
+              { onSuccess: () => setRemoving(null) },
+            )
+          }
+        />
       )}
-      {editing && <MappingDialog mapping={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </Panel>
   );
 }
@@ -638,7 +662,7 @@ export function InfrastructurePage() {
     <Page>
       <PageHeader
         title="Templates, sizes and networks"
-        meta="What blueprints' template and size pickers offer, and the subnet each network deploys into."
+        description="What blueprints' template and size pickers offer, and the subnet each network deploys into."
       />
       <Tabs defaultValue="templates">
         <TabsList aria-label="Infrastructure sections">
