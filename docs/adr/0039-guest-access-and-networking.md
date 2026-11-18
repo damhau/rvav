@@ -187,7 +187,9 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
 - Renaming the VM renames its IPv6 address and AAAA record with the rest;
   deleting it releases both. SOLIDserver numbers IPv4 and IPv6 addresses
   apart, so the IPAM reconciliation keys an address by its family and
-  ID.
+  ID, and rvav records an IPv6 reservation under `ip6:<id>` (T1.7). An
+  IPv4 one keeps its bare ID: an IPv6 address with the same ID would
+  have replaced it, and left it reserved after the delete.
 - A SOLIDserver without the IPv6 module, or an account without the right
   to it, answers the `ip6_*` services with a 4xx: the sync, the
   reconciliation and the listings go on with IPv4 only.

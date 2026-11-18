@@ -387,7 +387,7 @@ func (s *Service) recordAdoptee(ctx context.Context, tx pgx.Tx, depID string, a 
 		return err
 	}
 	for _, ad := range a.addresses {
-		ext := cmp.Or(ad.ID, "ip:"+ad.IP)
+		ext := ad.ExternalID()
 		props, _ := json.Marshal(map[string]any{"address": ad.IP, "subnet": ad.Subnet, "efficientip_id": ad.ID,
 			"hostname": a.vm.Name, "fqdn": a.fqdn})
 		if _, err := s.Store.UpsertResource(ctx, tx, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: "ipam.address",

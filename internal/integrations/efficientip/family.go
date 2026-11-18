@@ -34,6 +34,19 @@ var (
 // SOLIDserver numbers IPv4 and IPv6 addresses apart.
 func (a Address) Key() string { return familyOf(a.IP).key(a.ID) }
 
+// ExternalID is the ID rvav records an address under: SOLIDserver's,
+// prefixed as Key does for IPv6 (an IPv4 one keeps the bare ID rows have
+// always had), or the address itself without one.
+func (a Address) ExternalID() string {
+	switch f := familyOf(a.IP); {
+	case a.ID == "":
+		return "ip:" + a.IP
+	case f.v6:
+		return f.key(a.ID)
+	}
+	return a.ID
+}
+
 func (f family) key(id string) string {
 	if f.v6 {
 		return "ip6:" + id

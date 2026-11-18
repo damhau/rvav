@@ -36,13 +36,16 @@ type FakeServer struct {
 	// Latency is added to every answer, as a real SOLIDserver's.
 	Latency time.Duration
 
-	mu        sync.Mutex
-	idBase    int
-	seq       int
-	sites     map[string]string // IPAM space name -> ID
-	servers   map[string]string // DNS server name -> ID
-	subnets   []row
-	addresses []row
+	mu     sync.Mutex
+	idBase int
+	seq    int
+	// SOLIDserver numbers IPv4 and IPv6 addresses apart: the same ID can
+	// name one of each.
+	addressSeq, address6Seq int
+	sites                   map[string]string // IPAM space name -> ID
+	servers                 map[string]string // DNS server name -> ID
+	subnets                 []row
+	addresses               []row
 	// IPv6 subnets and addresses, with their own services and fields
 	// (ADR-0039); their addresses written in full, as SOLIDserver does.
 	subnets6   []row
@@ -84,6 +87,15 @@ func (f *FakeServer) UniqueIDs() {
 func (f *FakeServer) id() string {
 	f.seq++
 	return strconv.Itoa(f.idBase + f.seq)
+}
+
+func (f *FakeServer) addressID(fam family) string {
+	seq := &f.addressSeq
+	if fam.v6 {
+		seq = &f.address6Seq
+	}
+	*seq++
+	return strconv.Itoa(f.idBase + *seq)
 }
 
 func (f *FakeServer) site(name string) string {
@@ -606,7 +618,7 @@ func (f *FakeServer) addAddress(fam family, method string, q url.Values) ([]row,
 	if subnet == nil {
 		return nil, failf(http.StatusBadRequest, "-1", "no subnet holds %s in this space", ip)
 	}
-	a := row{fam.addressID: f.id(), fam.hostaddr: fam.asStored(ip.String()), fam.name: q.Get(fam.name),
+	a := row{fam.addressID: f.addressID(fam), fam.hostaddr: fam.asStored(ip.String()), fam.name: q.Get(fam.name),
 		fam.addressSubnetID: subnet[fam.subnetID], fam.addressSubnetName: subnet[fam.subnetName],
 		"site_id": subnet["site_id"], "site_name": subnet["site_name"], fam.params: q.Get(fam.params)}
 	if !fam.v6 {

@@ -565,10 +565,7 @@ func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Sub
 	if err != nil {
 		return "", fmt.Errorf("EfficientIP: %w", err)
 	}
-	ext := addr.ID
-	if ext == "" {
-		ext = "ip:" + addr.IP
-	}
+	ext := addr.ExternalID()
 	p := map[string]any{"address": addr.IP, "subnet": subnet, "efficientip_id": addr.ID, "hostname": in.VM.Name, "fqdn": fqdn}
 	if nic != "" {
 		p["nic"] = nic

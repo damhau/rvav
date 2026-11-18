@@ -454,3 +454,14 @@ func TestAuthsDocumented(t *testing.T) {
 		}
 	}
 }
+
+// TestExternalID: an IPv6 address's ID is told from the same IPv4 one;
+// an IPv4 one keeps the bare ID rvav has always recorded (T1.7).
+func TestExternalID(t *testing.T) {
+	for a, want := range map[Address]string{{ID: "101", IP: "10.31.10.20"}: "101", {ID: "101", IP: "2001:db8::14"}: "ip6:101",
+		{IP: "10.31.10.20"}: "ip:10.31.10.20", {IP: "2001:db8::14"}: "ip:2001:db8::14"} {
+		if got := a.ExternalID(); got != want {
+			t.Errorf("%+v: %q, want %q", a, got, want)
+		}
+	}
+}

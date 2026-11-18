@@ -221,8 +221,8 @@ func TestIPv6(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, a := range managed {
-			if a.IP == ip6 {
-				t.Fatalf("%s is still reserved", ip6)
+			if a.IP == ip6 || a.IP == ips[0] {
+				t.Fatalf("%s is still reserved", a.IP)
 			}
 		}
 		for _, r := range records {
