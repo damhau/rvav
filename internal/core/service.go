@@ -143,6 +143,8 @@ type placement struct {
 	// them, and planned those the request places, by its components so far.
 	vms     map[string]int
 	planned map[string]int
+	// plannedMB is the memory of the VMs the request places, by cluster.
+	plannedMB map[string]int64
 	// added are the vCenters added besides the vCenter integration's.
 	added vcenterSet
 }

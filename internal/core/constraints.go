@@ -234,7 +234,35 @@ func (pl *placement) strategyOf(cands []*store.InvCluster) string {
 	return store.StrategyMostFreeMemory
 }
 
-func freeMB(c *store.InvCluster) int64 { return c.MemoryTotalMB - c.MemoryUsedMB }
+// freeOn is the memory a cluster has free for new VMs (ADR-0036): that of
+// its hosts in service the rule allows, when the inventory has their
+// memory, else the cluster's; at most the limit of the resource pool they
+// go in;
+// less the memory of the VMs the request places there before.
+func (pl *placement) freeOn(c *store.InvCluster, pool string) int64 {
+	free := c.MemoryTotalMB - c.MemoryUsedMB
+	r := pl.rule(c.Name)
+	if pl.hostsKnown(c) {
+		var patterns []string
+		if r != nil {
+			patterns = r.HostPatterns
+		}
+		var total, used int64
+		for _, h := range pl.usableHosts(c, patterns) {
+			total, used = total+h.MemoryTotalMB, used+h.MemoryUsedMB
+		}
+		if total > 0 {
+			free = total - used
+		}
+	}
+	if pool == "" && r != nil {
+		pool = r.ResourcePool
+	}
+	if p := pl.pool(*c, pool); pool != "" && p != nil && p.MemoryLimitMB >= 0 {
+		free = min(free, p.MemoryLimitMB)
+	}
+	return free - pl.plannedMB[c.VCenter+"/"+c.Name]
+}
 
 // vmsOn are rvav's VMs on a cluster: those of its deployments, and those
 // the request places there before.
@@ -249,6 +277,7 @@ func (pl *placement) vmsOn(c *store.InvCluster) int {
 // rvav's VMs, then the most free memory.
 func (pl *placement) pick(cands []*store.InvCluster, q placementQuery) (*store.InvCluster, string, string) {
 	strategy := pl.strategyOf(cands)
+	freeMB := func(c *store.InvCluster) int64 { return pl.freeOn(c, q.plan.ResourcePool) }
 	mostFree := func() *store.InvCluster {
 		var best *store.InvCluster
 		for _, c := range cands {

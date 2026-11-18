@@ -154,6 +154,48 @@ func TestChooseBoundHost(t *testing.T) {
 	}
 }
 
+// The strategies weigh the memory a cluster has for the VMs: less what the
+// request placed there before, on its hosts in service, within the pool's
+// limit (T1.7).
+func TestFreeMemory(t *testing.T) {
+	pl := tagged()
+	q := placementQuery{plan: blueprint.VMPlan{DiskGB: 50, MemoryGB: 30}, count: 1, anyDatastore: true, anyNetwork: true,
+		hasTemplate: func(string) bool { return true }, vmGB: 50}
+	chose := func() string {
+		t.Helper()
+		ch, _, why := pl.choose(q)
+		if ch.cluster == nil {
+			t.Fatalf("chose none: %s", why)
+		}
+		return ch.cluster.Name
+	}
+	if got := chose(); got != "dev-1" {
+		t.Fatalf("first = %s, want dev-1 (90 GB free)", got)
+	}
+	pl.plannedMB = map[string]int64{"vc/dev-1": 60 * 1024}
+	if got := chose(); got != "app-2" {
+		t.Fatalf("after two VMs of 30 GB on dev-1 = %s, want app-2", got)
+	}
+	// app-2's free memory is on a host in maintenance.
+	pl.hosts = []store.InvHost{
+		{VCenter: "vc", Name: "esx-21", Cluster: "app-2", State: vsphere.HostConnected, MemoryTotalMB: 50_000, MemoryUsedMB: 45_000},
+		{VCenter: "vc", Name: "esx-22", Cluster: "app-2", State: vsphere.HostMaintenance, MemoryTotalMB: 50_000},
+	}
+	if got := chose(); got != "dev-1" {
+		t.Fatalf("with app-2's host in maintenance = %s, want dev-1", got)
+	}
+	// dev-1's VMs go in a pool limited to 4 GB.
+	pl.hosts, pl.plannedMB = nil, nil
+	pl.pools = []store.InvResourcePool{{VCenter: "vc", Cluster: "dev-1", Path: "rvav", MemoryLimitMB: 4096}}
+	q.plan.ResourcePool = "rvav"
+	if got := pl.freeOn(&pl.clusters[2], "rvav"); got != 4096 {
+		t.Fatalf("dev-1 in its pool has %d MB", got)
+	}
+	if got := pl.freeOn(&pl.clusters[1], "rvav"); got != 50_000 {
+		t.Fatalf("app-2, without the pool, has %d MB", got)
+	}
+}
+
 func TestPickDatastoreAndNetwork(t *testing.T) {
 	pl := tagged()
 	ds, results, why := pl.pickDatastore("app-2", "", 100, constraints(t, "storage rvav-tier/gold:soft"))

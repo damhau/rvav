@@ -68,6 +68,11 @@ takes new VMs.
 - **`spread`**: the cluster with the fewest VMs of rvav's deployments not
   deleted, counting the VMs of the request's earlier components; ties go
   to the most free memory.
+- A cluster's free memory is that of its hosts in service (not in
+  maintenance or disconnected) that the rule's host patterns allow, when
+  the inventory has their memory, else the cluster's; at most the memory
+  limit of the resource pool the VMs go in; less the memory of the VMs
+  the request's earlier components placed there (T1.7).
 - The strategy is the rule's that allows the candidate clusters; when
   rules of different strategies allow them, the first by priority wins.
 - The preview's `placement.strategy` says which strategy chose the
@@ -153,3 +158,9 @@ without hosts in the inventory are matched by their own tags, as before.
   out when empty, and the workflows read them only when present.
 - The preview shows rvav's datastore; with Storage DRS on, the VM may end
   up on another datastore of the same datastore cluster.
+- Strategies reserve nothing across requests: spread counts the VMs of
+  deployments rvav has recorded, which a request has only once its clone
+  is done, and free memory comes from the inventory sync, at most a couple
+  of minutes old. Requests placed at once can choose the same cluster, and
+  a pool's limit is compared with the VMs a request places, not with what
+  the pool already runs (the inventory reads its limit, not its use).

@@ -547,9 +547,10 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 					path.Clean(strings.TrimSpace(plan.Folder)), dc, plan.Cluster, at))
 			}
 			if pl.planned == nil {
-				pl.planned = map[string]int{}
+				pl.planned, pl.plannedMB = map[string]int{}, map[string]int64{}
 			}
 			pl.planned[part.vcenter+"/"+plan.Cluster] += part.count
+			pl.plannedMB[part.vcenter+"/"+plan.Cluster] += int64(part.count) * int64(plan.MemoryGB) * 1024
 			if pl.ambiguous(plan.Cluster) {
 				add(field("cluster"), "ambiguous", fmt.Sprintf("Cluster %s is in two vCenters. Ask an administrator to name the vCenter in the placement rule.", plan.Cluster))
 			}
