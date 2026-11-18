@@ -148,6 +148,9 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 			}
 			add(at+"/template", "required", "Name "+what+", or take it from an input (bindings.template, for example inputs.template with rvav.templates).")
 		}
+		if c.LinkedClone != nil && *c.LinkedClone && c.Library != "" {
+			add(at+"/linked_clone", "invalid", "An item of content library "+c.Library+" is deployed, not cloned: a linked clone needs a vCenter template.")
+		}
 		errs = append(errs, checkGuest(at+"/guest", *c.Guest, publish)...)
 	}
 	errs = append(errs, checkReferences(b, ptr)...)

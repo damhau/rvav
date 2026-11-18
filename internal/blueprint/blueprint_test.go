@@ -125,6 +125,27 @@ func TestDiskProvisioningInherits(t *testing.T) {
 	}
 }
 
+// A component's linked_clone is the blueprint's unless it has its own;
+// without either, the catalogue template's applies (ADR-0037).
+func TestLinkedCloneInherits(t *testing.T) {
+	b, err := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "linked_clone": true,
+		"components": [{"key": "web"}, {"key": "db", "linked_clone": false}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := b.ComponentList()
+	if cs[0].LinkedClone == nil || !*cs[0].LinkedClone || cs[1].LinkedClone == nil || *cs[1].LinkedClone {
+		t.Fatalf("components = %v, %v", cs[0].LinkedClone, cs[1].LinkedClone)
+	}
+	single, err := Parse(json.RawMessage(`{"kind": "vm", "template": "tpl"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := single.ComponentList()[0]; c.LinkedClone != nil {
+		t.Fatalf("without linked_clone: %v", *c.LinkedClone)
+	}
+}
+
 func TestCheckUserData(t *testing.T) {
 	for text, ok := range map[string]bool{
 		"#cloud-config\nhostname: {{ .vm.name }}":              true,

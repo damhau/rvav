@@ -362,6 +362,36 @@ Keep a template's user data to what every item offering it can use: a
 value it reads that the request doesn't have, such as an input other
 items don't ask for, fails the build.
 
+### Linked clones
+
+A template can make its VMs linked clones: vCenter clones them from the
+template's current snapshot, and their disks are children of the
+template's. A linked clone is made in seconds and takes little space, but
+its disks depend on the template's.
+
+To make a template's VMs linked clones:
+1. In vCenter, take a snapshot of the template in each vCenter it has a
+   source in.
+2. In **Templates and networks**, click the template's **⋯** menu, then
+   **Change**.
+3. Select **Linked clones**, then click **Save template**.
+
+The **Template** column shows **linked clones** for such a template.
+Keep these limits in mind:
+- A content library item is deployed, not cloned: rvav refuses linked
+  clones for a template with a content library source.
+- A linked clone keeps the size of the template's first disk. A request
+  whose size asks for a larger disk fails at the clone, and says so; add
+  disks instead.
+- A request fails at the clone when the template has no snapshot in the
+  vCenter placement chose.
+- Keep the template and its snapshots while VMs cloned from them exist.
+  To update the template, take a new snapshot: VMs cloned after it use the
+  new one.
+
+A blueprint can say otherwise with `linked_clone` (see the [service
+catalog guide](../service-catalog.md)).
+
 ## Placement rules
 
 A placement rule says where a project's VMs go in an environment

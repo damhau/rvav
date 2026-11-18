@@ -104,6 +104,32 @@ describe("Templates and networks", () => {
     expect(within(win).queryByRole("textbox", { name: "Cloud-init user data" })).toBeNull();
   });
 
+  it("makes a template's VMs linked clones, but not of a content library item", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    const region = await screen.findByRole("region", { name: "VM templates" });
+    await user.click(await within(region).findByRole("button", { name: "Actions for RHEL 9.4" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Change RHEL 9.4" });
+    const linked = within(sheet).getByRole("checkbox", { name: "Linked clones" });
+    expect(linked).toHaveAccessibleDescription(/current snapshot/);
+    expect(linked).not.toBeChecked();
+    await user.click(linked);
+    const library = within(sheet).getByRole("textbox", { name: "Content library" });
+    await user.click(library);
+    await user.paste("rvav-templates");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(linked).toHaveAccessibleDescription(/A content library item is deployed, not cloned/));
+
+    await user.clear(library);
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(within(region).getByRole("row", { name: /RHEL 9.4/ })).toHaveTextContent("linked clones"),
+    );
+  });
+
   it("changes a size in a side panel opened from its row", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

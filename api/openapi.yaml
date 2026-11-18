@@ -5561,6 +5561,7 @@ components:
           items: { type: string }
         os_family: { type: string, enum: [linux, windows] }
         template: { type: string }
+        linked_clone: { type: boolean, description: "Its VMs are linked clones of the template's current snapshot (ADR-0037)." }
         placement: { $ref: "#/components/schemas/ComponentPlacement" }
         disks:
           type: array
@@ -7840,7 +7841,7 @@ components:
             - type: "null"
     VmTemplate:
       type: object
-      required: [key, label, sources, os_family, customization, description, user_data, constraints, offers]
+      required: [key, label, sources, os_family, customization, description, user_data, constraints, linked_clone, offers]
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, examples: [RHEL 9.4] }
@@ -7857,6 +7858,9 @@ components:
           type: string
           description: "cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none."
         constraints: { $ref: "#/components/schemas/TemplateConstraints" }
+        linked_clone:
+          type: boolean
+          description: "Its VMs are linked clones of the vCenter template's current snapshot, unless the blueprint says otherwise (ADR-0037). Not for content library items."
         offers:
           type: array
           items: { $ref: "#/components/schemas/Offer" }
@@ -7910,6 +7914,7 @@ components:
         description: { type: string, maxLength: 500 }
         user_data: { type: string, maxLength: 65536 }
         constraints: { $ref: "#/components/schemas/TemplateConstraints" }
+        linked_clone: { type: boolean }
         offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
     VmTemplateList:
       type: object

@@ -4127,6 +4127,8 @@ export interface components {
             /** @enum {string} */
             os_family?: "linux" | "windows";
             template?: string;
+            /** @description Its VMs are linked clones of the template's current snapshot (ADR-0037). */
+            linked_clone?: boolean;
             placement?: components["schemas"]["ComponentPlacement"];
             /** @description Every disk, the template's first. */
             disks: {
@@ -5949,6 +5951,8 @@ export interface components {
             /** @description cloud-init user data of its own, a Go template as a blueprint's (ADR-0037): merged with the blueprint's, and its Linux VMs configured by cloud-init. Empty for none. */
             user_data: string;
             constraints: components["schemas"]["TemplateConstraints"];
+            /** @description Its VMs are linked clones of the vCenter template's current snapshot, unless the blueprint says otherwise (ADR-0037). Not for content library items. */
+            linked_clone: boolean;
             offers: components["schemas"]["Offer"][];
         };
         /** @description Constraint tags its VMs get on top of the blueprint's (ADR-0035, ADR-0037): `[!]category/tag[:hard|:soft]`, without `${...}`. */
@@ -5995,6 +5999,7 @@ export interface components {
             description?: string;
             user_data?: string;
             constraints?: components["schemas"]["TemplateConstraints"];
+            linked_clone?: boolean;
             offers?: components["schemas"]["Offer"][];
         };
         VmTemplateList: {

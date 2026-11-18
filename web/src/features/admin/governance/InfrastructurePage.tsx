@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
@@ -216,6 +217,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           customization: "",
           description: "",
           user_data: "",
+          linked_clone: false,
           offers: [{ project_id: null, environment: null }],
         },
   );
@@ -279,6 +281,30 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
         errors={errors}
         stored={template?.sources}
       />
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="tpl-linked"
+          className="mt-0.5"
+          aria-describedby="tpl-linked-note"
+          checked={f.linked_clone ?? false}
+          onChange={(linked_clone) => setF({ ...f, linked_clone })}
+        />
+        <div className="flex flex-col">
+          <label htmlFor="tpl-linked" className="text-body font-medium">
+            Linked clones
+          </label>
+          {errors["/linked_clone"] ? (
+            <p id="tpl-linked-note" className="text-secondary text-bad">
+              {errors["/linked_clone"]}
+            </p>
+          ) : (
+            <p id="tpl-linked-note" className="text-secondary text-muted">
+              Clone its VMs from the vCenter template&apos;s current snapshot, unless the blueprint says otherwise. Not
+              for content library items; the VMs keep the template&apos;s disk size.
+            </p>
+          )}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Operating system" htmlFor="tpl-os">
           <Select
@@ -374,6 +400,11 @@ function Templates({ canEdit }: { canEdit: boolean }) {
               {t.user_data && (
                 <Badge tone="outline" className="ml-2">
                   cloud-init
+                </Badge>
+              )}
+              {t.linked_clone && (
+                <Badge tone="outline" className="ml-2">
+                  linked clones
                 </Badge>
               )}
             </span>

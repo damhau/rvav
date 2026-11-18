@@ -70,6 +70,8 @@ type VMTemplate struct {
 	// its VMs get, both on top of the blueprint's (ADR-0037).
 	UserData    string              `db:"user_data"`
 	Constraints TemplateConstraints `db:"constraints"`
+	// LinkedClone: its VMs are linked clones, unless the blueprint says.
+	LinkedClone bool `db:"linked_clone"`
 }
 
 // TemplateConstraints are a template's constraint tags by kind (ADR-0035).
@@ -88,7 +90,7 @@ type TemplateSource struct {
 	Library string `json:"content_library"`
 }
 
-const templateCols = `key, label, os_family, customization, description, created_at, user_data, constraints,
+const templateCols = `key, label, os_family, customization, description, created_at, user_data, constraints, linked_clone,
 	coalesce((select json_agg(json_build_object('vcenter', s.vcenter, 'template', s.template, 'content_library', s.content_library)
 		order by s.vcenter) from vm_template_sources s where s.template_key = vm_templates.key), '[]') as sources`
 
@@ -108,13 +110,15 @@ func (s *Store) GetVMTemplate(ctx context.Context, key string) (VMTemplate, erro
 func (s *Store) SaveVMTemplate(ctx context.Context, t VMTemplate, offers []Offer, create bool) error {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		if create {
-			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description, user_data, constraints)
-				values ($1, $2, $3, $4, $5, $6, $7)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData, t.Constraints); err != nil {
+			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description, user_data, constraints,
+				linked_clone) values ($1, $2, $3, $4, $5, $6, $7, $8)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData,
+				t.Constraints, t.LinkedClone); err != nil {
 				return err
 			}
 		} else {
 			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, os_family = $3, customization = $4, description = $5,
-				user_data = $6, constraints = $7 where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description, t.UserData, t.Constraints)
+				user_data = $6, constraints = $7, linked_clone = $8 where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description,
+				t.UserData, t.Constraints, t.LinkedClone)
 			if err != nil {
 				return err
 			}

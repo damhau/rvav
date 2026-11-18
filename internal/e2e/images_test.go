@@ -85,13 +85,7 @@ func imageItem(h *harness, slug, key string, guest map[string]any) api.AdminCata
 	delete(b, "cluster")
 	delete(b, "datastore")
 	b["template"] = `"` + key + `"`
-	var item api.AdminCatalogItem
-	h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: slug, Name: slug, Summary: slug,
-		Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
-	h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions/"+item.DraftVersion.Id+"/publish", "mkeller", nil, 200, nil)
-	h.json("PUT", "/api/v1/admin/catalog/items/"+slug+"/entitlements", "mkeller",
-		api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
-	return item
+	return publishItem(h, slug, def)
 }
 
 // TestImagesPerVCenter: a catalogue template has a source per vCenter;

@@ -611,6 +611,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 				HostIndex:   in.HostIndex, Disks: diskSpecs(in.VM), NICs: nicNetworks(in.VM),
 				Library: in.VM.Library, StoragePolicy: in.VM.StoragePolicy, ResourcePool: in.VM.ResourcePool, Hosts: in.VM.Hosts,
 				DatastoreCluster: in.VM.DatastoreCluster, PodDatastores: in.VM.PodDatastores, Provisioning: in.VM.Provisioning,
+				LinkedClone: in.VM.LinkedClone,
 			})
 			return err
 		})
@@ -622,7 +623,7 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 					a.Log.Warn("record a VM whose clone failed", "vm", in.VM.Name, "err", rerr)
 				}
 			}
-			if errors.Is(err, vsphere.ErrNotFound) {
+			if errors.Is(err, vsphere.ErrNotFound) || errors.Is(err, vsphere.ErrLinkedClone) {
 				return "", "", permanent("vCenter: %v", err)
 			}
 			return "", "", fmt.Errorf("vCenter: %w", err)
@@ -656,6 +657,9 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 		}
 		if in.VM.Library != "" {
 			return "Deployed " + in.VM.Template + " from " + in.VM.Library, detail, nil
+		}
+		if in.VM.LinkedClone {
+			return "Linked clone of " + in.VM.Template, detail, nil
 		}
 		return "Cloned from " + in.VM.Template, detail, nil
 	})

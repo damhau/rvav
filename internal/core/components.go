@@ -96,6 +96,9 @@ type vmPart struct {
 	// the vCenters it can't be cloned in (ADR-0037).
 	image         *store.VMTemplate
 	imageExcluded []string
+	// linkedClone: its VMs are linked clones of the template's current
+	// snapshot, as the blueprint says, else the catalogue template.
+	linkedClone bool
 }
 
 func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
@@ -250,6 +253,10 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("template"), "invalid", fmt.Sprintf("%s configures its VMs with cloud-init, and this item names the customization specification %s. Ask a catalog admin to check this item.",
 				part.image.Label, part.guest.CustomizationSpec))
 		}
+	}
+	part.linkedClone = part.image != nil && part.image.LinkedClone
+	if c.LinkedClone != nil {
+		part.linkedClone = *c.LinkedClone
 	}
 	part.vm = plan
 	if part.count == 0 {
@@ -564,6 +571,10 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 		add("", "template_missing", what+" was not found in vCenter. Ask a catalog admin to check this item.")
 	}
+	if part.linkedClone && plan.Library != "" {
+		add(field("template"), "invalid", fmt.Sprintf("Template %s of content library %s is deployed, not cloned: its VMs can't be linked clones. Ask a catalog admin to check this item.",
+			plan.Template, plan.Library))
+	}
 	// The storage policy: the component's, else its placement rule's; a
 	// disk's own wins (ADR-0024).
 	if plan.StoragePolicy == "" && part.rule != nil {
@@ -715,6 +726,9 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		if !ev.Blueprint.Multi() {
 			c.Title = ev.Item.Name
 		}
+		if p.linkedClone {
+			c.LinkedClone = present.Ptr(true)
+		}
 		if deps := ev.Blueprint.DependsOn(p.comp); len(deps) > 0 {
 			c.DependsOn = &deps
 		}
@@ -830,6 +844,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		VCPU: p.vm.VCPU, MemoryGB: p.vm.MemoryGB, DiskGB: p.vm.DiskGB,
 		Cluster: p.vm.Cluster, Datastore: p.vm.Datastore, Network: p.vm.Network, Template: p.vm.Template,
 		Library: p.vm.Library, StoragePolicy: p.vm.StoragePolicy, VCenter: p.vcenter, Provisioning: p.vm.Provisioning,
+		LinkedClone: p.linkedClone,
 	}
 	if p.rule != nil {
 		vm.Folder = p.rule.Folder

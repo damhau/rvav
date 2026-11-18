@@ -38,6 +38,10 @@ import (
 // ErrNotFound is returned when a named inventory object does not exist.
 var ErrNotFound = errors.New("not found in vCenter")
 
+// ErrLinkedClone: a linked clone can't be made as asked; trying again
+// won't change that.
+var ErrLinkedClone = errors.New("no linked clone")
+
 // VMSpec describes a VM to clone from a template.
 type VMSpec struct {
 	Name      string
@@ -78,6 +82,10 @@ type VMSpec struct {
 	// Provisioning converts the template's disks at clone: thin,
 	// thick_lazy_zeroed or thick_eager_zeroed (as they are when empty).
 	Provisioning string
+	// LinkedClone clones from the template's current snapshot, the VM's
+	// disks children of the template's (ADR-0037): its disks keep their
+	// size and Provisioning applies to added disks only.
+	LinkedClone bool
 }
 
 // DiskSpec is a disk added at provisioning, on Datastore (the VM's when
@@ -680,6 +688,8 @@ func (cl *Client) CloneVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	case existing != nil:
 		// An earlier attempt made it: it is finished below, as a new one is.
 		ref = vmRef(existing.Moref)
+	case spec.Library != "" && spec.LinkedClone:
+		return nil, fmt.Errorf("%w: %s is an item of content library %s, deployed rather than cloned", ErrLinkedClone, spec.Template, spec.Library)
 	case spec.Library != "":
 		if ref, err = cl.deployFromLibrary(ctx, c, spec, w.pool, w.host, w.folder.Reference(), w.datastore, policy); err != nil {
 			return nil, err
@@ -1026,14 +1036,21 @@ func (cl *Client) cloneTemplate(ctx context.Context, c *vim25.Client, tpl *objec
 		changes = append(changes, change)
 	}
 	var locators []types.VirtualMachineRelocateSpecDiskLocator
-	if spec.Provisioning != "" {
+	if spec.Provisioning != "" && !spec.LinkedClone {
 		devices, err := tpl.Device(ctx)
 		if err != nil {
 			return none, err
 		}
 		locators = diskLocators(devices, dsRef, spec.Provisioning, policy)
 	}
+	var snapshot *types.ManagedObjectReference
+	if spec.LinkedClone {
+		if snapshot, err = linkedCloneBase(ctx, tpl, spec); err != nil {
+			return none, err
+		}
+	}
 	cs := types.VirtualMachineCloneSpec{
+		Snapshot: snapshot,
 		Location: types.VirtualMachineRelocateSpec{
 			Pool:         &pool,
 			Host:         &host,
@@ -1047,6 +1064,9 @@ func (cl *Client) cloneTemplate(ctx context.Context, c *vim25.Client, tpl *objec
 			MemoryMB:   int64(spec.MemoryMB),
 			Annotation: spec.Annotation,
 		},
+	}
+	if spec.LinkedClone {
+		cs.Location.DiskMoveType = string(types.VirtualMachineRelocateDiskMoveOptionsCreateNewChildDiskBacking)
 	}
 	for k, v := range spec.ExtraConfig {
 		cs.Config.ExtraConfig = append(cs.Config.ExtraConfig, &types.OptionValue{Key: k, Value: v})

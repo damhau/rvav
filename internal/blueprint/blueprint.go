@@ -47,6 +47,10 @@ type Blueprint struct {
 	// included (ADR-0036): one of Provisionings, the template's first
 	// disk's when empty.
 	Provisioning string `json:"provisioning,omitempty"`
+	// LinkedClone makes the VMs linked clones of the template's current
+	// snapshot, or full clones; when absent, as the catalogue template the
+	// form chose says (ADR-0037).
+	LinkedClone *bool `json:"linked_clone,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
 	Components []Component `json:"components,omitempty"`
@@ -185,6 +189,7 @@ type Component struct {
 	// disks'.
 	StoragePolicy string `json:"storage_policy,omitempty"`
 	Provisioning  string `json:"provisioning,omitempty"`
+	LinkedClone   *bool  `json:"linked_clone,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 	// Groups are the NSX security groups its VMs are in (ADR-0028).
@@ -243,7 +248,7 @@ func (b Blueprint) ComponentList() []Component {
 	if !b.Multi() {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
 			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups,
-			Constraints: b.Constraints, Provisioning: b.Provisioning}}
+			Constraints: b.Constraints, Provisioning: b.Provisioning, LinkedClone: b.LinkedClone}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -282,6 +287,9 @@ func (b Blueprint) ComponentList() []Component {
 		}
 		if r.Provisioning == "" {
 			r.Provisioning = b.Provisioning
+		}
+		if r.LinkedClone == nil {
+			r.LinkedClone = b.LinkedClone
 		}
 		out[i] = r
 	}

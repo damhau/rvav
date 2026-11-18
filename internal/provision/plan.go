@@ -383,6 +383,8 @@ type VMUnit struct {
 	// ImageUserData is its catalogue template's cloud-init user data,
 	// merged with the blueprint's (ADR-0037).
 	ImageUserData string `json:"image_user_data,omitempty"`
+	// LinkedClone: cloned from its template's current snapshot.
+	LinkedClone bool `json:"linked_clone,omitempty"`
 	// VCenter is the vCenter its cluster is in ("" for the first).
 	VCenter string `json:"vcenter,omitempty"`
 	// Segment is the key of the NSX segment made for its deployment that
@@ -495,6 +497,9 @@ type NICUnit struct {
 func (vm VMUnit) cloneTitle() string {
 	if vm.Library != "" {
 		return "Deploy " + vm.Template + " from " + vm.Library
+	}
+	if vm.LinkedClone {
+		return "Linked clone of " + vm.Template
 	}
 	return "Clone from " + vm.Template
 }

@@ -101,4 +101,12 @@ func TestCheckVMBlueprint(t *testing.T) {
 	if got := check(`{"kind": "vm", "deployment_name": "x", "guest": {"os_family": "linux"}}`, false); !slices.Equal(got, []string{"/blueprint/deployment_name invalid"}) {
 		t.Fatalf("single VM = %v", got)
 	}
+
+	// A content library item is deployed, not cloned: no linked clone of it
+	// (ADR-0037), whether the blueprint or the component says so.
+	if got := check(`{"kind": "vm", "template": "rhel9", "library": "rvav", "linked_clone": true, "guest": {"os_family": "linux"},
+		"components": [{"key": "web"}, {"key": "db", "template": "rhel9", "linked_clone": true}, {"key": "app", "linked_clone": false}]}`,
+		true); !slices.Equal(got, []string{"/blueprint/components/0/linked_clone invalid"}) {
+		t.Fatalf("linked clones of a library item = %v", got)
+	}
 }

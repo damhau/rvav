@@ -294,12 +294,13 @@ export function adminState(db: Db): AdminState {
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-rhel9.4-2026.10", content_library: "", in_inventory: true }],
         description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }],
         user_data: "#cloud-config\npackages: [chrony, qualys-agent]", constraints: { compute: [], storage: [], network: [] },
+        linked_clone: false,
       },
       {
         key: "win2025", label: "Windows Server 2025", os_family: "windows", customization: "", description: "",
         sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09", content_library: "", in_inventory: true }],
         offers: [{ project_id: "prj_web", environment: null }],
-        user_data: "", constraints: { compute: [], storage: [], network: [] },
+        user_data: "", constraints: { compute: [], storage: [], network: [] }, linked_clone: false,
       },
     ], // prettier-ignore
     sizes: [
@@ -794,10 +795,18 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         else if (!/^!?[^/:]+\/[^/:]+(:hard|:soft)?$/.test(tag.trim()))
           out.push(err(`/constraints/${kind}/${i}`, `"${tag}" is not category/tag, as rvav-tier/gold.`));
       });
+    if (w.linked_clone && (w.sources ?? []).some((src) => src.content_library?.trim()))
+      out.push(
+        err(
+          "/linked_clone",
+          "A content library item is deployed, not cloned: a linked clone needs a VM template in each vCenter.",
+        ),
+      );
     return out;
   };
   const storedTemplate = (w: S["VmTemplateWrite"]) => ({
     user_data: (w.user_data ?? "").trim(),
+    linked_clone: w.linked_clone ?? false,
     constraints: {
       compute: w.constraints?.compute ?? [],
       storage: w.constraints?.storage ?? [],

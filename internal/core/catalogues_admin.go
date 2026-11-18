@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
@@ -93,7 +94,8 @@ func (s *Service) vmTemplates(ctx context.Context) ([]api.VmTemplate, error) {
 	for i, t := range list {
 		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, Sources: s.presentSources(t, inv, added),
 			OsFamily: api.VmTemplateOsFamily(t.OSFamily), Customization: t.Customization, Description: t.Description,
-			UserData: t.UserData, Constraints: presentTemplateConstraints(t.Constraints), Offers: presentOffers(offers[t.Key])}
+			UserData: t.UserData, Constraints: presentTemplateConstraints(t.Constraints), LinkedClone: t.LinkedClone,
+			Offers: presentOffers(offers[t.Key])}
 	}
 	return out, nil
 }
@@ -120,6 +122,11 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	}
 	userData, cons, imageErrs := checkImage(w)
 	errs = append(errs, imageErrs...)
+	linked := w.LinkedClone != nil && *w.LinkedClone
+	if linked && slices.ContainsFunc(sources, func(s store.TemplateSource) bool { return s.Library != "" }) {
+		errs = append(errs, fieldErr("/linked_clone", "invalid",
+			"A content library item is deployed, not cloned: a linked clone needs a VM template in each vCenter."))
+	}
 	offers, offerErrs, err := s.checkOffers(ctx, w.Offers)
 	if err != nil {
 		return api.VmTemplate{}, err
@@ -132,7 +139,7 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	}
 	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), Sources: sources,
 		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description),
-		UserData: userData, Constraints: cons}
+		UserData: userData, Constraints: cons, LinkedClone: linked}
 	switch err := s.Store.SaveVMTemplate(ctx, t, offers, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.VmTemplate{}, &ConflictError{Msg: "A template has the key " + key + "."}

@@ -303,9 +303,10 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | `constraints` | The vSphere tags the clusters (`compute`), datastores (`storage`) and network (`network`) of the VMs must carry, or must not; below |
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `provisioning` | How the VMs' disks are provisioned, the template's included ([ADR-0036](adr/0036-placement-targets.md)): `thin`, `thick_lazy_zeroed` or `thick_eager_zeroed`. Without it, the template's disks stay as they are and added disks are provisioned as the template's first disk |
+| `linked_clone` | `true` to clone the VMs from the template's current snapshot as linked clones, `false` for full clones ([ADR-0037](adr/0037-images-per-vcenter.md)). Without it, as the template of **Templates and networks** the `template` binding chose says, else full clones. Not with `library` |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `provisioning`, `groups`, `constraints`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `provisioning`, `linked_clone`, `groups`, `constraints`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind) |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for
@@ -333,7 +334,10 @@ added to the component's, and its user data is merged with
 first, the blueprint's other values; else a multipart document, the
 template's part first). Its VMs are configured by cloud-init even when
 the blueprint has no `cloud_init`, so the blueprint can't name a
-`customization_spec` then.
+`customization_spec` then. A template that makes linked clones applies
+`linked_clone` unless the blueprint sets it: a linked clone keeps the
+template's disk size, so a `disk_gb` larger than the template's first
+disk fails the clone.
 
 **Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
 placement rule may put the VMs in a resource pool, on some hosts, or in a
