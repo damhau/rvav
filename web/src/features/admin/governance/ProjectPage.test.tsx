@@ -173,4 +173,38 @@ describe("a project's placement and quotas", () => {
     expect(await screen.findByText("Web Platform saved")).toBeInTheDocument();
     expect(adminState(db).extra.prj_web!.properties).toEqual({ costCenter: "CC-1001" });
   });
+
+  it("says a key given twice or left out, and the server's problem with a key typed with spaces", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=details");
+    const details = await screen.findByRole("region", { name: "Details" });
+    await within(details).findByDisplayValue("backupPolicy");
+    const add = async (key: string, value: string) => {
+      await user.click(within(details).getByRole("button", { name: "Add property" }));
+      const n = within(details).getAllByRole("textbox", { name: "Key" }).length - 1;
+      if (key) {
+        await user.click(within(details).getAllByRole("textbox", { name: "Key" })[n]!);
+        await user.paste(key);
+      }
+      await user.click(within(details).getAllByRole("textbox", { name: "Value" })[n]!);
+      await user.paste(value);
+    };
+    await add("backupPolicy", "weekly");
+    await add("", "orphan");
+    await user.click(within(details).getByRole("button", { name: "Save details" }));
+    const keys = within(details).getAllByRole("textbox", { name: "Key" });
+    expect(keys[1]).toHaveAccessibleDescription("backupPolicy is given twice.");
+    expect(keys[2]).toHaveAccessibleDescription("Give the property a key.");
+    expect(Object.keys(adminState(db).extra.prj_web!.properties ?? {})).toEqual(["backupPolicy"]);
+
+    await user.click(within(details).getAllByRole("button", { name: "Remove property backupPolicy" })[1]!);
+    await user.click(within(details).getByRole("button", { name: "Remove property 2" }));
+    await add(" 1st ", "CC-1001");
+    await user.click(within(details).getByRole("button", { name: "Save details" }));
+    await waitFor(() =>
+      expect(within(details).getAllByRole("textbox", { name: "Key" })[1]).toHaveAccessibleDescription(
+        /^A key of up to 64 letters/,
+      ),
+    );
+  }, 15_000);
 });

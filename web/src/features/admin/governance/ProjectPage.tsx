@@ -28,7 +28,7 @@ import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
-import { errorAt, failed, fieldErrors, UserPicker } from "./common";
+import { errorAt, failed, fieldErrors, keyProblems, UserPicker } from "./common";
 import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
 
 type S = components["schemas"];
@@ -50,11 +50,14 @@ function PropertiesEditor({
   onChange,
   disabled,
   errors,
+  local,
 }: {
   value: Property[];
   onChange: (v: Property[]) => void;
   disabled: boolean;
   errors: Record<string, string>;
+  /** Problems found before saving, by row. */
+  local: Record<number, string>;
 }) {
   const set = (i: number, p: Property) => onChange(value.map((x, j) => (j === i ? p : x)));
   return (
@@ -64,9 +67,10 @@ function PropertiesEditor({
         Each VM of the project gets them as vSphere custom attributes and in its notes. Bindings read them as{" "}
         <code className="font-mono">project.properties.&lt;key&gt;</code>.
       </p>
+      {errors["/properties"] && <p className="text-secondary text-bad">{errors["/properties"]}</p>}
       {value.map((p, i) => (
         <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-start gap-2">
-          <Field label="Key" htmlFor={`p-prop-${i}-key`} error={errors[`/properties/${p.key}`]}>
+          <Field label="Key" htmlFor={`p-prop-${i}-key`} error={local[i] ?? errors[`/properties/${p.key.trim()}`]}>
             <Input
               id={`p-prop-${i}-key`}
               className="font-mono"
@@ -121,6 +125,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
   const [props, setProps] = useState<Property[]>(() =>
     Object.entries(project.properties).map(([key, value]) => ({ key, value })),
   );
+  const [local, setLocal] = useState<Record<number, string>>({});
   const save = useMutation({
     mutationFn: (body: S["AdminProjectUpdate"]) =>
       call(api.PATCH("/admin/projects/{projectId}", { params: { path: { projectId: project.id } }, body })),
@@ -153,6 +158,9 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
         className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
+          const problems = keyProblems(props, (p) => p.value === "", "Give the property a key.");
+          setLocal(problems);
+          if (Object.keys(problems).length > 0) return;
           save.mutate({
             ...f,
             properties: Object.fromEntries(props.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
@@ -202,7 +210,17 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             </label>
           ))}
         </fieldset>
-        <PropertiesEditor value={props} onChange={setProps} disabled={!isAdmin} errors={errors} />
+        <PropertiesEditor
+          value={props}
+          onChange={(v) => {
+            // A row gone: the problems found by row no longer line up.
+            if (v.length < props.length) setLocal({});
+            setProps(v);
+          }}
+          disabled={!isAdmin}
+          errors={errors}
+          local={local}
+        />
       </form>
       {archiving && <ArchiveDialog project={project} onClose={() => setArchiving(false)} />}
     </Panel>
