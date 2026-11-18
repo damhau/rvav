@@ -188,6 +188,21 @@ func TestCheckGivenAndNote(t *testing.T) {
 	if got := placementNote("", nil); got != "" {
 		t.Errorf("no constraints, note %q", got)
 	}
+	if got := placementNote("Web: ", nil); got != "" {
+		t.Errorf("a component without constraints, note %q", got)
+	}
+	// A composite's VM step: its components' notes under its title, once.
+	ev := &Evaluation{Composite: []compositePart{
+		{title: "Database nodes", sub: &Evaluation{Parts: []vmPart{{label: "Database nodes: ", constraints: results[:1]}, {label: "Witness: "}}}},
+		{title: "Web", sub: &Evaluation{Parts: []vmPart{{constraints: results[:1]}}}},
+		{title: "Monitor"},
+	}}
+	if got, want := ev.placementNotes(), []string{"Database nodes: placed by rvav-env/prod", "Web: Placed by rvav-env/prod"}; !slices.Equal(got, want) {
+		t.Errorf("composite notes %q, want %q", got, want)
+	}
+	if got := (&Evaluation{Parts: []vmPart{{label: "Web: "}, {label: "Db: "}}}).placementNotes(); len(got) != 0 {
+		t.Errorf("components without constraints, notes %q", got)
+	}
 	if got, want := placementNote("", results[:1]), "Placed by rvav-env/prod"; got != want {
 		t.Errorf("single VM note %q, want %q", got, want)
 	}

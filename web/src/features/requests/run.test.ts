@@ -28,6 +28,21 @@ describe("a composite's run on its graph", () => {
     expect(keys("end")).toEqual(["request.ready", "rollback"]);
   });
 
+  it("puts the server's placement by constraint tags on the request's node", () => {
+    const steps = [
+      step("submit", "done"),
+      step("placement", "done", { system: "rvav" }),
+      step("policy", "done"),
+      step("step:nodes", "done"),
+      step("ready", "done"),
+    ];
+    expect(
+      runSteps(graph, steps)
+        .get("inputs")!
+        .map((s) => s.key),
+    ).toEqual(["submit", "placement", "policy"]);
+  });
+
   it("says what was undone: a step whose undo ran, the VMs of a request rolled back", () => {
     const byNode = runSteps(graph, stored().steps);
     expect(runStatus(graph, byNode)).toEqual({

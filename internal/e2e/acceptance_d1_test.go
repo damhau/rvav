@@ -373,15 +373,16 @@ func follow(t *testing.T, h *harness, request, user string) followed {
 
 // runOnGraph is a finished request's run as its page draws it (run.ts:
 // runSteps): its top-level steps by the node of the graph that holds them.
-// Every step is on a node: submitted and the approval on the Request node,
-// step:<key> on its own, ready on Done. The events the page followed came
-// in the graph's order (a step done before the next one starts), and its
-// steps as it first read them, changed by those events, are the request's.
+// Every step is on a node: submitted, the placement by constraint tags and
+// the approval on the Request node, step:<key> on its own, ready on Done.
+// The events the page followed came in the graph's order (a step done
+// before the next one starts), and its steps as it first read them,
+// changed by those events, are the request's.
 func runOnGraph(t *testing.T, h *harness, request, user string, graph []string, page followed) map[string][]api.Step {
 	t.Helper()
 	nodeOf := func(key string) string {
 		switch {
-		case key == "submit" || key == "policy":
+		case key == "submit" || key == "placement" || key == "policy":
 			return "inputs"
 		case key == "ready":
 			return "end"

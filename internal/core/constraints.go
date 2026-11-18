@@ -333,7 +333,10 @@ func placementNote(label string, results []constraintResult) string {
 		notes = append([]string{"placed by " + strings.Join(met, ", ")}, notes...)
 	}
 	note := strings.Join(notes, "; ")
-	if label == "" && note != "" {
+	switch {
+	case note == "":
+		return ""
+	case label == "":
 		return strings.ToUpper(note[:1]) + note[1:]
 	}
 	return label + note
@@ -353,7 +356,11 @@ func (ev *Evaluation) placementNotes() []string {
 			continue
 		}
 		for _, n := range c.sub.placementNotes() {
-			out = append(out, c.title+": "+n)
+			// A component titled as its step says so once.
+			if !strings.HasPrefix(n, c.title+": ") {
+				n = c.title + ": " + n
+			}
+			out = append(out, n)
 		}
 	}
 	return out
