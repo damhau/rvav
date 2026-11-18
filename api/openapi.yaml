@@ -5529,6 +5529,10 @@ components:
           type: array
           description: The names its VMs would get.
           items: { type: string }
+        depends_on:
+          type: array
+          description: "The components it is built after (ADR-0024), by their `key`: those its `depends_on` names and those its tags or cloud-init read."
+          items: { type: string }
         vcpu: { type: integer, description: Per VM. }
         memory_gb: { type: integer, description: Per VM. }
         storage_gb: { type: integer, description: "Per VM, every disk." }

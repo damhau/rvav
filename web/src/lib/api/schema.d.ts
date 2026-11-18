@@ -4092,6 +4092,8 @@ export interface components {
             count: number;
             /** @description The names its VMs would get. */
             names: string[];
+            /** @description The components it is built after (ADR-0024), by their `key`: those its `depends_on` names and those its tags or cloud-init read. */
+            depends_on?: string[];
             /** @description Per VM. */
             vcpu: number;
             /** @description Per VM. */

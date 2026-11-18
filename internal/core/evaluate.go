@@ -689,6 +689,11 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 					c.Title = part.title
 				}
 				c.Key = part.step.Key + "/" + c.Key
+				if c.DependsOn != nil {
+					for i, d := range *c.DependsOn {
+						(*c.DependsOn)[i] = part.step.Key + "/" + d
+					}
+				}
 				comps = append(comps, c)
 			}
 		}

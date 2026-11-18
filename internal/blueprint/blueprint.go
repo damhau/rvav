@@ -178,6 +178,9 @@ type Component struct {
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 	// Groups are the NSX security groups its VMs are in (ADR-0028).
 	Groups []string `json:"groups,omitempty"`
+	// DependsOn are components it is built after, besides those it reads
+	// (Refs).
+	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 // Disk is a disk added after the template's: SizeGB is a number or CEL,
@@ -507,7 +510,9 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 			}
 		}
 	}
-	if expr, ok := b.Bindings["tags"]; ok {
+	// A tags binding reading self or components is worked out as each VM
+	// is cloned (provision.VMUnit.TagsBinding).
+	if expr, ok := b.Bindings["tags"]; ok && !c.Refs().BuildTags {
 		if list, ok := celStrings(expr, vars); ok {
 			plan.Tags = append(plan.Tags, list...)
 		} else {

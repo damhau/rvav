@@ -83,6 +83,17 @@ func (t Template) Prefix(vals map[string]string) (string, error) {
 	return b.String(), nil
 }
 
+// Fields are the placeholders before {seq}, such as "inputs.role".
+func (t Template) Fields() []string {
+	var out []string
+	for _, p := range t.parts {
+		if p.field != "" {
+			out = append(out, p.field)
+		}
+	}
+	return out
+}
+
 // Name renders prefix plus the zero-padded sequence number.
 func (t Template) Name(prefix string, seq int) string {
 	return fmt.Sprintf("%s%0*d", prefix, t.seqWidth, seq)

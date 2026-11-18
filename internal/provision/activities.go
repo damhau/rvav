@@ -144,6 +144,9 @@ type VMInput struct {
 	Moref string          `json:"moref,omitempty"`
 	// HostIndex spreads a component's VMs kept apart over the hosts.
 	HostIndex int `json:"host_index,omitempty"`
+	// Components are what the components its tags and cloud-init read
+	// built, by key (ComponentOutputs).
+	Components map[string]any `json:"components,omitempty"`
 }
 
 // RuleInput is a component's DRS rule: its VMs by name and moref.
@@ -585,6 +588,14 @@ func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput
 func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 	var moref string
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
+		// Before the clone: a binding that can't be worked out leaves no VM.
+		if in.VM.TagsBinding != "" {
+			more, err := buildTags(in)
+			if err != nil {
+				return "", "", permanent("The tags binding: %v. Ask a catalog admin to check this item.", err)
+			}
+			in.VM.Tags = append(slices.Clone(in.VM.Tags), more...)
+		}
 		vc, err := a.vc(ctx, in.VM.VCenter)
 		if err != nil {
 			return "", "", err
@@ -783,8 +794,9 @@ func (a *Activities) cloudInit(ctx context.Context, in VMInput, extra []vsphere.
 	}
 	user, err := renderUserData(in.Guest.CloudInit.UserData, map[string]any{
 		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.IP, "ips": ips, "domain": in.Guest.Domain,
-			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID},
-		"inputs": inputs, "project": r.ProjectCode, "environment": r.Environment,
+			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID, "index": in.VM.Index},
+		"components": integers(in.Components),
+		"inputs":     inputs, "project": r.ProjectCode, "environment": r.Environment,
 		"request": map[string]any{"id": r.ID, "number": r.Number},
 	})
 	if err != nil {

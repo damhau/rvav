@@ -14,8 +14,9 @@ import (
 // item's components (how many, template, OS family, disks, adapters, kept
 // apart), its networks, segments, security groups and rules; a composite's
 // steps, what each runs, its condition and undo, and which earlier steps
-// its bindings use. Nothing else: no guest settings (domain, join
-// credential, administrator password, cloud-init), sizes, naming, tags,
+// its bindings use; which components each is built after. Nothing else:
+// no guest settings (domain, join credential, administrator password,
+// cloud-init), sizes, naming, tags,
 // placement or AWX variables, a step's bindings only as the `steps.<key>`
 // they name, a REST call (a poll's too) only as its method and what its URL
 // and body read, a wait for a person without who it names (a group, people) or
@@ -44,7 +45,33 @@ func Topology(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	out, _ := s.keep(bp).(map[string]any)
+	if bp["kind"] == KindVM {
+		dependsOn(raw, out)
+	}
 	return out
+}
+
+// dependsOn puts in each component of the topology the components it is
+// built after: its depends_on and those its tags and cloud-init read, by
+// key only (ADR-0024).
+func dependsOn(raw json.RawMessage, out map[string]any) {
+	b, err := Parse(raw)
+	comps, _ := out["components"].([]any)
+	if err != nil || !b.Multi() || len(comps) != len(b.Components) {
+		return
+	}
+	for i, c := range b.ComponentList() {
+		m, ok := comps[i].(map[string]any)
+		deps := b.DependsOn(c)
+		if !ok || len(deps) == 0 {
+			continue
+		}
+		list := make([]any, len(deps))
+		for j, d := range deps {
+			list[j] = d
+		}
+		m["depends_on"] = list
+	}
 }
 
 // A shape says what of a JSON value to keep.

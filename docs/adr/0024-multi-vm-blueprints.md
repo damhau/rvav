@@ -144,7 +144,8 @@ and vCenters.
   domain, time zone and addresses. With `cloud_init.user_data`, the VM
   gets cloud-init through `guestinfo` (cloud-init's VMware data source)
   instead: the user data is a Go template over `.vm` (name, fqdn, ip,
-  ips), `.inputs`, `.project`, `.environment` and `.request`, where an
+  ips, index), `.inputs`, `.project`, `.environment`, `.request` and
+  `.components` (below), where an
   input is printed only through `json` (`{{ .inputs.motd | json }}`, a
   quoted scalar), so what a requester types can't add YAML of its own; the
   metadata holds the host name and the network (version 2), so the
@@ -197,6 +198,76 @@ With `rollback_on_failure` everything is deleted, else it stays for
 someone to look at, and **Retry** resumes after what was done (ADR-0013),
 per VM. Only plans with components take this path, so workflows started
 before it finish the way they began.
+
+A component that depends on others (below) is built in a later **round**:
+the phases above run for the components that depend on nothing, then
+again for those that depend only on them, and so on. Components in one
+round are built at the same time, as before.
+
+### References between components
+*(T1.1, 2026-11-18.)* An application's machines read each other: the web
+servers' configuration names the database, a tag numbers the node. vRA
+writes `${resource.db.address}` and `count.index`; rvav has the same in
+its two languages.
+
+- **Expressions** (CEL, everywhere: bindings, forms, approval policies,
+  composites, rules) have cel-go's string extension, pinned at version 4:
+  `lowerAscii`, `upperAscii`, `trim`, `replace`, `split`, `join`,
+  `substring`, `indexOf`, `lastIndexOf`, `charAt`, `reverse`, `format`,
+  `strings.quote`. The version is pinned so a newer cel-go adds no function
+  that clashes with a variable or changes what a saved item means.
+- **What each VM is**: `self` in CEL (`index`, from 0 within its
+  component, `name`, `fqdn`, `address`, `component`), `.vm.index` in
+  cloud-init next to `.vm.name`. Not `vm`: approval policies already read
+  `vm` as the largest VM of a request, in the same environment.
+- **What other components built**: `components.<key>` in CEL and
+  `.components.<key>` in cloud-init: `count`, `names`, `fqdns`,
+  `addresses` (each VM's first adapter, in index order) and `vms`, a list
+  of `{name, fqdn, address, index}`. `components.db.vms[0].address` in
+  CEL is `{{ (index .components.db.vms 0).address }}` in cloud-init. A
+  reference names its component: `components` alone, or
+  `components[inputs.x]`, is refused, since rvav must know at save what
+  each component reads.
+- **Where**: the `tags` binding and the cloud-init user data. They are
+  worked out as each VM is built: the tags just before its clone, the
+  user data just before its customisation. Other bindings (sizes,
+  placement, counts, post-configuration) are a component's, worked out
+  when the request is submitted, before any VM has an address: reading
+  `self` or `components` there is refused at save. A `tags` binding that
+  reads neither is still worked out at submit, as before, with sizes;
+  one that reads them sees `inputs` (the ones it reads, a secret as its
+  marker), `self` and `components` only.
+- **Names** don't read the index: `{seq}` already numbers the VMs, across
+  deployments, and an index would give two deployments the same names. A
+  naming template reads a binding instead, `{bindings.<key>}`, so a name
+  can go through a string function
+  (`app: inputs.app.trim().lowerAscii()`, `naming: "{project}-{bindings.app}{seq:02}"`).
+  It is worked out at submit, over the inputs and sizes, as the names are.
+- **Order**: names, FQDNs and counts are fixed at submit, but an address
+  is reserved only as its VM is built, all VMs at once. So a component
+  whose tags or cloud-init read another is built after it, and
+  `depends_on: [db]` says so without a reference (an AWX playbook that
+  needs the database up). A component's tags can't read its own
+  component: its VMs' addresses come in the same round. Its cloud-init
+  can: every VM of a round has its address before any is customised.
+- **Checks at save**, each with its line in the YAML: a reference to, or
+  a `depends_on` on, no component (code `unknown_component`), a
+  component after itself, a cycle (`cycle`, said at the first
+  `depends_on` or reference of it: "web after db after web"), a name
+  reading a binding its components lack (`unknown_binding`).
+- **Shown**: the preview lists each component's `depends_on`, those it
+  names and those it reads; the topology (what requesters see) carries
+  the same, keys only, and the canvas draws an edge from a component to
+  each it is built after.
+
+Rounds run each phase in full, post-configuration included, so a
+dependent waits for its dependencies' playbooks too, and the components
+independent of a dependency wait for its round. This is coarser than vRA,
+which starts each machine once its own dependencies are up; it is simpler
+to follow on the timeline and to retry, and an application's few
+components rarely make the difference. A plan without dependencies is one
+round, the path workflows took before, so workflows in flight replay the
+same.
 
 ### Several vCenters
 - Administrators add vCenters (Administration → Integrations → vCenters):

@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
@@ -30,7 +31,20 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	}
 	bindings := func(at string, m map[string]string) {
 		for _, k := range sortedKeys(m) {
-			cel(at+"/"+k, m[k], "This binding")
+			rd, err := policy.ReadsOf(m[k])
+			switch {
+			case err != nil || !blueprint.BuildTime(rd):
+				cel(at+"/"+k, m[k], "This binding")
+			case k != "tags":
+				add(at+"/"+k, "invalid", "Only the tags binding is worked out as each VM is built: this one can't read self or components.")
+			case rd.Loose:
+				add(at+"/"+k, "invalid", "Name the component you read, as in components.db.addresses, not components alone.")
+			default:
+				if err := policy.CheckBuild(m[k]); err != nil {
+					add(at+"/"+k, "invalid", "This binding is not valid CEL: "+err.Error()+
+						" (worked out as each VM is cloned, it reads inputs, self and components).")
+				}
+			}
 		}
 	}
 	bindings(ptr+"/bindings", b.Bindings)
@@ -131,6 +145,119 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 			add(at+"/template", "required", "Name "+what+", or take it from an input (bindings.template, for example inputs.template with rvav.templates).")
 		}
 		errs = append(errs, checkGuest(at+"/guest", *c.Guest, publish)...)
+	}
+	errs = append(errs, checkReferences(b, ptr)...)
+	return errs
+}
+
+// checkReferences checks what components read of each other and the order
+// they are built in (ADR-0024): no component unknown, none read before it
+// has what is read, and no cycle. It checks the names' bindings too.
+func checkReferences(b blueprint.Blueprint, ptr string) []api.FieldError {
+	var errs []api.FieldError
+	said := map[string]bool{}
+	// An inherited binding or template is the blueprint's: said once there.
+	add := func(at, code, msg string) {
+		if !said[at+msg] {
+			said[at+msg] = true
+			errs = append(errs, fieldErr(at, code, msg))
+		}
+	}
+	keys := map[string]bool{}
+	for _, c := range b.Components {
+		keys[c.Key] = true
+	}
+	unknown := func(k string) string {
+		if !b.Multi() {
+			return "There is no component " + k + ": only a blueprint with components has others to read."
+		}
+		return "There is no component " + k + "."
+	}
+	type where struct{ comp, tags, userData, naming string }
+	at := make([]where, len(b.Components)+1)
+	resolved := b.ComponentList()
+	for i, c := range resolved {
+		w := where{comp: ptr, tags: ptr + "/bindings/tags", userData: ptr + "/guest/cloud_init/user_data", naming: ptr + "/naming"}
+		if b.Multi() {
+			own := b.Components[i]
+			w.comp = fmt.Sprintf("%s/components/%d", ptr, i)
+			if _, ok := own.Bindings["tags"]; ok {
+				w.tags = w.comp + "/bindings/tags"
+			}
+			if own.Guest != nil && own.Guest.CloudInit != nil {
+				w.userData = w.comp + "/guest/cloud_init/user_data"
+			}
+			if own.Naming != "" {
+				w.naming = w.comp + "/naming"
+			}
+			for j, d := range own.DependsOn {
+				dat := fmt.Sprintf("%s/depends_on/%d", w.comp, j)
+				switch {
+				case d == c.Key:
+					add(dat, "invalid", "A component isn't built after itself.")
+				case !keys[d]:
+					add(dat, "unknown_component", unknown(d))
+				}
+			}
+		}
+		at[i] = w
+		refs := c.Refs()
+		for _, k := range refs.Tags {
+			switch {
+			case k == c.Key:
+				add(w.tags, "invalid", fmt.Sprintf("Tags are attached as each VM is cloned, before %s's VMs all have addresses: its tags can't read components.%s.", c.Key, k))
+			case !keys[k]:
+				add(w.tags, "unknown_component", unknown(k))
+			}
+		}
+		if c.Guest.CloudInit != nil {
+			// One that doesn't parse is said by checkGuest.
+			ud := c.Guest.CloudInit.UserData
+			if _, perr := blueprint.ParseUserData(ud); perr == nil {
+				if _, err := blueprint.UserDataComponents(ud); err != nil {
+					add(w.userData, "invalid", "The user data doesn't fit: "+err.Error()+".")
+				}
+			}
+			for _, k := range refs.UserData {
+				if k != c.Key && !keys[k] {
+					add(w.userData, "unknown_component", unknown(k))
+				}
+			}
+		}
+		// {bindings.<key>} in a name: a binding of the component, worked
+		// out when the request is submitted.
+		if t, err := naming.Parse(c.Naming); err == nil {
+			for _, f := range t.Fields() {
+				if k, ok := strings.CutPrefix(f, "bindings."); ok {
+					if _, ok := c.Bindings[k]; !ok {
+						add(w.naming, "unknown_binding", fmt.Sprintf("The name reads bindings.%s: give the VMs it names that binding.", k))
+					}
+				}
+			}
+		}
+	}
+	if t, err := naming.ParseLabel(b.DeploymentName); err == nil {
+		for _, f := range t.Fields() {
+			if strings.HasPrefix(f, "bindings.") {
+				add(ptr+"/deployment_name", "invalid", "A deployment's name reads the project, the environment and inputs, not bindings.")
+			}
+		}
+	}
+	if cycle := b.Cycle(); cycle != nil {
+		i := slices.IndexFunc(b.Components, func(c blueprint.Component) bool { return c.Key == cycle[0] })
+		w, next := at[i], cycle[1]
+		where := w.comp + "/key"
+		refs := resolved[i].Refs()
+		switch {
+		case slices.Contains(b.Components[i].DependsOn, next):
+			where = fmt.Sprintf("%s/depends_on/%d", w.comp, slices.Index(b.Components[i].DependsOn, next))
+		case slices.Contains(refs.Tags, next):
+			where = w.tags
+		case slices.Contains(refs.UserData, next):
+			where = w.userData
+		}
+		add(where, "cycle", fmt.Sprintf("These components would each be built after the other: %s. Remove a depends_on or a reference.",
+			strings.Join(cycle, " after ")))
 	}
 	return errs
 }

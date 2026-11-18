@@ -98,12 +98,13 @@ func TestBuildBindings(t *testing.T) {
 
 func TestReadsOf(t *testing.T) {
 	for expr, want := range map[string]Reads{
-		`components.db.addresses[0] + inputs.x`:         {Idents: []string{"components", "inputs"}, Components: []string{"db"}},
+		`components.db.addresses[0] + inputs.x`:         {Idents: []string{"components", "inputs"}, Components: []string{"db"}, Inputs: []string{"x"}},
+		`inputs[inputs.which]`:                          {Idents: []string{"inputs"}, Inputs: []string{"which"}, AllInputs: true},
 		`'n' + string(self.index)`:                      {Idents: []string{"self"}},
 		`components.db.count + components.cache.count`:  {Idents: []string{"components"}, Components: []string{"db", "cache"}},
 		`components['db'].count`:                        {Idents: []string{"components"}, Loose: true},
 		`has(components.db) ? components.db.names : []`: {Idents: []string{"components"}, Components: []string{"db"}},
-		`inputs.l.map(x, x + components.web.names[0])`:  {Idents: []string{"inputs", "x", "components"}, Components: []string{"web"}},
+		`inputs.l.map(x, x + components.web.names[0])`:  {Idents: []string{"inputs", "x", "components"}, Components: []string{"web"}, Inputs: []string{"l"}},
 	} {
 		got, err := ReadsOf(expr)
 		if err != nil {

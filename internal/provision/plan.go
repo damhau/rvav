@@ -55,6 +55,11 @@ type ComponentUnit struct {
 	// AntiAffinity: its VMs (two or more) are kept on separate hosts.
 	AntiAffinity bool  `json:"anti_affinity,omitempty"`
 	PostConfig   []Job `json:"post_config,omitempty"`
+	// DependsOn are the components it is built after, and Reads those whose
+	// names, FQDNs and addresses its VMs' tags and cloud-init read
+	// (ADR-0024).
+	DependsOn []string `json:"depends_on,omitempty"`
+	Reads     []string `json:"reads,omitempty"`
 }
 
 // KeyComponent prefixes a component's step key; its VMs' steps are under it.
@@ -357,6 +362,11 @@ type VMUnit struct {
 	Disks []blueprint.DiskPlan `json:"disks,omitempty"`
 	NICs  []NICUnit            `json:"nics,omitempty"`
 	Tags  []string             `json:"tags,omitempty"`
+	// TagsBinding is a tags binding that reads the VM itself or other
+	// components, worked out as it is cloned, over TagsInputs (those it
+	// reads) (ADR-0024).
+	TagsBinding string         `json:"tags_binding,omitempty"`
+	TagsInputs  map[string]any `json:"tags_inputs,omitempty"`
 	// Library is the content library Template is an item of, and
 	// StoragePolicy the VM's (ADR-0024).
 	Library       string `json:"library,omitempty"`

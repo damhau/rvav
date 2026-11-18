@@ -289,11 +289,11 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 
 | Field | What it is |
 |---|---|
-| `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, ending with `{seq}` or `{seq:03}` |
+| `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, `{bindings.<key>}` (a binding of the VMs it names, such as `inputs.app.lowerAscii()`), ending with `{seq}` or `{seq:03}` |
 | `template`, `library` | The vCenter template; with `library`, the item of that content library |
-| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm`, `.inputs`, `.project`, `.environment`, `.request`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
+| `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
-| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
+| `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `datastore`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
 | `disks` | Disks added after the template's: `size_gb`, `datastore` (the VM's when absent), `storage_policy` |
 | `nics` | Adapters added after the template's: `key` (in DNS names: `<name>-<key>`), `network` (or `segments.<key>`, a segment made for the deployment, never with DHCP), `ipam` (`efficientip`, the default, or `dhcp`) |
 | `segments` | NSX segments made for each deployment ([ADR-0028](adr/0028-nsx-networking.md)), up to four: `key`, `title`. The `network` binding, or an added adapter's `network`, names one as `segments.<key>`: the VMs are on it, their subnet carved when the request runs. In a composite, a VM step's segments are made under its step, before its VMs |
@@ -303,7 +303,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | `storage_policy` | The VMs' storage policy (their home and disks without their own), over the placement rule's |
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
-| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `groups`, which win over the blueprint's (guest field by field, bindings key by key) |
+| `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `tags`, `storage_policy`, `groups`, which win over the blueprint's (guest field by field, bindings key by key) |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
 
 Without `components` the blueprint builds one VM, and a request for
@@ -311,6 +311,56 @@ several makes one deployment per VM; with them, one deployment holding
 every component's VMs (20 at most). When a component's `cluster` isn't
 bound, rvav chooses the allowed cluster with the most free memory, and
 the datastore likewise.
+
+**References between components**: a component's `tags` binding and
+cloud-init user data can read what each VM is and what other components
+built. rvav works them out as each VM is built, so they see the
+addresses:
+
+| In CEL (`tags`) | In cloud-init | What it is |
+|---|---|---|
+| `self.index` | `{{ .vm.index }}` | The VM's index within its component, from 0 |
+| `self.name`, `self.fqdn`, `self.address`, `self.component` | `{{ .vm.name }}`, `{{ .vm.fqdn }}`, `{{ .vm.ip }}` | The VM itself |
+| `components.db.count` | `{{ .components.db.count }}` | How many VMs `db` has |
+| `components.db.names`, `.fqdns`, `.addresses` | `{{ .components.db.addresses \| json }}` | Lists, in index order; an address is the first adapter's |
+| `components.db.vms[0].address` | `{{ (index .components.db.vms 0).address }}` | One VM: `name`, `fqdn`, `address`, `index` |
+
+A component that reads another is built after it, and `depends_on`
+orders components without a reference. Components that depend on nothing
+are built first, at the same time; then those that depend only on them,
+and so on.
+
+```yaml
+components:
+  - key: db
+    title: Database
+  - key: web
+    title: Web servers
+    count: 2
+    bindings:
+      tags: "['app/node' + string(self.index), 'app/db-' + components.db.addresses[0].replace('.', '-')]"
+    guest:
+      cloud_init:
+        user_data: |
+          #cloud-config
+          write_files:
+            - path: /etc/shop.conf
+              content: |
+                db={{ (index .components.db.vms 0).address }}
+                node={{ .vm.index }} of {{ .components.web.count }}
+```
+
+- A component's tags can't read its own component: its VMs get their
+  addresses at the same time. Its cloud-init can.
+- A `tags` binding that reads `self` or `components` sees `inputs` too,
+  but not `sizes`. Other bindings are worked out when the request is
+  submitted, before any VM has an address, so they can't read `self` or
+  `components`.
+- Names don't read the index: `{seq}` numbers them. To pass a name
+  through a string function, use a binding, `{bindings.<key>}`.
+- When you save the item, rvav refuses a reference to a component that
+  doesn't exist, a `depends_on` naming one, and components that would
+  each be built after the other, with the line in the YAML.
 
 **NSX** ([ADR-0028](adr/0028-nsx-networking.md)): an item can put its VMs
 on a segment made for each deployment, in groups made for it with the

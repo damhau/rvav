@@ -8,15 +8,17 @@ import (
 	"github.com/google/cel-go/common/ast"
 )
 
-// Reads is what a CEL expression reads: the identifiers it names, and the
-// components it names as components.<key>.
+// Reads is what a CEL expression reads: the identifiers it names, the
+// components it names as components.<key> and the inputs as inputs.<name>.
 type Reads struct {
 	Idents     []string
 	Components []string
+	Inputs     []string
 	// Loose is set when components is read other than as components.<key>
 	// (components['db'], or components alone): which ones it reads can't
-	// be told before it runs.
-	Loose bool
+	// be told before it runs. AllInputs is the same of inputs.
+	Loose     bool
+	AllInputs bool
 }
 
 // Reading says whether the expression names the identifier.
@@ -33,15 +35,21 @@ func ReadsOf(expr string) (Reads, error) {
 	if iss.Err() != nil {
 		return r, fmt.Errorf("parse %q: %w", expr, iss.Err())
 	}
+	fields := map[string]*[]string{"components": &r.Components, "inputs": &r.Inputs}
+	whole := map[string]*bool{"components": &r.Loose, "inputs": &r.AllInputs}
 	selected := map[int64]bool{}
 	ast.PreOrderVisit(parsed.NativeRep().Expr(), ast.NewExprVisitor(func(e ast.Expr) {
 		switch e.Kind() {
 		case ast.SelectKind:
 			sel := e.AsSelect()
-			if op := sel.Operand(); op.Kind() == ast.IdentKind && op.AsIdent() == "components" {
+			op := sel.Operand()
+			if op.Kind() != ast.IdentKind {
+				return
+			}
+			if list, ok := fields[op.AsIdent()]; ok {
 				selected[op.ID()] = true
-				if !slices.Contains(r.Components, sel.FieldName()) {
-					r.Components = append(r.Components, sel.FieldName())
+				if !slices.Contains(*list, sel.FieldName()) {
+					*list = append(*list, sel.FieldName())
 				}
 			}
 		case ast.IdentKind:
@@ -50,8 +58,8 @@ func ReadsOf(expr string) (Reads, error) {
 			if !strings.HasPrefix(name, "@") && !slices.Contains(r.Idents, name) {
 				r.Idents = append(r.Idents, name)
 			}
-			if name == "components" && !selected[e.ID()] {
-				r.Loose = true
+			if w, ok := whole[name]; ok && !selected[e.ID()] {
+				*w = true
 			}
 		}
 	}))

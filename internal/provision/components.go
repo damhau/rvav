@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"slices"
 	"strings"
 
 	"go.temporal.io/sdk/workflow"
@@ -42,23 +43,116 @@ func runComponents(ctx workflow.Context, info Info) (string, error) {
 	return failed, err
 }
 
-// buildComponents builds components' VMs: their addresses, records and
-// clones; the DRS rules keeping VMs apart; their customization and power
-// on; then each component's post-configuration, in order. Steps are named
-// by keys.
+// buildComponents builds components' VMs in rounds: a component in the
+// round after those it depends on, the components of a round at the same
+// time (ADR-0024). Without dependencies there is one round.
 func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []ComponentUnit, keys vmKeys) ([]builtVM, string, error) {
+	rounds := buildRounds(units)
+	if len(rounds) <= 1 {
+		return buildRound(ctx, info, vms, units, keys, nil)
+	}
+	var all []builtVM
+	for _, round := range rounds {
+		var list []VMUnit
+		for _, vm := range vms {
+			if slices.ContainsFunc(round, func(c ComponentUnit) bool { return c.Key == vm.Component }) {
+				list = append(list, vm)
+			}
+		}
+		built, failed, err := buildRound(ctx, info, list, round, keys, all)
+		if err != nil {
+			return nil, failed, err
+		}
+		all = append(all, built...)
+	}
+	// In the plan's order, as one round gives them.
+	out := make([]builtVM, 0, len(all))
+	for _, vm := range vms {
+		if i := slices.IndexFunc(all, func(b builtVM) bool { return b.vm.Name == vm.Name }); i >= 0 {
+			out = append(out, all[i])
+		}
+	}
+	return out, "", nil
+}
+
+// buildRounds groups components by how many others are built before them.
+func buildRounds(units []ComponentUnit) [][]ComponentUnit {
+	planned := map[string]bool{}
+	for _, c := range units {
+		planned[c.Key] = true
+	}
+	round := map[string]int{}
+	// A cycle is refused when the blueprint is saved; bounded all the same.
+	for range units {
+		for _, c := range units {
+			r := 0
+			for _, d := range c.DependsOn {
+				if planned[d] && d != c.Key {
+					r = max(r, round[d]+1)
+				}
+			}
+			round[c.Key] = min(r, len(units)-1)
+		}
+	}
+	var out [][]ComponentUnit
+	for r := range len(units) {
+		var list []ComponentUnit
+		for _, c := range units {
+			if round[c.Key] == r {
+				list = append(list, c)
+			}
+		}
+		if len(list) > 0 {
+			out = append(out, list)
+		}
+	}
+	return out
+}
+
+// componentOutputs is what the components named built, as tags and
+// cloud-init read them: components.<key>.count, names, fqdns, addresses,
+// and vms, each with its name, fqdn, address and index. A component with
+// nothing built has a count of 0.
+func componentOutputs(vms []builtVM, keys []string) map[string]any {
+	out := map[string]any{}
+	for _, k := range keys {
+		var list []builtVM
+		for _, b := range vms {
+			if b.vm.Component == k {
+				list = append(list, b)
+			}
+		}
+		slices.SortFunc(list, func(a, b builtVM) int { return a.vm.Index - b.vm.Index })
+		names, fqdns, addresses, each := []any{}, []any{}, []any{}, []any{}
+		for _, b := range list {
+			names, fqdns, addresses = append(names, b.vm.Name), append(fqdns, b.vm.FQDN), append(addresses, b.ip)
+			each = append(each, map[string]any{"name": b.vm.Name, "fqdn": b.vm.FQDN, "address": b.ip, "index": b.vm.Index})
+		}
+		out[k] = map[string]any{"count": len(list), "names": names, "fqdns": fqdns, "addresses": addresses, "vms": each}
+	}
+	return out
+}
+
+// buildRound builds components' VMs: their addresses, records and clones;
+// the DRS rules keeping VMs apart; their customization and power on; then
+// each component's post-configuration, in order. earlier are the VMs built
+// in earlier rounds. Steps are named by keys.
+func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []ComponentUnit, keys vmKeys, earlier []builtVM) ([]builtVM, string, error) {
 	var a *Activities
 	p := Plan{VMs: vms, Components: units, Context: info.Plan.Context}
 	comps := map[string]ComponentUnit{}
 	for _, c := range p.Components {
 		comps[c.Key] = c
 	}
-	input := func(vm VMUnit) VMInput {
+	input := func(vm VMUnit, known []builtVM) VMInput {
 		c := comps[vm.Component]
 		in := VMInput{RequestID: info.RequestID, ProjectID: info.ProjectID, VM: vm}
 		in.Guest = c.Guest
 		if c.AntiAffinity {
 			in.HostIndex = vm.Index
+		}
+		if len(c.Reads) > 0 {
+			in.Components = componentOutputs(known, c.Reads)
 		}
 		return in
 	}
@@ -99,7 +193,7 @@ func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []Comp
 	// what depends on it.
 	failed, err := eachVM(ctx, len(p.VMs), func(ctx workflow.Context, i int) (string, error) {
 		vm := p.VMs[i]
-		c, in := comps[vm.Component], input(vm)
+		c, in := comps[vm.Component], input(vm, earlier)
 		before := info.BuiltVMs[vm.Name]
 		in.Key = keys.vm(c, KeyIPAM, vm)
 		newIP := !info.done(in.Key) || before.IP == ""
@@ -155,10 +249,12 @@ func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []Comp
 		}
 	}
 
-	// 3. Customization and power on.
+	// 3. Customization and power on: the round's own VMs all have their
+	// addresses.
+	known := append(slices.Clone(earlier), built...)
 	failed, err = eachVM(ctx, len(p.VMs), func(ctx workflow.Context, i int) (string, error) {
 		vm := p.VMs[i]
-		c, in := comps[vm.Component], input(vm)
+		c, in := comps[vm.Component], input(vm, known)
 		in.IP, in.Moref = built[i].ip, built[i].moref
 		for _, step := range []struct {
 			key string

@@ -432,9 +432,11 @@ An item's tabs:
 - **Definition:** the whole version as YAML, to review or paste. A VM
   blueprint's or a composite's graph is beside it (below it on a narrow
   screen), drawn from the YAML as you type: a VM item's components (how
-  many VMs, template, disks, kept apart), the networks and NSX segments
-  they are on, the security groups they are in and the rules between
-  them, drops and rejects in red; a composite's steps in the order they
+  many VMs, template, disks, kept apart), an edge to each component one
+  is built after (it names it in `depends_on`, or its tags or cloud-init
+  read it), the networks and NSX segments they are on, the security
+  groups they are in and the rules between them, drops and rejects in
+  red; a composite's steps in the order they
   run, those that run at the same time in one frame, a condition on a
   dashed edge, what each step runs, uses and undoes. Problems the graph
   finds (a segment or group nobody declared, a step using a later one)
@@ -449,6 +451,15 @@ An item's tabs:
   binding the graph shows, its quoted values as `'…'`
   (`inputs.token == '…'`). A binding that is only a value, such as a
   network's name, shows whole.
+- **Writing a VM blueprint:** a component's tags and cloud-init can read
+  each VM's index and what the other components built (their names,
+  FQDNs and addresses), and any binding can go through CEL's string
+  functions (`inputs.app.trim().lowerAscii()`); a name reads such a
+  binding as `{bindings.<key>}`
+  ([service-catalog.md](../service-catalog.md#vm-blueprints)). A
+  component that reads another is built after it. When you save, rvav
+  refuses a reference to a component that doesn't exist and components
+  that would each be built after the other, with the line in the YAML.
 - **Designing a composite:** in a composite's draft, the graph edits the
   YAML beside it, and the YAML the graph. Your comments in the YAML stay
   through the graph's edits, but not through a save: rvav stores the

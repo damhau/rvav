@@ -19,8 +19,10 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -417,6 +419,20 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if multi {
 		vals["component"] = c.Key
 	}
+	// {bindings.<key>}: a binding of the component, CEL giving text.
+	for _, f := range spec.Template.Fields() {
+		key, ok := strings.CutPrefix(f, "bindings.")
+		if !ok {
+			continue
+		}
+		if v, err := policy.Eval(c.Bindings[key], ev.Blueprint.Vars(ev.Inputs)); err == nil {
+			vals[f], _ = v.(string)
+		}
+		if strings.TrimSpace(vals[f]) == "" && strict {
+			add(bindingField(c.Bindings[key], ""), "invalid",
+				fmt.Sprintf("The VMs' names read bindings.%s, which gives no text from these inputs. Ask a catalog admin to check this item.", key))
+		}
+	}
 	prefix, err := spec.Template.Prefix(vals)
 	if err != nil {
 		return part, nil // inputs used by the name are still missing; the schema reports them
@@ -569,6 +585,9 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 			AntiAffinity: p.comp.AntiAffinity && p.count > 1, Tags: present.Ptr(nonNilStrings(p.vm.Tags))}
 		if !ev.Blueprint.Multi() {
 			c.Title = ev.Item.Name
+		}
+		if deps := ev.Blueprint.DependsOn(p.comp); len(deps) > 0 {
+			c.DependsOn = &deps
 		}
 		// Its NSX groups: the deployment's by their titles, existing ones by
 		// their names.
@@ -741,6 +760,21 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		vm.NICs = append(vm.NICs, nu)
 	}
 	vm.Tags = p.vm.Tags
+	// Worked out as it is cloned, over the inputs it reads (a secret one
+	// sealed) (ADR-0024).
+	if expr := p.comp.Bindings["tags"]; expr != "" && p.comp.Refs().BuildTags {
+		vm.TagsBinding, vm.TagsInputs = expr, map[string]any{}
+		rd, _ := policy.ReadsOf(expr)
+		secret := present.SecretFields(ev.Version.UISchema)
+		for k, v := range ev.Inputs {
+			if rd.AllInputs || slices.Contains(rd.Inputs, k) {
+				if secret[k] && !secretinput.IsMarker(v) {
+					v = secretinput.Marker(k)
+				}
+				vm.TagsInputs[k] = v
+			}
+		}
+	}
 	return vm
 }
 
@@ -778,11 +812,13 @@ func (s *Service) lockPrefixes(ctx context.Context, tx pgx.Tx, ev *Evaluation) e
 	return nil
 }
 
-// componentUnit is a component's plan: its guest, anti-affinity and jobs.
+// componentUnit is a component's plan: its guest, anti-affinity and jobs,
+// the components it is built after and those it reads.
 func componentUnit(ev *Evaluation, p vmPart, order []string) (provision.ComponentUnit, error) {
 	jobs, err := postConfigJobs(ev, p.vm, order)
 	return provision.ComponentUnit{Key: p.comp.Key, Title: p.title(), Guest: p.guest,
-		AntiAffinity: p.comp.AntiAffinity && p.count > 1, PostConfig: jobs}, err
+		AntiAffinity: p.comp.AntiAffinity && p.count > 1, PostConfig: jobs,
+		DependsOn: ev.Blueprint.DependsOn(p.comp), Reads: ev.Blueprint.Reads(p.comp)}, err
 }
 
 // replanVMs plans a request's VMs again after an approver changed its
