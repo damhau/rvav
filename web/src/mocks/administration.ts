@@ -290,12 +290,14 @@ export function adminState(db: Db): AdminState {
     })),
     templates: [
       {
-        key: "rhel9", label: "RHEL 9.4", vcenter_template: "tpl-rhel9.4-2026.10", content_library: "", os_family: "linux", customization: "",
-        description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }], in_inventory: true,
+        key: "rhel9", label: "RHEL 9.4", os_family: "linux", customization: "",
+        sources: [{ vcenter: "vc01.corp.example", template: "tpl-rhel9.4-2026.10", content_library: "", in_inventory: true }],
+        description: "With the corporate baseline.", offers: [{ project_id: null, environment: null }],
       },
       {
-        key: "win2025", label: "Windows Server 2025", vcenter_template: "tpl-win2025-std-2026.09", content_library: "", os_family: "windows",
-        customization: "", description: "", offers: [{ project_id: "prj_web", environment: null }], in_inventory: true,
+        key: "win2025", label: "Windows Server 2025", os_family: "windows", customization: "", description: "",
+        sources: [{ vcenter: "vc01.corp.example", template: "tpl-win2025-std-2026.09", content_library: "", in_inventory: true }],
+        offers: [{ project_id: "prj_web", environment: null }],
       },
     ], // prettier-ignore
     sizes: [
@@ -747,6 +749,31 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     revision,
     applying: !LIVE_KINDS.includes(kind) && processesNow(st()).some((p) => p.revision < revision),
   });
+  const primaryVCenter = () => (st().integrations.vcenter?.settings.name as string | undefined) ?? "";
+  const templateSourceErrors = (sources: S["VmTemplateSourceWrite"][]) => {
+    const out: S["FieldError"][] = [];
+    if (sources.length === 0) out.push(err("/sources", "Name the template in a vCenter at least."));
+    const seen = new Set<string>();
+    sources.forEach((src, i) => {
+      const vc = src.vcenter === primaryVCenter() ? "" : src.vcenter;
+      if (vc && !st().vcenters.some((v) => v.name === vc))
+        out.push(err(`/sources/${i}/vcenter`, `rvav manages no vCenter ${vc}.`));
+      else if (seen.has(vc))
+        out.push(err(`/sources/${i}/vcenter`, "A template has one source per vCenter: this one has two."));
+      seen.add(vc);
+      if (!src.template.trim()) out.push(err(`/sources/${i}/template`, "Name the template in this vCenter."));
+      else if (src.template.startsWith("library:"))
+        out.push(err(`/sources/${i}/template`, "Name the content library item, and its library in Content library."));
+    });
+    return out;
+  };
+  const storedSources = (sources: S["VmTemplateSourceWrite"][]): S["VmTemplateSource"][] =>
+    sources.map((src) => ({
+      vcenter: src.vcenter || primaryVCenter(),
+      template: src.template.trim(),
+      content_library: src.content_library ?? "",
+      in_inventory: true,
+    }));
   const project = (id: string) => db.projects.find((p) => p.id === id || p.code === id);
   const user = (id: string) => db.users.find((u) => u.id === id);
   const adminProject = (p: Db["projects"][number]): S["AdminProject"] => {
@@ -1433,19 +1460,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         }),
         http.post(`${base}/admin/${path}`, async ({ request }) => {
           await wait();
-          const w = (await request.json()) as { key: string; label: string; vcenter_template?: string };
+          const w = (await request.json()) as { key: string; label: string; sources?: S["VmTemplateSourceWrite"][] };
           if (!w.label?.trim()) return invalid([err("/label", "Give it a label.")]);
-          if (w.vcenter_template?.startsWith("library:"))
-            return invalid([
-              err("/vcenter_template", "Name the content library item, and its library in Content library."),
-            ]);
+          if (kind === "template") {
+            const bad = templateSourceErrors(w.sources ?? []);
+            if (bad.length) return invalid(bad);
+          }
           if (list().some((x) => x.key === w.key))
             return problem(409, "Conflict", undefined, `The key ${w.key} is taken.`);
           const row = {
             offers: [],
-            ...(kind === "template" ? { customization: "", description: "", content_library: "" } : {}),
+            ...(kind === "template" ? { customization: "", description: "" } : {}),
             ...w,
-            ...(kind === "template" ? { in_inventory: true } : {}),
+            ...(kind === "template" ? { sources: storedSources(w.sources ?? []) } : {}),
           };
           list().push(row);
           audited(db, `${kind}.create`, kind, w.key);
@@ -1453,10 +1480,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         }),
         http.put(`${base}/admin/${path}/:key`, async ({ params, request }) => {
           await wait();
-          const w = (await request.json()) as { key: string };
+          const w = (await request.json()) as { key: string; sources?: S["VmTemplateSourceWrite"][] };
           const i = list().findIndex((x) => x.key === params.key);
           if (i < 0) return problem(404, "Not found");
-          list()[i] = { ...list()[i], ...w, key: String(params.key) };
+          if (kind === "template") {
+            const bad = templateSourceErrors(w.sources ?? []);
+            if (bad.length) return invalid(bad);
+          }
+          list()[i] = {
+            ...list()[i],
+            ...w,
+            ...(kind === "template" ? { sources: storedSources(w.sources ?? []) } : {}),
+            key: String(params.key),
+          };
           audited(db, `${kind}.update`, kind, String(params.key));
           return HttpResponse.json(list()[i]);
         }),

@@ -4166,6 +4166,14 @@ export interface components {
             chosen?: boolean;
             /** @description What its constraint tags chose or ruled out (ADR-0035), in the order they applied. */
             constraints?: components["schemas"]["PlacementConstraint"][];
+            image?: components["schemas"]["PlacementImage"];
+        };
+        /** @description The catalogue template the VMs are cloned from, when the form chose one (ADR-0037): the component's `template` is its source in the placement's `vcenter`. */
+        PlacementImage: {
+            key: string;
+            label: string;
+            /** @description The vCenters of the clusters allowed here that it has no template in, or whose template vCenter doesn't have now. Their clusters were ruled out. */
+            excluded: string[];
         };
         PlacementConstraint: {
             /**
@@ -5931,24 +5939,42 @@ export interface components {
             key: string;
             /** @example RHEL 9.4 */
             label: string;
-            /** @description A template's name in vCenter, or an item's name in `content_library`. */
-            vcenter_template: string;
-            /** @description A content library whose item (VM template or OVF) `vcenter_template` is (ADR-0024); empty for a VM template. */
-            content_library: string;
+            /** @description Where it is, one per vCenter (ADR-0037). Placement chooses the vCenter and the cluster among the vCenters it has a source in; the VMs are cloned from that vCenter's. */
+            sources: components["schemas"]["VmTemplateSource"][];
             /** @enum {string} */
             os_family: "linux" | "windows";
             /** @description A vCenter customization specification's name, the base of the guest customization (ADR-0024); when empty, rvav's own (hostname, network, time zone). */
             customization: string;
             description: string;
             offers: components["schemas"]["Offer"][];
-            /** @description vCenter has it now. */
-            readonly in_inventory: boolean;
+        };
+        VmTemplateSource: {
+            /**
+             * @description The vCenter: the vCenter integration's, or one added in vCenters (ADR-0024).
+             * @example vc01.corp.example
+             */
+            vcenter: string;
+            /**
+             * @description A template's name in that vCenter, or an item's name in `content_library`.
+             * @example tpl-rhel9.4-2026.10
+             */
+            template: string;
+            /** @description A content library of that vCenter whose item (VM template or OVF) `template` is (ADR-0024); empty for a VM template. */
+            content_library: string;
+            /** @description That vCenter has it now. */
+            readonly in_inventory?: boolean;
+        };
+        VmTemplateSourceWrite: {
+            /** @description A vCenter's name; empty for the vCenter integration's. */
+            vcenter: string;
+            template: string;
+            content_library?: string;
         };
         VmTemplateWrite: {
             key: string;
             label: string;
-            vcenter_template: string;
-            content_library?: string;
+            /** @description One per vCenter. */
+            sources: components["schemas"]["VmTemplateSourceWrite"][];
             /** @enum {string} */
             os_family: "linux" | "windows";
             customization?: string;

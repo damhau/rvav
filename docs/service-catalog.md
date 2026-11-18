@@ -290,7 +290,7 @@ subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 | Field | What it is |
 |---|---|
 | `naming` | Naming template of the VMs (a naming policy wins over it): `{project}`, `{environment}`, `{component}`, `{inputs.<name>}`, `{bindings.<key>}` (a binding of the VMs it names, such as `inputs.app.lowerAscii()`), ending with `{seq}` or `{seq:03}` |
-| `template`, `library` | The vCenter template; with `library`, the item of that content library |
+| `template`, `library` | The vCenter template; with `library`, the item of that content library. The `template` binding gives the key of a template of **Templates and networks** instead (the `rvav.templates` picker): see **Templates per vCenter** below |
 | `guest` | `os_family` (`linux`, `windows`), `domain`, `time_zone`; `customization_spec` (a vCenter specification as the base); Windows: `admin_password` (a secret), `domain_join: {domain, ou, credential}` (a basic secret); Linux: `cloud_init: {user_data}` (a Go template over `.vm` (`name`, `fqdn`, `ip`, `ips`, `index`), `.inputs`, `.project`, `.environment`, `.request`, `.components`; inputs printed through `json`: `{{ .inputs.motd \| json }}`) |
 | `sizes` | Size presets for bindings (`sizes[inputs.size].vcpu`); the offered ones when absent |
 | `bindings` | `vcpu`, `memory_gb`, `disk_gb` (the first disk), `cluster`, `resource_pool` (a pool's path below the cluster's root pool, such as `rvav/dev`), `host`, `datastore`, `datastore_cluster`, `network` (the first adapter), `template`, `post_config` (keys of `awx_templates`), `tags` (a list; it can read `self` and `components`, below), `groups` (a list of NSX groups, added to `groups`: from an `nsx.groups` field, whose values are checked against its list) |
@@ -316,6 +316,16 @@ by the placement rule's strategy: the most free memory by default, the
 least free memory with room for the VMs (`binpack`), or the fewest of
 rvav's VMs (`spread`). It chooses the datastore with the most free space
 among those that meet its constraints.
+
+**Templates per vCenter**
+([ADR-0037](adr/0037-images-per-vcenter.md)): when the `template` binding
+gives the key of a template of **Templates and networks**, rvav chooses
+the cluster among the vCenters that template has a source in, then clones
+that vCenter's source, a VM template or a content library item. The
+clusters of the vCenters without a source aren't used, and the preview
+names those vCenters. A bound cluster in a vCenter without a source is an
+error. A blueprint's own `template`, without the binding, is cloned in the
+vCenters that have a template of that name.
 
 **Placement targets** ([ADR-0036](adr/0036-placement-targets.md)): the
 placement rule may put the VMs in a resource pool, on some hosts, or in a

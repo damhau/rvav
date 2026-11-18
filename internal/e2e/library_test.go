@@ -30,8 +30,10 @@ func TestLibraryAndStoragePolicies(t *testing.T) {
 		// The templates catalogue knows the library's item.
 		var tpl api.VmTemplate
 		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "rhel9-lib", Label: "RHEL 9 (library)",
-			VcenterTemplate: "rhel9-library", ContentLibrary: present.Ptr("rvav-templates"), OsFamily: api.VmTemplateWriteOsFamilyLinux}, 201, &tpl)
-		if tpl.ContentLibrary != "rvav-templates" || tpl.InInventory == nil || !*tpl.InInventory {
+			Sources:  []api.VmTemplateSourceWrite{{Template: "rhel9-library", ContentLibrary: present.Ptr("rvav-templates")}},
+			OsFamily: api.VmTemplateWriteOsFamilyLinux}, 201, &tpl)
+		if len(tpl.Sources) != 1 || tpl.Sources[0].ContentLibrary != "rvav-templates" || tpl.Sources[0].InInventory == nil ||
+			!*tpl.Sources[0].InInventory {
 			t.Fatalf("template = %+v", tpl)
 		}
 

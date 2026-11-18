@@ -316,13 +316,13 @@ func TestTemplatesAndSizes(t *testing.T) {
 		h := setup(t, ctx, c)
 		const admin, web = "mkeller", "prj_web"
 		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "ubuntu", Label: "Ubuntu 24.04",
-			VcenterTemplate: "tpl-ubuntu24.04-2026.10", OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: &[]api.Offer{{ProjectId: new(web)}}}, 201, nil)
+			Sources: sourceOn("", "tpl-ubuntu24.04-2026.10"), OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: &[]api.Offer{{ProjectId: new(web)}}}, 201, nil)
 		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "win", Label: "Windows Server 2025",
-			VcenterTemplate: "tpl-win2025-std-2026.09", OsFamily: api.VmTemplateWriteOsFamilyWindows, Offers: &[]api.Offer{{Environment: new("dev")}}}, 201, nil)
+			Sources: sourceOn("", "tpl-win2025-std-2026.09"), OsFamily: api.VmTemplateWriteOsFamilyWindows, Offers: &[]api.Offer{{Environment: new("dev")}}}, 201, nil)
 		var problem struct{ Errors []api.FieldError }
-		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "lib", Label: "From a library", VcenterTemplate: "library:os/rhel",
+		h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "lib", Label: "From a library", Sources: sourceOn("", "library:os/rhel"),
 			OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: &[]api.Offer{{ProjectId: new("prj_nope")}}}, 422, &problem)
-		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/vcenter_template") || !slices.Contains(fields, "/offers/0/project_id") {
+		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/sources/0/template") || !slices.Contains(fields, "/offers/0/project_id") {
 			t.Fatalf("bad template = %v", fields)
 		}
 		for _, z := range []api.SizePresetWrite{
@@ -334,7 +334,7 @@ func TestTemplatesAndSizes(t *testing.T) {
 		}
 		var templates api.VmTemplateList
 		h.json("GET", "/api/v1/admin/templates", admin, nil, 200, &templates)
-		if len(templates.Items) != 2 || templates.Items[0].InInventory == nil || !*templates.Items[0].InInventory {
+		if len(templates.Items) != 2 || templates.Items[0].Sources[0].InInventory == nil || !*templates.Items[0].Sources[0].InInventory {
 			t.Fatalf("templates = %+v", templates.Items)
 		}
 

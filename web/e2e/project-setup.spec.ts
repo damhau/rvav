@@ -76,7 +76,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   const tpl = page.getByRole("dialog", { name: "New VM template" });
   await tpl.getByRole("textbox", { name: "Key" }).fill("ubuntu");
   await tpl.getByRole("textbox", { name: "Label" }).fill("Ubuntu 24.04");
-  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("tpl-ubuntu24.04-2026.10");
+  await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("tpl-ubuntu24.04-2026.10");
   await choose(page, "Offer 1: project", "Payments");
   await tpl.getByRole("button", { name: "Save template" }).click();
   await expect(

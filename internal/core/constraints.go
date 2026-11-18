@@ -271,7 +271,10 @@ type placementQuery struct {
 	// anyNetwork: it chooses their network by its constraints.
 	anyDatastore, anyNetwork bool
 	hasTemplate              func(vcenter string) bool
-	cons                     constraintSet
+	// noTemplate is why nothing was chosen when hasTemplate rules out
+	// every cluster; "" says nothing more than no room.
+	noTemplate string
+	cons       constraintSet
 	// disks are the added disks whose datastores rvav chooses by their own
 	// constraints, by 1 + index; vmGB is what the VMs' datastore holds.
 	disks map[int]int
@@ -289,14 +292,22 @@ type placementQuery struct {
 func (pl *placement) choose(q placementQuery) (clusterChoice, []constraintResult, string) {
 	var none clusterChoice
 	var cands []computeCand
+	noTemplate := false
 	for i := range pl.clusters {
 		c := &pl.clusters[i]
 		// A name in two vCenters is never chosen (its rule must say which),
 		// and a name twice in one is the first.
-		if pl.ambiguous(c.Name) || pl.cluster(c.Name) != c || !q.hasTemplate(c.VCenter) {
+		if pl.ambiguous(c.Name) || pl.cluster(c.Name) != c {
+			continue
+		}
+		if !q.hasTemplate(c.VCenter) {
+			noTemplate = true
 			continue
 		}
 		cands = append(cands, pl.computeCands(c, q.plan.Host)...)
+	}
+	if len(cands) == 0 && noTemplate {
+		return none, nil, q.noTemplate
 	}
 	compute := q.cons.of(blueprint.Compute, 0)
 	cands, results, failed := narrow(cands, hard(compute), candTags, candName)

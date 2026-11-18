@@ -28,6 +28,43 @@ describe("Templates and networks", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
+  it("gives a template its own source in each vCenter", async () => {
+    adminState(db).vcenters.push({
+      name: "vc02.corp.example",
+      url: "https://vc02.corp.example/sdk",
+      username: "svc-rvav@vsphere.local",
+      insecure: false,
+      password_set: true,
+      primary: false,
+    });
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    const region = await screen.findByRole("region", { name: "VM templates" });
+    expect(await within(region).findByRole("row", { name: /RHEL 9.4/ })).toHaveTextContent("1 vCenter");
+    await user.click(await within(region).findByRole("button", { name: "Actions for RHEL 9.4" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Change RHEL 9.4" });
+    const first = within(sheet).getByRole("group", { name: "Source 1" });
+    expect(within(first).getByRole("combobox", { name: "vCenter" })).toHaveTextContent("vc01.corp.example");
+    expect(within(first).getByRole("textbox", { name: "Template" })).toHaveValue("tpl-rhel9.4-2026.10");
+    await user.click(within(sheet).getByRole("button", { name: "Add a vCenter" }));
+    const second = within(sheet).getByRole("group", { name: "Source 2" });
+    expect(within(second).getByRole("combobox", { name: "vCenter" })).toHaveTextContent("vc02.corp.example");
+    // Each vCenter is named once: none is left to add.
+    expect(within(sheet).queryByRole("button", { name: "Add a vCenter" })).toBeNull();
+
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    expect(await within(second).findByText("Name the template in this vCenter.")).toBeInTheDocument();
+    expect(within(second).getByRole("textbox", { name: "Template" })).toHaveAttribute("aria-invalid", "true");
+    await user.type(within(second).getByRole("textbox", { name: "Template" }), "tpl-rhel9.4-zrh");
+    await user.click(within(sheet).getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const row = await within(region).findByRole("row", { name: /RHEL 9.4/ });
+    await waitFor(() => expect(row).toHaveTextContent("2 vCenters"));
+    expect(row).toHaveTextContent("tpl-rhel9.4-2026.10, tpl-rhel9.4-zrh");
+  });
+
   it("changes a size in a side panel opened from its row", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

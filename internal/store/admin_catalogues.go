@@ -58,18 +58,28 @@ func setOffers(ctx context.Context, tx pgx.Tx, kind, key string, offers []Offer)
 }
 
 type VMTemplate struct {
-	Key             string    `db:"key"`
-	Label           string    `db:"label"`
-	VCenterTemplate string    `db:"vcenter_template"`
-	OSFamily        string    `db:"os_family"`
-	Customization   string    `db:"customization"`
-	Description     string    `db:"description"`
-	CreatedAt       time.Time `db:"created_at"`
-	// ContentLibrary, when set, is the library VCenterTemplate is an item of.
-	ContentLibrary string `db:"content_library"`
+	Key           string    `db:"key"`
+	Label         string    `db:"label"`
+	OSFamily      string    `db:"os_family"`
+	Customization string    `db:"customization"`
+	Description   string    `db:"description"`
+	CreatedAt     time.Time `db:"created_at"`
+	// Sources are where it is, one per vCenter (ADR-0037).
+	Sources []TemplateSource `db:"sources"`
 }
 
-const templateCols = `key, label, vcenter_template, os_family, customization, description, created_at, content_library`
+// TemplateSource is a catalogue template in one vCenter: "" for the
+// vCenter integration's.
+type TemplateSource struct {
+	VCenter  string `json:"vcenter"`
+	Template string `json:"template"`
+	// Library, when set, is the content library Template is an item of.
+	Library string `json:"content_library"`
+}
+
+const templateCols = `key, label, os_family, customization, description, created_at,
+	coalesce((select json_agg(json_build_object('vcenter', s.vcenter, 'template', s.template, 'content_library', s.content_library)
+		order by s.vcenter) from vm_template_sources s where s.template_key = vm_templates.key), '[]') as sources`
 
 func (s *Store) VMTemplates(ctx context.Context) ([]VMTemplate, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+templateCols+` from vm_templates order by label, key`)
@@ -83,24 +93,31 @@ func (s *Store) GetVMTemplate(ctx context.Context, key string) (VMTemplate, erro
 }
 
 // SaveVMTemplate creates a template (create: ErrInUse when the key exists)
-// or replaces one, with its offers.
+// or replaces one, with its sources and offers.
 func (s *Store) SaveVMTemplate(ctx context.Context, t VMTemplate, offers []Offer, create bool) error {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		if create {
-			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, vcenter_template, os_family, customization, description,
-				content_library) values ($1, $2, $3, $4, $5, $6, $7)`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization,
-				t.Description, t.ContentLibrary); err != nil {
+			if _, err := tx.Exec(ctx, `insert into vm_templates (key, label, os_family, customization, description)
+				values ($1, $2, $3, $4, $5)`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description); err != nil {
 				return err
 			}
 		} else {
-			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, vcenter_template = $3, os_family = $4, customization = $5,
-				description = $6, content_library = $7 where key = $1`, t.Key, t.Label, t.VCenterTemplate, t.OSFamily, t.Customization,
-				t.Description, t.ContentLibrary)
+			tag, err := tx.Exec(ctx, `update vm_templates set label = $2, os_family = $3, customization = $4, description = $5
+				where key = $1`, t.Key, t.Label, t.OSFamily, t.Customization, t.Description)
 			if err != nil {
 				return err
 			}
 			if tag.RowsAffected() == 0 {
 				return ErrNotFound
+			}
+		}
+		if _, err := tx.Exec(ctx, `delete from vm_template_sources where template_key = $1`, t.Key); err != nil {
+			return err
+		}
+		for _, src := range t.Sources {
+			if _, err := tx.Exec(ctx, `insert into vm_template_sources (template_key, vcenter, template, content_library)
+				values ($1, $2, $3, $4)`, t.Key, src.VCenter, src.Template, src.Library); err != nil {
+				return err
 			}
 		}
 		return setOffers(ctx, tx, "template", t.Key, offers)

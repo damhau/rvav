@@ -92,6 +92,10 @@ type vmPart struct {
 	sdrs          bool
 	strategy      string
 	strategyNote  string
+	// image is the catalogue template the form chose, and imageExcluded
+	// the vCenters it can't be cloned in (ADR-0037).
+	image         *store.VMTemplate
+	imageExcluded []string
 }
 
 func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
@@ -219,7 +223,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			part.count = max(0, min(count, blueprint.MaxVMs))
 		}
 	}
-	// A template chosen in the form is an offered template's key; a
+	// A template chosen in the form is an offered template's key, cloned
+	// from its source in the vCenter placement chooses (ADR-0037); a
 	// blueprint that names its own vCenter template keeps it. An offered
 	// template's customization specification is the guest's base, unless
 	// the blueprint names one (ADR-0024).
@@ -228,11 +233,16 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		if err != nil {
 			return part, err
 		}
-		for _, t := range offered {
-			if c.Bindings["template"] != "" && t.Key == plan.Template {
-				plan.Template, plan.Library, part.guest.OSFamily = t.VCenterTemplate, t.ContentLibrary, t.OSFamily
+		if i := slices.IndexFunc(offered, func(t store.VMTemplate) bool { return t.Key == plan.Template }); c.Bindings["template"] != "" && i >= 0 {
+			part.image = &offered[i]
+			part.guest.OSFamily = part.image.OSFamily
+			if len(part.image.Sources) > 0 {
+				plan.Template, plan.Library = part.image.Sources[0].Template, part.image.Sources[0].Library
 			}
-			if t.VCenterTemplate == plan.Template && part.guest.CustomizationSpec == "" && t.Customization != "" {
+		}
+		for _, t := range offered {
+			ours := part.image != nil && t.Key == part.image.Key || part.image == nil && hasSource(t, plan.Template, plan.Library)
+			if ours && part.guest.CustomizationSpec == "" && t.Customization != "" {
 				part.guest.CustomizationSpec = t.Customization
 			}
 		}
@@ -332,20 +342,41 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	var placedBy []constraintResult
 	plan.ResourcePool = strings.Trim(plan.ResourcePool, "/")
 	placed.ResourcePool = plan.ResourcePool
+	// Only in a vCenter that has the template (when the inventory says):
+	// for a catalogue template, its source there (ADR-0037).
+	hasTemplate := func(vc string) bool {
+		tpl, lib := plan.Template, plan.Library
+		if part.image != nil {
+			src, ok := sourceIn(*part.image, vc, pl.added)
+			if !ok {
+				return false
+			}
+			tpl, lib = src.Template, src.Library
+		}
+		return len(templates) == 0 || slices.ContainsFunc(templates, func(t store.InvTemplate) bool {
+			return t.Name == tpl && t.Library == lib && t.VCenter == vc
+		})
+	}
 	if plan.Cluster == "" && c.Bindings["cluster"] == "" && len(pl.rules) > 0 {
-		// Only in a vCenter that has the template (when the inventory says).
-		hasTemplate := func(vc string) bool {
-			return len(templates) == 0 || slices.ContainsFunc(templates, func(t store.InvTemplate) bool {
-				return t.Name == plan.Template && t.Library == plan.Library && t.VCenter == vc
-			})
+		noTemplate := ""
+		if part.image != nil {
+			for _, cl := range pl.clusters {
+				if !hasTemplate(cl.VCenter) && !slices.Contains(part.imageExcluded, cl.VCenter) {
+					part.imageExcluded = append(part.imageExcluded, cl.VCenter)
+				}
+			}
+			noTemplate = fmt.Sprintf("%s has no template in %s now, where the clusters allowed here are. Ask an administrator.",
+				part.image.Label, vcenterNames(part.imageExcluded))
 		}
 		ch, results, why := pl.choose(placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
-			anyNetwork: pickNetwork, hasTemplate: hasTemplate, cons: cons, disks: disks, vmGB: vmGB})
+			anyNetwork: pickNetwork, hasTemplate: hasTemplate, noTemplate: noTemplate, cons: cons, disks: disks, vmGB: vmGB})
 		placedBy = append(placedBy, results...)
 		switch {
 		case ch.cluster != nil:
 			plan.Cluster, part.chosen = ch.cluster.Name, true
 			part.hosts, part.strategy, part.strategyNote = ch.hosts, ch.strategy, ch.note
+		case why != "" && why == noTemplate:
+			add("", "no_template", why)
 		case why != "":
 			add("", "constraint", why)
 		case plan.Host != "":
@@ -443,6 +474,15 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("cluster"), "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
 		} else {
 			part.rule, part.vcenter = pl.rule(plan.Cluster), pl.cluster(plan.Cluster).VCenter
+			if part.image != nil {
+				if src, ok := sourceIn(*part.image, part.vcenter, pl.added); ok {
+					plan.Template, plan.Library = src.Template, src.Library
+				} else {
+					add(field("cluster"), "no_template", fmt.Sprintf("%s has no template in vCenter %s, where cluster %s is. Ask an administrator.",
+						part.image.Label, part.vcenter, plan.Cluster))
+					plan.Template, plan.Library = "", ""
+				}
+			}
 			// A pool the rule names, or one below it (ADR-0036).
 			if rp := part.rule.ResourcePool; rp != "" {
 				switch {
@@ -705,6 +745,9 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		}
 		if len(p.constraints) > 0 {
 			c.Placement.Constraints = present.Ptr(presentConstraints(p.constraints))
+		}
+		if p.image != nil {
+			c.Placement.Image = &api.PlacementImage{Key: p.image.Key, Label: p.image.Label, Excluded: nonNilStrings(p.imageExcluded)}
 		}
 		if p.chosen {
 			c.Placement.Chosen = present.Ptr(true)

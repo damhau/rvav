@@ -81,29 +81,19 @@ func (s *Service) vmTemplates(ctx context.Context) ([]api.VmTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
-	inventory, err := s.inventoryTemplates(ctx)
+	inv, err := s.Store.InventoryTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	added, err := s.addedVCenters(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]api.VmTemplate, len(list))
 	for i, t := range list {
-		found := inventory[t.ContentLibrary+"/"+t.VCenterTemplate]
-		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, VcenterTemplate: t.VCenterTemplate, ContentLibrary: t.ContentLibrary,
+		out[i] = api.VmTemplate{Key: t.Key, Label: t.Label, Sources: s.presentSources(t, inv, added),
 			OsFamily: api.VmTemplateOsFamily(t.OSFamily), Customization: t.Customization, Description: t.Description,
-			Offers: presentOffers(offers[t.Key]), InInventory: &found}
-	}
-	return out, nil
-}
-
-func (s *Service) inventoryTemplates(ctx context.Context) (map[string]bool, error) {
-	list, err := s.Store.InventoryTemplates(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// By library/name: "/name" for a VM template.
-	out := map[string]bool{}
-	for _, t := range list {
-		out[t.Library+"/"+t.Name] = true
+			Offers: presentOffers(offers[t.Key])}
 	}
 	return out, nil
 }
@@ -120,12 +110,11 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	if strings.TrimSpace(w.Label) == "" {
 		errs = append(errs, fieldErr("/label", "required", "Give the template a label."))
 	}
-	switch {
-	case strings.TrimSpace(w.VcenterTemplate) == "":
-		errs = append(errs, fieldErr("/vcenter_template", "required", "Name the template in vCenter."))
-	case strings.HasPrefix(w.VcenterTemplate, "library:"):
-		errs = append(errs, fieldErr("/vcenter_template", "invalid", "Name the content library item, and its library in Content library."))
+	sources, sourceErrs, err := s.checkSources(ctx, w.Sources)
+	if err != nil {
+		return api.VmTemplate{}, err
 	}
+	errs = append(errs, sourceErrs...)
 	if w.OsFamily != api.VmTemplateWriteOsFamilyLinux && w.OsFamily != api.VmTemplateWriteOsFamilyWindows {
 		errs = append(errs, fieldErr("/os_family", "enum", "linux or windows."))
 	}
@@ -139,9 +128,8 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 	if create {
 		key = w.Key
 	}
-	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), VCenterTemplate: strings.TrimSpace(w.VcenterTemplate),
-		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description),
-		ContentLibrary: strings.TrimSpace(deref(w.ContentLibrary))}
+	t := store.VMTemplate{Key: key, Label: strings.TrimSpace(w.Label), Sources: sources,
+		OSFamily: string(w.OsFamily), Customization: deref(w.Customization), Description: deref(w.Description)}
 	switch err := s.Store.SaveVMTemplate(ctx, t, offers, create); {
 	case errors.Is(err, store.ErrInUse):
 		return api.VmTemplate{}, &ConflictError{Msg: "A template has the key " + key + "."}

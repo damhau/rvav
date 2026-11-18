@@ -89,4 +89,13 @@ describe("ComponentsPreview", () => {
       "GVA-PRD-CL02/rvav/prd · hosts esx-gva-prd2-02.corp.example · nfs-gva-dev-sdrs-01 in dsc-gva-dev-01 (chosen by rvav, binpack)",
     );
   });
+
+  it("says the vCenters its catalogue template has no template in (ADR-0037)", () => {
+    const image = { key: "rhel9", label: "RHEL 9.4", excluded: ["vc02.corp.example"] };
+    render(<ComponentsPreview components={[{ ...db, placement: { cluster: "GVA-PRD-CL01", image } }]} />);
+    const lines = within(screen.getByRole("listitem", { name: "Database" })).getByRole("list", {
+      name: "Placed by tags",
+    });
+    expect(lines).toHaveTextContent("RHEL 9.4: no template in vCenter vc02.corp.example, ruled out");
+  });
 });

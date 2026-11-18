@@ -59,7 +59,8 @@ opening by itself once every step is done.
    accounts ([integrations.md](../integrations.md)). Each has a test. Its
    password or token is sealed and never shown again.
 3. **Infrastructure:**
-   - **Templates:** the vCenter templates offered, by OS.
+   - **Templates:** the templates offered, by OS, with their template in
+     each vCenter ([templates per vCenter](#templates-per-vcenter)).
    - **Sizes:** the CPU, memory and disk choices.
    - **Networks:** each vSphere network's subnet. The subnets come from
      EfficientIP's class parameters; set one by hand where EfficientIP has
@@ -302,6 +303,35 @@ rvav reads tags through vCenter's tagging service, with the vCenter
 account's credentials. When the service can't be read, the sync keeps the
 tags it read last, and the vCenter's test in **Integrations** says so
 under **Tagging service**.
+
+## Templates per vCenter
+
+A template in **Administration › Templates and networks** is what VM
+forms offer in their template picker, for example RHEL 9.4
+([ADR-0037](../adr/0037-images-per-vcenter.md)). It has a source in each
+vCenter it can be cloned in: the name of a VM template there, or an item
+of a content library there. Each site can build the template under a
+name of its own.
+
+To give a template a source in another vCenter:
+1. Add the vCenter in **Administration › vCenters**, and wait for its
+   first inventory sync.
+2. Open **Templates and networks**, click the template's **⋯** menu, then
+   **Change**.
+3. Click **Add a vCenter**, choose the vCenter, and name its template.
+   When the template is an item of a content library, name the library
+   too.
+4. Click **Save template**.
+
+The **In vCenter** column says how many vCenters each template has a
+source in, and **Not found** when a vCenter doesn't have its source now.
+
+When a request's form chooses a template, rvav chooses the vCenter and
+the cluster among the vCenters the template has a source in, then clones
+that vCenter's source. The clusters of the other vCenters aren't used:
+the request's preview names those vCenters, and says so when none is
+left. A blueprint that names a vCenter template itself, without a
+picker, is placed where vCenter has a template of that name.
 
 ## Placement rules
 

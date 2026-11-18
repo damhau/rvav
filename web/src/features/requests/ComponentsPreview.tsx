@@ -1,8 +1,9 @@
 // What a multi-VM blueprint builds (ADR-0024): each component's VMs, their
-// size, placement and network, as the preview says, and what its constraint
-// tags chose or ruled out (ADR-0035).
+// size, placement and network, as the preview says, what its constraint
+// tags chose or ruled out (ADR-0035), and the vCenters its catalogue
+// template isn't in (ADR-0037).
 import { Badge } from "@/components/ui/badge";
-import type { ComponentPlacement, PlacementConstraint, PreviewComponent } from "@/lib/api/types";
+import type { ComponentPlacement, PlacementConstraint, PlacementImage, PreviewComponent } from "@/lib/api/types";
 
 import { constraintText } from "./constraints";
 
@@ -29,12 +30,21 @@ export function chosenBy(p?: ComponentPlacement): string {
   return "chosen by rvav";
 }
 
-/** What constraint tags chose or ruled out, one line each. */
-export function PlacedBy({ constraints }: { constraints?: PlacementConstraint[] }) {
-  if (!constraints?.length) return null;
+/** The vCenters ruled out because the catalogue template has no template there. */
+export function imageText(image?: PlacementImage): string {
+  if (!image?.excluded.length) return "";
+  const where = image.excluded.length === 1 ? `vCenter ${image.excluded[0]}` : `vCenters ${image.excluded.join(", ")}`;
+  return `${image.label}: no template in ${where}, ruled out`;
+}
+
+/** What constraint tags chose or ruled out, one line each, after the vCenters the template isn't in. */
+export function PlacedBy({ constraints, image }: { constraints?: PlacementConstraint[]; image?: PlacementImage }) {
+  const ruledOut = imageText(image);
+  if (!constraints?.length && !ruledOut) return null;
   return (
     <ul className="flex flex-col text-secondary text-muted" aria-label="Placed by tags">
-      {constraints.map((k, i) => (
+      {ruledOut && <li className="break-words">{ruledOut}</li>}
+      {constraints?.map((k, i) => (
         <li key={i} className="break-words">
           {constraintText(k)}
         </li>
@@ -82,7 +92,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                       )
                       .join(" · ")}
                   </span>
-                  <PlacedBy constraints={c.placement?.constraints} />
+                  <PlacedBy constraints={c.placement?.constraints} image={c.placement?.image} />
                   {c.tags && c.tags.length > 0 && (
                     <span className="text-caption text-faint">Tags {c.tags.join(", ")}</span>
                   )}

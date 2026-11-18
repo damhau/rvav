@@ -236,11 +236,11 @@ test("templates, sizes and network mappings", async ({ page }) => {
   const tpl = page.getByRole("dialog", { name: "New VM template" });
   await tpl.getByRole("textbox", { name: "Key" }).fill("ubuntu24");
   await tpl.getByRole("textbox", { name: "Label" }).fill("Ubuntu 24.04");
-  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("library:ubuntu-24.04");
+  await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("library:ubuntu-24.04");
   await tpl.getByRole("button", { name: "Save template" }).click();
   await expect(tpl.getByText(/its library in Content library/)).toBeVisible();
   // An item of a content library (S12.5).
-  await tpl.getByRole("textbox", { name: "vCenter template" }).fill("ubuntu-24.04");
+  await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("ubuntu-24.04");
   await tpl.getByRole("textbox", { name: "Content library" }).fill("rvav-templates");
   await tpl.getByRole("button", { name: "Save template" }).click();
   const templates = page.getByRole("region", { name: "VM templates" });

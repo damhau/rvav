@@ -298,7 +298,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "A1 names",
 		Template: "{project}-{environment}-{role}{seq:03}", Offers: fin}, 201, &naming)
 	h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "ubuntu", Label: "Ubuntu 24.04",
-		VcenterTemplate: "tpl-ubuntu24.04-2026.10", OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: fin}, 201, nil)
+		Sources: sourceOn("", "tpl-ubuntu24.04-2026.10"), OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: fin}, 201, nil)
 	h.json("POST", "/api/v1/admin/sizes", admin, api.SizePresetWrite{Key: "M", Label: "Medium", Vcpu: 4, MemoryGb: 16, DiskGb: 80,
 		Offers: fin}, 201, nil)
 	h.json("POST", "/api/v1/admin/workflows", admin, api.WorkflowRegistrationWrite{Key: new("a1-report"), Title: "Report",

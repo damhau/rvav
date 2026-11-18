@@ -2,7 +2,7 @@
 // blueprints' template and size pickers offer, and the subnet each vCenter
 // network deploys into; and the vCenter objects' tags (ADR-0035).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, HardDrive, Network, Server } from "lucide-react";
+import { Cpu, HardDrive, Network, Server, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
@@ -33,16 +33,140 @@ function useProjectName() {
   return (id: string) => projects.data?.items.find((p) => p.id === id)?.name ?? id;
 }
 
+type Source = S["VmTemplateSourceWrite"];
+
+// A select's options can't be empty: the vCenter integration's without a name.
+const unnamed = "(integration)";
+
+/** A catalogue template's source in each vCenter (ADR-0037). */
+function SourceEditor({
+  value,
+  onChange,
+  errors,
+  stored,
+}: {
+  value: Source[];
+  onChange: (v: Source[]) => void;
+  errors: Record<string, string>;
+  /** The sources as saved, which say whether vCenter has them now. */
+  stored?: S["VmTemplateSource"][];
+}) {
+  const vcenters = useQuery(adm.vcenters());
+  const primary = vcenters.data?.items.find((v) => v.primary)?.name ?? "";
+  const options = (vcenters.data?.items ?? []).map((v) => ({
+    value: v.name || unnamed,
+    label: v.name || "The vCenter integration's",
+    meta: v.primary ? "Integration" : undefined,
+  }));
+  const valueOf = (src: Source) => src.vcenter || primary || unnamed;
+  for (const src of value) {
+    if (!options.some((o) => o.value === valueOf(src)))
+      options.push({ value: valueOf(src), label: src.vcenter || "The vCenter integration's", meta: undefined });
+  }
+  const set = (i: number, src: Source) => onChange(value.map((x, j) => (j === i ? src : x)));
+  const unused = options.find((o) => !value.some((src) => valueOf(src) === o.value));
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-secondary font-medium">In vCenter</legend>
+      <p className="text-secondary text-muted">
+        Its template in each vCenter. VMs go to the clusters of these vCenters only, cloned from that vCenter's.
+      </p>
+      {errors["/sources"] && <p className="text-secondary text-bad">{errors["/sources"]}</p>}
+      {value.map((src, i) => {
+        const at = `/sources/${i}`;
+        const missing =
+          stored?.find(
+            (x) =>
+              (x.vcenter || unnamed) === valueOf(src) &&
+              x.template === src.template &&
+              x.content_library === (src.content_library ?? ""),
+          )?.in_inventory === false;
+        return (
+          <div
+            key={i}
+            className="flex flex-col gap-2 rounded-md border border-line p-3"
+            role="group"
+            aria-label={`Source ${i + 1}`}
+          >
+            <div className="flex items-end gap-2">
+              <Field label="vCenter" htmlFor={`tpl-src-${i}-vc`} error={errors[`${at}/vcenter`]} className="flex-1">
+                <Select
+                  id={`tpl-src-${i}-vc`}
+                  value={valueOf(src)}
+                  onChange={(v) => set(i, { ...src, vcenter: v === unnamed ? "" : v })}
+                  options={options}
+                  loading={vcenters.isPending}
+                />
+              </Field>
+              {missing && (
+                <Badge tone="warn" className="mb-2">
+                  Not found
+                </Badge>
+              )}
+              <Button
+                type="button"
+                size="icon"
+                variant="quiet"
+                aria-label={`Remove source ${i + 1}`}
+                onClick={() => onChange(value.filter((_, j) => j !== i))}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-[1fr_160px] gap-2">
+              <Field label="Template" htmlFor={`tpl-src-${i}-tpl`} error={errors[`${at}/template`]}>
+                <Input
+                  id={`tpl-src-${i}-tpl`}
+                  className="font-mono"
+                  value={src.template}
+                  onChange={(e) => set(i, { ...src, template: e.target.value })}
+                />
+              </Field>
+              <Field label="Content library" htmlFor={`tpl-src-${i}-lib`} hint="When it is an item of one">
+                <Input
+                  id={`tpl-src-${i}-lib`}
+                  className="font-mono"
+                  value={src.content_library ?? ""}
+                  onChange={(e) => set(i, { ...src, content_library: e.target.value })}
+                />
+              </Field>
+            </div>
+          </div>
+        );
+      })}
+      {unused && (
+        <div>
+          <Button
+            type="button"
+            size="sm"
+            variant="quiet"
+            onClick={() =>
+              onChange([
+                ...value,
+                { vcenter: unused.value === unnamed ? "" : unused.value, template: "", content_library: "" },
+              ])
+            }
+          >
+            Add a vCenter
+          </Button>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState<S["VmTemplateWrite"]>(
     template
-      ? writable(template, "in_inventory")
+      ? {
+          ...template,
+          sources: template.sources.map((src) => writable(src, "in_inventory")),
+        }
       : {
           key: "",
           label: "",
-          vcenter_template: "",
-          content_library: "",
+          sources: [{ vcenter: "", template: "", content_library: "" }],
           os_family: "linux",
           customization: "",
           description: "",
@@ -92,27 +216,12 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
         </Field>
       </div>
-      <Field label="vCenter template" htmlFor="tpl-vc" error={errors["/vcenter_template"]}>
-        <Input
-          id="tpl-vc"
-          className="font-mono"
-          value={f.vcenter_template}
-          onChange={(e) => setF({ ...f, vcenter_template: e.target.value })}
-        />
-      </Field>
-      <Field
-        label="Content library"
-        htmlFor="tpl-lib"
-        hint="When the template is an item of one"
-        error={errors["/content_library"]}
-      >
-        <Input
-          id="tpl-lib"
-          className="font-mono"
-          value={f.content_library ?? ""}
-          onChange={(e) => setF({ ...f, content_library: e.target.value })}
-        />
-      </Field>
+      <SourceEditor
+        value={f.sources}
+        onChange={(sources) => setF({ ...f, sources })}
+        errors={errors}
+        stored={template?.sources}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Operating system" htmlFor="tpl-os">
           <Select
@@ -190,18 +299,26 @@ function Templates({ canEdit }: { canEdit: boolean }) {
     {
       id: "vcenter",
       header: "In vCenter",
-      sortValue: (t) => t.vcenter_template,
-      cell: (t) => (
-        <span className="font-mono text-secondary">
-          {t.content_library && <span className="text-muted">{t.content_library} / </span>}
-          {t.vcenter_template}
-          {!t.in_inventory && (
-            <Badge tone="warn" className="ml-2 font-sans">
-              Not found
-            </Badge>
-          )}
-        </span>
-      ),
+      sortValue: (t) => t.sources.length,
+      cell: (t) => {
+        const names = [
+          ...new Set(t.sources.map((src) => (src.content_library ? `${src.content_library} / ` : "") + src.template)),
+        ];
+        const missing = t.sources.filter((src) => src.in_inventory === false).length;
+        return (
+          <span className="flex flex-col">
+            <span className="text-secondary">
+              {t.sources.length} vCenter{t.sources.length === 1 ? "" : "s"}
+              {missing > 0 && (
+                <Badge tone="warn" className="ml-2">
+                  {missing === t.sources.length ? "Not found" : `${missing} not found`}
+                </Badge>
+              )}
+            </span>
+            <span className="font-mono text-caption break-words text-muted">{names.join(", ")}</span>
+          </span>
+        );
+      },
     },
     {
       id: "offers",

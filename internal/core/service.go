@@ -143,6 +143,8 @@ type placement struct {
 	// them, and planned those the request places, by its components so far.
 	vms     map[string]int
 	planned map[string]int
+	// added are the vCenters added besides the vCenter integration's.
+	added vcenterSet
 }
 
 // hostCount is how many hosts VMs on the cluster may start on: those
@@ -280,6 +282,9 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 	pl := &placement{rules: rules}
 	if len(rules) == 0 {
 		return pl, nil
+	}
+	if pl.added, err = s.addedVCenters(ctx); err != nil {
+		return nil, err
 	}
 	if pl.all, err = s.Store.InventoryClusters(ctx); err != nil {
 		return nil, err

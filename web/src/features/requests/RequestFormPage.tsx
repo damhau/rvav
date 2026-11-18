@@ -243,10 +243,16 @@ function Summary({
                 ))}
               </dl>
             )}
-            {single && !composite && preview.components?.[0]?.placement?.constraints?.length ? (
+            {single &&
+            !composite &&
+            (preview.components?.[0]?.placement?.constraints?.length ||
+              preview.components?.[0]?.placement?.image?.excluded.length) ? (
               <div className="flex flex-col gap-1.5 border-t border-line px-4 py-3">
                 <span className="label">Placed by tags</span>
-                <PlacedBy constraints={preview.components[0].placement.constraints} />
+                <PlacedBy
+                  constraints={preview.components[0].placement.constraints}
+                  image={preview.components[0].placement.image}
+                />
               </div>
             ) : null}
             {(oneDeployment || composite) && preview.components && (

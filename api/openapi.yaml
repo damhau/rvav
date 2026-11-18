@@ -5615,6 +5615,19 @@ components:
           type: array
           description: What its constraint tags chose or ruled out (ADR-0035), in the order they applied.
           items: { $ref: "#/components/schemas/PlacementConstraint" }
+        image: { $ref: "#/components/schemas/PlacementImage" }
+
+    PlacementImage:
+      type: object
+      description: "The catalogue template the VMs are cloned from, when the form chose one (ADR-0037): the component's `template` is its source in the placement's `vcenter`."
+      required: [key, label, excluded]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        excluded:
+          type: array
+          description: The vCenters of the clusters allowed here that it has no template in, or whose template vCenter doesn't have now. Their clusters were ruled out.
+          items: { type: string }
 
     PlacementConstraint:
       type: object
@@ -7827,16 +7840,14 @@ components:
             - type: "null"
     VmTemplate:
       type: object
-      required: [key, label, vcenter_template, content_library, os_family, customization, description, offers, in_inventory]
+      required: [key, label, sources, os_family, customization, description, offers]
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, examples: [RHEL 9.4] }
-        vcenter_template:
-          type: string
-          description: A template's name in vCenter, or an item's name in `content_library`.
-        content_library:
-          type: string
-          description: A content library whose item (VM template or OVF) `vcenter_template` is (ADR-0024); empty for a VM template.
+        sources:
+          type: array
+          description: "Where it is, one per vCenter (ADR-0037). Placement chooses the vCenter and the cluster among the vCenters it has a source in; the VMs are cloned from that vCenter's."
+          items: { $ref: "#/components/schemas/VmTemplateSource" }
         os_family: { type: string, enum: [linux, windows] }
         customization:
           type: string
@@ -7845,16 +7856,42 @@ components:
         offers:
           type: array
           items: { $ref: "#/components/schemas/Offer" }
-        in_inventory: { type: boolean, readOnly: true, description: vCenter has it now. }
+    VmTemplateSource:
+      type: object
+      required: [vcenter, template, content_library]
+      properties:
+        vcenter:
+          type: string
+          description: "The vCenter: the vCenter integration's, or one added in vCenters (ADR-0024)."
+          examples: [vc01.corp.example]
+        template:
+          type: string
+          description: A template's name in that vCenter, or an item's name in `content_library`.
+          examples: [tpl-rhel9.4-2026.10]
+        content_library:
+          type: string
+          description: A content library of that vCenter whose item (VM template or OVF) `template` is (ADR-0024); empty for a VM template.
+        in_inventory: { type: boolean, readOnly: true, description: That vCenter has it now. }
+    VmTemplateSourceWrite:
+      type: object
+      required: [vcenter, template]
+      additionalProperties: false
+      properties:
+        vcenter: { type: string, description: "A vCenter's name; empty for the vCenter integration's." }
+        template: { type: string, minLength: 1 }
+        content_library: { type: string }
     VmTemplateWrite:
       type: object
-      required: [key, label, vcenter_template, os_family]
+      required: [key, label, sources, os_family]
       additionalProperties: false
       properties:
         key: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$" }
         label: { type: string, minLength: 1, maxLength: 80 }
-        vcenter_template: { type: string, minLength: 1 }
-        content_library: { type: string }
+        sources:
+          type: array
+          maxItems: 50
+          description: One per vCenter.
+          items: { $ref: "#/components/schemas/VmTemplateSourceWrite" }
         os_family: { type: string, enum: [linux, windows] }
         customization: { type: string }
         description: { type: string, maxLength: 500 }

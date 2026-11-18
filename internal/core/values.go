@@ -240,20 +240,32 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		if err != nil {
 			return out, err
 		}
-		inventory, err := s.inventoryTemplates(ctx)
+		inv, err := s.Store.InventoryTemplates(ctx)
+		if err != nil {
+			return out, err
+		}
+		added, err := s.addedVCenters(ctx)
 		if err != nil {
 			return out, err
 		}
 		opts := []api.Option{}
 		for _, t := range list {
-			o := option(t.Key, t.Label, t.VCenterTemplate)
+			var names []string
+			found := false
+			for _, src := range t.Sources {
+				if !slices.Contains(names, src.Template) {
+					names = append(names, src.Template)
+				}
+				found = found || inInventory(src, inv, added)
+			}
+			o := option(t.Key, t.Label, strings.Join(names, ", "))
 			if t.Description != "" {
 				o.Description = &t.Description
 			}
-			if !inventory[t.ContentLibrary+"/"+t.VCenterTemplate] {
-				what := t.VCenterTemplate
-				if t.ContentLibrary != "" {
-					what += " in content library " + t.ContentLibrary
+			if !found {
+				what := "it"
+				if len(t.Sources) == 1 {
+					what = sourceText(t.Sources[0])
 				}
 				o.Disabled, o.DisabledReason = present.Ptr(true), present.Ptr("vCenter doesn't have "+what+" now.")
 			}
