@@ -161,7 +161,7 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 		if label == "" {
 			label = "Hard disk " + strconv.Itoa(i+1)
 		}
-		p.Disks[i].CapacityGb, p.Disks[i].Datastore, p.Disks[i].Label = d.CapacityGB, set(d.Datastore), label
+		p.Disks[i].CapacityGb, p.Disks[i].Datastore, p.Disks[i].File, p.Disks[i].Label = d.CapacityGB, set(d.Datastore), set(d.File), label
 		if d.Provisioning != "" {
 			p.Disks[i].Provisioning = present.Ptr(api.DiskProvisioning(d.Provisioning))
 		}

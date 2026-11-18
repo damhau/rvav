@@ -278,6 +278,44 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "disk_remove",
+    name: "Remove a disk",
+    group: "configuration",
+    destructive: true,
+    confirm:
+      "The disk and its data are deleted from the datastore, and the guest loses it at once: unmount its file systems first. This can't be undone.",
+    unavailable: (vm) =>
+      suspended(vm) ??
+      ((vm?.vm.snapshot_count ?? 0) > 0
+        ? "Disks of a VM with snapshots can't be removed. Delete its snapshots first."
+        : (vm?.vm.disks.length ?? 0) < 2
+          ? "The VM has only its boot disk, which can't be removed."
+          : null),
+    form: (vm) => {
+      const disks = vm?.vm.disks.slice(1) ?? [];
+      return form("Disk", [
+        [
+          "disk",
+          { type: "string", enum: disks.map((x) => x.label) },
+          {
+            label: "Disk",
+            widget: "select",
+            options: disks.map((x) => ({
+              value: x.label,
+              label: x.label,
+              meta: `${x.capacity_gb} GB${x.datastore ? ` on ${x.datastore}` : ""}`,
+            })),
+          },
+        ],
+      ]);
+    },
+    ops: (_vm, i) => [
+      vcenter("vsphere.disk_remove", `Remove ${String(i.disk)}`, (_d, v) => {
+        if (v) v.vm.disks = v.vm.disks.filter((x) => x.label !== i.disk);
+      }),
+    ],
+  },
+  {
     key: "accept_changes",
     name: "Accept the changes made in vCenter",
     group: "configuration",

@@ -76,6 +76,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return label, err
 	case "extend_disk":
 		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, argStr(args, "disk"), argInt(args, "size_gb"))
+	case "remove_disk":
+		return "", v.RemoveDisk(ctx, in.Moref, argStr(args, "disk"), argStr(args, "file"))
 	case "add_nic":
 		return "", v.AddNIC(ctx, in.Moref, argStr(args, "network"))
 	case "set_nic_network":
@@ -170,7 +172,7 @@ func (a *Activities) resourceVC(ctx context.Context, resourceID string) (vsphere
 var settles = map[string][]string{
 	"power_on": {vmprops.Power}, "power_off": {vmprops.Power}, "reset": {vmprops.Power}, "suspend": {vmprops.Power},
 	"restart_guest": {vmprops.Power}, "shutdown_guest": {vmprops.Power},
-	"reconfigure": {vmprops.Size}, "add_disk": {vmprops.Disks}, "extend_disk": {vmprops.Disks},
+	"reconfigure": {vmprops.Size}, "add_disk": {vmprops.Disks}, "extend_disk": {vmprops.Disks}, "remove_disk": {vmprops.Disks},
 	"add_nic": {vmprops.Networks}, "set_nic_network": {vmprops.Networks}, "remove_nic": {vmprops.Networks},
 	"revert_snapshot": vmprops.All, "accept_changes": vmprops.All,
 }

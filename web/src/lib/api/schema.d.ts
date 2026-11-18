@@ -5758,6 +5758,11 @@ export interface components {
             label: string;
             capacity_gb: number;
             datastore?: string;
+            /**
+             * @description The disk's file in vCenter. Removing a disk names it by its file, as vCenter numbers the labels again.
+             * @example [vsan-01] web-dev-api004/web-dev-api004_1.vmdk
+             */
+            file?: string;
             provisioning?: components["schemas"]["DiskProvisioning"];
             /** @description A child of its template's disk, as a linked clone's first disk is (ADR-0037). It can't be extended. */
             linked?: boolean;

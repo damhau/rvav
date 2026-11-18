@@ -179,6 +179,64 @@ func (cl *Client) AddDisk(ctx context.Context, moref string, sizeGB int, provisi
 	return "", nil
 }
 
+// RemoveDisk detaches a disk and deletes its file. It is found by its file
+// when one is given, as vCenter numbers the labels again once a disk is
+// gone, else by its label; one already gone is not an error. The boot disk,
+// a linked clone's template disk and a VM with snapshots are refused.
+func (cl *Client) RemoveDisk(ctx context.Context, moref, label, file string) error {
+	vm, err := cl.vmObject(ctx, moref)
+	if err != nil {
+		return err
+	}
+	var o mo.VirtualMachine
+	if err := vm.Properties(ctx, vm.Reference(), []string{"config.hardware.device", "config.bootOptions", "snapshot"}, &o); err != nil {
+		return err
+	}
+	if o.Config == nil {
+		return errVMGone
+	}
+	devices := object.VirtualDeviceList(o.Config.Hardware.Device)
+	var disk *types.VirtualDisk
+	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+		if vd := d.(*types.VirtualDisk); file != "" && diskFile(vd) == file || file == "" && deviceLabel(vd) == label {
+			disk = vd
+		}
+	}
+	switch {
+	case disk == nil:
+		return nil
+	case o.Snapshot != nil:
+		return &Refused{Msg: "The VM has snapshots: delete them before removing a disk."}
+	case disk.Key == bootDisk(devices, o.Config.BootOptions).Key:
+		return &Refused{Msg: deviceLabel(disk) + " is the VM's boot disk: it can't be removed."}
+	case linkedDisk(disk):
+		return &Refused{Msg: deviceLabel(disk) + " is a linked clone's disk from its template: it can't be removed."}
+	}
+	return vm.RemoveDevice(ctx, false, disk)
+}
+
+// bootDisk is the disk the VM boots from: the one its boot order names,
+// else its first.
+func bootDisk(devices object.VirtualDeviceList, boot *types.VirtualMachineBootOptions) *types.VirtualDisk {
+	if boot != nil {
+		for _, b := range boot.BootOrder {
+			if d, ok := b.(*types.VirtualMachineBootOptionsBootableDiskDevice); ok {
+				if disk, ok := devices.FindByKey(d.DeviceKey).(*types.VirtualDisk); ok {
+					return disk
+				}
+			}
+		}
+	}
+	return firstDisk(devices)
+}
+
+func diskFile(d *types.VirtualDisk) string {
+	if b, ok := d.Backing.(types.BaseVirtualDeviceFileBackingInfo); ok {
+		return b.GetVirtualDeviceFileBackingInfo().FileName
+	}
+	return ""
+}
+
 // ExtendDisk grows a disk. Shrinking is refused, as in vCenter.
 func (cl *Client) ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error {
 	vm, err := cl.vmObject(ctx, moref)

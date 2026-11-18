@@ -7731,6 +7731,10 @@ components:
         label: { type: string, examples: [Hard disk 1] }
         capacity_gb: { type: integer }
         datastore: { type: string }
+        file:
+          type: string
+          description: The disk's file in vCenter. Removing a disk names it by its file, as vCenter numbers the labels again.
+          examples: ["[vsan-01] web-dev-api004/web-dev-api004_1.vmdk"]
         provisioning: { $ref: "#/components/schemas/DiskProvisioning" }
         linked:
           type: boolean

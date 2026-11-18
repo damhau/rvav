@@ -35,3 +35,35 @@ func TestExtendLinkedClone(t *testing.T) {
 		t.Errorf("extending the added disk = %+v", errs)
 	}
 }
+
+// TestRemoveDisk: neither the boot disk nor a linked clone's template disk
+// is offered; the step names the disk by its file (X1.3).
+func TestRemoveDisk(t *testing.T) {
+	a := Get("disk_remove")
+	vm := func(disks ...api.VmDisk) Target {
+		return Target{Type: vmType, ResourceName: "web-dev-api004", VM: api.VmProperties{Disks: disks}}
+	}
+	yes, file := true, "[ds1] web-dev-api004/web-dev-api004_1.vmdk"
+	linked := api.VmDisk{Label: "Hard disk 1", CapacityGb: 40, Linked: &yes}
+	added := api.VmDisk{Label: "Hard disk 2", CapacityGb: 10, File: &file}
+
+	if why := a.Unavailable(vm(linked), Choices{}); why != "The VM has only its boot disk, which can't be removed." {
+		t.Errorf("only the boot disk: %q", why)
+	}
+	both := vm(linked, added)
+	if why := a.Unavailable(both, Choices{}); why != "" {
+		t.Fatalf("with an added disk: %q", why)
+	}
+	if opts := *a.Form(both, Choices{}).UiSchema.Fields["disk"].Options; len(opts) != 1 || opts[0].Value != "Hard disk 2" {
+		t.Errorf("the disks offered = %+v", opts)
+	}
+	ops := a.Ops(both, map[string]any{"disk": "Hard disk 2"})
+	if len(ops) != 1 || ops[0].Op != "remove_disk" || ops[0].Args["file"] != file || ops[0].Detail != "10 GB" {
+		t.Errorf("ops = %+v", ops)
+	}
+	n := 2
+	both.VM.SnapshotCount = &n
+	if why := a.Unavailable(both, Choices{}); why != "Disks of a VM with snapshots can't be removed. Delete its snapshots first." {
+		t.Errorf("with snapshots: %q", why)
+	}
+}

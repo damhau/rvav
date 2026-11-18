@@ -186,6 +186,8 @@ type Disk struct {
 	Label      string
 	CapacityGB int
 	Datastore  string
+	// File is the disk's file, "[vsan-01] vm/vm_1.vmdk".
+	File string
 	// Provisioning is thin, thick_lazy_zeroed or thick_eager_zeroed; empty
 	// for a backing that isn't a flat file (an RDM, say).
 	Provisioning string
@@ -233,6 +235,7 @@ type Driver interface {
 	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
 	AddDisk(ctx context.Context, moref string, sizeGB int, provisioning string) (string, error)
 	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error
+	RemoveDisk(ctx context.Context, moref, label, file string) error
 	AddNIC(ctx context.Context, moref, network string) error
 	RemoveNIC(ctx context.Context, moref, label string) error
 	SetNICNetwork(ctx context.Context, moref, label, network string) error
@@ -581,14 +584,12 @@ func toVM(m mo.VirtualMachine) VM {
 				}
 				gb := int(dev.CapacityInKB / (1024 * 1024))
 				// Its datastore, from its file ("[vsan-01] vm/vm_1.vmdk").
-				ds := ""
-				if b, ok := dev.Backing.(types.BaseVirtualDeviceFileBackingInfo); ok {
-					var p object.DatastorePath
-					if p.FromString(b.GetVirtualDeviceFileBackingInfo().FileName) {
-						ds = p.Datastore
-					}
+				ds, file := "", diskFile(dev)
+				var p object.DatastorePath
+				if p.FromString(file) {
+					ds = p.Datastore
 				}
-				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, Provisioning: provisioningOf(dev),
+				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, File: file, Provisioning: provisioningOf(dev),
 					Linked: linkedDisk(dev)})
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:

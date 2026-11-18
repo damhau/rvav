@@ -38,6 +38,7 @@ var day2Keys = map[string]string{
 	"Cloud.vSphere.Machine.Remote.Console":  "console",
 	"Cloud.vSphere.Machine.Add.Disk":        "disk_add",
 	"Cloud.vSphere.Disk.Disk.Resize":        "disk_extend",
+	"Cloud.vSphere.Disk.Disk.Remove":        "disk_remove",
 	"Cloud.vSphere.Machine.Add.Nic":         "nic_add",
 	"Cloud.vSphere.Machine.Remove.Nic":      "nic_remove",
 	"Deployment.Delete":                     "delete",

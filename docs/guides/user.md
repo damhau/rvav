@@ -262,6 +262,10 @@ requests, with their own steps:
   - resize;
   - add or extend a disk (a linked clone's disk from its template can't
     be extended: add a disk instead);
+  - remove a disk: its file and data are deleted from the datastore. You
+    can't remove the boot disk, a linked clone's disk from its template,
+    or a disk of a VM with snapshots. Unmount the disk's file systems in
+    the guest first;
   - add, move or remove a network adapter;
   - mount or unmount an ISO.
 - **NSX security groups:** add the VM to a group its item offers, or

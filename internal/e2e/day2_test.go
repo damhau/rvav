@@ -72,6 +72,13 @@ func (d *vmDeployment) vm() api.VmProperties {
 	return api.VmProperties{}
 }
 
+func (d *vmDeployment) syncState() api.SyncState {
+	d.h.t.Helper()
+	var dep api.DeploymentDetail
+	d.h.json("GET", "/api/v1/deployments/"+d.id, d.viewer, nil, 200, &dep)
+	return dep.SyncState
+}
+
 // run submits an action on the VM and expects the status want.
 func (d *vmDeployment) run(user, action string, inputs map[string]any, want int) api.Request {
 	d.h.t.Helper()
@@ -312,6 +319,25 @@ func TestDay2Configuration(t *testing.T) {
 			t.Fatalf("extended disk is %d GB; before %+v, after %+v", got, vm.Disks, d.vm().Disks)
 		}
 
+		// Any disk but the boot disk can be removed, with its file.
+		rm := d.actions("tnguyen")["disk_remove"]
+		if !rm.Enabled || !rm.Destructive || rm.Confirm == nil || len(*rm.Form.UiSchema.Fields["disk"].Options) != 1 {
+			t.Fatalf("disk_remove = %+v", rm)
+		}
+		added := d.vm().Disks[1]
+		d.run("tnguyen", "disk_remove", map[string]any{"disk": first.Label}, 422)
+		r = d.succeed("tnguyen", "disk_remove", map[string]any{"disk": added.Label})
+		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", "tnguyen", nil, 200, &steps)
+		if s := steps.Items[len(steps.Items)-2]; s.Key != "vsphere.disk_remove" || s.Title != "Remove "+added.Label || deref(s.Detail) != "100 GB" {
+			t.Fatalf("remove step = %+v", s)
+		}
+		if vm := d.vm(); len(vm.Disks) != 1 || deref(vm.Disks[0].File) != deref(first.File) || d.syncState() != api.InSync {
+			t.Fatalf("disks after remove = %+v", vm.Disks)
+		}
+		if rm := d.actions("tnguyen")["disk_remove"]; rm.Enabled || deref(rm.DisabledReason) != "The VM has only its boot disk, which can't be removed." {
+			t.Fatalf("disk_remove with the boot disk only = %+v", rm)
+		}
+
 		// Network adapters: the placement rules decide the networks.
 		a = d.actions("tnguyen")["nic_add"]
 		if a.Form == nil || len(*a.Form.UiSchema.Fields["network"].Options) != 2 {
@@ -374,8 +400,9 @@ func TestDay2Snapshots(t *testing.T) {
 		if got := snapshots(); len(got) != 1 || got[0] != "before-patch" {
 			t.Fatalf("snapshots = %v", got)
 		}
-		if e := d.actions("tnguyen")["disk_extend"]; e.Enabled {
-			t.Fatalf("disk_extend with a snapshot = %+v", e)
+		if e := d.actions("tnguyen"); e["disk_extend"].Enabled ||
+			deref(e["disk_remove"].DisabledReason) != "Disks of a VM with snapshots can't be removed. Delete its snapshots first." {
+			t.Fatalf("disk actions with a snapshot = %+v", e)
 		}
 		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "before-upgrade", "memory": true})
 		d.succeed("tnguyen", "snapshot_create", map[string]any{"name": "third"})

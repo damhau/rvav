@@ -122,6 +122,52 @@ test("a VM changed outside rvav: what differs, then accepted (S13.2)", async ({ 
   await expect(page.getByText("Changed outside rvav", { exact: true })).toHaveCount(0);
 });
 
+test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-dev-api" })).toBeVisible();
+  const more = page.getByRole("button", { name: "More actions for web-dev-api004" });
+
+  // Suspended, its hardware can't change; power on resumes it.
+  await more.click();
+  await page.getByRole("menuitem", { name: /^Suspend/ }).click();
+  const suspend = page.getByRole("dialog", { name: "Suspend · web-dev-api004" });
+  await expect(suspend.getByText(/Power on resumes it/)).toBeVisible();
+  await suspend.getByRole("button", { name: "Suspend" }).click();
+  await expect(page.getByText(/vm-\d+ · suspended/)).toBeVisible({ timeout: 15_000 });
+  await more.click();
+  await expect(page.getByRole("menuitem", { name: /^Resize/ })).toHaveAttribute("data-disabled", "");
+  await expect(page.getByText("The VM is suspended: power it on or off first.").first()).toBeVisible();
+  await page.getByRole("menuitem", { name: /^Power on/ }).click();
+  await expect(page.getByText(/vm-\d+ · on/)).toBeVisible({ timeout: 15_000 });
+
+  // A disk added, then removed; the boot disk isn't offered.
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-legacy", exact: true }).click();
+  await expect(page.getByText(/· 320 GB$/)).toBeVisible();
+  const legacy = page.getByRole("button", { name: "More actions for web-dev-legacy001" });
+  await legacy.click();
+  await page.getByRole("menuitem", { name: /^Add a disk/ }).click();
+  const add = page.getByRole("dialog", { name: "Add a disk · web-dev-legacy001" });
+  await add.getByRole("button", { name: "Add a disk" }).click();
+  await expect(add).toBeHidden();
+  await expect(page.getByText(/· 370 GB$/)).toBeVisible({ timeout: 15_000 });
+
+  await legacy.click();
+  await page.getByRole("menuitem", { name: /^Remove a disk/ }).click();
+  const remove = page.getByRole("dialog", { name: "Remove a disk · web-dev-legacy001" });
+  await expect(remove.getByText(/deleted from the datastore/)).toBeVisible();
+  await remove.getByRole("combobox", { name: "Disk" }).click();
+  await expect(page.getByRole("option", { name: /Hard disk 1/ })).toHaveCount(0);
+  await page.getByRole("option", { name: /^Hard disk 3/ }).click();
+  await remove.getByRole("button", { name: "Remove a disk" }).click();
+  await expect(remove).toBeHidden();
+  await expect(page.getByText(/· 320 GB$/)).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test("an auditor is offered no action on a VM, not even its console", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
   await page.goto("/deployments");

@@ -127,6 +127,47 @@ func init() {
 		},
 	})
 	register(&Action{
+		Key: "disk_remove", Name: "Remove a disk", Group: GroupConfiguration, Types: []string{vmType}, Destructive: true,
+		Confirm: "The disk and its data are deleted from the datastore, and the guest loses it at once: " +
+			"unmount its file systems first. This can't be undone.",
+		Unavailable: func(t Target, _ Choices) string {
+			if reason := suspended(t); reason != "" {
+				return reason
+			}
+			if t.VM.SnapshotCount != nil && *t.VM.SnapshotCount > 0 {
+				return "Disks of a VM with snapshots can't be removed. Delete its snapshots first."
+			}
+			if len(removable(t)) == 0 {
+				return "The VM has only its boot disk, which can't be removed."
+			}
+			return ""
+		},
+		Form: func(t Target, _ Choices) *api.ActionForm {
+			disks := removable(t)
+			opts := make([]api.Option, len(disks))
+			for i, d := range disks {
+				meta := strconv.Itoa(d.CapacityGb) + " GB"
+				if d.Datastore != nil {
+					meta += " on " + *d.Datastore
+				}
+				opts[i] = api.Option{Value: d.Label, Label: d.Label, Meta: &meta}
+			}
+			return form("Disk", choice("disk", "Disk", opts, ""))
+		},
+		Ops: func(t Target, in map[string]any) []Op {
+			label := strInput(in, "disk")
+			args := map[string]any{"disk": label}
+			op := vcenter("vsphere.disk_remove", "Remove "+label, "remove_disk", args)
+			if d := disk(t, label); d != nil {
+				op.Detail = fmt.Sprintf("%d GB", d.CapacityGb)
+				if d.File != nil {
+					args["file"] = *d.File
+				}
+			}
+			return []Op{op}
+		},
+	})
+	register(&Action{
 		Key: "nic_add", Name: "Add a network adapter", Group: GroupConfiguration, Types: []string{vmType},
 		Unavailable: func(t Target, c Choices) string {
 			if reason := suspended(t); reason != "" {
@@ -231,6 +272,15 @@ const linkedDisk = "A linked clone's disk from its template can't grow (it is a 
 // template disk.
 func growable(t Target) []api.VmDisk {
 	return slices.DeleteFunc(slices.Clone(t.VM.Disks), func(d api.VmDisk) bool { return d.Linked != nil && *d.Linked })
+}
+
+// removable are the VM's disks that can be removed: neither the first, which
+// it boots from, nor a linked clone's template disk.
+func removable(t Target) []api.VmDisk {
+	if len(t.VM.Disks) < 2 {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(t.VM.Disks[1:]), func(d api.VmDisk) bool { return d.Linked != nil && *d.Linked })
 }
 
 func disk(t Target, label string) *api.VmDisk {
