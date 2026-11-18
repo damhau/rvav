@@ -104,4 +104,29 @@ describe("Policies", () => {
     await user.click(within(confirm).getByRole("button", { name: "Remove lease policy" }));
     await waitFor(() => expect(within(region).queryByRole("row", { name: /Web Platform/ })).toBeNull());
   });
+
+  it(
+    "previews and saves a naming policy whose counter starts at 100 and moves by 10",
+    { timeout: 15_000 },
+    async () => {
+      const user = userEvent.setup();
+      renderApp("/admin/policies?tab=naming");
+      const region = await screen.findByRole("region", { name: "Naming policies" });
+      await within(region).findByText("No naming policy");
+      await user.click(within(region).getByRole("button", { name: "New naming policy" }));
+      const sheet = await screen.findByRole("dialog", { name: "New naming policy" });
+      await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Hundreds");
+      const start = within(sheet).getByRole("spinbutton", { name: "Start at" });
+      await user.clear(start);
+      await user.paste("100");
+      const increment = within(sheet).getByRole("spinbutton", { name: "Increment" });
+      await user.clear(increment);
+      await user.paste("10");
+      await user.click(within(sheet).getByRole("button", { name: "Preview names" }));
+      expect(await within(sheet).findByText("web-dev-app110, web-dev-app120, web-dev-app130")).toBeInTheDocument();
+      await user.click(within(sheet).getByRole("button", { name: "Save naming policy" }));
+      expect(await screen.findByText("Hundreds saved")).toBeInTheDocument();
+      expect(await within(region).findByRole("row", { name: /Hundreds/ })).toHaveTextContent("From 100, by 10");
+    },
+  );
 });

@@ -187,13 +187,15 @@ func (s *Store) LeasePolicy(ctx context.Context, projectID, environment string) 
 }
 
 // NextName reserves the next counter value for a naming prefix, skipping
-// values for which taken returns true.
-func (s *Store) NextName(ctx context.Context, db DB, prefix string, taken func(int) bool) (int, error) {
+// values for which taken returns true. A new counter starts at start; one
+// in use moves by step, and jumps to start when it is behind it (a policy
+// whose start was raised).
+func (s *Store) NextName(ctx context.Context, db DB, prefix string, start, step int, taken func(int) bool) (int, error) {
 	for {
 		var n int
-		err := db.QueryRow(ctx, `insert into name_counters (prefix, last_value) values ($1, 1)
-			on conflict (prefix) do update set last_value = name_counters.last_value + 1
-			returning last_value`, prefix).Scan(&n)
+		err := db.QueryRow(ctx, `insert into name_counters (prefix, last_value) values ($1, $2)
+			on conflict (prefix) do update set last_value = greatest(name_counters.last_value + $3, $2)
+			returning last_value`, prefix, start, step).Scan(&n)
 		if err != nil {
 			return 0, err
 		}
@@ -204,9 +206,10 @@ func (s *Store) NextName(ctx context.Context, db DB, prefix string, taken func(i
 }
 
 // PeekName returns the counter value NextName would try next.
-func (s *Store) PeekName(ctx context.Context, prefix string) (int, error) {
+func (s *Store) PeekName(ctx context.Context, prefix string, start, step int) (int, error) {
 	var n int
-	err := s.Pool.QueryRow(ctx, `select coalesce((select last_value from name_counters where prefix = $1), 0) + 1`, prefix).Scan(&n)
+	err := s.Pool.QueryRow(ctx, `select greatest((select last_value from name_counters where prefix = $1) + $3, $2)`,
+		prefix, start, step).Scan(&n)
 	return n, err
 }
 

@@ -32,3 +32,20 @@ func TestComponentAndLabels(t *testing.T) {
 		t.Fatal("a name without {seq} parsed")
 	}
 }
+
+func TestCounter(t *testing.T) {
+	tpl, err := Parse("web{seq:03}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tpl.Start() != 1 || tpl.Step() != 1 {
+		t.Fatalf("default counter %d, %d", tpl.Start(), tpl.Step())
+	}
+	tpl = tpl.WithCounter(0, 5)
+	if tpl.Start() != 0 || tpl.Step() != 5 || tpl.Name("web", tpl.Start()+tpl.Step()) != "web005" {
+		t.Fatalf("counter %d, %d", tpl.Start(), tpl.Step())
+	}
+	if n := tpl.WithCounter(1000, 1).Name("web", 1000); n != "web1000" {
+		t.Fatalf("a number wider than the padding = %s", n)
+	}
+}

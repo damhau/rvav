@@ -6074,6 +6074,13 @@ export interface components {
              * @enum {string}
              */
             counter: "prefix" | "policy";
+            /**
+             * @description The counter's first value. A counter in use goes on from its last
+             *     value, and jumps to `start` when it is behind it.
+             */
+            start: number;
+            /** @description How much the counter moves from one name to the next. */
+            increment: number;
             /** @description Where it applies; the most specific one wins (project and environment, project, environment, all). */
             offers: components["schemas"]["Offer"][];
         };
@@ -6085,6 +6092,10 @@ export interface components {
              * @enum {string}
              */
             counter: "prefix" | "policy";
+            /** @default 1 */
+            start: number;
+            /** @default 1 */
+            increment: number;
             offers?: components["schemas"]["Offer"][];
         };
         NamingPolicyList: {
@@ -6097,6 +6108,10 @@ export interface components {
              * @enum {string}
              */
             counter: "prefix" | "policy";
+            /** @default 1 */
+            start: number;
+            /** @default 1 */
+            increment: number;
             /** @description The policy being edited, for its counter. */
             policy_id?: string;
             project_id: string;

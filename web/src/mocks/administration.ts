@@ -555,6 +555,16 @@ export function placementFolder(db: Db, projectId: string, env: string): string 
     .sort((a, b) => a.priority - b.priority)[0]?.folder;
 }
 
+/** As the server: a naming counter starts at 0 or more and moves by 1 to 1000. */
+function counterProblems(start: number, increment: number): S["FieldError"][] {
+  const out: S["FieldError"][] = [];
+  if (!Number.isInteger(start) || start < 0 || start > 999_999_999)
+    out.push(err("/start", "The counter starts between 0 and 999999999."));
+  if (!Number.isInteger(increment) || increment < 1 || increment > 1000)
+    out.push(err("/increment", "The counter moves by 1 to 1000."));
+  return out;
+}
+
 /** The naming policy offered to a project in an environment, the most specific winning. */
 export function namingTemplate(db: Db, projectId: string, env: string): string | undefined {
   let best: { template: string; score: number } | undefined;
@@ -1567,11 +1577,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             ),
           ]);
         if (!w.name.trim()) return invalid([err("/name", "Give the policy a name.")]);
+        const counterErrors = counterProblems(w.start ?? 1, w.increment ?? 1);
+        if (counterErrors.length) return invalid(counterErrors);
         const pol: S["NamingPolicy"] = {
           id: method === "put" ? String(params.id) : next("nmp"),
           name: w.name,
           template: w.template,
           counter: w.counter ?? "prefix",
+          start: w.start ?? 1,
+          increment: w.increment ?? 1,
           offers: w.offers ?? [],
         };
         const list = st().naming;
@@ -1607,10 +1621,18 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         .replaceAll("{inputs.role}", role);
       if (prefix.includes("{"))
         return HttpResponse.json({ names: [], skipped: [], problem: "Give the inputs the template uses." });
-      const names = Array.from({ length: q.count ?? 3 }, (_, i) => `${prefix}${String(i + 2).padStart(width, "0")}`);
+      const start = q.start ?? 1;
+      const step = q.increment ?? 1;
+      const counterErrors = counterProblems(start, step);
+      if (counterErrors.length) return invalid(counterErrors);
+      // The first number is taken in vCenter, as the demo's first VM is.
+      const names = Array.from(
+        { length: q.count ?? 3 },
+        (_, i) => `${prefix}${String(start + (i + 1) * step).padStart(width, "0")}`,
+      );
       return HttpResponse.json({
         names,
-        skipped: [{ name: `${prefix}${"1".padStart(width, "0")}`, taken_in: "vcenter" }],
+        skipped: [{ name: `${prefix}${String(start).padStart(width, "0")}`, taken_in: "vcenter" }],
       });
     }),
 

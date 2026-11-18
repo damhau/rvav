@@ -7991,7 +7991,7 @@ components:
           items: { $ref: "#/components/schemas/SizePreset" }
     NamingPolicy:
       type: object
-      required: [id, name, template, counter, offers]
+      required: [id, name, template, counter, start, increment, offers]
       properties:
         id: { type: string }
         name: { type: string }
@@ -8005,6 +8005,14 @@ components:
           type: string
           enum: [prefix, policy]
           description: One counter per name prefix (web-dev-app), or one for everything the policy names.
+        start:
+          type: integer
+          description: |
+            The counter's first value. A counter in use goes on from its last
+            value, and jumps to `start` when it is behind it.
+        increment:
+          type: integer
+          description: How much the counter moves from one name to the next.
         offers:
           type: array
           description: Where it applies; the most specific one wins (project and environment, project, environment, all).
@@ -8017,6 +8025,8 @@ components:
         name: { type: string, minLength: 1, maxLength: 80 }
         template: { type: string, minLength: 1, maxLength: 120 }
         counter: { type: string, enum: [prefix, policy], default: prefix }
+        start: { type: integer, minimum: 0, maximum: 999999999, default: 1 }
+        increment: { type: integer, minimum: 1, maximum: 1000, default: 1 }
         offers: { type: array, items: { $ref: "#/components/schemas/Offer" } }
     NamingPolicyList:
       type: object
@@ -8032,6 +8042,8 @@ components:
       properties:
         template: { type: string }
         counter: { type: string, enum: [prefix, policy], default: prefix }
+        start: { type: integer, minimum: 0, maximum: 999999999, default: 1 }
+        increment: { type: integer, minimum: 1, maximum: 1000, default: 1 }
         policy_id: { type: string, description: "The policy being edited, for its counter." }
         project_id: { type: string }
         environment: { $ref: "#/components/schemas/EnvironmentKey" }

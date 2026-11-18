@@ -15,6 +15,9 @@ type Template struct {
 	raw      string
 	parts    []part
 	seqWidth int
+	// start and step are the counter's first value and how much it moves
+	// (a naming policy's start and increment); 1 and 1 when unset.
+	start, step int
 }
 
 type part struct {
@@ -93,6 +96,23 @@ func (t Template) Fields() []string {
 	}
 	return out
 }
+
+// WithCounter is t with its counter starting at start and moving by step.
+func (t Template) WithCounter(start, step int) Template {
+	t.start, t.step = start, step
+	return t
+}
+
+// Start is the counter's first value: 1 unless a policy says otherwise.
+func (t Template) Start() int {
+	if t.step == 0 {
+		return 1
+	}
+	return t.start
+}
+
+// Step is how much the counter moves from one name to the next.
+func (t Template) Step() int { return max(t.step, 1) }
 
 // Name renders prefix plus the zero-padded sequence number.
 func (t Template) Name(prefix string, seq int) string {

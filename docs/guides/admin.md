@@ -618,7 +618,7 @@ and an environment, which policies would apply to a request and why.
 | **Approval** | Which requests need approval, from whom (users or groups, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota. |
 | **Lease** | Default and longest leases per environment or project, extensions, and the end: power off then delete, delete, or only tell the owner. |
 | **Day-2** | Who may run which action, where, and which need approval (deleting in production, by default). |
-| **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment. Names are never given twice, and are checked free in vCenter and DNS. |
+| **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
 
 Each tab is a list. To add a policy, select **New approval policy** (or
 the tab's own); to change one, select **Change** in its row's menu. The

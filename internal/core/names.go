@@ -107,12 +107,13 @@ func (s *Service) prefetchNames(ctx context.Context, ev *Evaluation) func() {
 		if others[p.prefix] == 0 || c == nil || c.ipam == nil || c.zone == "" || c.err != nil {
 			continue
 		}
-		next, err := s.Store.PeekName(ctx, p.counter)
+		step := p.naming.Step()
+		next, err := s.Store.PeekName(ctx, p.counter, p.naming.Start(), step)
 		if err != nil {
 			continue
 		}
 		var names []string
-		for n := next; len(names) < min(p.count*(others[p.prefix]+1), maxPrefetch) && n < next+2*maxPrefetch; n++ {
+		for n := next; len(names) < min(p.count*(others[p.prefix]+1), maxPrefetch) && n < next+2*maxPrefetch*step; n += step {
 			name := p.naming.Name(p.prefix, n)
 			if _, known := c.dns[name]; !known && !c.vcenter[name] && !c.rvav[name] {
 				names = append(names, name)

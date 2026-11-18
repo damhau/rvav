@@ -21,13 +21,25 @@ import { useProjects } from "./shared";
 type S = components["schemas"];
 type Policy = S["NamingPolicy"];
 
+/** How a policy counts: "From 1, by 1" and whose counter it is. */
+function counterText(p: Pick<Policy, "start" | "increment" | "counter">): string {
+  return `From ${p.start}, by ${p.increment}${p.counter === "policy" ? ", one for the policy" : ""}`;
+}
+
 function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
   const qc = useQueryClient();
   const projects = useProjects();
   const [f, setF] = useState<S["NamingPolicyWrite"]>(
     policy
       ? writable(policy, "id")
-      : { name: "", template: "{project}-{environment}-{role}{seq:03}", counter: "prefix", offers: [] },
+      : {
+          name: "",
+          template: "{project}-{environment}-{role}{seq:03}",
+          counter: "prefix",
+          start: 1,
+          increment: 1,
+          offers: [],
+        },
   );
   const [sample, setSample] = useState({ project: "", environment: "dev", role: "app" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -38,6 +50,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           body: {
             template: f.template,
             counter: f.counter,
+            start: f.start,
+            increment: f.increment,
             policy_id: policy?.id,
             project_id: sample.project || projects.items[0]?.id || "",
             environment: sample.environment,
@@ -106,6 +120,32 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           ]}
         />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="Start at"
+          htmlFor="nm-start"
+          error={errors["/start"]}
+          hint="A counter in use goes on from its last number"
+        >
+          <Input
+            id="nm-start"
+            type="number"
+            min={0}
+            value={f.start ?? 1}
+            onChange={(e) => setF({ ...f, start: e.target.valueAsNumber })}
+          />
+        </Field>
+        <Field label="Increment" htmlFor="nm-increment" error={errors["/increment"]}>
+          <Input
+            id="nm-increment"
+            type="number"
+            min={1}
+            max={1000}
+            value={f.increment ?? 1}
+            onChange={(e) => setF({ ...f, increment: e.target.valueAsNumber })}
+          />
+        </Field>
+      </div>
       <OfferEditor
         value={f.offers ?? []}
         onChange={(offers) => setF({ ...f, offers })}
@@ -187,6 +227,11 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
       id: "template",
       header: "Template",
       cell: (p) => <span className="font-mono text-secondary">{p.template}</span>,
+    },
+    {
+      id: "counter",
+      header: "Counter",
+      cell: (p) => <span className="text-secondary">{counterText(p)}</span>,
     },
     {
       id: "offers",

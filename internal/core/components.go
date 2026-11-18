@@ -1074,7 +1074,7 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 			names.dns = p.check.dns
 		}
 		for i := range p.count {
-			seq, err := s.Store.NextName(ctx, tx, p.counter, func(n int) bool { return names.taken(p.naming.Name(p.prefix, n)) })
+			seq, err := s.Store.NextName(ctx, tx, p.counter, p.naming.Start(), p.naming.Step(), func(n int) bool { return names.taken(p.naming.Name(p.prefix, n)) })
 			if err != nil {
 				return nil, nil, nil, err
 			}

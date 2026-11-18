@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
@@ -42,6 +43,9 @@ func (s *Service) namingFor(ctx context.Context, projectID, environment, bluepri
 		return spec, err
 	}
 	spec.Template, err = naming.Parse(raw)
+	if pol.ID != "" {
+		spec.Template = spec.Template.WithCounter(pol.Start, pol.Step)
+	}
 	return spec, err
 }
 
@@ -62,7 +66,7 @@ func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone s
 	for n := range given {
 		ours[n] = true
 	}
-	next, err := s.Store.PeekName(ctx, spec.counterKey(prefix))
+	next, err := s.Store.PeekName(ctx, spec.counterKey(prefix), spec.Template.Start(), spec.Template.Step())
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -71,7 +75,7 @@ func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone s
 	var skipped []skippedName
 	for len(names) < count && check.err == nil {
 		name := spec.Template.Name(prefix, next)
-		next++
+		next += spec.Template.Step()
 		if in := check.takenIn(name); in != "" {
 			skipped = append(skipped, skippedName{name, in})
 			continue
@@ -83,7 +87,7 @@ func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone s
 
 func presentNamingPolicy(p store.NamingPolicy, offers []store.Offer) api.NamingPolicy {
 	return api.NamingPolicy{Id: p.ID, Name: p.Name, Template: p.Template, Counter: api.NamingPolicyCounter(p.Counter),
-		Offers: presentOffers(offers)}
+		Start: p.Start, Increment: p.Step, Offers: presentOffers(offers)}
 }
 
 func (s *Service) NamingPolicies(ctx context.Context, p *auth.Principal) ([]api.NamingPolicy, error) {
@@ -119,6 +123,34 @@ func checkNamingTemplate(raw, ptr string) []api.FieldError {
 	return nil
 }
 
+// counterOf is a policy's counter start and increment, 1 and 1 when not given.
+func counterOf(start, increment *int) (int, int) {
+	s, i := 1, 1
+	if start != nil {
+		s = *start
+	}
+	if increment != nil {
+		i = *increment
+	}
+	return s, i
+}
+
+func checkCounter(start, step int) []api.FieldError {
+	var errs []api.FieldError
+	if start < 0 || start > maxCounterStart {
+		errs = append(errs, fieldErr("/start", "out_of_range", fmt.Sprintf("The counter starts between 0 and %d.", maxCounterStart)))
+	}
+	if step < 1 || step > maxCounterStep {
+		errs = append(errs, fieldErr("/increment", "out_of_range", fmt.Sprintf("The counter moves by 1 to %d.", maxCounterStep)))
+	}
+	return errs
+}
+
+const (
+	maxCounterStart = 999_999_999
+	maxCounterStep  = 1000
+)
+
 func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id string, w api.NamingPolicyWrite) (api.NamingPolicy, error) {
 	if !p.Everywhere(auth.PoliciesManage) {
 		return api.NamingPolicy{}, ErrForbidden
@@ -142,6 +174,8 @@ func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id st
 			errs = append(errs, fieldErr("/counter", "enum", "prefix or policy."))
 		}
 	}
+	start, step := counterOf(w.Start, w.Increment)
+	errs = append(errs, checkCounter(start, step)...)
 	offers, offerErrs, err := s.checkOffers(ctx, w.Offers)
 	if err != nil {
 		return api.NamingPolicy{}, err
@@ -153,7 +187,7 @@ func (s *Service) SaveNamingPolicy(ctx context.Context, p *auth.Principal, id st
 	if id == "" {
 		id, action = ids.New("nmp"), "naming.create"
 	}
-	pol := store.NamingPolicy{ID: id, Name: strings.TrimSpace(w.Name), Template: w.Template, Counter: counter}
+	pol := store.NamingPolicy{ID: id, Name: strings.TrimSpace(w.Name), Template: w.Template, Counter: counter, Start: start, Step: step}
 	if err := s.Store.SaveNamingPolicy(ctx, pol, offers); err != nil {
 		return api.NamingPolicy{}, err
 	}
@@ -181,7 +215,8 @@ func (s *Service) PreviewNaming(ctx context.Context, p *auth.Principal, q api.Na
 	if !p.Everywhere(auth.PoliciesManage) {
 		return out, ErrForbidden
 	}
-	if errs := checkNamingTemplate(q.Template, "/template"); len(errs) > 0 {
+	start, step := counterOf(q.Start, q.Increment)
+	if errs := append(checkNamingTemplate(q.Template, "/template"), checkCounter(start, step)...); len(errs) > 0 {
 		return out, &ValidationError{Errors: errs}
 	}
 	proj, err := s.visibleProject(ctx, p, q.ProjectId)
@@ -193,6 +228,7 @@ func (s *Service) PreviewNaming(ctx context.Context, p *auth.Principal, q api.Na
 		spec.Counter = string(*q.Counter)
 	}
 	spec.Template, _ = naming.Parse(q.Template)
+	spec.Template = spec.Template.WithCounter(start, step)
 	inputs := map[string]any{}
 	if q.Inputs != nil {
 		inputs = *q.Inputs

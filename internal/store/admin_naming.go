@@ -11,20 +11,23 @@ import (
 // Naming policies (ADR-0020).
 
 type NamingPolicy struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Template  string    `db:"template"`
-	Counter   string    `db:"counter"` // prefix or policy
+	ID       string `db:"id"`
+	Name     string `db:"name"`
+	Template string `db:"template"`
+	Counter  string `db:"counter"` // prefix or policy
+	// Start and Step are the counter's first value and increment.
+	Start     int       `db:"counter_start"`
+	Step      int       `db:"counter_step"`
 	CreatedAt time.Time `db:"created_at"`
 }
 
 func (s *Store) NamingPolicies(ctx context.Context) ([]NamingPolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, name, template, counter, created_at from naming_policies order by name, id`)
+	rows, _ := s.Pool.Query(ctx, `select id, name, template, counter, counter_start, counter_step, created_at from naming_policies order by name, id`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[NamingPolicy])
 }
 
 func (s *Store) GetNamingPolicy(ctx context.Context, id string) (NamingPolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, name, template, counter, created_at from naming_policies where id = $1`, id)
+	rows, _ := s.Pool.Query(ctx, `select id, name, template, counter, counter_start, counter_step, created_at from naming_policies where id = $1`, id)
 	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[NamingPolicy])
 	return p, notFound(err)
 }
@@ -32,9 +35,11 @@ func (s *Store) GetNamingPolicy(ctx context.Context, id string) (NamingPolicy, e
 // SaveNamingPolicy creates or replaces a policy with its offers.
 func (s *Store) SaveNamingPolicy(ctx context.Context, p NamingPolicy, offers []Offer) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `insert into naming_policies (id, name, template, counter) values ($1, $2, $3, $4)
-			on conflict (id) do update set name = excluded.name, template = excluded.template, counter = excluded.counter`,
-			p.ID, p.Name, p.Template, p.Counter); err != nil {
+		if _, err := tx.Exec(ctx, `insert into naming_policies (id, name, template, counter, counter_start, counter_step)
+			values ($1, $2, $3, $4, $5, $6)
+			on conflict (id) do update set name = excluded.name, template = excluded.template, counter = excluded.counter,
+				counter_start = excluded.counter_start, counter_step = excluded.counter_step`,
+			p.ID, p.Name, p.Template, p.Counter, p.Start, p.Step); err != nil {
 			return err
 		}
 		return setOffers(ctx, tx, "naming", p.ID, offers)
@@ -49,7 +54,7 @@ func (s *Store) DeleteNamingPolicy(ctx context.Context, id string) error {
 // most specific first (project and environment, project, environment,
 // all); ErrNotFound when none is.
 func (s *Store) NamingPolicyFor(ctx context.Context, projectID, environment string) (NamingPolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select p.id, p.name, p.template, p.counter, p.created_at
+	rows, _ := s.Pool.Query(ctx, `select p.id, p.name, p.template, p.counter, p.counter_start, p.counter_step, p.created_at
 		from offers o join naming_policies p on p.id = o.key
 		where o.kind = 'naming' and (o.project_id is null or o.project_id = $1) and (o.environment is null or o.environment = $2)
 		order by (o.project_id is not null) desc, (o.environment is not null) desc, p.created_at, p.id limit 1`, projectID, environment)
