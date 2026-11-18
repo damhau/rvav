@@ -96,8 +96,11 @@ AWX job, and Retry or Rollback buttons (permission-dependent).
 - VM row: power indicator, IP and FQDN (click to copy), console button, actions menu.
 
 ### Approvals inbox
-List and detail view: request summary, inputs (editable where allowed), policy
-reason ("RAM > 32 GB"), Approve or Reject with a comment, bulk approve.
+A table in two tabs, Waiting for you and Decided, kept in the address. A row
+opens its approval in a side panel (`?id=`): request summary, inputs
+(editable where allowed), policy reason ("RAM > 32 GB"), and Approve or
+Reject with a comment. A row's ⋯ menu approves as asked, or opens the panel
+to reject.
 
 ### Admin: form designer
 Three panes: field palette | live form preview | field properties (including

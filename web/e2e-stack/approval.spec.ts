@@ -32,8 +32,12 @@ test("an infrastructure lead lowers a production VM to 32 GB and approves it", a
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await signIn(page, "marc");
   await page.getByRole("link", { name: /Approvals/ }).click();
-  const detail = page.getByRole("article", { name: `Approval for ${number}` });
-  await page.getByRole("button", { name: new RegExp(number) }).click();
+  await page
+    .getByRole("table", { name: "Waiting for you" })
+    .getByRole("row", { name: new RegExp(number) })
+    .getByRole("link")
+    .click();
+  const detail = page.getByRole("dialog");
   await expect(detail.getByText(/Production VM above 32 GB RAM/)).toBeVisible();
   await detail.getByRole("radio", { name: /^Large/ }).check();
   await detail.getByLabel("Comment").fill("32 GB is enough for the JVM.");

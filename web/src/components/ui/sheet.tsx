@@ -18,6 +18,8 @@ interface PanelProps {
   submitDisabled?: boolean;
   /** A footer of its own, for a sheet that isn't a form. */
   footer?: React.ReactNode;
+  /** Where the focus goes on closing, when not back to what opened the sheet: its action removed it. */
+  returnFocus?: () => HTMLElement | null | undefined;
   className?: string;
 }
 
@@ -50,9 +52,10 @@ function SheetPanel({
   submitLabel = "Save",
   submitDisabled,
   footer,
+  returnFocus,
   className,
 }: PanelProps & { ref?: React.Ref<HTMLDivElement> }) {
-  const giveFocusBack = useOpener();
+  const giveFocusBack = useOpener(returnFocus);
   const bodyRef = useRef<HTMLDivElement>(null);
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">

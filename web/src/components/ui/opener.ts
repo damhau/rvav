@@ -20,14 +20,17 @@ export function openerOf(el: Element | null): HTMLElement | null {
 /**
  * The opener, read on the first render of a dialog's content: Radix gives the
  * focus back to a Dialog.Trigger only, and by the time its open-autofocus
- * runs, a menu item that opened the dialog has left the page.
+ * runs, a menu item that opened the dialog has left the page. `instead` names
+ * another element for when the dialog's action removes its opener.
  */
-export function useOpener() {
+export function useOpener(instead?: () => HTMLElement | null | undefined) {
   const [opener] = useState(() => openerOf(document.activeElement));
   return (e: Event) => {
-    if (!e.defaultPrevented && opener?.isConnected) {
+    if (e.defaultPrevented) return;
+    const target = instead?.() ?? (opener?.isConnected ? opener : null);
+    if (target) {
       e.preventDefault();
-      opener.focus();
+      target.focus();
     }
   };
 }

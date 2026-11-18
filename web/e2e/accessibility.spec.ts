@@ -165,11 +165,19 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "a deployment's Actions menu");
     });
 
-    test("axe: an approval open in the inbox", async ({ page }) => {
+    test("axe: an approval's menu, then the approval in its side panel", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);
-      await page.getByRole("main").locator("[aria-pressed=false]").first().click();
-      await scanAll(page, "/approvals (an approval open)");
+      await page.getByRole("button", { name: "Actions for REQ-10477" }).click();
+      await expect(page.getByRole("menuitem", { name: "Approve" })).toBeVisible();
+      await scan(page, "/approvals (a row's menu)");
+      await page.keyboard.press("Escape");
+      await page.getByRole("table", { name: "Waiting for you" }).getByRole("link").first().click();
+      await expect(page.getByRole("dialog").getByLabel("Comment")).toBeVisible();
+      await scan(page, "/approvals (an approval open)");
+      await page.getByRole("dialog").getByRole("button", { name: "Reject" }).click();
+      await expect(page.getByRole("dialog").getByText(/^Say why you reject it/)).toBeVisible();
+      await scan(page, "/approvals (a reject without a comment)");
     });
 
     // The canvas (D1, ADR-0032): a composite's steps in its draft's

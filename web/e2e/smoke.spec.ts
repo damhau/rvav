@@ -93,7 +93,8 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: `${shots}/request-detail-${theme}.png` });
 
     await page.goto("/approvals");
-    await expect(page.getByRole("article", { name: "Approval for REQ-10477" })).toBeVisible();
+    await page.getByRole("table", { name: "Waiting for you" }).getByRole("link").first().click();
+    await expect(page.getByRole("dialog").getByLabel("Comment")).toBeVisible();
     await page.screenshot({ path: `${shots}/approvals-${theme}.png` });
   });
 }

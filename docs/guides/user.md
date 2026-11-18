@@ -174,7 +174,10 @@ over a soft quota.
 
 ## Approving
 
-**Approvals** lists the requests waiting for you, oldest first. Each shows:
+**Approvals** lists the requests waiting for you, oldest first, with why
+each needs approval, who asked, and when it is due. **Decided** lists those
+you have approved or rejected. Select a row to open it in a side panel,
+which shows:
 - what is asked and why;
 - the rules that made it need approval;
 - its cost in quota.
@@ -182,8 +185,10 @@ over a soft quota.
 **Deciding:**
 - **Approve:** you may change the inputs your organisation lets approvers
   change, such as a smaller size. The change is recorded and the
-  requester told.
-- **Reject:** with a reason, which the requester reads.
+  requester told. To approve as asked, without opening it, choose
+  **Approve** in the row's **⋯** menu.
+- **Reject:** with a comment saying why, which the requester reads.
+  **Reject…** in the row's **⋯** menu opens the side panel at the comment.
 - **Delegate:** hand the decision on.
 
 A composite's step can ask you something in the middle of a run. You are told as
