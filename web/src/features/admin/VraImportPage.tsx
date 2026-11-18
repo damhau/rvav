@@ -3,7 +3,7 @@
 // then import the catalog as drafts with its sharing, and adopt
 // deployments. It can run again. vRA is only read.
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
+import { Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Field, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { StepMark, stepNow } from "@/components/ui/step-mark";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -217,33 +218,25 @@ function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
       aria-label="Steps"
       className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
     >
-      {steps.map((st, i) => (
-        <li
-          key={st.title}
-          aria-current={i === current ? "step" : undefined}
-          className={cn(
-            "flex gap-3 bg-surface px-4 py-3",
-            i === current && "shadow-[inset_3px_0_0_var(--color-accent)]",
-          )}
-        >
-          <span
-            className={cn(
-              "tnum flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-semibold",
-              st.done ? "bg-ok-soft text-ok" : i === current ? "bg-accent text-accent-fg" : "bg-sunken text-muted",
-            )}
-            aria-hidden
+      {steps.map((st, i) => {
+        const state = st.done ? "done" : i === current ? "now" : "later";
+        return (
+          <li
+            key={st.title}
+            aria-current={state === "now" ? "step" : undefined}
+            className={cn("flex gap-3 bg-surface px-4 py-3", state === "now" && stepNow)}
           >
-            {st.done ? <Check className="size-3.5" /> : i + 1}
-          </span>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-body font-medium">
-              {st.title}
-              <span className="sr-only">{st.done ? ": done" : i === current ? ": now" : ": later"}</span>
-            </p>
-            <p className="text-secondary text-muted">{st.detail}</p>
-          </div>
-        </li>
-      ))}
+            <StepMark n={i + 1} state={state} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-body font-medium">
+                {st.title}
+                <span className="sr-only">: {state}</span>
+              </p>
+              <p className="text-secondary text-muted">{st.detail}</p>
+            </div>
+          </li>
+        );
+      })}
     </ol>
   );
 }

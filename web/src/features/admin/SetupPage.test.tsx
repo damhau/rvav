@@ -58,6 +58,17 @@ describe("setup checklist", () => {
     expect(await screen.findByRole("region", { name: "AWX connection" })).toBeInTheDocument();
   });
 
+  it("marks the first step this administrator can do as the one to do now", async () => {
+    freshInstall();
+    renderApp("/admin/setup");
+    const steps = await screen.findByRole("list", { name: "Steps" });
+    // The password is changed signed in as admin: the provider's step comes first here.
+    const now = await within(steps).findByRole("listitem", { current: "step" });
+    expect(now).toHaveAccessibleName("Set the identity provider: to do");
+    expect(within(now).getByRole("link", { name: "Identity provider" })).toHaveClass("bg-accent");
+    expect(within(steps).getByRole("link", { name: "AWX" })).not.toHaveClass("bg-accent");
+  });
+
   it("can be kept from opening at sign-in, and stays in Administration", async () => {
     freshInstall();
     const user = userEvent.setup();

@@ -3,13 +3,13 @@
 // An install without seed data or integration settings opens on it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Circle, CircleCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { StepMark, type StepState, stepNow } from "@/components/ui/step-mark";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { CHANGE_PASSWORD_PATH } from "@/lib/auth";
@@ -70,10 +70,10 @@ const steps: Record<Key, { title: string; what: string; target: Target }> = {
   },
 };
 
-function Go({ target, disabled }: { target: Target; disabled?: string }) {
+function Go({ target, disabled, state }: { target: Target; disabled?: string; state: StepState }) {
   if (disabled) return <span className="text-secondary text-faint">{disabled}</span>;
   return (
-    <Button size="sm" asChild>
+    <Button size="sm" variant={state === "now" ? "primary" : state === "done" ? "quiet" : "secondary"} asChild>
       {"href" in target ? (
         <a href={target.href}>{target.label}</a>
       ) : target.to === "/admin/integrations/$kind" ? (
@@ -108,15 +108,19 @@ export function SetupPage() {
   });
   const done = setup.data?.steps.filter((s) => s.done).length ?? 0;
   const total = setup.data?.steps.length ?? 8;
+  const blocked = (s: S["SetupStep"]) =>
+    s.key === "password" && !s.done && !me.local ? "Sign in as admin to change it." : undefined;
+  // The first step this administrator can do from here.
+  const now = setup.data?.steps.find((s) => !s.done && !blocked(s))?.key;
   return (
     <Page>
       <PageHeader
         title="Setup"
-        meta="The steps that get a first request through. Each opens its page, and is ticked once that page has what it needs."
+        description="The steps that get a first request through. Each opens its page, and is ticked once that page has what it needs."
         actions={
           setup.data &&
           !setup.data.complete && (
-            <Button size="sm" variant="quiet" disabled={hide.isPending} onClick={() => hide.mutate(!setup.data.hidden)}>
+            <Button variant="quiet" disabled={hide.isPending} onClick={() => hide.mutate(!setup.data.hidden)}>
               {setup.data.hidden ? "Open it at sign-in again" : "Don't open it at sign-in"}
             </Button>
           )
@@ -154,31 +158,27 @@ export function SetupPage() {
           <ol aria-label="Steps" className="flex flex-col">
             {setup.data.steps.map((s, i) => {
               const step = steps[s.key];
-              const notLocal =
-                s.key === "password" && !s.done && !me.local ? "Sign in as admin to change it." : undefined;
+              const state: StepState = s.done ? "done" : s.key === now ? "now" : "later";
               return (
                 <li
                   key={s.key}
                   aria-label={`${step.title}: ${s.done ? "done" : "to do"}`}
-                  className="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0"
-                >
-                  {s.done ? (
-                    <CircleCheck className="mt-0.5 size-4 shrink-0 text-ok" aria-hidden />
-                  ) : (
-                    <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />
+                  aria-current={state === "now" ? "step" : undefined}
+                  className={cn(
+                    "flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0",
+                    state === "now" && stepNow,
                   )}
+                >
+                  <StepMark n={i + 1} state={state} className="-mt-px" />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <p className={cn("text-body font-medium", s.done && "text-muted")}>
-                      <span className="tnum mr-1.5 text-secondary text-faint">{i + 1}.</span>
-                      {step.title}
-                    </p>
+                    <p className={cn("text-body font-medium", s.done && "text-muted")}>{step.title}</p>
                     <p className="text-secondary text-muted">{step.what}</p>
                     <p className="text-secondary break-words">
                       <span className="text-faint">{s.done ? "Done: " : "Now: "}</span>
                       {s.detail}
                     </p>
                   </div>
-                  <Go target={step.target} disabled={notLocal} />
+                  <Go target={step.target} disabled={blocked(s)} state={state} />
                 </li>
               );
             })}
