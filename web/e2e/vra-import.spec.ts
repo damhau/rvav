@@ -72,6 +72,7 @@ test("see the dry run, map projects, import, and import again", async ({ page })
     imported.getByText("Items made, as drafts: Windows Server 2022, Three-tier application, Database server"),
   ).toBeVisible();
   await expect(imported.getByText("4 shares added: items offered to more projects.")).toBeVisible();
+  await expect(imported.getByText("Projects given vRA's custom properties: Web Platform")).toBeVisible();
   // The tab stays where it was.
   await expect(page.getByRole("tab", { name: /vRO/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Deployments/ }).click();

@@ -5081,6 +5081,16 @@ export interface components {
              *     (the import writes none). Absent when rvav has none.
              */
             strategy?: components["schemas"]["PlacementStrategy"];
+            /**
+             * @description The vRA project's custom properties the rvav project lacks, which
+             *     importing the catalog adds to it (ADR-0038). A property the rvav
+             *     project has keeps its value.
+             */
+            properties_add?: {
+                [key: string]: string;
+            };
+            /** @description The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left. */
+            properties_unmapped?: string[];
         };
         /**
          * @description The catalogue template an image name of vRA's image profiles becomes
@@ -5190,6 +5200,8 @@ export interface components {
         VraImportResult: {
             /** @description Catalogue templates made (their keys). */
             templates_created: string[];
+            /** @description rvav projects given vRA's custom properties (their names). */
+            projects_updated: string[];
             /** @description Items made (their names). */
             created: string[];
             /** @description Items given a new draft. */

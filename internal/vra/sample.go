@@ -117,6 +117,11 @@ func SampleEstate(now time.Time) Estate {
 	flv.FlavorMappings.Mapping = map[string]FlavorMapping{"small": {CPUCount: 2, MemoryInMB: 4096},
 		"medium": {CPUCount: 4, MemoryInMB: 16384}, "large": {CPUCount: 8, MemoryInMB: 32768}}
 	e.Images, e.Flavors = []ImageProfile{gva, zrh}, []FlavorProfile{flv}
+	// Data Services names its machines by custom naming, counting from 100
+	// in tens.
+	e.Namings = []CustomNaming{{ID: "cn-data", Name: "Database servers",
+		Projects:  []NamingProject{{ProjectID: "vra-prj-data", Active: true}},
+		Templates: []NamingTemplate{{ResourceType: "COMPUTE", Pattern: "db-${input.environment}-${###}", StartCounter: 100, IncrementStep: 10}}}}
 	sampleExtensibility(&e, days)
 	// Legacy Apps is offered the templates' whole content source, as vRA's
 	// administrators usually share.

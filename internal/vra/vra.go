@@ -36,6 +36,65 @@ type Project struct {
 	PlacementPolicy string `json:"placementPolicy,omitempty"`
 }
 
+// CustomNaming is one of vRA's custom names (Infrastructure › Custom
+// names): the patterns its projects' resources are named by, each with a
+// counter that starts and steps as set.
+type CustomNaming struct {
+	ID        string           `json:"id"`
+	Name      string           `json:"name"`
+	Projects  []NamingProject  `json:"projects,omitempty"`
+	Templates []NamingTemplate `json:"templates,omitempty"`
+}
+
+// NamingProject is a project a custom naming is for, or the organisation's
+// default.
+type NamingProject struct {
+	ProjectID  string `json:"projectId,omitempty"`
+	OrgDefault bool   `json:"orgDefault,omitempty"`
+	Active     bool   `json:"active,omitempty"`
+}
+
+// NamingTemplate is a custom naming's pattern for one resource type
+// (COMPUTE for machines).
+type NamingTemplate struct {
+	ResourceType  string `json:"resourceType"`
+	Pattern       string `json:"pattern"`
+	StartCounter  int    `json:"startCounter"`
+	IncrementStep int    `json:"incrementStep"`
+}
+
+// MachineNaming is the custom naming pattern of a project's machines,
+// its own before the organisation's default; nil when there is none.
+func (e *Estate) MachineNaming(projectID string) (*CustomNaming, *NamingTemplate) {
+	var def *CustomNaming
+	for i, n := range e.Namings {
+		for _, p := range n.Projects {
+			switch {
+			case p.ProjectID == projectID && p.Active:
+				if t := n.compute(); t != nil {
+					return &e.Namings[i], t
+				}
+			case p.OrgDefault && def == nil:
+				def = &e.Namings[i]
+			}
+		}
+	}
+	if def != nil {
+		if t := def.compute(); t != nil {
+			return def, t
+		}
+	}
+	return nil, nil
+}
+
+func (n CustomNaming) compute() *NamingTemplate {
+	i := slices.IndexFunc(n.Templates, func(t NamingTemplate) bool { return t.ResourceType == "COMPUTE" })
+	if i < 0 {
+		return nil
+	}
+	return &n.Templates[i]
+}
+
 // ImageProfile maps image names (what templates ask for) to a region's
 // vCenter templates.
 type ImageProfile struct {
@@ -291,12 +350,14 @@ type Estate struct {
 	// vCenter an image profile's templates are in.
 	Regions       []Region       `json:"regions,omitempty"`
 	CloudAccounts []CloudAccount `json:"cloud_accounts,omitempty"`
-	Blueprints    []Blueprint    `json:"blueprints"`
-	Forms         []Form         `json:"forms"`
-	CatalogItems  []CatalogItem  `json:"catalog_items"`
-	Entitlements  []Entitlement  `json:"entitlements"`
-	Policies      []Policy       `json:"policies"`
-	Deployments   []Deployment   `json:"deployments"`
+	// Namings are the custom names; none in a vRA without them.
+	Namings      []CustomNaming `json:"custom_namings,omitempty"`
+	Blueprints   []Blueprint    `json:"blueprints"`
+	Forms        []Form         `json:"forms"`
+	CatalogItems []CatalogItem  `json:"catalog_items"`
+	Entitlements []Entitlement  `json:"entitlements"`
+	Policies     []Policy       `json:"policies"`
+	Deployments  []Deployment   `json:"deployments"`
 	// What extensibility runs: vRA's subscriptions, vRO's workflows and
 	// actions (the triage report, P2.4).
 	Subscriptions   []Subscription   `json:"subscriptions"`

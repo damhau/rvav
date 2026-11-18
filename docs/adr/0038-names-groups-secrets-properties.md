@@ -172,3 +172,40 @@ own `properties` (C30).
 - A project's own secret can be removed while items use it if a global
   one of its name remains: its requests open that one instead. Webhook
   signing secrets are global only.
+
+### The importer
+- vRA's custom names (`/iaas/api/naming`, read with the estate; none
+  before vRA 8.3) name a project's machines before its
+  `machineNamingTemplate`, its own before the organisation's default.
+  The pattern translates as the template did. An item's naming has no
+  counter settings, so a start or a step other than 1 is unmapped, with
+  the naming policy to make instead: the counter belongs to the policy.
+- `preventDelete: true` is the component's `prevent_delete`. The other
+  resource flags are unmapped; timeouts are left out with an info note,
+  rvav's own apply, and vRA's canvas `metadata` is ignored.
+- `folderName` is the component's `folder`. A machine's properties
+  outside vRA's vSphere machine schema are its custom properties: text
+  and numbers, `${input.x}` as `${inputs.x}`, checked as an item's are.
+  Lists, maps and values that read a machine are unmapped, since rvav
+  works properties out when the request is made, before any VM exists.
+- `${secret.x}` in `cloudConfig` is `{{ secret "x" }}`, its name lower
+  case with dashes. vRA's API never returns a secret's value, so the
+  import can't carry it: the plan puts the item in conflict until a
+  secret of each name it opens exists in rvav, in any scope, rather than
+  importing an item the YAML import would refuse. A secret anywhere else
+  is unmapped.
+- A vRA project's custom properties go to the rvav project it maps to,
+  when the catalog is imported (`properties_add` in the plan,
+  `projects_updated` in the result, audited as `project.update`). They
+  are only added: a key the rvav project has keeps its rvav value, and
+  keys rvav refuses, or past its limit, are listed as unmapped.
+
+## Consequences
+- Names, deletion protection, folders and custom properties carry over
+  from vRA without hand edits; the notes say what didn't.
+- An item that opens a secret can't be imported before the secret is
+  stored: the plan names each one, and importing again picks the item
+  up.
+- A machine property rvav doesn't know becomes a custom attribute. One
+  that was a vSphere setting outside the list rvav keeps would show up
+  as an attribute: the notes list every property made, to check.

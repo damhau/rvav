@@ -26,6 +26,25 @@ describe("vRA import", () => {
     expect(strategy("vra-prj-legacy")).toHaveTextContent(/^None$/);
   });
 
+  it("adds vRA's custom properties a project lacks when the catalog is imported", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=projects");
+    const table = await screen.findByRole("table", { name: "vRA projects" });
+    const properties = (id: string) => (within(table).getByText(id).closest("tr") as HTMLTableRowElement).cells[3];
+    // rvav's Web Platform has its own backupPolicy, which stays.
+    await waitFor(() =>
+      expect(properties("vra-prj-web")).toHaveTextContent(/^costCenter=CC-1001Left out: cost center$/),
+    );
+    expect(properties("vra-prj-legacy")).toHaveTextContent(/^None to add$/);
+
+    await user.click(screen.getByRole("button", { name: "Import…" }));
+    const sheet = await screen.findByRole("dialog", { name: "Import from vRA" });
+    await user.click(within(sheet).getByRole("button", { name: "Import" }));
+    const result = (await screen.findAllByRole("region", { name: "Imported" })).at(-1);
+    expect(result).toHaveTextContent(/Projects given vRA's custom properties: Web Platform/);
+    await waitFor(() => expect(properties("vra-prj-web")).toHaveTextContent(/^Left out: cost center$/));
+  });
+
   it("says which step the move is at, and keeps the plan's tab in the address", async () => {
     const user = userEvent.setup();
     const { router } = renderApp("/admin/vra-import");

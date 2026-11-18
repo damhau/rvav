@@ -302,6 +302,11 @@ function ProjectsTab({ plan }: { plan: Plan }) {
       ),
     },
     {
+      id: "properties",
+      header: "Custom properties",
+      cell: (p) => <ProjectProperties p={p} />,
+    },
+    {
       id: "items",
       header: "Items shared",
       sortValue: (p) => p.items,
@@ -321,7 +326,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
         columns={columns}
         rows={plan.projects}
         rowKey={(p) => p.vra_id}
-        minWidth={760}
+        minWidth={960}
         toolbar={
           projects.isError && (
             <p className="text-secondary text-bad">
@@ -333,6 +338,27 @@ function ProjectsTab({ plan }: { plan: Plan }) {
           )
         }
       />
+    </>
+  );
+}
+
+// What importing the catalog adds to the rvav project, and what it can't.
+function ProjectProperties({ p }: { p: S["VraProjectPlan"] }) {
+  const add = Object.entries(p.properties_add ?? {});
+  const unmapped = p.properties_unmapped ?? [];
+  if (add.length + unmapped.length === 0) return <span className="text-faint">None to add</span>;
+  return (
+    <>
+      {add.length > 0 && (
+        <ul aria-label={`Custom properties added to ${p.rvav_project_name ?? "the rvav project"}`}>
+          {add.map(([k, v]) => (
+            <li key={k} className="font-mono text-caption">
+              {k}={v}
+            </li>
+          ))}
+        </ul>
+      )}
+      {unmapped.length > 0 && <div className="text-caption text-warn">Left out: {unmapped.join(", ")}</div>}
     </>
   );
 }
@@ -874,6 +900,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
     >
       <section aria-label="Imported" className="flex flex-col gap-1 text-body">
         {line("Templates made", r.templates_created)}
+        {line("Projects given vRA's custom properties", r.projects_updated)}
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
         {r.shared > 0 && <p>{plural(r.shared, "share")} added: items offered to more projects.</p>}
@@ -884,6 +911,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
           </p>
         ))}
         {r.templates_created.length +
+          r.projects_updated.length +
           r.created.length +
           r.updated.length +
           r.shared +

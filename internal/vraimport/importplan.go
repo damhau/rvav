@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -83,6 +85,11 @@ type ProjectPlan struct {
 	// that places as it does (ADR-0036); "" when rvav has none.
 	PlacementPolicy string `json:"placement_policy,omitempty"`
 	Strategy        string `json:"strategy,omitempty"`
+	// PropertiesAdd are the vRA project's custom properties the rvav
+	// project lacks, which importing the catalog adds to it; rvav's own
+	// values stay. PropertiesUnmapped are those rvav can't take.
+	PropertiesAdd      map[string]string `json:"properties_add,omitempty"`
+	PropertiesUnmapped []string          `json:"properties_unmapped,omitempty"`
 }
 
 // Summary counts what the import would do.
@@ -127,6 +134,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		pp.How = how
 		if proj != nil {
 			pp.RvavProjectID, pp.RvavProjectName = proj.ID, proj.Name
+			pp.PropertiesAdd, pp.PropertiesUnmapped = projectProperties(vp.Properties, proj.Properties)
 		}
 		pp.Items = len(e.ItemsFor(vp.ID))
 		for _, d := range e.Deployments {
@@ -193,6 +201,26 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	return p
 }
 
+// projectProperties are the vRA project's custom properties an rvav
+// project takes: those it lacks, while it has room; and those it can't.
+func projectProperties(vraProps, rvavProps map[string]string) (add map[string]string, unmapped []string) {
+	room := blueprint.MaxProperties - len(rvavProps)
+	for _, k := range slices.Sorted(maps.Keys(vraProps)) {
+		switch _, has := rvavProps[k]; {
+		case has:
+		case blueprint.CheckProperty(k, vraProps[k]) != "" || room == 0:
+			unmapped = append(unmapped, k)
+		default:
+			if add == nil {
+				add = map[string]string{}
+			}
+			add[k] = vraProps[k]
+			room--
+		}
+	}
+	return add, unmapped
+}
+
 func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImport {
 	m := MapTemplate(e, bp)
 	it := ItemImport{BlueprintID: bp.ID, Name: m.Name, Slug: m.Slug, Status: m.Status, Notes: m.Notes, ShareAdd: []string{},
@@ -226,6 +254,15 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint) ItemImpor
 				it.Notes = append(it.Notes, Note{Warning, "versions", "The new draft is mapped from vRA's template again: " +
 					"what was changed in rvav since (value sources, templates, sizes) is in the published version, not in it. Compare them."})
 			}
+		}
+	}
+	if missing := slices.DeleteFunc(slices.Clone(m.Secrets), func(name string) bool { return r.Secrets[name] }); len(missing) > 0 &&
+		it.Action != ActionUnchanged && it.Action != ActionConflict {
+		it.Action = ActionConflict
+		it.Reason = "Its cloud-init opens secrets rvav doesn't have: store " + strings.Join(missing, ", ") +
+			" in Catalog items › Secrets, then import again. vRA never gives a secret's value."
+		if item == nil {
+			return it
 		}
 	}
 	if item == nil {

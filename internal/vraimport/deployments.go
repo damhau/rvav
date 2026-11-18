@@ -38,6 +38,8 @@ type RvavProject struct {
 	Environments []string
 	// Members are the users who may own deployments (not viewers).
 	Members []string
+	// Properties are its custom properties (ADR-0038).
+	Properties map[string]string
 }
 
 // Lease is an rvav lease policy's limits for a project's environment.
@@ -72,6 +74,8 @@ type Rvav struct {
 	// templates by key (ADR-0037).
 	VCenters  []RvavVCenter
 	Templates map[string]RvavTemplate
+	// Secrets are the names of its stored secrets, of any scope.
+	Secrets map[string]bool
 }
 
 // DeploymentPlan is what becomes of a vRA deployment: adopted into an rvav

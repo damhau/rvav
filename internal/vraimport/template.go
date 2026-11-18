@@ -2,6 +2,7 @@ package vraimport
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -26,6 +28,9 @@ type ItemPlan struct {
 	Doc         *ItemDoc `json:"doc,omitempty"`
 	// Templates are the catalogue templates it binds, by key (ADR-0037).
 	Templates []string `json:"-"`
+	// Secrets are the stored secrets its latest version's cloud-init
+	// opens, as rvav names them.
+	Secrets []string `json:"-"`
 }
 
 // tmpl is a cloud template's YAML: its inputs and resources.
@@ -35,6 +40,8 @@ type tmpl struct {
 		Type       string         `yaml:"type"`
 		DependsOn  []string       `yaml:"dependsOn"`
 		Properties map[string]any `yaml:"properties"`
+		// vRA's resource flags (preventDelete, ignoreChanges...).
+		Flags map[string]any `yaml:",inline"`
 	} `yaml:"resources"`
 }
 
@@ -108,6 +115,7 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 	}
 	p.Status, p.Doc = worst, doc
 	p.Templates = boundTemplates(doc.Versions[len(doc.Versions)-1].Blueprint)
+	p.Secrets = templateSecrets(released[len(released)-1].Content)
 	if strings.Contains(strings.ToLower(doc.Versions[len(doc.Versions)-1].Blueprint["guest"].(map[string]any)["os_family"].(string)), "windows") {
 		doc.Metadata.Icon = "monitor"
 	}
@@ -244,7 +252,13 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			for _, pr := range problems {
 				note(Warning, where+".cloudConfig", pr)
 			}
+			for _, name := range secretsIn(ci) {
+				note(Warning, where+".cloudConfig", fmt.Sprintf("cloud-init opens secret %s: store it in rvav under that name "+
+					"(Catalog items › Secrets) before importing, since vRA never gives a secret's value.", name))
+			}
 		}
+		mapFlags(r.Flags, where, c, note)
+		mapFolderAndProperties(sc, r.Properties, where, c, note)
 		var cDisks []map[string]any
 		if ad, ok := r.Properties["attachedDisks"].([]any); ok {
 			for _, a := range ad {
@@ -534,12 +548,24 @@ func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, w
 	if slices.Contains(inputs, "role") {
 		def = "{project}-{environment}-{inputs.role}{seq:03}"
 	}
-	i := slices.IndexFunc(e.Projects, func(p vra.Project) bool { return p.ID == bp.ProjectID })
-	if i < 0 || e.Projects[i].MachineNamingTemplate == "" {
+	src, from := "", "the project's naming template"
+	if i := slices.IndexFunc(e.Projects, func(p vra.Project) bool { return p.ID == bp.ProjectID }); i >= 0 {
+		src = e.Projects[i].MachineNamingTemplate
+	}
+	// Custom naming, when it has a pattern for machines, wins over the
+	// project's own template, as in vRA.
+	if cn, t := e.MachineNaming(bp.ProjectID); t != nil && t.Pattern != "" {
+		src, from = t.Pattern, "custom naming "+cn.Name
+		if t.StartCounter != 1 || t.IncrementStep != 1 {
+			note(Unmapped, "naming", fmt.Sprintf("Custom naming %s counts from %d by %d; an item's naming counts from 1 by 1. "+
+				"To keep vRA's numbers, make a naming policy for the project (Policies › Naming): the item's naming as its template, Start at %d and Increment %d.",
+				cn.Name, t.StartCounter, t.IncrementStep, t.StartCounter, t.IncrementStep))
+		}
+	}
+	if src == "" {
 		note(Info, "naming", "Named "+def+", or by the naming policy rvav offers.")
 		return def
 	}
-	src := e.Projects[i].MachineNamingTemplate
 	out := regexp.MustCompile(`\$\{(#+)\}`).ReplaceAllStringFunc(src, func(m string) string {
 		return fmt.Sprintf("{seq:%02d}", strings.Count(m, "#"))
 	})
@@ -555,10 +581,10 @@ func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, w
 		return "{inputs." + name + "}"
 	})
 	if missing || strings.Contains(out, "${") || !strings.Contains(out, "{seq:") {
-		note(Warning, "naming", "The project's naming template "+src+" can't be translated whole: named "+def+" instead.")
+		note(Warning, "naming", strings.ToUpper(from[:1])+from[1:]+" "+src+" can't be translated whole: named "+def+" instead.")
 		return def
 	}
-	note(Info, "naming", "Named "+out+", from the project's naming template "+src+".")
+	note(Info, "naming", "Named "+out+", from "+from+" "+src+".")
 	return out
 }
 
@@ -761,6 +787,112 @@ func environmentInput(name string) bool {
 
 // boundTemplates are the catalogue templates a blueprint's template
 // bindings name, the components' included.
+// mapFlags maps a machine's resource flags: preventDelete keeps its VMs
+// from deletion (ADR-0038); rvav has none of the others.
+func mapFlags(flags map[string]any, where string, c map[string]any, note func(level, where, text string)) {
+	for _, k := range slices.Sorted(maps.Keys(flags)) {
+		v := flags[k]
+		switch {
+		case k == "preventDelete" && v == true:
+			c["prevent_delete"] = true
+			note(Info, where+"."+k, "Its VMs are kept from deletion: an administrator runs the deployment's Allow deletion first.")
+		case k == "preventDelete" && v == false:
+		case k == "preventDelete":
+			note(Unmapped, where+"."+k, fmt.Sprintf("preventDelete %v: rvav takes true or false, not an expression. Left out.", v))
+		case k == "metadata":
+			// The canvas layout of vRA's designer.
+		case strings.HasSuffix(k, "Timeout"):
+			note(Info, where+"."+k, fmt.Sprintf("%s %v left out: rvav's own timeouts apply.", k, v))
+		default:
+			note(Unmapped, where+"."+k, fmt.Sprintf("Resource flag %s has no rvav equivalent: left out.", k))
+		}
+	}
+}
+
+// machineProps are the properties of vRA's vSphere machine schema; any
+// other property of a machine is a custom property.
+var machineProps = []string{"name", "description", "image", "imageRef", "flavor", "flavorRef", "cpuCount", "coreCount",
+	"totalMemoryMB", "cloudConfig", "cloudConfigSettings", "customizationSpec", "customizeGuestOs", "networks",
+	"attachedDisks", "storage", "constraints", "tags", "count", "folderName", "resourceGroupName", "remoteAccess",
+	"snapshotLimit", "ovfProperties", "imageDiskConstraints", "cloneFromSnapshot", "linkedClone", "enableDiskUuid",
+	"cpuLimit", "cpuReservation", "cpuShares", "cpuSharesLevel", "memoryLimitMb", "memoryReservationMb", "memoryShares",
+	"memorySharesLevel", "deploymentName", "hostName", "provisioningType", "storagePolicy"}
+
+// mapFolderAndProperties maps a machine's folderName to its folder and
+// its custom properties to rvav's, written to the VMs as vSphere custom
+// attributes (ADR-0038).
+func mapFolderAndProperties(sc scope, props map[string]any, where string, c map[string]any, note func(level, where, text string)) {
+	sc.environment = true
+	if raw, ok := props["folderName"]; ok {
+		folder, err := textOf(sc, raw)
+		if err == nil {
+			if msg := blueprint.CheckFolder(folder); msg != "" {
+				err = errors.New(msg)
+			}
+		}
+		if err != nil {
+			note(Unmapped, where+".folderName", fmt.Sprintf("Folder %v: %v. Left out: the placement rule's folder.", raw, err))
+		} else {
+			c["folder"] = folder
+			note(Info, where+".folderName", "The VMs' folder, "+folder+", below the VM folder of the placement rule folder's datacenter.")
+		}
+	}
+	custom := map[string]string{}
+	for _, k := range slices.Sorted(maps.Keys(props)) {
+		if slices.Contains(machineProps, k) {
+			continue
+		}
+		at := where + "." + k
+		v, err := textOf(sc, props[k])
+		if err == nil {
+			if msg := blueprint.CheckProperty(k, v); msg != "" {
+				err = errors.New(msg)
+			}
+		}
+		switch {
+		case err != nil:
+			note(Unmapped, at, fmt.Sprintf("Custom property %s: %v. Left out.", k, err))
+		case len(custom) == blueprint.MaxProperties:
+			note(Unmapped, at, fmt.Sprintf("Custom property %s: rvav keeps at most %d. Left out.", k, blueprint.MaxProperties))
+		default:
+			custom[k] = v
+		}
+	}
+	if len(custom) > 0 {
+		c["properties"] = custom
+		note(Info, where+".properties", "Custom properties "+strings.Join(slices.Sorted(maps.Keys(custom)), ", ")+
+			": each VM gets them as vSphere custom attributes. Remove any that was a vSphere setting rvav doesn't have.")
+	}
+}
+
+// textOf is a scalar property as rvav's text with ${CEL}.
+func textOf(sc scope, v any) (string, error) {
+	switch x := v.(type) {
+	case string:
+		return sc.interp(x)
+	case bool, int, int64, float64:
+		return fmt.Sprint(x), nil
+	}
+	return "", errors.New("a list or a map, where rvav takes a text")
+}
+
+// templateSecrets are the secrets a template's machines' cloud-init opens.
+func templateSecrets(content string) []string {
+	var t tmpl
+	_ = yaml.Unmarshal([]byte(content), &t)
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(t.Resources)) {
+		if ci, _ := t.Resources[name].Properties["cloudConfig"].(string); slices.Contains(machineTypes, t.Resources[name].Type) {
+			for _, s := range secretsIn(ci) {
+				if !slices.Contains(out, s) {
+					out = append(out, s)
+				}
+			}
+		}
+	}
+	return out
+}
+
 func boundTemplates(b map[string]any) []string {
 	var out []string
 	add := func(m map[string]any) {

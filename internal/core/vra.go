@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -42,8 +44,16 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		if err != nil {
 			return r, err
 		}
-		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments, Members: members}
+		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments, Members: members, Properties: p.Properties}
 		r.Projects = append(r.Projects, rp)
+	}
+	secrets, err := s.Store.Secrets(ctx)
+	if err != nil {
+		return r, err
+	}
+	r.Secrets = map[string]bool{}
+	for _, v := range secrets {
+		r.Secrets[v.Name] = true
 	}
 	if r.Users, err = s.Store.UsersByEmail(ctx); err != nil {
 		return r, err
@@ -485,7 +495,7 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 // (drafts) with their sharing, and, when asked, its deployments adopted.
 // It can run again: what was imported is linked, so only what changed is.
 func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraImportRequest) (api.VraImportResult, error) {
-	out := api.VraImportResult{TemplatesCreated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
+	out := api.VraImportResult{TemplatesCreated: []string{}, ProjectsUpdated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
 	out.Failed = []struct {
 		Name   string `json:"name"`
 		Reason string `json:"reason"`
@@ -533,6 +543,9 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		}
 	}
 	if req.Catalog == nil || *req.Catalog {
+		if out.ProjectsUpdated, err = s.vraProjectProperties(ctx, p, plan.Projects, chosen); err != nil {
+			return out, err
+		}
 		// Templates first: items bind them.
 		for _, t := range plan.Templates {
 			if t.Action != vraimport.ActionCreate {
@@ -626,7 +639,8 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 			}
 		}
 	}
-	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated, "created": out.Created, "updated": out.Updated,
+	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated, "projects": out.ProjectsUpdated,
+		"created": out.Created, "updated": out.Updated,
 		"shared": out.Shared, "adopted": out.Adopted, "failed": len(out.Failed)})
 	after, _, err := s.vraPlan(ctx, e, nil)
 	if err != nil {
@@ -634,6 +648,55 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 	}
 	out.Plan, err = presentVRAPlan(v, after)
 	return out, err
+}
+
+// vraProjectProperties gives the rvav projects of the chosen vRA projects
+// the custom properties they lack (ADR-0038): added only, so what an
+// administrator set in rvav stays.
+func (s *Service) vraProjectProperties(ctx context.Context, p *auth.Principal, projects []vraimport.ProjectPlan,
+	chosen func(string) bool) ([]string, error) {
+	add := map[string]map[string]string{}
+	var order []string
+	for _, pp := range projects {
+		if pp.RvavProjectID == "" || len(pp.PropertiesAdd) == 0 || !chosen(pp.VRAID) {
+			continue
+		}
+		if add[pp.RvavProjectID] == nil {
+			add[pp.RvavProjectID] = map[string]string{}
+			order = append(order, pp.RvavProjectID)
+		}
+		for k, v := range pp.PropertiesAdd {
+			if _, has := add[pp.RvavProjectID][k]; !has {
+				add[pp.RvavProjectID][k] = v
+			}
+		}
+	}
+	updated := []string{}
+	for _, id := range order {
+		pr, err := s.Store.GetProject(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		props := maps.Clone(pr.Properties)
+		if props == nil {
+			props = map[string]string{}
+		}
+		added := map[string]string{}
+		for k, v := range add[id] {
+			if _, has := props[k]; !has && len(props) < blueprint.MaxProperties {
+				props[k], added[k] = v, v
+			}
+		}
+		if len(added) == 0 {
+			continue
+		}
+		if err := s.Store.UpdateProject(ctx, id, store.ProjectUpdate{Properties: &props}); err != nil {
+			return nil, err
+		}
+		s.audit(ctx, p, "project.update", "project", id, &id, map[string]any{"properties_added": added, "by": "vra import"})
+		updated = append(updated, pr.Name)
+	}
+	return updated, nil
 }
 
 // VROTriageMarkdown is the vRO triage report of the estate read last.

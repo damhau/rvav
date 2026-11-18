@@ -6,6 +6,7 @@
 // the cutover.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { adminState } from "./administration";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -45,8 +46,21 @@ const images: Omit<S["VraTemplatePlan"], "action">[] = [
     notes: [{ level: "unmapped", where: "image_profiles.img-zrh", text: "Region Zurich is in vCenter vc02.corp.example, which rvav doesn't manage: its template tpl-win2025-std-zrh is left out. Add the vCenter in Administration › vCenters, then import again." }] },
 ]; // prettier-ignore
 
-const vraProjects: { id: string; name: string; placement_policy?: string; strategy?: S["PlacementStrategy"] }[] = [
-  { id: "vra-prj-web", name: "Web Platform", placement_policy: "SPREAD", strategy: "spread" },
+const vraProjects: {
+  id: string;
+  name: string;
+  placement_policy?: string;
+  strategy?: S["PlacementStrategy"];
+  /** vRA's custom properties of the project. */
+  properties?: Record<string, string>;
+}[] = [
+  {
+    id: "vra-prj-web",
+    name: "Web Platform",
+    placement_policy: "SPREAD",
+    strategy: "spread",
+    properties: { backupPolicy: "silver", costCenter: "CC-1001", "cost center": "CC-1001" },
+  },
   { id: "vra-prj-data", name: "Data Services" },
   { id: "vra-prj-legacy", name: "Legacy Apps" },
 ];
@@ -89,13 +103,31 @@ function rvavOf(db: Db, st: State, vra: { id: string; name: string }): [S["VraPr
   return same ? ["same_name", same.id, same.name] : ["none"];
 }
 
+/** The vRA project's custom properties the rvav project lacks, and those whose key rvav refuses. */
+function projectProperties(db: Db, vra: Record<string, string> = {}, rvavID?: string) {
+  const has = rvavID ? (adminState(db).extra[rvavID]?.properties ?? {}) : {};
+  const add: Record<string, string> = {};
+  const unmapped: string[] = [];
+  for (const [k, v] of Object.entries(vra).sort(([a], [b]) => a.localeCompare(b))) {
+    if (k in has) continue;
+    if (/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(k)) add[k] = v;
+    else unmapped.push(k);
+  }
+  return Object.keys(add).length + unmapped.length > 0
+    ? {
+        properties_add: Object.keys(add).length ? add : undefined,
+        properties_unmapped: unmapped.length ? unmapped : undefined,
+      }
+    : {};
+}
+
 function plan(db: Db, st: State): S["VraPlan"] {
   const projects: S["VraProjectPlan"][] = vraProjects.map((v) => {
     const [how, id, name] = rvavOf(db, st, v);
     const items = templates.filter((t) => t.shared.includes(v.id)).length;
     const deployments = vraDeployments.filter((d) => d.project === v.id).length;
     return { vra_id: v.id, name: v.name, how, rvav_project_id: id, rvav_project_name: name, items, deployments,
-      placement_policy: v.placement_policy, strategy: v.strategy }; // prettier-ignore
+      placement_policy: v.placement_policy, strategy: v.strategy, ...(id ? projectProperties(db, v.properties, id) : {}) }; // prettier-ignore
   });
   const project = (id: string) => projects.find((p) => p.vra_id === id)!;
   const items: S["VraItemPlan"][] = templates.map((t) => {
@@ -285,6 +317,7 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
       const before = plan(db, st);
       const out: S["VraImportResult"] = {
         templates_created: [],
+        projects_updated: [],
         created: [],
         updated: [],
         shared: 0,
@@ -298,6 +331,12 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
         before.projects.filter((p) => p.rvav_project_id && chosen(p.vra_id)).map((p) => p.rvav_project_id),
       );
       if (b.catalog ?? true) {
+        for (const p of before.projects.filter((x) => x.rvav_project_id && x.properties_add && chosen(x.vra_id))) {
+          const extra = adminState(db).extra[p.rvav_project_id!];
+          if (!extra) continue;
+          extra.properties = { ...p.properties_add, ...extra.properties };
+          out.projects_updated.push(p.rvav_project_name!);
+        }
         for (const t of before.templates.filter((x) => x.action === "create")) {
           st.imported.add(`image:${t.key}`);
           out.templates_created.push(t.key);

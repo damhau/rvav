@@ -85,6 +85,12 @@ func (s scope) ref(path string) (ref, error) {
 			return ref{}, fmt.Errorf("%s has no rvav equivalent", path)
 		}
 		return ref{what: "input", name: name}, nil
+	case strings.HasPrefix(path, "secret."):
+		name := SecretName(strings.TrimPrefix(path, "secret."))
+		if name == "" {
+			return ref{}, fmt.Errorf("%s names no secret", path)
+		}
+		return ref{what: "secret", name: name}, nil
 	}
 	m := resourcePath.FindStringSubmatch(path)
 	if m == nil {
@@ -150,6 +156,9 @@ func (r ref) action() string {
 			return "{{ .environment }}"
 		}
 		return "{{ .inputs." + r.name + " | json }}"
+	case "secret":
+		// Printed as it is, as vRA does.
+		return `{{ secret "` + r.name + `" }}`
 	}
 	c := ".components." + r.component
 	switch {
@@ -236,6 +245,8 @@ func (s scope) celOf(toks []token, t *translated) (string, valueKind, error) {
 				return "", 0, err
 			}
 			switch r.what {
+			case "secret":
+				return "", 0, fmt.Errorf("%s: rvav opens stored secrets in cloud-init, never in a value worked out with the request", tk.text)
 			case "index", "self":
 				t.self = true
 			case "input":
@@ -447,6 +458,74 @@ func (s scope) celText(text string) (translated, error) {
 	return all, nil
 }
 
+// interp is a text with vRA's ${...} as rvav's text with ${CEL}, as
+// custom properties and folders take it: worked out when the request is
+// made, so from the inputs, never from the machines.
+func (s scope) interp(text string) (string, error) {
+	var b strings.Builder
+	last := 0
+	for _, m := range refPattern.FindAllStringSubmatchIndex(text, -1) {
+		b.WriteString(text[last:m[0]])
+		t, err := s.cel(text[m[2]:m[3]])
+		switch {
+		case err != nil:
+			return "", err
+		case t.self || len(t.components) > 0:
+			return "", fmt.Errorf("%s reads the machines, which aren't built when rvav works it out", text[m[0]:m[1]])
+		case t.kind == kindList:
+			return "", fmt.Errorf("%s gives a list, not a text", text[m[0]:m[1]])
+		}
+		b.WriteString("${" + t.cel + "}")
+		last = m[1]
+	}
+	b.WriteString(text[last:])
+	return b.String(), nil
+}
+
+// secretRef is ${secret.name}, whose name may hold dashes, which the
+// expression tokenizer would take for a minus.
+var secretRef = regexp.MustCompile(`^secret\.[A-Za-z0-9_.-]+$`)
+
+// secretsIn are the secrets a text opens with ${secret.name}, as rvav
+// names them.
+func secretsIn(text string) []string {
+	var out []string
+	for _, m := range refPattern.FindAllStringSubmatch(text, -1) {
+		inner := strings.TrimSpace(m[1])
+		if !secretRef.MatchString(inner) {
+			continue
+		}
+		if r, err := (scope{}).ref(inner); err == nil && !slices.Contains(out, r.name) {
+			out = append(out, r.name)
+		}
+	}
+	return out
+}
+
+// SecretName is a vRA secret's name as rvav's secrets are named: lower
+// case, a dash for anything else, starting with a letter; "" for a name
+// with nothing to keep.
+func SecretName(name string) string {
+	s := strings.Trim(strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, strings.ToLower(name)), "-")
+	switch {
+	case s == "":
+		return ""
+	case s[0] < 'a':
+		s = "s-" + s
+	case len(s) == 1:
+		s += "-secret"
+	}
+	if len(s) > 63 {
+		s = strings.TrimRight(s[:63], "-")
+	}
+	return s
+}
+
 func quote(s string) string {
 	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(s) + "'"
 }
@@ -458,7 +537,7 @@ func (s scope) userData(src string) (string, []string) {
 	out := refPattern.ReplaceAllStringFunc(src, func(m string) string {
 		inner := strings.TrimSpace(m[2 : len(m)-1])
 		toks, err := tokenize(inner)
-		if err == nil && len(toks) == 1 && toks[0].kind == tokIdent {
+		if err == nil && len(toks) == 1 && toks[0].kind == tokIdent || secretRef.MatchString(inner) {
 			r, err := s.ref(inner)
 			if err == nil {
 				return r.action()

@@ -305,6 +305,16 @@ func (c *Client) Blueprints(ctx context.Context) ([]Blueprint, error) {
 	return list, nil
 }
 
+// CustomNamings are the custom names; none when vRA has no such service
+// (before 8.3).
+func (c *Client) CustomNamings(ctx context.Context) ([]CustomNaming, error) {
+	list, err := listTop[CustomNaming](ctx, c, "/iaas/api/naming", url.Values{"apiVersion": {"2021-07-15"}})
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	return list, err
+}
+
 // RequestForm is the custom form of a template or workflow, if it has one.
 func (c *Client) RequestForm(ctx context.Context, sourceType, sourceID string) (*Form, error) {
 	var f Form
@@ -547,6 +557,9 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	if e.CloudAccounts, err = c.VSphereCloudAccounts(ctx); err != nil {
+		return nil, err
+	}
+	if e.Namings, err = c.CustomNamings(ctx); err != nil {
 		return nil, err
 	}
 	if e.Blueprints, err = c.Blueprints(ctx); err != nil {

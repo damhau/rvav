@@ -6840,6 +6840,17 @@ components:
             The placement rule strategy that places as the placement policy
             does, for an administrator to set on the rvav project's rules
             (the import writes none). Absent when rvav has none.
+        properties_add:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            The vRA project's custom properties the rvav project lacks, which
+            importing the catalog adds to it (ADR-0038). A property the rvav
+            project has keeps its value.
+        properties_unmapped:
+          type: array
+          items: { type: string }
+          description: "The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left."
     VraTemplatePlan:
       type: object
       description: |
@@ -6948,9 +6959,10 @@ components:
           description: "Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent."
     VraImportResult:
       type: object
-      required: [templates_created, created, updated, shared, adopted, failed, plan]
+      required: [templates_created, projects_updated, created, updated, shared, adopted, failed, plan]
       properties:
         templates_created: { type: array, items: { type: string }, description: "Catalogue templates made (their keys)." }
+        projects_updated: { type: array, items: { type: string }, description: "rvav projects given vRA's custom properties (their names)." }
         created: { type: array, items: { type: string }, description: Items made (their names). }
         updated: { type: array, items: { type: string }, description: Items given a new draft. }
         shared: { type: integer, description: "Shares added: an item offered to one more project." }
