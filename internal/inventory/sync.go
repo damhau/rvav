@@ -430,6 +430,7 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 	// Tags that couldn't be read keep their last known values: a hiccup of
 	// the tagging service mustn't empty placement by tag.
 	clusterTags, datastoreTags, networkTags := map[string][]string{}, map[string][]string{}, map[string][]string{}
+	hostTags, poolTags, podTags := map[string][]string{}, map[string][]string{}, map[string][]string{}
 	if inv.TagsError != nil {
 		s.Log.Warn("inventory: vSphere tags not read; keeping the last ones", "err", inv.TagsError)
 		// This vCenter's: morefs repeat between vCenters.
@@ -454,6 +455,33 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 				}
 			}
 		}
+		if hs, err := s.Store.InventoryESXiHosts(ctx); err == nil {
+			for _, h := range hs {
+				if h.VCenter == vc.Name() {
+					hostTags[h.Moref] = h.Tags
+				}
+			}
+		}
+		if ps, err := s.Store.InventoryResourcePools(ctx); err == nil {
+			for _, p := range ps {
+				if p.VCenter == vc.Name() {
+					poolTags[p.Moref] = p.Tags
+				}
+			}
+		}
+		if ps, err := s.Store.InventoryDatastoreClusters(ctx); err == nil {
+			for _, p := range ps {
+				if p.VCenter == vc.Name() {
+					podTags[p.Moref] = p.Tags
+				}
+			}
+		}
+	}
+	tagsOf := func(last map[string][]string, moref string, read []string) []string {
+		if inv.TagsError != nil {
+			return last[moref]
+		}
+		return read
 	}
 	snap := store.Inventory{VCenter: vc.Name()}
 	for _, c := range inv.Clusters {
@@ -479,6 +507,19 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 			tags = networkTags[n.Moref]
 		}
 		snap.Networks = append(snap.Networks, store.InvNetwork{Moref: n.Moref, Name: n.Name, Kind: n.Kind, Clusters: n.Clusters, Tags: tags})
+	}
+	for _, h := range inv.Hosts {
+		snap.Hosts = append(snap.Hosts, store.InvHost{Moref: h.Moref, Name: h.Name, Cluster: h.Cluster, State: h.State,
+			CPUTotalMHz: h.CPUTotalMHz, CPUUsedMHz: h.CPUUsedMHz, MemoryTotalMB: h.MemoryTotalMB, MemoryUsedMB: h.MemoryUsedMB,
+			Tags: tagsOf(hostTags, h.Moref, h.Tags)})
+	}
+	for _, p := range inv.ResourcePools {
+		snap.ResourcePools = append(snap.ResourcePools, store.InvResourcePool{Moref: p.Moref, Name: p.Name, Cluster: p.Cluster,
+			Path: p.Path, CPULimitMHz: p.CPULimitMHz, MemoryLimitMB: p.MemoryLimitMB, Tags: tagsOf(poolTags, p.Moref, p.Tags)})
+	}
+	for _, d := range inv.DatastoreClusters {
+		snap.DatastoreClusters = append(snap.DatastoreClusters, store.InvDatastoreCluster{Moref: d.Moref, Name: d.Name,
+			CapacityGB: d.CapacityGB, FreeGB: d.FreeGB, Datastores: d.Datastores, SDRS: d.SDRS, Tags: tagsOf(podTags, d.Moref, d.Tags)})
 	}
 	for _, t := range inv.Templates {
 		snap.Templates = append(snap.Templates, store.InvTemplate{Moref: t.Moref, Name: t.Name, GuestOS: t.GuestOS, Library: t.Library})

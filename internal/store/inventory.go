@@ -7,10 +7,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// inventoryTables hold what the inventory sync reads of each vCenter.
+var inventoryTables = []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies",
+	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters"}
+
 // ReplaceInventory swaps the cached inventory of one vCenter for a new snapshot.
 func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies"} {
+		for _, t := range inventoryTables {
 			if _, err := tx.Exec(ctx, `delete from `+t+` where vcenter = $1`, inv.VCenter); err != nil {
 				return err
 			}
@@ -29,6 +33,21 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 		for _, n := range inv.Networks {
 			b.Queue(`insert into inv_networks (vcenter, moref, name, kind, clusters, tags) values ($1,$2,$3,$4,$5,$6)`,
 				inv.VCenter, n.Moref, n.Name, n.Kind, nonNil(n.Clusters), nonNil(n.Tags))
+		}
+		for _, h := range inv.Hosts {
+			b.Queue(`insert into inv_hosts (vcenter, moref, name, cluster, state, cpu_total_mhz, cpu_used_mhz, memory_total_mb,
+				memory_used_mb, tags) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+				inv.VCenter, h.Moref, h.Name, h.Cluster, h.State, h.CPUTotalMHz, h.CPUUsedMHz, h.MemoryTotalMB, h.MemoryUsedMB, nonNil(h.Tags))
+		}
+		for _, p := range inv.ResourcePools {
+			b.Queue(`insert into inv_resource_pools (vcenter, moref, name, cluster, path, cpu_limit_mhz, memory_limit_mb, tags)
+				values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+				inv.VCenter, p.Moref, p.Name, p.Cluster, p.Path, p.CPULimitMHz, p.MemoryLimitMB, nonNil(p.Tags))
+		}
+		for _, d := range inv.DatastoreClusters {
+			b.Queue(`insert into inv_datastore_clusters (vcenter, moref, name, capacity_gb, free_gb, datastores, sdrs, tags)
+				values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+				inv.VCenter, d.Moref, d.Name, d.CapacityGB, d.FreeGB, nonNil(d.Datastores), d.SDRS, nonNil(d.Tags))
 		}
 		for _, t := range inv.Templates {
 			b.Queue(`insert into inv_templates (vcenter, moref, name, guest_os, library) values ($1,$2,$3,$4,$5)`,
@@ -62,6 +81,24 @@ func (s *Store) InventoryDatastores(ctx context.Context) ([]InvDatastore, error)
 func (s *Store) InventoryNetworks(ctx context.Context) ([]InvNetwork, error) {
 	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, kind, clusters, tags from inv_networks order by name, vcenter`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvNetwork])
+}
+
+func (s *Store) InventoryESXiHosts(ctx context.Context) ([]InvHost, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, cluster, state, cpu_total_mhz, cpu_used_mhz, memory_total_mb,
+		memory_used_mb, tags from inv_hosts order by cluster, name, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvHost])
+}
+
+func (s *Store) InventoryResourcePools(ctx context.Context) ([]InvResourcePool, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, cluster, path, cpu_limit_mhz, memory_limit_mb, tags
+		from inv_resource_pools order by cluster, path, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvResourcePool])
+}
+
+func (s *Store) InventoryDatastoreClusters(ctx context.Context) ([]InvDatastoreCluster, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, moref, name, capacity_gb, free_gb, datastores, sdrs, tags
+		from inv_datastore_clusters order by name, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvDatastoreCluster])
 }
 
 func (s *Store) InventoryTemplates(ctx context.Context) ([]InvTemplate, error) {

@@ -256,6 +256,22 @@ func TestPlacementAdministration(t *testing.T) {
 			tagged["dvpg-db-dev-vl320"] != "[]" {
 			t.Fatalf("inventory tags = %v", tagged)
 		}
+		// Hosts, resource pools and datastore clusters (ADR-0036).
+		devHosts := 0
+		for _, ho := range inv.Hosts {
+			if ho.Cluster == "GVA-DEV-CL01" && ho.State == api.Connected && ho.MemoryTotalGb > 0 && ho.Vcenter == "vc01.corp.example" {
+				devHosts++
+			}
+		}
+		var pools []string
+		for _, p := range inv.ResourcePools {
+			pools = append(pools, p.Cluster+":"+p.Path)
+		}
+		if devHosts != 3 || !slices.Contains(pools, "GVA-DEV-CL01:rvav/dev") || len(inv.DatastoreClusters) != 1 ||
+			inv.DatastoreClusters[0].Name != "dsc-gva-dev-01" || !inv.DatastoreClusters[0].Sdrs ||
+			len(inv.DatastoreClusters[0].Datastores) != 2 {
+			t.Fatalf("hosts of GVA-DEV-CL01 %d, pools %v, datastore clusters %+v", devHosts, pools, inv.DatastoreClusters)
+		}
 
 		rule.Priority = new(50)
 		h.json("PUT", "/api/v1/admin/placement-rules/"+created.Id, admin, rule, 200, &created)

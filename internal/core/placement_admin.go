@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/nsx"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -348,7 +349,40 @@ func (s *Service) VsphereInventory(ctx context.Context, p *auth.Principal) (api.
 	if err != nil {
 		return api.VsphereInventory{}, err
 	}
-	out := api.VsphereInventory{Clusters: []api.InventoryCluster{}, Datastores: []api.InventoryDatastore{}, Networks: []api.InventoryNetwork{}}
+	hosts, err := s.Store.InventoryESXiHosts(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	pools, err := s.Store.InventoryResourcePools(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	pods, err := s.Store.InventoryDatastoreClusters(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	out := api.VsphereInventory{Clusters: []api.InventoryCluster{}, Datastores: []api.InventoryDatastore{}, Networks: []api.InventoryNetwork{},
+		Hosts: []api.InventoryHost{}, ResourcePools: []api.InventoryResourcePool{}, DatastoreClusters: []api.InventoryDatastoreCluster{}}
+	for _, h := range hosts {
+		out.Hosts = append(out.Hosts, api.InventoryHost{Vcenter: h.VCenter, Name: h.Name, Cluster: h.Cluster,
+			State: api.InventoryHostState(h.State), MemoryFreeGb: int((h.MemoryTotalMB - h.MemoryUsedMB) / 1024),
+			MemoryTotalGb: int(h.MemoryTotalMB / 1024), Tags: nonNilStrings(h.Tags)})
+	}
+	limit := func(n, unit int64) *int {
+		if n < 0 {
+			return nil
+		}
+		return present.Ptr(int(n / unit))
+	}
+	for _, p := range pools {
+		out.ResourcePools = append(out.ResourcePools, api.InventoryResourcePool{Vcenter: p.VCenter, Cluster: p.Cluster, Path: p.Path,
+			CpuLimitMhz: limit(p.CPULimitMHz, 1), MemoryLimitGb: limit(p.MemoryLimitMB, 1024), Tags: nonNilStrings(p.Tags)})
+	}
+	for _, d := range pods {
+		out.DatastoreClusters = append(out.DatastoreClusters, api.InventoryDatastoreCluster{Vcenter: d.VCenter, Name: d.Name,
+			Datastores: nonNilStrings(d.Datastores), FreeGb: int(d.FreeGB), CapacityGb: int(d.CapacityGB), Sdrs: d.SDRS,
+			Tags: nonNilStrings(d.Tags)})
+	}
 	for _, c := range clusters {
 		out.Clusters = append(out.Clusters, api.InventoryCluster{Vcenter: c.VCenter, Name: c.Name, Hosts: c.HostCount,
 			MemoryFreeGb: int((c.MemoryTotalMB - c.MemoryUsedMB) / 1024), Tags: nonNilStrings(c.Tags)})

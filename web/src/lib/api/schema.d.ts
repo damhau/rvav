@@ -5804,6 +5804,50 @@ export interface components {
             clusters: components["schemas"]["InventoryCluster"][];
             datastores: components["schemas"]["InventoryDatastore"][];
             networks: components["schemas"]["InventoryNetwork"][];
+            hosts: components["schemas"]["InventoryHost"][];
+            resource_pools: components["schemas"]["InventoryResourcePool"][];
+            datastore_clusters: components["schemas"]["InventoryDatastoreCluster"][];
+        };
+        /** @description A cluster's ESXi host (ADR-0036). */
+        InventoryHost: {
+            vcenter: string;
+            name: string;
+            cluster: string;
+            /**
+             * @description Only a connected host out of maintenance takes new VMs.
+             * @enum {string}
+             */
+            state: "connected" | "maintenance" | "disconnected";
+            memory_free_gb: number;
+            memory_total_gb: number;
+            /** @description category/tag */
+            tags: string[];
+        };
+        /** @description A cluster's resource pool below its root one (ADR-0036). */
+        InventoryResourcePool: {
+            vcenter: string;
+            cluster: string;
+            /**
+             * @description Where it is below the cluster's root pool, as a placement rule names it.
+             * @example rvav/dev
+             */
+            path: string;
+            /** @description Null for no limit. */
+            cpu_limit_mhz: number | null;
+            /** @description Null for no limit. */
+            memory_limit_gb: number | null;
+            tags: string[];
+        };
+        /** @description A datastore cluster (storage pod) and its datastores (ADR-0036). */
+        InventoryDatastoreCluster: {
+            vcenter: string;
+            name: string;
+            datastores: string[];
+            free_gb: number;
+            capacity_gb: number;
+            /** @description Storage DRS is on: rvav asks it which datastore a VM goes to. */
+            sdrs: boolean;
+            tags: string[];
         };
         InventoryCluster: {
             vcenter: string;

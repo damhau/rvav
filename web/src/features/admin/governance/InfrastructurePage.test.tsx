@@ -81,8 +81,19 @@ describe("Templates and networks", () => {
     );
     expect(within(region).getByRole("row", { name: /^dvpg-web-prd-vl210/ })).toHaveTextContent("rvav-zone/dmz");
     expect(within(region).getByRole("row", { name: /^dvpg-app-dev-vl310/ })).toHaveTextContent("None");
+    // Hosts, resource pools and datastore clusters too (ADR-0036).
+    expect(within(region).getByRole("row", { name: /^esx-gva-prd1-03\.corp\.example Host/ })).toHaveTextContent(
+      "rvav-hw/gpu",
+    );
+    expect(within(region).getByRole("row", { name: /^esx-gva-tst-01\.corp\.example Host/ })).toHaveTextContent(
+      "in maintenance",
+    );
+    expect(within(region).getByRole("row", { name: /^dsc-gva-dev-01 Datastore cluster/ })).toHaveTextContent(
+      "on nfs-gva-dev-sdrs-01, nfs-gva-dev-sdrs-02, Storage DRS on",
+    );
 
-    await user.type(within(region).getByRole("searchbox", { name: "Search by name or tag" }), "gold");
+    const search = within(region).getByRole("searchbox", { name: "Search by name or tag" });
+    await user.type(search, "gold");
     const names = () =>
       within(region)
         .getAllByRole("row")
@@ -93,5 +104,13 @@ describe("Templates and networks", () => {
     await user.click(within(region).getByRole("combobox", { name: "Kind" }));
     await user.click(await screen.findByRole("option", { name: "Datastores" }));
     await waitFor(() => expect(names()).toEqual(["vsan-gva-prd-cl01"]));
+
+    await user.clear(search);
+    await user.click(within(region).getByRole("combobox", { name: "Kind" }));
+    await user.click(await screen.findByRole("option", { name: "Resource pools" }));
+    await waitFor(() => expect(names()).toEqual(["rvav", "rvav", "rvav/dev", "rvav/prd"]));
+    expect(within(region).getByRole("row", { name: /^rvav\/dev/ })).toHaveTextContent(
+      "In GVA-DEV-CL01, limited to 512 GB memory",
+    );
   });
 });

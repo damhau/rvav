@@ -50,6 +50,29 @@ func TestBootstrapCloneCustomizeDestroy(t *testing.T) {
 		if db := findNetworkInv(inv, "dvpg-db-dev-vl320"); db == nil || len(db.Tags) != 0 {
 			t.Fatalf("port group dvpg-db-dev-vl320 = %+v", db)
 		}
+		// Hosts, resource pools and the datastore cluster (ADR-0036), once
+		// each.
+		var devHosts, pools []string
+		for _, h := range inv.Hosts {
+			if h.Cluster == "GVA-DEV-CL01" && h.State == HostConnected && h.MemoryTotalMB > 0 {
+				devHosts = append(devHosts, h.Name)
+			}
+		}
+		for _, p := range inv.ResourcePools {
+			pools = append(pools, p.Cluster+":"+p.Path)
+		}
+		slices.Sort(pools)
+		if len(devHosts) != 3 || !slices.Equal(pools, []string{"GVA-DEV-CL01:rvav", "GVA-DEV-CL01:rvav/dev", "GVA-PRD-CL01:rvav",
+			"GVA-PRD-CL01:rvav/prd"}) {
+			t.Fatalf("hosts of GVA-DEV-CL01 %v, pools %v", devHosts, pools)
+		}
+		if len(inv.DatastoreClusters) != 1 || inv.DatastoreClusters[0].Name != "dsc-gva-dev-01" || !inv.DatastoreClusters[0].SDRS ||
+			!slices.Equal(inv.DatastoreClusters[0].Datastores, []string{"nfs-gva-dev-sdrs-01", "nfs-gva-dev-sdrs-02"}) {
+			t.Fatalf("datastore clusters = %+v", inv.DatastoreClusters)
+		}
+		if member := findDatastore(inv, "nfs-gva-dev-sdrs-02"); member == nil || !slices.Equal(member.Clusters, []string{"GVA-DEV-CL01"}) {
+			t.Fatalf("datastore nfs-gva-dev-sdrs-02 = %+v", member)
+		}
 		// Three VM templates, the content library's item (ADR-0024) and the
 		// VM template vcsim keeps for it; the storage policies vcsim has.
 		var library []string

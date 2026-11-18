@@ -7673,7 +7673,7 @@ components:
           items: { $ref: "#/components/schemas/NetworkMapping" }
     VsphereInventory:
       type: object
-      required: [clusters, datastores, networks]
+      required: [clusters, datastores, networks, hosts, resource_pools, datastore_clusters]
       properties:
         clusters:
           type: array
@@ -7684,6 +7684,56 @@ components:
         networks:
           type: array
           items: { $ref: "#/components/schemas/InventoryNetwork" }
+        hosts:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryHost" }
+        resource_pools:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryResourcePool" }
+        datastore_clusters:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryDatastoreCluster" }
+    InventoryHost:
+      type: object
+      description: A cluster's ESXi host (ADR-0036).
+      required: [vcenter, name, cluster, state, memory_free_gb, memory_total_gb, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string }
+        cluster: { type: string }
+        state:
+          type: string
+          enum: [connected, maintenance, disconnected]
+          description: Only a connected host out of maintenance takes new VMs.
+        memory_free_gb: { type: integer }
+        memory_total_gb: { type: integer }
+        tags: { type: array, items: { type: string }, description: "category/tag" }
+    InventoryResourcePool:
+      type: object
+      description: A cluster's resource pool below its root one (ADR-0036).
+      required: [vcenter, cluster, path, cpu_limit_mhz, memory_limit_gb, tags]
+      properties:
+        vcenter: { type: string }
+        cluster: { type: string }
+        path:
+          type: string
+          description: Where it is below the cluster's root pool, as a placement rule names it.
+          examples: [rvav/dev]
+        cpu_limit_mhz: { type: [integer, "null"], description: Null for no limit. }
+        memory_limit_gb: { type: [integer, "null"], description: Null for no limit. }
+        tags: { type: array, items: { type: string } }
+    InventoryDatastoreCluster:
+      type: object
+      description: A datastore cluster (storage pod) and its datastores (ADR-0036).
+      required: [vcenter, name, datastores, free_gb, capacity_gb, sdrs, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string }
+        datastores: { type: array, items: { type: string } }
+        free_gb: { type: integer }
+        capacity_gb: { type: integer }
+        sdrs: { type: boolean, description: "Storage DRS is on: rvav asks it which datastore a VM goes to." }
+        tags: { type: array, items: { type: string } }
     InventoryCluster:
       type: object
       required: [vcenter, name, hosts, memory_free_gb, tags]

@@ -8,7 +8,7 @@ import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
-import { clusters, datastores, networks, tags, VCENTER } from "./inventory";
+import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
 import type { Db } from "./seed";
 import { userGroups } from "./logic";
 import {
@@ -1316,16 +1316,56 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           memory_free_gb: Math.round(c.hosts * 512 * (c.memFreePct / 100)),
           tags: tags[c.name] ?? [],
         })),
-        datastores: Object.entries(datastores).flatMap(([cluster, list]) =>
-          list.map((d) => ({
+        datastores: [
+          ...Object.entries(datastores).flatMap(([cluster, list]) =>
+            list.map((d) => ({
+              vcenter: VCENTER,
+              name: d.name,
+              free_gb: Math.round(d.freeTb * 1024),
+              capacity_gb: Math.round(d.freeTb * 1024 * 2.5),
+              clusters: [cluster],
+              tags: tags[d.name] ?? [],
+            })),
+          ),
+          ...datastoreClusters.flatMap((p) =>
+            p.datastores.map((name) => ({
+              vcenter: VCENTER,
+              name,
+              free_gb: Math.round((p.freeTb * 1024) / p.datastores.length),
+              capacity_gb: Math.round((p.freeTb * 1024 * 2) / p.datastores.length),
+              clusters: [p.cluster],
+              tags: tags[name] ?? [],
+            })),
+          ),
+        ],
+        hosts: clusters.flatMap((c) =>
+          hostsOf(c).map((name, i) => ({
             vcenter: VCENTER,
-            name: d.name,
-            free_gb: Math.round(d.freeTb * 1024),
-            capacity_gb: Math.round(d.freeTb * 1024 * 2.5),
-            clusters: [cluster],
-            tags: tags[d.name] ?? [],
+            name,
+            cluster: c.name,
+            state: i === 0 && c.env === "tst" ? ("maintenance" as const) : ("connected" as const),
+            memory_free_gb: Math.round(512 * (c.memFreePct / 100)),
+            memory_total_gb: 512,
+            tags: tags[name] ?? [],
           })),
         ),
+        resource_pools: resourcePools.map((p) => ({
+          vcenter: VCENTER,
+          cluster: p.cluster,
+          path: p.path,
+          cpu_limit_mhz: null,
+          memory_limit_gb: p.memoryLimitGb ?? null,
+          tags: tags[`${p.cluster}/${p.path}`] ?? [],
+        })),
+        datastore_clusters: datastoreClusters.map((p) => ({
+          vcenter: VCENTER,
+          name: p.name,
+          datastores: p.datastores,
+          free_gb: Math.round(p.freeTb * 1024),
+          capacity_gb: Math.round(p.freeTb * 1024 * 2),
+          sdrs: p.sdrs,
+          tags: tags[p.name] ?? [],
+        })),
         networks: networks.map((n) => ({
           vcenter: VCENTER,
           name: n.name,

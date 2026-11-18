@@ -655,18 +655,41 @@ function Networks({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-type Kind = "cluster" | "datastore" | "network";
+type Kind = "cluster" | "host" | "resource_pool" | "datastore" | "datastore_cluster" | "network";
 
 interface VsphereObject {
   kind: Kind;
   vcenter: string;
   name: string;
+  /** A resource pool's cluster: pools of two clusters share paths. */
+  cluster?: string;
   /** Hosts and free memory, free space, or the clusters a network reaches. */
   detail: string;
   tags: string[];
 }
 
-const kindLabel: Record<Kind, string> = { cluster: "Cluster", datastore: "Datastore", network: "Network" };
+const kindLabel: Record<Kind, string> = {
+  cluster: "Cluster",
+  host: "Host",
+  resource_pool: "Resource pool",
+  datastore: "Datastore",
+  datastore_cluster: "Datastore cluster",
+  network: "Network",
+};
+
+const hostState: Record<S["InventoryHost"]["state"], string> = {
+  connected: "",
+  maintenance: ", in maintenance",
+  disconnected: ", disconnected",
+};
+
+function poolLimits(p: S["InventoryResourcePool"]): string {
+  const limits = [
+    p.memory_limit_gb != null && `${p.memory_limit_gb} GB memory`,
+    p.cpu_limit_mhz != null && `${p.cpu_limit_mhz} MHz CPU`,
+  ].filter(Boolean);
+  return limits.length ? `limited to ${limits.join(" and ")}` : "no limits";
+}
 
 function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
   return [
@@ -676,6 +699,28 @@ function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
       name: c.name,
       detail: `${c.hosts} hosts, ${c.memory_free_gb} GB memory free`,
       tags: c.tags,
+    })),
+    ...inv.hosts.map((h) => ({
+      kind: "host" as const,
+      vcenter: h.vcenter,
+      name: h.name,
+      detail: `In ${h.cluster}, ${h.memory_free_gb} of ${h.memory_total_gb} GB memory free${hostState[h.state]}`,
+      tags: h.tags,
+    })),
+    ...inv.resource_pools.map((p) => ({
+      kind: "resource_pool" as const,
+      vcenter: p.vcenter,
+      name: p.path,
+      cluster: p.cluster,
+      detail: `In ${p.cluster}, ${poolLimits(p)}`,
+      tags: p.tags,
+    })),
+    ...inv.datastore_clusters.map((d) => ({
+      kind: "datastore_cluster" as const,
+      vcenter: d.vcenter,
+      name: d.name,
+      detail: `${d.free_gb} of ${d.capacity_gb} GB free on ${d.datastores.join(", ") || "no datastore"}, Storage DRS ${d.sdrs ? "on" : "off"}`,
+      tags: d.tags,
     })),
     ...inv.datastores.map((d) => ({
       kind: "datastore" as const,
@@ -737,14 +782,14 @@ function Inventory() {
   return (
     <Panel
       title="vCenter objects"
-      description="The clusters, datastores and networks the last inventory sync read. Placement rules and blueprints' constraints choose by their vSphere tags, written category/tag."
+      description="The clusters, hosts, resource pools, datastores, datastore clusters and networks the last inventory sync read. Placement rules name them, and blueprints' constraints choose by their vSphere tags, written category/tag."
       flush
     >
       <DataTable
         label="vCenter objects"
         columns={columns}
         rows={rows}
-        rowKey={(o) => `${o.kind}/${o.vcenter}/${o.name}`}
+        rowKey={(o) => `${o.kind}/${o.vcenter}/${o.cluster ?? ""}/${o.name}`}
         minWidth={760}
         defaultSort={{ id: "name", desc: false }}
         loading={inventory.isPending}
@@ -760,7 +805,10 @@ function Inventory() {
               options={[
                 { value: "all", label: "All kinds" },
                 { value: "cluster", label: "Clusters" },
+                { value: "host", label: "Hosts" },
+                { value: "resource_pool", label: "Resource pools" },
                 { value: "datastore", label: "Datastores" },
+                { value: "datastore_cluster", label: "Datastore clusters" },
                 { value: "network", label: "Networks" },
               ]}
             />
@@ -772,7 +820,7 @@ function Inventory() {
             title={all?.length ? "Nothing matches" : "No vCenter objects yet"}
             body={
               all?.length
-                ? "No cluster, datastore or network has that name or tag."
+                ? "No vCenter object has that name or tag."
                 : "The inventory sync lists them once a vCenter is connected."
             }
           />

@@ -39,6 +39,15 @@ type Layout struct {
 	// Libraries are content libraries with VM template items cloned from
 	// the layout's templates.
 	Libraries []LibrarySpec
+	// DatastoreClusters are storage pods with Storage DRS on, made of
+	// datastores the clusters mount (ADR-0036).
+	DatastoreClusters []DatastoreClusterSpec
+}
+
+// DatastoreClusterSpec is a storage pod holding datastores, by name.
+type DatastoreClusterSpec struct {
+	Name       string
+	Datastores []string
 }
 
 // LibrarySpec is a local content library on a datastore, with VM template
@@ -48,7 +57,8 @@ type LibrarySpec struct {
 	Items                    map[string]string
 }
 
-// TagSpec is a vSphere tag on clusters, datastores and networks, by name.
+// TagSpec is a vSphere tag on clusters, hosts, resource pools, datastores,
+// datastore clusters and networks, by name.
 type TagSpec struct {
 	Category, Name string
 	Objects        []string
@@ -59,6 +69,9 @@ type ClusterSpec struct {
 	HostPrefix string
 	Hosts      int
 	Datastores []string
+	// Pools are resource pools below the cluster's root one, by path
+	// (rvav/dev), parents first.
+	Pools []string
 }
 
 type TemplateSpec struct {
@@ -78,12 +91,15 @@ func DefaultLayout() Layout {
 	return Layout{
 		Datacenter: "GVA",
 		Clusters: []ClusterSpec{
-			{Name: "GVA-DEV-CL01", HostPrefix: "esx-gva-dev", Hosts: 3, Datastores: []string{"vsan-gva-dev-cl01", "nfs-gva-bronze-01"}},
+			{Name: "GVA-DEV-CL01", HostPrefix: "esx-gva-dev", Hosts: 3, Datastores: []string{"vsan-gva-dev-cl01", "nfs-gva-bronze-01",
+				"nfs-gva-dev-sdrs-01", "nfs-gva-dev-sdrs-02"}, Pools: []string{"rvav", "rvav/dev"}},
 			{Name: "GVA-TST-CL01", HostPrefix: "esx-gva-tst", Hosts: 2, Datastores: []string{"vsan-gva-tst-cl01"}},
-			{Name: "GVA-PRD-CL01", HostPrefix: "esx-gva-prd1", Hosts: 3, Datastores: []string{"vsan-gva-prd-cl01", "nfs-gva-silver-02"}},
+			{Name: "GVA-PRD-CL01", HostPrefix: "esx-gva-prd1", Hosts: 3, Datastores: []string{"vsan-gva-prd-cl01", "nfs-gva-silver-02"},
+				Pools: []string{"rvav", "rvav/prd"}},
 			{Name: "GVA-PRD-CL02", HostPrefix: "esx-gva-prd2", Hosts: 2, Datastores: []string{"vsan-gva-prd-cl02"}},
 		},
-		Switch: "GVA-DVS01",
+		DatastoreClusters: []DatastoreClusterSpec{{Name: "dsc-gva-dev-01", Datastores: []string{"nfs-gva-dev-sdrs-01", "nfs-gva-dev-sdrs-02"}}},
+		Switch:            "GVA-DVS01",
 		Portgroups: []string{
 			"dvpg-app-dev-vl310", "dvpg-db-dev-vl320", "dvpg-app-tst-vl410",
 			"dvpg-web-prd-vl210", "dvpg-app-prd-vl220", "dvpg-db-prd-vl230",
@@ -159,6 +175,14 @@ func Bootstrap(ctx context.Context, c *vim25.Client, l Layout) error {
 				return err
 			}
 		}
+		if err := ensurePools(ctx, c, cluster, cs.Pools); err != nil {
+			return fmt.Errorf("resource pools of %s: %w", cs.Name, err)
+		}
+	}
+	for _, dc := range l.DatastoreClusters {
+		if err := ensureDatastoreCluster(ctx, c, folders.DatastoreFolder, dc); err != nil {
+			return fmt.Errorf("datastore cluster %s: %w", dc.Name, err)
+		}
 	}
 
 	if err := ensurePortgroups(ctx, c, folders.NetworkFolder, l.Switch, allHosts, l.Portgroups); err != nil {
@@ -181,6 +205,79 @@ func Bootstrap(ctx context.Context, c *vim25.Client, l Layout) error {
 		return fmt.Errorf("content libraries: %w", err)
 	}
 	return nil
+}
+
+// ensurePools creates the cluster's resource pools, by path below its root
+// one.
+func ensurePools(ctx context.Context, c *vim25.Client, cluster *object.ClusterComputeResource, paths []string) error {
+	pc := property.DefaultCollector(c)
+	var cc mo.ClusterComputeResource
+	if err := pc.RetrieveOne(ctx, cluster.Reference(), []string{"resourcePool"}, &cc); err != nil {
+		return err
+	}
+	for _, p := range paths {
+		parent := *cc.ResourcePool
+		for name := range strings.SplitSeq(p, "/") {
+			var rp mo.ResourcePool
+			if err := pc.RetrieveOne(ctx, parent, []string{"resourcePool"}, &rp); err != nil {
+				return err
+			}
+			var found *types.ManagedObjectReference
+			for _, child := range rp.ResourcePool {
+				var e mo.ManagedEntity
+				if err := pc.RetrieveOne(ctx, child, []string{"name"}, &e); err == nil && e.Name == name {
+					found = &child
+					break
+				}
+			}
+			if found == nil {
+				created, err := object.NewResourcePool(c, parent).Create(ctx, name, types.DefaultResourceConfigSpec())
+				if err != nil {
+					return err
+				}
+				ref := created.Reference()
+				found = &ref
+			}
+			parent = *found
+		}
+	}
+	return nil
+}
+
+// ensureDatastoreCluster creates the storage pod and moves its datastores
+// into it.
+func ensureDatastoreCluster(ctx context.Context, c *vim25.Client, dsFolder *object.Folder, spec DatastoreClusterSpec) error {
+	pc := property.DefaultCollector(c)
+	var pod *object.StoragePod
+	if ref, err := findRef(ctx, c, "StoragePod", spec.Name); err == nil {
+		pod = object.NewStoragePod(c, ref)
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	} else if pod, err = dsFolder.CreateStoragePod(ctx, spec.Name); err != nil {
+		return err
+	}
+	var m mo.StoragePod
+	if err := pc.RetrieveOne(ctx, pod.Reference(), []string{"childEntity"}, &m); err != nil {
+		return err
+	}
+	var move []types.ManagedObjectReference
+	for _, name := range spec.Datastores {
+		ref, err := findRef(ctx, c, "Datastore", name)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(m.ChildEntity, ref) {
+			move = append(move, ref)
+		}
+	}
+	if len(move) == 0 {
+		return nil
+	}
+	task, err := pod.MoveInto(ctx, move)
+	if err != nil {
+		return err
+	}
+	return task.Wait(ctx)
 }
 
 // ensureLibraries creates the layout's content libraries and their VM
@@ -282,7 +379,7 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 			if cat, err := m.GetCategory(ctx, t.Category); err == nil {
 				catID = cat.ID
 			} else if catID, err = m.CreateCategory(ctx, &tags.Category{Name: t.Category, Cardinality: "MULTIPLE",
-				AssociableTypes: []string{"ClusterComputeResource", "Datastore", "Network", "DistributedVirtualPortgroup"}}); err != nil {
+				AssociableTypes: TaggableTypes}); err != nil {
 				return err
 			}
 			categories[t.Category] = catID
@@ -301,8 +398,8 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 				ref = ds.Reference()
 			} else if n, err := finder.Network(ctx, name); err == nil {
 				ref = n.Reference()
-			} else {
-				return fmt.Errorf("no cluster, datastore or network %s to tag", name)
+			} else if ref, err = findAny(ctx, c, name, "HostSystem", "StoragePod", "ResourcePool", "Datastore"); err != nil {
+				return fmt.Errorf("no cluster, host, resource pool, datastore, datastore cluster or network %s to tag", name)
 			}
 			if err := m.AttachTag(ctx, tagID, ref); err != nil {
 				return err
@@ -310,6 +407,21 @@ func ensureTags(ctx context.Context, c *vim25.Client, l Layout) error {
 		}
 	}
 	return nil
+}
+
+// TaggableTypes are what placement reads tags on (ADR-0035, ADR-0036).
+var TaggableTypes = []string{"ClusterComputeResource", "HostSystem", "ResourcePool", "Datastore", "StoragePod", "Network",
+	"DistributedVirtualPortgroup"}
+
+// findAny is the first object of those kinds with the name.
+func findAny(ctx context.Context, c *vim25.Client, name string, kinds ...string) (types.ManagedObjectReference, error) {
+	for _, k := range kinds {
+		ref, err := findRef(ctx, c, k, name)
+		if err == nil || !errors.Is(err, ErrNotFound) {
+			return ref, err
+		}
+	}
+	return types.ManagedObjectReference{}, fmt.Errorf("%s: %w", name, ErrNotFound)
 }
 
 // scratchDatastore finds a datastore outside the layout. vcsim backs new

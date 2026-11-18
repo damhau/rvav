@@ -34,6 +34,15 @@ func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory)
 	for _, n := range inv.Networks {
 		refs = append(refs, types.ManagedObjectReference{Type: n.Kind, Value: n.Moref})
 	}
+	for _, h := range inv.Hosts {
+		refs = append(refs, types.ManagedObjectReference{Type: "HostSystem", Value: h.Moref})
+	}
+	for _, p := range inv.ResourcePools {
+		refs = append(refs, types.ManagedObjectReference{Type: "ResourcePool", Value: p.Moref})
+	}
+	for _, p := range inv.DatastoreClusters {
+		refs = append(refs, types.ManagedObjectReference{Type: "StoragePod", Value: p.Moref})
+	}
 	if len(refs) == 0 {
 		return nil
 	}
@@ -64,6 +73,15 @@ func (cl *Client) readTags(ctx context.Context, c *vim25.Client, inv *Inventory)
 	}
 	for i := range inv.Networks {
 		inv.Networks[i].Tags = sorted(byObject[inv.Networks[i].Kind+":"+inv.Networks[i].Moref])
+	}
+	for i := range inv.Hosts {
+		inv.Hosts[i].Tags = sorted(byObject["HostSystem:"+inv.Hosts[i].Moref])
+	}
+	for i := range inv.ResourcePools {
+		inv.ResourcePools[i].Tags = sorted(byObject["ResourcePool:"+inv.ResourcePools[i].Moref])
+	}
+	for i := range inv.DatastoreClusters {
+		inv.DatastoreClusters[i].Tags = sorted(byObject["StoragePod:"+inv.DatastoreClusters[i].Moref])
 	}
 	return nil
 }

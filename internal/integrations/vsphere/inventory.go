@@ -17,6 +17,11 @@ type Inventory struct {
 	Networks   []Network
 	Templates  []Template
 	VMs        []InventoryVM
+	// Hosts, ResourcePools and DatastoreClusters are what placement rules
+	// may name besides clusters and datastores (ADR-0036).
+	Hosts             []Host
+	ResourcePools     []ResourcePool
+	DatastoreClusters []DatastoreCluster
 	// TagsError says why clusters, datastores and networks have no tags:
 	// the tagging service couldn't be read. The rest of the inventory is
 	// fine.
@@ -57,6 +62,49 @@ type Network struct {
 	Tags     []string
 }
 
+// Host is a cluster's ESXi host.
+type Host struct {
+	Moref         string
+	Name          string
+	Cluster       string
+	State         string // HostConnected, HostMaintenance or HostDisconnected
+	CPUTotalMHz   int64
+	CPUUsedMHz    int64
+	MemoryTotalMB int64
+	MemoryUsedMB  int64
+	Tags          []string
+}
+
+const (
+	HostConnected    = "connected"
+	HostMaintenance  = "maintenance"
+	HostDisconnected = "disconnected"
+)
+
+// ResourcePool is a cluster's resource pool below its root one; Path is
+// where it is under the root, such as rvav/dev. A limit of -1 is none.
+type ResourcePool struct {
+	Moref         string
+	Name          string
+	Cluster       string
+	Path          string
+	CPULimitMHz   int64
+	MemoryLimitMB int64
+	Tags          []string
+}
+
+// DatastoreCluster is a storage pod: its member datastores, and whether
+// Storage DRS is on.
+type DatastoreCluster struct {
+	Moref      string
+	Name       string
+	CapacityGB int64
+	FreeGB     int64
+	Datastores []string
+	SDRS       bool
+	Tags       []string
+}
+
 type Template struct {
 	Moref   string
 	Name    string
@@ -91,7 +139,8 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	}
 
 	var hosts []mo.HostSystem
-	if err := retrieve([]string{"HostSystem"}, []string{"name", "parent", "summary.hardware", "summary.quickStats"}, &hosts); err != nil {
+	if err := retrieve([]string{"HostSystem"}, []string{"name", "parent", "summary.hardware", "summary.quickStats",
+		"runtime.connectionState", "runtime.inMaintenanceMode"}, &hosts); err != nil {
 		return nil, err
 	}
 	var clusters []mo.ClusterComputeResource
@@ -108,6 +157,14 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	}
 	var networks []mo.Network
 	if err := retrieve([]string{"Network"}, []string{"name", "host"}, &networks); err != nil {
+		return nil, err
+	}
+	var pools []mo.ResourcePool
+	if err := retrieve([]string{"ResourcePool"}, []string{"name", "parent", "owner", "config"}, &pools); err != nil {
+		return nil, err
+	}
+	var pods []mo.StoragePod
+	if err := retrieve([]string{"StoragePod"}, []string{"name", "summary", "childEntity", "podStorageDrsEntry"}, &pods); err != nil {
 		return nil, err
 	}
 	var vms []mo.VirtualMachine
@@ -140,11 +197,24 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		if cluster == nil || h.Summary.Hardware == nil {
 			continue
 		}
-		cluster.CPUTotalMHz += int64(h.Summary.Hardware.CpuMhz) * int64(h.Summary.Hardware.NumCpuCores)
-		cluster.MemoryTotalMB += h.Summary.Hardware.MemorySize / (1024 * 1024)
-		cluster.CPUUsedMHz += int64(h.Summary.QuickStats.OverallCpuUsage)
-		cluster.MemoryUsedMB += int64(h.Summary.QuickStats.OverallMemoryUsage)
+		host := Host{Moref: h.Self.Value, Name: h.Name, Cluster: cluster.Name, State: HostConnected,
+			CPUTotalMHz:   int64(h.Summary.Hardware.CpuMhz) * int64(h.Summary.Hardware.NumCpuCores),
+			MemoryTotalMB: h.Summary.Hardware.MemorySize / (1024 * 1024),
+			CPUUsedMHz:    int64(h.Summary.QuickStats.OverallCpuUsage),
+			MemoryUsedMB:  int64(h.Summary.QuickStats.OverallMemoryUsage)}
+		switch {
+		case h.Runtime.ConnectionState != "" && h.Runtime.ConnectionState != types.HostSystemConnectionStateConnected:
+			host.State = HostDisconnected
+		case h.Runtime.InMaintenanceMode:
+			host.State = HostMaintenance
+		}
+		inv.Hosts = append(inv.Hosts, host)
+		cluster.CPUTotalMHz += host.CPUTotalMHz
+		cluster.MemoryTotalMB += host.MemoryTotalMB
+		cluster.CPUUsedMHz += host.CPUUsedMHz
+		cluster.MemoryUsedMB += host.MemoryUsedMB
 	}
+	inv.ResourcePools = resourcePools(pools, clusterByRef)
 	for _, d := range datastores {
 		ds := Datastore{Moref: d.Self.Value, Name: d.Name,
 			CapacityGB: d.Summary.Capacity / (1 << 30), FreeGB: d.Summary.FreeSpace / (1 << 30)}
@@ -152,6 +222,25 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 			ds.Clusters = appendUnique(ds.Clusters, hostCluster[mount.Key])
 		}
 		inv.Datastores = append(inv.Datastores, ds)
+	}
+	dsName := map[types.ManagedObjectReference]string{}
+	for _, d := range datastores {
+		dsName[d.Self] = d.Name
+	}
+	for _, p := range pods {
+		dc := DatastoreCluster{Moref: p.Self.Value, Name: p.Name}
+		if p.Summary != nil {
+			dc.CapacityGB, dc.FreeGB = p.Summary.Capacity/(1<<30), p.Summary.FreeSpace/(1<<30)
+		}
+		for _, ref := range p.ChildEntity {
+			if name, ok := dsName[ref]; ok {
+				dc.Datastores = append(dc.Datastores, name)
+			}
+		}
+		if e := p.PodStorageDrsEntry; e != nil {
+			dc.SDRS = e.StorageDrsConfig.PodConfig.Enabled
+		}
+		inv.DatastoreClusters = append(inv.DatastoreClusters, dc)
 	}
 	for _, n := range networks {
 		nw := Network{Moref: n.Self.Value, Name: n.Name, Kind: n.Self.Type}
@@ -201,6 +290,36 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	inv.LibrariesError = cl.readLibraries(ctx, c, inv)
 	inv.PoliciesError = readStoragePolicies(ctx, c, inv)
 	return inv, nil
+}
+
+// resourcePools are the clusters' pools below their root ones, vApps left
+// out, each with its path under the root.
+func resourcePools(pools []mo.ResourcePool, clusters map[types.ManagedObjectReference]*Cluster) []ResourcePool {
+	byRef := map[types.ManagedObjectReference]*mo.ResourcePool{}
+	for i := range pools {
+		byRef[pools[i].Self] = &pools[i]
+	}
+	var out []ResourcePool
+	for _, p := range pools {
+		cluster := clusters[p.Owner]
+		if p.Self.Type != "ResourcePool" || cluster == nil || p.Parent == nil || p.Parent.Type != "ResourcePool" {
+			continue
+		}
+		parts := []string{p.Name}
+		for up := byRef[*p.Parent]; up != nil && up.Parent != nil && up.Parent.Type == "ResourcePool"; up = byRef[*up.Parent] {
+			parts = append([]string{up.Name}, parts...)
+		}
+		rp := ResourcePool{Moref: p.Self.Value, Name: p.Name, Cluster: cluster.Name, Path: strings.Join(parts, "/"),
+			CPULimitMHz: -1, MemoryLimitMB: -1}
+		if l := p.Config.CpuAllocation.Limit; l != nil {
+			rp.CPULimitMHz = *l
+		}
+		if l := p.Config.MemoryAllocation.Limit; l != nil {
+			rp.MemoryLimitMB = *l
+		}
+		out = append(out, rp)
+	}
+	return out
 }
 
 func countSnapshots(list []types.VirtualMachineSnapshotTree) int {

@@ -75,7 +75,7 @@ func (s *Store) DeleteVCenter(ctx context.Context, name string) error {
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies"} {
+		for _, t := range inventoryTables {
 			if _, err := tx.Exec(ctx, `delete from `+t+` where vcenter = $1`, name); err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ func (s *Store) DeleteVCenter(ctx context.Context, name string) error {
 // PruneInventory forgets the inventory of every vCenter but those named.
 func (s *Store) PruneInventory(ctx context.Context, keep []string) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		for _, t := range []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies"} {
+		for _, t := range inventoryTables {
 			if _, err := tx.Exec(ctx, `delete from `+t+` where vcenter <> all($1::text[])`, keep); err != nil {
 				return err
 			}

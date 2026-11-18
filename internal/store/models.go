@@ -325,6 +325,46 @@ type InvNetwork struct {
 	Tags     []string `db:"tags"`
 }
 
+// InvHost is a cluster's ESXi host; State is connected, maintenance or
+// disconnected (ADR-0036).
+type InvHost struct {
+	VCenter       string   `db:"vcenter"`
+	Moref         string   `db:"moref"`
+	Name          string   `db:"name"`
+	Cluster       string   `db:"cluster"`
+	State         string   `db:"state"`
+	CPUTotalMHz   int64    `db:"cpu_total_mhz"`
+	CPUUsedMHz    int64    `db:"cpu_used_mhz"`
+	MemoryTotalMB int64    `db:"memory_total_mb"`
+	MemoryUsedMB  int64    `db:"memory_used_mb"`
+	Tags          []string `db:"tags"`
+}
+
+// InvResourcePool is a cluster's resource pool, by its path below the
+// root one; a limit of -1 is none.
+type InvResourcePool struct {
+	VCenter       string   `db:"vcenter"`
+	Moref         string   `db:"moref"`
+	Name          string   `db:"name"`
+	Cluster       string   `db:"cluster"`
+	Path          string   `db:"path"`
+	CPULimitMHz   int64    `db:"cpu_limit_mhz"`
+	MemoryLimitMB int64    `db:"memory_limit_mb"`
+	Tags          []string `db:"tags"`
+}
+
+// InvDatastoreCluster is a storage pod and its member datastores.
+type InvDatastoreCluster struct {
+	VCenter    string   `db:"vcenter"`
+	Moref      string   `db:"moref"`
+	Name       string   `db:"name"`
+	CapacityGB int64    `db:"capacity_gb"`
+	FreeGB     int64    `db:"free_gb"`
+	Datastores []string `db:"datastores"`
+	SDRS       bool     `db:"sdrs"`
+	Tags       []string `db:"tags"`
+}
+
 type InvTemplate struct {
 	VCenter string `db:"vcenter"`
 	Moref   string `db:"moref"`
@@ -362,13 +402,16 @@ type InvVM struct {
 
 // Inventory is one full snapshot of a vCenter, written by the sync loop.
 type Inventory struct {
-	VCenter         string
-	Clusters        []InvCluster
-	Datastores      []InvDatastore
-	Networks        []InvNetwork
-	Templates       []InvTemplate
-	VMs             []InvVM
-	StoragePolicies []InvStoragePolicy
+	VCenter           string
+	Clusters          []InvCluster
+	Datastores        []InvDatastore
+	Networks          []InvNetwork
+	Templates         []InvTemplate
+	VMs               []InvVM
+	StoragePolicies   []InvStoragePolicy
+	Hosts             []InvHost
+	ResourcePools     []InvResourcePool
+	DatastoreClusters []InvDatastoreCluster
 }
 
 type Event struct {

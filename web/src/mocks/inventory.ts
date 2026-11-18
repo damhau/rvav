@@ -48,13 +48,45 @@ export const networks: Network[] = [
   { name: "dvpg-db-prd-vl230", env: "prd", subnet: "10.22.30.0/25", gateway: "10.22.30.1", free: 31, nextHost: 40 },
 ];
 
-/** The vSphere tags on clusters, datastores and networks, as category/tag (ADR-0035). */
+/** A cluster's hosts, named as the vcsim layout names them. */
+export function hostsOf(c: Cluster): string[] {
+  const prefix = { "GVA-PRD-CL01": "esx-gva-prd1", "GVA-PRD-CL02": "esx-gva-prd2" }[c.name] ?? `esx-gva-${c.env}`;
+  return Array.from({ length: c.hosts }, (_, i) => `${prefix}-${String(i + 1).padStart(2, "0")}.${DOMAIN}`);
+}
+
+/** Resource pools below clusters' root ones, by path (ADR-0036). */
+export const resourcePools: { cluster: string; path: string; memoryLimitGb?: number }[] = [
+  { cluster: "GVA-DEV-CL01", path: "rvav" },
+  { cluster: "GVA-DEV-CL01", path: "rvav/dev", memoryLimitGb: 512 },
+  { cluster: "GVA-PRD-CL01", path: "rvav" },
+  { cluster: "GVA-PRD-CL01", path: "rvav/prd" },
+];
+
+/** Datastore clusters, their datastores on one cluster (ADR-0036). */
+export const datastoreClusters: {
+  name: string;
+  cluster: string;
+  datastores: string[];
+  freeTb: number;
+  sdrs: boolean;
+}[] = [
+  {
+    name: "dsc-gva-dev-01",
+    cluster: "GVA-DEV-CL01",
+    datastores: ["nfs-gva-dev-sdrs-01", "nfs-gva-dev-sdrs-02"],
+    freeTb: 4,
+    sdrs: true,
+  },
+];
+
+/** The vSphere tags on clusters, hosts, datastores and networks, as category/tag (ADR-0035). */
 export const tags: Record<string, string[]> = {
   "GVA-PRD-CL01": ["rvav-tier/gold"],
   "GVA-DEV-CL01": ["rvav-tier/bronze"],
   "vsan-gva-prd-cl01": ["rvav-tier/gold"],
   "nfs-gva-bronze-01": ["rvav-tier/bronze"],
   "dvpg-web-prd-vl210": ["rvav-zone/dmz"],
+  "esx-gva-prd1-03.corp.example": ["rvav-hw/gpu"],
 };
 
 export const dnsZones = ["corp.example", "web.corp.example", "data.corp.example", "10.in-addr.arpa"];
